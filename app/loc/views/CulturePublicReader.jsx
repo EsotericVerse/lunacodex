@@ -13,7 +13,7 @@ import {scopeHref} from '../../modular/scope-registry';
 import {assignedSource} from '../member-intersection-model.mjs';
 import {readPublicSourceTaxonomy} from '../source-catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../default-year-window.mjs';
-import {indexZModelAnchorHierarchy} from '../../../zenstack/anchor-hierarchy.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
@@ -29,23 +29,13 @@ function attributes(row){
   return row?.attr||{};
 }
 function anchorModel(rows,start,end,expanded){
-  const all=list(rows);
-  const byUid=new Map(all.map(row=>[String(row.uid),row]));
-  // The same Scope may contain canonical Base62 and historical short UIDs.
-  // Project only canonical, valid Time edges with ZModel. One legacy row must
-  // never invalidate every canonical Era/Period in the first Culture river.
-  const canonical=all.filter(row=>{
-    if(!/^[A-Za-z0-9]{8}$/.test(String(row.uid||'')))return false;
-    const attr=attributes(row);
-    const link=row.type==='era'?attr.period:
-      row.type==='period'?attr.uid:null;
-    return !Array.isArray(link)||link.every(uid=>/^[A-Za-z0-9]{8}$/.test(String(uid)));
-  });
-  let timeGraph=null;
-  if(canonical.length){
-    try{timeGraph=indexZModelAnchorHierarchy(canonical,{family:'time'});}
-    catch(error){console.warn('[LOC Culture] Time projection:',String(error?.message||error));}
-  }
+  // TimeAnchor links form a directed graph, not a single-parent tree:
+  // the same date can legitimately belong to multiple periods/eras.
+  // Use the frozen ZModel TimeAnchor discriminator and resolve its UID edges
+  // directly; the tree-only hierarchy index rejects these valid shared dates.
+  const all=list(rows).filter(row=>ANCHOR_TYPE_GROUPS.time.includes(row.type));
+  const byUid=new Map(all.filter(row=>/^[A-Za-z0-9]{8}$/.test(String(row.uid||'')))
+    .map(row=>[String(row.uid),row]));
   const dates=all.filter(row=>row.type==='date').map(row=>({
     ...row,date:datePart(attributes(row).date)
   })).filter(row=>row.date);
@@ -63,13 +53,9 @@ function anchorModel(rows,start,end,expanded){
   const groups=[],items=[];
   for(const era of eras){
     const uid=String(era.uid),attr=attributes(era);
-    const savedPeriodUids=list(attr.period||attr.periods);
-    const resolved=timeGraph&&Array.isArray(attr.period)?timeGraph.childrenOf(uid):[];
-    // Partially published graphs may contain unresolved links. Resolve only
-    // complete canonical branches; old IDs still use the explicit saved UIDs.
-    const periodUids=resolved.length===savedPeriodUids.length?
-      resolved:savedPeriodUids;
-    const refs=periodUids.map(id=>byUid.get(String(id)))
+    const periodUids=list(attr.period).map(String)
+      .filter(id=>/^[A-Za-z0-9]{8}$/.test(id));
+    const refs=periodUids.map(id=>byUid.get(id))
       .filter(item=>item?.type==='period');
     const expandedEra=expanded.includes(uid);
     groups.push({id:'era:'+uid,label:era.title||'時代',
@@ -83,6 +69,9 @@ function anchorModel(rows,start,end,expanded){
         group_key:'era:'+uid,group_label:era.title||'時代',
         start_date:begins[0],end_date:ends[ends.length-1]});
     }
+    // Collapsed eras show only the structural envelope. Generate
+    // individual dates and sub-periods after the user expands that era.
+    if(!expandedEra)continue;
     // Match real date points against each era's own periods. Do not use
     // the era's overall first/last date for matching: eras may have gaps.
     const windows=[...ranges.filter(range=>range.start&&range.end),
@@ -95,7 +84,6 @@ function anchorModel(rows,start,end,expanded){
         start_date:row.date,title:row.title||row.date,display_label:'',
         group_key:'era:'+uid,group_label:era.title||'時代'});
     }
-    if(!expandedEra)continue;
     refs.forEach(period=>{
       const id=String(period.uid),range=periodRange(period);
       groups.push({id:'period:'+uid+':'+id,label:'　'+(period.title||'期間'),order:groups.length});
@@ -207,6 +195,7 @@ export default function CulturePublicReader(){
   const [daily,setDaily]=useState(NO_ITEMS);
   const [catalog,setCatalog]=useState({categories:[],aliases:[],tree:[],roots:[]});
   const [error,setError]=useState('');
+  const [catalogError,setCatalogError]=useState('');
   const [loading,setLoading]=useState(true);
   const [expandedEras,setExpandedEras]=useState([]);
   const [expandedSources,setExpandedSources]=useState([]);
@@ -232,12 +221,18 @@ export default function CulturePublicReader(){
   const fullSequence=useRef(0);
   useEffect(()=>{
     let cancelled=false;
-    setLoading(true);setError('');setAnchors([]);
-    Promise.all([analytics(scopeId,'culture_anchors',null,null),
-      readPublicSourceTaxonomy()]).then(([time,types])=>{
-      if(cancelled)return;
-      setAnchors(time);setCatalog(types);setLoading(false);
-    }).catch(reason=>{if(!cancelled){setError(String(reason?.message||reason));setLoading(false);}});
+    setLoading(true);setError('');setCatalogError('');setAnchors([]);
+    // A SiteAnchor taxonomy failure must NEVER blank the independent
+    // TimeAnchor river. These are separate, non-joined ZModel reads.
+    analytics(scopeId,'culture_anchors',null,null)
+      .then(time=>{if(!cancelled){setAnchors(time);setLoading(false);}})
+      .catch(reason=>{if(!cancelled){setError(String(reason?.message||reason));setLoading(false);}});
+    readPublicSourceTaxonomy()
+      .then(types=>{if(!cancelled)setCatalog(types);})
+      .catch(reason=>{if(!cancelled){
+        setCatalog({categories:[],aliases:[],tree:[],roots:[]});
+        setCatalogError(String(reason?.message||reason));
+      }});
     return()=>{cancelled=true};
   },[scopeId]);
   useEffect(()=>{
@@ -288,8 +283,16 @@ export default function CulturePublicReader(){
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
   },[scopeId,densityMode]);
-  const anchorRiver=useMemo(()=>anchorModel(anchors,start,end,expandedEras),
-    [anchors,start,end,expandedEras]);
+  // The structural river spans all historical eras. The annual date window
+  // applies only to the separate article-density river below.
+  const structureStart=eraChoices.length
+    ?eraChoices.reduce((min,row)=>row.start_date<min?row.start_date:min,eraChoices[0].start_date)
+    :start;
+  const structureEnd=eraChoices.length
+    ?eraChoices.reduce((max,row)=>row.end_date>max?row.end_date:max,eraChoices[0].end_date)
+    :end;
+  const anchorRiver=useMemo(()=>anchorModel(anchors,structureStart,structureEnd,expandedEras),
+    [anchors,structureStart,structureEnd,expandedEras]);
   const densityRiver=useMemo(()=>densityMode==='keyword'
     ?sourceModel(keywordDaily,null,expandedSources,rangeStart,rangeEnd)
     :sourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd),
@@ -356,16 +359,17 @@ export default function CulturePublicReader(){
       {loading?<p className='scope-status' role='status'>載入時間定錨與每日文章密度…</p>:null}
       {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
       {!loading&&!error?<><section className='scope-card scope-culture-structure-river'>
-        <div className='scope-culture-structure-toolbar'><h3>時間定錨</h3></div>
+        <div className='scope-culture-structure-toolbar'><h3>時間定錨</h3>
+          <span className='scope-status'>{structureStart} ～ {structureEnd}</span></div>
         <CultureTimeline items={anchorRiver.items} extraGroups={anchorRiver.groups}
-          focus={NO_FOCUS} mode='trace' windowStart={start} windowEnd={end}
-          fixedMin={start} fixedMax={end}
+          focus={NO_FOCUS} mode='trace' windowStart={structureStart} windowEnd={structureEnd}
+          fixedMin={structureStart} fixedMax={structureEnd}
           onGroupToggle={group=>{
             const uid=String(group).replace(/^era:/,'');
             if(!String(group).startsWith('era:'))return;
             setExpandedEras(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]);
           }}/>
-        {!anchors.length?<p className='scope-status'>此區間沒有時間定錨。</p>:null}
+        {!anchors.length?<p className='scope-status'>目前沒有時間定錨。</p>:null}
       </section>
       <section className='scope-card scope-culture-classification-river'>
         <div className='scope-culture-river-toolbar'><h3>文章密度</h3></div>
@@ -394,6 +398,8 @@ export default function CulturePublicReader(){
           </label>:null}
         </div>
         {!validRange?<p className='scope-status scope-error' role='alert'>請選擇有效的起訖日期。</p>:null}
+        {catalogError&&densityMode==='source'?<p className='scope-status scope-error' role='alert'>
+          來源分類暫時無法載入：{catalogError}</p>:null}
         {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
           focus={NO_FOCUS} mode='source' heightVariant='double'

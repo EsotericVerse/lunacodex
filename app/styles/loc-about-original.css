@@ -165,6 +165,21 @@
   .loc-home-block--with-image.loc-home-block--media-sized.loc-home-block--image-left{
     grid-template-columns:minmax(0,min(var(--loc-home-media-max,420px),72%)) minmax(0,1fr);
   }
+  /* The LOC architecture/culture illustration is a bounded left column,
+     not the old oversized square art. DB editor width remains authoritative. */
+  .loc-home-block--architecture.loc-home-block--with-image.loc-home-block--image-left{
+    grid-template-columns:minmax(0,min(var(--loc-home-media-max,540px),46%)) minmax(0,1fr);
+  }
+}
+/* Keep the culture artwork's native ratio rather than stretching it into
+   the home media bubble; the image URL can still be overridden by the editor. */
+.loc-home-block--architecture .loc-home-block__media-bubble img{
+  width:100%;
+  height:auto;
+  max-height:none;
+  aspect-ratio:auto;
+  object-fit:contain;
+  object-position:center;
 }
 
 /* Hero keeps the already approved full-bleed background and reading contrast. */

@@ -9,7 +9,7 @@ import {BlockNoteContent} from './blocknote-content.mjs';
 // images are not uploaded to, or stored by, the block editor.
 const LOC_MEDIA=Object.freeze({
   2:{src:SITE_IMAGES.lunarunes,alt:'LunaRunes 月之符文',position:'right',width:'420px'},
-  3:{src:SITE_IMAGES.locArchitecture,alt:'LOC 月典架構：時間長河、玄子、玄裂與玄宇宙',position:'right',width:'360px'},
+  3:{src:SITE_IMAGES.locArchitecture,alt:'LOC 月典文化與架構示意圖',position:'left',width:'540px'},
   5:{src:SITE_IMAGES.author,alt:'作者 Lucas Oscar Wang 政德',position:'right',width:'360px'}
 });
 const AUTHOR_MEDIA=Object.freeze({
@@ -48,6 +48,7 @@ export function locHomeBlockClass(slot,scopeId='loc'){
   return [
     order===1?'loc-hero loc-home-hero':'loc-card',
     'loc-home-block',
+    scopeId==='loc'&&order===3?'loc-home-block--architecture':'',
     order===1?'loc-home-block--hero':'',
     order!==1&&image.src?(image.position==='only'?'loc-home-block--image-only':'loc-home-block--with-image loc-home-block--image-'+image.position):'',
     order!==1&&image.src&&['left','right'].includes(image.position)&&
