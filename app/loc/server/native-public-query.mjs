@@ -20,12 +20,14 @@ import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parsePortableOrExpression,portableContainsSpec}
   from '../providers/portable-search.mjs';
 import {isTextSearchQuery,checkSearchQos} from '../providers/search-qos.mjs';
+import {assertPublicKyselyReadShape,QUERY_FILTER_SQL}
+  from '../../../zenstack/sql-input-shape.mjs';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const IDENT=/^[a-z_][a-z0-9_]*$/i;
-const OPERATORS=new Set(['eq','neq','gt','gte','lt','lte','like','ilike','is','in','contains']);
+const OPERATORS=new Set(Object.keys(QUERY_FILTER_SQL));
 const SCOPE=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false).map(row=>row.scope_id));
 const TABLE_RE=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/;
 const TABLES=new Set(['loc_anchor','runes','runes_etc','runes_group']);
@@ -64,52 +66,26 @@ function predicate(eb,node){
     return eb(column,'is',value);
   }
   if(value===null)return eb(column,op==='neq'?'is not':'is',null);
-  const operators={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
-    like:'like',ilike:'ilike'};
+  const operators=QUERY_FILTER_SQL;
   if(op==='ilike')
     return eb(sql`lower(${sql.ref(column)})`,'like',String(value).toLowerCase());
   return eb(column,operators[op],value);
 }
 function normalize(body){
-  if(!body||typeof body!=='object'||Array.isArray(body))
-    throw invalid('Invalid LOC public query');
-  const keys=Object.keys(body),expected=new Set([
-    'schema','table','columns','filters','orFilters','orders','limit','offset',
-    'head','count','cardinality']);
-  if(keys.some(key=>!expected.has(key)))throw invalid('Unexpected SQL query field');
+  // Reuse the same Zod 4 request-shape layer as the private Kysely gateway.
+  // The public relation allowlist and field-level ZModel guard below remain
+  // independent authorization boundaries, not part of syntax validation.
+  try{assertPublicKyselyReadShape(body)}
+  catch(error){throw invalid(error.message)}
   const table=publicRelation(body.schema,body.table);
   const columns=body.columns;
-  if(!Array.isArray(columns)||!columns.length||columns.length>48||
-    columns.some(x=>x!=='*'&&!IDENT.test(String(x)))||
-    columns.includes('*')&&columns.length!==1)
-    throw invalid('Invalid public SQL projection');
   const filters=body.filters||[],orFilters=body.orFilters||[],orders=body.orders||[];
-  if(!Array.isArray(filters)||filters.length>30||
-    !Array.isArray(orFilters)||orFilters.length>10||
-    !Array.isArray(orders)||orders.length>10)
-    throw invalid('Public query exceeds allowed filters');
-  for(const f of filters){
-    if(!f||typeof f!=='object'||Array.isArray(f))throw invalid('Invalid filter');
-    col(f.column);
-    if(!OPERATORS.has(f.op))throw invalid('Invalid filter operator');
-  }
-  for(const value of orFilters)
-    if(typeof value!=='string'||value.length>4000)throw invalid('Invalid grouped query');
-  for(const order of orders){
-    if(!order||typeof order!=='object'||Array.isArray(order))throw invalid('Invalid order');
-    col(order.column);
-  }
   // An omitted LIMIT means a complete SELECT. Article lists explicitly request 100.
   const limit=body.limit==null?null:Number(body.limit);
   const offset=body.offset==null?0:Number(body.offset);
   if((limit!==null&&(!Number.isSafeInteger(limit)||limit<0))||
     !Number.isSafeInteger(offset)||offset<0)
     throw invalid('Invalid SQL page bounds');
-  if(body.cardinality!=null&&!['single','maybeSingle'].includes(body.cardinality))
-    throw invalid('Invalid SQL result cardinality');
-  if(body.count!=null&&body.count!=='exact')
-    throw invalid('Invalid SQL count mode');
-  if(body.head!=null&&typeof body.head!=='boolean')throw invalid('Invalid SQL HEAD');
   // Parse once at the request boundary, then reuse the identical typed AST
   // for both ZModel validation and the Kysely fallback SQL predicate.
   const parsedOrFilters=orFilters.map(parsePortableOrExpression);
