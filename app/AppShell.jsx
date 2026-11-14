@@ -4,7 +4,7 @@ import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
-import {useQueryClient,prepareTransientResourceAction} from '../zenstack/client-queries';
+import {useQueryClient} from '../zenstack/client-queries';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
@@ -673,9 +673,8 @@ function AppShellInner({children,runtime}){
               :currentFeature===tab.id);
           return <ScopeLink key={tab.id} href={tab.href} native={native}
             onClick={()=>{
-               // Retire the outgoing feature's in-flight reads BEFORE routing.
-               // Identity, grants, unsaved editor drafts and writes are excluded.
-               if(!selected)prepareTransientResourceAction('navigation');
+               // ScopeLink now handles route cleanup once for all links,
+               // including the six-button dock.
                setDockActivation(prev=>({id:tab.id,count:prev.count+1}));
              }}
             aria-current={selected?'page':undefined}>
