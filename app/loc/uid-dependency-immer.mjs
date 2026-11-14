@@ -135,6 +135,14 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
       draft[field]=row.type==='trace'&&field==='point'
         ?withoutTraceSegment(draft[field],uid):withoutUid(draft[field],uid);
     });
+    // A dangling UID must not be replaced with a structurally invalid map.
+    // Reconciliation may reject the requested deletion; it never silently
+    // deletes or invents a related route to make the graph look complete.
+    if(row.type==='path'&&field==='point'&&next.point.length<2)
+      throw new Error('Cannot delete Point: the dependent Path would have fewer than two endpoints');
+    if(row.type==='trace'&&field==='point'&&next.point.length===0&&
+      (!Array.isArray(next.path)||next.path.length===0))
+      throw new Error('Cannot delete Point: the dependent Trace would have no segments or routes');
     anchorUpdates.push({uid:id,type:row.type,values:{attr:next},expected:{attr:original}});
   }
   return {deletedUid:uid,deletedTable,deletedType,galaxyUpdates,anchorUpdates,
