@@ -20,7 +20,7 @@ const BLOCK_FIELDS=['uid','page_name','block_eyebrow','block_title','block_subti
   'block_text','block_order','block_entity','block_image'];
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const allowedScope=id=>SCOPE_ROUTE_INDEX.some(row=>row.scope_id===id&&row.active!==false);
-const NUMERIC_KINDS=new Set(['culture_density','daily','overview','earliest','totals','loc']);
+const NUMERIC_KINDS=new Set(['culture_density','daily','daily_total','overview','earliest','totals','loc']);
 // Numeric Culture/Statistics queries aggregate the full source: no row-group ceiling.
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
@@ -56,6 +56,22 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
     const first=await db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
       .where('statics','=',true).where('date','is not',null).executeTakeFirst();
     return day(first?.earliest)||'';
+  }
+  if(kind==='daily_total'){
+    // Statistics landing is TOTAL-ONLY: no Source/Galaxy.site GROUP BY,
+    // no Anchor join, no article list and no additional taxonomy SELECT.
+    const [counts,first]=await Promise.all([
+      db.selectFrom(table).select('date')
+        .select(eb=>eb.fn.countAll().as('item_count'))
+        .where('statics','=',true).where('date','>=',start)
+        .where('date','<=',end).where('date','is not',null)
+        .groupBy('date').orderBy('date','asc').execute(),
+      db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
+        .where('statics','=',true).where('date','is not',null)
+        .executeTakeFirst()
+    ]);
+    return {earliest:day(first?.earliest)||'',
+      rows:counts.map(row=>({day:day(row.date),item_count:total(row.item_count)}))};
   }
   if(kind==='totals'){
     let query=db.selectFrom(table).select('site')
