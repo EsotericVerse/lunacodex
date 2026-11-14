@@ -93,10 +93,13 @@ assert.equal(places.timesByUid,index.timesByUid);
 assert.equal(importedPlaceId({incoming:{location:'Another place'},
   existing:{place_id:'POINT001'},byName:places.byName}),null);
 
-let writes=0,latest=null;
+let writes=0,latest=null,createtimeGuards=0;
 const relation=()=>({update:values=>{
   writes++;latest=values;
-  const request={eq(){return request},is(){return request},select:async()=>({
+  const request={eq(){return request},is(field,value){
+    assert.equal(field,'createtime');assert.equal(value,null);
+    createtimeGuards++;return request;
+  },select:async()=>({
     data:[{uid:'POINT001'}],error:null
   })};
   return request;
@@ -114,6 +117,7 @@ const output=await recordImportPlaceVisits(visits,{
 assert.equal(output.added,2);
 assert.equal(output.updated,1);
 assert.equal(writes,1);
+assert.equal(createtimeGuards,1);
 assert.equal(latest.attr.times.length,2);
 const repeat=await recordImportPlaceVisits(visits,{
   relation,table:places.table,
