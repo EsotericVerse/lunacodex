@@ -67,8 +67,10 @@ export function validateLocUserField(field,value){
 async function selfRow(email){
   const verified=normalizeEmail(email);
   if(!verified)throw new Error('需要已驗證的 OAuth Email');
+  // The signed website session is bound to owner_id on the server.
+  // Email is profile metadata, not a second lookup/authorization key.
   const data=checked(await dbAuthRelation(TABLE).select(COLUMNS)
-    .eq('email',verified).limit(1),'無法讀取 OAuth 個人設定');
+    .limit(1),'無法讀取 OAuth 個人設定');
   return data?.[0]||null;
 }
 // Reading missing preferences is normal. Do not create a row on login or
@@ -83,8 +85,8 @@ export async function saveLocUserField(uid,field,value,email){
   if(uid&&!UID.test(String(uid)))throw new Error('個人設定 UID 必須為八碼');
   if(uid){
     const data=checked(await dbAuthRelation(TABLE)
-      .update({[field]:normalized,updated_at:new Date().toISOString()})
-      .eq('uid',uid).eq('email',verified).select(COLUMNS),'個人設定儲存失敗');
+      .update({[field]:normalized,email:verified,updated_at:new Date().toISOString()})
+      .eq('uid',uid).select(COLUMNS),'個人設定儲存失敗');
     if(!data?.length)throw new Error('個人設定已失效，請重新載入設定');
     return normalizeLocUser(data[0]);
   }
