@@ -6,12 +6,14 @@ import {loadOrCreateLocUser,saveLocUserField} from './loc-user-store.mjs';
 
 // Shared per-OAuth ZenStack client resource. Guests make no request; a verified login
 // supplies the account ID. No automatic INSERT and no second email check.
-export default function useLocUser({verifiedSubject=''}={}){
+export default function useLocUser({verifiedSubject='',verifiedEmail=''}={}){
   const account=usePassiveSessionAccount();
   // Settings can already have a server-verified OAuth identity even before
   // the passive SDK event hydrates the session navigation cache.
   const subject=String(verifiedSubject||account.user?.id||'');
-  const email=String(account.email||account.user?.email||'').trim().toLowerCase();
+  // The passive navbar cache deliberately holds only an identity hint;
+  // Settings passes its already verified email without another Auth request.
+  const email=String(verifiedEmail||account.email||account.user?.email||'').trim().toLowerCase();
   const enabled=Boolean(subject&&email)&&(!account.loading||Boolean(verifiedSubject));
   const key=enabled?['loc-user',subject,email]:null;
   const query=useAsyncResource({
