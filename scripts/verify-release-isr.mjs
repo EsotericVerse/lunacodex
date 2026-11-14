@@ -40,14 +40,18 @@ if(!publicServer.includes('LOC_BACKUP_SQL_GATEWAY_URL')||
    !publicServer.includes('AbortSignal.timeout(6500)')||
    !guards.includes('isAvailabilityFailure('))
   throw Error('ISR must retain independent bounded portable SQL backup');
-const numericClient=read('app/loc/numeric-isr-client.js');
-if(!numericClient.includes("mode==='isr'")||!numericClient.includes('readNumericIsr')||
-  !numericClient.includes('credentials:\'omit\''))
-  throw Error('Remote ISR must remain optional and use only anonymous public reads');
-const cacheMode=read('app/loc/cache-mode-client.mjs');
-if(!cacheMode.includes('cache-policy.config')||!cacheMode.includes('CACHE_POLICY')||
-  cacheMode.includes('loc_cache_runtime'))
-  throw Error('Public three-mode policy must fail safely without enabling ISR');
+// The abandoned browser-side ISR client and cache policy loader are not part
+// of the app's active data path. Do not resurrect them just to pass release
+// validation; keep numeric routing independent while the server route remains.
+for(const legacy of [
+  'app/loc/numeric-isr-client.js',
+  'app/loc/cache-mode-client.mjs',
+  'app/loc/cache-policy.config.mjs',
+  'app/loc/providers/isr-domains.mjs'
+]){
+  if(fs.existsSync(path.join(root,legacy)))
+    throw Error('Retired client-side ISR module was restored: '+legacy);
+}
 // Browser PWA Service Worker has been retired; remote ISR remains optional.
 const sw=read('public/sw.js');
 const shell=read('app/AppShell.jsx');
@@ -69,4 +73,4 @@ if(!publishedBlocks.includes('()=>import('))
 const app=read('app/loc/app-bootstrap.js');
 if(app.includes('locHomeSnapshotDelivered'))
   throw Error('LOC home still consumes site RPC Blocks');
-console.log('Verified default-off optional ISR, admin-gated public numeric HTTP cache, retired PWA worker and published JS policy.');
+console.log('Verified retired browser ISR client, admin-gated numeric endpoint, retired PWA worker and published JS policy.');

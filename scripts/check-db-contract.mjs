@@ -2,6 +2,11 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {parse} from '@babel/parser';
 import {scopeConfigColumns,scopeFeatureColumns,scopeFeaturePatch} from '../app/loc/scope-config-fields.mjs';
+import {schema as zmodel} from '../zenstack/schema.mjs';
+import {ANCHOR_TYPE_GROUPS,ANCHOR_TYPE_PROJECTIONS,ANCHOR_GROUP_GALAXY_FIELDS,
+  PERSISTED_ANCHOR_TYPES} from '../zenstack/anchor-hierarchy.mjs';
+import {GALAXY_READ_MODEL_FIELDS} from '../zenstack/galaxy-read-models.mjs';
+import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/loc-block-anchor.mjs';
 
 const read=relative=>readFileSync(new URL('../'+relative,import.meta.url),'utf8');
 const databaseContract='app/loc/db-contract.mjs';
@@ -109,13 +114,71 @@ export function checkProhibitedVendorDependencies(packageJson,lockJson){
   return {declared:0,installed:0};
 }
 
+
+// Validate the EXISTING five semantic ZModel groups against the frozen physical
+// schema once at build time. No runtime client, database call, migration, or
+// second field registry is created. Changing a semantic projection without
+// updating its physical SQL carrier must fail before deployment.
+export function checkZModelSemanticContract(){
+  const {models,typeDefs,enums}=zmodel;
+  const galaxies=[models.Lo3rwangGalaxy,models.LrunesGalaxy];
+  if(galaxies.some(model=>!model?.fields))
+    throw Error('Missing physical Galaxy ZModels');
+  for(const [name,fields] of Object.entries(GALAXY_READ_MODEL_FIELDS)){
+    const declared=typeDefs[name]?.fields;
+    if(!declared)throw Error('Missing Galaxy projection '+name);
+    for(const [column,spec] of Object.entries(fields)){
+      if(declared[column]?.type!==spec.type||
+         galaxies.some(model=>model.fields[column]?.type!==spec.type||
+           Boolean(model.fields[column]?.array)!==Boolean(spec.array)))
+        throw Error('Galaxy ZModel projection drift: '+name+'.'+column);
+    }
+  }
+  const enumTypes=new Set(Object.keys(enums.LocAnchorType?.values||{}));
+  const types=Object.keys(ANCHOR_TYPE_PROJECTIONS);
+  if(types.length!==PERSISTED_ANCHOR_TYPES.length||
+    enumTypes.size!==types.length||types.some(type=>!enumTypes.has(type)))
+    throw Error('LOC Anchor discriminator enum is out of sync');
+  const families=Object.keys(ANCHOR_TYPE_GROUPS);
+  if(families.length!==5)throw Error('Missing LOC semantic Anchor family');
+  for(const [type,projection] of Object.entries(ANCHOR_TYPE_PROJECTIONS)){
+    const group=typeDefs[projection.modelName]?.fields;
+    if(!group||!typeDefs[projection.payloadModelName]||
+       group[projection.groupField]?.type!==projection.payloadModelName||
+       !ANCHOR_TYPE_GROUPS[projection.group]?.includes(type)||
+       isLocBlockPage(type))
+      throw Error('Invalid semantic Anchor/LOC Block boundary: '+type);
+  }
+  for(const [family,columns] of Object.entries(ANCHOR_GROUP_GALAXY_FIELDS)){
+    if(!ANCHOR_TYPE_GROUPS[family]||
+       columns.some(column=>galaxies.some(model=>!model.fields[column])))
+      throw Error('Missing Galaxy Anchor carrier: '+family);
+  }
+  if(LOC_BLOCK_ANCHOR_FIELDS.some(column=>!models.LocAnchor?.fields[column])||
+    !typeDefs.LocBlocks?.fields||
+    !isLocBlockPage('index')||!isLocBlockPage('governance'))
+    throw Error('LOC Block Anchor projection is out of sync');
+  const rune=typeDefs.LRunes66?.fields;
+  const physicalRunes=models.Runes?.fields;
+  if(!rune||!physicalRunes||
+     Object.keys(rune).length!==Object.keys(physicalRunes).length||
+     Object.entries(rune).some(([key,field])=>
+       physicalRunes[key]?.type!==field.type||
+       Boolean(physicalRunes[key]?.array)!==Boolean(field.array)))
+    throw Error('LRunes66 projection differs from the physical Runes ZModel');
+  return {families:families.length,anchorTypes:types.length,
+    galaxyModels:Object.keys(GALAXY_READ_MODEL_FIELDS).length,
+    runeColumns:Object.keys(rune).length};
+}
+
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
   checkProhibitedVendorDependencies(read('package.json'),read('package-lock.json'));
+  const semantic=checkZModelSemanticContract();
   const result=checkDbContract(read(databaseContract),read(databaseClient));
   const migrationDir=new URL('../supabase/migrations/',import.meta.url);
   const migrationFiles=readdirSync(migrationDir)
     .filter(name=>name.endsWith('.sql')&&name.slice(0,8)>='20261102')
     .map(name=>[name,read('supabase/migrations/'+name)]);
   const loc=checkLocScopeBoundary(migrationFiles);
-  console.log('DB contract OK: '+result.exported+' exports, '+result.consumed+' consumers; LOC boundary checked '+loc.checked+' migrations.');
+  console.log('DB contract OK: '+result.exported+' exports, '+result.consumed+' consumers; LOC boundary checked '+loc.checked+' migrations; ZModel '+semantic.families+' families / '+semantic.anchorTypes+' Anchors / '+semantic.galaxyModels+' Galaxy readers / '+semantic.runeColumns+' rune columns.');
 }
