@@ -13,13 +13,15 @@ export async function readLocEditorGrants(session,{fetchImpl=globalThis.fetch}={
     throw Error((data?.error||'LOC edit permission denied')+
       ' (HTTP '+response.status+(data?.reason?', '+data.reason:
         data?'':', non-JSON response')+')');
-  if(!Array.isArray(data.roles))throw Error('LOC role response invalid');
+  // Bind ZModel business grants to the SAME Better Auth Session subject.
+  // An account switch while a management request is pending must not borrow
+  // another identity's roles.
   const email=String(data.email||'').trim().toLowerCase();
-  const roles=data.roles.filter(row=>
-    row?.email===email&&['admin','group','scope'].includes(row.role)&&
-    /^[a-z][a-z0-9]{0,14}$/.test(String(row.id||''))
-  ).map(row=>({id:row.id,email,role:row.role,manage_role:row.role}));
-  if(data.grants.some(grant=>typeof grant!=='string'))
-    throw Error('LOC role grants response invalid');
-  return {roles,grants:[...data.grants]};
+  const sessionEmail=String(session.user.email||'').trim().toLowerCase();
+  if(String(data.subject||'')!==String(session.user.id)||email!==sessionEmail)
+    throw Error('LOC Auth Session 與 ZModel 管理權限身分不一致');
+  if(!Array.isArray(data.roles))throw Error('LOC role response invalid');
+  // The existing setAuthorization() is the only client ZModel LocPrincipal
+  // projection. Do not maintain a parallel role whitelist in this transport.
+  return {roles:data.roles,grants:data.grants};
 }
