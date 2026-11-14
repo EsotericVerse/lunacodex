@@ -394,21 +394,21 @@ export default function CulturePublicReader(){
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
       <p className='loc-eyebrow'>文化｜時間密度</p>
       <h2>時間長河</h2>
-      <p className='scope-status'>{start} ～ {end}</p>
-      {loading?<p className='scope-status' role='status'>載入時間定錨與每日文章密度…</p>:null}
-      {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
-      {!loading&&!error?<><section className='scope-card scope-culture-structure-river'>
+      <p className='scope-status'>時間定錨：完整歷史；文章密度預設：{start} ～ {end}</p>
+      <section className='scope-card scope-culture-structure-river'>
+        {loading?<p className='scope-status' role='status'>正在載入時間定錨…</p>:null}
+        {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
         <div className='scope-culture-structure-toolbar'><h3>時間定錨</h3>
           <span className='scope-status'>{structureStart} ～ {structureEnd}</span></div>
-        <CultureTimeline items={anchorRiver.items} extraGroups={anchorRiver.groups}
+        {!loading&&!error?<CultureTimeline items={anchorRiver.items} extraGroups={anchorRiver.groups}
           focus={NO_FOCUS} mode='trace' windowStart={structureStart} windowEnd={structureEnd}
           fixedMin={structureStart} fixedMax={structureEnd}
           onGroupToggle={group=>{
             const uid=String(group).replace(/^era:/,'');
             if(!String(group).startsWith('era:'))return;
             setExpandedEras(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]);
-          }}/>
-        {!anchors.length?<p className='scope-status'>目前沒有時間定錨。</p>:null}
+          }}/>:null}
+        {!loading&&!error&&!anchors.length?<p className='scope-status'>目前沒有時間定錨。</p>:null}
       </section>
       <section className='scope-card scope-culture-classification-river'>
         <div className='scope-culture-river-toolbar'><h3>文章密度</h3></div>
@@ -528,7 +528,6 @@ export default function CulturePublicReader(){
         {!articlesLoading&&!articleRows.length&&!articleError
           ?<p className='scope-status'>沒有相關文章。</p>:null}
       </section>:null}
-      </>:null}
     </section>
   </FeaturePage>;
 }
