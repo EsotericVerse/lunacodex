@@ -25,6 +25,43 @@ function deltaFields(next,patches){
   return Object.fromEntries([...fields].map(field=>[field,next[field]]));
 }
 
+
+// New Point / Date Anchor inserts have no existing row to diff. Immer builds
+// the small typed envelope once; the existing ZModel-derived Zod writer still
+// validates the resulting physical row and enforces the SQL contract.
+export function planImportPointCreate({uid,title,description,coordinates=null,createtime=null}={}){
+  checkedUid(uid);
+  const [row,patches]=produceWithPatches({
+    uid,type:'point',title:null,description:null,attr:{},invisible:false
+  },draft=>{
+    draft.title=title;
+    draft.description=description;
+    if(coordinates!==null){
+      if(!Array.isArray(coordinates)||coordinates.length!==2||
+          coordinates.some(value=>typeof value!=='number'||!Number.isFinite(value)))
+        throw Error('Point 匯入座標資料無效');
+      draft.attr.longitude=coordinates[0];
+      draft.attr.latitude=coordinates[1];
+    }
+    if(createtime)draft.createtime=createtime;
+  });
+  return {row,patches};
+}
+
+export function planImportDateCreate({uid,date,title,description,createtime=null}={}){
+  checkedUid(uid);
+  if(typeof date!=='string'||!DAY.test(date))
+    throw Error('Date Anchor 日期識別無效');
+  const [row,patches]=produceWithPatches({
+    uid,type:'date',attr:{date},invisible:false
+  },draft=>{
+    draft.title=title;
+    draft.description=description;
+    if(createtime)draft.createtime=createtime;
+  });
+  return {row,patches};
+}
+
 // Point.attr.times and Point.createtime only. Preserve original coordinates,
 // aliases and all other attr members in the SQL writer's guarded merge.
 export function planImportPointVisitDelta({uid,attr,createtime=null,visits=[]}={}){
