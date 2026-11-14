@@ -95,8 +95,8 @@ export async function executeLocPersonal(db,claims,body){
     return {data:rows,count:null};
   }
   if(body.kind!=='personal-write')throw bad('Unsupported LOC personal operation');
-  // Business writes are controlled independently by api.manage, not Auth.
-  if(claims.me!==true)throw bad('LOC personal write permission denied',403);
+  // A verified website Session may edit only its own owner_id rows.
+  // Scope management grants are intentionally irrelevant to self-service.
   if(!['insert','upsert','update','delete'].includes(op))
     throw bad('Unsupported personal write');
   if(op==='insert'||op==='upsert'){
