@@ -935,6 +935,29 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         return siteAvailability.get(site);
       };
       const distinctSites=[...new Set(analyzed.valid.map(row=>String(row.site||'').trim()))];
+      // Import source presence is a business-data question on Galaxy.site,
+      // not a SiteAnchor title JOIN. Batch bounded exact site keys through
+      // the authenticated existing Kysely action instead of issuing one
+      // browser-to-SQL request for each platform in a mixed-source ZIP.
+      if(!nativeLocal&&scopeId!=='loc'){
+        const sites=distinctSites.filter(site=>site.length<=512);
+        for(let offset=0;offset<sites.length;offset+=200){
+          const chunk=sites.slice(offset,offset+200);
+          const requested=new Set(chunk.map(site=>site.toLowerCase()));
+          const {data,error}=await dbAuthClient.schema('silver').managedAction(
+            'import_site_presence',{p_scope_id:scopeId,p_sites:chunk});
+          if(error)throw Error('來源集合查詢失敗：'+(error.message||error));
+          if(!Array.isArray(data)||data.length>requested.size||
+              data.some(key=>typeof key!=='string'||!requested.has(key))||
+              new Set(data).size!==data.length)
+            throw Error('來源集合查詢回傳格式或 Scope 不符');
+          const found=new Set(data);
+          for(const site of chunk)siteAvailability.set(site,found.has(site.toLowerCase()));
+          showProgress('確認網站既有文章',Math.min(offset+chunk.length,sites.length),distinctSites.length);
+        }
+      }
+      // Local files / unusual legacy site strings retain their existing
+      // adapter path, without changing the independently stored Scope model.
       for(let index=0;index<distinctSites.length;index++){
         await siteHasArticles(distinctSites[index]);
         showProgress('確認網站既有文章',index+1,distinctSites.length);

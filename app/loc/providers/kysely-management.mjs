@@ -344,7 +344,16 @@ const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
-  'media_anchor_candidates','anchor_import_page']);
+  'media_anchor_candidates','anchor_import_page','import_site_presence']);
+// Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
+// title lookup. It never resolves or mutates Source hierarchy UIDs.
+const importSitePresenceArgsSchema=z.strictObject({
+  p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
+  p_sites:z.array(z.string().max(512)).min(1).max(200)
+});
+const importSitePresenceResultSchema=z.array(z.strictObject({
+  site_key:z.string().max(512)
+})).max(200);
 // Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
 const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
   'uid','type','title','description','attr','createtime'
@@ -532,9 +541,30 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     suggest_search_patterns:['p_scope_ids','p_query'],
     keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
     media_anchor_candidates:['p_scope_id','p_uids','p_urls','p_after_uid','p_limit'],
-    anchor_import_page:['p_scope_id','p_types','p_after_uid','p_limit']
+    anchor_import_page:['p_scope_id','p_types','p_after_uid','p_limit'],
+    import_site_presence:['p_scope_id','p_sites']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='import_site_presence'){
+    // Verified Better Auth LOC Web Session + active api.manage Scope grants.
+    // A single Kysely SELECT answers up to 200 exact case-insensitive site
+    // existence checks, without reading article UIDs/content or SiteAnchor.
+    const parsed=importSitePresenceArgsSchema.safeParse(args);
+    if(!parsed.success)reject('Invalid Zod import site presence request');
+    const {p_scope_id:scope,p_sites:sites}=parsed.data;
+    if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
+      reject('Import site Scope access denied',403);
+    await sql`reset role`.execute(trx);
+    const keys=[...new Set(sites.map(site=>site.toLowerCase()))];
+    const rows=await trx.selectFrom('silver.'+scope+'_galaxy')
+      .select(sql`lower(site)`.as('site_key'))
+      .where(sql`lower(site)`,'in',keys)
+      .distinct().execute();
+    const checked=importSitePresenceResultSchema.safeParse(rows);
+    if(!checked.success||rows.some(row=>!keys.includes(row.site_key)))
+      reject('Import site presence SQL result invalid');
+    return {data:rows.map(row=>row.site_key),count:rows.length};
+  }
   if(name==='anchor_import_page'){
     // LOC Web import only. The native gateway verifies Better Auth Session
     // and api.manage before this Scope-specific read; this action grants no
