@@ -1,7 +1,7 @@
 // ZenStack V3 SchemaDef bridge for LOC's permanently fixed physical schema.
 // Uses the published @zenstackhq/schema shape; does not need ZenStack CLI,
 // schema introspection, a migration, or a database connection at module load.
-// Only use this from trusted server code after Clerk + LOC Authority checks.
+// Only use this after trusted LOC OAuth delegation and Scope grants are verified.
 // SQL-nullable list fields and dynamic Scope/SQL dialects remain on Kysely.
 import contract from './schema-contract.mjs';
 import {PERSISTED_ANCHOR_TYPES,ANCHOR_PAYLOAD_DEFS} from './anchor-hierarchy.mjs';

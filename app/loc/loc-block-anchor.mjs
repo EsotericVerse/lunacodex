@@ -1,3 +1,5 @@
+import {PERSISTED_ANCHOR_TYPES} from '../../zenstack/anchor-hierarchy.mjs';
+
 // LOC presentation Blocks are a typed projection of silver.loc_anchor.
 // Only LOC uses this mapping; other Scope _blocks tables remain independent.
 // Anchor: uid / type / title / description / invisible / attr / createtime / num.
@@ -6,9 +8,11 @@ export const LOC_BLOCK_ANCHOR_FIELDS=Object.freeze([
   'uid','type','title','description','invisible','attr','num'
 ]);
 const PAGE=/^[A-Za-z][A-Za-z0-9_-]{0,60}$/;
-const LOC_SOURCE_TYPES=new Set(['from','domain','galaxy','universe']);
+// All five ZModel Anchor families share loc_anchor with presentation Blocks.
+// None of their persisted discriminators may be used as a Block page name.
+const LOC_RESERVED_TYPES=new Set(PERSISTED_ANCHOR_TYPES);
 export function isLocBlockPage(value){
-  return typeof value==='string'&&PAGE.test(value)&&!LOC_SOURCE_TYPES.has(value);
+  return typeof value==='string'&&PAGE.test(value)&&!LOC_RESERVED_TYPES.has(value);
 }
 function attrOf(row){
   const value=row?.attr;
@@ -36,6 +40,8 @@ export function locBlockToAnchor(row){
   };
 }
 export function locAnchorToBlock(row){
+  if(!isLocBlockPage(row?.type))
+    throw new TypeError('Semantic Anchor types cannot be read as LOC Blocks');
   const attr=attrOf(row);
   return {
     uid:String(row.uid??'').trim(),page_name:String(row.type??''),

@@ -964,7 +964,7 @@ async function importSharedKeywordClass(trx,args){
   const from=validScope(args.p_source_scope),to=validScope(args.p_target_scope);
   const classUid=validUid(args.p_class_uid);
   if(from===to)reject('Source and target Scopes must differ');
-  // Authorization on target is inherited from the established Clerk session.
+  // The target Scope grant is explicitly verified by scopedWrite / LOC access.
   await scopedWrite(trx,to);
   const sourceRegistry=await trx.selectFrom('api.manage')
     .select('id').where('id','=',from).where('manage_role','=','scope')
