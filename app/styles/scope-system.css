@@ -995,11 +995,13 @@
 
 .scope-culture-double-river .vis-label.scope-candidate-lane,.scope-culture-double-river .vis-group.scope-candidate-lane{background:color-mix(in srgb,var(--loc-accent) 6%,var(--loc-panel))!important;min-height:52px}
 .scope-culture-double-river .vis-label.scope-candidate-lane{border-top:1px solid color-mix(in srgb,var(--loc-accent) 22%,transparent)}
-/* Public Culture source groups arrive asynchronously; do not clip the
-   vis-timeline bottom date labels at the viewport edge. Keep the timeline's
-   own vertical scrolling while letting its axis paint fully. */
+/* Public Culture groups are normal document-flow rows, not a capped
+   internal scroll region. The final suggestion group remains last, with the
+   date axis directly beneath it; no forced height or group-count formula. */
+.scope-public-culture-panel{overflow:visible}
 .scope-public-culture-river .scope-period-timeline-wrap{overflow:visible}
 .scope-public-culture-river .scope-river-reveal-shell{overflow:visible}
+.scope-public-culture-river .scope-period-timeline{min-height:0;overflow:visible}
 .scope-culture-classification-river .scope-culture-double-river .vis-label.scope-candidate-lane,
 .scope-culture-classification-river .scope-culture-double-river .vis-group.scope-candidate-lane{
   background:color-mix(in srgb,var(--loc-gold,var(--loc-accent)) 12%,var(--loc-panel))!important;
