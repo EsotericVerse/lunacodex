@@ -34,7 +34,8 @@ const FIELDS=Object.freeze([
     {key:'list',title:'featureListTitle',checkbox:true}
   ]}
 ]);
-const SELECTED=Object.freeze({filter:[],cultureTrace:['culture','trace'],staticsSearch:['statics','search']});
+const SELECTED=Object.freeze({filter:[],cultureTrace:['culture','trace'],staticsSearch:['statics','search'],
+  dashboard:['culture','statics','trace','search']});
 
 function SettingChoices({group,field,value,onChange,disabled,t}){
   const label=t(PATH+field.title);
@@ -59,7 +60,7 @@ function SettingChoices({group,field,value,onChange,disabled,t}){
   </fieldset>;
 }
 
-export default function LocUserSettingsPanel({verifiedSubject='',section='filter'}){
+export default function LocUserSettingsPanel({verifiedSubject='',section='filter',filterSection=null}){
   useUiSection('uiExtra.globalSettings');
   const t=useUiText();
   const {data,loading,error,ready,update}=useLocUser({verifiedSubject});
@@ -96,7 +97,7 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
   // Only the Filter section loads Keyword Class options. The other two tabs
   // never issue taxonomy requests simply because the user opened Settings.
   useEffect(()=>{
-    if(section!=='filter'||!ready||!verifiedSubject)return undefined;
+    if(!['filter','dashboard'].includes(section)||!ready||!verifiedSubject)return undefined;
     let live=true;
     (async()=>{
       const {selectAvailableKeywordClasses}=await import('./keyword-analysis');
@@ -151,9 +152,13 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
 
   const storedClassIsMissing=draft.keyword!=='none'&&!keywordClasses.some(row=>row.value===draft.keyword);
   const visibleGroups=FIELDS.filter(group=>(SELECTED[section]||[]).includes(group.key));
+  if(section==='dashboard')visibleGroups.sort((a,b)=>
+    SELECTED.dashboard.indexOf(a.key)-SELECTED.dashboard.indexOf(b.key));
   return <>
-    {section==='filter'?<section className="loc-card">
-      <h2>{t(PATH+'featureKeywordTitle')}</h2>
+    {['filter','dashboard'].includes(section)?<section
+      className={'loc-card'+(section==='dashboard'?' scope-settings-dashboard__filter':'')}>
+      {section==='dashboard'?filterSection:<h2>{t(PATH+'featureKeywordTitle')}</h2>}
+      {section==='dashboard'?<h3>{t(PATH+'featureKeywordTitle')}</h3>:null}
       <label className="scope-stat-controls">
         <span>{t(PATH+'featureKeywordGroup')}</span>
         <select className="scope-select" value={draft.keyword}
@@ -171,9 +176,9 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
         group={group.key} field={field} value={draft[group.key][field.key]}
         onChange={change} disabled={!ready} t={t}/>)}
     </section>)}
-    <p role={saveError?'alert':'status'} className={'scope-status'+(saveError?' scope-error':'')}>
+    <p role={saveError?'alert':'status'} className={'scope-status'+(section==='dashboard'?' scope-settings-dashboard__footer':'')+(saveError?' scope-error':'')}>
       {saveError||(saving?t(PATH+'featureSaving'):status||t(PATH+'featureSaveHint'))}
     </p>
-    <p className="scope-status">{t(PATH+'featureAppliedHint')}</p>
+    <p className={'scope-status'+(section==='dashboard'?' scope-settings-dashboard__footer':'')}>{t(PATH+'featureAppliedHint')}</p>
   </>;
 }

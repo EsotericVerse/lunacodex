@@ -40,6 +40,8 @@ const ScopeSelfIntersection=dynamic(()=>import('../modules/statistics/ScopeSelfI
 const ScopeGroupStatistics=dynamic(()=>import('../modules/statistics/ScopeGroupStatistics'),{loading:()=>null});
 const ScopeGroupOverview=dynamic(()=>import('../../loc/ScopeGroupOverview'),{loading:()=>null});
 const StatisticsInsightsPanel=dynamic(()=>import('../modules/statistics/StatisticsInsightsPanel'),{loading:()=>null});
+// Standalone daily-draw analytics are mounted only for LunaRunes when selected.
+const LrunesDailyStatisticsPanel=dynamic(()=>import('../../lrunes/DailyRuneAnalytics').then(m=>m.LrunesDailyStatisticsPanel),{loading:()=>null});
 import StatisticsChartFrame from '../modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
@@ -164,8 +166,9 @@ function StatisticTypeSelect({scopeId,navigation,types,selectedSource='',sourceT
       }));
     }}>
       {types.includes('total')?<option value='total'>{t(STAT_TYPE_KEYS.total)}</option>:null}
-      {(types.includes('keywords')||types.includes('source'))?<optgroup label="關鍵詞">
+      {(types.includes('keywords')||types.includes('source')||types.includes('daily'))?<optgroup label="關鍵詞">
         {types.includes('keywords')?<option value="keywords">{t(STAT_TYPE_KEYS.keywords)}</option>:null}
+        {scopeId==='lrunes'&&types.includes('daily')?<option value="daily">每日符文</option>:null}
         {types.includes('source')?<option value="source">來源</option>:null}
         {types.includes('source')?sourceOptions.map(item=><option key={item.key} value={'source:'+item.code}>
           {item.domain?item.domain+' / ':''}{item.label}
@@ -183,6 +186,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     (['media_type','media_platform','media_style','media','place'].includes(requested)||['keywords','styles'].includes(navigation.statTab)?'keywords':types[0]||'');
   // Multimedia and locations are selected Keyword Classes, not separate data pipelines.
   const keywordDimension=rankingType==='keywords';
+  const dailyDimension=scopeId==='lrunes'&&rankingType==='daily';
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
@@ -579,6 +583,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         </aside>
       </div>
     </>:null}
+    {dailyDimension?<LrunesDailyStatisticsPanel range={queryRange}
+      zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}/>:null}
     {keywordDimension?<>
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}
       {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!scopedKeywordClasses.length?<p className="scope-status">目前沒有可查看的關鍵詞科目；請先建立或公開科目。</p>:null}
@@ -642,7 +648,7 @@ export default function Statistics(){
         scopeId={scopeId}
         aggregateScopes={Boolean(scope?.aggregateChildren)}
         navigation={activeNavigation}
-        types={STAT_TYPES}
+        types={scopeId==='lrunes'?[...STAT_TYPES,'daily']:STAT_TYPES}
         canManageSources={false}
       />
     </section>

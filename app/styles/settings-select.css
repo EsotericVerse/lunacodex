@@ -917,3 +917,35 @@
     padding-inline:0;
   }
 }
+
+/* Shared Settings homepage: account/filter, culture/statistics, trace/search.
+   All panels reuse the existing settings components and Scope theme tokens. */
+.scope-settings-dashboard{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;
+  gap:clamp(.75rem,1.4vw,1.15rem);
+  min-width:0;
+}
+.scope-settings-dashboard>.loc-card{
+  min-width:0;
+  margin:0;
+  height:100%;
+  align-self:stretch;
+}
+.scope-settings-dashboard>.loc-card>h2{margin-top:0;}
+.scope-settings-dashboard__account,
+.scope-settings-dashboard__filter{
+  display:flex;flex-direction:column;gap:.65rem;
+}
+.scope-settings-dashboard__homepage{
+  margin-top:auto;padding-top:.65rem;border-top:1px solid var(--loc-line);
+}
+.scope-settings-dashboard__filter>h3{
+  margin:.35rem 0 0;color:var(--loc-text);
+  font-size:clamp(.9rem,1.05vw,1.05rem);
+}
+.scope-settings-dashboard__footer{grid-column:1/-1;margin:.1rem 0;}
+@media(max-width:760px){
+  .scope-settings-dashboard{grid-template-columns:minmax(0,1fr);}
+}

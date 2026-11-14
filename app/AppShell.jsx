@@ -451,11 +451,9 @@ function AppShellInner({children,runtime}){
     document.addEventListener('visibilitychange',onVisible);check();
     return()=>{window.removeEventListener('focus',check);window.removeEventListener('pageshow',check);document.removeEventListener('visibilitychange',onVisible);};
   },[]);
-  const [mobileFavorite,setMobileFavorite]=useState(true);
   const [nativeHomepage,setNativeHomepage]=useState('loc');
   // Existing website Auth, Session and navigation stay connected.
   const preferences=useNavigationPreferences();
-  const [openFolderId,setOpenFolderId]=useState('');
   // Registry, NAV titles and Themes share one site snapshot across pages.
   // Scope config and page blocks load separately when first needed.
   // Components using the same (scopeId, pageName) ZenStack query key share one read.
@@ -474,7 +472,6 @@ function AppShellInner({children,runtime}){
     setNative(actual);
     if(!actual)return;
     const sync=()=>{
-      setMobileFavorite(deviceNavigation.mobileFavoriteEnabled(window.localStorage));
       setNativeHomepage(deviceNavigation.mobileHomepageChoice(window.localStorage));
     };
     sync();
@@ -528,31 +525,23 @@ function AppShellInner({children,runtime}){
   useEffect(()=>{
     if(typeof document!=='undefined')document.documentElement.lang=activeLocale;
   },[activeLocale]);
-  // Favorite targets are workspaces, not feature tabs. Unregistered/inactive
-  // dynamic IDs are omitted; built-in fallback links work before DB hydration.
-  const scopeNavLabel=item=>navDisplayNames[item.id]||item.nav.label;
-  const registryMap=new Map(registryScopes.map(item=>[item.scope_id,item]));
-  const layout=accountNavigation.folders.visibleFavoriteLayout(preferences.favorites,preferences.folders);
-  const favoriteLinks=layout.direct.filter(id=>(!native||id!=='lrunes')&&(native||!getScope(id).nativeOnly)).map(id=>{
-    const builtIn=NAV_SCOPES.find(item=>item.id===id);
-    const active=registryMap.get(id);
-    if(!builtIn&&!active)return null;
-    return {id,label:builtIn?scopeNavLabel(builtIn):(navDisplayNames[id]||id)};
-  }).filter(Boolean);
-  // LunaRunes is the immutable core native App workspace, not a removable cloud favorite.
-  if(native){
-    favoriteLinks.unshift({id:'lrunes',label:'月之符文'});
-    if(mobileFavorite)favoriteLinks.splice(1,0,{id:deviceNavigation.MOBILE_HOME_ID,label:translateUiField(activeLocale,'我的手機')});
+  // Scope navigation is canonical, not a per-user Favorites/folders list.
+  // Keep built-in and active Registry workspaces reachable after retirement.
+  const navigationScopes=NAV_SCOPES
+    .filter(item=>item.id!=='loc'&&item.id!=='admin'&&(!native||item.id==='lrunes'))
+    .map(item=>({id:item.id,label:navDisplayNames[item.id]||item.nav.label}));
+  if(!native){
+    const listed=new Set(navigationScopes.map(item=>item.id));
+    for(const row of registryScopes){
+      const id=String(row.scope_id||'');
+      if(!id||id==='loc'||id==='admin'||id==='local'||row.active===false||listed.has(id))continue;
+      navigationScopes.push({id,label:navDisplayNames[id]||row.display_name||id});
+      listed.add(id);
+    }
+  }else{
+    navigationScopes.push({id:deviceNavigation.MOBILE_HOME_ID,
+      label:translateUiField(activeLocale,'我的手機')});
   }
-  const navLabel=id=>{
-    const builtIn=NAV_SCOPES.find(item=>item.id===id);
-    if(!builtIn&&!registryMap.has(id))return null;
-    return builtIn?scopeNavLabel(builtIn):(navDisplayNames[id]||id);
-  };
-  const visibleFolders=layout.directories.map(folder=>({
-    ...folder,links:folder.scopes.filter(id=>(!native||id!=='lrunes')&&(native||!getScope(id).nativeOnly)).map(id=>({id,label:navLabel(id)})).filter(item=>item.label)
-  }));
-  const openFolder=visibleFolders.find(folder=>folder.id===openFolderId)||null;
   const editScopeAvailable=navScopeId!=='loc'&&navScopeId!=='admin'&&!currentScope.aggregateChildren;
   // A Scope homepage may live at /, /scopeid/, /scope-shell/ or /scopeid/index.html.
   const homeParts=String(pathname||'/').split('/').filter(Boolean);
@@ -646,33 +635,20 @@ function AppShellInner({children,runtime}){
     <ScrollProgress/>
     <header className="scope-global" data-native={native?'ios':'web'}>
       <nav className="scope-nav" aria-label={copy.nav.aria}>
-        <ScrollableScopeNav label={translateUiField(activeLocale,'常用空間')} resetKey={preferences.favorites.join(',')+'|'+mobileFavorite+'|'+native+'|'+visibleFolders.map(folder=>folder.id+':'+folder.label).join(',')}>
-          {favoriteLinks.map(item=>{
-            const href=item.id===deviceNavigation.MOBILE_HOME_ID?deviceNavigation.mobileHomeHref(native):navigationHref(item.id,'',native);
-            return <NavTarget key={item.id} href={href} label={item.label} current={targetIsCurrent(href,host,pathname)} native={native}/>;
+        <ScrollableScopeNav label="Scope 導覽"
+          resetKey={navigationScopes.map(item=>item.id+':'+item.label).join('|')}>
+          {navigationScopes.map(item=>{
+            const href=item.id===deviceNavigation.MOBILE_HOME_ID
+              ?deviceNavigation.mobileHomeHref(native):navigationHref(item.id,'',native);
+            return <NavTarget key={item.id} href={href} label={item.label}
+              current={targetIsCurrent(href,host,pathname)} native={native}/>;
           })}
-          {visibleFolders.map(folder=><button type="button" key={folder.id}
-            className="scope-nav-folder" aria-expanded={openFolderId===folder.id}
-            aria-controls="scope-nav-folder-contents" onClick={()=>setOpenFolderId(current=>current===folder.id?'':folder.id)}>
-            {folder.label} <span aria-hidden="true">{openFolderId===folder.id?'▴':'▾'}</span>
-          </button>)}
-          {!favoriteLinks.length&&!visibleFolders.length?<ScopeLink href={native?'/local/settings/index.html':'/local/settings/'} native={native} className="scope-nav-empty"><FieldText text="到設定加入常用空間"/></ScopeLink>:null}
         </ScrollableScopeNav>
         <ScopeLink href={navigationHref('loc','',native)+(native?'?loc_direct=1':'')} native={native}
           className="scope-nav-loc-home" aria-current={scopeId==='loc'&&pathname==='/'?'page':undefined}>
           {copy.nav.home}
         </ScopeLink>
       </nav>
-      {openFolder?<div id="scope-nav-folder-contents" className="scope-nav-subrow" aria-label={openFolder.label+' '+translateUiField(activeLocale,'目錄')}>
-        <ScrollableScopeNav label={openFolder.label+' '+translateUiField(activeLocale,'目錄內容')} resetKey={openFolder.id+'|'+openFolder.links.map(item=>item.id).join(',')}>
-          {openFolder.links.map(item=>{
-            const href=navigationHref(item.id,'',native);
-            return <NavTarget key={item.id} href={href} label={item.label} current={targetIsCurrent(href,host,pathname)} native={native}/>;
-          })}
-          {!openFolder.links.length?<span className="scope-nav-folder-empty"><FieldText text="目錄尚無入口"/></span>:null}
-        </ScrollableScopeNav>
-        <button type="button" className="scope-nav-close-folder" aria-label={translateUiField(activeLocale,'收合目錄')} onClick={()=>setOpenFolderId('')}>×</button>
-      </div>:null}
     </header>
     {localCoreActive&&!localWorkspace?<main className="scope-main"><p className="scope-status" role="status">正在切換手機本機資料…</p></main>:children}
     <motion.div layoutRoot className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"

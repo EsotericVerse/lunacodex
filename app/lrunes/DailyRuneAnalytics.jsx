@@ -135,18 +135,23 @@ export function LrunesDailyCulturePanel(){
   </section>;
 }
 
-export function LrunesDailyStatisticsPanel(){
+export function LrunesDailyStatisticsPanel({range:externalRange=null,zoomLevel:externalZoom=0,
+  onZoomLevelChange=null}={}){
   const text=useFeatureCopy('dailyRune',featureZh);
-  const [zoomLevel,setZoomLevel]=useState(0);
-  const today=useMemo(()=>todayInTaipei(),[]);
+  const [localZoom,setLocalZoom]=useState(0);
+  const zoomLevel=onZoomLevelChange?externalZoom:localZoom;
+  const setZoomLevel=onZoomLevelChange||setLocalZoom;
   const earliest=useAsyncResource(['statistics-history-start','daily-rune'],()=>
-    selectFirstDailyRuneDate());
+    selectFirstDailyRuneDate(),{enabled:!externalRange});
   const zoomRange=useMemo(()=>{
+    // Integrated LunaRunes Statistics uses the same period/filter as the
+    // author dashboard. No duplicate timeframe, cache or SQL read.
+    if(externalRange?.startDate&&externalRange?.endDate)return externalRange;
     const normal=statisticsZoomWindow(zoomLevel,DEFAULT_YEAR_WINDOW.endDate,earliest.data||'');
     return zoomLevel===0?{...normal,startDate:DEFAULT_YEAR_WINDOW.startDate,
       endDate:DEFAULT_YEAR_WINDOW.endDate,bucket:'month',canZoomOut:false,
       canZoomIn:true}:normal;
-  },[zoomLevel,earliest.data]);
+  },[externalRange,zoomLevel,earliest.data]);
   const [analysisMode,setAnalysisMode]=useState('rune');
   const [page,setPage]=useState(1);
   const [chart,setChart]=useState('bar');

@@ -57,6 +57,7 @@ export default {
   "mcpOpenScope": "設定我的資料庫",
   "mcpOpenGroup": "管理群組成員授權",
   "accountDescription": "查看登入狀態與帳號資訊。",
+  "featureSettingsHome": "設定首頁",
   "featureSettings": "功能設定",
   "featureSettingsShort": "功能",
   "featureSettingsDescription": "設定個人濾鏡、文化、痕跡、統計與搜尋偏好。",

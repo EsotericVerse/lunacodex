@@ -57,6 +57,7 @@ export default {
   "mcpOpenScope": "Open my database settings",
   "mcpOpenGroup": "Manage Group permissions",
   "accountDescription": "Check your sign-in and account status.",
+  "featureSettingsHome": "Settings Home",
   "featureSettings": "Feature settings",
   "featureSettingsShort": "Features",
   "featureSettingsDescription": "Set your filter, Culture, Trace, Statistics, and Search preferences.",

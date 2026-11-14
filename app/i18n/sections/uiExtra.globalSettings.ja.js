@@ -57,6 +57,7 @@ export default {
   "mcpOpenScope": "データベース設定を開く",
   "mcpOpenGroup": "Group 権限を管理",
   "accountDescription": "ログインとアカウントの状態を確認します。",
+  "featureSettingsHome": "設定ホーム",
   "featureSettings": "機能設定",
   "featureSettingsShort": "機能",
   "featureSettingsDescription": "フィルター・文化・痕跡・統計・検索の個人設定。",

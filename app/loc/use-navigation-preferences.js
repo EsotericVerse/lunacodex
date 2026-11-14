@@ -7,7 +7,7 @@ import {NavigationPreferences} from '../modular/navigation-preferences';
 const accountNavigation=NavigationPreferences.account;
 
 
-const INITIAL={home:'loc',favorites:[...accountNavigation.DEFAULT_FAVORITES],folders:[],loading:true,error:''};
+const INITIAL={home:'loc',loading:true,error:''};
 export function useNavigationPreferences(){
   const account=usePassiveSessionAccount();
   const [preferences,setPreferences]=useState(INITIAL);
@@ -17,11 +17,10 @@ export function useNavigationPreferences(){
     if(!identity){setPreferences({...INITIAL,loading:false});return;}
     let live=true;
     setPreferences(current=>({...current,loading:true,error:''}));
-    const keys=[accountNavigation.HOME_SETTING_KEY,accountNavigation.FAVORITES_SETTING_KEY,accountNavigation.folders.FOLDERS_SETTING_KEY];
+    // Favorites/folders are retired; read only the saved homepage scalar.
+    const keys=[accountNavigation.HOME_SETTING_KEY];
     getSettings(keys,identity).then(settings=>{if(live)setPreferences({
         home:accountNavigation.validScopeId(settings[keys[0]])||'loc',
-        favorites:accountNavigation.parseFavorites(settings[keys[1]]),
-        folders:accountNavigation.folders.parseFavoriteFolders(settings[keys[2]]),
         loading:false,error:''
       });})
       .catch(error=>{if(live)setPreferences({...INITIAL,loading:false,error:String(error?.message||error)});});
@@ -29,9 +28,8 @@ export function useNavigationPreferences(){
   },[identity,account.loading,account.permissionLoading]);
   useEffect(()=>{
     const update=event=>setPreferences(current=>({
-      ...current,...event.detail,
-      favorites:Object.hasOwn(event.detail||{},'favorites')?accountNavigation.parseFavorites(event.detail.favorites):current.favorites,
-      folders:Object.hasOwn(event.detail||{},'folders')?accountNavigation.folders.parseFavoriteFolders(event.detail.folders):current.folders
+      ...current,home:Object.hasOwn(event.detail||{},'home')
+        ?accountNavigation.validScopeId(event.detail.home)||'loc':current.home
     }));
     window.addEventListener('loc-navigation-changed',update);
     return()=>window.removeEventListener('loc-navigation-changed',update);

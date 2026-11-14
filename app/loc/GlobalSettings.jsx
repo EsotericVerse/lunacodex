@@ -31,7 +31,7 @@ const {account:accountNavigation,device:deviceNavigation}=NavigationPreferences;
 const option=(value,label,description,shortLabel)=>({value,label,description,shortLabel});
 // Always show LOC's existing full-screen login composition, backed by native LOC Auth.
 const LOC_LOGIN_GATEWAY='/login/index.html?return_to=%2Flocal%2Fsettings%2F';
-export default function GlobalSettings({initialSection='home'}={}){
+export default function GlobalSettings({initialSection='features'}={}){
   useUiSection('uiExtra.globalSettings');
   const uiT=useUiText();
   const prefs=useNavigationPreferences();
@@ -39,8 +39,7 @@ export default function GlobalSettings({initialSection='home'}={}){
   const [urlResolved,setUrlResolved]=useState(false);
   const [home,setHome]=useState('loc');
   const sections=[
-    option('home',uiT('uiExtra.globalSettings.homeSettings'),'',uiT('uiExtra.globalSettings.tabHome')),
-    option('features',uiT('uiExtra.globalSettings.featureSettings'),'',uiT('uiExtra.globalSettings.featureSettingsShort')),
+    option('features',uiT('uiExtra.globalSettings.featureSettingsHome'),'',uiT('uiExtra.globalSettings.featureSettingsHome')),
     ...(native||prefs.account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),'',uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
     option('mcp',uiT('uiExtra.globalSettings.mcpSelfServiceTitle'),'',uiT('uiExtra.globalSettings.mcpTab')),
     ...(native?[
@@ -48,14 +47,14 @@ export default function GlobalSettings({initialSection='home'}={}){
       option('manage',uiT('uiExtra.globalSettings.manageMenu'),'',uiT('uiExtra.globalSettings.tabManage'))
     ]:[])
   ];
-  // favorites is the legacy URL alias for the public home/settings panel.
-  const [section,setSection]=useManagementSection(sections,initialSection,{favorites:'home',account:'home'});
+  // Preserve old deep links without mounting a second settings homepage.
+  const [section,setSection]=useManagementSection(sections,initialSection,{favorites:'features',home:'features',account:'features'});
 
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
   // LOC Auth owns identity and Scope grants; the trusted application backend checks every signed delegation.
-  const verifiedLocAccount=useAccount({enabled:section==='home',sessionOnly:true});
-  const account=section==='home'?verifiedLocAccount:prefs.account;
+  const verifiedLocAccount=useAccount({enabled:section==='features'||section==='mcp',sessionOnly:true});
+  const account=(section==='features'||section==='mcp')?verifiedLocAccount:prefs.account;
 
   useEffect(()=>{
     const isNative=Capacitor.isNativePlatform();
@@ -93,14 +92,7 @@ export default function GlobalSettings({initialSection='home'}={}){
     (allowedHomes.some(item=>item.id===home)?home:'loc'):
     accountNavigation.homeScopeForAccount(home,account,allowedHomes.map(item=>item.id));
 
-  const favoriteItems=useMemo(()=>{
-    const ids=native?
-      ['lrunes',...(deviceNavigation.mobileFavoriteEnabled(typeof window==='undefined'?null:window.localStorage)?[deviceNavigation.MOBILE_HOME_ID]:[]),...prefs.favorites]:
-      prefs.favorites;
-    const unique=[...new Set(ids)];
-    return unique.map(id=>id===deviceNavigation.MOBILE_HOME_ID?{id,label:uiT('uiExtra.globalSettings.myPhone')}:choices.find(item=>item.id===id))
-      .filter(Boolean);
-  },[native,prefs.favorites.join(','),choices]);
+
 
   const activeSection=section;
   const waiting=Boolean(busy)||prefs.loading||account.loading||account.permissionLoading;
@@ -143,6 +135,33 @@ export default function GlobalSettings({initialSection='home'}={}){
       .catch(error=>setStatus(String(error?.message||error)));
   }
 
+  const accountCard=<section className="loc-card scope-settings-dashboard__account">
+    <h2><UiText id="uiExtra.globalSettings.account"/></h2>
+    {accountWaiting?<p role="status">正在核驗 LOC Auth 登入身分…</p>
+      :account.user?<p>LOC Auth（已驗證）：{account.email}</p>:null}
+    {!accountWaiting&&!account.user?<button type="button" className="loc-button primary"
+      disabled={busy} onClick={login}>使用 LOC Auth 登入</button>:null}
+    {account.user?<button type="button" className="loc-button"
+      disabled={busy} onClick={logout}><UiText id="uiExtra.globalSettings.logout"/></button>:null}
+    {account.error?<div className="scope-status scope-error" role="alert">
+      <p>{account.error}</p>
+      <button type="button" className="loc-button" disabled={busy||account.loading}
+        onClick={()=>void verifiedLocAccount.refresh().catch(error=>setStatus(String(error?.message||error)))}>
+        重新確認登入狀態
+      </button>
+    </div>:null}
+    <form onSubmit={saveHome} className="scope-stat-controls scope-settings-dashboard__homepage">
+      <label><span><UiText id="uiExtra.globalSettings.defaultHome"/></span>
+        <select className="scope-select" value={actualHome}
+          onChange={event=>setHome(event.target.value)} disabled={waiting&&!native}>
+          {allowedHomes.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
+        </select>
+      </label>
+      {native||account.user?<button type="submit" className="loc-button"
+        disabled={waiting}><UiText id="uiExtra.globalSettings.save"/></button>:null}
+    </form>
+  </section>;
+
   return <FeaturePage featureId="setting">
     <div className="scope-settings-options management-workspace">
       <ManagementSectionNav id="settings-sections" title={uiT('uiExtra.globalSettings.settingsSections')}
@@ -150,42 +169,8 @@ export default function GlobalSettings({initialSection='home'}={}){
         onChange={next=>{setSection(next);setStatus('');}}/>
       <div className="management-workspace-panel" id="settings-management-panel" role="region"
         aria-labelledby={'settings-sections-option-'+activeSection}>
-      {activeSection==='home'?<div className="loc-settings-panel-group">
-        <section className="loc-card">
-          <h2><UiText id="uiExtra.globalSettings.account"/></h2>
-          {accountWaiting?<p role="status">正在核驗 LOC Auth 登入身分…</p>:account.user?<p>LOC Auth（已驗證）：{account.email}</p>:null}
-          {!accountWaiting&&!account.user?<button type="button" className="loc-button primary" disabled={busy} onClick={login}>使用 LOC Auth 登入</button>:null}
-          {account.user||prefs.account.user?<button type="button" className="loc-button" disabled={busy} onClick={logout}><UiText id="uiExtra.globalSettings.logout"/></button>:null}
-          {account.error?<div className="scope-status scope-error" role="alert">
-            <p>{account.error}</p>
-            <button type="button" className="loc-button" disabled={busy||account.loading}
-              onClick={()=>void verifiedLocAccount.refresh().catch(error=>setStatus(String(error?.message||error)))}>
-              重新確認登入狀態
-            </button>
-          </div>:null}
-        </section>
-        <section className="loc-card">
-        <h2><UiText id="uiExtra.globalSettings.homeSettings"/></h2>
-        <form onSubmit={saveHome} className="scope-stat-controls">
-          <label><span><UiText id="uiExtra.globalSettings.defaultHome"/></span>
-            <select className="scope-select" value={actualHome} onChange={event=>setHome(event.target.value)}
-              disabled={waiting&&!native}>
-              {allowedHomes.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-          </label>
-          {native||account.user?<button type="submit" className="loc-button primary" disabled={waiting}><UiText id="uiExtra.globalSettings.save"/></button>:null}
-        </form>
-        <div className="scope-settings-favorite-preview">
-          <strong><UiText id="uiExtra.globalSettings.favorites"/></strong>
-          <div className="scope-settings-favorite-items">
-            {favoriteItems.map(item=><span key={item.id} className="scope-settings-favorite-item">{item.label}</span>)}
-          </div>
-        </div>
-      </section>
-      </div>:null}
-
-      {activeSection==='features'?<FeatureSettingsPage embedded/>:null}
-      {activeSection==='mcp'?<LocScopeConnections availableScopes={choices}/>:null}
+      {activeSection==='features'?<FeatureSettingsPage embedded dashboard accountCard={accountCard}/>:null}
+      {activeSection==='mcp'?<LocScopeConnections availableScopes={choices} verifiedAccount={verifiedLocAccount}/>:null}
       {native&&activeSection==='local'?<LocalScopeModeSettings/>:null}
 
       {activeSection==='dailyRune'?<DailyRuneCalendarSettings/>:null}

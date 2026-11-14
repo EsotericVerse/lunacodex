@@ -47,6 +47,7 @@ export default {
   "dailyRuneDescription": "查看每日符文记录。",
   "documentImportDescription": "将文件内容导入本机 SQLite，不会写入云端 Scope。",
   "accountDescription": "查看登录状态与账号信息。",
+  "featureSettingsHome": "设置首页",
   "featureSettings": "功能设置",
   "featureSettingsShort": "功能",
   "featureSettingsDescription": "设置个人滤镜、文化、痕迹、统计与搜索偏好。",
