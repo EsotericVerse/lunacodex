@@ -6,7 +6,9 @@ import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
 // The owner's explicit action starts the only scan. Never run during render,
 // ordinary Search, Culture navigation or the existing Keyword reanalysis.
 // Transport batches do not cap the total number of scanned articles.
-const PAGE_SIZE=1000;
+// 2,000 short Galaxy rows per page halves round trips on the large author Scope;
+// only this page and one lookahead are held, never the entire article library.
+const PAGE_SIZE=2000;
 const ARTICLE_COLUMNS=galaxyReadColumns('GalaxyUidRead')
   .filter(column=>['uid','content','createtime','date'].includes(column));
 const aborted=()=>Object.assign(new Error('已取消關鍵詞建議掃描'),{name:'AbortError'});
@@ -105,9 +107,15 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
       let query=relation.select(ARTICLE_COLUMNS).not('date','is',null)
         .order('date',{ascending:true}).order('uid',{ascending:true})
         .limit(PAGE_SIZE);
-      if(afterDate!==null)query=query.or(
-        'date.gt.'+afterDate+',and(date.eq.'+afterDate+
-        ',uid.gt.'+quoted(afterUid)+')');
+      if(afterDate!==null){
+        // The OR cursor alone caused Postgres to scan/filter all earlier dates
+        // (43k rows on a late 2026 page). This redundant AND lower bound is
+        // logically implied by the cursor, but uses the existing DATE index.
+        // Keep the strict date/UID OR so no rows are skipped or duplicated.
+        query=query.gte('date',afterDate).or(
+          'date.gt.'+afterDate+',and(date.eq.'+afterDate+
+          ',uid.gt.'+quoted(afterUid)+')');
+      }
       return query;
     });
     let previousDate=null;
