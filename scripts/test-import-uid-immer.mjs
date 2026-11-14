@@ -11,7 +11,8 @@ import {
 } from '../app/loc/import-place-anchors.mjs';
 import {createImportDateIndex,prepareImportTimeAnchors} from '../app/loc/import-time-anchors.mjs';
 import {
-  planImportPointVisitDelta,planImportDateTitleDelta
+  planImportPointVisitDelta,planImportDateTitleDelta,
+  planImportPointCreate,planImportDateCreate
 } from '../app/loc/import-point-date-immer.mjs';
 
 const aliases=new Map([
@@ -224,4 +225,31 @@ assert.equal(timeResult.reused,1);
 assert.equal(timeResult.repaired,1);
 assert.equal(dateUpdates,1);
 assert.equal(dateCreates,0);
-console.log('PASS: Immer Galaxy/Point/Date UID deltas, CAS retry and reimport idempotency');
+const insertedPoint=planImportPointCreate({
+  uid:'POINT002',title:'原始地點',description:'{"text":""}',
+  coordinates:[121.5,25.1],createtime:'2026-11-12T08:00:00.000Z'
+});
+assert.deepEqual(insertedPoint.row,{
+  uid:'POINT002',type:'point',title:'原始地點',
+  description:'{"text":""}',attr:{longitude:121.5,latitude:25.1},
+  invisible:false,createtime:'2026-11-12T08:00:00.000Z'
+});
+assert.ok(insertedPoint.patches.length);
+assert.deepEqual(planImportPointCreate({
+  uid:'POINT003',title:'沒有座標',description:'{}'
+}).row.attr,{});
+assert.throws(()=>planImportPointCreate({
+  uid:'POINT004',title:'不合法座標',coordinates:['121.5',25.1]
+}),/座標/);
+const insertedDate=planImportDateCreate({
+  uid:'DATE0002',date:'2026-11-13',title:'次日',description:'重要大事：次日'
+});
+assert.deepEqual(insertedDate.row,{
+  uid:'DATE0002',type:'date',attr:{date:'2026-11-13'},
+  invisible:false,title:'次日',description:'重要大事：次日'
+});
+assert.ok(insertedDate.patches.length);
+assert.throws(()=>planImportDateCreate({
+  uid:'DATE0003',date:'Nov 13',title:'無效'
+}),/日期/);
+console.log('PASS: Immer Galaxy/Point/Date create/update, CAS retry and reimport idempotency');
