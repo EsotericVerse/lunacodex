@@ -1,5 +1,6 @@
 import {importGeoKey} from './import-geocoordinates.mjs';
 import {allocateAnchorUid} from './uid.js';
+import {planImportPointVisitDelta} from './import-point-date-immer.mjs';
 
 // An exact coordinate identifies an existing Trace location even if the
 // original place label differs. Without GPS, only unambiguous names are used.
@@ -256,9 +257,6 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
     // Every linked Galaxy article contributes its exact source timestamp,
     // even when location strings differ but place_id points to the same UID.
     // No per-article UID list is stored in Point.
-    const toTimes=values=>[...new Set((values||[]).map(value=>
-      typeof value==='number'?value:Date.parse(String(value??'')))
-      .filter(Number.isFinite))].sort((a,b)=>a-b).map(t=>new Date(t).toISOString());
     const pending=[];
     for(const [uid,stamps] of byUid){
       // Never send a whole-attr replacement without the original Point state:
@@ -266,12 +264,11 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
       if(!attrsByUid?.has(uid))
         throw Error('Point 原始 attr 不存在；停止補寫以避免覆蓋地點與座標');
       const original=attrsByUid.get(uid)||{};
-      const existing=toTimes(timesByUid?.get(uid)||original.times);
-      const merged=toTimes([...existing,...stamps]);
-      const before=String(createtimeByUid?.get(uid)||'');
-      if(merged.length===existing.length&&before)continue;
-      pending.push({uid,merged,original,createtime:before||merged[0]||null,
-        added:merged.length-existing.length});
+      const visits=[...stamps];
+      const plan=planImportPointVisitDelta({uid,attr:original,
+        createtime:createtimeByUid?.get(uid),visits});
+      if(!plan.patches.length)continue;
+      pending.push({uid,original,visits});
     }
     const phase='補齊 Point 造訪時間',total=pending.length;
     onProgress?.({phase,completed:0,total});
@@ -281,12 +278,20 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
       while(cursor<total&&!firstError){
         const item=pending[cursor++];
         try{
-          let {uid,original,merged,createtime,added:delta}=item;
+          const {uid,visits}=item;
+          let {original}=item;
           let written=false;
           for(let attempt=0;attempt<3&&!written;attempt++){
-            const oldTime=String(createtimeByUid?.get(uid)||'');
-            const values={attr:{...original,times:merged}};
-            if(!oldTime&&createtime)values.createtime=createtime;
+            // Replan only after a verified optimistic-CAS conflict, using
+            // the latest Point attr. Immer touches times / createtime only.
+            const plan=planImportPointVisitDelta({uid,attr:original,
+              createtime:createtimeByUid?.get(uid),visits});
+            if(!plan.patches.length){written=true;break;}
+            const values={};
+            if(Object.hasOwn(plan.changes,'times'))
+              values.attr={...original,times:plan.changes.times};
+            if(Object.hasOwn(plan.changes,'createtime'))
+              values.createtime=plan.changes.createtime;
             let request=relation(table).update(values)
               .eq('uid',uid).eq('type','point').eq('attr',original).select('uid');
             if(typeof request.abortSignal==='function'&&
@@ -296,24 +301,21 @@ export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,
             if(error)throw Error(error.message||String(error));
             if(!Array.isArray(data))throw Error('Point 造訪時間更新缺少回傳資料');
             if(data.length){
-              updated++;added+=delta;written=true;
-              timesByUid?.set(uid,merged);
-              attrsByUid?.set(uid,values.attr);
+              updated++;added+=plan.added;written=true;
+              if(values.attr){
+                timesByUid?.set(uid,plan.changes.times);
+                attrsByUid?.set(uid,values.attr);
+              }
               if(values.createtime)createtimeByUid?.set(uid,values.createtime);
             }else{
               // Concurrent rename/merge may have changed attr; refetch and
-              // rebuild the union rather than losing aliases or visit times.
+              // re-run Immer against the new snapshot, preserving its aliases.
               const {data:latest,error:readError}=await relation(table)
                 .select('uid,attr,createtime').eq('uid',uid).eq('type','point').maybeSingle();
               if(readError)throw Error(readError.message||String(readError));
               if(!latest)throw Error('Point 在寫入期間已被移除');
               original=latest.attr||{};
-              const revised=toTimes([...(original.times||[]),...merged]);
-              delta=revised.length-toTimes(original.times).length;
-              merged=revised;
-              createtime=String(latest.createtime||'')||merged[0]||null;
               createtimeByUid?.set(uid,String(latest.createtime||'')||null);
-              if(!delta&&latest.createtime)written=true;
             }
           }
           if(!written)throw Error('Point 造訪時間並行更新衝突，請重新執行');
