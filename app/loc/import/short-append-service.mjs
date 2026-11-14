@@ -172,6 +172,17 @@ export async function processShortImport(batch,actor,{store,cryptoProvider=globa
  });
  return {accepted:true,id:parsed.id,articles:[...groups.keys()].map(k=>receipt.get(k))};
 }
+// The SQL text-append expression is dialect-specific, while the trusted
+// column mapping, bound tail and the full Kysely transaction remain shared.
+// PostgreSQL CONCAT(any) cannot infer a parameter type ($1 -> 42P18).
+// Its text || operator provides a concrete text parameter context.
+// MySQL and SQL Server retain their native CONCAT() bindings.
+export function shortImportAppendExpression(sql,engine,column,tail){
+ return engine==='postgres'
+  ?sql`coalesce(${sql.ref(column)},'') || ${tail}`
+  :sql`concat(coalesce(${sql.ref(column)},''),${tail})`;
+}
+
 // Unified portable Kysely short-import transaction backend; the existing
 // processShortImport remains the only batching, UID and append algorithm.
 /** @param {any} db @param {any} sql
@@ -222,7 +233,7 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
     onPhase?.('append_update');
     const update=await trx.updateTable(name)
      .set({
-      [mapping.content]:sql`concat(coalesce(${sql.ref(mapping.content)},''),${tail})`,
+      [mapping.content]:shortImportAppendExpression(sql,engine,mapping.content,tail),
       // Keep the previously working PostgreSQL/Cloudflare pg wire value.
       // The ZModel still chooses the physical column; only its bind value
       // uses ISO text (no extra roundtrip or alternate import logic).
