@@ -77,7 +77,10 @@ export async function withPublicSqlResultCache({
     discard(key);
   }
   const inProgress=pending.get(key);
-  if(inProgress)return JSON.parse(await inProgress);
+  if(inProgress){
+    const raw=await inProgress;
+    return raw===undefined?undefined:JSON.parse(raw);
+  }
   const task=(async()=>{
     const data=await read();
     const json=JSON.stringify(data);
