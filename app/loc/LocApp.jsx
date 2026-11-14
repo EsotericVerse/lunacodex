@@ -192,7 +192,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     scopeGroup={scopeMeta?.featureScope||scopeMeta?.registry?.parent_scope_id||
       (scopeMeta?.aggregateChildren?scopeId:null)}/>;
   return <div className="loc-next-main" data-loc-scope={scopeId} data-loc-view={forcedView}
-    role={forcedView==='home'&&['loc','lo3rwang'].includes(scopeId)?'main':undefined}>
+    role={forcedView==='home'&&['loc','lo3rwang','lrunes'].includes(scopeId)?'main':undefined}>
     <Suspense fallback={<div className="loc-loading"><UiText id="uiExtra.feature.pageLoading"/></div>}>
       <FeatureGate scopeId={scopeId} scopeMeta={scopeMeta} view={forcedView}>
         {groupOverviewView?<FeaturePage featureId={forcedView}>
