@@ -16,6 +16,7 @@ import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../.
 import {selectGalaxyIdentity} from '../../../loc/galaxy-query';
 import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 import {galaxyReadColumnsFor} from '../../../../zenstack/galaxy-read-models.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../../zenstack/anchor-hierarchy.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
@@ -150,17 +151,19 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const mediaFiltered=useAsyncInfiniteResource({
     queryKey:['trace-media-filter-v3',targetScope,placesKey,startDate,endDate,
       sourceFilter,selectedMediaType,sort],
-    enabled:enabled&&Boolean(selectedMediaType)&&Boolean(scope?.galaxyMedia),
+    enabled:enabled&&Boolean(selectedMediaType)&&Boolean(scope?.anchor),
     initialPageParam:{mediaOffset:0,articleOffset:0},
     getNextPageParam:page=>page.nextCursor||undefined,
     queryFn:async({pageParam})=>{
       const mediaOffset=Number(pageParam?.mediaOffset)||0;
       const articleOffset=Number(pageParam?.articleOffset)||0;
       const mediaLimit=80;
-      const {rows:mediaPage}=await selectRows(scope.galaxyMedia,{
+      const {rows:mediaPage}=await selectRows(scope.anchor,{
         columns:'uid',
-        filters:[{column:'type',operator:'eq',value:selectedMediaType}],
-        orders:[{column:'type',ascending:true}],
+        filters:[{column:'type',operator:'eq',value:selectedMediaType},
+          {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
+          {column:'invisible',operator:'eq',value:false}],
+        orders:[{column:'type',ascending:true},{column:'uid',ascending:true}],
         limit:mediaLimit,maxLimit:mediaLimit,offset:mediaOffset
       });
       const mediaIds=mediaPage.map(row=>String(row.uid||'').trim()).filter(Boolean);

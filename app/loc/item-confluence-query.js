@@ -1,35 +1,11 @@
 'use client';
 
-import {DB_QUERY_BATCH_SIZE,selectRows} from './db-query.mjs';
 import {selectDailyRuneRange} from './daily-runes';
 import {dbPublicClient} from './db-client.mjs';
 import {realMoonPhase} from './model/moon-phase';
 import {
   validateItemConfluenceRange,validateItemLane,groupItemConfluenceRunes
 } from './item-confluence-model.mjs';
-
-// Read pages use the shared transport chunk (5000), not the 1,000-row write
-// batch, so a 30,000-row lane takes 6 requests instead of 30.
-const PER_PAGE=DB_QUERY_BATCH_SIZE;
-// Guardrail: no full-table reads. Date and source filters are pushed to SQL,
-// pages contain timestamps only; reject excessive windows rather than truncate.
-const MAX_LANE_ROWS=30000;
-const PLATFORM_FILTERS=Object.freeze({
-  'galaxy:facebook':'site.ilike.*facebook*,site.ilike.fb',
-  'galaxy:threads':'site.ilike.*threads*',
-  'galaxy:instagram':'site.ilike.*instagram*,site.ilike.ig,site.ilike.*reels*'
-});
-
-function taipeiDay(timestamp){
-  if(!timestamp)return '';
-  const date=new Date(timestamp);
-  if(Number.isNaN(date.getTime()))return String(timestamp).slice(0,10);
-  const parts=new Intl.DateTimeFormat('en-CA',{
-    timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'
-  }).formatToParts(date);
-  const fields=Object.fromEntries(parts.filter(item=>item.type!=='literal').map(item=>[item.type,item.value]));
-  return fields.year+'-'+fields.month+'-'+fields.day;
-}
 
 // One server-side GROUP BY: the database counts per Taipei day and returns
 // at most one row per day, so no row-level paging is needed.
@@ -49,48 +25,11 @@ async function selectLaneDailyGrouped({scope,spec,range}){
     .sort((a,b)=>a.day.localeCompare(b.day));
 }
 
-async function pageLaneDays({scope,spec,range,totals}){
-  const media=spec.source.startsWith('media:');
-  const table=media?scope.galaxyMedia:scope.galaxy;
-  // Galaxy is filtered/grouped by its indexed `date`; media by createtime.
-  // Never filter on content or keyword: counting must not read article text.
-  const dayColumn=media?'createtime':'date';
-  const filters=[
-    {column:dayColumn,operator:'gte',value:media?range.startDate+'T00:00:00+08:00':range.startDate},
-    {column:dayColumn,operator:'lte',value:media?range.endDate+'T23:59:59.999+08:00':range.endDate},
-    ...(spec.source==='galaxy:exact'?[{column:'site',operator:'eq',value:spec.exact}]:[]),
-    ...(spec.source==='media:exact'?[{column:'type',operator:'eq',value:spec.exact}]:[])
-  ];
-  const orFilter=PLATFORM_FILTERS[spec.source]||'';
-  let offset=0;
-  while(true){
-    const page=await selectRows(table,{
-      columns:dayColumn,
-      filters,orFilter,
-      orders:[{column:dayColumn,ascending:true}],
-      limit:PER_PAGE,offset,
-      count:offset===0?'exact':null,
-      maxLimit:PER_PAGE
-    });
-    if(offset===0&&Number(page.count)>MAX_LANE_ROWS)
-      throw new Error('此河道的三個月紀錄超過 '+MAX_LANE_ROWS.toLocaleString()+' 筆，請縮小日期區間。');
-    for(const row of page.rows||[]){
-      const day=media?taipeiDay(row.createtime):String(row.date||'').slice(0,10);
-      if(day<range.startDate||day>range.endDate)continue;
-      totals.set(day,(totals.get(day)||0)+1);
-    }
-    offset+=(page.rows||[]).length;
-    if(offset>MAX_LANE_ROWS)throw new Error('項目交會資料量過大，請縮小日期區間。');
-    if((page.rows||[]).length<PER_PAGE)break;
-  }
-}
-
 export async function selectLocItemDailySeries({scope,lane,startDate,endDate,knownScopes=[]}={}){
   const range=validateItemConfluenceRange(startDate,endDate);
   if(!range.valid)throw new Error(range.reason);
   const spec=validateItemLane(lane,knownScopes);
   if(!spec.valid||spec.scopeId!==scope?.id)throw new Error(spec.reason||'Scope 與河道不符。');
-  const totals=new Map();
   if(spec.source==='daily:rune'){
     const rows=await selectDailyRuneRange(range);
     // A dedicated semantic source. The astronomical phase is calculated from
@@ -98,15 +37,7 @@ export async function selectLocItemDailySeries({scope,lane,startDate,endDate,kno
     return groupItemConfluenceRunes(rows,day=>
       realMoonPhase(new Date(day+'T12:00:00+08:00'))
     );
-  }else{
-    try{
-      return await selectLaneDailyGrouped({scope,spec,range});
-    }catch(error){
-      // Older/backup SQL targets may lack the grouped view; page the rows instead.
-      if(error?.name==='AbortError')throw error;
-    }
-    await pageLaneDays({scope,spec,range,totals});
   }
-  return [...totals.entries()].map(([day,count])=>({day,count}))
-    .sort((a,b)=>a.day.localeCompare(b.day));
+  // One Kysely aggregate is the only LOC Galaxy/MediaAnchor lane pipeline.
+  return selectLaneDailyGrouped({scope,spec,range});
 }

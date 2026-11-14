@@ -2,6 +2,7 @@
 // an article or media entry for editing (dynamic import in Search.jsx), so the
 // plain search page never ships this code.
 import {plainTextToBlocks} from '../../loc/blocknote-content.mjs';
+import {canonicalMediaAnchorType} from '../../../zenstack/anchor-hierarchy.mjs';
 
 function nullableText(value){
   const text=String(value??'').trim();
@@ -59,21 +60,33 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
 function mediaDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
   const attrs={
     uid:String(row.uid||''), title:String(row.title||''),
-    location:String(row.location||''),type:String(row.type||''),
+    type:String(row.type||''),
     url:String(row.url||''),description:String(row.description||''),
     createtime:datetimeLocalValue(row.createtime)
   };
   return {title:String(row.title??fallbackTitle??''),originalTitle:String(row.title??fallbackTitle??''),
     body:'',bodyHtml:'',bodyBlocks:plainTextToBlocks(''),editorKey:String(row.uid||''),
-    attrs,originalAttrs:{...attrs}};
+    attrs,originalAttrs:{...attrs},
+    originalMediaAttr:row.attr&&typeof row.attr==='object'?{...row.attr}:{}};
 }
 function changedMediaAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{},changed={};
-  for(const key of ['location','type','url','description']){
-    if(current[key]!==initial[key])changed[key]=nullableText(current[key]);
+  if(current.type!==initial.type)
+    changed.type=canonicalMediaAnchorType(current.type,current.url);
+  if(current.description!==initial.description)
+    changed.description=nullableText(current.description);
+  const dateChanged=current.createtime!==initial.createtime;
+  if(dateChanged)changed.createtime=isoOrNull(current.createtime,t);
+  if(current.url!==initial.url||dateChanged){
+    const attr={...(draft.originalMediaAttr||{})};
+    const url=nullableText(current.url);
+    if(url)attr.url=url;else delete attr.url;
+    if(dateChanged){
+      if(changed.createtime)attr.date=changed.createtime.slice(0,10);
+      else delete attr.date;
+    }
+    changed.attr=attr;
   }
-  if(Object.hasOwn(changed,'type')&&!changed.type)throw new Error(t('uiExtra.searchUI.mediaTypeRequired'));
-  if(current.createtime!==initial.createtime)changed.createtime=isoOrNull(current.createtime,t);
   return changed;
 }
 function changedGalaxyAttributes(draft,t){

@@ -58,7 +58,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   },[locQuery.data,knownEarliest]);
   const scopes=useMemo(()=>(locQuery.data?.scopes||[]).map(row=>({
     ...defaultScopeData(row.scope_id),label:row.display_name||row.scope_id
-  })).filter(row=>row.id&&row.galaxy&&row.galaxyMedia),[locQuery.data]);
+  })).filter(row=>row.id&&row.galaxy),[locQuery.data]);
   const scopeIds=useMemo(()=>scopes.map(scope=>String(scope.id||'').trim()).filter(Boolean),[scopes]);
   const densityQuery=locQuery;
   const densityRows=useMemo(()=>locQuery.data?.rows||[],[locQuery.data]);

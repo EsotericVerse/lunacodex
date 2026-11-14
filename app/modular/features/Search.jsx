@@ -42,8 +42,10 @@ import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search-query.mjs';
 import {locGlobalUid} from '../../../zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../zenstack/galaxy-read-models.mjs';
+import {MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection,ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 import {galaxyAble} from '../../loc/galaxy-able.mjs';
-import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches,selectSourceTaxonomy} from '../../loc/galaxy-query';
+import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches} from '../../loc/galaxy-query';
+import {readPublicSourceTaxonomy as selectSourceTaxonomy} from '../../loc/source-catalog-public.mjs';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope-data';
 
 import {MEDIA_FALLBACK_TITLE,WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayText} from '../work-display-model';
@@ -56,8 +58,8 @@ const ScopeEditableBlocks=dynamic(()=>import('../../loc/ScopeEditableBlocks'),{l
 const TraceBlocks=dynamic(()=>import('./TraceBlocks'),{loading:()=>null});
 
 
-const MEDIA_EDITOR_COLUMNS='uid,location,type,title,url,description,createtime';
-const MEDIA_ATTR_ORDER=['uid','location','type','url','description','createtime'];
+const MEDIA_EDITOR_COLUMNS=MEDIA_ANCHOR_COLUMNS;
+const MEDIA_ATTR_ORDER=['uid','type','url','description','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
 const GALAXY_EDITOR_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
@@ -109,8 +111,7 @@ function highlightSearchText(text='',query=''){
 function toResult(row,source,scopeId,copy=UI_COPY){
   // Results are Galaxy articles. Anchor data is only available via a
   // selected article's existing time/space/keyword/media relationships.
-  const isMedia=Boolean(row.uid&&(row.record_type==='galaxy_media'||
-    String(row.__table||'').endsWith('_media')));
+  const isMedia=Boolean(row.uid&&row.record_type==='media_anchor');
   const isGalaxy=Boolean(row.uid)&&!isMedia;
   const explicitTitle=workDisplayText(row.title||row.name||row.display_title||row.label||row.rune_name||row.song_id||row.id||'').trim();
   const fallbackTitle=isMedia?MEDIA_FALLBACK_TITLE:WORK_FALLBACK_TITLE;
@@ -126,14 +127,14 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     /^[a-z][a-z0-9]{0,14}$/.test(scope)&&
     /^[A-Za-z0-9]{8}$/.test(String(row.uid||''))
     ?locGlobalUid({databaseId:dbId,scopeId:scope,uid:row.uid}):'';
-  const resourceType=isGalaxy?'galaxy':isMedia?'galaxy_media':'';
+  const resourceType=isGalaxy?'galaxy':isMedia?'media_anchor':'';
   const resourceId=row.uid||'';
   const editableTable=resourceType?String(row.__table||''):'';
   const editableIdColumn=resourceType
     ?(resourceType==='galaxy'?'uid':'uid')
     :'';
   const editResourceId=resourceId;
-  const editableField=resourceType==='galaxy'?'content':resourceType==='galaxy_media'?'description':'';
+  const editableField=resourceType==='galaxy'?'content':resourceType==='media_anchor'?'description':'';
   const isScopeCard=Boolean(row.scope_card);
   const href=isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
   return {
@@ -169,9 +170,9 @@ function toResult(row,source,scopeId,copy=UI_COPY){
       ?'style-tag:'+String(title).normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
       :(resourceType==='galaxy'&&resourceId
       ?'galaxy:'+(globalUid||scope+':'+dbId+':'+resourceId)
-      :(resourceType==='galaxy_media'&&resourceId?'media:'+scope+':'+dbId+':'+resourceId:
+      :(resourceType==='media_anchor'&&resourceId?'media:'+scope+':'+dbId+':'+resourceId:
         'result:'+scope+':'+dbId+':'+(identity||title))),
-    links:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='galaxy_media'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
+    links:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='media_anchor'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
     destinations:[]
   };
 }
@@ -610,15 +611,16 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setError('');setStatus('');setResults([]);setEditDraft(null);setEditingKey('');
     setHasMore(false);setNextCursor(null);setFullText('');setFullTextRow(null);
     try{
-      if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mediaId))throw new Error(t('uiExtra.searchUI.invalidMediaId'));
+      if(!/^[A-Za-z0-9]{8}$/.test(mediaId))throw new Error(t('uiExtra.searchUI.invalidMediaId'));
       const mediaScopeId=managementMode&&scopeId==='loc'?String(searchParams?.get('scope')||'').trim():scopeId;
       if(!managementMode||!mediaScopeId||!canManageSearchScope(account,mediaScopeId))throw new Error(t('uiExtra.searchUI.mediaManageDenied'));
       const scopeData=account.scopeDataFor(mediaScopeId)||defaultScopeData(mediaScopeId);
-      if(!scopeData?.galaxyMedia)throw new Error(UI_COPY.search.notFound);
-      const row=await selectPublicEditableRow(scopeData.galaxyMedia,'uid',mediaId,MEDIA_EDITOR_COLUMNS,{authenticated:true});
+      if(!scopeData?.anchor)throw new Error(UI_COPY.search.notFound);
+      const stored=await selectPublicEditableRow(scopeData.anchor,'uid',mediaId,MEDIA_EDITOR_COLUMNS,{authenticated:true});
+      const row=stored&&ANCHOR_TYPE_GROUPS.media.includes(stored.type)?mediaAnchorProjection(stored,{includeAttr:true}):null;
       if(id!==searchId.current)return;
       if(!row)throw new Error(UI_COPY.search.notFound);
-      const item=toResult({...row,scope_id:mediaScopeId,__table:scopeData.galaxyMedia},'Galaxy Media',mediaScopeId);
+      const item=toResult({...row,record_type:'media_anchor',scope_id:mediaScopeId,__table:scopeData.anchor},'MediaAnchor',mediaScopeId);
       const {SearchEditDraft}=await import('./search-edit-draft');
       setResults([item]);setEditingKey(item.key);setEditDraft(SearchEditDraft.fromRow('media',row,item.title));
     }catch(exception){if(id===searchId.current)setError(String(exception?.message||exception||UI_COPY.search.editLoadFailed))}
@@ -707,12 +709,15 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             ?'uid,title,content,createtime,location,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able'
             :GALAXY_EDITOR_COLUMNS)
           :MEDIA_EDITOR_COLUMNS,
-        {authenticated:result.resourceType==='galaxy'}
+        {authenticated:result.resourceType==='galaxy'||result.resourceType==='media_anchor'}
       );
       if(!fullRow)throw new Error(UI_COPY.search.editNotFound);
+      const typedRow=result.resourceType==='media_anchor'?
+        (ANCHOR_TYPE_GROUPS.media.includes(fullRow.type)?mediaAnchorProjection(fullRow,{includeAttr:true}):null):fullRow;
+      if(!typedRow)throw new Error(UI_COPY.search.editNotFound);
       const {SearchEditDraft}=await import('./search-edit-draft');
       editTargetRef.current=result;
-      setEditDraft(SearchEditDraft.fromRow(result.resourceType,fullRow,result.title));
+      setEditDraft(SearchEditDraft.fromRow(result.resourceType,typedRow,result.title));
       if(managementMode)editDock?.begin(scopeId);
     }catch(exception){
       setEditingKey('');
@@ -743,8 +748,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         contentPatch={...(titleChanged?{title:nextTitle}:{}),content:body,UpdateTime:new Date().toISOString(),...attrs};
       }else{
         const attrs=SearchEditDraft.changedAttributes('media',editDraft,t);
-        const plainAttrs=attrs;
-        assertPlainGalaxyAttributes({...plainAttrs,...(titleChanged?{title:nextTitle}:{})});
+        // MediaAnchor attr is validated by the existing ZModel/Zod boundary,
+        // not the Galaxy attribute guard.
         contentPatch={...(titleChanged?{title:nextTitle}:{}),...attrs};
         if(!Object.keys(contentPatch).length){
           if(!managementMode){setEditingKey('');setEditDraft(null);}
@@ -754,10 +759,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       await updateRows(result.editableTable,contentPatch,{filters:[{column:result.editableIdColumn,operator:'eq',value:result.editResourceId||result.resourceId}]});
       setResults(current=>current.map(item=>{
         if(item.key!==result.key)return item;
-        const updatedUrl=Object.hasOwn(contentPatch,'url')?contentPatch.url:item.editRow?.url;
-        const links=!isGalaxy&&Object.hasOwn(contentPatch,'url')?uniqueExternalLinks(updatedUrl?[{id:'media-url',href:updatedUrl,label:UI_COPY.search.mediaLink}]:[]):item.links;
+        const updatedUrl=Object.hasOwn(contentPatch,'attr')?contentPatch.attr?.url:item.editRow?.url;
+        const links=!isGalaxy&&Object.hasOwn(contentPatch,'attr')?uniqueExternalLinks(updatedUrl?[{id:'media-url',href:updatedUrl,label:UI_COPY.search.mediaLink}]:[]):item.links;
         return {...item,title:nextTitle||item.title,snippet:isGalaxy?'':item.snippet,links,
-          editRow:{...(item.editRow||{}),title:nextTitle,...contentPatch}};
+          editRow:{...(item.editRow||{}),title:nextTitle,...contentPatch,
+            ...(!isGalaxy&&Object.hasOwn(contentPatch,'attr')?{url:contentPatch.attr?.url||null}:{})}};
       }));
       if(isGalaxy&&fullTextKey===result.key){
         setFullText(body);
@@ -1268,14 +1274,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         const rowScopeData=account.scopeDataFor(row.scopeId)||defaultScopeData(row.scopeId);
         const editableTable=row.editableTable||(
           row.resourceType==='galaxy'?rowScopeData?.galaxy:
-          row.resourceType==='galaxy_media'?rowScopeData?.galaxyMedia:''
+          row.resourceType==='media_anchor'?rowScopeData?.anchor:''
         );
         const editTarget={
           ...row,
           editableTable,
-          editableIdColumn:row.editableIdColumn||(row.resourceType==='galaxy'?'uid':row.resourceType==='galaxy_media'?'uid':''),
+          editableIdColumn:row.editableIdColumn||(row.resourceType==='galaxy'?'uid':row.resourceType==='media_anchor'?'uid':''),
           editResourceId:row.editResourceId||row.resourceId,
-          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='galaxy_media'?'description':'')
+          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='media_anchor'?'description':'')
         };
         // Page blocks have no Galaxy attributes. Article editing and typed
         // metadata are available only to authorized Scope managers; guest
@@ -1344,9 +1350,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           editError={editError}
           showInlineEditorActions={!editDock?.active}
           showHidden={managementMode}
-          attributeFields={managementMode&&editable?(row.resourceType==='galaxy'?GALAXY_ATTR_FIELDS:row.resourceType==='galaxy_media'?MEDIA_ATTR_FIELDS:null):null}
+          attributeFields={managementMode&&editable?(row.resourceType==='galaxy'?GALAXY_ATTR_FIELDS:row.resourceType==='media_anchor'?MEDIA_ATTR_FIELDS:null):null}
           mediaScopeId={editable&&row.resourceType==='galaxy'?row.scopeId:''}
-          attributeTitle={row.resourceType==='galaxy_media'?t('uiExtra.searchUI.mediaAttributes'):t('uiExtra.searchUI.attributeTitle')}
+          attributeTitle={row.resourceType==='media_anchor'?t('uiExtra.searchUI.mediaAttributes'):t('uiExtra.searchUI.attributeTitle')}
           showBodyEditor={row.resourceType==='galaxy'}
           styleTag={row.styleTagMatch}
           styleTagKicker={row.styleTagMatch?<UiText id="uiExtra.searchUI.styleRecommendations"/>:null}

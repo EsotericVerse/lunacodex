@@ -31,8 +31,6 @@ const TABLE_TOKEN_PATTERN=/^[a-z][a-z0-9_]*$/;
 
 // No remote ISR address is permitted, including when an old build
 // environment variable still contains one.
-export function locPublicIsrUrl(path){return path;}
-
 function requiredToken(value,label){
   const token=String(value||'').trim()||label;
   if(!TABLE_TOKEN_PATTERN.test(token))throw new Error('silver.loc '+label+' 設定無效');
@@ -51,7 +49,6 @@ function buildScopeData(row,id){
     galaxy,
     // One physical store for Time, Trace, Keywords and Media.
     anchor:`silver.${id}_${anchorSuffix}`,
-    galaxyMedia:galaxy+'_media',
     // Time and Keyword share the same typed physical Anchor.
     time:`silver.${id}_${anchorSuffix}`,
     keywords:`silver.${id}_${anchorSuffix}`,

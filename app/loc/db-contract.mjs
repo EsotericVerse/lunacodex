@@ -11,9 +11,9 @@ export const KEYWORD_CLASSIFICATION_WRITE_COOLDOWN_MS=1000;
 
 // The existing management-write boundary enforces Galaxy metadata rules
 // consistently for publisher, search, culture and import paths.
-// Galaxy Media and Blocks are different schemas and are not affected.
+// MediaAnchor and Blocks are typed separately from Galaxy records.
 function validateGalaxyWrite(table,values){
-  if(!/^silver\.[a-z][a-z0-9_]{0,40}_galaxy(?:_media)?$/.test(String(table||'')))return values;
+  if(!/^silver\.[a-z][a-z0-9_]{0,40}_galaxy$/.test(String(table||'')))return values;
   const {content:body,...attributes}=values||{};
   assertPlainGalaxyAttributes(attributes);
   return values;
@@ -93,7 +93,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       payload={...payload,p_rows:prepareGalaxyInsertRows(payload.p_table,payload.p_rows||[])};
     if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update')
       payload={...payload,p_values:prepareGalaxyUpdateValues(payload.p_table,payload.p_values)};
-    // ZModel physical relations only; no virtual legacy relation names.
+    // ZModel physical relations only; the server rejects retired SQL names.
     const {data,error}=await authClient.schema('silver').managedWrite(payload);
     if(error)throw new Error(error.message||'Management write failed');
     if(payload?.p_table==='api.manage'){

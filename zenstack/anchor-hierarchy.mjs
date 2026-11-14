@@ -13,6 +13,66 @@ export const ANCHOR_TYPE_GROUPS=Object.freeze({
   keyword:Object.freeze(['pattern','item','group','class','category']),
   source:Object.freeze(['from','domain','galaxy','universe'])
 });
+// Shared physical MediaAnchor contract. No Galaxy Media SQL relation exists.
+// Consumer projections are kept here beside the frozen ZModel type vocabulary.
+export const MEDIA_ANCHOR_COLUMNS='uid,type,title,description,createtime,attr,invisible';
+export function canonicalMediaAnchorType(hint='',url=''){
+  const type=String(hint||'').trim().toLowerCase();
+  const link=String(url||'').trim().toLowerCase();
+  // Explicit persisted ZModel type wins over URL-based inference.
+  if(ANCHOR_TYPE_GROUPS.media.includes(type))return type;
+  if(type==='runes')return 'rune';
+  const sunoHost=/^https?:\/\/(?:[a-z0-9-]+\.)*suno\.(?:com|ai)(?:[\/?#: ]|$)/i.test(link);
+  if(sunoHost)return 'suno';
+  if(['image','images','photo','photos','pic','picture','thumbnail'].includes(type)||
+    /(?:^|[_/.-])(image|images|photo|photos|pic|picture|jpeg|png|jpg|gif)(?:$|[_/.-])/.test(type)||
+    (!type||type==='url'||type==='attachment')&&/\.(?:png|jpe?g|gif|webp|heic|avif|svg)(?:[?#]|$)/.test(link))
+    return 'image';
+  if(type==='video'||type==='videos'||type==='reel'||type==='reels'||
+    /(?:^|[_/.-])(video|videos|reel|reels|clip|clips)(?:$|[_/.-])/.test(type)||
+    (!type||type==='url'||type==='attachment')&&/\.(?:mp4|mov|avi|webm|mkv)(?:[?#]|$)/.test(link))
+    return 'video';
+  // Standalone audio/generic URL is NOT automatically a Suno or Image.
+  // Reject uncertain formats rather than silently corrupting the fixed ZModel.
+  throw new Error('Unsupported MediaAnchor type: '+(type||'unknown'));
+}
+function typedMediaAttr(row){
+  const raw=row?.attr;
+  if(typeof raw==='string'){try{return JSON.parse(raw)||{};}catch{throw new Error('Invalid MediaAnchor attr JSON');}}
+  return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+}
+export function mediaAnchorProjection(row={}, {includeAttr=false}={}){
+  if(!ANCHOR_TYPE_GROUPS.media.includes(row.type))
+    throw new Error('Not a MediaAnchor row');
+  const attr=typedMediaAttr(row);
+  const {attr:_sourceAttr,...fields}=row;
+  // Related media and public statistics expose typed fields, never arbitrary
+  // JSON metadata. Only an authorized edit loads the original attr to retain
+  // fields when updating the managed Anchor.
+  return {...(includeAttr?row:fields),url:typeof attr.url==='string'?attr.url:null,
+    media_type:row.type,date:typeof attr.date==='string'?attr.date:null};
+}
+export function mediaAnchorRecord(values={}){
+  const url=String(values?.url??values?.attr?.url??'').trim();
+  if(url&&!/^https?:\/\//i.test(url))throw new Error('Invalid MediaAnchor public URL');
+  const type=canonicalMediaAnchorType(values?.type||values?.media_type,url);
+  const created=values?.createtime;
+  const date=String(values?.attr?.date||created||'').slice(0,10);
+  const attr={...(url?{url}:{}),...(/^\d{4}-\d{2}-\d{2}$/.test(date)?{date}:{})};
+  const uid=String(values?.uid||'').trim();
+  if(!/^[0-9A-Za-z]{8}$/.test(uid))throw new Error('MediaAnchor UID must be eight Base62 characters');
+  const row={uid,type,title:values?.title??null,
+    description:values?.description??null,
+    // Match the physical Anchor default; a missing URL is not an ACL grant.
+    invisible:Boolean(values?.invisible),attr};
+  if(created!==null&&created!==undefined&&created!==''){
+    const iso=new Date(created);
+    if(Number.isNaN(iso.getTime()))throw new Error('Invalid MediaAnchor createtime');
+    row.createtime=iso.toISOString();
+  }
+  return row;
+}
+
 // The semantic Anchor payload is stored in the existing Anchor.attr JSON;
 // these are the corresponding *article carrier* fields on <scope>_galaxy.
 // Keeping this map explicit prevents a semantic ZModel from being mistaken

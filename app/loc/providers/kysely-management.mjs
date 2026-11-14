@@ -11,6 +11,7 @@ import {sql} from 'kysely';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {decodeLocCache,encodeLocCache} from '../runtime-cache-fields.mjs';
 import {allocateAnchorUid} from '../uid.js';
+import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection} from '../../../zenstack/anchor-hierarchy.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows,storeScopePatternMatches} from '../keyword-anchor-index.mjs';
@@ -340,7 +341,8 @@ const ACTIONS=new Set(['read_group_members','update_group_member_name',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
-  'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics']);
+  'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
+  'media_anchor_candidates']);
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(id))reject('Invalid Scope ID');
@@ -502,9 +504,40 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     read_scope_registry_admin:[],
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
     suggest_search_patterns:['p_scope_ids','p_query'],
-    keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source']
+    keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
+    media_anchor_candidates:['p_scope_id','p_uids','p_urls']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='media_anchor_candidates'){
+    // Used ONLY by the website's existing import de-duplication. The Gateway
+    // rejects this action on the MCP hostname before reaching this executor.
+    const scope=validScope(args.p_scope_id);
+    if(!await canLocAccess(trx,'scope',scope))
+      reject('MediaAnchor import access denied',403);
+    const rawIds=args.p_uids||[],rawUrls=args.p_urls||[];
+    if(!Array.isArray(rawIds)||!Array.isArray(rawUrls)||
+       rawIds.length>200||rawUrls.length>200)
+      reject('MediaAnchor lookup exceeds bounded input');
+    const uids=[...new Set(rawIds.map(v=>String(v||'').trim()))];
+    const urls=[...new Set(rawUrls.map(v=>String(v||'').trim()))];
+    if(uids.some(uid=>!UID.test(uid))||
+       urls.some(url=>!/^https?:\/\//i.test(url)||url.length>2048))
+      reject('Invalid MediaAnchor lookup value');
+    if(!uids.length&&!urls.length)return {data:[],count:0};
+    await sql`reset role`.execute(trx);
+    const conditions=[];
+    if(uids.length)conditions.push(eb=>eb('uid','in',uids));
+    if(urls.length)conditions.push(eb=>sql`(attr->>'url') in
+      (${sql.join(urls.map(url=>sql`${url}`))})`);
+    const query=trx.selectFrom('silver.'+scope+'_anchor')
+      .select(['uid','type','title','description','attr','createtime','invisible'])
+      .where('type','in',ANCHOR_TYPE_GROUPS.media)
+      .where(eb=>eb.or(conditions.map(condition=>condition(eb))))
+      .limit(801);
+    const matches=await query.execute();
+    if(matches.length>800)reject('MediaAnchor lookup is ambiguous; narrow import batch',409);
+    return {data:matches.map(mediaAnchorProjection),count:matches.length};
+  }
   if(name==='keyword_pattern_statistics')return {data:await keywordPatternStatistics(trx,args),count:null};
   if(name==='sync_search_patterns')return {data:await syncSearchPatterns(trx,args),count:null};
   if(name==='suggest_search_patterns')return {data:await suggestSearchPatterns(trx,args),count:null};

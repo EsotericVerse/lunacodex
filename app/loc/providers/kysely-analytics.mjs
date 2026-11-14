@@ -1,12 +1,12 @@
 import {canLocAccess} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 import {sql} from 'kysely';
 import {zmodelRegistryJoin,zmodelGalaxyPointJoin} from '../../../zenstack/model-column-guard.mjs';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
 import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 import {sourceTaxonomyFromAnchors} from '../source-classification.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
 
 // Statistics never read or filter Galaxy.content: content is touched only by
 // bulk keyword analysis, uid-exact article reads and search.
@@ -290,12 +290,13 @@ async function laneDaily(trx,scope,start,end,options){
   const platform=options.platform==null||options.platform===''?null:String(options.platform);
   if(platform&&(!Object.hasOwn(LANE_PLATFORMS,platform)||media||exact))
     reject('Invalid lane platform');
-  const table=sql.ref('silver.'+scope+(media?'_galaxy_media':'_galaxy'));
+  const table=sql.ref('silver.'+scope+(media?'_anchor':'_galaxy'));
   // Same convention as galaxy-query dayColumn: Galaxy is read and grouped by its
-  // indexed `date`; only media tables use createtime. No content/keyword filter:
+  // indexed `date`; MediaAnchor uses createtime. No content/keyword filter:
   // lane counts must never read article text or depend on keyword analysis.
   let where=media
-    ?sql`g.createtime is not null
+    ?sql`g.createtime is not null and g.invisible is false
+      and g.type in (${sql.join(ANCHOR_TYPE_GROUPS.media.map(type=>sql`${type}`))})
       and (${start}::date is null or g.createtime>=
         (${start}::date::timestamp at time zone 'Asia/Taipei'))
       and (${end}::date is null or g.createtime<
@@ -451,18 +452,18 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
     if(scope!=='loc')reject('Invalid LOC statistics Scope');
     const groups=await zmodelRegistryJoin(trx)
       .select(['m.id as id','l.display_name as display_name',
-        'm.galaxy_table as galaxy_table','m.anchor_table as anchor_table'])
+        'm.galaxy_table as galaxy_table'])
       .where('m.manage_role','=','scope').where('m.active','=',true)
       .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
     const scopes=[],rows=[];let first=null;
     for(const group of groups){
       if(!SCOPE.test(group.id))continue;
-      const suffix=safeName(group.anchor_table,'anchor');
       const galaxy=safeName(group.galaxy_table,'galaxy');
       if(galaxy!=='galaxy')continue;
-      const relations=await sql`select to_regclass(${'silver.'+group.id+'_'+galaxy}) is not null as galaxy_exists,
-        to_regclass(${'silver.'+group.id+'_'+suffix}) is not null as anchor_exists`.execute(trx);
-      if(!relations.rows[0]?.galaxy_exists||!relations.rows[0]?.anchor_exists)continue;
+      // LOC Statistics starts with Galaxy numeric data ONLY. No Anchor/Media
+      // existence probe or implicit join is allowed on the overview path.
+      const relation=await sql`select to_regclass(${'silver.'+group.id+'_'+galaxy}) is not null as galaxy_exists`.execute(trx);
+      if(!relation.rows[0]?.galaxy_exists)continue;
       scopes.push({scope_id:group.id,display_name:group.display_name});
       const day=await dailyStats(trx,group.id,start,end);
       rows.push(...day.filter(r=>r.kind==='total').map(r=>({scope_id:group.id,

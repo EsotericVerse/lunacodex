@@ -10,7 +10,7 @@ import {UI_COPY,registerDefaultSection} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
 import UiText,{useUiText} from '../i18n/UiText';
 import {isInteractiveContentTarget} from '../loc/content-policy.js';
-import {galaxyMediaHref} from './feature-navigation';
+import {mediaAnchorHref} from './feature-navigation';
 import {scopeHref} from './scope-registry';
 import searchUIZh from '../i18n/sections/uiExtra.searchUI.zh_tw.js';
 import editBlocksZh from '../i18n/sections/uiExtra.editBlocks.zh_tw.js';
@@ -71,7 +71,7 @@ export default function Article({uid,title,articleHref='',detailReading=false,re
   // the existing scoped Galaxy Media attribute editor while an article is edited.
   const mediaEditHref=id=>managerMode
     ?(mediaScopeId==='loc'?'':scopeHref(mediaScopeId,'search/manage')+'?media='+encodeURIComponent(id))
-    :galaxyMediaHref(mediaScopeId,id);
+    :mediaAnchorHref(mediaScopeId,id);
   const mediaEditLinks=editingReady&&mediaScopeId?links
     .filter(link=>String(link?.id||'').startsWith('media:'))
     .map(link=>({id:'edit:'+link.id,label:link.label||t('uiExtra.searchUI.mediaAttributes'),href:mediaEditHref(String(link.id).slice(6))}))

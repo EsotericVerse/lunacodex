@@ -14,9 +14,10 @@ import {createUid8} from './uid';
 import {useAccount} from './use-account';
 import {hasIrrecoverableEncoding,repairMojibakeText} from './content-policy';
 import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
+import {mediaAnchorRecord} from '../../zenstack/anchor-hierarchy.mjs';
 
 const blankMedia=()=>({
-  galaxy_link:'',location:'',type:'',title:'',
+  galaxy_link:'',type:'image',title:'',
   url:'',description:'',createtime:''
 });
 
@@ -67,8 +68,7 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
       if(!mediaType)throw new Error(t('uiExtra.importUI.mediaTypeRequired'));
       const mediaDescription=repairMojibakeText(draft.description).trim();
       const mediaTitle=repairMojibakeText(draft.title).trim();
-      const sourcePlace=repairMojibakeText(draft.location).trim();
-      if([mediaType,mediaDescription,mediaTitle,sourcePlace].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.mediaEncoding'));
+      if([mediaType,mediaDescription,mediaTitle].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.mediaEncoding'));
       const scope=account.scopeDataFor(scopeId);
       const article=galaxyLink?(await selectRows(scope?.galaxy,{
         // The article lookup only needs the canonical anchor context; use the
@@ -79,19 +79,16 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
       })).rows?.[0]:null;
       if(galaxyLink&&!article)throw new Error('找不到指定的文章 UID。');
       const mediaUid=createUid8();
-      const record={
-        uid:mediaUid,
-        location:sourcePlace||null,
-        type:mediaType,
-        title:mediaTitle||null,
+      const anchor=scope?.anchor;
+      if(!anchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
+      const record=mediaAnchorRecord({
+        uid:mediaUid,type:mediaType,title:mediaTitle||null,
         url:String(draft.url||'').trim()||null,
         description:mediaDescription,
         createtime:article?.createtime?new Date(article.createtime).toISOString():
           mediaIso(draft.createtime)||new Date().toISOString()
-      };
-      const galaxyMedia=scope?.galaxyMedia;
-      if(!galaxyMedia)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
-      await insertRows(galaxyMedia,[record]);
+      });
+      await insertRows(anchor,[record]);
       if(article){
         const prior=Array.isArray(article.media_link)?article.media_link:[];
         await updateRows(scope.galaxy,{media_link:[...new Set([...prior,mediaUid])]},
@@ -118,12 +115,13 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
     <h2>{UI_COPY.management.addMedia}</h2>
     <form onSubmit={save} className="scope-editor">
       <div className="scope-stat-controls">
-        <label><span><UiText id="uiExtra.importUI.mediaTypeLabel"/></span><input value={draft.type} onChange={e=>change('type',e.target.value)} placeholder="ig_pic / facebook_pic / suno / video / url" required/></label>
+        <label><span><UiText id="uiExtra.importUI.mediaTypeLabel"/></span>
+          <select value={draft.type} onChange={e=>change('type',e.target.value)} required>
+            <option value="image">圖片</option><option value="video">影片</option>
+            <option value="suno">Suno 音樂</option><option value="rune">符文媒體</option>
+          </select></label>
         <label><span><UiText id="uiExtra.importUI.mediaArticleUidLabel"/></span><input value={draft.galaxy_link} onChange={e=>change('galaxy_link',e.target.value)} placeholder={t('uiExtra.importUI.mediaUidHint')}/></label>
         <label><span><UiText id="uiExtra.importUI.mediaCreatedAtLabel"/></span><input type="datetime-local" value={draft.createtime} onChange={e=>change('createtime',e.target.value)}/></label>
-      </div>
-      <div className="scope-stat-controls">
-        <label><span><UiText id="uiExtra.importUI.mediaLocationLabel"/></span><input value={draft.location} onChange={e=>change('location',e.target.value)} placeholder={t('uiExtra.importUI.placeHint')}/></label>
       </div>
       <label><span><UiText id="uiExtra.importUI.mediaTitle"/></span><input value={draft.title} onChange={e=>change('title',e.target.value)}/></label>
       <label><span><UiText id="uiExtra.importUI.mediaExternalUrlLabel"/></span><input value={draft.url} onChange={e=>change('url',e.target.value)} placeholder={t('uiExtra.importUI.externalUrlHint')}/></label>

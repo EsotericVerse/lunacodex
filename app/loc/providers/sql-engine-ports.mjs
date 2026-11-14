@@ -86,7 +86,7 @@ export function assertCrossEnginePublicRead(request){
 }
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
-const PRIVATE_RELATION=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})(?:_(galaxy|anchor|blocks|keywords|trace|time|galaxy_media))?$/;
+const PRIVATE_RELATION=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})(?:_(galaxy|anchor|blocks))?$/;
 const VERIFIED_EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
  * LOC delegation is verified by the trusted Edge before any database call.
