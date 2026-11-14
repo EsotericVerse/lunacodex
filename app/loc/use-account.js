@@ -4,7 +4,6 @@ import {useCallback,useEffect} from 'react';
 import {useQueryClient} from '../../zenstack/client-queries';
 import {getAccountSession,dbAuthEvents,signInWithLocSso,signOutAccount} from './db-client.mjs';
 import {readLocEditorGrants} from './auth/editor-grants.mjs';
-import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
 import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthorizer} from './authorization-runtime.mjs';
 import {defaultScopeData,scopeDataFromManageRows} from './scope-data';
 import {useAsyncResource} from '../../zenstack/client-queries';
@@ -57,30 +56,13 @@ async function fetchManagementAccount(queryClient){
   const obsolete=()=>startedAt!==authRevision;
   let verifiedIdentity=null;
   try{
-    // Clicked edit entry: first check the LOC Auth session. A signed-out
-    // visitor must never issue a management/SQL request.
-    const session=await getAccountSession();
-    const user=session?.user||null;
+    // One protected request: the Web endpoint validates Better Auth Session
+    // and ZModel/PolicyPlugin api.manage roles together. No preliminary
+    // browser getSession(), no duplicate Auth round trip, no independent ACL.
+    const permissions=await readLocEditorGrants();
     if(obsolete())return signedOutState;
-    if(!user){
-      clearAuthorization();
-      scopeMetadata=[];
-      authUserId='';
-      authEmail='';
-      queryClient.setQueryData(SESSION_KEY,signedOutState);
-      return signedOutState;
-    }
-    // LOC Auth owns signed Scope grants independently of the SQL connection.
-    // One self-delegation request is performed only on explicit edit entry.
-    verifiedIdentity={user,email:normalizeAuthEmail(session.oauth?.email||user.email),oauth:session.oauth};
-    // Verify Group/Scope/Admin roles on explicit editing or management entry
-    // through the existing LOC Auth Session. Never persist a second Scope ID
-    // or role snapshot in sessionStorage.
-    const permissions=await readLocEditorGrants(session,{
-      authorityOrigin:process.env.NEXT_PUBLIC_LOC_CONTROL_URL||'https://auth.lo3rwang.cc',
-      scopeKinds:Object.fromEntries(SCOPE_ROUTE_INDEX.map(row=>[row.scope_id,row.scope_kind]))
-    });
-    if(obsolete())return signedOutState;
+    const user=permissions.user;
+    verifiedIdentity={user,email:normalizeAuthEmail(user.email)};
     // UI scope metadata derives from the single validated ZModel role
     // projection, never from the raw HTTP response.
     setAuthorization(user,permissions);
@@ -103,6 +85,13 @@ async function fetchManagementAccount(queryClient){
     scopeMetadata=[];
     authUserId='';
     authEmail='';
+    // A 401 is authoritative sign-out from Better Auth's own session
+    // verifier. Only a genuine missing Session clears passive identity;
+    // transient 503/429 must not be presented as a successful sign-out.
+    if(error?.status===401){
+      queryClient.setQueryData(SESSION_KEY,signedOutState);
+      queryClient.setQueryData(VERIFIED_SESSION_KEY,signedOutState);
+    }
     return verifiedIdentity
       ?{...signedOutState,...verifiedIdentity,error:String(error?.message||error)}
       :failedState(error);
