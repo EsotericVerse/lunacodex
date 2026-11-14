@@ -267,6 +267,51 @@
   border-block-start:1px solid var(--dashboard-stroke);
   border-radius:0;background:var(--dashboard-surface);box-shadow:none;
 }
+/* Total works: filters stay on the left, compact summary counters sit on
+   the same horizontal line at the right. The chart and Insights follow next. */
+[data-public-feature="statics"] .statistics-dashboard__filter-fields{
+  display:flex;flex-wrap:wrap;align-items:flex-end;
+  gap:clamp(.55rem,1vw,.85rem);min-width:0;
+}
+[data-public-feature="statics"] .statistics-dashboard__filters--summary{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);
+  align-items:center;column-gap:clamp(1rem,2vw,1.6rem);
+}
+[data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpis{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  justify-self:end;width:min(100%,42rem);min-width:0;gap:clamp(.35rem,.9vw,.8rem);
+}
+[data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpis>.statistics-dashboard__kpi{
+  justify-content:center;align-items:flex-start;
+  min-height:3.8rem;padding:.3rem clamp(.35rem,.8vw,.75rem);
+  gap:.2rem;border:0;border-inline-start:1px solid var(--dashboard-stroke);
+}
+[data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpis>.statistics-dashboard__kpi:first-child,
+[data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpis>.statistics-dashboard__kpi:nth-child(2){
+  border-block-start:0;
+}
+[data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpi-label{
+  font-size:clamp(.72rem,.9vw,.82rem);
+}
+[data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpi-value{
+  font-size:clamp(1.45rem,2vw,2.05rem);line-height:1.12;
+}
+@media(max-width:1100px){
+  [data-public-feature="statics"] .statistics-dashboard__filters--summary{
+    grid-template-columns:minmax(0,1fr);row-gap:.9rem;
+  }
+  [data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpis{
+    justify-self:stretch;width:100%;
+  }
+}
+@media(max-width:600px){
+  [data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpis{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  [data-public-feature="statics"] .statistics-dashboard__filters--summary .statistics-dashboard__kpis>.statistics-dashboard__kpi:first-child{
+    grid-column:1/-1;
+  }
+}
 [data-public-feature="statics"] .statistics-dashboard__kpis{
   display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(.6rem,1.3vw,1rem);
 }
