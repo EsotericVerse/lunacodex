@@ -43,8 +43,11 @@ export function sourceTaxonomyFromAnchors(rows=[]){
   // Partial published lists may omit hidden descendants; unresolved IDs are not inferred.
   const graph=indexZModelAnchorHierarchy(nodes,{family:'source'});
   const roots=graph.roots.map(uid=>byUid.get(uid)).filter(Boolean);
-  const categories=[],aliases=[],tree=[],visited=new Set();
-  const uniqueAliases=new Set();
+  const categories=[],tree=[],visited=new Set();
+  // Source alias labels are semantic identities, not UNIQUE columns. Build
+  // the complete candidate set before publishing a lookup. Otherwise the
+  // first Domain/From visited silently claims an ambiguous Galaxy.site.
+  const aliasCandidates=new Map();
   const walk=(row,parents=[],root='system')=>{
     if(visited.has(row.uid))return;
     visited.add(row.uid);
@@ -62,10 +65,10 @@ export function sourceTaxonomyFromAnchors(rows=[]){
         enabled:true,type:row.type,root,universe,galaxy,
         domain:row.type==='from'?domain:row.title,
         parent_uid:entry.parentUid});
-      for(const key of [norm(row.title),sourceSiteKeyForLabel(row.title)]){
-        if(!key||uniqueAliases.has(key))continue;
-        uniqueAliases.add(key);
-        aliases.push({source_key:key,category_code:row.uid});
+      for(const key of new Set([norm(row.title),sourceSiteKeyForLabel(row.title)])){
+        if(!key)continue;
+        if(!aliasCandidates.has(key))aliasCandidates.set(key,new Set());
+        aliasCandidates.get(key).add(row.uid);
       }
     }
     for(const uid of graph.childrenOf(row.uid)){
@@ -75,6 +78,37 @@ export function sourceTaxonomyFromAnchors(rows=[]){
     }
   };
   for(const root of roots)walk(root,[],sourceRoot(root.title));
-  return {categories,aliases,groups:[],groupAliases:[],tree,
+  const aliases=[],conflicts=[];
+  for(const [key,candidates] of [...aliasCandidates].sort(([a],[b])=>a.localeCompare(b))){
+    if(candidates.size===1){
+      aliases.push({source_key:key,category_code:[...candidates][0]});
+    }else conflicts.push({type:'source',alias:key,saved_uids:[...candidates].sort()});
+  }
+  return {categories,aliases,conflicts,groups:[],groupAliases:[],tree,
     roots:tree.filter(row=>row.type==='universe')};
+}
+
+// Read-only import audit: a Galaxy.site literal can be associated with a
+// published SiteAnchor only when its alias has exactly one saved UID.
+// A missing/ambiguous alias is never turned into a new Source node or a
+// Galaxy.site rewrite; the original platform value remains authoritative.
+export function auditImportedSourceSites(sites=[],taxonomy={}){
+  if(!Array.isArray(sites)||!Array.isArray(taxonomy?.aliases)||
+     !Array.isArray(taxonomy?.conflicts))
+    throw new TypeError('Invalid SiteAnchor import audit');
+  const available=new Map(taxonomy.aliases.map(row=>[norm(row.source_key),row.category_code]));
+  const ambiguous=new Map(taxonomy.conflicts.map(row=>[norm(row.alias),row.saved_uids]));
+  const resolved=[],unmatched=[],conflicts=[];
+  const visited=new Set();
+  for(const raw of sites){
+    const site=String(raw??'').trim(),key=norm(site);
+    if(!key||visited.has(key))continue;
+    visited.add(key);
+    if(ambiguous.has(key)){
+      conflicts.push({type:'source',site,alias:key,saved_uids:[...ambiguous.get(key)]});
+    }else if(available.has(key)){
+      resolved.push({site,anchor_uid:available.get(key)});
+    }else unmatched.push(site);
+  }
+  return {resolved,unmatched,conflicts};
 }

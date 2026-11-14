@@ -30,6 +30,8 @@ import {importTimeRangeWindow,filterImportAnalysisByTime} from './import-time-ra
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import-place-anchors.mjs';
 import {prepareImportTimeAnchors} from './import-time-anchors.mjs';
 import {readImportPointDateAnchors} from './import-anchor-read.mjs';
+import {readPublicSourceTaxonomy} from './source-catalog-public.mjs';
+import {auditImportedSourceSites} from './source-classification.mjs';
 import {reconcileExistingImportAnchors} from './reconcile-import-anchors.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './import-geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive-import-safety.mjs';
@@ -61,6 +63,7 @@ function importAnchorConflictSummary(...results){
   const sample=conflicts.slice(0,5).map(row=>
     (row.type==='date'?'日期 '+String(row.date||''):
       row.type==='point'?'地點 '+String(row.place||''):
+      row.type==='source'?'來源 '+String(row.site||row.alias||''):
         '媒體 '+String(row.type||'')+' '+String(row.url||row.uid||'未提供網址'))+
     (row.saved_uids?.length?'，候選 UID '+row.saved_uids.slice(0,5).join(',')+
       (row.saved_uids.length>5?'…':''):'，缺少唯一識別'));
@@ -1261,12 +1264,26 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // persisted Search summary once. A summary error must not turn a
       // successful import into a retry-all error.
       if(!nativeLocal)await refreshImportedSearchSummary();
+      // SiteAnchor is the global silver.loc_anchor source taxonomy, NOT an
+      // article foreign key or a second publisher identity. Audit the source
+      // labels once after successful writes; ambiguity is informational and
+      // never rewrites Galaxy.site or triggers a second import attempt.
+      let sourceAudit={conflicts:[]},sourceAuditWarning='';
+      if(!nativeLocal&&distinctSites.length){
+        try{
+          showProgress('核對 SiteAnchor 來源歧義');
+          sourceAudit=auditImportedSourceSites(distinctSites,
+            await readPublicSourceTaxonomy());
+        }catch{
+          sourceAuditWarning='；SiteAnchor 來源分類核對未完成，原始文章與匯入結果不受影響。';
+        }
+      }
       const skipped=analyzed.invalid.length+analyzed.skippedByRange+
         duplicateCount+ambiguousGroups.length;
       showProgress('匯入完成',1,1);
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
-        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary)+
+        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
           ambiguousGroups.slice(0,5).map(group=>'UID '+String(group.uid)+' / '+
