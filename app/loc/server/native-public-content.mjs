@@ -11,6 +11,7 @@ import {createScopedLocClient} from '../../../zenstack/client.mjs';
 import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
 import {LOC_BLOCK_ANCHOR_FIELDS} from '../loc-block-anchor.mjs';
 import {block_list,hero_block} from '../providers/kysely-public.mjs';
+import {withNumericSqlResultCache} from './sql-result-cache.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -166,8 +167,25 @@ export async function handleNativePublicContent(request,env={},{
     const scopedFor=id=>['postgres','mysql'].includes(port.engine)&&port.dialect
       ?createScopedLocClient({dialect:port.dialect,scopeId:id,
         engine:port.engine,namespace:port.namespace||'silver'}):null;
-    if(numeric)return respond({data:await (kind==='loc'?
-      readLocGroupNumeric(query,start,end,port):readGalaxyNumeric(query,scope,kind,start,end,port))});
+    if(numeric){
+      // Only the fixed anonymous numeric projections are eligible. Policy and
+      // feature checks above always execute before any possible cache hit.
+      // LOC totals depend on every participating child's Galaxy revision.
+      const scopes=kind==='loc'
+        ?SCOPE_ROUTE_INDEX.filter(row=>row.scope_id!=='loc'&&row.active!==false&&
+          scopeFeatureEnabled(row.config,'statistics_able'))
+          .map(row=>row.scope_id)
+        :[scope];
+      const data=await withNumericSqlResultCache({
+        env,db:query,engine:port.engine,
+        namespace:port.namespace||(port.engine==='postgres'?'silver':'dbo'),
+        targetId:primary.target_id,scope,kind,start,end,
+        dependencies:scopes.map(id=>'silver.'+id+'_galaxy'),
+        read:()=>kind==='loc'?readLocGroupNumeric(query,start,end,port)
+          :readGalaxyNumeric(query,scope,kind,start,end,port)
+      });
+      return respond({data});
+    }
     if(kind==='culture_anchors'){
       // The LOC-wide source taxonomy is its own fixed physical model. It is
       // not a dynamic Scope Anchor projection, so PostgreSQL reads use the
