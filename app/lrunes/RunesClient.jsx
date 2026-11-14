@@ -96,6 +96,7 @@ export default function RunesClient(){
       <h2>符文抽牌</h2>
       <p>同一個抽牌入口可切換 2D 平面原創卡面與最新 3D 特效，並自由決定抽取 1 至 11 枚。</p>
       <ScopeLink className="loc-button" href={runeHref('card/duel',native)} native={native}>開始抽牌</ScopeLink>
+      <ScopeLink className="loc-button" href={runeHref('game',native)} native={native}>進入桌遊 · 本機牌局</ScopeLink>
     </section>
 
     <section className="loc-card rune-basics runes-review-section">
