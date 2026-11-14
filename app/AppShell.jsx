@@ -107,6 +107,25 @@ function nextThemeChangeDelay(date=new Date()){
   return Math.max(1,boundary-date.getTime()+25);
 }
 
+// A user-selected palette is a preference, not a query payload. It must
+// survive management's mandatory dynamic-read disposal and full static
+// management entry navigation without caching SQL, Session or private data.
+const USER_THEME_SESSION_KEY='loc-user-theme-selection-v1';
+function readUserTheme(scopeId){
+  try{
+    const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
+    const candidate=String(prefs?.[scopeId]||'');
+    return THEME_SLOTS.some(slot=>slot.id===candidate)?candidate:SYSTEM_THEME_ID;
+  }catch{return SYSTEM_THEME_ID;}
+}
+function rememberUserTheme(scopeId,themeId){
+  try{
+    const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
+    if(themeId===SYSTEM_THEME_ID)delete prefs[scopeId];
+    else if(THEME_SLOTS.some(slot=>slot.id===themeId))prefs[scopeId]=themeId;
+    window.sessionStorage.setItem(USER_THEME_SESSION_KEY,JSON.stringify(prefs));
+  }catch{}
+}
 function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride='',pageName='index'}){
   const reduceMotion=useReducedMotion();
   const scope=scopeMeta||getScope(String(scopeId||'').trim());
@@ -119,7 +138,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&!scope.aggregateChildren&&scope.id!=='admin';
   const configuredTheme=configEnabled?String(bootstrap.data?.config?.theme||'').trim():'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
-  const [selection,setSelection]=useState(()=>({scopeId,themeId:SYSTEM_THEME_ID}));
+  const [selection,setSelection]=useState(()=>({scopeId,themeId:readUserTheme(scopeId)}));
   // Decorative local feedback only when a person selects a different option.
   // Theme persistence and actual palette application remain untouched.
   const [accentPulse,setAccentPulse]=useState(0);
@@ -128,7 +147,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // Otherwise the local preview can mask a successful database update.
   useEffect(()=>{
     const onSaved=event=>{
-      if(event?.detail?.scopeId===scopeId)setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+      if(event?.detail?.scopeId===scopeId){rememberUserTheme(scopeId,SYSTEM_THEME_ID);setSelection({scopeId,themeId:SYSTEM_THEME_ID});}
     };
     window.addEventListener('loc-scope-theme-saved',onSaved);
     return()=>window.removeEventListener('loc-scope-theme-saved',onSaved);
@@ -173,7 +192,9 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   },[selectedThemeId,fixedDefaultThemeId,configuredDefaultThemeId]);
 
   useEffect(()=>{
-    setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+    // Switching Scope preserves each Scope's own explicitly chosen palette.
+    // Entering /manage must never silently reset that choice to system.
+    setSelection({scopeId,themeId:readUserTheme(scopeId)});
     setAccentPulse(0);
   },[scopeId]);
 
@@ -191,6 +212,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     <select value={selectedThemeId} onChange={event=>{
       const next=event.target.value;
       if(next===selectedThemeId)return;
+      rememberUserTheme(scopeId,next);
       setSelection({scopeId,themeId:next});
       if(!reduceMotion)setAccentPulse(count=>count+1);
     }} aria-label={copy.common.theme}>
