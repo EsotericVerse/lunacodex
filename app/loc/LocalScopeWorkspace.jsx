@@ -75,10 +75,7 @@ export default function LocalScopeWorkspace({view='home'}){
       return allowed.filter(r=>[r.title,r.content,r.site,r.location].some(v=>
         String(v||'').toLocaleLowerCase().includes(needle)));
     }
-    if(view!=='search'||!term)return rows;
-    const needle=term.toLocaleLowerCase();
-    return rows.filter(r=>[r.title,r.content,r.site,r.location].some(v=>
-      String(v||'').toLocaleLowerCase().includes(needle)));
+    return rows;
   },[rows,term,view,traceRows]);
 
   async function handleImport(event){
