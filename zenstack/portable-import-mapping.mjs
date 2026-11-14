@@ -5,7 +5,7 @@
 // Authorization and existing source-level idempotency remain in the caller.
 import {modelFieldsForSql,modeledPrimaryKeyColumns}
   from './model-column-guard.mjs';
-import {assertZModelImportRows} from './import-validation.mjs';
+import {shortImportLookupPlan,shortImportInsertRows} from './short-import-zk.mjs';
 import {galaxyReadColumns} from './galaxy-read-models.mjs';
 import {portableRelation,getSqlEnginePort}
   from '../app/loc/providers/sql-engine-ports.mjs';
@@ -72,19 +72,23 @@ export function portableGalaxyImportMapping({scopeId,engine='postgres',namespace
     }));
   }
   function mapInserts(rows){
-    if(!Array.isArray(rows)||!rows.length||rows.length>50)
-      throw new TypeError('Invalid LOC Galaxy mapped batch size');
-    const mapped=rows.map(mapInsert);
-    // Actual ZModel -> @zenstackhq/zod validator, shared with existing
-    // Galaxy import/management; not a separately maintained type schema.
-    assertZModelImportRows('silver.'+physicalTable,mapped);
-    return mapped;
+    // The installed Z+K module already verifies the actual ZenStack Scope
+    // model and validates the exact payload with Zod. Do not run a second
+    // competing schema or change the existing source/UID authorization.
+    const checked=shortImportInsertRows({scope:scopeId,engine,namespace:schema,rows});
+    return checked.map(mapInsert);
+  }
+  function lookupPlan(ids){
+    // Use the same ZenStack-generated findMany schema as the existing writer.
+    const plan=shortImportLookupPlan({scope:scopeId,engine,namespace:schema,ids});
+    return {...plan,columns:plan.columns.map(key=>columns[key])};
   }
   return Object.freeze({
     table,scopeId,engine,
     columns,lookup:LOOKUP_FIELDS.map(key=>columns[key]),
     mapInsert,
     mapInserts,
+    lookupPlan,
     // Mapped names for SQL predicates and partial append updates.
     uid:columns.uid,content:columns.content,siteId:columns.site_id,
     site:columns.site,updatedAt:columns.UpdateTime
