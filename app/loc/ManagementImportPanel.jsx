@@ -1181,8 +1181,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
-          ambiguousGroups.slice(0,5).map(group=>group.site+' / '+
-            (group.site_id||group.createtime)).join('、')+(ambiguousGroups.length>5?' 等':'')+'。':''));
+          ambiguousGroups.slice(0,5).map(group=>'UID '+String(group.uid)+' / '+
+            group.site+' / '+(group.site_id||group.createtime)+
+            (group.saved_uids?.length?'，候選 UID '+group.saved_uids.slice(0,5).join(',')+
+              (group.saved_uids.length>5?'…':''):'')).join('、')+
+            (ambiguousGroups.length>5?' 等':'')+'。':''));
       setRows([]);setArchiveEvidence([]);setGeoPlaceCandidates([]);
       if(nativeLocal)window.dispatchEvent(new Event('loc-local-data-changed'));
     }catch(error){
