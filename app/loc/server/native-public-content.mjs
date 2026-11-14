@@ -20,7 +20,7 @@ const BLOCK_FIELDS=['uid','page_name','block_eyebrow','block_title','block_subti
   'block_text','block_order','block_entity','block_image'];
 const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
 const allowedScope=id=>SCOPE_ROUTE_INDEX.some(row=>row.scope_id===id&&row.active!==false);
-const NUMERIC_KINDS=new Set(['culture_density','daily','overview','earliest','totals','loc']);
+const NUMERIC_KINDS=new Set(['culture_density','daily','daily_total','overview','earliest','totals','loc']);
 // Numeric Culture/Statistics queries aggregate the full source: no row-group ceiling.
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
@@ -34,13 +34,15 @@ async function readLocGroupNumeric(db,start,end,port){
   const scopes=[],rows=[];let earliest='';
   for(const entry of entries){
     const id=entry.scope_id;
-    const [daily,first]=await Promise.all([
-      readGalaxyNumeric(db,id,'daily',start||'0001-01-01',end||'9999-12-31',port),
-      readGalaxyNumeric(db,id,'earliest','','',port)
-    ]);
+    // Reuse the daily TOTAL-only query for the LOC aggregate. No site GROUP
+    // BY, Source taxonomy or Anchor JOIN occurs even for combined scopes.
+    const summary=await readGalaxyNumeric(db,id,'daily_total',
+      start||'0001-01-01',end||'9999-12-31',port);
     scopes.push({scope_id:id,display_name:String(entry.config?.display_name||id)});
-    rows.push(...daily.filter(row=>row.kind==='total')
-      .map(row=>({scope_id:id,day:row.day,item_count:row.item_count})));
+    rows.push(...summary.rows.map(row=>({
+      scope_id:id,day:row.day,item_count:row.item_count
+    })));
+    const first=summary.earliest;
     if(first&&(!earliest||first<earliest))earliest=first;
   }
   return {earliest,scopes,rows};
@@ -56,6 +58,22 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
     const first=await db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
       .where('statics','=',true).where('date','is not',null).executeTakeFirst();
     return day(first?.earliest)||'';
+  }
+  if(kind==='daily_total'){
+    // Statistics landing is TOTAL-ONLY: no Source/Galaxy.site GROUP BY,
+    // no Anchor join, no article list and no additional taxonomy SELECT.
+    const [counts,first]=await Promise.all([
+      db.selectFrom(table).select('date')
+        .select(eb=>eb.fn.countAll().as('item_count'))
+        .where('statics','=',true).where('date','>=',start)
+        .where('date','<=',end).where('date','is not',null)
+        .groupBy('date').orderBy('date','asc').execute(),
+      db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
+        .where('statics','=',true).where('date','is not',null)
+        .executeTakeFirst()
+    ]);
+    return {earliest:day(first?.earliest)||'',
+      rows:counts.map(row=>({day:day(row.date),item_count:total(row.item_count)}))};
   }
   if(kind==='totals'){
     let query=db.selectFrom(table).select('site')

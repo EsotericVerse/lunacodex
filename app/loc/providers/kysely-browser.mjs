@@ -106,7 +106,7 @@ export function createKyselyPublicClient({
   }
   async function analytics(args={}){
     const view=String(args.p_view||''),scope=String(args.p_scope_id||'');
-    if(!['culture_anchors','culture_density','daily','overview','earliest','totals','loc',
+    if(!['culture_anchors','culture_density','daily','daily_total','overview','earliest','totals','loc',
       'culture_list','trace_places','trace_territory','trace_daily','lane_daily','trace_keywords','shared_classes',
       'search_summary','keyword_catalog','keyword_summary'].includes(view))
       throw Error('Unsupported LOC analytics query');
@@ -115,7 +115,7 @@ export function createKyselyPublicClient({
     const start=String(args.p_start||''),end=String(args.p_end||'');
     const params=new URLSearchParams({kind:view,scope});
     if(start||end){params.set('start',start);params.set('end',end)}
-    const fixedContent=new Set(['culture_anchors','culture_density','daily',
+    const fixedContent=new Set(['culture_anchors','culture_density','daily','daily_total',
       'overview','earliest','totals','loc']);
     const useContent=fixedContent.has(view);
     const response=await fetchImpl(useContent?'/api/loc-public-content?'+params:
