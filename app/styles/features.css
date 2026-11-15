@@ -1978,3 +1978,27 @@
   .loc-inter-net>details{padding:.6rem}
   .loc-inter-net__branch{padding:.45rem}
 }
+
+
+/* Anchor Inter-Net: small, bounded branches which never preload the whole graph. */
+.loc-inter-net__anchor-detail{margin:.65rem 0 .35rem;padding:.45rem .65rem;
+  background:var(--loc-surface-soft);border-radius:var(--loc-radius-sm)}
+.loc-inter-net__anchor-detail>small{display:block;color:var(--loc-muted);margin-bottom:.35rem}
+.loc-inter-net__anchor-tree{list-style:none;margin:.35rem 0 .15rem;padding:0 0 0 .65rem;
+  border-left:1px solid var(--loc-line);display:grid;gap:.3rem}
+.loc-inter-net__anchor-tree li{display:block;min-width:0}
+.loc-inter-net__anchor-tree li.is-current>details>summary,
+.loc-inter-net__anchor-tree li.is-current>span{color:var(--loc-accent);font-weight:650}
+.loc-inter-net__anchor-tree details{min-width:0}
+.loc-inter-net__anchor-tree summary{cursor:pointer;padding:.2rem .3rem;overflow-wrap:anywhere}
+.loc-inter-net__anchor-tree summary:focus-visible,
+.loc-inter-net__anchor-detail button:focus-visible{
+  outline:2px solid var(--loc-accent);outline-offset:2px
+}
+.loc-inter-net__anchor-detail a{display:inline-block;margin:.25rem .2rem .25rem .5rem;
+  color:var(--loc-accent);text-underline-offset:2px}
+.loc-inter-net__anchor-tree .scope-status{font-size:.8rem;margin:.2rem}
+@media(max-width:600px){
+  .loc-inter-net__anchor-detail{padding:.4rem}
+  .loc-inter-net__anchor-tree{padding-left:.4rem}
+}

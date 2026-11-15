@@ -7,6 +7,8 @@ import {ANCHOR_TYPE_GROUPS,ANCHOR_TYPE_PROJECTIONS,ANCHOR_GROUP_GALAXY_FIELDS,
   PERSISTED_ANCHOR_TYPES} from '../zenstack/anchor-hierarchy.mjs';
 import {GALAXY_READ_MODEL_FIELDS,galaxyReadColumns,composeGalaxyRead} from '../zenstack/galaxy-read-models.mjs';
 import {galaxyInterNetEdges} from '../zenstack/galaxy-inter-net.mjs';
+import {anchorInterNetChildren,sourceInterNetSelection} from '../zenstack/anchor-inter-net.mjs';
+import {sourceTaxonomyFromAnchors} from '../app/loc/source-classification.mjs';
 import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/loc-block-anchor.mjs';
 
 const read=relative=>readFileSync(new URL('../'+relative,import.meta.url),'utf8');
@@ -198,6 +200,34 @@ export function checkZModelSemanticContract(){
      externalGraph.branches.time.length||
      externalGraph.branches.relation.length!==1)
     throw Error('Federated Galaxy Inter-Net linked an unqualified Anchor');
+  // The second-level graph composes existing source/time/space hierarchies,
+  // with no new field registry or invented relation inferred from a title.
+  const eraChildren=anchorInterNetChildren({
+    uid:'ABCDEFG1',type:'era',attr:{period:['ABCDEFG2']}
+  },'time');
+  const pathChildren=anchorInterNetChildren({
+    uid:'ABCDEFG3',type:'path',attr:{point:['ABCDEFG4']}
+  },'space');
+  if(eraChildren.length!==1||eraChildren[0].type!=='period'||
+     eraChildren[0].resolved!==false||
+     pathChildren.length!==1||pathChildren[0].type!=='point')
+    throw Error('Anchor Inter-Net typed hierarchy regression');
+  const sourceRows=[
+    {uid:'SRCROOT1',type:'universe',title:'Mutlimedia',
+      invisible:false,attr:{uid:['SRCGAL01']}},
+    {uid:'SRCGAL01',type:'galaxy',title:'Stream',
+      invisible:false,attr:{uid:['SRCDOM01']}},
+    {uid:'SRCDOM01',type:'domain',title:'Music',
+      invisible:false,attr:{uid:['SRCFROM1']}},
+    {uid:'SRCFROM1',type:'from',title:'Suno',invisible:false,attr:{uid:[]}}
+  ];
+  const taxonomy=sourceTaxonomyFromAnchors(sourceRows);
+  const source=sourceInterNetSelection('Suno',taxonomy);
+  const missing=sourceInterNetSelection('unknown',taxonomy);
+  if(source.status!=='resolved'||source.path.length!==4||
+     source.path.at(-1).uid!=='SRCFROM1'||
+     source.tree.length!==4||missing.status!=='unmatched')
+    throw Error('Source Inter-Net UID-only branch regression');
   const enumTypes=new Set(Object.keys(enums.LocAnchorType?.values||{}));
   const types=Object.keys(ANCHOR_TYPE_PROJECTIONS);
   if(types.length!==PERSISTED_ANCHOR_TYPES.length||
