@@ -6,6 +6,7 @@ import {schema as zmodel} from '../zenstack/schema.mjs';
 import {ANCHOR_TYPE_GROUPS,ANCHOR_TYPE_PROJECTIONS,ANCHOR_GROUP_GALAXY_FIELDS,
   PERSISTED_ANCHOR_TYPES} from '../zenstack/anchor-hierarchy.mjs';
 import {GALAXY_READ_MODEL_FIELDS,galaxyReadColumns,composeGalaxyRead} from '../zenstack/galaxy-read-models.mjs';
+import {galaxyInterNetEdges} from '../zenstack/galaxy-inter-net.mjs';
 import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/loc-block-anchor.mjs';
 
 const read=relative=>readFileSync(new URL('../'+relative,import.meta.url),'utf8');
@@ -169,6 +170,34 @@ export function checkZModelSemanticContract(){
      galaxyReadColumns('GalaxyUidRead').includes('relation')||
      galaxyReadColumns('GalaxyUidRead').includes('anchor'))
     throw Error('Galaxy ZModel nested composition regression');
+  // A graph is a projection of confirmed or explicitly unresolved *existing*
+  // references, never an implicit JOIN. The user opens each branch on demand.
+  const sampleGraph=galaxyInterNetEdges({
+    uid:'ARTICLE1',title:'Article',source_id:'SOURCE01',
+    target_id:['NEXT0001','NEXT0001','ARTICLE1'],ref_id:'REF00001',
+    media_link:['MEDIA001','HIDDEN01'],place_id:'PLACE001',
+    date:'2026-11-15',location:'Taipei',site:'Suno'
+  },{
+    media:[{uid:'MEDIA001',title:'Song',type:'suno'}],
+    place:{uid:'PLACE001',title:'Location'}
+  });
+  if(sampleGraph.branches.relation.length!==3||
+     sampleGraph.branches.media.length!==2||
+     sampleGraph.branches.media[0].resolved!==true||
+     sampleGraph.branches.media[1].resolved!==null||
+     sampleGraph.branches.space.length!==2||
+     sampleGraph.branches.time[0]?.value!=='2026-11-15'||
+     sampleGraph.branches.source[0]?.value!=='Suno')
+    throw Error('Galaxy Inter-Net typed branch projection regression');
+  const externalGraph=galaxyInterNetEdges({
+    uid:'ARTICLE1',source_id:'SOURCE01',media_link:['MEDIA001'],
+    place_id:'PLACE001',date:'2026-11-15',site:'Suno'
+  },{federated:true});
+  if(externalGraph.branches.media.length||
+     externalGraph.branches.space.length||
+     externalGraph.branches.time.length||
+     externalGraph.branches.relation.length!==1)
+    throw Error('Federated Galaxy Inter-Net linked an unqualified Anchor');
   const enumTypes=new Set(Object.keys(enums.LocAnchorType?.values||{}));
   const types=Object.keys(ANCHOR_TYPE_PROJECTIONS);
   if(types.length!==PERSISTED_ANCHOR_TYPES.length||
