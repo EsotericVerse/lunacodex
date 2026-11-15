@@ -324,6 +324,11 @@ export default {
       // Never return credentials, code, state, redirect parameters, response
       // bodies, OIDC client IDs, tokens or raw exception messages.
       if(request.method==='GET'&&url.pathname==='/health/upstream'){
+        // Cloudflare version_metadata is configured in wrangler.jsonc.
+        // The ID identifies the deployed Worker version, not merely the
+        // package version or the GitHub main commit.
+        const debugInfo={debug:'temporary',debugVersion:'sso-health-v2',
+          workerVersion:String(env.CF_VERSION_METADATA?.id||'unavailable')};
         const headers={'content-type':'application/json; charset=utf-8',
           'cache-control':'no-store, max-age=0','pragma':'no-cache',
           'x-content-type-options':'nosniff','x-robots-tag':'noindex, nofollow',
@@ -334,7 +339,7 @@ export default {
         // invocation; there is no new KV, database or session dependency.
         const now=Date.now();
         if(now-lastSsoHealthProbeAt<120000)
-          return reply({debug:'temporary',error:'probe_rate_limited'},429);
+          return reply({...debugInfo,error:'probe_rate_limited'},429);
         lastSsoHealthProbeAt=now;
         const started=Date.now();
         const names=['LOC_AUTH_DATABASE_URL','LOC_CONTROL_ENCRYPTION_KEY',
@@ -359,7 +364,7 @@ export default {
           issuerMatchesClient,requiredKeysPresent:names.every(
             name=>keys[name]==='present')};
         if(!config.issuerMatchesClient||!config.requiredKeysPresent)
-          return reply({debug:'temporary',keys,config,
+          return reply({...debugInfo,keys,config,
             diagnosis:'configuration_mismatch',elapsedMs:Date.now()-started});
         const endpoint=issuer.origin+issuer.pathname.replace(/\/+$/,'');
         const knownOAuthErrors=new Set(['invalid_client','invalid_grant',
@@ -371,6 +376,24 @@ export default {
         const safeContentType=response=>String(
           response.headers.get('content-type')||'').toLowerCase()
           .includes('json')?'json':'other';
+        // Only categories of a redirect are returned; Location host/path,
+        // query values, OAuth code/state and credentials are never exposed.
+        const redirectClass=response=>{
+          if(response.status<300||response.status>=400)return null;
+          const location=response.headers.get('location');
+          if(!location)return {present:false};
+          try{
+            const target=new URL(location,endpoint+'/token');
+            const path=target.pathname;
+            const category=path.startsWith('/cdn-cgi/access/login')?
+              'access_login':path.startsWith('/cdn-cgi/access/')?
+              'access_endpoint':target.origin===issuer.origin?
+              'same_origin_other':'external_other';
+            return {present:true,category,
+              sameOrigin:target.origin===issuer.origin,
+              hasOAuthError:target.searchParams.has('error')};
+          }catch{return {present:true,category:'unparseable'};}
+        };
         const discoveryStarted=Date.now();
         let discovery;
         try{
@@ -430,6 +453,7 @@ export default {
             return {method:mode,httpStatus:result.status,
               oauthError,elapsedMs:Date.now()-start,
               contentType:safeContentType(result),
+              redirect:redirectClass(result),
               mitigated:!!result.headers.get('cf-mitigated'),
               hasCfRay:!!result.headers.get('cf-ray')};
           }catch(error){
@@ -439,12 +463,13 @@ export default {
         };
         const tests=await Promise.all([
           tokenTest('basic'),tokenTest('post'),tokenTest('invalid_secret')]);
-        return reply({debug:'temporary',keys,config,discovery,tokenTests:tests,
+        return reply({...debugInfo,keys,config,discovery,tokenTests:tests,
           // invalid_grant from a real-secret request is compatible with
           // accepted client authentication; equal errors are inconclusive.
           diagnosis:tests.some(t=>t.method!=='invalid_secret'&&
             t.oauthError==='invalid_grant')?'client_auth_likely_accepted'
             :tests.every(t=>t.httpStatus===500)?'upstream_all_500'
+            :tests.every(t=>t.httpStatus===302)?'upstream_token_redirects'
             :'compare_token_errors',
           elapsedMs:Date.now()-started});
       }
