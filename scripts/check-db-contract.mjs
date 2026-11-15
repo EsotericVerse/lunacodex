@@ -8,7 +8,7 @@ import {ANCHOR_TYPE_GROUPS,ANCHOR_TYPE_PROJECTIONS,ANCHOR_GROUP_GALAXY_FIELDS,
 import {GALAXY_READ_MODEL_FIELDS,galaxyReadColumns,composeGalaxyRead} from '../packages/zenstack/galaxy-read-models.mjs';
 import {galaxyInterNetEdges} from '../packages/zenstack/galaxy-inter-net.mjs';
 import {anchorInterNetChildren,sourceInterNetSelection} from '../packages/zenstack/anchor-inter-net.mjs';
-import {sourceTaxonomyFromAnchors} from '../app/loc/source-classification.mjs';
+import {sourceTaxonomyFromAnchors} from '../app/loc/source/classification.mjs';
 import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/loc-block-anchor.mjs';
 
 const read=relative=>readFileSync(new URL('../'+relative,import.meta.url),'utf8');
