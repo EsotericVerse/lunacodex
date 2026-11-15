@@ -160,8 +160,6 @@ export default function LocalScopeWorkspace({view='home'}){
       </div>
     </section>:null}
 
-
-
     {loading?<p role="status">正在開啟本機 Galaxy…</p>:null}
     {status?<p role="status" className="scope-status">{status}</p>:null}
     {error?<p role="alert" className="scope-status scope-error">{error}</p>:null}
