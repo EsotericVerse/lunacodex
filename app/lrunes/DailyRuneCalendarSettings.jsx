@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import DailyRuneCalendar from './DailyRuneCalendar';
-import {selectDailyRuneMonth} from '../loc/daily-runes';
+import {selectDailyRuneMonth} from '../loc/runes/daily-runes';
 import {useAccount} from '../loc/use-account';
 
 // Settings is a read-only calendar display; daily records and their editors are untouched.

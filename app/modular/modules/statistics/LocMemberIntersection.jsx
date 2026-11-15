@@ -9,7 +9,7 @@ import {useMemo} from 'react';
 import {useAsyncResource,useResourceCache} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 import {defaultScopeData} from '../../../loc/scope-data';
-import {selectDailyRuneRange} from '../../../loc/daily-runes';
+import {selectDailyRuneRange} from '../../../loc/runes/daily-runes';
 import {normalizeDailyDraws} from '../../../lrunes/daily-analytics-model.mjs';
 import {realMoonPhase} from '../../../loc/model/moon-phase';
 import {availableMemberMeasures,calculateMemberCross} from '../../../loc/statistics/member-intersection-model.mjs';
