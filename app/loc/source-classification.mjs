@@ -21,6 +21,7 @@ export const sourceTaxonomyFromCatalog=tags=>sourceTaxonomyFromArrays(tags);
 
 // The source taxonomy is the existing LocAnchor ZModel, not ArticleTag or a
 // second media/platform registry. Anchor attr.uid is the only hierarchy link.
+// SiteAnchor from/domain/galaxy/universe is a real UID-linked hierarchy; flat UI is only presentation.
 // Never derive parenthood from matching display titles.
 const SOURCE_LEVELS=Object.freeze([...ANCHOR_TYPE_GROUPS.source].reverse());
 const sourceRoot=title=>{

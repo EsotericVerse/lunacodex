@@ -1,5 +1,6 @@
 // No LOC-built token issuer or verifier. Better Auth identifies the user;
 // website permissions belong exclusively to the business database.
+// LOC Web and LOC Auth are separate services: only a verified identity crosses this boundary.
 import {verifiedLocWebsiteSession} from '../app/loc/auth/verified-session.mjs';
 const anonymous=()=>({role:'anon',claims:{}});
 export async function verifiedIdentity(request){

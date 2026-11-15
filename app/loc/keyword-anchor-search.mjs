@@ -14,6 +14,7 @@ const attrs=row=>{
   const raw=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr;
   return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
 };
+// Class/Group/Item attr.uid points to child Anchor UIDs, never Galaxy article UIDs.
 const kids=row=>Array.isArray(attrs(row).uid)?attrs(row).uid.filter(uid=>UID.test(String(uid))):[];
 const sourceTable=s=>'silver.'+s+'_galaxy';
 function err(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
@@ -88,6 +89,7 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
         .select(['uid','attr']).where('type','=','pattern')
         .where('uid','in',patternIds).execute();
       for(const row of patterns){
+        // Pattern postings alone contain Galaxy article UIDs.
         const list=attrs(row)[SCOPE_PATTERN_POSTING_KEY]||[];
         if(!Array.isArray(list)||list.some(id=>!UID.test(id)))
           err('Invalid Scope Pattern postings',503);

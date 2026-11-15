@@ -2,6 +2,7 @@
 // The physical table stays (uid,type,title,description,invisible,attr,createtime).
 // Only trusted, already-scoped and already-authorized Anchor rows may enter.
 // This module does no I/O, no authorization, no SQL JOIN and no UID ordering.
+// Anchor.invisible: true hides from public reads; false is only public-eligible.
 const UID=/^[A-Za-z0-9]{8}$/;
 // These are the persisted semantic variants carried by the existing
 // eight-column Anchor row.  Keep the vocabulary in one place so the
@@ -16,6 +17,7 @@ export const ANCHOR_TYPE_GROUPS=Object.freeze({
 // Shared physical MediaAnchor contract. No Galaxy Media SQL relation exists.
 // Consumer projections are kept here beside the frozen ZModel type vocabulary.
 export const MEDIA_ANCHOR_COLUMNS='uid,type,title,description,createtime,attr,invisible';
+// Only Pattern postings contain Galaxy article UIDs; other hierarchy attr.uid links Anchor UIDs.
 // Dynamic posting field in physical Pattern.attr. A virtual ZModel record
 // exposes it as articleUids without creating a second SQL relation.
 export const KEYWORD_PATTERN_POSTINGS_KEY='63ade525';

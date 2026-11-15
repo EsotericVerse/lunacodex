@@ -1,6 +1,7 @@
 // Single LOC business-access projection. LOC Auth verifies identity; the
 // existing physical api.manage Registry and its fixed ZenStack Manage model
 // define roles. This is not a new table, token issuer, or SQL endpoint.
+// LOC Web owns these grants; LOC Auth identity must never be treated as a Web role.
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 import {fixedPolicyReader} from '../../../zenstack/policy-runtime.mjs';

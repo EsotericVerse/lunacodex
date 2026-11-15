@@ -22,6 +22,7 @@ const respond=(data,status=200)=>new Response(JSON.stringify(data),{status,heade
 const allowedScope=id=>SCOPE_ROUTE_INDEX.some(row=>row.scope_id===id&&row.active!==false);
 const NUMERIC_KINDS=new Set(['culture_density','daily','daily_total','overview','earliest','totals','loc']);
 // Numeric Culture/Statistics queries aggregate the full source: no row-group ceiling.
+// A cache-capable code path does not prove a cache was enabled or verified in production.
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):String(value??'').slice(0,10);
 const total=value=>Number(value)||0;

@@ -13,6 +13,7 @@ import {clearEditorSession} from './edit-session-ttl.mjs';
 
 // This control is shown only at the bottom of an individual Scope homepage.
 // No identity or management query runs until the visitor selects it.
+// Editing performs LOC Web authorization only on entry; public home reads stay anonymous.
 export default function ScopeHomeEditEntry(){
   useUiSection('uiExtra.editBlocks');
   const {scopeId}=useScopeRuntime();
