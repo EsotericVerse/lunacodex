@@ -1,0 +1,69 @@
+'use client';
+
+import {galaxyInterNetEdges} from '../../zenstack/galaxy-inter-net.mjs';
+import {featureNavigationHref,galaxyIdentityHref,mediaAnchorHref} from './feature-navigation';
+
+// One small, collapsed branch per relationship family. No additional queries:
+// every edge is derived solely from the article detail already authorized by
+// the normal reader. Following an edge uses the existing Scope navigation and
+// performs that destination's normal access/visibility checks.
+const TYPES=Object.freeze([
+  {id:'relation',label:'文章關聯'},
+  {id:'media',label:'多媒體／符文'},
+  {id:'space',label:'空間定錨'},
+  {id:'time',label:'時間定錨'},
+  {id:'source',label:'資料來源'}
+]);
+const fieldName=Object.freeze({
+  source_id:'來源文章',ref_id:'參考資料',target_id:'關聯文章',
+  media_link:'媒體',place_id:'地點',location:'位置',
+  date:'日期',site:'來源'
+});
+function destination(scope,edge){
+  if(edge.kind==='galaxy')return galaxyIdentityHref(scope,edge.value);
+  if(edge.kind==='media')return mediaAnchorHref(scope,edge.value);
+  if(edge.kind==='point')return featureNavigationHref(scope,'trace',{place:edge.value});
+  if(edge.kind==='date')return featureNavigationHref(scope,'culture',{
+    from:edge.value,to:edge.value
+  });
+  // Free-text source/location is not a UID. Do not pretend its label is a
+  // saved Source/Point Anchor; this requires an explicit authorized resolver.
+  return '';
+}
+export default function GalaxyInterNetBranches({scopeId,row}){
+  if(!row?.uid)return null;
+  const graph=galaxyInterNetEdges(row,{
+    media:row.related_media,
+    place:row.trace_place,
+    relatedTitles:row.relation_titles
+  });
+  const groups=TYPES.map(group=>({
+    ...group,edges:graph.branches[group.id]
+  })).filter(group=>group.edges.length);
+  if(!groups.length)return null;
+  return <section className="loc-inter-net" aria-label="文章關聯網絡">
+    <details>
+      <summary className="loc-inter-net__summary">
+        <span className="loc-inter-net__spark" aria-hidden="true"/>
+        關聯網絡 <small>{groups.length} 個分支</small>
+      </summary>
+      <div className="loc-inter-net__branches">
+        {groups.map(group=><details key={group.id} className="loc-inter-net__branch">
+          <summary>{group.label} <small>{group.edges.length}</small></summary>
+          <ul>
+            {group.edges.map((edge,index)=>{
+              const href=destination(scopeId,edge);
+              const label=edge.label||edge.value;
+              return <li key={edge.field+':'+edge.value+':'+index}>
+                <span className="loc-inter-net__field">{fieldName[edge.field]||edge.field}</span>
+                {href?<a href={href}>{label}</a>:<span>{label}</span>}
+                {edge.resolved===null&&['galaxy','media','point'].includes(edge.kind)?
+                  <small title="目的節點是否存在需在展開後確認">未確認</small>:null}
+              </li>;
+            })}
+          </ul>
+        </details>)}
+      </div>
+    </details>
+  </section>;
+}
