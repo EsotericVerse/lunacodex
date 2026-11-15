@@ -31,6 +31,8 @@ import ScopeLink from '../ScopeLink';
 import SearchSummary from '../../loc/SearchSummary';
 // Article cards/editing are requested only when results actually render.
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
+// Mount the Inter-Net only for an explicitly opened Galaxy detail.
+const GalaxyInterNetBranches=dynamic(()=>import('../GalaxyInterNetBranches'),{loading:()=>null});
 import {useScopeRuntime} from '../use-scope-runtime';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import useDefaultTimeUnit from '../../loc/use-default-time-unit';
@@ -1313,7 +1315,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         const selectedDetail=fullTextKey===row.key&&!fullTextLoading?fullTextRow:null;
         const identityReader=Boolean(searchParams?.get('identity'))&&row.resourceType==='galaxy';
         const expandedReader=Boolean(selectedDetail)&&row.resourceType==='galaxy';
-        const readerRow=selectedDetail||null;
+        // Direct UID navigation already has the authorized Galaxy detail in
+        // toResult.editRow; ordinary expanded reading uses fullTextRow.
+        const readerRow=selectedDetail||(identityReader?row.editRow:null);
         const tracePlace=readerRow?.trace_place||row.tracePlace;
         const locationName=String(readerRow?.location||row.locationName||'').trim();
         const readingLinks=readerRow?galaxyRelationLinks(row.scopeId,readerRow):row.relationLinks||[];
@@ -1401,6 +1405,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             </button>:null}
           </div>:null}
 
+          {readerRow?.uid&&row.resourceType==='galaxy'?
+            <GalaxyInterNetBranches scopeId={row.scopeId} row={readerRow} managementMode={managementMode}/>:null}
         </Article>
         </Fragment>;
       }}

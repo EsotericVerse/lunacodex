@@ -381,6 +381,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
   // do not modify or duplicate any Galaxy article in a read request.
   // Keep media and original article URLs as distinct associations.
   return {...row,scope_id:current.id,__db_id:dbId||row.__db_id||'',__table:current.galaxy,
+    inter_net_federated:Boolean(federated),
     links:resolvedLinks(row,new Map()),relation_titles:relationTitles,
     related_media:orderedMedia,trace_place:space.place,
     related_space:space,related_time:time,related_statistics:statistics,
