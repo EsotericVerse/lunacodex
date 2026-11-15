@@ -83,7 +83,7 @@ export function googleSocialConfig(env={}){
 // Never silently fall back to stale Cloudflare/Build API credentials.
 export function cloudflareSsoConfig(env={}){
   return {
-    issuer:String(env.LOC_CLOUDFLARE_SSO_ISSUER||'').trim().replace(/\\/+$/,''),
+    issuer:String(env.LOC_CLOUDFLARE_SSO_ISSUER||'').trim().replace(/\/+$/,''),
     clientId:String(env.LOC_CLOUDFLARE_SSO_CLIENT_ID||'').trim(),
     clientSecret:String(env.LOC_CLOUDFLARE_SSO_CLIENT_SECRET||'').trim()
   };
