@@ -8,21 +8,21 @@ import {executeKyselyAnalytics,executePortableKyselyAnalytics}
 import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
-import {createScopedLocClient} from '../../../zenstack/client.mjs';
-import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
+import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
+import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../packages/zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
-import {nativeReadPlan,executeNativeRead} from '../../../zenstack/native-query.mjs';
+import {nativeReadPlan,executeNativeRead} from '../../../packages/zenstack/native-query.mjs';
 import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
-  normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
-import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
+  normalizeModeledSelectRows} from '../../../packages/zenstack/model-column-guard.mjs';
+import {assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parsePortableOrExpression,portableContainsSpec}
   from '../providers/portable-search.mjs';
 import {isTextSearchQuery,checkSearchQos} from '../providers/search-qos.mjs';
 import {assertPublicKyselyReadShape,QUERY_FILTER_SQL}
-  from '../../../zenstack/sql-input-shape.mjs';
+  from '../../../packages/zenstack/sql-input-shape.mjs';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};

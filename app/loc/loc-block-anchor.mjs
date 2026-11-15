@@ -1,4 +1,4 @@
-import {PERSISTED_ANCHOR_TYPES} from '../../zenstack/anchor-hierarchy.mjs';
+import {PERSISTED_ANCHOR_TYPES} from '../../packages/zenstack/anchor-hierarchy.mjs';
 
 // LOC presentation Blocks are a typed projection of silver.loc_anchor.
 // Only LOC uses this mapping; other Scope _blocks tables remain independent.

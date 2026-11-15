@@ -2,7 +2,7 @@
 // A legacy input payload can be converted when importing an old archive, but
 // no database query or write ever references Galaxy.able.
 // Each feature flag: true = enabled/eligible; false = excluded. Never invert it.
-import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns} from '../../packages/zenstack/galaxy-read-models.mjs';
 export const GALAXY_ABLE_KEYS=Object.freeze(galaxyReadColumns('GalaxyAttr'));
 export const GALAXY_ABLE_COLUMNS=GALAXY_ABLE_KEYS.join(',');
 function booleanOrUndefined(raw){

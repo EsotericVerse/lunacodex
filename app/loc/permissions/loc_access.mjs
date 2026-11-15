@@ -4,8 +4,8 @@
 // LOC Web owns these grants; LOC Auth identity must never be treated as a Web role.
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
-import {fixedPolicyReader} from '../../../zenstack/policy-runtime.mjs';
-import {locRolePrincipal,LOC_ROLE_LEVEL} from '../../../zenstack/role-hierarchy.mjs';
+import {fixedPolicyReader} from '../../../packages/zenstack/policy-runtime.mjs';
+import {locRolePrincipal,LOC_ROLE_LEVEL} from '../../../packages/zenstack/role-hierarchy.mjs';
 import {LocAccessRowSchema} from './loc-access-schema.mjs';
 
 export const LOC_OWNER_EMAIL='sopa2306@gmail.com';
