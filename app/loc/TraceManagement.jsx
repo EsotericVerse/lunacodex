@@ -11,17 +11,17 @@ import {
   readTraceData,addTraceAnchor,updateTraceAnchor,renameTraceAnchorTitles,updateTraceVisibilityBulk,mergeTraceAnchorPoints
 } from '../modular/features/trace/trace-data';
 import {reviewReorderedCoordinateNames} from '../modular/features/trace/trace-place-names.mjs';
-import {selectPointMergeSources} from './trace-point-merge-selection.mjs';
+import {selectPointMergeSources} from './trace/point-merge-selection.mjs';
 import {
   filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
-} from './trace-bulk-anchor-filter.mjs';
+} from './trace/bulk-anchor-filter.mjs';
 import {readPlaceSummary} from './place-summary-client';
 
 const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
-const TraceRouteManager=dynamic(()=>import('./TraceRouteManager'),{
+const TraceRouteManager=dynamic(()=>import('./trace/RouteManager'),{
   loading:()=> <p className="scope-status" role="status">正在開啟路線／痕跡圖管理…</p>
 });
-const TraceOrganizer=dynamic(()=>import('./TraceOrganizer'),{
+const TraceOrganizer=dynamic(()=>import('./trace/Organizer'),{
   loading:()=> <p className="scope-status">正在載入地點名稱整理…</p>
 });
 const TraceMap=dynamic(()=>import('../modular/features/trace/TraceMap'),{

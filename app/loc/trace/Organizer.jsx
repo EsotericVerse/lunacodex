@@ -1,9 +1,9 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {dbAuthClient} from './db-client.mjs';
-import {reviewPlaceNameGroups,compactPlaceName} from '../modular/features/trace/trace-place-names.mjs';
-import {renameTraceAnchorTitles} from '../modular/features/trace/trace-data';
+import {dbAuthClient} from '../db-client.mjs';
+import {reviewPlaceNameGroups,compactPlaceName} from '../../modular/features/trace/trace-place-names.mjs';
+import {renameTraceAnchorTitles} from '../../modular/features/trace/trace-data';
 
 const canonical=items=>[...items].sort((a,b)=>
   String(a.createtime||a.created_at||'9999').localeCompare(String(b.createtime||b.created_at||'9999'))||
