@@ -28,22 +28,20 @@ files.sort.each do |file|
     else
       []
     end
-    # GitHub Pages is the sole GitHub Actions workflow allowed to deploy
-    # automatically, and ONLY when main receives a push (including PR merge).
-    # Branch pushes must never start a deployment. PR Preview is handled
-    # separately and must not be mistaken for production.
-    if File.basename(file) == 'deploy-pages.yml'
-      raise 'GitHub Pages must trigger only on main push' unless events == ['push']
+    # Only the lightweight Guard may run automatically on non-main branch pushes.
+    # All deployment workflows, including the GitHub Pages fallback, remain manual.
+    if File.basename(file) == 'workflow-guard.yml'
+      raise 'Guard must trigger once per branch push and allow manual recovery' unless events.sort == ['push', 'workflow_dispatch']
       push_node = triggers.first.children.each_slice(2).find do |key, _|
         key.is_a?(Psych::Nodes::Scalar) && key.value == 'push'
       end&.last
-      raise 'GitHub Pages push config must be a mapping' unless push_node.is_a?(Psych::Nodes::Mapping)
-      branches = push_node.children.each_slice(2).find do |key, _|
-        key.is_a?(Psych::Nodes::Scalar) && key.value == 'branches'
+      raise 'Guard push config must be a mapping' unless push_node.is_a?(Psych::Nodes::Mapping)
+      branches_ignore = push_node.children.each_slice(2).find do |key, _|
+        key.is_a?(Psych::Nodes::Scalar) && key.value == 'branches-ignore'
       end&.last
-      main_only = branches.is_a?(Psych::Nodes::Sequence) &&
-        branches.children.map { |entry| entry.is_a?(Psych::Nodes::Scalar) ? entry.value : nil } == ['main']
-      raise 'GitHub Pages must deploy main only (not feature branches)' unless main_only
+      main_only = branches_ignore.is_a?(Psych::Nodes::Sequence) &&
+        branches_ignore.children.map { |entry| entry.is_a?(Psych::Nodes::Scalar) ? entry.value : nil } == ['main']
+      raise 'Guard must run on branch pushes, not main' unless main_only
     else
       raise 'only workflow_dispatch is permitted for this workflow' unless events == ['workflow_dispatch']
     end
@@ -56,4 +54,4 @@ if errors.any?
   errors.each { |error| warn "::error::#{error}" }
   exit 1
 end
-puts "Workflow guard: #{files.length} workflow YAML files valid; GitHub Pages main push + manual-only other workflows verified."
+puts "Workflow guard: #{files.length} workflow YAML files valid; branch-push Guard + manual-only deployment workflows verified."

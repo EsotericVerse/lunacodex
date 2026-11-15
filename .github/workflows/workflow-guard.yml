@@ -1,8 +1,11 @@
 name: Workflow guard
 
-# Strictly manual. No automatic PR, push, merge, or scheduled runs.
-# This check is opt-in only; do not email the owner on each workflow edit.
+# Lightweight, one run per feature-branch push. No pull_request event to duplicate the check.
+# Cloudflare Pages is the sole automatic website deployer.
 on:
+  push:
+    branches-ignore:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -45,12 +48,10 @@ jobs:
         run: |
           ruby scripts/check-workflow-triggers.rb
       - name: Install pinned syntax parser (manual recovery only)
-        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           npm install --prefix "$RUNNER_TEMP/loc-syntax" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund '@babel/parser@7.29.9'
       - name: Verify application syntax (manual recovery only)
-        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           NODE_PATH="$RUNNER_TEMP/loc-syntax/node_modules" node scripts/check-js-syntax.mjs
