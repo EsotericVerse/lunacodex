@@ -7,7 +7,9 @@ import {KEYWORD_PATTERN_POSTINGS_KEY,keywordPatternRecord} from '../../zenstack/
 const UID=/^[A-Za-z0-9]{8}$/;
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 // Legacy scan clocks cannot certify newly backfilled empty Scope postings.
-export const SCOPE_PATTERN_INDEX_VERSION='scope_anchor_v1';
+// The visible-text projection now includes titles and excludes markup/date headers.
+// Old scan clocks cannot certify this changed matching contract.
+export const SCOPE_PATTERN_INDEX_VERSION='scope_anchor_v2';
 // Existing Pattern.attr key. No registry lookup or database identity query.
 export const SCOPE_PATTERN_POSTING_KEY=KEYWORD_PATTERN_POSTINGS_KEY;
 export function scopePatternScanClocks(metadata={}){
