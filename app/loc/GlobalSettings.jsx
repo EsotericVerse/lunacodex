@@ -15,8 +15,8 @@ import {FeaturePage} from '../modular/ui';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
 import PanelLoading from './PanelLoading';
 // The home/account Settings screens never download import or management editors.
-const PrivateLocalFiles=dynamic(()=>import('./PrivateLocalFiles'),{loading:PanelLoading});
-const LocalScopeModeSettings=dynamic(()=>import('./LocalScopeModeSettings'),{loading:PanelLoading});
+const PrivateLocalFiles=dynamic(()=>import('./local/PrivateFiles'),{loading:PanelLoading});
+const LocalScopeModeSettings=dynamic(()=>import('./local/ModeSettings'),{loading:PanelLoading});
 const LocScopeConnections=dynamic(()=>import('./LocScopeConnections'),{loading:PanelLoading});
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。

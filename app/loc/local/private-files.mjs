@@ -1,7 +1,7 @@
 // Private iOS Local File store. It has NO Supabase/Neon, network, OAuth or browser storage imports.
 // Dependencies are injected so the complete file lifecycle can be tested without an iPhone.
 // The caller must supply Capacitor Filesystem and Directory.LibraryNoCloud (not Documents/Cache).
-import {detectPrivateFileContent,PRIVATE_SNIFF_BYTES} from './private-file-detection.mjs';
+import {detectPrivateFileContent,PRIVATE_SNIFF_BYTES} from './file-detection.mjs';
 export const PRIVATE_FILE_ROOT='loc-private-files/v1';
 export const PRIVATE_FILE_INDEX=PRIVATE_FILE_ROOT+'/index.json';
 export const PRIVATE_FILE_CHUNK_BYTES=256*1024;

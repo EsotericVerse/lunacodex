@@ -1,4 +1,4 @@
-import MyPhoneHome from '../loc/MyPhoneHome';
+import LocalScopeWorkspace from '../loc/local/Workspace';
 import {locMetadata} from '../seo/metadata';
 
 export const metadata=locMetadata({
@@ -8,4 +8,4 @@ export const metadata=locMetadata({
   noIndex:true
 });
 
-export default function MyPhonePage(){return <MyPhoneHome/>;}
+export default function MyPhonePage(){return <LocalScopeWorkspace view="home"/>;}
