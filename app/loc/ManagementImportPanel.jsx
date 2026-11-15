@@ -23,7 +23,7 @@ import {createImportProgressStore} from './import/progress-store.mjs';
 import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './import/checkpoint.mjs';
 import {remapArchiveArticleUids} from './import/random-uids.mjs';
 import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks} from './import/uid-delta.mjs';
-import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
+import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './archive/facebook-place.mjs';
 import {archiveGalaxyRows} from './archive/caption-rows.mjs';
 import {facebookPostPlace} from './archive/geo-objects.mjs';
 
@@ -699,7 +699,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       if(isZip||isThreadsJson||isFacebookGeoJson){
         // ZIP, standalone Threads posts and independent Facebook visit JSON use the scanner;
         // source names are only hints, each record must be a public post.
-        const {detectZipArchiveSource,inspectPrivateArchive}=await import('./private-archive-universal.mjs');
+        const {detectZipArchiveSource,inspectPrivateArchive}=await import('./archive/universal.mjs');
         const result=isZip
           ?await detectZipArchiveSource(file,{skipPrivateEntries:!nativeLocal,onProgress:p=>setProgress({stage:'正在辨識 ZIP 檔案',completed:Number(p.filesSeen||0),total:0,percent:null})})
           :{kind:isFacebookGeoJson?'facebook':'threads',

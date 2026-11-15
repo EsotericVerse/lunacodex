@@ -2,22 +2,22 @@
 // Never uploads contents. zip.js-like mature primitives: fflate for ZIP; @streamparser/json for JSON.
 // Unsupported formats are explicitly accounted for; no speculative field coercion.
 import {Unzip,UnzipInflate,UnzipPassThrough} from 'fflate';
-import {ARCHIVE_MAX_BYTES,ARCHIVE_JSON_MAX_BYTES,extractImportCreatedAt} from './import/batch.mjs';
+import {ARCHIVE_MAX_BYTES,ARCHIVE_JSON_MAX_BYTES,extractImportCreatedAt} from '../import/batch.mjs';
 export {ARCHIVE_MAX_BYTES};
 import {JSONParser} from '@streamparser/json';
-import {archiveEntrySignatures,summarizeArchiveSources,archiveFilenameSource} from './archive/source-signatures.mjs';
-import {inspectArchiveEntryStructure,summarizeArchiveStructures} from './archive/structure-inspector.mjs';
-import {createArchiveCompletenessAudit} from './archive/completeness-audit.mjs';
-import {canonicalArchiveText} from './archive/record-identity.mjs';
-import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
-import {IMAGE_EXIF_PREFIX_LIMIT,readImageExif} from './archive/exif.mjs';
-import {isArchiveMediaUrl} from './archive/media-evidence.mjs';
-import {importMapUrlCoordinates} from './import/geocoordinates.mjs';
-import {archiveAttachmentReferences} from './archive/media-evidence.mjs';
-import {extractFacebookGeoObjects} from './archive/geo-objects.mjs';
-import {repairMojibakeText} from './content-policy.js';
-import {archiveRecordStreamPath,archiveRootContainers} from './archive/array-layout.mjs';
-import {isPrivateArchiveEntry} from './archive/import-safety.mjs';
+import {archiveEntrySignatures,summarizeArchiveSources,archiveFilenameSource} from './source-signatures.mjs';
+import {inspectArchiveEntryStructure,summarizeArchiveStructures} from './structure-inspector.mjs';
+import {createArchiveCompletenessAudit} from './completeness-audit.mjs';
+import {canonicalArchiveText} from './record-identity.mjs';
+import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-place.mjs';
+import {IMAGE_EXIF_PREFIX_LIMIT,readImageExif} from './exif.mjs';
+import {isArchiveMediaUrl} from './media-evidence.mjs';
+import {importMapUrlCoordinates} from '../import/geocoordinates.mjs';
+import {archiveAttachmentReferences} from './media-evidence.mjs';
+import {extractFacebookGeoObjects} from './geo-objects.mjs';
+import {repairMojibakeText} from '../content-policy.js';
+import {archiveRecordStreamPath,archiveRootContainers} from './array-layout.mjs';
+import {isPrivateArchiveEntry} from './import-safety.mjs';
 
 export const ARCHIVE_CHUNK_BYTES=128*1024;
 // Reject oversized archives before reading any bytes. Only approved entries are inflated.
