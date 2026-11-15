@@ -19,7 +19,10 @@ const fieldName=Object.freeze({
   media_link:'媒體',place_id:'地點',location:'位置',
   date:'日期',site:'來源'
 });
-function destination(scope,edge){
+function destination(scope,edge,{federated=false}={}){
+  // An external Galaxy UID is not the same identity as the primary Scope UID.
+  if(federated)return '';
+  if((edge.kind==='media'||edge.kind==='point')&&edge.resolved!==true)return '';
   if(edge.kind==='galaxy')return galaxyIdentityHref(scope,edge.value);
   if(edge.kind==='media')return mediaAnchorHref(scope,edge.value);
   if(edge.kind==='point')return featureNavigationHref(scope,'trace',{place:edge.value});
@@ -35,7 +38,8 @@ export default function GalaxyInterNetBranches({scopeId,row}){
   const graph=galaxyInterNetEdges(row,{
     media:row.related_media,
     place:row.trace_place,
-    relatedTitles:row.relation_titles
+    relatedTitles:row.relation_titles,
+    federated:row.inter_net_federated===true
   });
   const groups=TYPES.map(group=>({
     ...group,edges:graph.branches[group.id]
@@ -52,12 +56,15 @@ export default function GalaxyInterNetBranches({scopeId,row}){
           <summary>{group.label} <small>{group.edges.length}</small></summary>
           <ul>
             {group.edges.map((edge,index)=>{
-              const href=destination(scopeId,edge);
-              const label=edge.label||edge.value;
+              const href=destination(scopeId,edge,{federated:row.inter_net_federated===true});
+              // Avoid displaying an unresolved media/place UID that could
+              // refer to a hidden or unrelated Anchor in this Scope.
+              const unresolved=(edge.kind==='media'||edge.kind==='point')&&edge.resolved!==true;
+              const label=unresolved?'尚未確認的關聯':edge.label||edge.value;
               return <li key={edge.field+':'+edge.value+':'+index}>
                 <span className="loc-inter-net__field">{fieldName[edge.field]||edge.field}</span>
                 {href?<a href={href}>{label}</a>:<span>{label}</span>}
-                {edge.resolved===null&&['galaxy','media','point'].includes(edge.kind)?
+                {edge.resolved===null&&!unresolved&&edge.kind==='galaxy'?
                   <small title="目的節點是否存在需在展開後確認">未確認</small>:null}
               </li>;
             })}
