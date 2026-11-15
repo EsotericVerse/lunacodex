@@ -125,7 +125,7 @@ export default function LocalScopeWorkspace({view='home'}){
   </section></main>;
 
   const listing=filtered.slice(0,visible);
-  return <main className="scope-main loc-local-workspace"><section className="scope-page">
+  return <main className="scope-main loc-local-workspace" data-local-view={view}><section className="scope-page">
     {view==='home'?<header className="loc-local-hero" aria-labelledby="loc-local-home-title">
       <div className="loc-local-hero-copy">
         <p className="loc-eyebrow">LUNA CODEX · LOCAL SCOPE</p>
