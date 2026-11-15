@@ -1,4 +1,5 @@
-// Scope-level availability flags are native PostgreSQL boolean columns.
+// Scope-level publication flags are separate from Galaxy article flags and LOC Auth roles.
+// false = feature closed for everyone (including admin); true = eligible, still subject to row policy.
 const authorFeatureNames=Object.freeze({
   search:'search',statistics_able:'statics',culture_able:'culture',trace:'trace'
 });
