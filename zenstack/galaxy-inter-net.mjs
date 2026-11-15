@@ -16,7 +16,7 @@ const add=(array,seen,edge)=>{
   if(seen.has(key))return;
   seen.add(key);array.push(Object.freeze(edge));
 };
-export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={}}={}){
+export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={},federated=false}={}){
   const shape=composeGalaxyRead('GalaxyUidRead',row);
   const origin=asUid(shape.uid);
   if(!origin)throw new Error('Galaxy Inter-Net requires a real Galaxy UID');
@@ -41,17 +41,17 @@ export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={
     put('relation','target_id',target,{label:relatedTitles?.[target]||''});
   const mediaByUid=new Map((Array.isArray(media)?media:[])
     .filter(item=>asUid(item?.uid)).map(item=>[String(item.uid),item]));
-  for(const uid of Array.isArray(anchor.media_link)?anchor.media_link:[]){
+  for(const uid of !federated&&Array.isArray(anchor.media_link)?anchor.media_link:[]){
     const entry=mediaByUid.get(String(uid));
     put('media','media_link',uid,{kind:'media',
       label:entry?.title||entry?.type||'',resolved:entry?true:null});
   }
-  put('space','place_id',anchor.place_id,{kind:'point',
+  if(!federated)put('space','place_id',anchor.place_id,{kind:'point',
     label:place?.uid===anchor.place_id?place?.title||place?.location||'':'',
     resolved:place?.uid===anchor.place_id?true:null});
   // Free text coordinates/location and literal source labels are not UID links.
-  put('space','location',anchor.location,{kind:'literal'});
-  put('time','date',anchor.date,{kind:'date'});
+  if(!federated)put('space','location',anchor.location,{kind:'literal'});
+  if(!federated)put('time','date',anchor.date,{kind:'date'});
   put('source','site',anchor.site,{kind:'literal'});
   return Object.freeze({uid:origin,branches:Object.freeze(Object.fromEntries(
     GROUPS.map(group=>[group,Object.freeze(output[group])])
