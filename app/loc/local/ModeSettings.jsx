@@ -1,11 +1,11 @@
 'use client';
 import {useEffect,useState,useSyncExternalStore} from 'react';
 import {Capacitor} from '@capacitor/core';
-import {openLocalGalaxy} from './local-scope-galaxy.mjs';
+import {openLocalGalaxy} from './galaxy.mjs';
 import {
   LOCAL_SCOPE_MINUTES,getLocalDeadline,subscribeLocalDeadline,
   startLocalDeadline,stopLocalDeadline
-} from './local-scope-session.mjs';
+} from './session.mjs';
 
 export default function LocalScopeModeSettings(){
   const deadline=useSyncExternalStore(subscribeLocalDeadline,getLocalDeadline,()=>0);

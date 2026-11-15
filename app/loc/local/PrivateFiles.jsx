@@ -1,10 +1,10 @@
 'use client';
-import {useFeatureCopy,useUiLocale} from '../i18n/ui-locale';
-import featureZh from '../i18n/feature-sections/privateFiles.zh_tw.js';
+import {useFeatureCopy,useUiLocale} from '../../i18n/ui-locale';
+import featureZh from '../../i18n/feature-sections/privateFiles.zh_tw.js';
 
 import {useEffect,useRef,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
-import {createPrivateLocalStore,isTextPrivateFile,privateFilePath} from './private-local-files.mjs';
+import {createPrivateLocalStore,isTextPrivateFile,privateFilePath} from './private-files.mjs';
 
 const byteLabel=(size,l)=>{
   if(!Number.isFinite(size))return l.unknownSize;

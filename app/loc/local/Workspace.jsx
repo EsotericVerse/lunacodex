@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
-import {exportLocalGalaxy,importLocalGalaxyFile,listLocalGalaxy} from './local-scope-galaxy.mjs';
+import {exportLocalGalaxy,importLocalGalaxyFile,listLocalGalaxy} from './galaxy.mjs';
 
 const viewTitles={home:'本機資料',culture:'文化',statics:'統計',trace:'痕跡',search:'搜尋'};
 const rowsPerPage=50;

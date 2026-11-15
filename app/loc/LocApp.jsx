@@ -46,7 +46,7 @@ const ManagementView=dynamic(()=>import('./ScopeManagement').catch(recoverChunkO
 const SourceManagementView=dynamic(()=>import('./LocSourceManagement'),{loading});
 const KeywordManagementView=dynamic(()=>import('./LocKeywordManagementPage'),{loading});
 const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading});
-const LocalScopeWorkspace=dynamic(()=>import('./LocalScopeWorkspace'),{loading});
+const LocalScopeWorkspace=dynamic(()=>import('./local/Workspace'),{loading});
 
 const VIEWS={
   admin:AdminHomeView,
@@ -145,7 +145,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   useEffect(()=>{
     if(scopeMeta?.nativeOnly&&!nativeOnlyReady)return;
     if(scopeId==='local'&&forcedView!=='setting'){
-      import('./LocalScopeWorkspace').catch(()=>{});
+      import('./local/Workspace').catch(()=>{});
       return;
     }
     const preload=publicCulture?()=>import('./views/CulturePublicReader'):

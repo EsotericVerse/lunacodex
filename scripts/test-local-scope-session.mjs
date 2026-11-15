@@ -7,11 +7,11 @@ import {
   LOCAL_SCOPE_LEASE_KEY,LOCAL_SCOPE_LEASE_CHANGED,
   startLocalDeadline,stopLocalDeadline,getLocalDeadline,
   hasExpiredLocalDeadline,subscribeLocalDeadline
-} from '../app/loc/local-scope-session.mjs';
+} from '../app/loc/local/session.mjs';
 import {
   parseLocalGalaxyArchive,normalizeLocalGalaxyRow,
   LOCAL_GALAXY_DB,LOCAL_GALAXY_STORE
-} from '../app/loc/local-scope-galaxy.mjs';
+} from '../app/loc/local/galaxy.mjs';
 
 const now=Date.now();
 assert.equal(validLocalDeadline(now+15000,now),now+15000);

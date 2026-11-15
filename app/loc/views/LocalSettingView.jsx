@@ -2,8 +2,8 @@
 import {useEffect,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
 import {FeaturePage} from '../../modular/ui';
-import LocalScopeModeSettings from '../LocalScopeModeSettings';
-import PrivateLocalFiles from '../PrivateLocalFiles';
+import LocalScopeModeSettings from '../local/ModeSettings';
+import PrivateLocalFiles from '../local/PrivateFiles';
 export default function LocalSettingView(){
   const [native,setNative]=useState(false);
   useEffect(()=>setNative(Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='ios'),[]);
