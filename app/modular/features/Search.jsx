@@ -1315,7 +1315,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         const selectedDetail=fullTextKey===row.key&&!fullTextLoading?fullTextRow:null;
         const identityReader=Boolean(searchParams?.get('identity'))&&row.resourceType==='galaxy';
         const expandedReader=Boolean(selectedDetail)&&row.resourceType==='galaxy';
-        const readerRow=selectedDetail||null;
+        // Direct UID navigation already has the authorized Galaxy detail in
+        // toResult.editRow; ordinary expanded reading uses fullTextRow.
+        const readerRow=selectedDetail||(identityReader?row.editRow:null);
         const tracePlace=readerRow?.trace_place||row.tracePlace;
         const locationName=String(readerRow?.location||row.locationName||'').trim();
         const readingLinks=readerRow?galaxyRelationLinks(row.scopeId,readerRow):row.relationLinks||[];
@@ -1404,7 +1406,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           </div>:null}
 
           {readerRow?.uid&&row.resourceType==='galaxy'?
-            <GalaxyInterNetBranches scopeId={row.scopeId} row={readerRow}/>:null}
+            <GalaxyInterNetBranches scopeId={row.scopeId} row={readerRow} managementMode={managementMode}/>:null}
         </Article>
         </Fragment>;
       }}
