@@ -6,7 +6,7 @@ import {useAccount} from '../loc/use-account';
 import {selectManagedScope} from '../loc/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../loc/db-query.mjs';
 import {insertRows} from '../loc/db-client.mjs';
-import {allocateTimeUid} from '../loc/time-anchor-ranges.mjs';
+import {allocateTimeUid} from '../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../loc/anniversary.mjs';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/edit-session-ttl.mjs';
 

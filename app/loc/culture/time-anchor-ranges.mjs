@@ -1,4 +1,4 @@
-import {allocateAnchorUid} from './uid.js';
+import {allocateAnchorUid} from '../uid.js';
 // Canonical TimeAnchor graph:
 // date.attr.date -> period.attr.uid [startUID, optional endUID]
 // -> era.attr.period [period UID, ...].

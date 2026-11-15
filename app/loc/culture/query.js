@@ -2,17 +2,17 @@
 
 
 
-import {CultureTimelineModel} from '../modular/modules/culture-timeline/culture-timeline-model';
-import {workDisplayText} from '../modular/work-display-model';
-import {selectScopeDailyCounts} from './galaxy-query';
-import {selectAllRows,selectCount,selectRows} from './db-query.mjs';
-import {mapBounded} from './bounded-parallel.mjs';
-import {publicContentFilters} from './content-policy';
-import {selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
-import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
+import {CultureTimelineModel} from '../../modular/modules/culture-timeline/culture-timeline-model';
+import {workDisplayText} from '../../modular/work-display-model';
+import {selectScopeDailyCounts} from '../galaxy-query';
+import {selectAllRows,selectCount,selectRows} from '../db-query.mjs';
+import {mapBounded} from '../bounded-parallel.mjs';
+import {publicContentFilters} from '../content-policy';
+import {selectScopeGroupMemberIds,defaultScopeData} from '../scope-data';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-anchor-ranges.mjs';
-import {galaxyReadColumns} from '../../packages/zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../packages/zenstack/anchor-hierarchy.mjs';
+import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 
 
@@ -122,8 +122,8 @@ function openPeriodRangeFromRows(scopeId,rows=[]){
     derived_from:'era period UID collection of actual anchor dates'};
 }
 
-import {assignedSource} from './statistics/member-intersection-model.mjs';
-import {readPublicSourceTaxonomy} from './source-catalog-public.mjs';
+import {assignedSource} from '../statistics/member-intersection-model.mjs';
+import {readPublicSourceTaxonomy} from '../source-catalog-public.mjs';
 
 function buildLocScopeDistribution(rows=[]){
   const combined=new Map();
