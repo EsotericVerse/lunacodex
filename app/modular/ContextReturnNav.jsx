@@ -2,7 +2,7 @@
 import {useUiLocale} from '../i18n/ui-locale';
 import {translateUiField} from '../i18n/ui-copy';
 
-import {navigationHref} from './scope-registry.js';
+import {navigationHref} from './routing/scope-registry.js';
 import useNativeNavigation from './use-native-navigation';
 import ScopeLink from './ScopeLink';
 

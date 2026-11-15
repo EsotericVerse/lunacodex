@@ -5,7 +5,7 @@ import {createPortal} from 'react-dom';
 import RuneArtStage from '../visual/RuneArtStage';
 import useRuneDialogFocus from '../visual/useRuneDialogFocus';
 import {realMoonPhase} from '../../loc/model/moon-phase';
-import {navigationHref} from '../../modular/scope-registry.js';
+import {navigationHref} from '../../modular/routing/scope-registry.js';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import ScopeLink from '../../modular/ScopeLink';
 import {loadDrawCards,randomIndex} from '../rune-draw-core.mjs';

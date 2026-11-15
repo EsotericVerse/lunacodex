@@ -1,4 +1,4 @@
-import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index';
 
 // The same generated public route index drives browser navigation and CORS.
 // Published GET data are public, but the protected POST still authenticates

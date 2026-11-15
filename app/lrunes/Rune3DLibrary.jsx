@@ -9,7 +9,7 @@ import EffekseerStage from './effekseer/EffekseerStage';
 import RuneExtrudedGlyph from './effekseer/RuneExtrudedGlyph';
 import {RUNE_GLYPH_STYLES,runeGlyphProfile} from './effekseer/rune-glyph-library.mjs';
 import {groupImage,runeImage,runeName,runeNumbersForGroup} from './rune-directory.mjs';
-import {navigationHref} from '../modular/scope-registry.js';
+import {navigationHref} from '../modular/routing/scope-registry.js';
 import useNativeNavigation from '../modular/use-native-navigation';
 import ScopeLink from '../modular/ScopeLink';
 import {lRunes66ColumnString} from '../../packages/zenstack/lrunes-read-model.mjs';

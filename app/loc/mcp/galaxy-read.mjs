@@ -1,5 +1,5 @@
 import {sql} from 'kysely';
-import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {portableContainsSpec} from '../providers/portable-search.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {scopedZModelSchema} from '../../../packages/zenstack/scoped-schema.mjs';

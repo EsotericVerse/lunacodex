@@ -1,4 +1,4 @@
-import {UI_COPY} from '../i18n/ui-copy.js';
+import {UI_COPY} from '../../i18n/ui-copy.js';
 import {SCOPE_ROUTE_INDEX} from './scope-route-index.js';
 
 // Current Scope registry.

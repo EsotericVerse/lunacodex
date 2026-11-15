@@ -12,7 +12,7 @@ import {defaultScopeData} from '../../../loc/scope-data';
 import {dbPublicClient} from '../../../loc/db-client.mjs';
 import {traceArticleIds,traceArticleLabels} from './trace-article-ids.mjs';
 import Article from '../../Article';
-import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../../feature-navigation';
+import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../../routing/feature-navigation';
 import {selectGalaxyIdentity} from '../../../loc/galaxy-query';
 import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 import {galaxyReadColumnsFor} from '../../../../packages/zenstack/galaxy-read-models.mjs';

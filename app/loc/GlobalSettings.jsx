@@ -25,7 +25,7 @@ import FeatureSettingsPage from './FeatureSettingsPage';
 import {selectScopeRegistry} from './scope-data';
 import {putSetting} from './user-storage';
 import {NavigationPreferences} from '../modular/navigation-preferences';
-import {getScope,normalizeScopeId} from '../modular/scope-registry';
+import {getScope,normalizeScopeId} from '../modular/routing/scope-registry';
 const {account:accountNavigation,device:deviceNavigation}=NavigationPreferences;
 
 const option=(value,label,description,shortLabel)=>({value,label,description,shortLabel});

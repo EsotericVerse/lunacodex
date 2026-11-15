@@ -6,8 +6,8 @@ import {galaxyInterNetEdges} from '../../packages/zenstack/galaxy-inter-net.mjs'
 
 // Second-level Anchor resolver is loaded only when a user opens its branch.
 const GalaxyAnchorInterNet=dynamic(()=>import('./GalaxyAnchorInterNet'),{loading:()=>null});
-import {featureNavigationHref,galaxyIdentityHref} from './feature-navigation';
-import {scopeHref} from './scope-registry';
+import {featureNavigationHref,galaxyIdentityHref} from './routing/feature-navigation';
+import {scopeHref} from './routing/scope-registry';
 
 // One small, collapsed branch per relationship family. No additional queries:
 // every edge is derived solely from the article detail already authorized by

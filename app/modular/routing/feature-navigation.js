@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {featureHref} from './scope-registry';
-import {normalizeRelationIds} from '../loc/content-policy';
+import {normalizeRelationIds} from '../../loc/content-policy';
 
 const NAVIGATION_FIELDS=Object.freeze([
   'q','place','map','identity','media','source','period','anchor','from','to','rankingType','statTab'

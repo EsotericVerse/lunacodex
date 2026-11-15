@@ -2,7 +2,7 @@
 // Default OFF. Never cache Auth, private data, metadata, or SQL permissions.
 // The existing ZenStack/Kysely reader is ALWAYS the authoritative fallback.
 // No SQL dialect hook, database revision table, polling, or new service.
-import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {scopeFeatureEnabled} from '../scope-config-fields.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 

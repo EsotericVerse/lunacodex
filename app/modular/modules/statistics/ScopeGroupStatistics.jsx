@@ -12,7 +12,7 @@ registerDefaultSection('statistics',statisticsZh);
 registerDefaultSection('uiExtra.statisticsUI',statisticsUIZh);
 registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 import {defaultScopeData} from '../../../loc/scope-data';
-import {featureNavigationHref} from '../../feature-navigation';
+import {featureNavigationHref} from '../../routing/feature-navigation';
 import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';
 import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,statisticsZoomWindow} from './statistics-time-zoom.mjs';

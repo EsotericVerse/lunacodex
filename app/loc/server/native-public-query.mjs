@@ -10,7 +10,7 @@ import {sql} from 'kysely';
 import {executeKyselyAnalytics,executePortableKyselyAnalytics}
   from '../providers/kysely-analytics.mjs';
 import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
-import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../packages/zenstack/policy-runtime.mjs';

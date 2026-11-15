@@ -86,7 +86,7 @@ const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,
   page_copy:site.page_copy||[],scope_birthdays:site.scope_birthdays||{},
   theme_list:themeMeta,themes:[],blocks:[]};
 const entries=[
-  ['app/modular/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
+  ['app/modular/routing/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
   ['app/modular/published-source-taxonomy.js',"// Fixed LOC ArticleTag; no Source Anchor tree.\\nimport {sourceTaxonomyFromArrays} from '../loc/source-classification.mjs';\\nexport const PUBLISHED_LOC_ARTICLE_TAGS=Object.freeze("+encode(systemNames)+");\\nexport const PUBLISHED_SOURCE_LISTS=Object.freeze({loc:{system:PUBLISHED_LOC_ARTICLE_TAGS,personal:[]}});\\nexport const PUBLISHED_SOURCE_ENTRIES=Object.freeze({});\\nexport const PUBLISHED_SOURCE_DOMAINS=Object.freeze({});\\nconst taxonomy=Object.freeze(sourceTaxonomyFromArrays(PUBLISHED_LOC_ARTICLE_TAGS));\\nexport const publishedSourceTaxonomy=()=>taxonomy;\\nexport const publishedSourceCategoryCatalog=()=>({categories:taxonomy.categories,aliases:taxonomy.aliases});\\n"],
   ...themes.map(t=>['app/modular/themes/theme-'+t.theme_id+'.json',JSON.stringify(t,null,2)+'\n']),
   ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata; theme palettes are loaded by selected ID only.\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze({...'+encode(bootstrap)+',themes:[]});\n']
