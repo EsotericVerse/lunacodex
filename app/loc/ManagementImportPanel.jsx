@@ -24,8 +24,8 @@ import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from '
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
 import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks} from './import-uid-delta.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
-import {archiveGalaxyRows} from './archive-caption-rows.mjs';
-import {facebookPostPlace} from './archive-geo-objects.mjs';
+import {archiveGalaxyRows} from './archive/caption-rows.mjs';
+import {facebookPostPlace} from './archive/geo-objects.mjs';
 
 import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCreatedAt,readImportCandidatesByTimeWindows,isUnchangedImportBeforeWrite,insertImportBatches} from './import-duplicate-check.mjs';
 import {importTimeRangeWindow,filterImportAnalysisByTime} from './import-time-range.mjs';
@@ -36,8 +36,8 @@ import {readPublicSourceTaxonomy} from './source-catalog-public.mjs';
 import {auditImportedSourceSites} from './source-classification.mjs';
 import {reconcileExistingImportAnchors} from './reconcile-import-anchors.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './import-geocoordinates.mjs';
-import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive-import-safety.mjs';
-import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from './archive-media-evidence.mjs';
+import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive/import-safety.mjs';
+import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from './archive/media-evidence.mjs';
 import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,writeImportBatches,createImportBatchSizer} from './import-batch.mjs';
 import {MAX_ROWS,urlSafeInBatches} from './query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from './content-policy';

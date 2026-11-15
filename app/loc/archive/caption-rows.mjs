@@ -2,11 +2,11 @@
 // media are Galaxy Media records and never hold text.
 // Structural parents represent actual platform media posts but are not user prose.
 import {JSONPath} from 'jsonpath-plus';
-import {archiveGalaxyRow,platformLabel} from './archive-galaxy-row.mjs';
-import {facebookArchiveUid} from './facebook-backup-place.mjs';
-import {repairMojibakeText} from './content-policy.js';
-import {archiveAttachmentReferences} from './archive-media-evidence.mjs';
-import {parseImportCreatedTime} from './import-batch.mjs';
+import {archiveGalaxyRow,platformLabel} from './galaxy-row.mjs';
+import {facebookArchiveUid} from '../facebook-backup-place.mjs';
+import {repairMojibakeText} from '../content-policy.js';
+import {archiveAttachmentReferences} from './media-evidence.mjs';
+import {parseImportCreatedTime} from '../import-batch.mjs';
 
 const clean=value=>repairMojibakeText(String(value||'').trim());
 // Facebook auto-labels album/upload metadata, not anything the user wrote.
