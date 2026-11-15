@@ -1,10 +1,10 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {useAsyncResource} from '../../packages/zenstack/client-queries';
-import {useQueryClient} from '../../packages/zenstack/client-queries';
-import {dbAuthClient} from './db-client.mjs';
-import {useEditDock} from '../modular/edit-dock';
+import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
+import {useQueryClient} from '../../../../packages/zenstack/client-queries';
+import {dbAuthClient} from '../../db-client.mjs';
+import {useEditDock} from '../../../modular/edit-dock';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const HASH=/^[0-9a-f]{32}$/;
