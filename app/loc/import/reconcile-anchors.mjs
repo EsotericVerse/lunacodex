@@ -1,7 +1,7 @@
-import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import-place-anchors.mjs';
-import {prepareImportTimeAnchors} from './import-time-anchors.mjs';
-import {readImportPointDateAnchors} from './import-anchor-read.mjs';
-import {planImportPointUidLink} from './import-uid-delta.mjs';
+import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './place-anchors.mjs';
+import {prepareImportTimeAnchors} from './time-anchors.mjs';
+import {readImportPointDateAnchors} from './anchor-read.mjs';
+import {planImportPointUidLink} from './uid-delta.mjs';
 
 // Repair location/date links for articles already in Galaxy, without replaying
 // an archive, creating duplicate posts, or touching unrelated article fields.

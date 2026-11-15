@@ -4,7 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
 import {dbAuthRelation} from '../loc/db-client.mjs';
 import {selectAllRows} from '../loc/db-query.mjs';
-import {writeImportBatches} from '../loc/import-batch.mjs';
+import {writeImportBatches} from '../loc/import/batch.mjs';
 import {listLocalDailyRunes,importLocalDailyTransfer} from './local-rune-records.mjs';
 import {
   DAILY_TRANSFER_MAX_BYTES,DAILY_TRANSFER_BATCH,analyzeDailyImport,parseDailyCsv,makeDailyTransfer,planDailyTransfer
