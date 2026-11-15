@@ -6,6 +6,7 @@ import {buildKeywordSearchPatterns,keywordPatternItemMetrics,keywordPatternDaily
 import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
+import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
 import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
@@ -48,7 +49,7 @@ const galaxyListMetadataColumns=Object.freeze([
   'UpdateTime'
 ]);
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
-  .filter(column=>['uid','content','keyword'].includes(column)));
+  .filter(column=>['uid','title','content','keyword'].includes(column)));
 
 async function configuration(db,scope){
   return await db.selectFrom(configName(scope))
@@ -290,7 +291,12 @@ async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',ex
   const oldMeta=attr({attr:cfg.keyword_meta});
   const alreadyNative=oldMeta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION;
   // Migration preserved legacy scan/class completion; invalidate on first cutover.
-  const baseMeta=alreadyNative?oldMeta:{...oldMeta,by_class:{},pattern_scans:{}};
+  const baseMeta=alreadyNative?oldMeta:{
+    ...oldMeta,
+    by_class:Object.fromEntries(Object.entries(oldMeta.by_class||{})
+      .map(([uid,record])=>[uid,{...record,stale:true}])),
+    pattern_scans:{}
+  };
   const merged=completeKeywordClass(baseMeta,classUid,record,now);
   const metadata={...merged,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
     pattern_scans:{
@@ -358,6 +364,9 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     uid_lists:[]
   }));
   const {catalog}=keywordClassCatalog(treeRows,classUid);
+  const classRow=nativeRows.find(row=>row.type==='class'&&row.uid===classUid);
+  if(!classRow)fail('Unknown Keyword Class',404);
+  const exceptionWords=classSkipArticleWords(attr(classRow));
   const selectedItemIds=new Set(catalog.map(item=>item.uid));
   const linkedItems=nativeRows.filter(row=>row.type==='item'&&
     selectedItemIds.has(row.uid));
@@ -393,6 +402,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     scopeId:scope,classUid,treeRows,items:catalog,
     existingPatterns,patternScans:scopePatternScanClocks(cfg.keyword_meta),
     expectedCount,minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
+    exceptionWords,
     startedAt,pageSize:1000,readMetadataPage:reader,
     onProgress:({phase,completed=0,parsed=0,reused=0})=>onProgress({
       phase,total:expectedCount,completed,parsed,reused,
