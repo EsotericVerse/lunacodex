@@ -370,6 +370,17 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   const selectedItemIds=new Set(catalog.map(item=>item.uid));
   const linkedItems=nativeRows.filter(row=>row.type==='item'&&
     selectedItemIds.has(row.uid));
+  if(exceptionWords.length){
+    // Pattern is ONE global word index per Scope, not a Class-specific table.
+    // Never let exclusions on one Class erase valid postings for a different
+    // Class that references the same Pattern Anchor.
+    const owned=new Set(linkedItems.flatMap(row=>
+      Array.isArray(attr(row).uid)?attr(row).uid:[]));
+    const conflicting=nativeRows.some(row=>row.type==='item'&&
+      !selectedItemIds.has(row.uid)&&
+      Array.isArray(attr(row).uid)&&attr(row).uid.some(uid=>owned.has(uid)));
+    if(conflicting)fail('Class exclusions cannot rewrite a Pattern shared with another Class',409);
+  }
   const existingPatterns=await classPatternRows(db,scope,catalog,directory,linkedItems);
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
