@@ -12,7 +12,7 @@ import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSe
 
 const ScopeEditableBlocks=dynamic(()=>import('./blocks/ScopeEditableBlocks'),{loading:()=>null});
 const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublisher'),{loading:()=>null});
-const ManagementMediaWorkspace=dynamic(()=>import('./ManagementMediaWorkspace'),{loading:()=>null});
+const ManagementMediaWorkspace=dynamic(()=>import('./media/ManagementMediaWorkspace'),{loading:()=>null});
 const ManagementContentTarget=dynamic(()=>import('./ManagementContentTarget'),{loading:()=>null});
 const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
 const ScopeSettingsPanel=dynamic(()=>import('./ScopeSettingsPanel'),{loading:()=>null});
