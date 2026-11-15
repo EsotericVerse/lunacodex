@@ -1,4 +1,4 @@
-import {indexKeywordTree} from './keyword-tree.mjs';
+import {indexKeywordTree} from './tree.mjs';
 
 // LEGACY REPORT ADAPTER, not the current Keyword Tree Model or write contract.
 // Its Group.uid_lists and Item.{uid,times} shapes are compatibility input to

@@ -122,7 +122,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['own-scope-keyword-summary',scope?.id,classUid,start,end],
     enabled:valid,
     queryFn:async()=>{
-      const {selectKeywordAnalysisSummary}=await import('../../../loc/keyword-analysis');
+      const {selectKeywordAnalysisSummary}=await import('../../../loc/keywords/analysis');
       return selectKeywordAnalysisSummary({scopeId:scope.id,classUid,startDate:start,endDate:end});
     }
   });
@@ -150,8 +150,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['scope-advanced-keyword-catalog',scope?.id,keywords.data?.keywordMeta?.class_uid],
     enabled:valid&&keywordModeActive&&Boolean(scope?.keywords&&keywords.data?.keywordMeta?.class_uid),
     queryFn:async()=>{
-      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
-      const {keywordTreeCatalog}=await import('../../../loc/keyword-tree-report.mjs');
+      const {keywordService}=await import('../../../loc/keywords/service-client.mjs');
+      const {keywordTreeCatalog}=await import('../../../loc/keywords/tree-report.mjs');
       const result=await keywordService('catalog',{
         scopeId:scope.id,classUid:keywords.data.keywordMeta.class_uid});
       if(!result.class_uid)return [];
@@ -255,7 +255,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['own-scope-keyword-item-days',scope?.id,classUid,start,end],
     enabled:valid&&keywordModeActive&&selectedKeywordItems,
     queryFn:async()=>{
-      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
+      const {keywordService}=await import('../../../loc/keywords/service-client.mjs');
       return keywordService('summary',{scopeId:scope.id,
         classUid:keywords.data?.keywordMeta?.class_uid||classUid,
         startDate:start,endDate:end});

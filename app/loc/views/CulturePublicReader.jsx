@@ -308,7 +308,7 @@ export default function CulturePublicReader(){
     const controller=new AbortController();
     setKeywordGroups(NO_ITEMS);setKeywordDaily(NO_ITEMS);
     setKeywordReadyKey('');setKeywordLoading(true);
-    import('../keyword-service-client.mjs')
+    import('../keywords/service-client.mjs')
       .then(({keywordService})=>keywordService('stats',{
         scopeId,classUid:keywordClass,startDate:rangeStart,endDate:rangeEnd
       },{signal:controller.signal}))
@@ -342,7 +342,7 @@ export default function CulturePublicReader(){
     }
     let active=true;
     setClassesLoading(true);
-    import('../keyword-service-client.mjs')
+    import('../keywords/service-client.mjs')
       .then(({keywordService})=>keywordService('classes',{scopeId}))
       .then(result=>{if(active)setKeywordClasses(result?.classes||[]);})
       .catch(error=>{if(active)setKeywordError(String(error?.message||error));})

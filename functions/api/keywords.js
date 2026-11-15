@@ -9,8 +9,8 @@ import {
   readKeywordClasses,readKeywordStatistics,readKeywordCatalog,readKeywordDaily,
   suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope,
   readKeywordAnalysisCompletion,saveKeywordItem,deleteKeywordItem,synchronizeKeywordLibrary
-} from '../../app/loc/keyword-sql-service.mjs';
-import {queryAnchorArticles} from '../../app/loc/keyword-anchor-search.mjs';
+} from '../../app/loc/keywords/sql-service.mjs';
+import {queryAnchorArticles} from '../../app/loc/keywords/anchor-search.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;

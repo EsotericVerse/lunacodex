@@ -5,14 +5,14 @@ import dynamic from 'next/dynamic';
 import {useQueryClient} from '../../packages/zenstack/client-queries';
 import {useEditDock} from '../modular/edit-dock';
 import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from './db-client.mjs';
-import {indexKeywordTree,descendantsOfKeyword} from './keyword-tree.mjs';
+import {indexKeywordTree,descendantsOfKeyword} from './keywords/tree.mjs';
 import {allocateAnchorUid} from './uid.js';
 import ManagementSectionNav from '../modular/ManagementSectionNav';
 import ActivityMotion from '../modular/ActivityMotion';
 import FlowProgress from '../modular/FlowProgress';
-import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mjs';
-import {SCOPE_PATTERN_INDEX_VERSION} from './keyword-anchor-index.mjs';
-import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
+import {keywordClassState,invalidateKeywordClass} from './keywords/class-state.mjs';
+import {SCOPE_PATTERN_INDEX_VERSION} from './keywords/anchor-index.mjs';
+import {classSkipArticleWords} from './keywords/class-exceptions.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
 const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
@@ -121,7 +121,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       classSkipArticleWords(draft.attr||{}).join('\n'));
 
   const invalidate=useCallback(async()=>{
-    const {clearKeywordAnalysisCache}=await import('./keyword-analysis');
+    const {clearKeywordAnalysisCache}=await import('./keywords/analysis');
     clearKeywordAnalysisCache();
     await queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&/keyword|culture-style-filter|statistics-style-filter/.test(String(query.queryKey[0]||''))});
   },[queryClient]);
@@ -252,7 +252,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       const isNew=!tree.index.has(node.uid);
       if(node.type==='category')throw new Error('群組關鍵字目錄請到群組管理頁面編輯。');
       if(node.type==='item'){
-         const {keywordService}=await import('./keyword-service-client.mjs');
+         const {keywordService}=await import('./keywords/service-client.mjs');
          await keywordService('saveItem',{scopeId,item:{
            uid:node.uid,name:node.name,desc:String(node.desc||''),
            words:node.lists,mode:isNew?'create':'update',
@@ -285,7 +285,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setBusy(true);setError('');
     try{
       if(node.type==='item'){
-         const {keywordService}=await import('./keyword-service-client.mjs');
+         const {keywordService}=await import('./keywords/service-client.mjs');
          await keywordService('deleteItem',{scopeId,itemUid:node.uid});
          await load(chosen.group||'');await invalidate();
          setNotice('已移除 Item 和無其他關聯的 Pattern，文章保留。');
@@ -314,7 +314,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           .eq('id',scopeId);
         if(settingsError)throw settingsError;
       }
-      const {keywordService}=await import('./keyword-service-client.mjs');
+      const {keywordService}=await import('./keywords/service-client.mjs');
        await keywordService('syncLibrary',{scopeId});
        await load(parent?.uid||'');await invalidate();
       setNotice('已刪除；不會刪除文章。');
@@ -386,7 +386,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     try{
       if(reset)await resetKeywordClassification(scopeId,{classUid:runClassUid,onProgress:setProgress});
       else{
-        const {runKeywordAnalysisBatch}=await import('./keyword-analysis');
+        const {runKeywordAnalysisBatch}=await import('./keywords/analysis');
         await runKeywordAnalysisBatch(scopeId,{classUid:runClassUid,onProgress:setProgress});
       }
       await load(runClassUid);await invalidate();
@@ -403,7 +403,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(!attempt||checkingAttempt||busy)return;
     setCheckingAttempt(true);setError('');setNotice('');
     try{
-      const {keywordService}=await import('./keyword-service-client.mjs');
+      const {keywordService}=await import('./keywords/service-client.mjs');
       const result=await keywordService('analyzeStatus',{
         scopeId,classUid:attempt.classUid,attemptId:attempt.attemptId
       });

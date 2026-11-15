@@ -1,7 +1,7 @@
-import {buildKeywordSearchPatterns,keywordPatternItemMetrics} from './keyword-search-pattern.mjs';
-import {createKeywordUidDocumentClassifier} from './model/keyword-uid-analysis.mjs';
-import {keywordScanText} from './content-filter.mjs';
-import {compileKeywordLiteralMatcher} from './keyword-literal-matcher.mjs';
+import {buildKeywordSearchPatterns,keywordPatternItemMetrics} from './search-pattern.mjs';
+import {createKeywordUidDocumentClassifier} from '../model/keyword-uid-analysis.mjs';
+import {keywordScanText} from '../content-filter.mjs';
+import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const keyOf=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');

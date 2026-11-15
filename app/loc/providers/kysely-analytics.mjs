@@ -4,8 +4,8 @@ import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.m
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {sql} from 'kysely';
 import {zmodelRegistryJoin,zmodelGalaxyPointJoin} from '../../../packages/zenstack/model-column-guard.mjs';
-import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-search-pattern.mjs';
-import {readScopePatternRows} from '../keyword-anchor-index.mjs';
+import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keywords/search-pattern.mjs';
+import {readScopePatternRows} from '../keywords/anchor-index.mjs';
 import {sourceTaxonomyFromAnchors} from '../source-classification.mjs';
 
 // Daily/overview totals scan the full requested interval; article pagination must not cap aggregates.

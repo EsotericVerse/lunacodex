@@ -487,7 +487,7 @@ export default function Culture(){
     // the active Class. Ordinary Time River viewing performs no keyword SQL.
     enabled:!isTimeEditingView&&styleFilter==='rune66'&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView,
     queryFn:async()=>{
-      const {selectAvailableKeywordClasses}=await import('../../loc/keyword-analysis');
+      const {selectAvailableKeywordClasses}=await import('../../loc/keywords/analysis');
       return selectAvailableKeywordClasses(scopeId);
     },
   });
@@ -501,7 +501,7 @@ export default function Culture(){
   const styleQuery=useAsyncResource({
     queryKey:['culture-style-filter','rune66',classificationScope,resolvedKeywordClassUid,keywordWindowStart,keywordWindowEnd],
     queryFn:async()=>{
-      const {selectKeywordAnalysisSummary}=await import('../../loc/keyword-analysis');
+      const {selectKeywordAnalysisSummary}=await import('../../loc/keywords/analysis');
       return selectKeywordAnalysisSummary({scopeId,classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,endDate:keywordWindowEnd});
     },
     enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&styleFilter==='rune66'&&Boolean(resolvedKeywordClassUid)&&keywordWindowValid,
@@ -520,7 +520,7 @@ export default function Culture(){
     enabled:!isTimeEditingView&&styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&Boolean(scopeData)&&keywordWindowValid&&Boolean(styleQuery.data?.statisticsEnabled),
     queryFn:async()=>{
-      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
+      const {keywordService}=await import('../../loc/keywords/service-client.mjs');
       return keywordService('summary',{scopeId,
         classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,
         endDate:keywordWindowEnd,source:keywordDrillSource
@@ -567,8 +567,8 @@ export default function Culture(){
     enabled:!isTimeEditingView&&styleFilter==='rune66'&&Boolean(keywordDrillGroup)
       &&Boolean(styleQuery.data?.keywordMeta?.class_uid)&&Boolean(scopeData?.keywords),
     queryFn:async()=>{
-      const {keywordService}=await import('../../loc/keyword-service-client.mjs');
-      const {keywordTreeCatalog}=await import('../../loc/keyword-tree-report.mjs');
+      const {keywordService}=await import('../../loc/keywords/service-client.mjs');
+      const {keywordTreeCatalog}=await import('../../loc/keywords/tree-report.mjs');
       const result=await keywordService('catalog',{scopeId,classUid:resolvedKeywordClassUid});
       if(!result.class_uid)return [];
       const catalog=keywordTreeCatalog(result.rows,result.class_uid);

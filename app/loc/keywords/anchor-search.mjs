@@ -1,8 +1,8 @@
 // Exact UID-selected Anchor navigation only; never autocomplete identifiers.
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
-import {SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION} from './keyword-anchor-index.mjs';
-import {galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
+import {SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION} from './anchor-index.mjs';
+import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','item','pattern'];

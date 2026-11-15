@@ -1,6 +1,6 @@
 'use client';
 
-import {keywordService} from './keyword-service-client.mjs';
+import {keywordService} from './service-client.mjs';
 
 const DEFAULT_KEYWORD_MIN_CHARS=32;
 const DEFAULT_KEYWORD_MIN_DOCUMENTS=100;
