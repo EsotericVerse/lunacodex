@@ -2,7 +2,8 @@
 import {upstreamProvider,trustedProviderUrl,providerToolName,providerArguments}
   from './upstream-providers.mjs';
 import {upstreamConnection} from './upstream-oauth.mjs';
-import {readBoundedJson,readBoundedText} from './stream-json.mjs';
+import {readBoundedJson} from './stream-json.mjs';
+import {readUpstreamSseReply} from './upstream-sse.mjs';
 import {z} from 'zod';
 const VERSION='2025-11-25';
 const UpstreamReplySchema=z.looseObject({
@@ -19,20 +20,7 @@ function matchedReply(value,id){
 export async function parseUpstreamReply(response,id){
   const type=response.headers.get('content-type')||'application/json';
   if(type.includes('text/event-stream')){
-    const content=await readBoundedText(response.body,300000);
-    for(const event of content.split(/\r?\n\r?\n/)){
-      const data=event.split(/\r?\n/).filter(line=>line.startsWith('data:'))
-        .map(line=>line.slice(5).trim()).join('\n');
-      if(!data)continue;
-      let value;
-      try{value=JSON.parse(data)}catch{continue}
-      if(value?.jsonrpc==='2.0'&&value.id===id){
-        const checked=matchedReply(value,id);
-        if(!checked)throw new Error('Invalid upstream MCP response');
-        return checked;
-      }
-    }
-    throw new Error('Upstream MCP response is missing its request ID');
+    return readUpstreamSseReply(response.body,id,matchedReply);
   }
   const value=await readBoundedJson(response.body,300000);
   const checked=matchedReply(value,id);
