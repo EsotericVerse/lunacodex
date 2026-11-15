@@ -52,6 +52,7 @@ export default function GlobalSettings({initialSection='features'}={}){
 
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
+  const [rainbowPreview,setRainbowPreview]=useState(false);
   // LOC Auth owns identity and Scope grants; the trusted application backend checks every signed delegation.
   const verifiedLocAccount=useAccount({enabled:section==='features'||section==='mcp',sessionOnly:true});
   const account=(section==='features'||section==='mcp')?verifiedLocAccount:prefs.account;
@@ -98,6 +99,27 @@ export default function GlobalSettings({initialSection='features'}={}){
   const waiting=Boolean(busy)||prefs.loading||account.loading||account.permissionLoading;
   // Account identity is independent of personal settings and management permission reads.
   const accountWaiting=account.loading;
+  // A verified Better Auth session and the canonical website owner identity
+  // are required. This is UI-only: the preview has no privileged operations.
+  const canPreviewRainbow=activeSection==='features'&&!accountWaiting&&!account.error&&
+    Boolean(account.user?.id)&&account.user?.emailVerified===true&&
+    String(account.email||'').trim().toLowerCase()==='sopa2306@gmail.com';
+  useEffect(()=>{
+    if(canPreviewRainbow)return;
+    setRainbowPreview(false);
+    window.dispatchEvent(new CustomEvent('loc-owner-rainbow-preview',{detail:{active:false}}));
+  },[canPreviewRainbow]);
+  useEffect(()=>()=>{
+    window.dispatchEvent(new CustomEvent('loc-owner-rainbow-preview',{detail:{active:false}}));
+  },[]);
+  function toggleRainbowPreview(){
+    if(!canPreviewRainbow)return;
+    setRainbowPreview(current=>{
+      const next=!current;
+      window.dispatchEvent(new CustomEvent('loc-owner-rainbow-preview',{detail:{active:next}}));
+      return next;
+    });
+  }
 
   async function saveHome(event){
     event.preventDefault();
@@ -141,8 +163,21 @@ export default function GlobalSettings({initialSection='features'}={}){
       :account.user?<p>LOC Auth（已驗證）：{account.email}</p>:null}
     {!accountWaiting&&!account.user?<button type="button" className="loc-button primary"
       disabled={busy} onClick={login}>使用 LOC Auth 登入</button>:null}
-    {account.user?<button type="button" className="loc-button"
-      disabled={busy} onClick={logout}><UiText id="uiExtra.globalSettings.logout"/></button>:null}
+    <div className="scope-settings-dashboard__account-actions">
+      {account.user?<button type="button" className="loc-button"
+        disabled={busy} onClick={logout}><UiText id="uiExtra.globalSettings.logout"/></button>:null}
+      {canPreviewRainbow?<button type="button" className="loc-button scope-rainbow-preview-button"
+        aria-pressed={rainbowPreview} onClick={toggleRainbowPreview}>
+        {rainbowPreview?'關閉彩虹預覽':'預覽彩虹變身'}
+      </button>:null}
+    </div>
+    {canPreviewRainbow&&rainbowPreview?<div className="scope-rainbow-transform-preview" role="img" aria-label="彩虹變身：三層輕量圓環與彩虹流光預覽">
+      <span className="scope-rainbow-transform-preview__ring scope-rainbow-transform-preview__ring--outer" aria-hidden="true"/>
+      <span className="scope-rainbow-transform-preview__ring scope-rainbow-transform-preview__ring--middle" aria-hidden="true"/>
+      <span className="scope-rainbow-transform-preview__ring scope-rainbow-transform-preview__ring--inner" aria-hidden="true"/>
+      <span className="scope-rainbow-transform-preview__center" aria-hidden="true">虹</span>
+      <span className="scope-rainbow-transform-preview__caption">彩虹變身 · 視覺預覽</span>
+    </div>:null}
     {account.error?<div className="scope-status scope-error" role="alert">
       <p>{account.error}</p>
       <button type="button" className="loc-button" disabled={busy||account.loading}
