@@ -11,6 +11,11 @@ permissions:
   pages: write
   id-token: write
 
+# Keep an active Pages deployment running while coalescing pending main builds.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   build:
     if: github.ref == 'refs/heads/main'
