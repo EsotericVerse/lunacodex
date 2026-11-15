@@ -5,11 +5,9 @@ import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
 // Only transport and OAuth login/consent UI remain here. No custom auth protocol.
-// Build Better Auth fresh per request. Cloudflare Workers forbid reusing a
-// socket opened in one request from another, so a memoized pool would make the
-// Neon serverless WebSocket throw "Cannot perform I/O on behalf of a different
-// request" (surfacing as an uncaught 1101) once an isolate reuses a pooled
-// connection. Each request gets its own pool, closed after the response.
+// Build Better Auth fresh per request. Its native pg.Client connections are
+// acquired and released inside the same request; never reuse sockets opened
+// for an earlier request in a Cloudflare Worker isolate.
 const EXTENSION='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const allowed=new Set([LOC_ISSUER,LOC_WEB,EXTENSION]);
 let lastSsoHealthProbeAt=0; // Temporary debug cooldown; remove after diagnosis.
