@@ -19,6 +19,7 @@ import {selectScopeConfig} from './scope-data';
 import {scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';
 const loading=()=> <div className="loc-loading"><UiText id="uiExtra.feature.moduleLoading"/></div>;
+// Scope feature switches gate public access even for an admin; identity never overrides publication.
 // Heavy visualizations and editors should load only when their own page opens.
 // Each home and group capability is independently loaded for its actual route.
 const AboutView=dynamic(()=>import('./views/AboutView'),{loading});
