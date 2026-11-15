@@ -1,5 +1,5 @@
-import {detectCountChangepoints} from './karaul-count-changepoints.mjs';
-import {createNewKeywordDiscovery} from './keyword-discovery.mjs';
+import {detectCountChangepoints} from '../karaul-count-changepoints.mjs';
+import {createNewKeywordDiscovery} from './discovery.mjs';
 
 let discovery=null;
 function changePoints(values){

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {content_filter,keywordScanText} from '../app/loc/content-filter.mjs';
 import {classSkipArticleWords} from '../app/loc/keyword-class-exceptions.mjs';
 import {createKeywordDocumentClassifier} from '../app/loc/model/keyword-engine.mjs';
-import {createNewKeywordDiscovery} from '../app/loc/keyword-discovery.mjs';
+import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
 
 test('Legacy opening date metadata and separators are not searchable',()=>{
   const original='日期：2017-10-31\n標題：彩虹橋\n========\n月光與河流。\n';

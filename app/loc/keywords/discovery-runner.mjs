@@ -1,9 +1,9 @@
 'use client';
 
-import {dbAuthRelation} from './db-client.mjs';
-import {galaxyReadColumns} from '../../packages/zenstack/galaxy-read-models.mjs';
-import {KeywordDiscoveryQueue} from './keyword-discovery-queue.mjs';
-import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
+import {dbAuthRelation} from '../db-client.mjs';
+import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {KeywordDiscoveryQueue} from './discovery-queue.mjs';
+import {classSkipArticleWords} from '../keyword-class-exceptions.mjs';
 import * as z from 'zod';
 
 // The owner's explicit action starts the only scan. Never run during render,
@@ -23,7 +23,7 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
   if(!/^silver\.[a-z][a-z0-9_]*_galaxy$/.test(String(galaxy||'')))
     throw new Error('Galaxy Scope 資料表無效');
   if(signal?.aborted)throw aborted();
-  const worker=new Worker(new URL('./keyword-discovery-worker.mjs',import.meta.url),{type:'module'});
+  const worker=new Worker(new URL('./discovery-worker.mjs',import.meta.url),{type:'module'});
   const readController=new AbortController();
   const readSignal=signal?AbortSignal.any([signal,readController.signal]):readController.signal;
   const send=data=>new Promise((resolve,reject)=>{

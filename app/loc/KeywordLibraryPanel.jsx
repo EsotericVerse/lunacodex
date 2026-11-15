@@ -430,7 +430,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setWorkspace('analysis');setDiscovery(null);setDiscoveryPage(1);setDiscoveryProgress(null);
     setDiscoveryBusy(true);setError('');setNotice('');
     try{
-      const {suggestNewKeywords}=await import('./keyword-discovery-runner.mjs');
+      const {suggestNewKeywords}=await import('./keywords/discovery-runner.mjs');
       const result=await suggestNewKeywords({
         galaxy:scope.galaxy,existingRows:rows,classUid:activeClass?.uid||'',
         onProgress:setDiscoveryProgress,signal:controller.signal
