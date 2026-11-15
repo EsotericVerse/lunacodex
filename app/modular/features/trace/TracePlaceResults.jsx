@@ -82,7 +82,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     queryKey:['trace-saved-time-labels',targetScope,timeMode],
     enabled:timeMode!=='none'&&tab==='articles'&&Boolean(targetScope),
     queryFn:async()=>{
-      const {selectScopeCultureData}=await import('../../../loc/culture-query');
+      const {selectScopeCultureData}=await import('../../../loc/culture/query');
       const data=await selectScopeCultureData(targetScope);
       return (data?.timelineItems||[]).filter(row=>row.entry_type===timeMode);
     },

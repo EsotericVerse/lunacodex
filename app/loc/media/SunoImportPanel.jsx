@@ -1,22 +1,22 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {useEditDock} from '../modular/edit-dock';
-import {useUiCopy,useUiSection} from '../i18n/ui-locale';
-import UiText,{useUiText} from '../i18n/UiText';
-import {registerDefaultSection} from '../i18n/ui-copy';
-import managementZh from '../i18n/sections/management.zh_tw.js';
-import importUIZh from '../i18n/sections/uiExtra.importUI.zh_tw.js';
+import {useEditDock} from '../../modular/edit-dock';
+import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
+import UiText,{useUiText} from '../../i18n/UiText';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import managementZh from '../../i18n/sections/management.zh_tw.js';
+import importUIZh from '../../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
-import {insertRows} from './db-client.mjs';
-import {mediaAnchorRecord} from '../../packages/zenstack/anchor-hierarchy.mjs';
-import {useAccount} from './use-account';
-import {createUid8} from './uid';
-import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from './content-policy';
+import {insertRows} from '../db-client.mjs';
+import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {useAccount} from '../use-account';
+import {createUid8} from '../uid';
+import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from '../content-policy';
 import {refreshSunoStyleMetaTags} from './suno-style-meta-tags.mjs';
-import BlockNoteEditor from './BlockNoteEditor';
-import {blocksToPlainText,hasBlockNoteContent,plainTextToBlocks} from './blocknote-content.mjs';
+import BlockNoteEditor from '../BlockNoteEditor';
+import {blocksToPlainText,hasBlockNoteContent,plainTextToBlocks} from '../blocknote-content.mjs';
 
 export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin=false}){
   useUiSection('management');

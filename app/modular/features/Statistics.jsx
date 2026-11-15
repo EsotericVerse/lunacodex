@@ -29,7 +29,7 @@ import {useScopeRuntime} from '../use-scope-runtime';
 import useDefaultTimeUnit from '../../loc/use-default-time-unit';
 import {FeaturePage} from '../ui';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
-import {sourceKeywordOptions} from '../../loc/source-keyword-options.mjs';
+import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
 import {usePassiveSessionAccount} from '../../loc/use-account';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
@@ -222,7 +222,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryFn:async()=>{
       // Period anchors remain on the independently working direct reader.
       // ISR never becomes a required path when an endpoint is not available.
-      const {selectScopeCultureData}=await import('../../loc/culture-query');
+      const {selectScopeCultureData}=await import('../../loc/culture/query');
       return (await selectScopeCultureData(scopeId)).eras?.eras||[];
     },
     revalidateOnFocus:false,
@@ -328,7 +328,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryKey:['loc-zmodel-source-taxonomy'],
     enabled:sourceChart,
     queryFn:async()=>{
-      const {readPublicSourceTaxonomy}=await import('../../loc/source-catalog-public.mjs');
+      const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
       return readPublicSourceTaxonomy();
     },
     revalidateOnFocus:false,revalidateOnReconnect:false

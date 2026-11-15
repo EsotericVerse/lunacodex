@@ -2,7 +2,7 @@
 
 import {useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useEditDock} from '../modular/edit-dock';
+import {useEditDock} from '../../modular/edit-dock';
 
 const ManagementMediaPublisher=dynamic(()=>import('./ManagementMediaPublisher'),{loading:()=>null});
 const SunoImportPanel=dynamic(()=>import('./SunoImportPanel'),{loading:()=> <p role="status" className="scope-status">正在載入 Suno 音樂編輯器…</p>});

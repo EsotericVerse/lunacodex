@@ -1,20 +1,20 @@
 'use client';
-import UiText,{useUiText} from '../i18n/UiText';
-import {UI_COPY,registerDefaultSection} from '../i18n/ui-copy';
-import {useUiCopy,useUiSection} from '../i18n/ui-locale';
-import managementZh from '../i18n/sections/management.zh_tw.js';
-import importUIZh from '../i18n/sections/uiExtra.importUI.zh_tw.js';
+import UiText,{useUiText} from '../../i18n/UiText';
+import {UI_COPY,registerDefaultSection} from '../../i18n/ui-copy';
+import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
+import managementZh from '../../i18n/sections/management.zh_tw.js';
+import importUIZh from '../../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 import {useEffect,useRef,useState} from 'react';
-import {useEditDock} from '../modular/edit-dock';
-import {insertRows,updateRows} from './db-client.mjs';
-import {selectRows} from './db-query.mjs';
-import {createUid8} from './uid';
-import {useAccount} from './use-account';
-import {hasIrrecoverableEncoding,repairMojibakeText} from './content-policy';
-import {galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
-import {mediaAnchorRecord} from '../../packages/zenstack/anchor-hierarchy.mjs';
+import {useEditDock} from '../../modular/edit-dock';
+import {insertRows,updateRows} from '../db-client.mjs';
+import {selectRows} from '../db-query.mjs';
+import {createUid8} from '../uid';
+import {useAccount} from '../use-account';
+import {hasIrrecoverableEncoding,repairMojibakeText} from '../content-policy';
+import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 const blankMedia=()=>({
   galaxy_link:'',type:'image',title:'',

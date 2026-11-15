@@ -26,9 +26,9 @@ import {featureDataErrorMessage} from '../feature-data-state';
 const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
-import {structurePeriodPreference} from '../../loc/culture-period-navigation.mjs';
-import {buildEraRiver} from '../../loc/culture-time-trace-river.mjs';
-import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/time-anchor-ranges.mjs';
+import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
+import {buildEraRiver} from '../../loc/culture/time-trace-river.mjs';
+import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-anchor-ranges.mjs';
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy-query';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
@@ -38,8 +38,8 @@ import {deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db-query.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/default-year-window.mjs';
-import {sourceKeywordOptions} from '../../loc/source-keyword-options.mjs';
-import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture-river-roots.mjs';
+import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
+import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
 import {mediaDay} from '../../loc/statistics/facets';
 import {useAccount} from '../../loc/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
@@ -237,7 +237,7 @@ export default function Culture(){
   const query=useAsyncResource({
     queryKey:['culture-timeline',scopeId],
     queryFn:async()=>{
-      const {selectScopeCultureData}=await import('../../loc/culture-query');
+      const {selectScopeCultureData}=await import('../../loc/culture/query');
       return selectScopeCultureData(scopeId);
     },
     enabled:!isLrunesDaily&&!isLocItemView,
@@ -321,7 +321,7 @@ export default function Culture(){
     enabled:!isTimeEditingView&&isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
       &&Boolean(query.data?.scopes?.length),
     queryFn:async()=>{
-      const {selectLocCultureDensity}=await import('../../loc/culture-query');
+      const {selectLocCultureDensity}=await import('../../loc/culture/query');
       return selectLocCultureDensity({
         scopes:query.data?.scopes||[],startDate:locSourceStart,endDate:locSourceEnd
       });
@@ -432,7 +432,7 @@ export default function Culture(){
     enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&scopeId!=='local'&&Boolean(scopeData),
     queryFn:async()=>{
-      const {readPublicSourceTaxonomy}=await import('../../loc/source-catalog-public.mjs');
+      const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
       return readPublicSourceTaxonomy();
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
@@ -472,7 +472,7 @@ export default function Culture(){
     enabled:!isTimeEditingView&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
       &&Boolean(sourceTaxonomy)&&(!stagedSourceRiver||expandedSourceReady),
     queryFn:async()=>{
-      const {selectScopePeriodSourceSnapshot}=await import('../../loc/culture-query');
+      const {selectScopePeriodSourceSnapshot}=await import('../../loc/culture/query');
       const range={
         startDate:classificationWindowStart,endDate:classificationWindowEnd,
         periodRanges:classificationPeriodRanges
@@ -645,7 +645,7 @@ export default function Culture(){
       &&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedGroup)
       &&classificationWindowValid,
     queryFn:async({pageParam,signal})=>{
-      const {selectCultureArticleListPage}=await import('../../loc/culture-query');
+      const {selectCultureArticleListPage}=await import('../../loc/culture/query');
       return selectCultureArticleListPage(scopeData,{
         startDate:classificationWindowStart,endDate:classificationWindowEnd,
         site:selectedGroup?.site||'',sites:selectedGroup?.sites||[],

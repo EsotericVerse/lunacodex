@@ -14,7 +14,7 @@ import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows
 import {useAccount} from './use-account';
 import FlowProgress from '../modular/FlowProgress';
 import {useAsyncResource,useResourceCache} from '../../packages/zenstack/client-queries';
-import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-name.mjs';
+import {canonicalImportSourceName,inferImportSourceFromFilename} from './source/name.mjs';
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from './scope-data';
 import {createUid8} from './uid';
@@ -32,8 +32,8 @@ import {importTimeRangeWindow,filterImportAnalysisByTime} from './import/time-ra
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import/place-anchors.mjs';
 import {prepareImportTimeAnchors} from './import/time-anchors.mjs';
 import {readImportPointDateAnchors} from './import/anchor-read.mjs';
-import {readPublicSourceTaxonomy} from './source-catalog-public.mjs';
-import {auditImportedSourceSites} from './source-classification.mjs';
+import {readPublicSourceTaxonomy} from './source/catalog-public.mjs';
+import {auditImportedSourceSites} from './source/classification.mjs';
 import {reconcileExistingImportAnchors} from './import/reconcile-anchors.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './import/geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive/import-safety.mjs';

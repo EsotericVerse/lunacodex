@@ -10,7 +10,7 @@ import PanelLoading from './PanelLoading';
 // article destinations are derived from the owner Scope, not user-selectable
 // database identifiers. Other Scope pages continue using their own scopeId.
 const DEFAULT_MANAGED_SCOPE_ID=SCOPE_ROUTE_INDEX.find(row=>row.active&&row.scope_id!=='loc')?.scope_id||'';
-const ManagementMediaWorkspace=dynamic(()=>import('./ManagementMediaWorkspace'),{loading:()=>null});
+const ManagementMediaWorkspace=dynamic(()=>import('./media/ManagementMediaWorkspace'),{loading:()=>null});
 const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublisher'),{loading:PanelLoading});
 const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
 
