@@ -15,7 +15,7 @@ import {selectPointMergeSources} from './trace/point-merge-selection.mjs';
 import {
   filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
 } from './trace/bulk-anchor-filter.mjs';
-import {readPlaceSummary} from './place-summary-client';
+import {readPlaceSummary} from './trace/place-summary-client';
 
 const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
 const TraceRouteManager=dynamic(()=>import('./trace/RouteManager'),{
