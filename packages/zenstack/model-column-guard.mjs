@@ -1,3 +1,6 @@
+// Physical ZModel fields validate SQL columns; composite Models and Tree Model
+// describe reusable semantics/relationships, not new table names or JOINs.
+// Keep those layers separate: Kysely owns actual scoped SQL and dialects.
 // A single model-column contract for LOC's trusted Kysely SQL fallback.
 // ZenStack's existing SchemaDef remains authoritative for modeled fields;
 // unknown external tables keep their existing Kysely/dialect handling.

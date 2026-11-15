@@ -1,9 +1,12 @@
 // Virtual relationships over the FROZEN Anchor model, not SQL foreign keys.
-// The physical table stays (uid,type,title,description,invisible,attr,createtime).
+// The physical table stays (uid,type,title,description,invisible,attr,createtime,num).
 // Only trusted, already-scoped and already-authorized Anchor rows may enter.
 // This module does no I/O, no authorization, no SQL JOIN and no UID ordering.
 // Anchor.invisible: true hides from public reads; false is only public-eligible.
 const UID=/^[A-Za-z0-9]{8}$/;
+// These are typed payload variants carried by the existing physical Anchor row.
+// The model-of-models composition is declared in schema.zmodel; this module
+// alone owns Tree/DAG edge semantics and UID validation (not extra SQL tables).
 // These are the persisted semantic variants carried by the existing
 // eight-column Anchor row.  Keep the vocabulary in one place so the
 // hierarchy projection and the Kysely/Zod boundaries cannot silently drift.
@@ -203,6 +206,11 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
     class_enable:{type:'Boolean',optional:true}}
 });
 
+// TREE MODEL is a separate relationship layer over typed/composite Models.
+// Parents/children are real Anchor UIDs, never matching titles or Galaxy UIDs.
+// Keyword and Site are directed hierarchies; Time/Space allow shared children
+// (DAG), and multiple Items may reference the same Pattern. Do not force a
+// single-parent physical FK or reimplement the tree in each feature module.
 const FAMILY_DEFS=Object.freeze({
   keyword:{
     root:'category',
@@ -224,6 +232,7 @@ const FAMILY_DEFS=Object.freeze({
   }
 });
 export const ANCHOR_HIERARCHY_FAMILIES=Object.freeze(Object.keys(FAMILY_DEFS));
+// Typed payloads say what a node contains; FAMILY_DEFS says how nodes connect.
 // Editor transition checks use the SAME ZModel hierarchy as typed readers.
 export function nextZModelAnchorType(family,type){
   const edges=FAMILY_DEFS[String(family||'')]?.edges?.[String(type||'')];

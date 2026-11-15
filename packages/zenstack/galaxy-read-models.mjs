@@ -1,3 +1,5 @@
+// Model-of-Models: GalaxyAttr/UidRelation/UidAnchor are reusable typed bricks;
+// GalaxyList/UidRead compose them without separate database rows.
 // Composable Galaxy ZModel value types over ONE physical <scope>_galaxy row.
 // The semantic shape is nested; the SQL transport remains a portable, flat,
 // on-demand Kysely projection (no JOIN, table, migration or implicit read).
@@ -63,6 +65,8 @@ export const GALAXY_READ_MODEL_COLUMNS=Object.freeze(Object.fromEntries(
   ])
 ));
 
+// GalaxyList.attr denotes a nested *semantic* GalaxyAttr projection, not a
+// second physical JSON attr field; SQL SELECTs remain flattened on demand.
 // Existing callers keep receiving the same physical column list, including
 // their original ordering, even though semantic fields now compose by type.
 export const galaxyReadColumns=name=>{

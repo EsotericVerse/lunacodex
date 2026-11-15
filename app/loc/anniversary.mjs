@@ -1,3 +1,8 @@
+// PARTIALLY IMPLEMENTED TimeAnchor feature: computes anniversary suggestions
+// from existing date anchors/Scope birthday; Culture can display/apply them.
+// "anniversary"/historical "aniversary" is virtual, not a persisted Anchor.type.
+// Applying a suggestion uses the existing date-anchor editing flow, NOT a new
+// Anniversary SQL table or an instruction to remove the working feature.
 // Annual dates are derived from existing Time anchors and the Scope birthday.
 // A proposal is virtual until the reader explicitly saves it, or an authorized
 // import matches that calendar day. This module never writes to the database.

@@ -1,3 +1,7 @@
+// CURRENT PHYSICAL KEYWORD INDEX (not an additional SQL table or legacy RPC):
+// Keyword Tree uses Anchor UID edges; only Pattern.attr holds Galaxy article
+// postings and Pattern.num stores their count. Older Item.keyword remains a
+// label/compatibility input, never a second posting list.
 // Scope-owned Pattern index. Article UID postings remain inside each Scope.
 // Item.attr.uid contains Pattern ANCHOR UIDs; Pattern.attr[postingsKey] holds GALAXY article UIDs.
 // Only Pattern.num is the article posting count; Class/Group/Item are navigation hierarchy.

@@ -1,3 +1,7 @@
+// CURRENT management pipeline: verified LOC Web grant -> physical Kysely
+// transaction -> ZModel field/policy checks -> typed Tree/Model validation.
+// Historical RPC/legacy payload helpers are not independent authorities;
+// Tree Models do not grant access, run SQL, or create additional relations.
 import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
   modeledBooleanColumns,zmodelRegistryJoin,verifyModeledSqlFields}

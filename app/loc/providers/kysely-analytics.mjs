@@ -178,6 +178,9 @@ async function sharedClasses(trx,scope,anchor,role){
   }
   return result;
 }
+// READ PROJECTION for existing chart/tree consumers: uid_lists:[] is an
+// output compatibility shape, not a stored Item/Group article index. Counts
+// below are computed from Pattern postings. Do not persist the projection.
 export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals=true}={}){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
   if(!info?.allowed)return {};
