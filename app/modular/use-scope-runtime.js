@@ -111,7 +111,7 @@ export function useScopeRuntime(){
 
   return {
     scopeId,scope,
-    host:location.host,pathname,
+    host:location.host,pathname,search:location.search,
     dynamic,registryRow:activeRegistryRow,registryResolved,registryError,
     configRow:activeConfigRow
   };
