@@ -253,8 +253,12 @@ export default {
             redirect_uri:LOC_ISSUER+'/api/auth/sso/callback/cloudflare-access'
           });
           const headers={'content-type':'application/x-www-form-urlencoded','accept':'application/json'};
-          if(mode==='basic'){
-            headers.authorization='Basic '+btoa(provider.clientId+':'+provider.clientSecret);
+          if(mode==='basic'||mode==='invalid-secret'){
+            // Negative control: intentionally wrong credential, invalid code.
+            const secret=mode==='invalid-secret'
+              ?'loc-auth-diagnostic-deliberately-invalid-secret'
+              :provider.clientSecret;
+            headers.authorization='Basic '+btoa(provider.clientId+':'+secret);
           }else{
             data.set('client_id',provider.clientId);
             data.set('client_secret',provider.clientSecret);
@@ -302,9 +306,14 @@ export default {
         };
         const basic=await test('basic');
         const post=basic.oauthError==='invalid_grant'?null:await test('post');
+        // Both responses using the same invalid code are expected to differ
+        // if the provider validates client credentials before code redemption.
+        const invalidSecret=await test('invalid-secret');
         return new Response(JSON.stringify({
-          endpointHost:tokenURL.hostname,checks:[basic,...(post?[post]:[])],
-          note:'A valid client with an intentionally invalid code should receive invalid_grant.'
+          endpointHost:tokenURL.hostname,
+          clientIdMatchesIssuer:issuer.pathname.split('/').filter(Boolean).at(-1)===provider.clientId,
+          checks:[basic,...(post?[post]:[]),invalidSecret],
+          note:'All requests use a deliberately invalid authorization code. The invalid-secret control also uses a deliberately incorrect Client Secret; compare its error with the genuine credential request.'
         }),{headers:{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'}});
       }
       // DORMANT PROBE — kept, not deleted. Uncomment the block below to serve
