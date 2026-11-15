@@ -3,7 +3,7 @@
 // Structural parents represent actual platform media posts but are not user prose.
 import {JSONPath} from 'jsonpath-plus';
 import {archiveGalaxyRow,platformLabel} from './galaxy-row.mjs';
-import {facebookArchiveUid} from '../facebook-backup-place.mjs';
+import {facebookArchiveUid} from './facebook-place.mjs';
 import {repairMojibakeText} from '../content-policy.js';
 import {archiveAttachmentReferences} from './media-evidence.mjs';
 import {parseImportCreatedTime} from '../import/batch.mjs';
