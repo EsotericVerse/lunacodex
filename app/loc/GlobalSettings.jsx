@@ -25,12 +25,12 @@ import FeatureSettingsPage from './FeatureSettingsPage';
 import {selectScopeRegistry} from './scope-data';
 import {putSetting} from './user-storage';
 import {NavigationPreferences} from '../modular/navigation-preferences';
-import {getScope} from '../modular/scope-registry';
+import {getScope,normalizeScopeId} from '../modular/scope-registry';
 const {account:accountNavigation,device:deviceNavigation}=NavigationPreferences;
 
 const option=(value,label,description,shortLabel)=>({value,label,description,shortLabel});
 // Always show LOC's existing full-screen login composition, backed by native LOC Auth.
-const LOC_LOGIN_GATEWAY='/login/index.html?return_to=%2Flocal%2Fsettings%2F';
+const LOC_LOGIN_GATEWAY='/login/index.html?return_to=';
 export default function GlobalSettings({initialSection='features'}={}){
   useUiSection('uiExtra.globalSettings');
   const uiT=useUiText();
@@ -150,8 +150,12 @@ export default function GlobalSettings({initialSection='features'}={}){
     finally{setBusy(false);}
   }
   function login(){
-    if(!native){window.location.assign(LOC_LOGIN_GATEWAY);return;}
-    void account.signIn(new URL('/local/settings/',window.location.href).href)
+    // Retain the existing LOC login gateway / callback while keeping only a
+    // normalized Scope palette hint through the authentication round-trip.
+    const sourceScope=normalizeScopeId(new URLSearchParams(window.location.search).get('scopeid'));
+    const returnTo='/local/settings/'+(sourceScope?'?scopeid='+encodeURIComponent(sourceScope):'');
+    if(!native){window.location.assign(LOC_LOGIN_GATEWAY+encodeURIComponent(returnTo));return;}
+    void account.signIn(new URL(returnTo,window.location.href).href)
       .catch(error=>setStatus(String(error?.message||error)));
   }
 
