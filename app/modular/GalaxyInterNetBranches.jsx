@@ -1,6 +1,11 @@
 'use client';
 
+import {useState} from 'react';
+import dynamic from 'next/dynamic';
 import {galaxyInterNetEdges} from '../../zenstack/galaxy-inter-net.mjs';
+
+// Second-level Anchor resolver is loaded only when a user opens its branch.
+const GalaxyAnchorInterNet=dynamic(()=>import('./GalaxyAnchorInterNet'),{loading:()=>null});
 import {featureNavigationHref,galaxyIdentityHref} from './feature-navigation';
 import {scopeHref} from './scope-registry';
 
@@ -36,6 +41,7 @@ function destination(scope,edge,{federated=false,managementMode=false}={}){
   return '';
 }
 export default function GalaxyInterNetBranches({scopeId,row,managementMode=false}){
+  const [expanded,setExpanded]=useState([]);
   if(!row?.uid)return null;
   const graph=galaxyInterNetEdges(row,{
     media:row.related_media,
@@ -54,7 +60,13 @@ export default function GalaxyInterNetBranches({scopeId,row,managementMode=false
         關聯網絡 <small>{groups.length} 個分支</small>
       </summary>
       <div className="loc-inter-net__branches">
-        {groups.map(group=><details key={group.id} className="loc-inter-net__branch">
+        {groups.map(group=><details key={group.id} className="loc-inter-net__branch"
+          onToggle={event=>{
+            const open=event.currentTarget.open;
+            setExpanded(previous=>open
+              ?previous.includes(group.id)?previous:[...previous,group.id]
+              :previous.filter(id=>id!==group.id));
+          }}>
           <summary>{group.label} <small>{group.edges.length}</small></summary>
           <ul>
             {group.edges.map((edge,index)=>{
@@ -71,6 +83,9 @@ export default function GalaxyInterNetBranches({scopeId,row,managementMode=false
               </li>;
             })}
           </ul>
+          {expanded.includes(group.id)&&['source','time','space'].includes(group.id)?
+            <GalaxyAnchorInterNet key={group.id+':'+row.uid}
+              family={group.id} scopeId={scopeId} row={row}/>:null}
         </details>)}
       </div>
     </details>
