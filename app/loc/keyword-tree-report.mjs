@@ -1,7 +1,11 @@
 import {indexKeywordTree} from './keyword-tree.mjs';
 
-// One parser for Culture, Statistics and Trace. Category/Class reference child
-// UIDs; Group stores its final article UID set; Item stores {uid,times} hits.
+// LEGACY REPORT ADAPTER, not the current Keyword Tree Model or write contract.
+// Its Group.uid_lists and Item.{uid,times} shapes are compatibility input to
+// older report consumers, NOT persisted Anchor posting lists. Current source
+// of truth: Pattern.attr (Galaxy article UIDs) + Pattern.num, connected through
+// Item/Group/Class/Category Anchor UIDs by anchor-hierarchy.mjs.
+// Do not create/update Group or Item hit lists for new Statistics/Culture work.
 export function keywordTreeCatalog(rows,classUid){
   const tree=indexKeywordTree(rows),root=tree.index.get(classUid);
   if(!root||root.type!=='class')throw new Error('Unknown Class UID');
@@ -17,6 +21,9 @@ export function keywordTreeCatalog(rows,classUid){
   });
   return {uid:root.uid,name:root.name,groups};
 }
+// Legacy metrics require old caller-supplied hit projections; this helper
+// does not fetch the authoritative Pattern index. Do not treat its output as
+// proof that old Group/Item physical hit lists are current storage.
 export function keywordTreeMetrics(rows,classUid,{articleUids=null}={}){
   const catalog=keywordTreeCatalog(rows,classUid);
   const selected=articleUids==null?null:new Set(articleUids);
