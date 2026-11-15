@@ -231,8 +231,9 @@ type LRunes66 {
     class_enable Boolean?
 }
 
-// Galaxy read projections. These are semantic result types over one physical
-// <scope>_galaxy table; they do not create duplicate tables or JOINs.
+// Small composable Galaxy value types over one physical <scope>_galaxy row.
+// This is a semantic projection, NOT SQL JOINs or separate tables.
+// SQL-nullable array columns stay on the portable Kysely transport.
 type GalaxyAttr {
     statics Boolean?
     culture Boolean?
@@ -243,49 +244,36 @@ type GalaxyAttr {
     extract Boolean?
     others Boolean?
 }
+type GalaxyUidRelation {
+    source_id String?
+    target_id String[]?
+    ref_id String?
+}
+type GalaxyUidAnchor {
+    media_link String[]?
+    place_id String?
+    location String?
+    date DateTime?
+    site String?
+}
+// Level 2: the light article list reuses the small feature-flags brick.
 type GalaxyList {
     uid String
     title String?
     createtime DateTime?
     date DateTime?
     site String?
-    statics Boolean?
-    culture Boolean?
-    search Boolean?
-    trace Boolean?
-    list Boolean?
-    keyword Boolean?
-    extract Boolean?
-    others Boolean?
+    attr GalaxyAttr?
 }
-type GalaxyUidRelation {
-    uid String
-    source_id String?
-    target_id String[]?
-    ref_id String?
-}
-type GalaxyUidAnchor {
-    uid String
-    media_link String[]?
-    place_id String?
-    location String?
-    date DateTime?
-    site String?
-}
+// Level 3: article details compose relationship + anchor context on demand.
 type GalaxyUidRead {
     uid String
     title String?
     content String?
     createtime DateTime?
     url String?
-    source_id String?
-    target_id String[]?
-    ref_id String?
-    media_link String[]?
-    place_id String?
-    location String?
-    date DateTime?
-    site String?
+    relation GalaxyUidRelation?
+    anchor GalaxyUidAnchor?
 }
 
 model Game {

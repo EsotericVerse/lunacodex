@@ -261,7 +261,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         signal?.throwIfAborted?.();
         const batch=mediaRows.slice(offset,offset+80).map(row=>String(row.uid));
         const {rows}=await selectRows(scope.galaxy,{
-          columns:galaxyReadColumnsFor('GalaxyUidAnchor','GalaxyAttr').join(','),
+          columns:['uid',...galaxyReadColumnsFor('GalaxyUidAnchor','GalaxyAttr')].join(','),
           filters:[{column:'uid',operator:'in',value:batch}],
           limit:batch.length,maxLimit:batch.length,signal
         });

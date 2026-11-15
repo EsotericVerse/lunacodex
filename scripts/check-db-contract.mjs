@@ -5,7 +5,7 @@ import {scopeConfigColumns,scopeFeatureColumns,scopeFeaturePatch} from '../app/l
 import {schema as zmodel} from '../zenstack/schema.mjs';
 import {ANCHOR_TYPE_GROUPS,ANCHOR_TYPE_PROJECTIONS,ANCHOR_GROUP_GALAXY_FIELDS,
   PERSISTED_ANCHOR_TYPES} from '../zenstack/anchor-hierarchy.mjs';
-import {GALAXY_READ_MODEL_FIELDS} from '../zenstack/galaxy-read-models.mjs';
+import {GALAXY_READ_MODEL_FIELDS,galaxyReadColumns,composeGalaxyRead} from '../zenstack/galaxy-read-models.mjs';
 import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/loc-block-anchor.mjs';
 
 const read=relative=>readFileSync(new URL('../'+relative,import.meta.url),'utf8');
@@ -126,14 +126,49 @@ export function checkZModelSemanticContract(){
     throw Error('Missing physical Galaxy ZModels');
   for(const [name,fields] of Object.entries(GALAXY_READ_MODEL_FIELDS)){
     const declared=typeDefs[name]?.fields;
-    if(!declared)throw Error('Missing Galaxy projection '+name);
-    for(const [column,spec] of Object.entries(fields)){
-      if(declared[column]?.type!==spec.type||
-         galaxies.some(model=>model.fields[column]?.type!==spec.type||
-           Boolean(model.fields[column]?.array)!==Boolean(spec.array)))
-        throw Error('Galaxy ZModel projection drift: '+name+'.'+column);
+    if(!declared||Object.keys(declared).length!==Object.keys(fields).length)
+      throw Error('Missing Galaxy projection '+name);
+    for(const [field,spec] of Object.entries(fields)){
+      if(declared[field]?.type!==spec.type||
+          Boolean(declared[field]?.array)!==Boolean(spec.array)||
+          Boolean(declared[field]?.optional)!==Boolean(spec.optional))
+        throw Error('Galaxy ZModel projection drift: '+name+'.'+field);
+      // A nested brick is a value type, not an actual SQL column.
+      if(Object.hasOwn(GALAXY_READ_MODEL_FIELDS,spec.type))continue;
+      if(galaxies.some(model=>model.fields[field]?.type!==spec.type||
+          Boolean(model.fields[field]?.array)!==Boolean(spec.array)))
+        throw Error('Missing physical Galaxy carrier: '+name+'.'+field);
     }
+    const columns=galaxyReadColumns(name);
+    if(new Set(columns).size!==columns.length||
+       columns.some(column=>galaxies.some(model=>!model.fields[column])))
+      throw Error('Invalid composed Galaxy SQL projection: '+name);
   }
+  if(typeDefs.GalaxyList.fields.attr?.type!=='GalaxyAttr'||
+     typeDefs.GalaxyUidRead.fields.relation?.type!=='GalaxyUidRelation'||
+     typeDefs.GalaxyUidRead.fields.anchor?.type!=='GalaxyUidAnchor')
+    throw Error('Galaxy ZModel composition must remain nested');
+  // End-to-end semantics of flat SQL transport -> nested Galaxy bricks:
+  // importing a richer view must never duplicate its scalar SQL fields.
+  const sample={
+    uid:'ABCd1234',title:'sample',content:'article',site:'Suno',
+    statics:true,search:false,source_id:'LINK1234',
+    target_id:['NEXT1234'],ref_id:null,media_link:['MEDIA123'],
+    place_id:'PLACE123',location:'Taipei',date:'2026-11-15'
+  };
+  const list=composeGalaxyRead('GalaxyList',sample);
+  const read=composeGalaxyRead('GalaxyUidRead',sample);
+  if(list.attr?.statics!==true||list.attr?.search!==false||
+     Object.hasOwn(list,'statics')||Object.hasOwn(read,'media_link')||
+     read.relation?.source_id!=='LINK1234'||
+     read.relation?.target_id?.[0]!=='NEXT1234'||
+     read.anchor?.media_link?.[0]!=='MEDIA123'||
+     read.anchor?.site!=='Suno'||read.anchor?.date!=='2026-11-15'||
+     Object.hasOwn(read.relation,'uid')||
+     galaxyReadColumns('GalaxyList').includes('attr')||
+     galaxyReadColumns('GalaxyUidRead').includes('relation')||
+     galaxyReadColumns('GalaxyUidRead').includes('anchor'))
+    throw Error('Galaxy ZModel nested composition regression');
   const enumTypes=new Set(Object.keys(enums.LocAnchorType?.values||{}));
   const types=Object.keys(ANCHOR_TYPE_PROJECTIONS);
   if(types.length!==PERSISTED_ANCHOR_TYPES.length||

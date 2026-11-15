@@ -1,6 +1,6 @@
 import {produce} from 'immer';
 import * as z from 'zod';
-import {GALAXY_READ_MODEL_FIELDS} from '../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
 
 // Single bounded FIFO between Galaxy's ZModel read projection and the Worker.
 // Only page metadata goes through Immer: NEVER put article bodies in a draft.
@@ -16,9 +16,11 @@ const batchEnvelope=z.strictObject({
   received:z.number().int().min(0).max(MAX_PAGE_ROWS),
   estimatedBytes:z.number().int().nonnegative()
 });
-// Keep the transport field contract owned by GalaxyUidRead, not this queue.
+// Keep transport validation on the composed *physical* Galaxy projection.
+// Date now lives in the nested GalaxyUidAnchor brick.
+const GALAXY_READ_COLUMNS=new Set(galaxyReadColumns('GalaxyUidRead'));
 for(const field of ['uid','content','createtime','date']){
-  if(!GALAXY_READ_MODEL_FIELDS.GalaxyUidRead[field])
+  if(!GALAXY_READ_COLUMNS.has(field))
     throw new Error('Galaxy ZModel discovery projection missing '+field);
 }
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
