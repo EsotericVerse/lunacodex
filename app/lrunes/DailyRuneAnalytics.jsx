@@ -17,7 +17,7 @@ const StatisticsMultiChart=dynamic(()=>import('../modular/modules/statistics/Sta
 import StatisticsChartFrame from '../modular/modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modular/modules/statistics/StatisticsDetails';
 import {statisticsZoomWindow} from '../modular/modules/statistics/statistics-time-zoom.mjs';
-import {DEFAULT_YEAR_WINDOW} from '../loc/default-year-window.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../loc/preferences/default-year-window.mjs';
 import {
   DAILY_RUNE_MODES,normalizeDailyDraws,rankDailyDraws,pageDailyRanking,
   summarizeDailyDraws,dailyCategoryTrend,dailyDirectionTrend

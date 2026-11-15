@@ -1,5 +1,5 @@
 import {Suspense} from 'react';
-import FeatureSettingsPage from '../../loc/FeatureSettingsPage';
+import FeatureSettingsPage from '../../loc/preferences/FeatureSettingsPage';
 import {locMetadata} from '../../seo/metadata';
 
 export const metadata=locMetadata({

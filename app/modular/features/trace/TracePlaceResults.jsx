@@ -1,13 +1,13 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import useDefaultTimeUnit from '../../../loc/use-default-time-unit';
-import {timeUnitBucket} from '../../../loc/default-time-unit.mjs';
+import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
+import {timeUnitBucket} from '../../../loc/preferences/default-time-unit.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncInfiniteResource,useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {selectRows} from '../../../loc/db-query.mjs';
 import {traceArticleIdFilters,groupedTraceDays} from './trace-panel-filters.mjs';
-import {nearestTracePlaceIds} from '../../../loc/loc-feature-preferences.mjs';
+import {nearestTracePlaceIds} from '../../../loc/preferences/loc-feature-preferences.mjs';
 import {defaultScopeData} from '../../../loc/scope-data';
 import {dbPublicClient} from '../../../loc/db-client.mjs';
 import {traceArticleIds,traceArticleLabels} from './trace-article-ids.mjs';

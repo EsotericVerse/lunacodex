@@ -2,18 +2,18 @@
 import {useMemo,useState} from 'react';
 import {usePathname} from 'next/navigation';
 import Link from 'next/link';
-import {FeaturePage} from '../modular/ui';
-import ManagementSectionNav from '../modular/ManagementSectionNav';
-import {useUiSection} from '../i18n/ui-locale';
-import {useUiText} from '../i18n/UiText';
-import {registerDefaultSection} from '../i18n/ui-copy';
-import globalSettingsZh from '../i18n/sections/uiExtra.globalSettings.zh_tw.js';
-import {useAccount} from './use-account';
+import {FeaturePage} from '../../modular/ui';
+import ManagementSectionNav from '../../modular/ManagementSectionNav';
+import {useUiSection} from '../../i18n/ui-locale';
+import {useUiText} from '../../i18n/UiText';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import globalSettingsZh from '../../i18n/sections/uiExtra.globalSettings.zh_tw.js';
+import {useAccount} from '../use-account';
 import useDefaultTimeUnit from './use-default-time-unit';
 import {saveDefaultTimeUnit,DEFAULT_TIME_UNITS} from './default-time-unit.mjs';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
-import LocUserSettingsPanel from './LocUserSettingsPanel';
+import LocUserSettingsPanel from '../LocUserSettingsPanel';
 const KEY='uiExtra.globalSettings.';
 
 export default function FeatureSettingsPage({embedded=false,dashboard=false,accountCard=null}){

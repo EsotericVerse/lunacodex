@@ -10,7 +10,7 @@ import {DataSet} from 'vis-data/esnext';
 import {Timeline} from 'vis-timeline/esnext';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import {CultureTimelineModel} from './culture-timeline-model';
-import useDefaultTimeUnit from '../../../loc/use-default-time-unit';
+import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
 
 // Stable defaults matter: an inline [] or {} used as a hook dependency
 // would destroy and recreate vis-timeline after setReady() on each render.
