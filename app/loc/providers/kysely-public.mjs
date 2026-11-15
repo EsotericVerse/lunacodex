@@ -15,6 +15,9 @@ const ACTION_ARGS={
   hero_block:['p_type'],
   search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
 };
+// CURRENT public Blocks access: LOC Block Model maps onto loc_anchor; ordinary
+// Scope Blocks retain their own _blocks. RPC-shaped action names describe the
+// existing Kysely contract, not a requirement to restore old SQL functions.
 // block_list reads the scoped public index in one batch; hero_block reads only its requested type.
 // LOC Blocks use loc_anchor; other Scope home Blocks use their existing _blocks table.
 // Two LOC presentation read contracts. Public endpoints never accept relation
