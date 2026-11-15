@@ -13,7 +13,7 @@ import {randomIndex,loadDrawCards,buildFixedReading} from './rune-draw-core.mjs'
 import {runeImage,runeName,RUNE_CARD_BACK_IMAGE} from './rune-directory.mjs';
 import {runeDrawGroup,runeDrawMotion,runeDrawOrbitGlyphs} from './rune-draw-motion.mjs';
 import RuneCardInfo from './RuneCardInfo';
-import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
+import {lRunes66ColumnString} from '../../packages/zenstack/lrunes-read-model.mjs';
 import './skin-lab.css';
 import './effekseer/effekseer-stage.css';
 

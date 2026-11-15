@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 import {processShortImport,portableShortImportStore,
   shortImportAppendExpression} from '../app/loc/import/short-append-service.mjs';
-import {shortImportLookupPlan,shortImportInsertRows} from '../zenstack/short-import-zk.mjs';
+import {shortImportLookupPlan,shortImportInsertRows} from '../packages/zenstack/short-import-zk.mjs';
 
 const A='123e4567-e89b-42d3-a456-426614174000';
 const B='123e4567-e89b-42d3-a456-426614174001';

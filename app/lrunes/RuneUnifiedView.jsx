@@ -2,7 +2,7 @@
 
 import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {prepareTransientResourceAction} from '../../zenstack/client-queries';
+import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
 import './rune-presentation-switch.css';
 
 // Keep the canonical 2D original-art module entirely independent of the

@@ -1,8 +1,8 @@
 // LOC 彩虹橋 short-import service. Trusted LOC Auth supplies actor and Scope.
 // One HTTP batch can append into several independent source articles; no UPDATE
 // of existing content, extra tables, RLS changes, or PR-specific Galaxy writes.
-import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
-import {portableGalaxyImportMapping} from '../../../zenstack/portable-import-mapping.mjs';
+import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {portableGalaxyImportMapping} from '../../../packages/zenstack/portable-import-mapping.mjs';
 const UID=/^[0-9A-Za-z]{8}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCOPE=/^[a-z][a-z0-9_]{0,63}$/;

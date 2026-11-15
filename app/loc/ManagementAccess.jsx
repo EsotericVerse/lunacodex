@@ -6,7 +6,7 @@ import {FeaturePage} from '../modular/ui';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from './edit-session-ttl.mjs';
 import {dbAuthEvents} from './db-client.mjs';
 import {verifyManagementEntry} from './auth/management-entry-verification.mjs';
-import {releaseTransientPageResources} from '../../zenstack/client-queries';
+import {releaseTransientPageResources} from '../../packages/zenstack/client-queries';
 
 const granted=(grants,id,level)=>level==='global'
   ?Boolean(grants?.canLocAccessSync('global'))

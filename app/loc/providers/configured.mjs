@@ -3,7 +3,7 @@
 // business API; that API validates identity, then queries api.manage for roles.
 import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
-import {transientReadSignal} from '../../../zenstack/transient-read-epoch.mjs';
+import {transientReadSignal} from '../../../packages/zenstack/transient-read-epoch.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const PERSONAL=new Set(['silver.loc_user']);

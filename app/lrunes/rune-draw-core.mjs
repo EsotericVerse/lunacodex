@@ -2,7 +2,7 @@
 import {selectRows} from '../loc/db-query.mjs';
 import {RUNE_ALL_DRAW_MODES} from './rune-draw-modes.mjs';
 import {buildSpreadAdvice} from './rune-guidance-engine.mjs';
-import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
+import {lRunes66ColumnString} from '../../packages/zenstack/lrunes-read-model.mjs';
 const RUNE_DIRECTIONS=Object.freeze(['正位','半正位','半逆位','逆位']);
 const RUNE_COLUMNS=lRunes66ColumnString('rune_id','rune_name','english_name','totem','group_name','moon_phase','card_attr','rune_description','archetype','positive_keywords','negative_keywords','extra_rules','extra_notes');
 function randomIndex(max){

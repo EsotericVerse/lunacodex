@@ -7,8 +7,8 @@ import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {join,relative,extname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
-const directories=['app','workers','functions','extensions','services',
-  'zenstack','public'];
+const directories=['app','functions','extensions','services',
+  'packages','public'];
 const rootFiles=['package.json','next.config.mjs','open-next.config.ts',
   'Dockerfile','vercel.json'];
 const extensions=new Set(['.js','.mjs','.cjs','.jsx','.ts','.tsx',
@@ -21,7 +21,7 @@ const skip=/^(?:public\/vendor\/|extensions\/[^/]+\/vendor\/)/;
 // declaration. Any other use of @neondatabase/* remains a failure.
 const coupling=/(@clerk\/|@supabase\/|@neondatabase\/)/ig;
 const allowedPgDriverLines=new Map([
-  ['workers/loc-authority/auth.mjs',
+  ['services/workers/loc-authority/auth.mjs',
     /^import\s+\{\s*Pool\s*,\s*neonConfig\s*\}\s+from\s+['"]@neondatabase\/serverless['"];?\s*$/],
   ['package.json',
     /^\s*"@neondatabase\/serverless"\s*:\s*"[0-9]+\.[0-9]+\.[0-9]+",?\s*$/]

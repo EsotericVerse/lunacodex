@@ -1,6 +1,6 @@
 'use client';
 import {useState} from 'react';
-import {useAsyncResource} from '../../../../zenstack/client-queries';
+import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import StatisticsMultiChart from './StatisticsMultiChart';
 
 // All Item/word ratios are composed from existing loc_search_pattern rows.

@@ -22,7 +22,7 @@ import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from './co
 import {ObjectEditor} from './BlockNoteEditor';
 import {blocksToPlainText,plainTextToBlocks} from './blocknote-content.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from './galaxy-able.mjs';
-import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
 
 const GALAXY_PERMISSION_LABELS=Object.freeze({
   statics:'統計',culture:'文化',search:'搜尋',trace:'痕跡',list:'文章列表',

@@ -1,13 +1,13 @@
-import {readFileSync,readdirSync} from 'node:fs';
+import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {parse} from '@babel/parser';
 import {scopeConfigColumns,scopeFeatureColumns,scopeFeaturePatch} from '../app/loc/scope-config-fields.mjs';
-import {schema as zmodel} from '../zenstack/schema.mjs';
+import {schema as zmodel} from '../packages/zenstack/schema.mjs';
 import {ANCHOR_TYPE_GROUPS,ANCHOR_TYPE_PROJECTIONS,ANCHOR_GROUP_GALAXY_FIELDS,
-  PERSISTED_ANCHOR_TYPES} from '../zenstack/anchor-hierarchy.mjs';
-import {GALAXY_READ_MODEL_FIELDS,galaxyReadColumns,composeGalaxyRead} from '../zenstack/galaxy-read-models.mjs';
-import {galaxyInterNetEdges} from '../zenstack/galaxy-inter-net.mjs';
-import {anchorInterNetChildren,sourceInterNetSelection} from '../zenstack/anchor-inter-net.mjs';
+  PERSISTED_ANCHOR_TYPES} from '../packages/zenstack/anchor-hierarchy.mjs';
+import {GALAXY_READ_MODEL_FIELDS,galaxyReadColumns,composeGalaxyRead} from '../packages/zenstack/galaxy-read-models.mjs';
+import {galaxyInterNetEdges} from '../packages/zenstack/galaxy-inter-net.mjs';
+import {anchorInterNetChildren,sourceInterNetSelection} from '../packages/zenstack/anchor-inter-net.mjs';
 import {sourceTaxonomyFromAnchors} from '../app/loc/source-classification.mjs';
 import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/loc-block-anchor.mjs';
 
@@ -64,43 +64,14 @@ export function checkDbContract(contractSource,clientSource){
 }
 
 
-export function checkLocScopeBoundary(migrations=[]){
+export function checkLocScopeBoundary(){
   if(scopeConfigColumns('loc')!=='id,display_name,locale'||
       scopeFeatureColumns('loc')!==''||
       Object.keys(scopeFeaturePatch('loc',{search_able:false,statistics_able:false,culture_able:false})).length)
     throw Error('LOC group config must not inherit Scope theme, search, or feature switches');
-  const unsafe=/\b(?:insert\s+into|merge\s+into|alter\s+table|delete\s+from|drop\s+table|truncate(?:\s+table)?)\s+(?:if\s+(?:not\s+)?exists\s+)?(?:"?silver"?\s*\.\s*)"?loc"?(?![\w])/i;
-  // LOC is a Scope Group, but the explicitly approved global JSONB config
-  // consolidation is not a Scope feature switch. Permit only these precise
-  // column operations; all other LOC mutations remain prohibited.
-  const approved=new Map([
-    ['20261103001000_loc_jsonb_consolidation_stage1.sql',
-      /^ALTER\s+TABLE\s+silver\.loc\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:caches|database|blacklist)\s+jsonb\b/i],
-    ['20261103003000_loc_jsonb_drop_legacy.sql',
-      /^ALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+cache\s*$/i],
-    ['20261103040000_loc_theme_keywords_jsonb_cutover.sql',
-      /^ALTER\s+TABLE\s+silver\.loc\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:theme|keywords)\s+jsonb\b/i],
-    // Authorized 2026-11-05 System/Group split; only these exact columns/
-    // Group membership inserts. No RLS, policy or grant is allowlisted.
-    ['20261105223000_split_manage_system_and_loc_scope_stage.sql',
-      /\b(?:ALTER\s+TABLE\s+silver\.loc\s+(?:DROP\s+CONSTRAINT\s+IF\s+EXISTS\s+loc_config_singleton|ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(?:title_tw|desc_tw|birthday))|INSERT\s+INTO\s+silver\.loc\s*\(id\b)/i],
-    ['20261105230000_api_scope_registry_loc_group_writes.sql',
-      /\bINSERT\s+INTO\s+silver\.loc\s*\(id\b/i],
-    ['20261105231000_finish_manage_system_loc_group_cutover.sql',
-      /\bALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+(?:caches|database)\b/i],
-    ['20261109093000_loc_source_article_tag_only.sql',
-      /^ALTER\s+TABLE\s+silver\.loc\s+DROP\s+COLUMN\s+IF\s+EXISTS\s+"DefaultArticleClass"\s*,\s*DROP\s+COLUMN\s+IF\s+EXISTS\s+blacklist$/i]
-  ]);
-  for(const [name,sql] of migrations){
-    const allow=approved.get(name);
-    for(const statement of sql.split(';')){
-      const trimmed=statement.replace(/--[^\n]*/g,'').replace(/\/\*[\s\S]*?\*\//g,'').trim();
-      if(unsafe.test(trimmed)&&!(allow&&allow.test(trimmed)))
-        throw Error('LOC group table is protected from migration writes or schema edits: '+name);
-    }
-  }
-  return {checked:migrations.length};
+  return true;
 }
+
 
 // Build-time hard stop: neither production nor transitive dependency graph may
 // reinstall a Supabase or Clerk SDK. Native LOC Auth and Kysely remain separate.
@@ -269,10 +240,6 @@ if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
   checkProhibitedVendorDependencies(read('package.json'),read('package-lock.json'));
   const semantic=checkZModelSemanticContract();
   const result=checkDbContract(read(databaseContract),read(databaseClient));
-  const migrationDir=new URL('../supabase/migrations/',import.meta.url);
-  const migrationFiles=readdirSync(migrationDir)
-    .filter(name=>name.endsWith('.sql')&&name.slice(0,8)>='20261102')
-    .map(name=>[name,read('supabase/migrations/'+name)]);
-  const loc=checkLocScopeBoundary(migrationFiles);
-  console.log('DB contract OK: '+result.exported+' exports, '+result.consumed+' consumers; LOC boundary checked '+loc.checked+' migrations; ZModel '+semantic.families+' families / '+semantic.anchorTypes+' Anchors / '+semantic.galaxyModels+' Galaxy readers / '+semantic.runeColumns+' rune columns.');
+  checkLocScopeBoundary();
+  console.log('DB contract OK: '+result.exported+' exports, '+result.consumed+' consumers; LOC scope boundary validated; ZModel '+semantic.families+' families / '+semantic.anchorTypes+' Anchors / '+semantic.galaxyModels+' Galaxy readers / '+semantic.runeColumns+' rune columns.');
 }

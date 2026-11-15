@@ -1,6 +1,6 @@
 import {createSchemaFactory} from '@zenstackhq/zod';
 import * as z from 'zod';
-import {schema} from '../../../zenstack/schema.mjs';
+import {schema} from '../../../packages/zenstack/schema.mjs';
 
 // loc_access is a business function, not a physical table or second ZModel.
 // Derive the role row directly from the existing api.manage -> Manage mapping.

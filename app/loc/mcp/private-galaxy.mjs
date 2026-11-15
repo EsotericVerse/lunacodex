@@ -2,7 +2,7 @@
 // All access decisions are made from the existing Neon api.manage table.
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
-import {createScopedLocClient} from '../../../zenstack/client.mjs';
+import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
 import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';

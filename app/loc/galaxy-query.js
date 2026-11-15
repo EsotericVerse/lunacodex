@@ -15,8 +15,8 @@ import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOve
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
 import {galaxyAble} from './galaxy-able.mjs';
 import {portableContainsTerm} from './providers/portable-search.mjs';
-import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection,MEDIA_ANCHOR_COLUMNS} from '../../zenstack/anchor-hierarchy.mjs';
+import {galaxyReadColumns} from '../../packages/zenstack/galaxy-read-models.mjs';
+import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection,MEDIA_ANCHOR_COLUMNS} from '../../packages/zenstack/anchor-hierarchy.mjs';
 const galaxyListColumns=()=>galaxyReadColumns('GalaxyList');
 const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
 const galaxyUidReadWithPolicyColumns=()=>unique([

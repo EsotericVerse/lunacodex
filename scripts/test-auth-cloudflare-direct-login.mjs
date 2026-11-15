@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 
-const worker=readFileSync(new URL('../workers/loc-authority/index.mjs',import.meta.url),'utf8');
+const worker=readFileSync(new URL('../services/workers/loc-authority/index.mjs',import.meta.url),'utf8');
 const match=/^const LOGIN_JS=("(?:(?:\\.)|[^"\\])*");$/m.exec(worker);
 assert.ok(match,'LOC Auth login script exists');
 assert.match(worker,/verifyOAuthQueryParams\(signedQuery,context.secret\)/);

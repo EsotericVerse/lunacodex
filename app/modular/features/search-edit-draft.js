@@ -2,7 +2,7 @@
 // an article or media entry for editing (dynamic import in Search.jsx), so the
 // plain search page never ships this code.
 import {plainTextToBlocks} from '../../loc/blocknote-content.mjs';
-import {canonicalMediaAnchorType} from '../../../zenstack/anchor-hierarchy.mjs';
+import {canonicalMediaAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 function nullableText(value){
   const text=String(value??'').trim();

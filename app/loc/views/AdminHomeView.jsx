@@ -14,7 +14,7 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../PanelLoading';
-import {releaseTransientPageResources} from '../../../zenstack/client-queries';
+import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';
 // Group member display-name editing lives in the Group People/Works page.
 // Admin keeps only privileged registry provisioning and system configuration.
 

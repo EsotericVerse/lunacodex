@@ -1,8 +1,8 @@
 // Mirror the fixed JSON physical-schema snapshot into a Pages/Node-safe ESM
 // module. The JSON is the source of truth; no database operation is performed.
 import {readFileSync,writeFileSync,existsSync} from 'node:fs';
-const input=new URL('../zenstack/schema-contract.json',import.meta.url);
-const output=new URL('../zenstack/schema-contract.mjs',import.meta.url);
+const input=new URL('../packages/zenstack/schema-contract.json',import.meta.url);
+const output=new URL('../packages/zenstack/schema-contract.mjs',import.meta.url);
 const metadata=JSON.parse(readFileSync(input,'utf8'));
 const generated="// Generated from schema-contract.json for Cloudflare Pages / Node ESM compatibility.\n"+
  "// Regenerate with: node scripts/sync-zenstack-schema-contract.mjs\n"+

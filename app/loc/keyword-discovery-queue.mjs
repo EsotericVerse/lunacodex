@@ -1,6 +1,6 @@
 import {produce} from 'immer';
 import * as z from 'zod';
-import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns} from '../../packages/zenstack/galaxy-read-models.mjs';
 
 // Single bounded FIFO between Galaxy's ZModel read projection and the Worker.
 // Only page metadata goes through Immer: NEVER put article bodies in a draft.

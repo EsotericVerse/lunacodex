@@ -10,7 +10,7 @@ import importUIZh from '../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 import {insertRows} from './db-client.mjs';
-import {mediaAnchorRecord} from '../../zenstack/anchor-hierarchy.mjs';
+import {mediaAnchorRecord} from '../../packages/zenstack/anchor-hierarchy.mjs';
 import {useAccount} from './use-account';
 import {createUid8} from './uid';
 import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from './content-policy';

@@ -3,7 +3,7 @@
 import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 import {coalescePendingPublicRead} from './inflight-public-read.mjs';
 import {mapBounded} from './bounded-parallel.mjs';
-import {transientReadSignal,transientReadGeneration} from '../../zenstack/transient-read-epoch.mjs';
+import {transientReadSignal,transientReadGeneration} from '../../packages/zenstack/transient-read-epoch.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
 // Native Kysely SELECT has no Supabase Data API Max Rows ceiling.

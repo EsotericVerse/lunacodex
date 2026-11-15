@@ -3,11 +3,11 @@ import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.m
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
 import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
-  normalizeModeledSelectRows} from '../../../zenstack/model-column-guard.mjs';
-import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
+  normalizeModeledSelectRows} from '../../../packages/zenstack/model-column-guard.mjs';
+import {assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
 import {assertKyselyQueryShape,QUERY_FILTER_SQL}
-  from '../../../zenstack/sql-input-shape.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
+  from '../../../packages/zenstack/sql-input-shape.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);

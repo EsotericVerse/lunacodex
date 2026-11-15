@@ -2,7 +2,7 @@ import {dbAuthRelation} from './db-client.mjs';
 import {selectAllRows,selectRows} from './db-query.mjs';
 import {realMoonPhase} from './model/moon-phase';
 import {revalidateServerMetadata} from './scope-data';
-import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
+import {lRunes66ColumnString} from '../../packages/zenstack/lrunes-read-model.mjs';
 
 
 async function attachRuneMeta(rows){

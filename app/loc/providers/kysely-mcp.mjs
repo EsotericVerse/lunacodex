@@ -4,10 +4,10 @@
 // Galaxy/Anchor are the same fixed physical models; the SQL dialect and
 // database credentials belong to Kysely, not a provider's Data API/RPC.
 import {sql} from 'kysely';
-import {schema as zmodel} from '../../../zenstack/schema.mjs';
+import {schema as zmodel} from '../../../packages/zenstack/schema.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {portableContainsSpec} from './portable-search.mjs';
-import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const SCOPE_MODELS=Object.freeze({lo3rwang:'Lo3rwangGalaxy',lrunes:'LrunesGalaxy'});
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;

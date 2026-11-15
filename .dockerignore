@@ -3,7 +3,7 @@
 *
 !app
 !app/**
-!zenstack
-!zenstack/**
+!packages
+!packages/**
 !services
 !services/**

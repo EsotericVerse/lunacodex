@@ -1,5 +1,5 @@
 import {produce} from 'immer';
-import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES} from '../../zenstack/anchor-hierarchy.mjs';
+import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES} from '../../packages/zenstack/anchor-hierarchy.mjs';
 import {SCOPE_PATTERN_POSTING_KEY} from './keyword-anchor-index.mjs';
 
 // An exact UID is an identity; location, date and site are source values,

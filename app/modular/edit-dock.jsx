@@ -6,7 +6,7 @@ import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents} from '../loc/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
-import {releaseTransientPageResources,useQueryClient} from '../../zenstack/client-queries';
+import {releaseTransientPageResources,useQueryClient} from '../../packages/zenstack/client-queries';
 
 // UI only: a Scope's permission is checked before entering edit mode,
 // and every write still passes through its existing database authorization.

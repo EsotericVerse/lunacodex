@@ -1,4 +1,4 @@
-import metadata from '../../public/extension/oauth/client.json' with {type:'json'};
+import metadata from '../../../public/extension/oauth/client.json' with {type:'json'};
 
 const CLIENT_ID=metadata.client_id;
 const scopes=Object.freeze(String(metadata.scope||'').split(/\s+/).filter(Boolean));

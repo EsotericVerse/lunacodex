@@ -4,9 +4,9 @@
 import assert from 'node:assert/strict';
 import {ZodError} from 'zod';
 import {Kysely,MssqlDialect,MysqlDialect,PostgresDialect,sql} from 'kysely';
-import {portableGalaxyImportMapping} from '../zenstack/portable-import-mapping.mjs';
+import {portableGalaxyImportMapping} from '../packages/zenstack/portable-import-mapping.mjs';
 import {shortImportAppendExpression} from '../app/loc/import/short-append-service.mjs';
-import {galaxyReadColumns} from '../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns} from '../packages/zenstack/galaxy-read-models.mjs';
 
 const flags=galaxyReadColumns('GalaxyAttr');
 const row={
