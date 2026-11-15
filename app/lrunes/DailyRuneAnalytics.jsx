@@ -9,7 +9,7 @@ import {
   Bar,BarChart,CartesianGrid,ComposedChart,LabelList,Line,
   Tooltip,XAxis,YAxis
 } from 'recharts';
-import {selectDailyRuneRange,selectFirstDailyRuneDate} from '../loc/daily-runes';
+import {selectDailyRuneRange,selectFirstDailyRuneDate} from '../loc/runes/daily-runes';
 import {realMoonPhase} from '../loc/model/moon-phase';
 import CultureTimeline from '../modular/modules/culture-timeline/CultureTimeline';
 import {availableStatisticChartTypes} from '../modular/modules/statistics/statistics-time-zoom.mjs';

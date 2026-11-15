@@ -2,7 +2,7 @@
 // Archive size limits are configuration, not proof of successful large-file import E2E.
 import {MAX_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
-import {runeDrawText} from '../rune-draw-text.mjs';
+import {runeDrawText} from '../runes/rune-draw-text.mjs';
 // Lightweight file-selection contracts remain separate from parser implementations.
 export const UNIVERSAL_IMPORT_ACCEPT='.zip,.json,.md';
 export {MAX_ARCHIVE_BYTES as ARCHIVE_MAX_BYTES,MAX_JSON_BYTES as ARCHIVE_JSON_MAX_BYTES};

@@ -16,7 +16,7 @@ import {
   selectDailyRuneContext,
   selectDailyRuneSituation,
   updateDailyRuneRecord
-} from '../../loc/daily-runes';
+} from '../../loc/runes/daily-runes';
 import {selectRows} from '../../loc/db-query.mjs';
 import {lRunes66ColumnString} from '../../../packages/zenstack/lrunes-read-model.mjs';
 import {useAccount} from '../../loc/use-account';
