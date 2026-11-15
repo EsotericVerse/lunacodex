@@ -44,7 +44,7 @@ const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
 const RunesHomeView=dynamic(()=>import('../lrunes/RunesClient'),{loading});
 const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading});
 const SourceManagementView=dynamic(()=>import('./source/LocSourceManagement'),{loading});
-const KeywordManagementView=dynamic(()=>import('./LocKeywordManagementPage'),{loading});
+const KeywordManagementView=dynamic(()=>import('./keywords/ui/LocKeywordManagementPage'),{loading});
 const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading});
 const LocalScopeWorkspace=dynamic(()=>import('./local/Workspace'),{loading});
 
@@ -76,7 +76,7 @@ const VIEW_PRELOADERS={
   trace:()=>import('../modular/features/Trace'),
   manage:()=>import('./scope/ScopeManagement'),
   sourceManage:()=>import('./source/LocSourceManagement'),
-  keywordManage:()=>import('./LocKeywordManagementPage'),
+  keywordManage:()=>import('./keywords/ui/LocKeywordManagementPage'),
   setting:()=>import('./views/LocalSettingView')
 };
 const HOME_PRELOADERS={

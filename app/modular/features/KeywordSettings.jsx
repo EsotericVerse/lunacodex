@@ -12,7 +12,7 @@ import {useUiSection} from '../../i18n/ui-locale';
 import keywordsZh from '../../i18n/sections/uiExtra.keywords.zh_tw.js';
 registerDefaultSection('uiExtra.keywords',keywordsZh);
 
-const KeywordLibraryPanel=dynamic(()=>import('../../loc/KeywordLibraryPanel'),{
+const KeywordLibraryPanel=dynamic(()=>import('../../loc/keywords/ui/KeywordLibraryPanel'),{
   loading:()=> <p className="scope-status"><UiText id="uiExtra.keywords.settingsLoading"/></p>
 });
 

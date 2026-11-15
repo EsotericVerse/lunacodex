@@ -1,8 +1,8 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import LocManagementWorkspace from './LocManagementWorkspace';
-import PanelLoading from './PanelLoading';
+import LocManagementWorkspace from '../../LocManagementWorkspace';
+import PanelLoading from '../../PanelLoading';
 
 const LocKeywordManagement=dynamic(()=>import('./LocKeywordManagement'),{loading:PanelLoading});
 const KEYWORD_ITEM=Object.freeze({

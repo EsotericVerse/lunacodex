@@ -2,20 +2,20 @@
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useQueryClient} from '../../packages/zenstack/client-queries';
-import {useEditDock} from '../modular/edit-dock';
-import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from './db-client.mjs';
-import {indexKeywordTree,descendantsOfKeyword} from './keywords/tree.mjs';
-import {allocateAnchorUid} from './uid.js';
-import ManagementSectionNav from '../modular/ManagementSectionNav';
-import ActivityMotion from '../modular/ActivityMotion';
-import FlowProgress from '../modular/FlowProgress';
-import {keywordClassState,invalidateKeywordClass} from './keywords/class-state.mjs';
-import {SCOPE_PATTERN_INDEX_VERSION} from './keywords/anchor-index.mjs';
-import {classSkipArticleWords} from './keywords/class-exceptions.mjs';
+import {useQueryClient} from '../../../../packages/zenstack/client-queries';
+import {useEditDock} from '../../../modular/edit-dock';
+import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db-client.mjs';
+import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
+import {allocateAnchorUid} from '../../uid.js';
+import ManagementSectionNav from '../../../modular/ManagementSectionNav';
+import ActivityMotion from '../../../modular/ActivityMotion';
+import FlowProgress from '../../../modular/FlowProgress';
+import {keywordClassState,invalidateKeywordClass} from '../class-state.mjs';
+import {SCOPE_PATTERN_INDEX_VERSION} from '../anchor-index.mjs';
+import {classSkipArticleWords} from '../class-exceptions.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
-const BlockNoteEditor=dynamic(()=>import('./editor/BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../../editor/BlockNoteEditor'),{loading:()=>null});
 const TYPES=['class','group','item'];
 const LABEL={category:'關鍵字目錄',class:'關鍵字群組科目',group:'關鍵字分類群組',item:'關鍵詞分類'};
 const onlyWords=value=>[...new Set(String(value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];
@@ -121,7 +121,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       classSkipArticleWords(draft.attr||{}).join('\n'));
 
   const invalidate=useCallback(async()=>{
-    const {clearKeywordAnalysisCache}=await import('./keywords/analysis');
+    const {clearKeywordAnalysisCache}=await import('../analysis');
     clearKeywordAnalysisCache();
     await queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&/keyword|culture-style-filter|statistics-style-filter/.test(String(query.queryKey[0]||''))});
   },[queryClient]);
@@ -252,7 +252,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       const isNew=!tree.index.has(node.uid);
       if(node.type==='category')throw new Error('群組關鍵字目錄請到群組管理頁面編輯。');
       if(node.type==='item'){
-         const {keywordService}=await import('./keywords/service-client.mjs');
+         const {keywordService}=await import('../service-client.mjs');
          await keywordService('saveItem',{scopeId,item:{
            uid:node.uid,name:node.name,desc:String(node.desc||''),
            words:node.lists,mode:isNew?'create':'update',
@@ -285,7 +285,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setBusy(true);setError('');
     try{
       if(node.type==='item'){
-         const {keywordService}=await import('./keywords/service-client.mjs');
+         const {keywordService}=await import('../service-client.mjs');
          await keywordService('deleteItem',{scopeId,itemUid:node.uid});
          await load(chosen.group||'');await invalidate();
          setNotice('已移除 Item 和無其他關聯的 Pattern，文章保留。');
@@ -314,7 +314,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           .eq('id',scopeId);
         if(settingsError)throw settingsError;
       }
-      const {keywordService}=await import('./keywords/service-client.mjs');
+      const {keywordService}=await import('../service-client.mjs');
        await keywordService('syncLibrary',{scopeId});
        await load(parent?.uid||'');await invalidate();
       setNotice('已刪除；不會刪除文章。');
@@ -386,7 +386,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     try{
       if(reset)await resetKeywordClassification(scopeId,{classUid:runClassUid,onProgress:setProgress});
       else{
-        const {runKeywordAnalysisBatch}=await import('./keywords/analysis');
+        const {runKeywordAnalysisBatch}=await import('../analysis');
         await runKeywordAnalysisBatch(scopeId,{classUid:runClassUid,onProgress:setProgress});
       }
       await load(runClassUid);await invalidate();
@@ -403,7 +403,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(!attempt||checkingAttempt||busy)return;
     setCheckingAttempt(true);setError('');setNotice('');
     try{
-      const {keywordService}=await import('./keywords/service-client.mjs');
+      const {keywordService}=await import('../service-client.mjs');
       const result=await keywordService('analyzeStatus',{
         scopeId,classUid:attempt.classUid,attemptId:attempt.attemptId
       });
@@ -430,7 +430,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setWorkspace('analysis');setDiscovery(null);setDiscoveryPage(1);setDiscoveryProgress(null);
     setDiscoveryBusy(true);setError('');setNotice('');
     try{
-      const {suggestNewKeywords}=await import('./keywords/discovery-runner.mjs');
+      const {suggestNewKeywords}=await import('../discovery-runner.mjs');
       const result=await suggestNewKeywords({
         galaxy:scope.galaxy,existingRows:rows,classUid:activeClass?.uid||'',
         onProgress:setDiscoveryProgress,signal:controller.signal
