@@ -4,6 +4,20 @@
 // Do not preflight /api/loc-permissions and duplicate both network checks.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
+// A missing terminal frame does not prove either success or failure. Keep the
+// exact operation identity so an operator can read its committed SQL receipt
+// again without replaying the non-idempotent analysis.
+export class KeywordAnalysisUnconfirmedError extends Error {
+  constructor({scopeId,classUid,attemptId}){
+    super('關鍵詞分析連線中斷，本次結果尚未確認。請使用「核對本次分析」查詢原始執行紀錄，勿直接重跑或清空。');
+    this.name='KeywordAnalysisUnconfirmedError';
+    this.scopeId=scopeId;
+    this.classUid=classUid;
+    this.attemptId=attemptId;
+  }
+}
+
+
 export async function keywordService(operation,args={},options={}){
   if(!['analyze','analyzeStatus','reset','classes','catalog','summary','stats','suggest',
       'anchorSearch','saveItem','deleteItem','syncLibrary'].includes(operation))
@@ -49,8 +63,11 @@ export async function keywordService(operation,args={},options={}){
       if(event?.kind==='progress')options.onProgress(event.data);
       else if(event?.kind==='heartbeat')return;
       else if(event?.kind==='result'){complete=true;result=event.data;}
-      else if(event?.kind==='error')
-        throw Error(event.data?.error||'關鍵詞分析失敗（HTTP '+(event.data?.status||503)+'）');
+      else if(event?.kind==='error'){
+        const failure=Error(event.data?.error||'關鍵詞分析失敗（HTTP '+(event.data?.status||503)+'）');
+        failure.keywordServerError=true;
+        throw failure;
+      }
       else throw Error('未知的關鍵詞分析進度事件');
     };
     try{
@@ -77,8 +94,13 @@ export async function keywordService(operation,args={},options={}){
           label:'資料庫已確認分析完成'});
         return receipt.result;
       }
-      if(readFailure)throw readFailure;
-      throw Error('關鍵詞分析連線中斷，資料庫尚未確認本次完成；請先核對完成狀態，不要直接重複執行');
+      // Explicit server failures are real errors. Unexpected EOF/network
+      // errors remain *unconfirmed*, so preserve the attempt for user-driven
+      // status checks rather than discarding its identity.
+      if(readFailure&&readFailure.keywordServerError)throw readFailure;
+      throw new KeywordAnalysisUnconfirmedError({
+        scopeId:scope,classUid:String(args.classUid||''),attemptId
+      });
     }
     return result;
   }
