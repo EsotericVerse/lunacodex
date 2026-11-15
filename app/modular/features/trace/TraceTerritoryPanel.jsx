@@ -6,7 +6,7 @@ import {dbPublicClient} from '../../../loc/db-client.mjs';
 import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 import {readCurrentTraceAnchors,readPublishedTraceSourceScopes} from './trace-data';
 import {territoryYearWindow,territoryRegions,territoryPointReadPlan,territoryWithAnchors} from './trace-territory.mjs';
-import {DEFAULT_YEAR_WINDOW} from '../../../loc/default-year-window.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';
 
 const TraceMap=dynamic(()=>import('./TraceMap'),{ssr:false});
 const TracePlaceResults=dynamic(()=>import('./TracePlaceResults'),{ssr:false});

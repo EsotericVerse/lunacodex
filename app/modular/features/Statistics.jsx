@@ -13,7 +13,7 @@ registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 registerDefaultSection('uiExtra.chartTypes',chartTypesZh);
 
 import {useEffect,useMemo,useState} from 'react';
-import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
+import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
@@ -26,7 +26,7 @@ import {defaultScopeData} from '../../loc/scope-data';
 import {featureNavigationHref,readFeatureNavigation} from '../routing/feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {useScopeRuntime} from '../use-scope-runtime';
-import useDefaultTimeUnit from '../../loc/use-default-time-unit';
+import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {FeaturePage} from '../ui';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
@@ -47,7 +47,7 @@ import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
 import ActivityMotion from '../ActivityMotion';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
-import {DEFAULT_YEAR_WINDOW} from '../../loc/default-year-window.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
 const STAT_TYPES=['total','keywords','source'];

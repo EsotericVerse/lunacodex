@@ -16,7 +16,7 @@ import {featureNavigationHref} from '../../routing/feature-navigation';
 import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';
 import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,statisticsZoomWindow} from './statistics-time-zoom.mjs';
-import {DEFAULT_YEAR_WINDOW} from '../../../loc/default-year-window.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
 

@@ -12,7 +12,7 @@ import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/routing/scope-registry';
 import {assignedSource} from '../statistics/member-intersection-model.mjs';
 import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
-import {DEFAULT_YEAR_WINDOW} from '../default-year-window.mjs';
+import {DEFAULT_YEAR_WINDOW} from '../preferences/default-year-window.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
 import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';

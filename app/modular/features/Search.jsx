@@ -34,9 +34,9 @@ const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 // Mount the Inter-Net only for an explicitly opened Galaxy detail.
 const GalaxyInterNetBranches=dynamic(()=>import('../GalaxyInterNetBranches'),{loading:()=>null});
 import {useScopeRuntime} from '../use-scope-runtime';
-import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
-import useDefaultTimeUnit from '../../loc/use-default-time-unit';
-import {timeUnitBucket,localTodayKey} from '../../loc/default-time-unit.mjs';
+import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
+import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
+import {timeUnitBucket,localTodayKey} from '../../loc/preferences/default-time-unit.mjs';
 import {useEditDock} from '../edit-dock';
 import {scopeHref} from '../routing/scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../routing/feature-navigation';

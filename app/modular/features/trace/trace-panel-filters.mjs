@@ -1,4 +1,4 @@
-import {calendarYearWindow} from '../../../loc/default-year-window.mjs';
+import {calendarYearWindow} from '../../../loc/preferences/default-year-window.mjs';
 
 // Shared "favorite-frame" filters for a selected Trace place. These filters
 // never change stored anchors, visit timestamps, or the current route.
