@@ -61,6 +61,7 @@
     "@babel/parser": "7.29.9",
     "@capacitor/ios": "8.5.3",
     "@types/node": "26.6.4",
+    "sharp": "0.35.5",
     "typescript": "5.9.3"
   }
 }
