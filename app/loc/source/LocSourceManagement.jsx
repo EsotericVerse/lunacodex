@@ -1,18 +1,18 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import LocManagementWorkspace from './LocManagementWorkspace';
-import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
-import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
-import {useEditDock} from '../modular/edit-dock';
-import {useAccount} from './use-account';
-import PanelLoading from './PanelLoading';
+import LocManagementWorkspace from '../LocManagementWorkspace';
+import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
+import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
+import {useEditDock} from '../../modular/edit-dock';
+import {useAccount} from '../use-account';
+import PanelLoading from '../PanelLoading';
 
 // Group managers edit work classifications and member names here.
 // Global Admin reuses its existing vis-network personnel editor here.
 // Source hierarchy shares the same destination, without widening write access.
-const LocGroupMemberList=dynamic(()=>import('./scope/LocGroupMemberList'),{loading:PanelLoading});
-const AdminRegistry=dynamic(()=>import('./views/admin-panels/AdminRegistry'),{loading:PanelLoading});
+const LocGroupMemberList=dynamic(()=>import('../scope/LocGroupMemberList'),{loading:PanelLoading});
+const AdminRegistry=dynamic(()=>import('../views/admin-panels/AdminRegistry'),{loading:PanelLoading});
 const AdminSourceCategories=dynamic(()=>import('./SourceCategoryEditor').then(mod=>mod.AdminSourceCategories),{loading:PanelLoading});
 
 const OPTIONS=Object.freeze([

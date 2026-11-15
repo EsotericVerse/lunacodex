@@ -3,20 +3,20 @@
 import {useEffect} from 'react';
 import dynamic from 'next/dynamic';
 import {useSearchParams} from 'next/navigation';
-import {FeaturePage} from '../modular/ui';
-import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
-import {useScopeRuntime} from '../modular/use-scope-runtime';
-import {useEditDock} from '../modular/edit-dock';
-import {useAccount} from './use-account';
-import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
+import {FeaturePage} from '../../modular/ui';
+import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
+import {useScopeRuntime} from '../../modular/use-scope-runtime';
+import {useEditDock} from '../../modular/edit-dock';
+import {useAccount} from '../use-account';
+import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 
-const ScopeEditableBlocks=dynamic(()=>import('./blocks/ScopeEditableBlocks'),{loading:()=>null});
-const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublisher'),{loading:()=>null});
-const ManagementMediaWorkspace=dynamic(()=>import('./media/ManagementMediaWorkspace'),{loading:()=>null});
-const ManagementContentTarget=dynamic(()=>import('./ManagementContentTarget'),{loading:()=>null});
-const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
-const ScopeSettingsPanel=dynamic(()=>import('./scope/ScopeSettingsPanel'),{loading:()=>null});
-const ScopeGroupAccessPanel=dynamic(()=>import('./scope/ScopeGroupAccessPanel'),{loading:()=>null});
+const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks'),{loading:()=>null});
+const ManagementArticlePublisher=dynamic(()=>import('../ManagementArticlePublisher'),{loading:()=>null});
+const ManagementMediaWorkspace=dynamic(()=>import('../media/ManagementMediaWorkspace'),{loading:()=>null});
+const ManagementContentTarget=dynamic(()=>import('../ManagementContentTarget'),{loading:()=>null});
+const ManagementImportPanel=dynamic(()=>import('../import/ManagementImportPanel'),{loading:()=>null});
+const ScopeSettingsPanel=dynamic(()=>import('../scope/ScopeSettingsPanel'),{loading:()=>null});
+const ScopeGroupAccessPanel=dynamic(()=>import('../scope/ScopeGroupAccessPanel'),{loading:()=>null});
 
 // Article Control sections share one Scope ownership and authorization boundary. Moving a panel
 // never changes its Scope ownership, database tables or authorizer.

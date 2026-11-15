@@ -3,16 +3,16 @@
 import {useEffect} from 'react';
 import dynamic from 'next/dynamic';
 import {useSearchParams} from 'next/navigation';
-import {useEditDock} from '../modular/edit-dock';
-import {FeaturePage} from '../modular/ui';
-import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
-import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
-import PanelLoading from './PanelLoading';
-import {recoverChunkOnce} from './chunk-recovery.mjs';
-import {PLACE_OPTIONS} from './trace/PlaceManagement';
+import {useEditDock} from '../../modular/edit-dock';
+import {FeaturePage} from '../../modular/ui';
+import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
+import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
+import PanelLoading from '../PanelLoading';
+import {recoverChunkOnce} from '../chunk-recovery.mjs';
+import {PLACE_OPTIONS} from '../trace/PlaceManagement';
 
-const TraceManagementPanel=dynamic(()=>import('./TraceManagement'),{loading:PanelLoading});
-const PlaceManagement=dynamic(()=>import('./trace/PlaceManagement').catch(recoverChunkOnce),{loading:PanelLoading});
+const TraceManagementPanel=dynamic(()=>import('../trace/TraceManagement'),{loading:PanelLoading});
+const PlaceManagement=dynamic(()=>import('../trace/PlaceManagement').catch(recoverChunkOnce),{loading:PanelLoading});
 
 const SPATIAL_OPTIONS=[
   {value:'path',label:'路線',description:'依序連接空間定錨點'},
