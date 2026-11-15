@@ -5,19 +5,19 @@ import {Unzip,UnzipInflate,UnzipPassThrough} from 'fflate';
 import {ARCHIVE_MAX_BYTES,ARCHIVE_JSON_MAX_BYTES,extractImportCreatedAt} from './import-batch.mjs';
 export {ARCHIVE_MAX_BYTES};
 import {JSONParser} from '@streamparser/json';
-import {archiveEntrySignatures,summarizeArchiveSources,archiveFilenameSource} from './archive-source-signatures.mjs';
-import {inspectArchiveEntryStructure,summarizeArchiveStructures} from './archive-structure-inspector.mjs';
-import {createArchiveCompletenessAudit} from './archive-completeness-audit.mjs';
-import {canonicalArchiveText} from './archive-record-identity.mjs';
+import {archiveEntrySignatures,summarizeArchiveSources,archiveFilenameSource} from './archive/source-signatures.mjs';
+import {inspectArchiveEntryStructure,summarizeArchiveStructures} from './archive/structure-inspector.mjs';
+import {createArchiveCompletenessAudit} from './archive/completeness-audit.mjs';
+import {canonicalArchiveText} from './archive/record-identity.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
-import {IMAGE_EXIF_PREFIX_LIMIT,readImageExif} from './archive-exif.mjs';
-import {isArchiveMediaUrl} from './archive-media-evidence.mjs';
+import {IMAGE_EXIF_PREFIX_LIMIT,readImageExif} from './archive/exif.mjs';
+import {isArchiveMediaUrl} from './archive/media-evidence.mjs';
 import {importMapUrlCoordinates} from './import-geocoordinates.mjs';
-import {archiveAttachmentReferences} from './archive-media-evidence.mjs';
-import {extractFacebookGeoObjects} from './archive-geo-objects.mjs';
+import {archiveAttachmentReferences} from './archive/media-evidence.mjs';
+import {extractFacebookGeoObjects} from './archive/geo-objects.mjs';
 import {repairMojibakeText} from './content-policy.js';
-import {archiveRecordStreamPath,archiveRootContainers} from './archive-array-layout.mjs';
-import {isPrivateArchiveEntry} from './archive-import-safety.mjs';
+import {archiveRecordStreamPath,archiveRootContainers} from './archive/array-layout.mjs';
+import {isPrivateArchiveEntry} from './archive/import-safety.mjs';
 
 export const ARCHIVE_CHUNK_BYTES=128*1024;
 // Reject oversized archives before reading any bytes. Only approved entries are inflated.
@@ -519,7 +519,7 @@ function textDocument(bytes,name,summary,onRecord){
   onRecord(record);
 }
 // Read-only ZIP source discovery. Every recognized vendor uses the same scanner;
-// vendor-specific rules live in archive-source-signatures.mjs.
+// vendor-specific rules live in archive/source-signatures.mjs.
 const ZIP_SNIFF_BYTES=65536;
 const ZIP_SNIFF_FILES=160;
 export async function detectZipArchiveSource(file,{signal,onProgress,skipPrivateEntries=false}={}){

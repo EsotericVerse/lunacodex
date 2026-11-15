@@ -1,10 +1,10 @@
 // Map records from the shared archive scanner to Galaxy's existing text contract.
 // Source adapters are hints; every row still needs real text and a stable identity.
-import {facebookArchiveGalaxyRow,facebookArchiveUid} from './facebook-backup-place.mjs';
-import {repairMojibakeText} from './content-policy.js';
-import {extractImportCoordinates,importMapUrlCoordinates} from './import-geocoordinates.mjs';
-import {facebookPostPlace} from './archive-geo-objects.mjs';
-import {isArchiveMediaUrl} from './archive-media-evidence.mjs';
+import {facebookArchiveGalaxyRow,facebookArchiveUid} from '../facebook-backup-place.mjs';
+import {repairMojibakeText} from '../content-policy.js';
+import {extractImportCoordinates,importMapUrlCoordinates} from '../import-geocoordinates.mjs';
+import {facebookPostPlace} from './geo-objects.mjs';
+import {isArchiveMediaUrl} from './media-evidence.mjs';
 
 export const platformLabel={facebook:'Facebook',threads:'Threads',instagram:'Instagram',chatgpt:'ChatGPT',claude:'Claude',
   messenger:'Messenger',x:'X',document:'Document',meta:'Archive'};
