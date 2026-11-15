@@ -9,7 +9,6 @@ import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
-import {useNavigationPreferences} from './use-navigation-preferences';
 import {useAccount} from './use-account';
 import {FeaturePage} from '../modular/ui';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
@@ -23,10 +22,7 @@ const LocScopeConnections=dynamic(()=>import('./scope/LocScopeConnections'),{loa
 const DailyRuneCalendarSettings=dynamic(()=>import('../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
 import FeatureSettingsPage from './preferences/FeatureSettingsPage';
 import {selectScopeRegistry} from './scope-data';
-import {putSetting} from './user-storage';
-import {NavigationPreferences} from '../modular/navigation-preferences';
 import {getScope,normalizeScopeId} from '../modular/routing/scope-registry';
-const {account:accountNavigation,device:deviceNavigation}=NavigationPreferences;
 
 const option=(value,label,description,shortLabel)=>({value,label,description,shortLabel});
 // Always show LOC's existing full-screen login composition, backed by native LOC Auth.
@@ -34,13 +30,12 @@ const LOC_LOGIN_GATEWAY='/login/index.html?return_to=';
 export default function GlobalSettings({initialSection='features'}={}){
   useUiSection('uiExtra.globalSettings');
   const uiT=useUiText();
-  const prefs=useNavigationPreferences();
+  const verifiedLocAccount=useAccount({enabled:true,sessionOnly:true});
+  const account=verifiedLocAccount;
   const [native,setNative]=useState(false);
-  const [urlResolved,setUrlResolved]=useState(false);
-  const [home,setHome]=useState('loc');
   const sections=[
     option('features',uiT('uiExtra.globalSettings.featureSettingsHome'),'',uiT('uiExtra.globalSettings.featureSettingsHome')),
-    ...(native||prefs.account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),'',uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
+    ...(native||account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),'',uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
     option('mcp',uiT('uiExtra.globalSettings.mcpSelfServiceTitle'),'',uiT('uiExtra.globalSettings.mcpTab')),
     ...(native?[
       option('local','本機資料庫','','本機'),
@@ -53,23 +48,14 @@ export default function GlobalSettings({initialSection='features'}={}){
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
   const [rainbowPreview,setRainbowPreview]=useState(false);
-  // LOC Auth owns identity and Scope grants; the trusted application backend checks every signed delegation.
-  const verifiedLocAccount=useAccount({enabled:section==='features'||section==='mcp',sessionOnly:true});
-  const account=(section==='features'||section==='mcp')?verifiedLocAccount:prefs.account;
 
   useEffect(()=>{
     const isNative=Capacitor.isNativePlatform();
     setNative(isNative);
-    setUrlResolved(true);
   },[]);
   const registryQuery=useAsyncResource(['settings-scope-registry'],selectScopeRegistry,
-    {enabled:!native&&urlResolved});
+    {enabled:section==='mcp'&&!native});
   const registry=registryQuery.data||[];
-  useEffect(()=>{
-    if(prefs.loading)return;
-    setHome(native?deviceNavigation.mobileHomepageChoice(window.localStorage):(accountNavigation.validScopeId(prefs.home)||'loc'));
-  },[native,prefs.home,prefs.loading,account.user?.id]);
-
   const choices=useMemo(()=>{
     const baseChoices=[{id:'lrunes',label:uiT('nav.lunarunes')},{id:'lo3rwang',label:uiT('uiExtra.globalSettings.authorHome')},{id:'loc',label:uiT('uiExtra.globalSettings.locHome')}];
     // Local Scope is not provisioned and must not be offered as an SQL destination.
@@ -83,20 +69,7 @@ export default function GlobalSettings({initialSection='features'}={}){
     }
     return [...found.values()];
   },[registry,native,uiT('common.language')]);
-  const allowedHomes=useMemo(()=>{
-    // Every public Scope is a valid reading destination, even for Guest.
-    const items=choices.filter(item=>item.id!=='admin'&&item.id!=='local');
-    if(native)items.push({id:deviceNavigation.MOBILE_HOME_ID,label:uiT('uiExtra.globalSettings.myPhone')});
-    return items;
-  },[choices,native]);
-  const actualHome=native?
-    (allowedHomes.some(item=>item.id===home)?home:'loc'):
-    accountNavigation.homeScopeForAccount(home,account,allowedHomes.map(item=>item.id));
-
-
-
   const activeSection=section;
-  const waiting=Boolean(busy)||prefs.loading||account.loading||account.permissionLoading;
   // Account identity is independent of personal settings and management permission reads.
   const accountWaiting=account.loading;
   // getAccountSession() already rejects unverified Better Auth sessions in
@@ -121,27 +94,6 @@ export default function GlobalSettings({initialSection='features'}={}){
     window.dispatchEvent(new CustomEvent('loc-owner-rainbow-preview',{detail:{active:next}}));
   }
 
-  async function saveHome(event){
-    event.preventDefault();
-    if(waiting||(!native&&!account.user))return;
-    setBusy(true);setStatus('');
-    try{
-      if(native){
-        const next=allowedHomes.some(item=>item.id===home)?home:'loc';
-        window.localStorage.setItem(deviceNavigation.MOBILE_HOME_STORAGE_KEY,next);
-        window.dispatchEvent(new Event('loc-device-navigation-changed'));
-        setHome(next);
-      }else{
-        const next=accountNavigation.homeScopeForAccount(home,account,allowedHomes.map(item=>item.id));
-        await putSetting(accountNavigation.HOME_SETTING_KEY,next);
-        window.dispatchEvent(new CustomEvent('loc-navigation-changed',{detail:{home:next}}));
-        setHome(next);
-      }
-      setStatus(uiT('uiExtra.globalSettings.savedHome'));
-    }catch(error){
-      setStatus(uiT('uiExtra.globalSettings.saveFailed',{error:String(error?.message||error)}));
-    }finally{setBusy(false);}
-  }
   async function logout(){
     setBusy(true);setStatus('');
     try{
@@ -189,16 +141,6 @@ export default function GlobalSettings({initialSection='features'}={}){
         重新確認登入狀態
       </button>
     </div>:null}
-    <form onSubmit={saveHome} className="scope-stat-controls scope-settings-dashboard__homepage">
-      <label><span><UiText id="uiExtra.globalSettings.defaultHome"/></span>
-        <select className="scope-select" value={actualHome}
-          onChange={event=>setHome(event.target.value)} disabled={waiting&&!native}>
-          {allowedHomes.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}
-        </select>
-      </label>
-      {native||account.user?<button type="submit" className="loc-button"
-        disabled={waiting}><UiText id="uiExtra.globalSettings.save"/></button>:null}
-    </form>
   </section>;
 
   return <FeaturePage featureId="setting">
