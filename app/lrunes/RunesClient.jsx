@@ -4,9 +4,9 @@ import {usePassiveSessionAccount} from '../loc/use-account';
 import ScopeLink from '../modular/ScopeLink';
 import RuneIntroSection from './RuneIntroSection';
 import RuneCardEntryBubbles from './RuneCardEntryBubbles';
-import {HomeBlock} from '../loc/home-block-model';
-import {resolveHomeImage,RunesHomeBlockDisplay,locHomeBlockClass,homeBlockMediaStyle} from '../loc/LocHomeBlockDisplay';
-import ScopeEditableBlocks from '../loc/ScopeEditableBlocks';
+import {HomeBlock} from '../loc/blocks/home-block-model';
+import {resolveHomeImage,RunesHomeBlockDisplay,locHomeBlockClass,homeBlockMediaStyle} from '../loc/blocks/LocHomeBlockDisplay';
+import ScopeEditableBlocks from '../loc/blocks/ScopeEditableBlocks';
 
 const runeHref=(path,native)=>navigationHref('lrunes',path,native);
 

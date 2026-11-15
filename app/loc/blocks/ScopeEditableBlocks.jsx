@@ -1,26 +1,26 @@
 'use client';
 import {parseBlockImage} from './hero-image.mjs';
-import UiText from '../i18n/UiText';
-import {registerDefaultSection} from '../i18n/ui-copy';
-import {useUiSection} from '../i18n/ui-locale';
-import editBlocksZh from '../i18n/sections/uiExtra.editBlocks.zh_tw.js';
+import UiText from '../../i18n/UiText';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import {useUiSection} from '../../i18n/ui-locale';
+import editBlocksZh from '../../i18n/sections/uiExtra.editBlocks.zh_tw.js';
 registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 
 import {useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
-import {useEditDock} from '../modular/edit-dock';
-import {navigationHref} from '../modular/routing/scope-registry';
-import useNativeNavigation from '../modular/use-native-navigation';
+import {useEditDock} from '../../modular/edit-dock';
+import {navigationHref} from '../../modular/routing/scope-registry';
+import useNativeNavigation from '../../modular/use-native-navigation';
 import dynamic from 'next/dynamic';
-import {useAppBootstrap} from './app-bootstrap';
-import {useAccount} from './use-account';
+import {useAppBootstrap} from '../app-bootstrap';
+import {useAccount} from '../use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
 const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
 const ScopeBlockDraftList=dynamic(()=>import('./ScopeBlockDraftList'),{loading:()=>null});
-import {isInteractiveContentTarget} from './content-policy.js';
+import {isInteractiveContentTarget} from '../content-policy.js';
 
 import {HomeBlock} from './home-block-model';
-import {BlockNoteContent} from './blocknote-content.mjs';
+import {BlockNoteContent} from '../blocknote-content.mjs';
 
 function pageNameOf(value='index'){
   const page=String(value||'index').trim().toLowerCase();

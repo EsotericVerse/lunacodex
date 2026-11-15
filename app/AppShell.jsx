@@ -28,7 +28,7 @@ import {recoverChunkOnce} from './loc/chunk-recovery.mjs';
 import BottomNavIcon,{DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.
-const ScopeHomeEditEntry=dynamic(()=>import('./loc/ScopeHomeEditEntry'),{loading:()=>null});
+const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{loading:()=>null});
 import ScrollableScopeNav from './modular/ScrollableScopeNav';
 import ScopeLink,{isManagementHref} from './modular/ScopeLink';
 

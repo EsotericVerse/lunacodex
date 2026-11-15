@@ -1,4 +1,4 @@
-import AuthorHomeEditableBlocks from '../AuthorHomeEditableBlock';
+import AuthorHomeEditableBlocks from '../blocks/AuthorHomeEditableBlock';
 import ContextReturnNav from '../../modular/ContextReturnNav';
 import ScopeLink from '../../modular/ScopeLink';
 

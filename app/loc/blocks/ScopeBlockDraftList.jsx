@@ -1,27 +1,27 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {useEditDock} from '../modular/edit-dock';
+import {useEditDock} from '../../modular/edit-dock';
 import dynamic from 'next/dynamic';
-import {useQueryClient} from '../../packages/zenstack/client-queries';
-import UiText,{useUiText} from '../i18n/UiText';
-import {registerDefaultSection} from '../i18n/ui-copy';
-import {useUiSection} from '../i18n/ui-locale';
-import editBlocksZh from '../i18n/sections/uiExtra.editBlocks.zh_tw.js';
-import frameEditorZh from '../i18n/sections/uiExtra.frameEditor.zh_tw.js';
+import {useQueryClient} from '../../../packages/zenstack/client-queries';
+import UiText,{useUiText} from '../../i18n/UiText';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import {useUiSection} from '../../i18n/ui-locale';
+import editBlocksZh from '../../i18n/sections/uiExtra.editBlocks.zh_tw.js';
+import frameEditorZh from '../../i18n/sections/uiExtra.frameEditor.zh_tw.js';
 registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 registerDefaultSection('uiExtra.frameEditor',frameEditorZh);
 import {HomeBlock} from './home-block-model';
-import {BlockNoteContent} from './blocknote-content.mjs';
+import {BlockNoteContent} from '../blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
-import {appBootstrapKey} from './app-bootstrap';
-import {invalidateScopeBlockPage} from './scope-data';
+import {appBootstrapKey} from '../app-bootstrap';
+import {invalidateScopeBlockPage} from '../scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
 
-const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
-const ObjectEditor=dynamic(()=>import('./BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../BlockNoteEditor'),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 
 const TITLE_LIMIT=64;
 const EYEBROW_LIMIT=64;
@@ -186,7 +186,7 @@ export default function ScopeBlockDraftList({
       if(embeddedImages===1&&!BlockNoteContent.image.firstFrameImageUrl(draft)){setBusy(false);report(t('uiExtra.editBlocks.invalidImage'));return false;}
     }
     try{
-      const {dbAuthClient}=await import('./db-client.mjs');
+      const {dbAuthClient}=await import('../db-client.mjs');
       const normalizeSavedHtml=value=>scopeId==='loc'&&pageName==='index'
         ?HomeBlock.stripLocHomeEditorPlaceholders(value):String(value??'');
       const savedDrafts=[];
