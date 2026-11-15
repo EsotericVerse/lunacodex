@@ -15,7 +15,7 @@ const WORKER_PROGRESS=z.looseObject({
   withContent:z.number().int().nonnegative()
 });
 const ARTICLE_COLUMNS=galaxyReadColumns('GalaxyUidRead')
-  .filter(column=>['uid','content','createtime','date'].includes(column));
+  .filter(column=>['uid','title','content','createtime','date'].includes(column));
 const aborted=()=>Object.assign(new Error('已取消關鍵詞建議掃描'),{name:'AbortError'});
 
 export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>{},signal}={}){
