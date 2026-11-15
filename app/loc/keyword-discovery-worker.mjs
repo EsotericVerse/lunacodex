@@ -79,10 +79,10 @@ function annotateTrend(result){
   return result;
 }
 self.onmessage=event=>{
-  const {type,rows,existingRows}=event.data||{};
+  const {type,rows,existingRows,exceptionWords}=event.data||{};
   try{
     if(type==='start'){
-      discovery=createNewKeywordDiscovery(existingRows);
+      discovery=createNewKeywordDiscovery(existingRows,{exceptionWords});
       self.postMessage({type:'ready'});
     }else if(type==='batch'){
       if(!discovery)throw new Error('新關鍵詞掃描尚未初始化');
