@@ -79,11 +79,36 @@ export function googleSocialConfig(env={}){
   return clientId&&clientSecret?{clientId,clientSecret}:null;
 }
 
+// Cloudflare Access SaaS OIDC has one canonical set of Worker bindings.
+// Never silently fall back to stale Cloudflare/Build API credentials.
 export function cloudflareSsoConfig(env={}){
   return {
-    issuer:String(env.LOC_CLOUDFLARE_SSO_ISSUER||env.CLOUDFLARE_SSO_ISSUER||'').trim(),
-    clientId:String(env.LOC_CLOUDFLARE_SSO_CLIENT_ID||env.CLOUDFLARE_SSO_CLIENT_ID||'').trim(),
-    clientSecret:String(env.LOC_CLOUDFLARE_SSO_CLIENT_SECRET||env.CLOUDFLARE_SSO_CLIENT_SECRET||'').trim()
+    issuer:String(env.LOC_CLOUDFLARE_SSO_ISSUER||'').trim().replace(/\\/+$/,''),
+    clientId:String(env.LOC_CLOUDFLARE_SSO_CLIENT_ID||'').trim(),
+    clientSecret:String(env.LOC_CLOUDFLARE_SSO_CLIENT_SECRET||'').trim()
+  };
+}
+
+// Dedicated upstream SSO connection. LOC remains the independent downstream
+// OAuth/OIDC issuer; this provider config does not register an OAuth client.
+function cloudflareSsoProvider(cloudflare){
+  const {issuer,clientId,clientSecret}=cloudflare;
+  return {
+    providerId:'cloudflare-access',
+    domain:OWNER_EMAIL.split('@')[1],
+    oidcConfig:{
+      issuer,
+      discoveryEndpoint:issuer+'/.well-known/openid-configuration',
+      authorizationEndpoint:issuer+'/authorization',
+      tokenEndpoint:issuer+'/token',
+      jwksEndpoint:issuer+'/jwks',
+      userInfoEndpoint:issuer+'/userinfo',
+      clientId,
+      clientSecret,
+      pkce:true,
+      scopes:['openid','email','profile'],
+      mapping:{email:'email',emailVerified:'email_verified',name:'name'}
+    }
   };
 }
 
@@ -102,6 +127,12 @@ export function checkLocAuthEnvironment(env){
   const verified=AuthEnvironmentSchema.safeParse(data);
   if(!verified.success)
     throw new Error('LOC Auth requires valid PostgreSQL and OAuth credentials (secret >= 32 characters)');
+  // The Access SaaS OIDC issuer path must end in the same Client ID.
+  // Fail closed rather than issuing codes against a stale/mixed application.
+  const issuer=new URL(cloudflare.issuer);
+  if(issuer.pathname.split('/').filter(Boolean).at(-1)!==cloudflare.clientId ||
+     !issuer.pathname.startsWith('/cdn-cgi/access/sso/oidc/'))
+    throw new Error('LOC Auth Cloudflare SSO issuer/client ID mismatch');
   return true;
 }
 
@@ -306,39 +337,7 @@ export function createLocAuth(env){
         // provider to an account that already exists, which is why account
         // linking above is enabled. Collapsing the two locks out the owner.
         disableImplicitSignUp:true,
-        defaultSSO:[{
-          // `domain` is matched against the part of the signed-in address
-          // after the @, not against the provider's name, so the previous
-          // 'cloudflare-access' could never match anything.
-          providerId:'cloudflare-access',
-          domain:OWNER_EMAIL.split('@')[1],
-          oidcConfig:{
-            issuer:cloudflare.issuer,
-            discoveryEndpoint:cloudflare.issuer+'/.well-known/openid-configuration',
-            // Naming all three required endpoints makes `needsRuntimeDiscovery`
-            // false, so signing in no longer fetches the discovery document
-            // first. That fetch is the step that currently fails: from this
-            // Worker the connection to the provider's host succeeds in about
-            // half a second on one attempt and never answers on the next, and
-            // the plugin's discovery timeout is a fixed ten seconds, so an
-            // unlucky attempt dies before the user is ever redirected. The
-            // paths are the provider's documented layout and were read twice
-            // from its live discovery document; they are derived from the
-            // configured issuer, so replacing the application stays a
-            // variable change.
-            authorizationEndpoint:cloudflare.issuer+'/authorization',
-            tokenEndpoint:cloudflare.issuer+'/token',
-            jwksEndpoint:cloudflare.issuer+'/jwks',
-            userInfoEndpoint:cloudflare.issuer+'/userinfo',
-            // Restore the PKCE-protected SSO flow used by the confirmed RC1 login.
-            // This is upstream Cloudflare SSO, not LOC's OAuth client registration.
-            clientId:cloudflare.clientId,
-            clientSecret:cloudflare.clientSecret,
-            pkce:true,
-            scopes:['openid','email','profile'],
-            mapping:{email:'email',emailVerified:'email_verified',name:'name'}
-          }
-        }]
+        defaultSSO:[cloudflareSsoProvider(cloudflare)]
       })
     ]
   });
