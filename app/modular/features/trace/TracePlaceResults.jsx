@@ -220,7 +220,9 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  // Keyword parsing shares Group.uid_lists with Culture and Statistics.
+  // Keyword reports share the Pattern-based word index with Culture/Statistics.
+  // Old Group.uid_lists report shapes are compatibility projections, not Galaxy
+  // postings stored on Group; only Pattern has the physical article UID list.
   // Only an opened place report queries the selected place_ids; it never
   // downloads every article's UID list or runs a fresh word classification.
   const keywordGroups=useAsyncResource({
