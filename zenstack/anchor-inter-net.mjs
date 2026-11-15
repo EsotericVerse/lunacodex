@@ -37,10 +37,8 @@ export function sourceInterNetSelection(site,taxonomy={}){
   const path=selected.path.map(key=>indexed.get(key)).filter(Boolean);
   if(path.length!==selected.path.length||path.at(-1)?.uid!==uid)
     return Object.freeze({status:'unmatched',path:[],tree:[]});
-  // Include only the selected path and each of its directly verified sibling
-  // nodes, never infer links based on title/site substring matching.
-  const lineage=new Set(path.map(row=>row.uid));
-  const tree=rows.filter(row=>lineage.has(row.uid)||
-    (row.parentUid&&lineage.has(row.parentUid)));
-  return Object.freeze({status:'resolved',uid,path,tree});
+  // The complete published tree is already fetched only after opening this
+  // branch. Keep it available for further branch expansion without another
+  // query; parent-child edges came from verified Anchor.attr.uid, not titles.
+  return Object.freeze({status:'resolved',uid,path,tree:rows});
 }
