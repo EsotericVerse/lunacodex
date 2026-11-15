@@ -12,6 +12,7 @@ import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
 // connection. Each request gets its own pool, closed after the response.
 const EXTENSION='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const allowed=new Set([LOC_ISSUER,LOC_WEB,EXTENSION]);
+let lastSsoHealthProbeAt=0; // Temporary debug cooldown; remove after diagnosis.
 // OAuth clients on OTHER domains exchange their own authorization code using
 // PKCE. These are standard bearer-based endpoints, never cookie/session APIs.
 const publicOAuthPaths=new Set([
@@ -316,81 +317,138 @@ export default {
           note:'All requests use a deliberately invalid authorization code. The invalid-secret control also uses a deliberately incorrect Client Secret; compare its error with the genuine credential request.'
         }),{headers:{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'}});
       }
-      // DORMANT PROBE — kept, not deleted. Uncomment the block below to serve
-      // GET /health/upstream again, which reports what one subrequest to the
-      // delegated provider's discovery document actually does: status,
-      // server, cf-ray, cf-mitigated, location, content type and first bytes,
-      // or the error name, plus a timed node:dns lookup and the plugin's own
-      // discoverOIDCConfig. It answered the question it was built for — the
-      // connection to that host succeeds in about half a second on one
-      // attempt and never answers on the next, which is why sign-in no longer
-      // fetches discovery at all — and it is left here because the same
-      // intermittency can still surface during the token exchange, and
-      // measuring beats guessing. It opens no database connection, carries no
-      // credential, and returns only that public document's own response.
-      /*
+      // TEMPORARY SSO DEBUG MODE — ON. No Auth Session required: sign-in is
+      // broken. To turn it OFF after diagnosis, enclose this entire route in
+      // /* ... */. Do not remove /health, change Secrets or touch deployment CI.
+      // The one-shot probe emits statuses and recognized error TYPES only.
+      // Never return credentials, code, state, redirect parameters, response
+      // bodies, OIDC client IDs, tokens or raw exception messages.
       if(request.method==='GET'&&url.pathname==='/health/upstream'){
-        const issuer=String(cloudflareSsoConfig(env).issuer||'').replace(/\/+$/,'');
-        if(!issuer)return new Response(JSON.stringify({error:'No upstream issuer configured'}),
-          {status:503,headers:{'content-type':'application/json','cache-control':'no-store'}});
-        const target=issuer+'/.well-known/openid-configuration';
+        const headers={'content-type':'application/json; charset=utf-8',
+          'cache-control':'no-store, max-age=0','pragma':'no-cache',
+          'x-content-type-options':'nosniff','x-robots-tag':'noindex, nofollow',
+          'referrer-policy':'no-referrer'};
+        const reply=(value,status=200)=>new Response(JSON.stringify(value),
+          {status,headers});
+        // A best-effort per-isolate cooldown limits untrusted repeated
+        // invocation; there is no new KV, database or session dependency.
+        const now=Date.now();
+        if(now-lastSsoHealthProbeAt<120000)
+          return reply({debug:'temporary',error:'probe_rate_limited'},429);
+        lastSsoHealthProbeAt=now;
         const started=Date.now();
-        let probe;
+        const names=['LOC_AUTH_DATABASE_URL','LOC_CONTROL_ENCRYPTION_KEY',
+          'LOC_CLOUDFLARE_SSO_ISSUER','LOC_CLOUDFLARE_SSO_CLIENT_ID',
+          'LOC_CLOUDFLARE_SSO_CLIENT_SECRET'];
+        const keys=Object.fromEntries(names.map(name=>[
+          name,String(env[name]||'').trim()?'present':'missing']));
+        keys.GOOGLE_CLIENT_ID=String(env.LOC_GOOGLE_CLIENT_ID||
+          env.GOOGLE_CLIENT_ID||'').trim()?'present_optional':'absent_optional';
+        keys.GOOGLE_CLIENT_SECRET=String(env.LOC_GOOGLE_CLIENT_SECRET||
+          env.GOOGLE_CLIENT_SECRET||'').trim()?'present_optional':'absent_optional';
+        const provider=cloudflareSsoConfig(env);
+        let issuer=null;
+        let issuerMatchesClient=false;
         try{
-          const upstream=await fetch(target,{method:'GET',redirect:'manual',
-            headers:{accept:'application/json'},signal:AbortSignal.timeout(5000)});
-          const body=await upstream.text();
-          probe={reached:true,status:upstream.status,
-            server:upstream.headers.get('server')||'',
-            cfRay:upstream.headers.get('cf-ray')||'',
-            cfMitigated:upstream.headers.get('cf-mitigated')||'',
-            location:upstream.headers.get('location')||'',
-            contentType:upstream.headers.get('content-type')||'',
-            bytes:body.length,bodyStart:body.slice(0,180)};
-        }catch(error){
-          probe={reached:false,name:error?.name||'Error',
-            message:String(error?.message||error).slice(0,180)};
-        }
-        // The plain fetch above already answered 200 in well under a second,
-        // so the destination is reachable and the hang is inside the plugin's
-        // own path. That path adds two things: an SSRF guard that may call
-        // node:dns, and betterFetch instead of fetch. Time both separately so
-        // the next change is aimed at whichever one actually stalls.
-        let dnsProbe;
-        const dnsStarted=Date.now();
+          issuer=new URL(provider.issuer);
+          issuerMatchesClient=issuer.protocol==='https:'&&
+            issuer.pathname.startsWith('/cdn-cgi/access/sso/oidc/')&&
+            issuer.pathname.split('/').filter(Boolean).at(-1)===provider.clientId;
+        }catch{/* invalid configuration is reported below */}
+        const config={issuerValid:!!issuer&&issuer.protocol==='https:',
+          issuerMatchesClient,requiredKeysPresent:names.every(
+            name=>keys[name]==='present')};
+        if(!config.issuerMatchesClient||!config.requiredKeysPresent)
+          return reply({debug:'temporary',keys,config,
+            diagnosis:'configuration_mismatch',elapsedMs:Date.now()-started});
+        const endpoint=issuer.origin+issuer.pathname.replace(/\/+$/,'');
+        const knownOAuthErrors=new Set(['invalid_client','invalid_grant',
+          'invalid_request','unauthorized_client','access_denied',
+          'unsupported_grant_type','server_error','temporarily_unavailable']);
+        const safeOauthError=code=>typeof code==='string'
+          ?knownOAuthErrors.has(code)?code:'other'
+          :'none';
+        const safeContentType=response=>String(
+          response.headers.get('content-type')||'').toLowerCase()
+          .includes('json')?'json':'other';
+        const discoveryStarted=Date.now();
+        let discovery;
         try{
-          const dns=await import('node:dns/promises');
-          const resolved=await Promise.race([
-            dns.lookup(new URL(target).hostname,{all:true}),
-            new Promise((_,reject)=>setTimeout(()=>reject(new Error('dns.lookup did not settle in 5s')),5000))
-          ]);
-          dnsProbe={ok:true,addresses:(resolved||[]).map(r=>r.address).slice(0,4)};
+          const result=await fetch(endpoint+'/.well-known/openid-configuration',{
+            headers:{accept:'application/json'},redirect:'manual',
+            signal:AbortSignal.timeout(5000)});
+          let metadata=null;
+          if(result.ok&&safeContentType(result)==='json'){
+            const body=await result.text();
+            if(body.length<=50000)metadata=JSON.parse(body);
+          }
+          discovery={httpStatus:result.status,
+            elapsedMs:Date.now()-discoveryStarted,
+            issuerMatches:metadata?.issuer===provider.issuer,
+            tokenEndpointMatches:metadata?.token_endpoint===endpoint+'/token',
+            advertisedAuthMethods:Array.isArray(
+              metadata?.token_endpoint_auth_methods_supported)
+              ?metadata.token_endpoint_auth_methods_supported.filter(method=>
+                ['client_secret_basic','client_secret_post',
+                  'private_key_jwt','none'].includes(method)).slice(0,4):[],
+            contentType:safeContentType(result),
+            mitigated:!!result.headers.get('cf-mitigated')};
         }catch(error){
-          dnsProbe={ok:false,message:String(error?.message||error).slice(0,140)};
+          discovery={networkError:error?.name==='TimeoutError'?'timeout':
+            'network_or_parse_error',elapsedMs:Date.now()-discoveryStarted};
         }
-        dnsProbe.elapsedMs=Date.now()-dnsStarted;
-
-        let pluginProbe;
-        const pluginStarted=Date.now();
-        try{
-          const {discoverOIDCConfig}=await import('@better-auth/sso');
-          const config=await discoverOIDCConfig({issuer,timeout:5000,
-            isTrustedOrigin:()=>true});
-          pluginProbe={ok:true,tokenEndpoint:String(config?.tokenEndpoint||''),
-            jwksEndpoint:String(config?.jwksEndpoint||'')};
-        }catch(error){
-          pluginProbe={ok:false,name:error?.name||'Error',
-            code:String(error?.code||''),
-            message:String(error?.message||error).slice(0,180)};
-        }
-        pluginProbe.elapsedMs=Date.now()-pluginStarted;
-
-        return new Response(JSON.stringify({host:new URL(target).host,
-          plainFetch:{elapsedMs:Date.now()-started,...probe},
-          dns:dnsProbe,pluginDiscovery:pluginProbe},null,1),
-          {headers:{'content-type':'application/json','cache-control':'no-store'}});
+        // All token calls intentionally use an invalid authorization code.
+        // No legitimate code, token, Session or user data is ever consumed.
+        const tokenTest=async mode=>{
+          const data=new URLSearchParams({grant_type:'authorization_code',
+            code:'loc-sso-debug-intentionally-invalid-code',
+            redirect_uri:LOC_ISSUER+'/api/auth/sso/callback/cloudflare-access'});
+          const requestHeaders={'content-type':'application/x-www-form-urlencoded',
+            accept:'application/json'};
+          if(mode==='post'){
+            data.set('client_id',provider.clientId);
+            data.set('client_secret',provider.clientSecret);
+          }else{
+            const secret=mode==='invalid_secret'
+              ?'loc-sso-debug-invalid-client-secret':provider.clientSecret;
+            requestHeaders.authorization='Basic '+
+              btoa(provider.clientId+':'+secret);
+          }
+          const start=Date.now();
+          try{
+            const result=await fetch(endpoint+'/token',{method:'POST',
+              headers:requestHeaders,body:data.toString(),redirect:'manual',
+              signal:AbortSignal.timeout(6000)});
+            let oauthError='none';
+            if(safeContentType(result)==='json'){
+              const raw=await result.text();
+              if(raw.length<=10000){
+                try{oauthError=safeOauthError(JSON.parse(raw)?.error)}
+                catch{oauthError='unparseable'}
+              }else oauthError='oversize';
+            }
+            return {method:mode,httpStatus:result.status,
+              oauthError,elapsedMs:Date.now()-start,
+              contentType:safeContentType(result),
+              mitigated:!!result.headers.get('cf-mitigated'),
+              hasCfRay:!!result.headers.get('cf-ray')};
+          }catch(error){
+            return {method:mode,networkError:error?.name==='TimeoutError'
+              ?'timeout':'network_error',elapsedMs:Date.now()-start};
+          }
+        };
+        const tests=await Promise.all([
+          tokenTest('basic'),tokenTest('post'),tokenTest('invalid_secret')]);
+        return reply({debug:'temporary',keys,config,discovery,tokenTests:tests,
+          // invalid_grant from a real-secret request is compatible with
+          // accepted client authentication; equal errors are inconclusive.
+          diagnosis:tests.some(t=>t.method!=='invalid_secret'&&
+            t.oauthError==='invalid_grant')?'client_auth_likely_accepted'
+            :tests.every(t=>t.httpStatus===500)?'upstream_all_500'
+            :'compare_token_errors',
+          elapsedMs:Date.now()-started});
       }
-      */
+      // END TEMPORARY SSO DEBUG MODE.
       if(request.method==='GET'&&url.pathname==='/health')
         return new Response(JSON.stringify({service:'LOC Auth',module:'better-auth',
           issuer:LOC_ISSUER}),{headers:{'content-type':'application/json'}});
