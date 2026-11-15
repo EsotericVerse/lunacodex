@@ -320,7 +320,17 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(busy||loading)return false;
     setBusy(true);setError('');
     try{
-      const rulesChanged=['keyword_min_chars','keyword_min_documents'].some(key=>Number(config[key])!==Number(savedConfig[key]));
+      const scanRuleChanged=Number(config.keyword_min_chars)!==
+        Number(savedConfig.keyword_min_chars);
+      // A display threshold does not change any Pattern posting.
+      // If the content threshold changes, invalidate scan clocks but preserve
+      // historic completion receipts (including attemptId) for confirmation.
+      const meta=config.keyword_meta||{};
+      const invalidated=scanRuleChanged?{
+        ...meta,pattern_scans:{},
+        by_class:Object.fromEntries(Object.entries(meta.by_class||{})
+          .map(([uid,record])=>[uid,{...record,stale:true}]))
+      }:null;
       const targetUid=String(config.current_keyword_class_uid||'');
       const payload={
         current_keyword_class_uid:targetUid||null,
@@ -328,8 +338,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
         keyword_min_documents:Number(config.keyword_min_documents)||0,
         // Legacy scope-wide date is not an analysis completion date.
         staticstime:null,
-        ...(rulesChanged?{keyword_meta:{...(config.keyword_meta||{}),
-          by_class:{},pattern_scans:{}}}:{})
+        ...(scanRuleChanged?{keyword_meta:invalidated}:{})
       };
       const {data,error:writeError}=await dbAuthRelation(configTable).update(payload)
         .eq('id',scopeId).select('id');
