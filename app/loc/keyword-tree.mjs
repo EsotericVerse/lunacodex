@@ -1,5 +1,7 @@
 import {indexZModelAnchorHierarchy} from '../../zenstack/anchor-hierarchy.mjs';
 // Same six-column, UID-linked hierarchy as the Scope's anchor records.
+// category (directory) -> class (subject) -> group (category) -> item (word set)
+// -> pattern (one indexed word); only Pattern stores Galaxy article UID postings.
 // category -> class -> group -> item -> literal keyword strings.
 // Parent lists contain child UIDs, not names. No class_id, group_id, item_no.
 // Only the canonical eight-character Anchor UID exists in the current ZModel.
