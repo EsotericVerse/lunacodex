@@ -2,6 +2,7 @@
 
 import {parseRuneKeywordRuleSentence} from './rune-keyword-rules.mjs';
 import {compileKeywordLiteralMatcher} from '../keyword-literal-matcher.mjs';
+import {keywordScanText} from '../content-filter.mjs';
 
 function normalizeText(value){
   return String(value??'').normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
@@ -13,12 +14,10 @@ function compareRank(a,b){
     ||String(a.label||'').localeCompare(String(b.label||''));
 }
 
-// Keyword/rune matching only looks at the article body. Title text used to
-// be folded in here too, so a keyword appearing only in the title (never in
-// the content) would still count -- not the intended behavior, so title is
-// deliberately excluded now.
+// Class/Pattern matching reads only the scan projection (title + visible body).
+// No markup, CMS metadata or legacy date header enters keyword matching.
 function textOf(row){
-  return String(row?.content||'');
+  return typeof row?.scan_text==='string'?row.scan_text:keywordScanText(row);
 }
 
 function keywordList(value){
