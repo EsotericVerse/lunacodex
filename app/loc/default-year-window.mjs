@@ -1,3 +1,4 @@
+// An implicit date window is Jan 1–Dec 31 in Taiwan, NOT a trailing 365-day period.
 // All public views default to one complete Taiwan calendar year.
 // Saved Era/Period records and explicit date navigation may override it.
 export function calendarYearWindow(date=new Date()){
