@@ -2,29 +2,29 @@
 
 import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
-import ScopeOptionPicker from '../modular/ScopeOptionPicker';
-import {useEditDockForm} from '../modular/edit-dock';
-import {useAsyncResource,useResourceCache} from '../../packages/zenstack/client-queries';
-import {revalidateServerMetadata} from './scope-data';
+import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
+import {useEditDockForm} from '../../modular/edit-dock';
+import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
+import {revalidateServerMetadata} from '../scope-data';
 import {
   TRACE_SCOPES,traceKey,traceAllAnchorsKey,
   readTraceData,addTraceAnchor,updateTraceAnchor,renameTraceAnchorTitles,updateTraceVisibilityBulk,mergeTraceAnchorPoints
-} from '../modular/features/trace/trace-data';
-import {reviewReorderedCoordinateNames} from '../modular/features/trace/trace-place-names.mjs';
-import {selectPointMergeSources} from './trace/point-merge-selection.mjs';
+} from '../../modular/features/trace/trace-data';
+import {reviewReorderedCoordinateNames} from '../../modular/features/trace/trace-place-names.mjs';
+import {selectPointMergeSources} from './point-merge-selection.mjs';
 import {
   filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
-} from './trace/bulk-anchor-filter.mjs';
-import {readPlaceSummary} from './trace/place-summary-client';
+} from './bulk-anchor-filter.mjs';
+import {readPlaceSummary} from './place-summary-client';
 
-const BlockNoteEditor=dynamic(()=>import('./editor/BlockNoteEditor'),{loading:()=>null});
-const TraceRouteManager=dynamic(()=>import('./trace/RouteManager'),{
+const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
+const TraceRouteManager=dynamic(()=>import('./RouteManager'),{
   loading:()=> <p className="scope-status" role="status">正在開啟路線／痕跡圖管理…</p>
 });
-const TraceOrganizer=dynamic(()=>import('./trace/Organizer'),{
+const TraceOrganizer=dynamic(()=>import('./Organizer'),{
   loading:()=> <p className="scope-status">正在載入地點名稱整理…</p>
 });
-const TraceMap=dynamic(()=>import('../modular/features/trace/TraceMap'),{
+const TraceMap=dynamic(()=>import('../../modular/features/trace/TraceMap'),{
   ssr:false,loading:()=> <p className="scope-status">正在載入地圖…</p>
 });
 

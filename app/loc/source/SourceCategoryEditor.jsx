@@ -1,16 +1,16 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useAsyncResource} from '../../packages/zenstack/client-queries';
-import {insertRows,updateRows,deleteRows,dbAuthClient} from './db-client.mjs';
-import {readPublicSourceAnchors} from './source/catalog-public.mjs';
-import {allocateAnchorUid} from './uid.js';
-import {nextZModelAnchorType} from '../../packages/zenstack/anchor-hierarchy.mjs';
-import {useEditDockForm} from '../modular/edit-dock';
+import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import {insertRows,updateRows,deleteRows,dbAuthClient} from '../db-client.mjs';
+import {readPublicSourceAnchors} from './catalog-public.mjs';
+import {allocateAnchorUid} from '../uid.js';
+import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {useEditDockForm} from '../../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
-const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
-const BlockNoteEditor=dynamic(()=>import('./editor/BlockNoteEditor'),{loading:()=>null});
+const KeywordNetworkEditor=dynamic(()=>import('../KeywordNetworkEditor'),{ssr:false});
+const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
 const TABLE='silver.loc_anchor';
 const TYPES=['universe','galaxy','domain','from'];
 const EMPTY_COUNTS={lo3rwang:0,lrunes:0};

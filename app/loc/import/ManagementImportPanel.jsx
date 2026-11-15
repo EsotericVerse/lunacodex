@@ -1,52 +1,52 @@
 'use client';
 
-import {useUiCopy,useUiLocale,useUiSection} from '../i18n/ui-locale';
-import UiText,{useUiText} from '../i18n/UiText';
-import {registerDefaultSection,UI_LOCALE_OPTIONS} from '../i18n/ui-copy';
-import managementZh from '../i18n/sections/management.zh_tw.js';
-import importUIZh from '../i18n/sections/uiExtra.importUI.zh_tw.js';
+import {useUiCopy,useUiLocale,useUiSection} from '../../i18n/ui-locale';
+import UiText,{useUiText} from '../../i18n/UiText';
+import {registerDefaultSection,UI_LOCALE_OPTIONS} from '../../i18n/ui-copy';
+import managementZh from '../../i18n/sections/management.zh_tw.js';
+import importUIZh from '../../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 
 import {useDeferredValue,useMemo,useRef,useState,useSyncExternalStore} from 'react';
-import {refreshScopeSearchSummary} from './search/scope-summary.mjs';
-import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
-import {useAccount} from './use-account';
-import FlowProgress from '../modular/FlowProgress';
-import {useAsyncResource,useResourceCache} from '../../packages/zenstack/client-queries';
-import {canonicalImportSourceName,inferImportSourceFromFilename} from './source/name.mjs';
+import {refreshScopeSearchSummary} from '../search/scope-summary.mjs';
+import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from '../db-client.mjs';
+import {useAccount} from '../use-account';
+import FlowProgress from '../../modular/FlowProgress';
+import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
+import {canonicalImportSourceName,inferImportSourceFromFilename} from '../source/name.mjs';
 import {Capacitor} from '@capacitor/core';
-import {defaultScopeData} from './scope-data';
-import {createUid8} from './uid';
-import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../packages/zenstack/anchor-hierarchy.mjs';
-import {createImportProgressStore} from './import/progress-store.mjs';
-import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './import/checkpoint.mjs';
-import {remapArchiveArticleUids} from './import/random-uids.mjs';
-import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks} from './import/uid-delta.mjs';
-import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './archive/facebook-place.mjs';
-import {archiveGalaxyRows} from './archive/caption-rows.mjs';
-import {facebookPostPlace} from './archive/geo-objects.mjs';
+import {defaultScopeData} from '../scope-data';
+import {createUid8} from '../uid';
+import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {createImportProgressStore} from './progress-store.mjs';
+import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './checkpoint.mjs';
+import {remapArchiveArticleUids} from './random-uids.mjs';
+import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks} from './uid-delta.mjs';
+import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from '../archive/facebook-place.mjs';
+import {archiveGalaxyRows} from '../archive/caption-rows.mjs';
+import {facebookPostPlace} from '../archive/geo-objects.mjs';
 
-import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCreatedAt,readImportCandidatesByTimeWindows,isUnchangedImportBeforeWrite,insertImportBatches} from './import/duplicate-check.mjs';
-import {importTimeRangeWindow,filterImportAnalysisByTime} from './import/time-range.mjs';
-import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './import/place-anchors.mjs';
-import {prepareImportTimeAnchors} from './import/time-anchors.mjs';
-import {readImportPointDateAnchors} from './import/anchor-read.mjs';
-import {readPublicSourceTaxonomy} from './source/catalog-public.mjs';
-import {auditImportedSourceSites} from './source/classification.mjs';
-import {reconcileExistingImportAnchors} from './import/reconcile-anchors.mjs';
-import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './import/geocoordinates.mjs';
-import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from './archive/import-safety.mjs';
-import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from './archive/media-evidence.mjs';
-import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,writeImportBatches,createImportBatchSizer} from './import/batch.mjs';
-import {MAX_ROWS,urlSafeInBatches} from './query-batch-size.mjs';
-import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from './content-policy';
-import {galaxyAble} from './galaxy-able.mjs';
-import BulkGalaxyVisibility from './BulkGalaxyVisibility';
-import {touchEditorSession} from './edit-session-ttl.mjs';
-import {PUBLISHED_LOC_ARTICLE_TAGS} from '../modular/published-source-taxonomy.js';
-import {runeDrawText} from './runes/rune-draw-text.mjs';
-import {galaxyReadColumns,galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
+import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCreatedAt,readImportCandidatesByTimeWindows,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
+import {importTimeRangeWindow,filterImportAnalysisByTime} from './time-range.mjs';
+import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './place-anchors.mjs';
+import {prepareImportTimeAnchors} from './time-anchors.mjs';
+import {readImportPointDateAnchors} from './anchor-read.mjs';
+import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
+import {auditImportedSourceSites} from '../source/classification.mjs';
+import {reconcileExistingImportAnchors} from './reconcile-anchors.mjs';
+import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './geocoordinates.mjs';
+import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from '../archive/import-safety.mjs';
+import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
+import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
+import {MAX_ROWS,urlSafeInBatches} from '../query-batch-size.mjs';
+import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content-policy';
+import {galaxyAble} from '../galaxy-able.mjs';
+import BulkGalaxyVisibility from '../BulkGalaxyVisibility';
+import {touchEditorSession} from '../edit-session-ttl.mjs';
+import {PUBLISHED_LOC_ARTICLE_TAGS} from '../../modular/published-source-taxonomy.js';
+import {runeDrawText} from '../runes/rune-draw-text.mjs';
+import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 // The published LOC ArticleTag list is already bundled in the static site;
 // never create an async query/resource just to read this in-memory constant.
 // Keep one stable object so import analysis does not re-run on every UI repaint.
@@ -699,7 +699,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       if(isZip||isThreadsJson||isFacebookGeoJson){
         // ZIP, standalone Threads posts and independent Facebook visit JSON use the scanner;
         // source names are only hints, each record must be a public post.
-        const {detectZipArchiveSource,inspectPrivateArchive}=await import('./archive/universal.mjs');
+        const {detectZipArchiveSource,inspectPrivateArchive}=await import('../archive/universal.mjs');
         const result=isZip
           ?await detectZipArchiveSource(file,{skipPrivateEntries:!nativeLocal,onProgress:p=>setProgress({stage:'正在辨識 ZIP 檔案',completed:Number(p.filesSeen||0),total:0,percent:null})})
           :{kind:isFacebookGeoJson?'facebook':'threads',
@@ -807,7 +807,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           ' 筆（安全問題、空文章、已刪除內容等）。請核對預覽後，在「作品儲存資料庫」按開始匯入。');
         return;
       }
-      const {parseUniversalImportFile}=await import('./import/universal-file.mjs');
+      const {parseUniversalImportFile}=await import('./universal-file.mjs');
       const parsed=await parseUniversalImportFile(file,{recordPath,importLocale:language});
       const list=filterStandalonePublicRows(parsed,nativeLocal);
       assertStandaloneImportDestination({nativeLocal,fileName:file.name,rows:list});

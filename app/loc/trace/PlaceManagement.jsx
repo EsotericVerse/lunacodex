@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import PanelLoading from '../PanelLoading';
 import TimelinePlaceManager from './TimelinePlaceManager';
 
-const TraceManagement=dynamic(()=>import('../TraceManagement'),{loading:PanelLoading});
+const TraceManagement=dynamic(()=>import('./TraceManagement'),{loading:PanelLoading});
 const PlaceBatchFill=dynamic(()=>import('./PlaceBatchFill'),{loading:PanelLoading});
 
 // These are first-level Spatial Management tabs, not nested Place Management options.

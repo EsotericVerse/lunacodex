@@ -12,7 +12,7 @@ import PanelLoading from './PanelLoading';
 const DEFAULT_MANAGED_SCOPE_ID=SCOPE_ROUTE_INDEX.find(row=>row.active&&row.scope_id!=='loc')?.scope_id||'';
 const ManagementMediaWorkspace=dynamic(()=>import('./media/ManagementMediaWorkspace'),{loading:()=>null});
 const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublisher'),{loading:PanelLoading});
-const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
+const ManagementImportPanel=dynamic(()=>import('./import/ManagementImportPanel'),{loading:()=>null});
 
 export default function ManagementContentTarget({scopeId,mode='import',globalAdmin=false}){
   const account=useAccount();

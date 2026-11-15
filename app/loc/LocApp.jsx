@@ -39,11 +39,11 @@ const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),
 const Culture=dynamic(()=>import('../modular/features/Culture'),{loading});
 const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading});
 const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading});
-const SearchManagement=dynamic(()=>import('./SearchManagement'),{loading});
+const SearchManagement=dynamic(()=>import('./search/SearchManagement'),{loading});
 const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
 const RunesHomeView=dynamic(()=>import('../lrunes/RunesClient'),{loading});
-const ManagementView=dynamic(()=>import('./ScopeManagement').catch(recoverChunkOnce),{loading});
-const SourceManagementView=dynamic(()=>import('./LocSourceManagement'),{loading});
+const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading});
+const SourceManagementView=dynamic(()=>import('./source/LocSourceManagement'),{loading});
 const KeywordManagementView=dynamic(()=>import('./LocKeywordManagementPage'),{loading});
 const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading});
 const LocalScopeWorkspace=dynamic(()=>import('./local/Workspace'),{loading});
@@ -72,10 +72,10 @@ const VIEW_PRELOADERS={
   keywords:()=>import('../modular/features/KeywordSettings'),
   culture:()=>import('../modular/features/Culture'),
   search:()=>import('../modular/features/Search'),
-  searchManage:()=>import('./SearchManagement'),
+  searchManage:()=>import('./search/SearchManagement'),
   trace:()=>import('../modular/features/Trace'),
-  manage:()=>import('./ScopeManagement'),
-  sourceManage:()=>import('./LocSourceManagement'),
+  manage:()=>import('./scope/ScopeManagement'),
+  sourceManage:()=>import('./source/LocSourceManagement'),
   keywordManage:()=>import('./LocKeywordManagementPage'),
   setting:()=>import('./views/LocalSettingView')
 };
