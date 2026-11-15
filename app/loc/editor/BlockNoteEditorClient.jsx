@@ -1,11 +1,11 @@
 'use client';
-import FieldText from '../i18n/FieldText';
+import FieldText from '../../i18n/FieldText';
 
 import {useEffect,useRef} from 'react';
 import {SuggestionMenuController,useCreateBlockNote} from '@blocknote/react';
-import {blockNoteSuggestionItems} from './editor/blocknote-suggestions.mjs';
+import {blockNoteSuggestionItems} from './blocknote-suggestions.mjs';
 import {BlockNoteView} from '@blocknote/mantine';
-import {canonicalBlockNoteBlocks,canonicalBlockNoteHtml,BlockNoteContent} from './editor/blocknote-content.mjs';
+import {canonicalBlockNoteBlocks,canonicalBlockNoteHtml,BlockNoteContent} from './blocknote-content.mjs';
 
 // Keep the native BlockNote/Mantine tools, menus and portalled suggestions
 // on the same live LOC palette as the editor surface. Using CSS var() lets

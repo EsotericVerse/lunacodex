@@ -10,7 +10,7 @@ import {allocateTimeUid} from '../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../loc/anniversary.mjs';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/edit-session-ttl.mjs';
 
-const BlockNoteEditor=dynamic(()=>import('../loc/BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const validDay=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
 async function findDateAnchor(table,date){

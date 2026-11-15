@@ -8,7 +8,7 @@ import {heroImageUrl as imageUrlOf} from '../../blocks/hero-image.mjs';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 
 const ScopeEditableBlocks=dynamic(()=>import('../../blocks/ScopeEditableBlocks'),{loading:()=>null});
-const BlockNoteEditor=dynamic(()=>import('../../BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../../editor/BlockNoteEditor'),{loading:()=>null});
 
 // Admin has six feature tabs. Management Heroes are editors INSIDE the
 // corresponding feature panel, not extra navigation items.

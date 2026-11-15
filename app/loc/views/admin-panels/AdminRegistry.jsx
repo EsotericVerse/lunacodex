@@ -9,7 +9,7 @@ import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 import dynamic from 'next/dynamic';
 import {duplicateDomainLabelError} from '../../../modular/routing/scope-registry';
 import {THEME_SLOTS} from '../../../modular/theme-registry';
-const ObjectEditor=dynamic(()=>import('../../BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 import {ScopeFeatureToggles} from '../../../modular/ui';
 import {scopeConfigColumns,scopeFeaturePatch,scopeFeatureName} from '../../scope-config-fields.mjs';
 import {
