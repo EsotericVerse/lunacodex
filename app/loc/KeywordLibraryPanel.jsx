@@ -67,6 +67,30 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const discoveryAbort=useRef(null);
   const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true);
   const [error,setError]=useState(''),[notice,setNotice]=useState('');
+  const [unconfirmedAttempt,setUnconfirmedAttempt]=useState(null);
+  const [checkingAttempt,setCheckingAttempt]=useState(false);
+  const [resetConfirmation,setResetConfirmation]=useState('');
+  const receiptKey='loc-keyword-analysis-unconfirmed:'+scopeId;
+  // Only UUID + Class UID are retained; no article bodies, Pattern postings
+  // or credentials. Reloading the page must not discard an uncertain write.
+  useEffect(()=>{
+    try{
+      const stored=JSON.parse(sessionStorage.getItem(receiptKey)||'null');
+      if(stored&&/^[A-Za-z0-9]{8}$/.test(stored.classUid)&&
+        /^[0-9a-f-]{36}$/i.test(stored.attemptId)&&
+        Date.now()-Number(stored.savedAt)<86400000)
+        setUnconfirmedAttempt(stored);
+      else setUnconfirmedAttempt(null);
+    }catch{setUnconfirmedAttempt(null);}
+  },[receiptKey]);
+  const storeUnconfirmed=attempt=>{
+    setUnconfirmedAttempt(attempt);
+    try{
+      if(attempt)sessionStorage.setItem(receiptKey,JSON.stringify(attempt));
+      else sessionStorage.removeItem(receiptKey);
+    }catch{/* Metadata-only check remains available until navigation. */}
+  };
+
   const tree=useMemo(()=>{
     if(!rows.length)return emptyTree;
     return indexKeywordTree(rows);
@@ -316,8 +340,15 @@ export default function KeywordLibraryPanel({scopeId,account}){
   };
   const run=async(reset=false)=>{
     const runClassUid=activeClass?.uid;
-    if(busy||!runClassUid)return;
-    setBusy(true);setProgress({phase:'reading',percent:0});setError('');
+    if(busy||!runClassUid||unconfirmedAttempt?.classUid===runClassUid)return;
+    if(reset&&resetConfirmation!==runClassUid){
+      setResetConfirmation(runClassUid);
+      setNotice('請再次按下「確認清空」；只會清除選定 Class 的分析結果，文章與關鍵詞定義保留。');
+      setError('');
+      return;
+    }
+    setResetConfirmation('');
+    setBusy(true);setProgress({phase:'reading',percent:0});setError('');setNotice('');
     try{
       if(reset)await resetKeywordClassification(scopeId,{classUid:runClassUid,onProgress:setProgress});
       else{
@@ -326,8 +357,37 @@ export default function KeywordLibraryPanel({scopeId,account}){
       }
       await load(runClassUid);await invalidate();
       setNotice(reset?'已清空此關鍵字群組的分析結果。':'此關鍵字群組已重新分析完成。');
-    }catch(e){setError(String(e.message||e));}
-    finally{setBusy(false);setProgress(null);}
+    }catch(e){
+      if(e?.name==='KeywordAnalysisUnconfirmedError'&&e?.attemptId){
+        storeUnconfirmed({classUid:runClassUid,attemptId:e.attemptId,savedAt:Date.now()});
+      }
+      setError(String(e.message||e));
+    }finally{setBusy(false);setProgress(null);}
+  };
+  const checkUnconfirmed=async()=>{
+    const attempt=unconfirmedAttempt;
+    if(!attempt||checkingAttempt||busy)return;
+    setCheckingAttempt(true);setError('');setNotice('');
+    try{
+      const {keywordService}=await import('./keyword-service-client.mjs');
+      const result=await keywordService('analyzeStatus',{
+        scopeId,classUid:attempt.classUid,attemptId:attempt.attemptId
+      });
+      if(result?.completed){
+        storeUnconfirmed(null);
+        await load(attempt.classUid);await invalidate();
+        setNotice('已由資料庫回執確認這次分析完成，不需重新執行。');
+      }else{
+        setError('資料庫尚未找到這次分析的完成回執。可能仍在執行或已中止；目前未執行任何寫入。');
+      }
+    }catch(e){setError('核對失敗：'+String(e.message||e));}
+    finally{setCheckingAttempt(false);}
+  };
+  const discardUnconfirmed=()=>{
+    const attempt=unconfirmedAttempt;
+    if(!attempt)return;
+    if(!window.confirm('這不會取消伺服器可能仍在執行的分析，也不會清除資料。確定只放棄本次回執追蹤嗎？'))return;
+    storeUnconfirmed(null);setNotice('已停止追蹤本次分析回執；未修改資料庫。');setError('');
   };
   const discoverNewTerms=async()=>{
     if(discoveryBusy||busy||loading)return;
@@ -595,11 +655,26 @@ export default function KeywordLibraryPanel({scopeId,account}){
         <p className="scope-status">有效分類文章：{Number(keywordClassState(config,activeClass?.uid)?.matchedDocuments||0).toLocaleString()} 篇</p>
       </details>
       <div className="scope-preview-links">
-        <button type="button" className="loc-button primary" disabled={busy||!activeClass?.uid}
-          onClick={()=>run(false)}>重新分析</button>
-        <button type="button" className="loc-button" disabled={busy||!activeClass?.uid}
-          onClick={()=>run(true)}>清空本群組的分析結果</button>
+        <button type="button" className="loc-button primary"
+          disabled={busy||checkingAttempt||!activeClass?.uid||unconfirmedAttempt?.classUid===activeClass.uid}
+          onClick={()=>{setResetConfirmation('');run(false);}}>重新分析</button>
+        <button type="button" className="loc-button"
+          disabled={busy||checkingAttempt||!activeClass?.uid||unconfirmedAttempt?.classUid===activeClass.uid}
+          onClick={()=>run(true)}>
+          {resetConfirmation===activeClass?.uid?'確認清空':'清空本群組的分析結果'}
+        </button>
       </div>
+      {unconfirmedAttempt?<div className="scope-status" role="status">
+        <p>前次分析尚未確認（Class：{unconfirmedAttempt.classUid}）。保留原始執行識別碼供唯讀核對；不會自動重新分析。</p>
+        <div className="scope-preview-links">
+          <button type="button" className="loc-button primary"
+            disabled={checkingAttempt||busy} onClick={checkUnconfirmed}>
+            {checkingAttempt?'正在核對…':'核對本次分析'}
+          </button>
+          <button type="button" className="loc-button"
+            disabled={checkingAttempt||busy} onClick={discardUnconfirmed}>放棄回執追蹤</button>
+        </div>
+      </div>:null}
       {busy?<FlowProgress kind="keywords" stage={progress?.label||progress?.phase||'解析關鍵詞'}
         completed={progress?.completed||0} total={progress?.total||0}/>:null}
     </section>:null}
