@@ -51,6 +51,12 @@ const galaxyListMetadataColumns=Object.freeze([
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
   .filter(column=>['uid','title','content','keyword'].includes(column)));
 
+const removeLegacyKeywordHitCache=value=>{
+  const {uidlists,articles,hits,total,...links}=value||{};
+  // Keep Item.attr.uid: these are Pattern Anchor IDs, not article postings.
+  return links;
+};
+
 async function configuration(db,scope){
   return await db.selectFrom(configName(scope))
     .select(['current_keyword_class_uid','keyword_meta','keyword_min_chars','keyword_min_documents'])
@@ -576,14 +582,14 @@ export async function saveKeywordItem(db,scope,values,{
         title:asNodeText(values.name),description:values.desc,
         attr:JSON.stringify({keyword:words})}).execute();
       await trx.updateTable(table).set({attr:JSON.stringify({
-        ...attr(parent),uid:[...new Set([...children(parent),values.uid])]
+        ...removeLegacyKeywordHitCache(attr(parent)),uid:[...new Set([...children(parent),values.uid])]
       })}).where('uid','=',parent.uid).where('type','=','group').execute();
     }else{
       if(old?.type!=='item')fail('Keyword Item not found',404);
       parent=await findContainingGroup(trx,scope,values.uid);
       await trx.updateTable(table).set({
         title:asNodeText(values.name),description:values.desc,
-        attr:JSON.stringify({...attr(old),keyword:words})
+        attr:JSON.stringify({...removeLegacyKeywordHitCache(attr(old)),keyword:words})
       }).where('uid','=',values.uid).where('type','=','item').execute();
     }
     const linked=await ensureScopePatternLibrary(trx,scope);
@@ -604,7 +610,7 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
     const parent=await findContainingGroup(trx,scope,itemUid);
     const classUid=await classContainingGroup(trx,scope,parent.uid);
     await trx.updateTable(table).set({attr:JSON.stringify({
-      ...attr(parent),uid:children(parent).filter(uid=>uid!==itemUid)
+      ...removeLegacyKeywordHitCache(attr(parent)),uid:children(parent).filter(uid=>uid!==itemUid)
     })}).where('uid','=',parent.uid).execute();
     await trx.deleteFrom(table).where('uid','=',itemUid).where('type','=','item').execute();
     const linked=await ensureScopePatternLibrary(trx,scope);
