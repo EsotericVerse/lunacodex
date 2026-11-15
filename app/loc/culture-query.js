@@ -11,8 +11,8 @@ import {publicContentFilters} from './content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from './scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-anchor-ranges.mjs';
-import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../zenstack/anchor-hierarchy.mjs';
+import {galaxyReadColumns} from '../../packages/zenstack/galaxy-read-models.mjs';
+import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../packages/zenstack/anchor-hierarchy.mjs';
 
 
 

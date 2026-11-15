@@ -2,10 +2,10 @@ import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
 import {portableContainsSpec} from '../providers/portable-search.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
-import {scopedZModelSchema} from '../../../zenstack/scoped-schema.mjs';
-import {createScopedLocClient} from '../../../zenstack/client.mjs';
+import {scopedZModelSchema} from '../../../packages/zenstack/scoped-schema.mjs';
+import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
 import {directMcpKysely} from './native-kysely.mjs';
-import {galaxyReadColumns} from '../../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 // This is a specific read model executed by the trusted MCP application, NOT
 // a generic SQL transport. No HTTP SQL endpoint, provider SDK or DB credential

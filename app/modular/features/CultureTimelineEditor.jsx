@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import ScopeOptionPicker from '../ScopeOptionPicker';
 import {useSearchParams} from 'next/navigation';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
-import {useAsyncResource,useResourceCache} from '../../../zenstack/client-queries';
+import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useEditDock} from '../edit-dock';
 import {dbAuthClient,deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
 import {revalidateServerMetadata} from '../../loc/scope-data';
@@ -13,7 +13,7 @@ import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/anniversary.mjs';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture-anchor-bulk.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';
 const BlockNoteEditor=dynamic(()=>import('../../loc/BlockNoteEditor'),{loading:()=>null});
 

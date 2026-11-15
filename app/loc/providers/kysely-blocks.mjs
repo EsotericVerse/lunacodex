@@ -1,8 +1,8 @@
 import {sql} from 'kysely';
 import {buildKyselyUpsertQuery} from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
-import {modelFieldsForSql} from '../../../zenstack/model-column-guard.mjs';
-import {modelWriteSchemaForSqlTable,locBlocksZModelSchema} from '../../../zenstack/import-validation.mjs';
+import {modelFieldsForSql} from '../../../packages/zenstack/model-column-guard.mjs';
+import {modelWriteSchemaForSqlTable,locBlocksZModelSchema} from '../../../packages/zenstack/import-validation.mjs';
 import {isLocBlockPage,locBlockToAnchor} from '../loc-block-anchor.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;

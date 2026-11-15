@@ -1,7 +1,7 @@
 // One authenticated, Scope-filtered Anchor scan for the existing import index.
 // The 19 persisted types come from ZModel; this importer consumes Point/Date
 // together without creating a parallel Anchor table or a semantic PK.
-import {ANCHOR_TYPE_PROJECTIONS} from '../../zenstack/anchor-hierarchy.mjs';
+import {ANCHOR_TYPE_PROJECTIONS} from '../../packages/zenstack/anchor-hierarchy.mjs';
 import {dbAuthClient,dbAuthRelation} from './db-client.mjs';
 import {createImportPlaceIndex} from './import-place-anchors.mjs';
 import {createImportDateIndex} from './import-time-anchors.mjs';

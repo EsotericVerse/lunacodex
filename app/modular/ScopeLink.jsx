@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import {prepareTransientResourceAction} from '../../zenstack/client-queries';
+import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
 
 export function isSameOriginHref(href=''){
   const value=String(href||'');

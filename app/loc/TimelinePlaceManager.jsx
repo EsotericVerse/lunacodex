@@ -3,12 +3,12 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {dbAuthClient} from './db-client.mjs';
 import {readAllTraceAnchors} from '../modular/features/trace/trace-data';
-import {useAsyncResource,useResourceCache} from '../../zenstack/client-queries';
+import {useAsyncResource,useResourceCache} from '../../packages/zenstack/client-queries';
 import {revalidateServerMetadata} from './scope-data';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession} from './edit-session-ttl.mjs';
 import {TIMELINE_IO,MAX_TIMELINE_BYTES} from './query-batch-size.mjs';
 import {accumulateTimelineArticles,groupTimelineMissingPlaces,selectedTimelineArticleUpdates} from './timeline-place-matcher.mjs';
-import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
 
 // Keep request and response sizes bounded during browser-side review.
 const RESULT_PAGE=Math.min(TIMELINE_IO.previewPage,500);

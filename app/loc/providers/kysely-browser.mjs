@@ -2,7 +2,7 @@
 // executes every bounded SELECT with the server-owned Kysely SQL dialect.
 // LOC OAuth delegation is still mandatory for all mutations.
 import {withPublicReadBudget} from './kysely-read-budget.mjs';
-import {transientReadSignal} from '../../../zenstack/transient-read-epoch.mjs';
+import {transientReadSignal} from '../../../packages/zenstack/transient-read-epoch.mjs';
 
 const IDENT=/^[A-Za-z_][A-Za-z0-9_]*$/;
 const FIELD=value=>{

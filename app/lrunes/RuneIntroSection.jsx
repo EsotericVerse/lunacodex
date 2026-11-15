@@ -1,10 +1,10 @@
 'use client';
 
-import {useAsyncResource} from '../../zenstack/client-queries';
+import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {selectRows} from '../loc/db-query.mjs';
 import {runeImage} from './rune-directory.mjs';
 import RuneCardInfo from './RuneCardInfo';
-import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
+import {lRunes66ColumnString} from '../../packages/zenstack/lrunes-read-model.mjs';
 
 export default function RuneIntroSection(){
   const sample=useAsyncResource(['lunarunes-intro-rune',66],async()=>{

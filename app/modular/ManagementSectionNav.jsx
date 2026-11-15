@@ -3,7 +3,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import {motion,useReducedMotion} from 'motion/react';
-import {prepareTransientResourceAction} from '../../zenstack/client-queries';
+import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
 
 /**
  * In-page management navigator.

@@ -1,7 +1,7 @@
 import {planUidDependencyRepair,UID_DEPENDENT_ANCHOR_FIELDS} from '../uid-dependency-immer.mjs';
 import {SCOPE_PATTERN_POSTING_KEY} from '../keyword-anchor-index.mjs';
 import {sql} from 'kysely';
-import {PERSISTED_ANCHOR_TYPES} from '../../../zenstack/anchor-hierarchy.mjs';
+import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const SCOPED=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor)$/;

@@ -13,12 +13,12 @@ import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
 import FlowProgress from '../modular/FlowProgress';
-import {useAsyncResource,useResourceCache} from '../../zenstack/client-queries';
+import {useAsyncResource,useResourceCache} from '../../packages/zenstack/client-queries';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from './source-name.mjs';
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from './scope-data';
 import {createUid8} from './uid';
-import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../zenstack/anchor-hierarchy.mjs';
+import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../packages/zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './import-progress-store.mjs';
 import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './import-checkpoint.mjs';
 import {remapArchiveArticleUids} from './import-random-uids.mjs';
@@ -46,7 +46,7 @@ import BulkGalaxyVisibility from './BulkGalaxyVisibility';
 import {touchEditorSession} from './edit-session-ttl.mjs';
 import {PUBLISHED_LOC_ARTICLE_TAGS} from '../modular/published-source-taxonomy.js';
 import {runeDrawText} from './rune-draw-text.mjs';
-import {galaxyReadColumns,galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns,galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
 // The published LOC ArticleTag list is already bundled in the static site;
 // never create an async query/resource just to read this in-memory constant.
 // Keep one stable object so import analysis does not re-run on every UI repaint.

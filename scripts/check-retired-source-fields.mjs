@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
-const folders=['app','workers','extensions','functions','zenstack'];
+const folders=['app','services/workers','extensions','functions','packages/zenstack'];
 const extensions=/\.(?:[cm]?js|jsx|tsx?|jsonc?|zmodel|sql|vue|py|rb|sh|swift|css|html)$/i;
 const legacy=/DefaultArticleClass|\btxt_class\b/i;
 const findings=[];

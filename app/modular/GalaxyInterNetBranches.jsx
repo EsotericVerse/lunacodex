@@ -2,7 +2,7 @@
 
 import {useState} from 'react';
 import dynamic from 'next/dynamic';
-import {galaxyInterNetEdges} from '../../zenstack/galaxy-inter-net.mjs';
+import {galaxyInterNetEdges} from '../../packages/zenstack/galaxy-inter-net.mjs';
 
 // Second-level Anchor resolver is loaded only when a user opens its branch.
 const GalaxyAnchorInterNet=dynamic(()=>import('./GalaxyAnchorInterNet'),{loading:()=>null});

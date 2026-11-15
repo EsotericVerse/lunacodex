@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DummyDriver,PostgresAdapter,PostgresIntrospector,PostgresQueryCompiler} from 'kysely';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
-import {schema} from '../zenstack/schema.mjs';
+import {schema} from '../packages/zenstack/schema.mjs';
 
 test('real ZenStack V3 PolicyPlugin enforces public fixed-model read in one SQL query',async()=>{
   const executed=[];

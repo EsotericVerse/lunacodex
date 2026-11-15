@@ -8,7 +8,7 @@ import {modelFieldsForSql,modeledPrimaryKeyColumns}
 import {shortImportLookupPlan,shortImportInsertRows} from './short-import-zk.mjs';
 import {galaxyReadColumns} from './galaxy-read-models.mjs';
 import {portableRelation,getSqlEnginePort}
-  from '../app/loc/providers/sql-engine-ports.mjs';
+  from '../../app/loc/providers/sql-engine-ports.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const LOOKUP_FIELDS=Object.freeze(['uid','content','site_id']);

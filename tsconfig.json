@@ -42,7 +42,6 @@
     "node_modules",
     "app/loc/import/channel1-receiver.ts",
     "services/**",
-    "supabase/**",
-    "workers/**"
+    "services/workers/**"
   ]
 }

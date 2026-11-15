@@ -1,7 +1,7 @@
 // LOC Local Scope: the same browser-native IndexedDB primitive used by the
 // Galaxy Link Extension, but with a dedicated Galaxy store (NOT its Queue).
 // Nothing here imports cloud authentication, RPC, networking, or SQL drivers.
-import {modelWriteSchemaForSqlTable} from '../../zenstack/import-validation.mjs';
+import {modelWriteSchemaForSqlTable} from '../../packages/zenstack/import-validation.mjs';
 import {createUid8} from './uid.js';
 
 export const LOCAL_GALAXY_DB='loc-local-galaxy-v1';

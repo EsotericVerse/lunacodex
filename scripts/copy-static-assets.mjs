@@ -9,7 +9,12 @@ const assetsSource=path.join(root,'assets');
 const assetsTarget=path.join(output,'assets');
 if(!fs.existsSync(assetsSource))throw new Error('Static asset source missing: assets');
 fs.rmSync(assetsTarget,{recursive:true,force:true});
-fs.cpSync(assetsSource,assetsTarget,{recursive:true});
+// Master artwork and original pics are selectively published below, never twice.
+const unpublishedSource=path.join(assetsSource,'lunarunes','source');
+const pictureOriginals=path.join(assetsSource,'pics');
+fs.cpSync(assetsSource,assetsTarget,{recursive:true,
+  filter:source=>![unpublishedSource,pictureOriginals].some(
+    folder=>source===folder||source.startsWith(folder+path.sep))});
 
 // pics/ is copied wholesale, the same as assets/ above: any image added here
 // (including new subfolders) ships to the static export automatically, with
@@ -23,7 +28,7 @@ fs.cpSync(assetsSource,assetsTarget,{recursive:true});
 // inside the IPA" check. They still live at their real published address
 // (loc.lo3rwang.cc/pics/64Card_org/...) on the deployed website; this only
 // keeps them out of the static export / native app bundle.
-const picsSource=path.join(root,'pics');
+const picsSource=path.join(assetsSource,'pics');
 const picsTarget=path.join(output,'pics');
 const EXCLUDED_PICS_DIRS=[path.join(picsSource,'64Card_org')];
 if(!fs.existsSync(picsSource))throw new Error('Static asset source missing: pics');
@@ -33,7 +38,7 @@ fs.cpSync(picsSource,picsTarget,{recursive:true,
 
 const rootDownloads=['LunarRunesCardCut.pdf'];
 for(const name of rootDownloads){
-  const source=path.join(root,name);
+  const source=path.join(assetsSource,'lunarunes','source',name);
   if(!fs.existsSync(source))throw new Error(`Static asset source missing: ${name}`);
   fs.copyFileSync(source,path.join(output,name));
 }

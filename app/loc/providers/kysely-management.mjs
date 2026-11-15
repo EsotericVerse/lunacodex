@@ -1,11 +1,11 @@
 import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
   modeledBooleanColumns,zmodelRegistryJoin,verifyModeledSqlFields}
-  from '../../../zenstack/model-column-guard.mjs';
+  from '../../../packages/zenstack/model-column-guard.mjs';
 import {managedRowsIssue,managedUpdateValuesValid,managedFiltersValid,
-  MANAGED_FILTER_SQL} from '../../../zenstack/sql-input-shape.mjs';
+  MANAGED_FILTER_SQL} from '../../../packages/zenstack/sql-input-shape.mjs';
 import {assertZModelGalaxyManagedValues,assertZModelAnchorBlockManagedValues,
-  assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
+  assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
@@ -13,7 +13,7 @@ import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {decodeRuntimeIo,encodeRuntimeIo} from '../query-batch-size.mjs';
 import {allocateAnchorUid} from '../uid.js';
 import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
-  from '../../../zenstack/anchor-hierarchy.mjs';
+  from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import * as z from 'zod';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';

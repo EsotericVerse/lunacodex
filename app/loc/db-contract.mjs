@@ -69,7 +69,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(!isScopedGalaxy(table))return insertRowsUnchecked(table,rows);
     for(const row of rows)validateGalaxyWrite(table,row);
     const prepared=prepareGalaxyInsertRows(table,rows);
-    const {assertZModelImportRows}=await import('../../zenstack/import-validation.mjs');
+    const {assertZModelImportRows}=await import('../../packages/zenstack/import-validation.mjs');
     assertZModelImportRows(table,prepared,{onProgress:onValidationProgress});
     return insertRowsUnchecked(table,prepared,{normalizedGalaxy:true});
   };

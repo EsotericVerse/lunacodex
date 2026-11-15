@@ -6,7 +6,7 @@ import {classifyShortImportFailure} from '../import/import-failure-code.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {readLocAccess} from '../permissions/loc_access.mjs';
 import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
-import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../zenstack/sql-input-shape.mjs';
+import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../packages/zenstack/sql-input-shape.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
@@ -20,7 +20,7 @@ import {directMcpKysely} from './native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
-import {withFixedPolicyWrite} from '../../../zenstack/policy-runtime.mjs';
+import {withFixedPolicyWrite} from '../../../packages/zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -31,7 +31,7 @@ const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
 const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','short-import','managed-write','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
-// signed global:manage delegation may UPDATE/DELETE (zenstack/policy-runtime.mjs
+// signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
 // separate owner-only editor checks; MCP/Extension use active api.manage
 // roles with exact Scope grants. Neither path grants global Admin by login.

@@ -1,11 +1,11 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useAsyncResource} from '../../zenstack/client-queries';
+import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {insertRows,updateRows,deleteRows,dbAuthClient} from './db-client.mjs';
 import {readPublicSourceAnchors} from './source-catalog-public.mjs';
 import {allocateAnchorUid} from './uid.js';
-import {nextZModelAnchorType} from '../../zenstack/anchor-hierarchy.mjs';
+import {nextZModelAnchorType} from '../../packages/zenstack/anchor-hierarchy.mjs';
 import {useEditDockForm} from '../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.

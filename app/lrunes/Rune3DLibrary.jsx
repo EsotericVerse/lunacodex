@@ -12,7 +12,7 @@ import {groupImage,runeImage,runeName,runeNumbersForGroup} from './rune-director
 import {navigationHref} from '../modular/scope-registry.js';
 import useNativeNavigation from '../modular/use-native-navigation';
 import ScopeLink from '../modular/ScopeLink';
-import {lRunes66ColumnString} from '../../zenstack/lrunes-read-model.mjs';
+import {lRunes66ColumnString} from '../../packages/zenstack/lrunes-read-model.mjs';
 import './skin-lab.css';
 import './visual/rune-art-layout.css';
 import './effekseer/effekseer-stage.css';

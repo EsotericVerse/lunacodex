@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {anchorInterNetChildren,sourceInterNetSelection} from '../../zenstack/anchor-inter-net.mjs';
+import {anchorInterNetChildren,sourceInterNetSelection} from '../../packages/zenstack/anchor-inter-net.mjs';
 import {featureNavigationHref} from './feature-navigation';
 
 const UID=/^[A-Za-z0-9]{8}$/;

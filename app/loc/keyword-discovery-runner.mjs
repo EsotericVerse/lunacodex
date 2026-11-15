@@ -1,7 +1,7 @@
 'use client';
 
 import {dbAuthRelation} from './db-client.mjs';
-import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns} from '../../packages/zenstack/galaxy-read-models.mjs';
 import {KeywordDiscoveryQueue} from './keyword-discovery-queue.mjs';
 import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
 import * as z from 'zod';

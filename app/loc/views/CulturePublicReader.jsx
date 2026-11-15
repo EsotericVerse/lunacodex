@@ -13,9 +13,9 @@ import {scopeHref} from '../../modular/scope-registry';
 import {assignedSource} from '../member-intersection-model.mjs';
 import {readPublicSourceTaxonomy} from '../source-catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../default-year-window.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../zenstack/anchor-hierarchy.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
-import {prepareTransientResourceAction} from '../../../zenstack/client-queries';
+import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);

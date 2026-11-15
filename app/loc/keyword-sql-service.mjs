@@ -11,7 +11,7 @@ import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
 import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
 import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
-import {galaxyReadColumns,galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns,galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;

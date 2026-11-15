@@ -4,7 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {createLunaRunesGame} from './boardgame-rules.js';
 import {localTabletopRules} from './game-data.js';
 import {runeImage} from '../rune-directory.mjs';
-import {prepareTransientResourceAction} from '../../../zenstack/client-queries';
+import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 import ScopeLink from '../../modular/ScopeLink';
 import './game-board.css';
 

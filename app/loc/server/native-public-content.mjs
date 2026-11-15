@@ -6,9 +6,9 @@ import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
-import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../zenstack/policy-runtime.mjs';
-import {createScopedLocClient} from '../../../zenstack/client.mjs';
-import {assertZModelSelectRows} from '../../../zenstack/import-validation.mjs';
+import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../packages/zenstack/policy-runtime.mjs';
+import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
+import {assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
 import {LOC_BLOCK_ANCHOR_FIELDS} from '../loc-block-anchor.mjs';
 import {block_list,hero_block} from '../providers/kysely-public.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
