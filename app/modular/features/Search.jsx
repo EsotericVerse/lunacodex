@@ -19,7 +19,7 @@ import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
-import {publicPatternSuggestions} from '../../loc/public-pattern-suggestions.mjs';
+import {publicPatternSuggestions} from '../../loc/search/public-pattern-suggestions.mjs';
 import {blockNoteSuggestionItems} from '../../loc/blocknote-suggestions.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useRouter,useSearchParams} from 'next/navigation';
@@ -28,7 +28,7 @@ import {dbAuthClient,dbPublicClient,deleteRows,updateRows} from '../../loc/db-cl
 import {useAccount} from '../../loc/use-account';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ScopeLink from '../ScopeLink';
-import SearchSummary from '../../loc/SearchSummary';
+import SearchSummary from '../../loc/search/Summary';
 // Article cards/editing are requested only when results actually render.
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 // Mount the Inter-Net only for an explicitly opened Galaxy detail.
@@ -41,7 +41,7 @@ import {useEditDock} from '../edit-dock';
 import {scopeHref} from '../routing/scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../routing/feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
-import {parseSearchQuery} from '../../loc/search-query.mjs';
+import {parseSearchQuery} from '../../loc/search/query.mjs';
 import {locGlobalUid} from '../../../packages/zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
