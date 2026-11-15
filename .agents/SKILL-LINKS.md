@@ -114,6 +114,17 @@
 - [triage](https://github.com/EsotericVerse/moon-runes-pwa/blob/b4870bbeafb2733f8cbc3dd63b83cb0ea9a5a0ca/.agents/skills/triage/SKILL.md)
 
 
+## addyosmani/agent-skills（工程補充參考；不註冊為頂層 Skill）
+
+來源固定快照：[`addyosmani/agent-skills@39b723ceebf81474d0557c1fecd01eddab585563`](https://github.com/addyosmani/agent-skills/tree/39b723ceebf81474d0557c1fecd01eddab585563/skills)（MIT）。下列六份只在現有主 Skill 無法覆蓋當前問題時按需讀取；不得一次全載，也不預設安裝 CLI、MCP、Hooks、測試閘門或建立部署流程。LOC 的 `AGENTS.md`、現行原始碼與實際平台設定優先於外部 Skill 的一般建議。
+
+- [context-engineering](https://github.com/addyosmani/agent-skills/blob/39b723ceebf81474d0557c1fecd01eddab585563/skills/context-engineering/SKILL.md) — Agent 上下文裁剪、工作切換與交接；不得用舊對話覆蓋最新原始碼與 `AGENTS.md`。
+- [code-simplification](https://github.com/addyosmani/agent-skills/blob/39b723ceebf81474d0557c1fecd01eddab585563/skills/code-simplification/SKILL.md) — 不改行為的程式簡化與重複邏輯整併；保留 LOC 物件責任與模組邊界。
+- [performance-optimization](https://github.com/addyosmani/agent-skills/blob/39b723ceebf81474d0557c1fecd01eddab585563/skills/performance-optimization/SKILL.md) — 依量測結果定位前端、資料查詢、資源與渲染瓶頸；避免未證實的效能假設。
+- [ci-cd-and-automation](https://github.com/addyosmani/agent-skills/blob/39b723ceebf81474d0557c1fecd01eddab585563/skills/ci-cd-and-automation/SKILL.md) — GitHub／Cloudflare／Vercel CI/CD 參考；先讀實際設定，不依範例自行新增或取消 Preview Deployment、觸發器與工作流程。
+- [documentation-and-adrs](https://github.com/addyosmani/agent-skills/blob/39b723ceebf81474d0557c1fecd01eddab585563/skills/documentation-and-adrs/SKILL.md) — 必要時記錄架構設計原因、資料模型與新舊模組邊界；不另建立與 `AGENTS.md` 競爭的規則。
+- [browser-testing-with-devtools](https://github.com/addyosmani/agent-skills/blob/39b723ceebf81474d0557c1fecd01eddab585563/skills/browser-testing-with-devtools/SKILL.md) — 有 Chrome DevTools MCP 且需要驗證真實頁面時，檢查 DOM、Console、Network、效能與響應式呈現；不為讀取 Skill 自動安裝 MCP。
+
 ## 12 個主 Skill 的完整原始版本（必要時才開）
 
 下列頂層 `SKILL.md` 已精簡為工作入口；完整指引保留於固定快照。**不要同時讀取全部內容。**
