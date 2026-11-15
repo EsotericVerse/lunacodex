@@ -1,7 +1,7 @@
 // Exact UID-selected Anchor navigation only; never autocomplete identifiers.
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
-import {SCOPE_PATTERN_POSTING_KEY} from './keyword-anchor-index.mjs';
+import {SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION} from './keyword-anchor-index.mjs';
 import {galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -47,7 +47,7 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
   const patterns=new Set();
   for(const itemId of visible)
     for(const uid of kids(byUid.get(itemId)))patterns.add(uid);
-  const indexed=meta.pattern_index_version==='scope_anchor_v1'
+  const indexed=meta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION
     ?new Set(Object.keys(meta.pattern_scans||{})):new Set();
   return {items:visible,patterns,indexed,published:settings?.search===true};
 }

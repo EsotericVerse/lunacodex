@@ -1,5 +1,7 @@
 import {buildKeywordSearchPatterns,keywordPatternItemMetrics} from './keyword-search-pattern.mjs';
 import {createKeywordUidDocumentClassifier} from './model/keyword-uid-analysis.mjs';
+import {keywordScanText} from './content-filter.mjs';
+import {compileKeywordLiteralMatcher} from './keyword-literal-matcher.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const keyOf=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -14,11 +16,13 @@ const isoMillis=value=>{
 // article's import/edit clock. No extra physical column or Class-specific index.
 export async function analyzeIncrementalKeywordPatterns({
   scopeId,classUid,treeRows,items,existingPatterns=[],patternScans={},
-  minChars=0,pageSize=1000,expectedCount=null,readMetadataPage,readContent,
+  minChars=0,exceptionWords=[],pageSize=1000,expectedCount=null,readMetadataPage,readContent,
   writePatterns,finalize,onProgress=()=>{},startedAt=new Date().toISOString()
 }={}){
   if(!Array.isArray(existingPatterns)||!patternScans||typeof patternScans!=='object'||
-     Array.isArray(patternScans)||!Number.isSafeInteger(pageSize)||pageSize<1||
+     Array.isArray(patternScans)||!Array.isArray(exceptionWords)||
+     exceptionWords.some(word=>typeof word!=='string')||
+     !Number.isSafeInteger(pageSize)||pageSize<1||
      typeof readMetadataPage!=='function'||typeof readContent!=='function'||
      typeof writePatterns!=='function'||typeof finalize!=='function')
     throw new TypeError('Invalid incremental Keyword analysis adapters');
@@ -57,6 +61,8 @@ export async function analyzeIncrementalKeywordPatterns({
     scanMs.set(k,completed);
   }
   const checked=new Set(),compiledByWords=new Map();
+  const skipMatcher=compileKeywordLiteralMatcher(exceptionWords
+    .map(keyOf).filter(Boolean));
   // A completed word scan is an UpdateTime lower bound. Most unchanged
   // documents can bypass the per-word loop entirely without touching content.
   let earliestComplete=Infinity;
@@ -108,13 +114,17 @@ export async function analyzeIncrementalKeywordPatterns({
       if(!work.eligible)continue;
       const body=bodies.get(uid);
       if(!body||body.keyword!==true)continue;
+      // Read Galaxy once, then use a temporary scan projection. The DB's
+      // HTML, title, date, site, place and media fields are never rewritten.
+      const scan_text=keywordScanText(body);
+      if(skipMatcher.contains(keyOf(scan_text)))continue;
       let visible=0;
-      for(const char of String(body.content??''))
+      for(const char of scan_text)
         if(!/\s/u.test(char)&&++visible>minChars)break;
       if(visible<=minChars)continue;
       const signature=JSON.stringify(work.wordsToCheck);
       if(!partitions.has(signature))partitions.set(signature,[]);
-      partitions.get(signature).push(body);
+      partitions.get(signature).push({...body,scan_text});
     }
     for(const [signature,docs] of partitions){
       const allowed=new Set(JSON.parse(signature));

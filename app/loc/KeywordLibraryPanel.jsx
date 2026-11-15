@@ -11,6 +11,8 @@ import ManagementSectionNav from '../modular/ManagementSectionNav';
 import ActivityMotion from '../modular/ActivityMotion';
 import FlowProgress from '../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mjs';
+import {SCOPE_PATTERN_INDEX_VERSION} from './keyword-anchor-index.mjs';
+import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
 const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
@@ -46,6 +48,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const [editor,setEditor]=useState(null);
   const [pendingParent,setPendingParent]=useState('');
   const [keywordText,setKeywordText]=useState('');
+  const [classExceptionText,setClassExceptionText]=useState('');
   const [workspace,setWorkspace]=useState('manual');
   const workspaceOptions=[
     {value:'manual',label:'群組對應調整'},
@@ -113,7 +116,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const dirty=Boolean(draft&&(
     !tree.index.has(draft.uid)||
     JSON.stringify(draft)!==JSON.stringify(tree.index.get(draft.uid))
-  ))||Boolean(draft?.type==='item'&&keywordText!==((draft.lists||[]).join('\n')));
+  ))||Boolean(draft?.type==='item'&&keywordText!==((draft.lists||[]).join('\n')))
+    ||Boolean(draft?.type==='class'&&classExceptionText!==
+      classSkipArticleWords(draft.attr||{}).join('\n'));
 
   const invalidate=useCallback(async()=>{
     const {clearKeywordAnalysisCache}=await import('./keyword-analysis');
@@ -192,25 +197,36 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(type==='class')next.category=tree.parent.get(uid)||'';
     if(type==='class'){next.group='';next.item='';}
     if(type==='group')next.item='';
-    setChosen(next);setEditor(null);setKeywordText('');
+    setChosen(next);setEditor(null);setKeywordText('');setClassExceptionText('');
     setError('');setNotice('');
   };
   const edit=(node=selected)=>{
     if(!node||node.type==='category')return;
     setPendingParent('');setEditor({node:{...node,lists:[...node.lists],uid_lists:[...node.uid_lists]}});
     setKeywordText(node.type==='item'?node.lists.join('\n'):'');
+    setClassExceptionText(node.type==='class'?classSkipArticleWords(node.attr||{}).join('\n'):'');
     setNotice('');
   };
   const create=(type,parentUid='')=>{
     if(!TYPES.includes(type))return;
     const node=freshNode(type,rows,scopeId);
     setEditor({node});setPendingParent(parentUid);
-    setKeywordText('');setNotice('');
+    setKeywordText('');setClassExceptionText('');setNotice('');
   };
   const markStale=async(uid)=>{
     const cl=classOf(tree,uid);
     if(!cl)return;
-    const keyword_meta=invalidateKeywordClass(config.keyword_meta,cl.uid);
+    // Keep the last completion receipt to confirm lost HTTP responses.
+    // Changed Class rules cannot reuse the old per-word scan timestamps.
+    const meta=config.keyword_meta||{},by_class={...(meta.by_class||{})};
+    if(by_class[cl.uid])by_class[cl.uid]={...by_class[cl.uid],stale:true};
+    const scans={...(meta.pattern_scans||{})};
+    for(const item of descendantsOfKeyword(rows,cl.uid,{type:'item'})){
+      for(const word of [item.name,...(item.lists||[])]){
+        delete scans[String(word).normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')];
+      }
+    }
+    const keyword_meta={...meta,by_class,pattern_scans:scans};
     const {error:staleError}=await dbAuthRelation(configTable)
       .update({keyword_meta,staticstime:null}).eq('id',scopeId);
     if(staleError)throw staleError;
@@ -221,7 +237,16 @@ export default function KeywordLibraryPanel({scopeId,account}){
     try{
       const node={...draft,
         name:String(draft.name||'').trim(),
-        lists:draft.type==='item'?onlyWords(keywordText):[...draft.lists]};
+        lists:draft.type==='item'?onlyWords(keywordText):[...draft.lists],
+        attr:draft.type==='class'?{
+          ...(draft.attr||{}),
+          exceptions:{
+            ...(draft.attr?.exceptions||{}),
+            skip_article:onlyWords(classExceptionText)
+          }
+        }:draft.attr
+      };
+      if(node.type==='class')classSkipArticleWords(node.attr);
       if(!node.name)throw new Error('請填寫名稱');
       if(!TYPES.includes(node.type))throw new Error('Keywords Type 無效');
       const isNew=!tree.index.has(node.uid);
@@ -407,7 +432,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
     try{
       const {suggestNewKeywords}=await import('./keyword-discovery-runner.mjs');
       const result=await suggestNewKeywords({
-        galaxy:scope.galaxy,existingRows:rows,onProgress:setDiscoveryProgress,signal:controller.signal
+        galaxy:scope.galaxy,existingRows:rows,classUid:activeClass?.uid||'',
+        onProgress:setDiscoveryProgress,signal:controller.signal
       });
       if(!controller.signal.aborted){
         setDiscovery(result);
@@ -529,6 +555,15 @@ export default function KeywordLibraryPanel({scopeId,account}){
                 ?{...current,node:{...current.node,desc:value}}:current)}/>
           </div>
         </div>
+        {draft.type==='class'?<label className="scope-management-wide-field">
+          <span>例外關鍵詞：整篇排除（一行一詞）</span>
+          <textarea rows={5} value={classExceptionText}
+            onChange={event=>setClassExceptionText(event.target.value)}/>
+          <small className="scope-status">
+            標題或內文的有效文字包含任一排除詞時，不掃描該篇文章；
+            Galaxy 原文及其他 Class 不會被修改。只建立已定義的「整篇排除」規則。
+          </small>
+        </label>:null}
         {draft.type==='item'?<label className="scope-management-wide-field">
           <span>Pattern 關鍵詞（一行一詞，規則保留）</span>
           <textarea rows={9} value={keywordText} onChange={e=>setKeywordText(e.target.value)}/>
@@ -576,7 +611,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
          ?<div className="scope-search-active-filters" aria-label="Item 關聯 Pattern">
            {selectedSourceRow.patternUids.map(uid=>patternNodes.get(uid)).filter(Boolean).map(row=>
              <span key={row.uid} className="scope-search-chip">
-               {row.name} · {config.keyword_meta?.pattern_index_version==='scope_anchor_v1'&&config.keyword_meta?.pattern_scans?.[
+               {row.name} · {config.keyword_meta?.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION&&config.keyword_meta?.pattern_scans?.[
                  String(row.name||'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
                ]?Number(row.num||0).toLocaleString()+' 篇':'待解析'}
              </span>)}

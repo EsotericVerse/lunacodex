@@ -6,6 +6,7 @@ import {buildKeywordSearchPatterns,keywordPatternItemMetrics,keywordPatternDaily
 import {keywordClassCatalog} from './keyword-tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
 import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
+import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
 import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
 import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../zenstack/galaxy-read-models.mjs';
@@ -48,7 +49,13 @@ const galaxyListMetadataColumns=Object.freeze([
   'UpdateTime'
 ]);
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
-  .filter(column=>['uid','content','keyword'].includes(column)));
+  .filter(column=>['uid','title','content','keyword'].includes(column)));
+
+const removeLegacyKeywordHitCache=value=>{
+  const {uidlists,articles,hits,total,...links}=value||{};
+  // Keep Item.attr.uid: these are Pattern Anchor IDs, not article postings.
+  return links;
+};
 
 async function configuration(db,scope){
   return await db.selectFrom(configName(scope))
@@ -290,7 +297,12 @@ async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',ex
   const oldMeta=attr({attr:cfg.keyword_meta});
   const alreadyNative=oldMeta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION;
   // Migration preserved legacy scan/class completion; invalidate on first cutover.
-  const baseMeta=alreadyNative?oldMeta:{...oldMeta,by_class:{},pattern_scans:{}};
+  const baseMeta=alreadyNative?oldMeta:{
+    ...oldMeta,
+    by_class:Object.fromEntries(Object.entries(oldMeta.by_class||{})
+      .map(([uid,record])=>[uid,{...record,stale:true}])),
+    pattern_scans:{}
+  };
   const merged=completeKeywordClass(baseMeta,classUid,record,now);
   const metadata={...merged,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
     pattern_scans:{
@@ -358,9 +370,23 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     uid_lists:[]
   }));
   const {catalog}=keywordClassCatalog(treeRows,classUid);
+  const classRow=nativeRows.find(row=>row.type==='class'&&row.uid===classUid);
+  if(!classRow)fail('Unknown Keyword Class',404);
+  const exceptionWords=classSkipArticleWords(attr(classRow));
   const selectedItemIds=new Set(catalog.map(item=>item.uid));
   const linkedItems=nativeRows.filter(row=>row.type==='item'&&
     selectedItemIds.has(row.uid));
+  if(exceptionWords.length){
+    // Pattern is ONE global word index per Scope, not a Class-specific table.
+    // Never let exclusions on one Class erase valid postings for a different
+    // Class that references the same Pattern Anchor.
+    const owned=new Set(linkedItems.flatMap(row=>
+      Array.isArray(attr(row).uid)?attr(row).uid:[]));
+    const conflicting=nativeRows.some(row=>row.type==='item'&&
+      !selectedItemIds.has(row.uid)&&
+      Array.isArray(attr(row).uid)&&attr(row).uid.some(uid=>owned.has(uid)));
+    if(conflicting)fail('Class exclusions cannot rewrite a Pattern shared with another Class',409);
+  }
   const existingPatterns=await classPatternRows(db,scope,catalog,directory,linkedItems);
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
@@ -393,6 +419,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     scopeId:scope,classUid,treeRows,items:catalog,
     existingPatterns,patternScans:scopePatternScanClocks(cfg.keyword_meta),
     expectedCount,minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
+    exceptionWords,
     startedAt,pageSize:1000,readMetadataPage:reader,
     onProgress:({phase,completed=0,parsed=0,reused=0})=>onProgress({
       phase,total:expectedCount,completed,parsed,reused,
@@ -555,14 +582,14 @@ export async function saveKeywordItem(db,scope,values,{
         title:asNodeText(values.name),description:values.desc,
         attr:JSON.stringify({keyword:words})}).execute();
       await trx.updateTable(table).set({attr:JSON.stringify({
-        ...attr(parent),uid:[...new Set([...children(parent),values.uid])]
+        ...removeLegacyKeywordHitCache(attr(parent)),uid:[...new Set([...children(parent),values.uid])]
       })}).where('uid','=',parent.uid).where('type','=','group').execute();
     }else{
       if(old?.type!=='item')fail('Keyword Item not found',404);
       parent=await findContainingGroup(trx,scope,values.uid);
       await trx.updateTable(table).set({
         title:asNodeText(values.name),description:values.desc,
-        attr:JSON.stringify({...attr(old),keyword:words})
+        attr:JSON.stringify({...removeLegacyKeywordHitCache(attr(old)),keyword:words})
       }).where('uid','=',values.uid).where('type','=','item').execute();
     }
     const linked=await ensureScopePatternLibrary(trx,scope);
@@ -583,7 +610,7 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
     const parent=await findContainingGroup(trx,scope,itemUid);
     const classUid=await classContainingGroup(trx,scope,parent.uid);
     await trx.updateTable(table).set({attr:JSON.stringify({
-      ...attr(parent),uid:children(parent).filter(uid=>uid!==itemUid)
+      ...removeLegacyKeywordHitCache(attr(parent)),uid:children(parent).filter(uid=>uid!==itemUid)
     })}).where('uid','=',parent.uid).execute();
     await trx.deleteFrom(table).where('uid','=',itemUid).where('type','=','item').execute();
     const linked=await ensureScopePatternLibrary(trx,scope);
