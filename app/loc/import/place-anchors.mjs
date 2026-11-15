@@ -1,6 +1,6 @@
-import {importGeoKey} from './import-geocoordinates.mjs';
-import {allocateAnchorUid} from './uid.js';
-import {planImportPointVisitDelta,planImportPointCreate} from './import-point-date-immer.mjs';
+import {importGeoKey} from './geocoordinates.mjs';
+import {allocateAnchorUid} from '../uid.js';
+import {planImportPointVisitDelta,planImportPointCreate} from './point-date-immer.mjs';
 
 // An exact coordinate identifies an existing Trace location even if the
 // original place label differs. Without GPS, only unambiguous names are used.

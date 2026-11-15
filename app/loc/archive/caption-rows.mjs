@@ -6,7 +6,7 @@ import {archiveGalaxyRow,platformLabel} from './galaxy-row.mjs';
 import {facebookArchiveUid} from '../facebook-backup-place.mjs';
 import {repairMojibakeText} from '../content-policy.js';
 import {archiveAttachmentReferences} from './media-evidence.mjs';
-import {parseImportCreatedTime} from '../import-batch.mjs';
+import {parseImportCreatedTime} from '../import/batch.mjs';
 
 const clean=value=>repairMojibakeText(String(value||'').trim());
 // Facebook auto-labels album/upload metadata, not anything the user wrote.

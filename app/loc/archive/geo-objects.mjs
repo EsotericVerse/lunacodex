@@ -1,6 +1,6 @@
 // Read explicit Facebook place objects; never infer coordinates from post text or EXIF.
 import {repairMojibakeText} from '../content-policy.js';
-import {importGeoPoint,importGeoKey} from '../import-geocoordinates.mjs';
+import {importGeoPoint,importGeoKey} from '../import/geocoordinates.mjs';
 
 const CONTAINERS=['attachments','data','array','media','photos','videos','items','label_values','dict'];
 const text=value=>repairMojibakeText(String(value??'').trim());

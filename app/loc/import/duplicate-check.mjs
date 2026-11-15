@@ -1,4 +1,4 @@
-import {importGeoKey} from './import-geocoordinates.mjs';
+import {importGeoKey} from './geocoordinates.mjs';
 
 // Import identity is source site + normalized creation timestamp.
 // Native site_id is optional source metadata, not a matching requirement.

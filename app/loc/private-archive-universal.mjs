@@ -2,7 +2,7 @@
 // Never uploads contents. zip.js-like mature primitives: fflate for ZIP; @streamparser/json for JSON.
 // Unsupported formats are explicitly accounted for; no speculative field coercion.
 import {Unzip,UnzipInflate,UnzipPassThrough} from 'fflate';
-import {ARCHIVE_MAX_BYTES,ARCHIVE_JSON_MAX_BYTES,extractImportCreatedAt} from './import-batch.mjs';
+import {ARCHIVE_MAX_BYTES,ARCHIVE_JSON_MAX_BYTES,extractImportCreatedAt} from './import/batch.mjs';
 export {ARCHIVE_MAX_BYTES};
 import {JSONParser} from '@streamparser/json';
 import {archiveEntrySignatures,summarizeArchiveSources,archiveFilenameSource} from './archive/source-signatures.mjs';
@@ -12,7 +12,7 @@ import {canonicalArchiveText} from './archive/record-identity.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from './facebook-backup-place.mjs';
 import {IMAGE_EXIF_PREFIX_LIMIT,readImageExif} from './archive/exif.mjs';
 import {isArchiveMediaUrl} from './archive/media-evidence.mjs';
-import {importMapUrlCoordinates} from './import-geocoordinates.mjs';
+import {importMapUrlCoordinates} from './import/geocoordinates.mjs';
 import {archiveAttachmentReferences} from './archive/media-evidence.mjs';
 import {extractFacebookGeoObjects} from './archive/geo-objects.mjs';
 import {repairMojibakeText} from './content-policy.js';

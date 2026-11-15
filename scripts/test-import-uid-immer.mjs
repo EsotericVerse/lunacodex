@@ -4,16 +4,16 @@ import assert from 'node:assert/strict';
 import {
   createImportUidResolver,remapImportUidRelations,
   planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks
-} from '../app/loc/import-uid-delta.mjs';
+} from '../app/loc/import/uid-delta.mjs';
 import {
   createImportPlaceIndex,prepareImportPlaceAnchors,
   importedPlaceId,recordImportPlaceVisits
-} from '../app/loc/import-place-anchors.mjs';
-import {createImportDateIndex,prepareImportTimeAnchors} from '../app/loc/import-time-anchors.mjs';
+} from '../app/loc/import/place-anchors.mjs';
+import {createImportDateIndex,prepareImportTimeAnchors} from '../app/loc/import/time-anchors.mjs';
 import {
   planImportPointVisitDelta,planImportDateTitleDelta,
   planImportPointCreate,planImportDateCreate
-} from '../app/loc/import-point-date-immer.mjs';
+} from '../app/loc/import/point-date-immer.mjs';
 
 const aliases=new Map([
   ['AAA00001','BBB00002'],['BBB00002','CCC00003'],
