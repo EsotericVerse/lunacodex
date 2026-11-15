@@ -287,3 +287,77 @@
     transform:none!important;
   }
 }
+
+/* Phone pass: the first action should begin within the initial reading flow.
+   Minimum heights only; longer authored Hero copy still grows naturally. */
+@media(max-width:760px){
+  .loc-next-main[data-loc-view="home"]:is(
+    [data-loc-scope="loc"],[data-loc-scope="lo3rwang"]
+  ) .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side){
+    min-height:clamp(345px,47svh,445px);
+    padding:clamp(1.1rem,4.2vw,1.5rem);
+  }
+  .loc-next-main[data-loc-scope="lrunes"][data-loc-view="home"]
+    .runes-home-hero:not(.runes-home-hero--side){
+    min-height:clamp(345px,47svh,445px);
+    padding:clamp(1.1rem,4.2vw,1.5rem);
+  }
+  .loc-next-main[data-loc-scope="lrunes"][data-loc-view="home"]
+    .runes-home-hero--side{
+    min-height:0;
+    align-content:start;
+    gap:.9rem;
+  }
+  .runes-home .runes-home-hero--side picture{
+    width:min(100%,340px);
+    justify-self:center;
+  }
+  .runes-home .runes-home-hero--side .runes-home-hero-image{
+    max-height:230px;
+  }
+  .runes-home .runes-home-hero-copy,
+  .runes-home .runes-home-hero-copy .runes-home-body{
+    gap:clamp(.5rem,1.8vw,.75rem);
+  }
+  .runes-home .runes-home-hero .loc-button{
+    -webkit-backdrop-filter:none;
+    backdrop-filter:none;
+    background:rgba(7,11,24,.88);
+  }
+}
+@media(max-width:620px){
+  /* Two lines of copy, one touch target: three actions without three huge
+     bubble cards pushing the rest of the phone homepage below the fold. */
+  .runes-home .runes-home-entry{
+    padding-block:.85rem .25rem;
+  }
+  .runes-home .runes-home-entry .home-section-heading{
+    margin-bottom:.8rem;
+  }
+  .runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble{
+    display:grid;
+    grid-template-columns:2rem minmax(0,1fr);
+    grid-template-rows:auto auto;
+    align-content:center;
+    align-items:start;
+    min-height:6rem;
+    padding:.8rem .9rem;
+    column-gap:.75rem;
+    row-gap:.18rem;
+  }
+  .runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble::before{
+    grid-column:1;
+    grid-row:1 / span 2;
+    align-self:center;
+  }
+  .runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble>strong{
+    grid-column:2;
+    grid-row:1;
+  }
+  .runes-home .runes-home-entry .home-draw-bubbles>.loc-bubble>p{
+    grid-column:2;
+    grid-row:2;
+    font-size:.82rem;
+    line-height:1.5;
+  }
+}
