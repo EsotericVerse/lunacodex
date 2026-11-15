@@ -383,6 +383,15 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const v=normalizeKeywordTreeRow(node),q=dbAuthRelation(table);
     const field=v.type==='item'?'keyword':'uid';
     const attr={...(node.attr&&typeof node.attr==='object'?node.attr:{}),[field]:v.lists};
+    if(['item','group'].includes(v.type)){
+      // Legacy article-hit and cached numeric payloads have no authority.
+      // Item.attr.uid remains the required Pattern *Anchor* UID links.
+      for(const key of ['uidlists','articles','hits','total'])delete attr[key];
+    }
+    if(v.type==='class'){
+      const {classSkipArticleWords}=await import('./keyword-class-exceptions.mjs');
+      classSkipArticleWords(attr);
+    }
     let query;
     if(op==='insert')query=q.insert({uid:v.uid,type:v.type,title:v.name,
       description:v.desc,attr}).select('uid');
