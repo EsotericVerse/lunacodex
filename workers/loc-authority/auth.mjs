@@ -16,9 +16,9 @@ import {extensionClientDiscovery} from './extension-client.mjs';
 
 // LOC Auth is the issuer. Cloudflare Access is the delegated upstream OIDC
 // provider; it does not own LOC Sessions or LOC OAuth tokens.
-// LOC Auth is a separate identity product; it does not own LOC Web's content or business roles. Neon supplies
-// PostgreSQL storage, NOT Neon Auth. Neither website rendering nor business
-// permissions are implemented here.
+// LOC Auth does not own LOC Web content or business roles.
+// Neon supplies PostgreSQL storage, NOT Neon Auth. Neither website rendering
+// nor business permissions are implemented here.
 export const LOC_ISSUER='https://auth.lo3rwang.cc';
 export const LOC_WEB='https://loc.lo3rwang.cc';
 export const LOC_MCP='https://mcp.lo3rwang.cc';
