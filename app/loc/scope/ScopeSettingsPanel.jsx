@@ -1,15 +1,15 @@
 'use client';
-import {useUiSection} from '../i18n/ui-locale';
-import UiText,{useUiText} from '../i18n/UiText';
+import {useUiSection} from '../../i18n/ui-locale';
+import UiText,{useUiText} from '../../i18n/UiText';
 
 import {useEffect,useRef,useState} from 'react';
-import {registerDefaultSection} from '../i18n/ui-copy';
-import {THEME_SLOTS} from '../modular/theme-registry';
-import {invalidatePublicScopeMetadata,selectScopeConfig} from './scope-data';
-import {dbAuthRelation,updateRows} from './db-client.mjs';
-import {useAccount} from './use-account';
-import {useEditDock} from '../modular/edit-dock';
-import scopeSettingsZh from '../i18n/sections/uiExtra.scopeSettings.zh_tw.js';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import {THEME_SLOTS} from '../../modular/theme-registry';
+import {invalidatePublicScopeMetadata,selectScopeConfig} from '../scope-data';
+import {dbAuthRelation,updateRows} from '../db-client.mjs';
+import {useAccount} from '../use-account';
+import {useEditDock} from '../../modular/edit-dock';
+import scopeSettingsZh from '../../i18n/sections/uiExtra.scopeSettings.zh_tw.js';
 registerDefaultSection('uiExtra.scopeSettings',scopeSettingsZh);
 
 const EMPTY={theme:'system-default'};
