@@ -125,7 +125,7 @@ export default function LocalScopeWorkspace({view='home'}){
   </section></main>;
 
   const listing=filtered.slice(0,visible);
-  return <main className="scope-main loc-local-workspace"><section className="scope-page">
+  return <main className="scope-main loc-local-workspace" data-local-view={view}><section className="scope-page">
     {view==='home'?<header className="loc-local-hero" aria-labelledby="loc-local-home-title">
       <div className="loc-local-hero-copy">
         <p className="loc-eyebrow">LUNA CODEX · LOCAL SCOPE</p>
@@ -140,6 +140,12 @@ export default function LocalScopeWorkspace({view='home'}){
       <p>本頁只讀取這台裝置的 Galaxy，不連接雲端 Scope 資料庫。</p>
     </header>}
 
+    <section className="loc-local-overview" aria-label="本機資料概況">
+      <div className="loc-local-kpi"><strong>{rows.length}</strong><span>文章</span></div>
+      <div className="loc-local-kpi"><strong>{groups.length}</strong><span>來源</span></div>
+      <div className="loc-local-kpi"><strong>{placeGroups.filter(([p])=>p!=='未分類').length}</strong><span>地點</span></div>
+    </section>
+
     {view==='home'?<section className="loc-card loc-local-transfer" aria-labelledby="loc-local-transfer-title">
       <div><h2 id="loc-local-transfer-title">Galaxy 匯入／匯出</h2>
         <p className="scope-settings-note">使用 Galaxy JSON（文章陣列或 records）。匯入不會清除既有文章；相同 UID 的來源衝突會整批拒絕。</p>
@@ -153,12 +159,6 @@ export default function LocalScopeWorkspace({view='home'}){
           onChange={handleImport} aria-label="選擇本機 Galaxy JSON"/>
       </div>
     </section>:null}
-
-    <section className="loc-local-overview" aria-label="本機資料概況">
-      <div className="loc-local-kpi"><strong>{rows.length}</strong><span>文章</span></div>
-      <div className="loc-local-kpi"><strong>{groups.length}</strong><span>來源</span></div>
-      <div className="loc-local-kpi"><strong>{placeGroups.filter(([p])=>p!=='未分類').length}</strong><span>地點</span></div>
-    </section>
 
     {loading?<p role="status">正在開啟本機 Galaxy…</p>:null}
     {status?<p role="status" className="scope-status">{status}</p>:null}
@@ -191,7 +191,13 @@ export default function LocalScopeWorkspace({view='home'}){
     </section>:null}
     {view==='culture'||view==='trace'||view==='search'||view==='home'?<section className="loc-local-section" aria-label="本機文章">
       <h2>{view==='culture'?'文化時間序列':view==='trace'?'地點相關文章':view==='search'?'搜尋結果':'最新文章'}</h2>
-      {!loading&&filtered.length===0?<p className="scope-settings-note">目前沒有符合條件的本機文章。</p>:null}
+      {!loading&&filtered.length===0?(view==='home'
+        ?<div className="loc-local-empty">
+          <p className="loc-eyebrow">YOUR GALAXY</p>
+          <strong>從第一篇文章開始。</strong>
+          <p>本機銀河目前還沒有文章。使用上方 Galaxy 匯入功能，讓來源與時間軌跡在這台裝置上展開。</p>
+        </div>
+        :<p className="scope-settings-note">目前沒有符合條件的本機文章。</p>):null}
       <div className="loc-local-articles">{listing.map(localArticle)}</div>
       {filtered.length>visible?<button type="button" className="loc-button"
         onClick={()=>setVisible(current=>current+rowsPerPage)}>再顯示 {Math.min(rowsPerPage,filtered.length-visible)} 篇</button>:null}
