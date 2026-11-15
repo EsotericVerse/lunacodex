@@ -34,7 +34,9 @@ export async function keywordService(operation,args={},options={}){
   // severed HTTP stream can be checked without rerunning authorized writes.
   const attemptId=stream?crypto.randomUUID():null;
   const requestArgs=attemptId?{...args,attemptId}:args;
-  const response=await fetch('/api/keywords',{
+  let response;
+  try{
+    response=await fetch('/api/keywords',{
     method:'POST',credentials:'include',cache:'no-store',
     headers:{'content-type':'application/json',
       ...(stream?{accept:'application/x-ndjson'}:{})},
@@ -47,13 +49,30 @@ export async function keywordService(operation,args={},options={}){
       // analysis while the server was still writing. Live stream frames
       // now establish liveness instead of a fixed whole-request cutoff.
       :operation==='analyze'?undefined:AbortSignal.timeout(write?180000:25000)
-  });
+    });
+  }catch(error){
+    // The server may have committed after a lost HTTP connection. Preserve
+    // the attempt so the user can check the SQL receipt; never replay a write.
+    if(stream)throw new KeywordAnalysisUnconfirmedError({
+      scopeId:scope,classUid:String(args.classUid||''),attemptId
+    });
+    throw error;
+  }
   if(!response.ok){
     const payload=await response.json().catch(()=>null);
-    throw Error(payload?.error||'詞級資料讀取失敗（HTTP '+response.status+'）');
+    if(stream&&response.status>=500)
+      throw new KeywordAnalysisUnconfirmedError({
+        scopeId:scope,classUid:String(args.classUid||''),attemptId
+      });
+    const failure=Error(payload?.error||'詞級資料讀取失敗（HTTP '+response.status+'）');
+    failure.status=response.status;
+    failure.code=String(payload?.code||'');
+    throw failure;
   }
   if(stream){
-    if(!response.body)throw Error('關鍵詞分析進度串流無法讀取');
+    if(!response.body)throw new KeywordAnalysisUnconfirmedError({
+      scopeId:scope,classUid:String(args.classUid||''),attemptId
+    });
     const reader=response.body.getReader(),decoder=new TextDecoder();
     let pending='',complete=false,result,readFailure=null;
     const consume=line=>{
@@ -66,6 +85,7 @@ export async function keywordService(operation,args={},options={}){
       else if(event?.kind==='error'){
         const failure=Error(event.data?.error||'關鍵詞分析失敗（HTTP '+(event.data?.status||503)+'）');
         failure.keywordServerError=true;
+        failure.status=Number(event.data?.status)||503;
         throw failure;
       }
       else throw Error('未知的關鍵詞分析進度事件');
@@ -97,7 +117,9 @@ export async function keywordService(operation,args={},options={}){
       // Explicit server failures are real errors. Unexpected EOF/network
       // errors remain *unconfirmed*, so preserve the attempt for user-driven
       // status checks rather than discarding its identity.
-      if(readFailure&&readFailure.keywordServerError)throw readFailure;
+      // Only an explicit, non-transient business refusal is terminal.
+      // A server/transport 5xx can race with a committed transaction.
+      if(readFailure?.keywordServerError&&readFailure.status<500)throw readFailure;
       throw new KeywordAnalysisUnconfirmedError({
         scopeId:scope,classUid:String(args.classUid||''),attemptId
       });

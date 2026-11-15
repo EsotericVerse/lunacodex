@@ -169,7 +169,8 @@ export async function readKeywordStatistics(db,scope,classUid,{
   if(!owner&&!shared(cfg,classUid))fail('Keyword Class not published',403);
   const meta=attr({attr:cfg.keyword_meta});
   const indexReady=meta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION&&
-    Boolean(meta.by_class?.[classUid]?.completedAt);
+    Boolean(meta.by_class?.[classUid]?.completedAt)&&
+    meta.by_class?.[classUid]?.stale!==true;
   // Scope's Pattern directory is the ZModel entry. Resolve this Class's
   // Item ownership without loading postings belonging to other Classes.
   const [directory,tree]=await Promise.all([
@@ -268,12 +269,17 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
     a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
-async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId=''){
+async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',expectedMinChars=null){
   // The Pattern rows and their Item UID edges are committed in the same
   // transaction as class completion. Article bodies are never duplicated.
   await storeScopePatternMatches(trx,scope,patterns);
   const now=new Date().toISOString();
   const cfg=await configuration(trx,scope);
+  // Never commit postings computed using an obsolete minimum-content rule.
+  // An ordinary settings save must not silently turn old analysis into a
+  // current Full-Text Pattern index.
+  if(expectedMinChars!==null&&Number(cfg.keyword_min_chars)!==expectedMinChars)
+    fail('Keyword analysis rule changed during scan; no postings committed',409);
   const record={class_uid:classUid,matchedDocuments:stats.matchedDocuments,
     analyzedDocuments:stats.analyzedDocuments,parsedDocuments:stats.parsedDocuments,
     reusedDocuments:stats.reusedDocuments,itemMatches:stats.itemMatches,
@@ -405,7 +411,8 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       if(!pending)fail('Keyword patterns were not produced');
       await db.transaction().execute(async trx=>{
         await authorizeTransaction(trx);
-        await persistPatterns(trx,scope,classUid,pending,stats,attemptId);
+        await persistPatterns(trx,scope,classUid,pending,stats,attemptId,
+          Number(cfg.keyword_min_chars)||0);
       });
     }
   });
