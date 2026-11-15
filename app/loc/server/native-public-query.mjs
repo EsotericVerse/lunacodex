@@ -1,3 +1,7 @@
+// CURRENT public read boundary: fixed scoped Kysely SQL projection plus
+// ZenStack/ZModel shape validation. Composite/Tree Models are read-only
+// semantic projections over the selected Galaxy/Anchor rows, not extra
+// SQL relations, generalized queries or a second LOC Auth data service.
 // A bounded LOC public SELECT contract on the existing Pages application.
 // The browser never chooses a SQL engine, connection alias, schema or SQL text.
 // LOC Web data reads are independent of LOC Auth sessions/roles; the latter provides identity only.
