@@ -38,26 +38,20 @@ const SELECTED=Object.freeze({filter:[],cultureTrace:['culture','trace'],statics
   dashboard:['culture','statics','trace','search']});
 
 function SettingChoices({group,field,value,onChange,disabled,t}){
-  const label=t(PATH+field.title);
-  if(field.checkbox)return <fieldset className="scope-stat-controls"
-    style={{border:0,margin:'.75rem 0',padding:0}}>
-    <legend style={{fontWeight:600,marginBottom:'.3rem'}}>{label}</legend>
-    <p className="scope-status">{t(PATH+'featureListVisibleHint')}</p>
-    <label style={{display:'inline-flex',alignItems:'center',gap:'.4rem',cursor:disabled?'default':'pointer'}}>
-      <input type="checkbox" checked={value===true} disabled={disabled}
-        onChange={event=>onChange(group,field.key,event.target.checked)}/>
-      {t(PATH+'featureListAdminAll')}
-    </label>
-  </fieldset>;
-  return <fieldset className="scope-stat-controls" style={{border:0,margin:'.75rem 0',padding:0}}>
-    <legend style={{fontWeight:600,marginBottom:'.3rem'}}>{label}</legend>
-    <div role="group" aria-label={label} style={{display:'flex',flexWrap:'wrap',gap:'.45rem 1rem'}}>
-      {field.options.map(([option,key])=><label key={option} style={{display:'inline-flex',alignItems:'center',gap:'.4rem',cursor:disabled?'default':'pointer'}}>
-        <input type="radio" name={'loc-user-'+group+'-'+field.key} checked={value===option} disabled={disabled}
-          onChange={()=>onChange(group,field.key,option)}/>{t(PATH+key)}
-      </label>)}
-    </div>
-  </fieldset>;
+  const options=field.checkbox
+    ?[['false','featureListVisibleHint'],['true','featureListAdminAll']]
+    :field.options;
+  return <label className="loc-user-setting-field">
+    <span>{t(PATH+field.title)}</span>
+    <select className="scope-select" disabled={disabled}
+      value={field.checkbox?String(value===true):String(value??'')}
+      onChange={event=>onChange(group,field.key,
+        field.checkbox?event.target.value==='true':event.target.value)}>
+      {options.map(([option,key])=><option value={option} key={option}>
+        {t(PATH+key)}
+      </option>)}
+    </select>
+  </label>;
 }
 
 export default function LocUserSettingsPanel({verifiedSubject='',section='filter',filterSection=null}){
