@@ -42,14 +42,14 @@ export async function testLocAuthConnection(env={},database=db_connection){
  try{
   const connection=await database(env,'loc-main');
   if(connection.engine!=='postgres')return json({ok:false,stage:'driver',code:'NOT_POSTGRES'},503);
-  // A common, existing LOC relation verifies the configured PostgreSQL
-  // connection for Supabase or Neon. No temporary auth test table is needed.
-  // Never echo a Galaxy UID, article data or credentials in this response.
-  const row=await connection.db.selectFrom('silver.lo3rwang_galaxy')
-    .select('uid').limit(1).executeTakeFirst();
-  if(!row)return json({ok:false,stage:'query',code:'GALAXY_EMPTY'},404);
-  return json({ok:true,connection:'postgresql',schema:'silver',
-    table:'lo3rwang_galaxy',rowFound:true});
+  // A literal SELECT without FROM verifies the native pg/TCP connection.
+  // Do not make connection health depend on one Scope table existing or
+  // containing articles. No Neon Data API, schema probe or credentials exposed.
+  const row=await connection.db.selectNoFrom(eb=>eb.val(1).as('connected'))
+    .executeTakeFirstOrThrow();
+  if(Number(row?.connected)!==1)
+    return json({ok:false,stage:'query',code:'PG_PROBE_INVALID'},503);
+  return json({ok:true,connection:'postgresql',driver:'pg',probe:'select_1'});
  }catch(error){
   return json({ok:false,stage:'sql-query',...failureCode(error)},503);
  }
