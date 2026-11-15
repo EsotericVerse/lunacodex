@@ -713,7 +713,7 @@ function AppShellInner({children,runtime}){
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">
         <a href="mailto:sopa2306@gmail.com">{copy.nav.contact}</a>
-        <ThemeSelect scopeId={themeScopeId} scopeMeta={themeScopeId===scopeId?currentScope:getScope(themeScopeId)} copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName}/>
+        {(!isSettings||runtime.locationMounted)?<ThemeSelect scopeId={themeScopeId} scopeMeta={themeScopeId===scopeId?currentScope:getScope(themeScopeId)} copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName}/>:null}
         <LanguageSelect
           locale={activeLocale}
           copy={copy}
