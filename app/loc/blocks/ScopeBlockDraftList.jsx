@@ -20,8 +20,8 @@ import {appBootstrapKey} from '../app-bootstrap';
 import {invalidateScopeBlockPage} from '../scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
 
-const BlockNoteEditor=dynamic(()=>import('../BlockNoteEditor'),{loading:()=>null});
-const ObjectEditor=dynamic(()=>import('../BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 
 const TITLE_LIMIT=64;
 const EYEBROW_LIMIT=64;

@@ -19,7 +19,7 @@ import ScopeLink from './ScopeLink';
 import {featureNavigationHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
 // Shared display stays light: mount the editor only on pages that need it.
-const BlockNoteEditor=dynamic(()=>import('../loc/BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const ArticleTimeAnchorAction=dynamic(()=>import('./ArticleTimeAnchorAction'),{loading:()=>null});
 
 function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=false,scopeId=''}){

@@ -10,7 +10,7 @@ import {useEditDockForm} from '../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
-const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('./editor/BlockNoteEditor'),{loading:()=>null});
 const TABLE='silver.loc_anchor';
 const TYPES=['universe','galaxy','domain','from'];
 const EMPTY_COUNTS={lo3rwang:0,lrunes:0};

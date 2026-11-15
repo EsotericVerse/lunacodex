@@ -15,7 +15,7 @@ import {anniversarySuggestionsForDate} from '../../loc/anniversary.mjs';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture/anchor-bulk.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';
-const BlockNoteEditor=dynamic(()=>import('../../loc/BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../../loc/editor/BlockNoteEditor'),{loading:()=>null});
 
 const TIME_COLUMNS='uid,type,title,description,attr,invisible';
 // Read/write the physical TimeAnchor variant; the editor's 'anchor' label is

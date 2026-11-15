@@ -17,7 +17,7 @@ import {
 } from './trace/bulk-anchor-filter.mjs';
 import {readPlaceSummary} from './trace/place-summary-client';
 
-const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('./editor/BlockNoteEditor'),{loading:()=>null});
 const TraceRouteManager=dynamic(()=>import('./trace/RouteManager'),{
   loading:()=> <p className="scope-status" role="status">正在開啟路線／痕跡圖管理…</p>
 });

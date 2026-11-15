@@ -21,8 +21,8 @@ import {HeroImageFieldset} from './HeroImageFields';
 import {appBootstrapKey} from '../app-bootstrap';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../scope-data';
 
-const BlockNoteEditor=dynamic(()=>import('../BlockNoteEditor'),{loading:()=>null});
-const ObjectEditor=dynamic(()=>import('../BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 
 export default function ScopeBlockEditorSession({
   initial,scopeId,pageName,slot,movableSlots=[],movableIndex=-1,

@@ -15,7 +15,7 @@ import {SCOPE_PATTERN_INDEX_VERSION} from './keywords/anchor-index.mjs';
 import {classSkipArticleWords} from './keywords/class-exceptions.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
-const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('./editor/BlockNoteEditor'),{loading:()=>null});
 const TYPES=['class','group','item'];
 const LABEL={category:'關鍵字目錄',class:'關鍵字群組科目',group:'關鍵字分類群組',item:'關鍵詞分類'};
 const onlyWords=value=>[...new Set(String(value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];

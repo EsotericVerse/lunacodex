@@ -4,8 +4,8 @@ import {WorkSummaryCard} from './ui';
 import {useEffect,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 // A plain-text article does not need an editor chunk; edit and rich view mount on demand.
-const BlockNoteEditor=dynamic(()=>import('../loc/BlockNoteEditor'),{loading:()=>null});
-const ObjectEditor=dynamic(()=>import('../loc/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 import {UI_COPY,registerDefaultSection} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
 import UiText,{useUiText} from '../i18n/UiText';

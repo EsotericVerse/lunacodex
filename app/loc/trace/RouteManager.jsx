@@ -19,7 +19,7 @@ import {
   readDefaultTraceRoute,setDefaultTraceRoute,clearDefaultTraceRoute,chooseDefaultTraceRoute
 } from '../../modular/features/trace/trace-route-preference.mjs';
 
-const BlockNoteEditor=dynamic(()=>import('../BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
 const TraceMap=dynamic(()=>import('../../modular/features/trace/TraceMap'),{
   ssr:false,loading:()=> <p className="scope-status">正在載入地圖…</p>
 });
