@@ -4,6 +4,7 @@ import {PERSISTED_ANCHOR_TYPES} from '../../zenstack/anchor-hierarchy.mjs';
 // Only LOC uses this mapping; other Scope _blocks tables remain independent.
 // Anchor: uid / type / title / description / invisible / attr / createtime / num.
 // Blocks: uid / page_name / block_title / block_text / false / metadata / now / block_order.
+// Physical Anchor envelope: uid/type/title/description/invisible/attr/createtime/num.
 // LOC projection: page_name->type, block_title->title, block_text->description,
 // block_order->num; block_entity->attr.uidlist, block_eyebrow->attr.eyebrow,
 // block_subtitle->attr.subtitle, block_image->attr.image.
