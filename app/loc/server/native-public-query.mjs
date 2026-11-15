@@ -1,6 +1,7 @@
 // A bounded LOC public SELECT contract on the existing Pages application.
 // The browser never chooses a SQL engine, connection alias, schema or SQL text.
-// Every query executes through the same server-owned Kysely Dialect as LOC Auth.
+// LOC Web data reads are independent of LOC Auth sessions/roles; the latter provides identity only.
+// All selections use LOC Web's own scoped Kysely contract, not LOC Auth business storage.
 import {sql} from 'kysely';
 import {executeKyselyAnalytics,executePortableKyselyAnalytics}
   from '../providers/kysely-analytics.mjs';
