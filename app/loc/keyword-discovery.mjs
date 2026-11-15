@@ -38,7 +38,7 @@ export function existingKeywordSet(rows=[]){
   }
   return found;
 }
-export function createNewKeywordDiscovery(rows=[]){
+export function createNewKeywordDiscovery(rows=[],{exceptionWords=[]}={}){
   const existing=existingKeywordSet(rows);
   const segmenter=new Intl.Segmenter('zh',{granularity:'word'});
   const totals=new Map();
@@ -49,6 +49,8 @@ export function createNewKeywordDiscovery(rows=[]){
   const known=[...existing].filter(term=>[...term].length>=2)
     .sort((a,b)=>b.length-a.length);
   const knownMatcher=compileKeywordLiteralMatcher(known);
+  const skipMatcher=compileKeywordLiteralMatcher((Array.isArray(exceptionWords)
+    ?exceptionWords:[]).map(normalize).filter(Boolean));
   let read=0,withContent=0,limited=false;
   // Repeated tokens dominate long Galaxy scans. Cache both accepted and
   // rejected normalized tokens, with bounded memory across large imports.
@@ -87,7 +89,7 @@ export function createNewKeywordDiscovery(rows=[]){
     for(const row of batch){
       read++;
       const body=keywordScanText(row);
-      if(!body.trim())continue;
+      if(!body.trim()||skipMatcher.contains(normalize(body)))continue;
       withContent++;
       const seen=new Set();
       const month=String(row?.createtime||'').slice(0,7);
