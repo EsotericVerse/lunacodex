@@ -1,3 +1,7 @@
+// CURRENT Keyword business writer: scoped Kysely reads typed Anchor/Galaxy
+// rows; Keyword Tree/ZModel determines structure; Pattern is the ONLY persisted
+// article posting list. Legacy catalog/uid_lists views are read compatibility,
+// not a second write/storage architecture or a reason for SQL migration.
 // Fixed-purpose native Kysely Keyword service. Runs within the existing LOC
 // Pages application, using the server-only database profile. Never exposes
 // arbitrary SQL, a connection string, or a general SQL Gateway endpoint.
