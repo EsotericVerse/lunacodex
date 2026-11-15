@@ -11,7 +11,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     queryKey:['statistics-keyword-pattern-ratios',scopeId,classUid,range.startDate,range.endDate],
     enabled:Boolean(scopeId&&classUid),
     queryFn:async()=>{
-      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
+      const {keywordService}=await import('../../../loc/keywords/service-client.mjs');
       return await keywordService('stats',{scopeId,classUid,
         startDate:String(range.startDate||''),endDate:String(range.endDate||'')});
     }

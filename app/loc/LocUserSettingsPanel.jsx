@@ -100,7 +100,7 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
     if(!['filter','dashboard'].includes(section)||!ready||!verifiedSubject)return undefined;
     let live=true;
     (async()=>{
-      const {selectAvailableKeywordClasses}=await import('./keyword-analysis');
+      const {selectAvailableKeywordClasses}=await import('./keywords/analysis');
       const scopes=[['lo3rwang',t(PATH+'featureAuthor')],['lrunes',t(PATH+'featureRunes')]];
       const results=await Promise.allSettled(scopes.map(async([scope,label])=>{
         const result=await selectAvailableKeywordClasses(scope);

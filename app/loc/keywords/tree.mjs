@@ -1,4 +1,4 @@
-import {indexZModelAnchorHierarchy} from '../../packages/zenstack/anchor-hierarchy.mjs';
+import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 // Current Keyword Tree Model: category > class > group > item > pattern.
 // Typed/composite models define node payloads; anchor-hierarchy.mjs validates
 // UID edges; this module adapts them for editor/catalog consumers.

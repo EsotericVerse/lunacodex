@@ -246,7 +246,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const uid=String(classUid||'');
     if(!/^[A-Za-z0-9]{8}$/.test(uid))
       throw new Error('尚未選取 Keywords Class');
-    const {keywordService}=await import('./keyword-service-client.mjs');
+    const {keywordService}=await import('./keywords/service-client.mjs');
     onProgress?.({phase:'resetting',completed:0,total:1});
     const result=await keywordService('reset',{scopeId:scope,classUid:uid});
     onProgress?.({phase:'completed',completed:1,total:1});
@@ -385,7 +385,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(!['insert','update','delete'].includes(op))throw Error('Invalid KeywordAnchor operation');
     // normalizeKeywordTreeRow accepts an editor/legacy projection; it is NOT
     // the physical SQL schema. Save only each current Anchor type's own fields.
-    const {normalizeKeywordTreeRow}=await import('./keyword-tree.mjs');
+    const {normalizeKeywordTreeRow}=await import('./keywords/tree.mjs');
     const v=normalizeKeywordTreeRow(node),q=dbAuthRelation(table);
     const field=v.type==='item'?'keyword':'uid';
     const attr={...(node.attr&&typeof node.attr==='object'?node.attr:{}),[field]:v.lists};
@@ -395,7 +395,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       for(const key of ['uidlists','articles','hits','total'])delete attr[key];
     }
     if(v.type==='class'){
-      const {classSkipArticleWords}=await import('./keyword-class-exceptions.mjs');
+      const {classSkipArticleWords}=await import('./keywords/class-exceptions.mjs');
       classSkipArticleWords(attr);
     }
     let query;
@@ -415,7 +415,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const table='silver.'+scope+'_anchor';
     preflightWrite(table);
     const data=await readOwnedKeywordNodes(table);
-    const {indexKeywordTree,descendantsOfKeyword}=await import('./keyword-tree.mjs');
+    const {indexKeywordTree,descendantsOfKeyword}=await import('./keywords/tree.mjs');
     const {allocateAnchorUid}=await import('./uid.js');
     const tree=indexKeywordTree(data);
     const original=tree.index.get(source);

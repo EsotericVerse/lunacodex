@@ -20,8 +20,8 @@ import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
   from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import * as z from 'zod';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
-import {keywordPatternItemMetrics} from '../keyword-search-pattern.mjs';
-import {readScopePatternRows,storeScopePatternMatches} from '../keyword-anchor-index.mjs';
+import {keywordPatternItemMetrics} from '../keywords/search-pattern.mjs';
+import {readScopePatternRows,storeScopePatternMatches} from '../keywords/anchor-index.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;

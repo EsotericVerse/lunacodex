@@ -3,7 +3,7 @@
 import {dbAuthRelation} from '../db-client.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {KeywordDiscoveryQueue} from './discovery-queue.mjs';
-import {classSkipArticleWords} from '../keyword-class-exceptions.mjs';
+import {classSkipArticleWords} from './class-exceptions.mjs';
 import * as z from 'zod';
 
 // The owner's explicit action starts the only scan. Never run during render,

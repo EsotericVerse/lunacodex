@@ -7,15 +7,15 @@
 // arbitrary SQL, a connection string, or a general SQL Gateway endpoint.
 // Pattern attr postings alone store Galaxy article UIDs; Class/Group/Item attr.uid links Anchor UIDs.
 // Keyword-derived day density deduplicates actual postings by Galaxy.date; never estimate by a ratio.
-import {parseRuneKeywordRuleSentence} from './model/rune-keyword-rules.mjs';
-import {buildKeywordSearchPatterns,keywordPatternItemMetrics,keywordPatternDailySummary} from './keyword-search-pattern.mjs';
-import {keywordClassCatalog} from './keyword-tree.mjs';
-import {analyzeIncrementalKeywordPatterns} from './keyword-incremental.mjs';
-import {createIndexedDateKeywordReader} from './keyword-article-reader.mjs';
-import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
-import {completeKeywordClass,invalidateKeywordClass} from './keyword-class-state.mjs';
-import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './keyword-anchor-index.mjs';
-import {galaxyReadColumns,galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
+import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
+import {buildKeywordSearchPatterns,keywordPatternItemMetrics,keywordPatternDailySummary} from './search-pattern.mjs';
+import {keywordClassCatalog} from './tree.mjs';
+import {analyzeIncrementalKeywordPatterns} from './incremental.mjs';
+import {createIndexedDateKeywordReader} from './article-reader.mjs';
+import {classSkipArticleWords} from './class-exceptions.mjs';
+import {completeKeywordClass,invalidateKeywordClass} from './class-state.mjs';
+import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './anchor-index.mjs';
+import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;

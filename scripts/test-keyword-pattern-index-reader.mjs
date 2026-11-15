@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createIndexedDateKeywordReader} from '../app/loc/keyword-article-reader.mjs';
+import {createIndexedDateKeywordReader} from '../app/loc/keywords/article-reader.mjs';
 
 test('date+UID cursor reads every same-day split and undated timestamp once',async()=>{
   const dated=Array.from({length:2710},(_,i)=>({

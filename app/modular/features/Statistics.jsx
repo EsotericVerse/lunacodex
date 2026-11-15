@@ -407,7 +407,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     // The keyword class is optional; the ordinary Statistics view never queries it.
     enabled:keywordDimension,
     queryFn:async()=>{
-      const {selectAvailableKeywordClasses}=await import('../../loc/keyword-analysis');
+      const {selectAvailableKeywordClasses}=await import('../../loc/keywords/analysis');
       return selectAvailableKeywordClasses(scopeId);
     },
   });
@@ -421,7 +421,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const runeQuery=useAsyncResource({
     queryKey:['statistics-keyword-class',scopeId,resolvedKeywordClassUid,styleRange.startDate,styleRange.endDate],
     queryFn:async()=>{
-      const {selectKeywordAnalysisSummary}=await import('../../loc/keyword-analysis');
+      const {selectKeywordAnalysisSummary}=await import('../../loc/keywords/analysis');
       return selectKeywordAnalysisSummary({
         scopeId,classUid:resolvedKeywordClassUid,...styleRange
       });

@@ -1,5 +1,5 @@
 import {createKeywordDocumentClassifier} from './keyword-engine.mjs';
-import {keywordClassCatalog,indexKeywordTree} from '../keyword-tree.mjs';
+import {keywordClassCatalog,indexKeywordTree} from '../keywords/tree.mjs';
 
 // Keep scoring rules unchanged; ephemeral ordinals only index one analysis call.
 // All externally visible references are four-character Item UIDs.

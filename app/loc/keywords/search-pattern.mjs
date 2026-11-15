@@ -1,4 +1,4 @@
-import {parseRuneKeywordRuleSentence} from './model/rune-keyword-rules.mjs';
+import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 
 // A Keyword Item is a GROUP of literal words (including its own title).
 // Each word gets its OWN count/UID set from matched text, never Item.total.

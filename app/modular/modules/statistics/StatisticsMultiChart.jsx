@@ -243,8 +243,8 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
     queryKey:['statistics-keyword-item-class-map',scopeId,String(meta.class_uid||'')],
     enabled:shown==='both'&&Boolean(scopeId&&meta.class_uid&&data.staticstime),
     queryFn:async()=>{
-      const {keywordService}=await import('../../../loc/keyword-service-client.mjs');
-      const {keywordTreeCatalog}=await import('../../../loc/keyword-tree-report.mjs');
+      const {keywordService}=await import('../../../loc/keywords/service-client.mjs');
+      const {keywordTreeCatalog}=await import('../../../loc/keywords/tree-report.mjs');
       const result=await keywordService('catalog',{scopeId,classUid:meta.class_uid});
       if(!result.class_uid)return [];
       const tree=keywordTreeCatalog(result.rows,result.class_uid);
