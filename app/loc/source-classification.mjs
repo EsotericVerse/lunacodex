@@ -23,8 +23,13 @@ export const sourceTaxonomyFromCatalog=tags=>sourceTaxonomyFromArrays(tags);
 // second media/platform registry. Anchor attr.uid is the only hierarchy link.
 // SiteAnchor: from = one platform; domain = platform collection; galaxy = group; universe = all.
 // Example: Meta (domain) > Facebook/Threads/Instagram (from); CMS/Article/Stream (galaxy).
-// Source titles are labels, not durable keys: e.g. use Vocus as the canonical label,
-// rather than the old "方格子vocus" spelling when editorial data is explicitly renamed.
+// Example taxonomy (labels only; no automatic DB rewrite):
+// Words > CMS > Meta > Facebook/Threads/Instagram; CMS > X > X Twitter.
+// Words > Article > MCP > Github/ChatGPT/runes; Article > Post > Vocus.
+// Mutlimedia > Stream > Music > Suno/Spotify; Stream > Video > Youtube.
+// PastBy > SeeYou > Yesterday > kkcity/ptt/無名wretch/pixnet/MSN.
+// Source labels are not durable keys: Vocus supersedes "方格子vocus" only
+// when source records are explicitly edited; never rewrite Galaxy.site on import.
 // SiteAnchor from/domain/galaxy/universe is a real UID-linked hierarchy; flat UI is only presentation.
 // Never derive parenthood from matching display titles.
 const SOURCE_LEVELS=Object.freeze([...ANCHOR_TYPE_GROUPS.source].reverse());
