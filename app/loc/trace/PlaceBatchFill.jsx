@@ -4,7 +4,7 @@ import {useMemo,useRef,useState} from 'react';
 import {useEditDockForm} from '../../modular/edit-dock';
 import {dbAuthClient} from '../db-client.mjs';
 import {defaultScopeData,revalidateServerMetadata} from '../scope-data';
-import {selectCultureTimeRows} from '../culture-query';
+import {selectCultureTimeRows} from '../culture/query';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 
 const DATE=/^\d{4}-\d{2}-\d{2}$/;

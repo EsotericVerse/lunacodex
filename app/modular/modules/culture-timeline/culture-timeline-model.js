@@ -1,4 +1,4 @@
-import {decodeTimeSegments,encodeTimeSegment} from '../../../loc/time-anchor-ranges.mjs';
+import {decodeTimeSegments,encodeTimeSegment} from '../../../loc/culture/time-anchor-ranges.mjs';
 const DENSITY_LEVELS=Object.freeze([
   Object.freeze({minimum:1001,key:'focus-6',label:'1001 篇以上',brightness:1.4,glow:0.9}),
   Object.freeze({minimum:501,key:'focus-5',label:'501–1000 篇',brightness:1.32,glow:0.78}),

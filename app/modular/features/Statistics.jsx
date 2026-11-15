@@ -222,7 +222,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryFn:async()=>{
       // Period anchors remain on the independently working direct reader.
       // ISR never becomes a required path when an endpoint is not available.
-      const {selectScopeCultureData}=await import('../../loc/culture-query');
+      const {selectScopeCultureData}=await import('../../loc/culture/query');
       return (await selectScopeCultureData(scopeId)).eras?.eras||[];
     },
     revalidateOnFocus:false,
