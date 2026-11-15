@@ -31,6 +31,8 @@ import ScopeLink from '../ScopeLink';
 import SearchSummary from '../../loc/SearchSummary';
 // Article cards/editing are requested only when results actually render.
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
+// Mount the Inter-Net only for an explicitly opened Galaxy detail.
+const GalaxyInterNetBranches=dynamic(()=>import('../GalaxyInterNetBranches'),{loading:()=>null});
 import {useScopeRuntime} from '../use-scope-runtime';
 import useLocFeatureSettings from '../../loc/use-loc-feature-settings';
 import useDefaultTimeUnit from '../../loc/use-default-time-unit';
@@ -1401,6 +1403,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             </button>:null}
           </div>:null}
 
+          {readerRow?.uid&&row.resourceType==='galaxy'?
+            <GalaxyInterNetBranches scopeId={row.scopeId} row={readerRow}/>:null}
         </Article>
         </Fragment>;
       }}
