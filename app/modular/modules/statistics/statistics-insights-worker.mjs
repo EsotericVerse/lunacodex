@@ -1,5 +1,5 @@
 // Karaul runs off the React and MapLibre render threads.
-import {detectCountChangepoints} from '../../../loc/karaul-count-changepoints.mjs';
+import {detectCountChangepoints} from '../../../loc/model/karaul-count-changepoints.mjs';
 
 self.onmessage=event=>{
   const series=event.data?.values;

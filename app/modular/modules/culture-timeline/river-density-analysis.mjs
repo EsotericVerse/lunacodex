@@ -1,4 +1,4 @@
-import {detectCountChangepoints} from '../../../loc/karaul-count-changepoints.mjs';
+import {detectCountChangepoints} from '../../../loc/model/karaul-count-changepoints.mjs';
 
 const DAY_MS=86400000;
 const ANCHOR_COVER_DAYS=3;
