@@ -1,4 +1,4 @@
-import {PUBLISHED_SEARCH_PATTERNS} from '../modular/published-search-patterns.js';
+import {PUBLISHED_SEARCH_PATTERNS} from '../../modular/published-search-patterns.js';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const ID=/^[A-Za-z0-9]{8}$/;
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');

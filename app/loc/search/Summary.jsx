@@ -1,8 +1,8 @@
 'use client';
 
-import {useAsyncResource} from '../../packages/zenstack/client-queries';
-import {useUiText} from '../i18n/UiText';
-import {readScopeSearchSummary,summaryScopeIds} from './scope-search-summary.mjs';
+import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import {useUiText} from '../../i18n/UiText';
+import {readScopeSearchSummary,summaryScopeIds} from './scope-summary.mjs';
 
 export default function SearchSummary({scopeIds=[]}){
   const t=useUiText();

@@ -9,7 +9,7 @@ registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 
 import {useDeferredValue,useMemo,useRef,useState,useSyncExternalStore} from 'react';
-import {refreshScopeSearchSummary} from './scope-search-summary.mjs';
+import {refreshScopeSearchSummary} from './search/scope-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from './db-client.mjs';
 import {useAccount} from './use-account';
 import FlowProgress from '../modular/FlowProgress';
