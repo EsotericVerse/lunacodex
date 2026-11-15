@@ -1,7 +1,7 @@
 // Read-only scan projection. Galaxy title/content and their HTML remain unchanged.
 const CONTENT_FIELDS=new Set(['text','content','body','paragraph','paragraphs',
   'message','description','lyric','lyrics','story','article','html','blocks',
-  'children','rows','cells']);
+  'children','rows','cells','heading','caption','quote','excerpt','summary']);
 const ENTITIES={amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' ',ensp:' ',emsp:' ',
   ndash:'–',mdash:'—',lsquo:'‘',rsquo:'’',ldquo:'“',rdquo:'”',
   hellip:'…',bull:'•',middot:'·',copy:'©',reg:'®'};
@@ -39,7 +39,9 @@ function fromStructured(value){
       else if(child&&typeof child==='object')walk(child,false,depth+1);
     }
   };
-  walk(data);
+  // A top-level array of paragraphs may be strings; nested metadata object
+  // keys still require an explicit text field before their strings are used.
+  walk(data,true);
   return out.join('\n');
 }
 function stripLegacyPrefix(text){
