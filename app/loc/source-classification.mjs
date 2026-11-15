@@ -21,6 +21,10 @@ export const sourceTaxonomyFromCatalog=tags=>sourceTaxonomyFromArrays(tags);
 
 // The source taxonomy is the existing LocAnchor ZModel, not ArticleTag or a
 // second media/platform registry. Anchor attr.uid is the only hierarchy link.
+// SiteAnchor: from = one platform; domain = platform collection; galaxy = group; universe = all.
+// Example: Meta (domain) > Facebook/Threads/Instagram (from); CMS/Article/Stream (galaxy).
+// Source titles are labels, not durable keys: e.g. use Vocus as the canonical label,
+// rather than the old "方格子vocus" spelling when editorial data is explicitly renamed.
 // SiteAnchor from/domain/galaxy/universe is a real UID-linked hierarchy; flat UI is only presentation.
 // Never derive parenthood from matching display titles.
 const SOURCE_LEVELS=Object.freeze([...ANCHOR_TYPE_GROUPS.source].reverse());
