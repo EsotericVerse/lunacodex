@@ -1,8 +1,11 @@
 import {indexZModelAnchorHierarchy} from '../../zenstack/anchor-hierarchy.mjs';
-// Same six-column, UID-linked hierarchy as the Scope's anchor records.
-// category (directory) -> class (subject) -> group (category) -> item (word set)
-// -> pattern (one indexed word); only Pattern stores Galaxy article UID postings.
-// category -> class -> group -> item -> literal keyword strings.
+// Current Keyword Tree Model: category > class > group > item > pattern.
+// Typed/composite models define node payloads; anchor-hierarchy.mjs validates
+// UID edges; this module adapts them for editor/catalog consumers.
+// Only Pattern.attr postings hold Galaxy article UIDs (Pattern.num = count).
+// Item.attr.uid links Pattern Anchor UIDs; Item.keyword carries word labels.
+// Older "literal keyword strings" and Group/Item uid_lists are compatibility
+// data shapes, NOT the persisted search/index architecture.
 // Parent lists contain child UIDs, not names. No class_id, group_id, item_no.
 // Only the canonical eight-character Anchor UID exists in the current ZModel.
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -13,14 +16,18 @@ const array=value=>{
   if(typeof value==='string'){try{const v=JSON.parse(value);if(Array.isArray(v))return v;}catch{}}
   throw new Error('Keywords lists and uid_lists must be arrays');
 };
-// PostgreSQL stores exactly one structured uid_lists JSONB object.
+// COMPATIBILITY-ONLY reader for old uid_lists payloads (array, articles, hits).
+// It does NOT define a new physical JSONB column or an authoritative hit index.
+// New code must use Pattern posting UIDs and ZModel graph links; do not restore
+// Item/Group article-list storage merely because this decoder still exists.
 export function keywordUidListData(type,value){
   const raw=typeof value==='string'?(()=>{try{return JSON.parse(value)}catch{return value}})():value;
   if(Array.isArray(raw))return raw; // Existing local-file or import documents.
   if(raw&&typeof raw==='object'&&!Array.isArray(raw)){
     if(type==='group'&&Array.isArray(raw.articles))return [...raw.articles];
     if(type==='item'&&Array.isArray(raw.hits))return [...raw.hits];
-    // New unified Anchor keeps total separately from deduplicated UID strings.
+    // Legacy adapter can reconstruct in-memory {uid,times}; never persist as the
+// new Item/Group index. The authoritative distinct count is Pattern.num.
     // Reconstruct legacy hit objects in memory only for existing consumers.
     if(['group','item'].includes(type)&&Array.isArray(raw.uidlists))
       return type==='item'?raw.uidlists.map(uid=>({uid,times:1})):raw.uidlists;
@@ -58,8 +65,9 @@ export function normalizeKeywordTreeRow(row){
   }
   const compact=row?.uid_lists&&typeof row.uid_lists==='object'&&!Array.isArray(row.uid_lists)
     &&Array.isArray(row.uid_lists.uidlists);
-  // A virtual catalog may provide a computed total from loc_search_pattern.
-  // Physical Anchor itself never stores Keyword hit numbers.
+  // Old compatibility summaries may supply computed totals, but not index data.
+  // Physical Keyword hit counts live only in Pattern.num; Item/Group totals are
+  // derived presentation values and must not be written as another hit cache.
   const projected=Number(row?.total);
   const total=Number.isSafeInteger(projected)&&projected>=0&&row?.total!=null
     ?projected:compact&&Number.isSafeInteger(Number(row.uid_lists.total))
