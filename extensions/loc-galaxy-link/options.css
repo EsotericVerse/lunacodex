@@ -630,3 +630,55 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 @media(max-width:390px) {
   #overview .overview-route-steps li { padding-block: 10px; }
 }
+
+/* Refinement: use the illustration as the light source, not repeated glossy
+   gradient layers, blur panes and six permanently glowing composited keys. */
+#overview .hero{
+  background:var(--surface);
+  box-shadow:none;
+  border-color:var(--edge-bright);
+}
+#overview .hero::after{display:none;}
+#overview .metrics .metric-card{
+  background:var(--surface);
+  box-shadow:none;
+}
+.extension-floating-dock .remote-dock-link{
+  background:var(--surface-raised);
+  box-shadow:0 3px 11px rgba(0,0,0,.2);
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+}
+.extension-floating-dock .remote-dock-link[aria-current="page"]{
+  background:#282747;
+  border-color:var(--violet);
+  box-shadow:inset 0 -3px 0 var(--aqua),0 3px 11px rgba(0,0,0,.2);
+}
+.extension-floating-dock .remote-dock-link[aria-current="page"]::after{
+  box-shadow:none;
+}
+@media(max-width:700px){
+  .sidebar{
+    background:var(--bg);
+    -webkit-backdrop-filter:none;
+    backdrop-filter:none;
+  }
+}
+@media(max-width:600px){
+  #overview .hero-lunarcus-art img{
+    max-height:172px;
+  }
+  #overview .metrics .metric-card:first-child{
+    min-height:108px;
+  }
+  #overview .metrics .metric-card{
+    min-height:105px;
+    padding:14px;
+  }
+  #overview .overview-brief{
+    margin-top:16px;
+  }
+  #overview .overview-next-description{
+    min-height:0;
+  }
+}
