@@ -114,11 +114,9 @@ export default function GlobalSettings({initialSection='features'}={}){
   },[]);
   function toggleRainbowPreview(){
     if(!canPreviewRainbow)return;
-    setRainbowPreview(current=>{
-      const next=!current;
-      window.dispatchEvent(new CustomEvent('loc-owner-rainbow-preview',{detail:{active:next}}));
-      return next;
-    });
+    const next=!rainbowPreview;
+    setRainbowPreview(next);
+    window.dispatchEvent(new CustomEvent('loc-owner-rainbow-preview',{detail:{active:next}}));
   }
 
   async function saveHome(event){
