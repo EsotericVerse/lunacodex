@@ -1,4 +1,4 @@
-import {DATABASE_ROUTING_CONFIG,resolveDatabaseRouting} from './routing-config.mjs';
+import {DATABASE_ROUTING_CONFIG,resolveDatabaseRouting} from './config.mjs';
 
 // Database routing is a server-controlled decision. Public browser storage
 // must never override the LOC primary target, even if a legacy key remains.
