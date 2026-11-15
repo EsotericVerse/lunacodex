@@ -3,6 +3,7 @@
 import {dbAuthRelation} from './db-client.mjs';
 import {galaxyReadColumns} from '../../zenstack/galaxy-read-models.mjs';
 import {KeywordDiscoveryQueue} from './keyword-discovery-queue.mjs';
+import {classSkipArticleWords} from './keyword-class-exceptions.mjs';
 import * as z from 'zod';
 
 // The owner's explicit action starts the only scan. Never run during render,
@@ -18,7 +19,7 @@ const ARTICLE_COLUMNS=galaxyReadColumns('GalaxyUidRead')
   .filter(column=>['uid','title','content','createtime','date'].includes(column));
 const aborted=()=>Object.assign(new Error('已取消關鍵詞建議掃描'),{name:'AbortError'});
 
-export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>{},signal}={}){
+export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onProgress=()=>{},signal}={}){
   if(!/^silver\.[a-z][a-z0-9_]*_galaxy$/.test(String(galaxy||'')))
     throw new Error('Galaxy Scope 資料表無效');
   if(signal?.aborted)throw aborted();
@@ -47,7 +48,9 @@ export async function suggestNewKeywords({galaxy,existingRows=[],onProgress=()=>
     worker.postMessage(data);
   });
   try{
-    await send({type:'start',existingRows:existingRows.map(row=>({
+    const classRow=existingRows.find(row=>row.type==='class'&&row.uid===classUid);
+    const exceptionWords=classRow?classSkipArticleWords(classRow.attr||{}):[];
+    await send({type:'start',exceptionWords,existingRows:existingRows.map(row=>({
       type:row.type,name:row.name,lists:row.type==='item'?row.lists:[]
     }))});
     let countQuery=dbAuthRelation(galaxy).select('uid',{count:'exact',head:true});
