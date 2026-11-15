@@ -34,6 +34,7 @@ async function permission(db,role,claims,scope){
 }
 
 export async function onRequestPost(context){
+  let stage='request';
   try{
     const request=context.request;
     if(Number(request.headers.get('content-length')||0)>16000)
@@ -47,6 +48,7 @@ export async function onRequestPost(context){
        typeof input.args!=='object'||Array.isArray(input.args))
       error('Unknown Keyword operation');
     const {operation,args}=input;
+    stage='identity';
     const {role,claims}=await verifiedIdentity(request,context.env);
     const scope=String(args.scopeId||'');
     if(operation!=='suggest'&&!SCOPE.test(scope))
@@ -59,14 +61,17 @@ export async function onRequestPost(context){
       error('Invalid Keyword analysis attempt');
     // The existing Pages native Kysely connection is server-selected; never
     // accept a target URL, SQL dialect or credential from HTTP arguments.
+    stage='database';
     const entry=await directMcpKysely(context.env);
     const db=entry.db;
     // This is the independent database role decision, not LOC Auth.
+    stage='authorization';
     const rights=await readLocAccess(db,claims.email,{
       dialect:entry.dialect,engine:entry.engine,website:true
     });
     claims.me=rights.canWrite;
     claims.grants=rights.grants;
+    stage='operation:'+operation;
     let result;
     if(operation==='suggest'){
       // Management-only suggestion; a single verified Scope.
@@ -166,8 +171,18 @@ export async function onRequestPost(context){
   }catch(e){
     const status=Number.isInteger(e?.httpStatus)?e.httpStatus:
       Number.isInteger(e?.status)?e.status:503;
-    return respond({error:status<500?String(e?.message||'Keyword request rejected'):
-      '關鍵詞資料來源目前無法處理此請求'},status);
+    // Only fixed diagnostic categories leave the private backend. Never
+    // leak database credentials, SQL text, article bodies, or exception text.
+    const rawCode=String(e?.code||e?.cause?.code||'UNKNOWN');
+    const code=/^[A-Za-z0-9_]{2,40}$/.test(rawCode)?rawCode:'UNKNOWN';
+    if(status>=500)console.error('[LOC keyword API]',{
+      stage,code,type:String(e?.name||'Error').slice(0,40)
+    });
+    return respond({
+      error:status<500?String(e?.message||'Keyword request rejected'):
+        '關鍵詞資料來源目前無法處理此請求',
+      ...(status>=500?{stage,code}:{})
+    },status);
   }
 }
 export function onRequestGet(){return respond({error:'POST required'},405);}
