@@ -16,6 +16,8 @@ import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../
 
 
 
+// TimeAnchor date/period/era is read independently from SiteAnchor; UI windows do not limit historical anchors.
+// Culture density counts the full selected interval, not a 100-row article-list page.
 // TimeAnchor: one physical _anchor relation. Legacy UI presentation keys are
 // derived in memory; no _time table, RPC or compatibility writer is consulted.
 const TIME_COLUMNS='uid,type,title,description,attr';
