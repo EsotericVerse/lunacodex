@@ -1,7 +1,8 @@
 'use client';
 
 import {galaxyInterNetEdges} from '../../zenstack/galaxy-inter-net.mjs';
-import {featureNavigationHref,galaxyIdentityHref,mediaAnchorHref} from './feature-navigation';
+import {featureNavigationHref,galaxyIdentityHref} from './feature-navigation';
+import {scopeHref} from './scope-registry';
 
 // One small, collapsed branch per relationship family. No additional queries:
 // every edge is derived solely from the article detail already authorized by
@@ -19,12 +20,13 @@ const fieldName=Object.freeze({
   media_link:'媒體',place_id:'地點',location:'位置',
   date:'日期',site:'來源'
 });
-function destination(scope,edge,{federated=false}={}){
+function destination(scope,edge,{federated=false,managementMode=false}={}){
   // An external Galaxy UID is not the same identity as the primary Scope UID.
   if(federated)return '';
   if((edge.kind==='media'||edge.kind==='point')&&edge.resolved!==true)return '';
   if(edge.kind==='galaxy')return galaxyIdentityHref(scope,edge.value);
-  if(edge.kind==='media')return mediaAnchorHref(scope,edge.value);
+  if(edge.kind==='media')return managementMode
+    ?scopeHref(scope,'search/manage')+'?media='+encodeURIComponent(edge.value):'';
   if(edge.kind==='point')return featureNavigationHref(scope,'trace',{place:edge.value});
   if(edge.kind==='date')return featureNavigationHref(scope,'culture',{
     from:edge.value,to:edge.value
@@ -33,7 +35,7 @@ function destination(scope,edge,{federated=false}={}){
   // saved Source/Point Anchor; this requires an explicit authorized resolver.
   return '';
 }
-export default function GalaxyInterNetBranches({scopeId,row}){
+export default function GalaxyInterNetBranches({scopeId,row,managementMode=false}){
   if(!row?.uid)return null;
   const graph=galaxyInterNetEdges(row,{
     media:row.related_media,
@@ -56,7 +58,7 @@ export default function GalaxyInterNetBranches({scopeId,row}){
           <summary>{group.label} <small>{group.edges.length}</small></summary>
           <ul>
             {group.edges.map((edge,index)=>{
-              const href=destination(scopeId,edge,{federated:row.inter_net_federated===true});
+              const href=destination(scopeId,edge,{federated:row.inter_net_federated===true,managementMode});
               // Avoid displaying an unresolved media/place UID that could
               // refer to a hidden or unrelated Anchor in this Scope.
               const unresolved=(edge.kind==='media'||edge.kind==='point')&&edge.resolved!==true;
