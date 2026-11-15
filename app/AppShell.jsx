@@ -21,7 +21,6 @@ import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
-import {useNavigationPreferences} from './loc/use-navigation-preferences';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/routing/scope-registry.js';
 import {recoverChunkOnce} from './loc/chunk-recovery.mjs';
@@ -32,7 +31,7 @@ const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{
 import ScrollableScopeNav from './modular/ScrollableScopeNav';
 import ScopeLink,{isManagementHref} from './modular/ScopeLink';
 
-const {account:accountNavigation,device:deviceNavigation}=NavigationPreferences;
+const {device:deviceNavigation}=NavigationPreferences;
 
 const SYSTEM_THEME_ID='system-default';
 const DAY_THEME_ID='theme-7';
@@ -464,33 +463,19 @@ function AppShellInner({children,runtime}){
     document.addEventListener('visibilitychange',onVisible);check();
     return()=>{window.removeEventListener('focus',check);window.removeEventListener('pageshow',check);document.removeEventListener('visibilitychange',onVisible);};
   },[]);
-  const [nativeHomepage,setNativeHomepage]=useState('loc');
-  // Existing website Auth, Session and navigation stay connected.
-  const preferences=useNavigationPreferences();
   // Registry, NAV titles and Themes share one site snapshot across pages.
   // Scope config and page blocks load separately when first needed.
   // Components using the same (scopeId, pageName) ZenStack query key share one read.
   // Main online bootstrap is not replaced; device-local routes own the local core.
   const bootstrap=useAppBootstrap(scopeId,pageName);
   const registryScopes=bootstrap.data?.registry||[];
-  const registryLoaded=bootstrap.isSuccess||bootstrap.isError;
   const navDisplayNames=useMemo(()=>{
     const entries=(bootstrap.data?.page_copy||[])
       .map(row=>[String(row.scope_id||''),String(row.Title_TW||'').trim()])
       .filter(([,label])=>label);
     return Object.fromEntries(entries);
   },[bootstrap.data]);
-  useEffect(()=>{
-    const actual=Capacitor.isNativePlatform();
-    setNative(actual);
-    if(!actual)return;
-    const sync=()=>{
-      setNativeHomepage(deviceNavigation.mobileHomepageChoice(window.localStorage));
-    };
-    sync();
-    window.addEventListener('loc-device-navigation-changed',sync);
-    return()=>window.removeEventListener('loc-device-navigation-changed',sync);
-  },[]);
+  useEffect(()=>setNative(Capacitor.isNativePlatform()),[]);
   const currentScope=scope||getScope(scopeId);
   // The Scope's locale travels inside the same bootstrap request as its config;
   // no separate fetch. A manual pick stands until the Scope changes.
@@ -616,7 +601,7 @@ function AppShellInner({children,runtime}){
   const featureTabs=[
     {id:'home',icon:'home',label:translateUiField(activeLocale,'首頁'),
       href:localNavigation?navigationHref('local','',native):
-        navigationHref(navScopeId,'',native)+(native&&navScopeId==='loc'?'?loc_direct=1':'')},
+        navigationHref(navScopeId,'',native)},
     ...['culture','statics','trace','search'].map(id=>{
       const feature=FEATURES.find(item=>item.id===id);
       return {id,icon:id,label:copy.features?.[id]?.title||feature.label,
@@ -626,21 +611,6 @@ function AppShellInner({children,runtime}){
       href:native?'/local/settings/index.html?scopeid='+encodeURIComponent(navScopeId)+(localNavigation?'&section=local':'')
         :'/settings/?scopeid='+encodeURIComponent(navScopeId)}
   ];
-
-  useEffect(()=>{
-    // A saved homepage changes the native App launch destination, not the
-    // meaning of the "首頁" tab or the explicit LOC favorite link.
-    if(!native||pathname!=='/'||preferences.loading||!registryLoaded)return;
-    // Explicit LOC navigation remains possible even with a saved default.
-    if(new URLSearchParams(window.location.search).has('loc_direct'))return;
-    if(nativeHomepage===deviceNavigation.MOBILE_HOME_ID){
-      window.location.replace(deviceNavigation.mobileHomeHref(true));return;
-    }
-    const target=nativeHomepage==='lrunes'?'lrunes':accountNavigation.homeScopeForAccount(nativeHomepage,preferences.account,
-      ['loc',...NAV_SCOPES.map(item=>item.id),...registryScopes.map(item=>item.scope_id)]);
-    if(target!=='loc')window.location.replace(navigationHref(target,'',true));
-  },[native,nativeHomepage,pathname,preferences.loading,preferences.account,registryLoaded,registryScopes]);
-
 
   return <UiLocaleProvider locale={activeLocale}>
     <ScopePageCopy scopeId={localNavigation?'local':scopeId}
@@ -658,7 +628,7 @@ function AppShellInner({children,runtime}){
               current={targetIsCurrent(href,host,pathname)} native={native}/>;
           })}
         </ScrollableScopeNav>
-        <ScopeLink href={navigationHref('loc','',native)+(native?'?loc_direct=1':'')} native={native}
+        <ScopeLink href={navigationHref('loc','',native)} native={native}
           className="scope-nav-loc-home" aria-current={scopeId==='loc'&&pathname==='/'?'page':undefined}>
           {copy.nav.home}
         </ScopeLink>
