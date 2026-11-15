@@ -11,7 +11,7 @@ import PanelLoading from './PanelLoading';
 // Group managers edit work classifications and member names here.
 // Global Admin reuses its existing vis-network personnel editor here.
 // Source hierarchy shares the same destination, without widening write access.
-const LocGroupMemberList=dynamic(()=>import('./LocGroupMemberList'),{loading:PanelLoading});
+const LocGroupMemberList=dynamic(()=>import('./scope/LocGroupMemberList'),{loading:PanelLoading});
 const AdminRegistry=dynamic(()=>import('./views/admin-panels/AdminRegistry'),{loading:PanelLoading});
 const AdminSourceCategories=dynamic(()=>import('./SourceCategoryEditor').then(mod=>mod.AdminSourceCategories),{loading:PanelLoading});
 

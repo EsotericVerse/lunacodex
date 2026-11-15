@@ -26,7 +26,7 @@ const AboutView=dynamic(()=>import('./views/AboutView'),{loading});
 const AuthorHomeView=dynamic(()=>import('./views/AuthorHomeView'),{loading});
 const AdminHomeView=dynamic(()=>import('./views/AdminHomeView'),{loading});
 const GenericScopeHomeView=dynamic(()=>import('./views/GenericScopeHomeView'),{loading});
-const ScopeGroupOverview=dynamic(()=>import('./ScopeGroupOverview'),{loading});
+const ScopeGroupOverview=dynamic(()=>import('./scope/ScopeGroupOverview'),{loading});
 const Statistics=dynamic(()=>import('../modular/features/Statistics').catch(recoverChunkOnce),{
   // The Statistics chunk can be delayed after leaving Edit Dock. Keep the
   // public Hero visible during module loading instead of replacing it with
@@ -153,7 +153,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
         ?HOME_PRELOADERS[scopeId]||(()=>import('./views/GenericScopeHomeView'))
         :VIEW_PRELOADERS[forcedView]||HOME_PRELOADERS.loc;
     preload().catch(()=>{});
-    if(groupOverviewView)import('./ScopeGroupOverview').catch(()=>{});
+    if(groupOverviewView)import('./scope/ScopeGroupOverview').catch(()=>{});
   },[forcedView,scopeId,groupOverviewView,scopeMeta?.nativeOnly,nativeOnlyReady,publicCulture]);
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){

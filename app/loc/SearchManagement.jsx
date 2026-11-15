@@ -15,8 +15,8 @@ const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublishe
 const ManagementMediaWorkspace=dynamic(()=>import('./media/ManagementMediaWorkspace'),{loading:()=>null});
 const ManagementContentTarget=dynamic(()=>import('./ManagementContentTarget'),{loading:()=>null});
 const ManagementImportPanel=dynamic(()=>import('./ManagementImportPanel'),{loading:()=>null});
-const ScopeSettingsPanel=dynamic(()=>import('./ScopeSettingsPanel'),{loading:()=>null});
-const ScopeGroupAccessPanel=dynamic(()=>import('./ScopeGroupAccessPanel'),{loading:()=>null});
+const ScopeSettingsPanel=dynamic(()=>import('./scope/ScopeSettingsPanel'),{loading:()=>null});
+const ScopeGroupAccessPanel=dynamic(()=>import('./scope/ScopeGroupAccessPanel'),{loading:()=>null});
 
 // Article Control sections share one Scope ownership and authorization boundary. Moving a panel
 // never changes its Scope ownership, database tables or authorizer.

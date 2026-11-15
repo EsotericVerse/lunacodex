@@ -13,7 +13,7 @@ import genericScopeZh from '../../i18n/sections/uiExtra.genericScope.zh_tw.js';
 registerDefaultSection('uiExtra.genericScope',genericScopeZh);
 // Only one of these mutually exclusive home capabilities is needed per Scope.
 // Scope Groups must not load the editing implementation.
-const ScopeGroupOverview=dynamic(()=>import('../ScopeGroupOverview'),{loading:()=>null});
+const ScopeGroupOverview=dynamic(()=>import('../scope/ScopeGroupOverview'),{loading:()=>null});
 const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks'),{loading:()=>null});
 
 export default function GenericScopeHomeView(){

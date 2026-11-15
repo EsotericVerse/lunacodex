@@ -1,7 +1,7 @@
 'use client';
 import {useState} from 'react';
-import {useAccount} from './use-account';
-import {useUiText} from '../i18n/UiText';
+import {useAccount} from '../use-account';
+import {useUiText} from '../../i18n/UiText';
 import ScopeDatabasePanel from './ScopeDatabasePanel';
 import ScopeGroupAccessPanel from './ScopeGroupAccessPanel';
 

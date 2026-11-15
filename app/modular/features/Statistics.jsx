@@ -38,7 +38,7 @@ const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiCha
 const KeywordPatternSummary=dynamic(()=>import('../modules/statistics/KeywordPatternSummary'),{loading:()=>null});
 const ScopeSelfIntersection=dynamic(()=>import('../modules/statistics/ScopeSelfIntersection'),{loading:()=>null});
 const ScopeGroupStatistics=dynamic(()=>import('../modules/statistics/ScopeGroupStatistics'),{loading:()=>null});
-const ScopeGroupOverview=dynamic(()=>import('../../loc/ScopeGroupOverview'),{loading:()=>null});
+const ScopeGroupOverview=dynamic(()=>import('../../loc/scope/ScopeGroupOverview'),{loading:()=>null});
 const StatisticsInsightsPanel=dynamic(()=>import('../modules/statistics/StatisticsInsightsPanel'),{loading:()=>null});
 // Standalone daily-draw analytics are mounted only for LunaRunes when selected.
 const LrunesDailyStatisticsPanel=dynamic(()=>import('../../lrunes/DailyRuneAnalytics').then(m=>m.LrunesDailyStatisticsPanel),{loading:()=>null});

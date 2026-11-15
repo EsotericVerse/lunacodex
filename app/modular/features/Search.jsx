@@ -54,7 +54,7 @@ import {MEDIA_FALLBACK_TITLE,WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayT
 import {requireGalaxyContent,resolveGalaxyTitle,assertPlainGalaxyAttributes} from '../../loc/content-policy';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db-contract.mjs';
 import {applyFilters,isAbortError,selectRows} from '../../loc/db-query.mjs';
-const ScopeGroupOverview=dynamic(()=>import('../../loc/ScopeGroupOverview'),{loading:()=>null});
+const ScopeGroupOverview=dynamic(()=>import('../../loc/scope/ScopeGroupOverview'),{loading:()=>null});
 const ScopeEditableBlocks=dynamic(()=>import('../../loc/blocks/ScopeEditableBlocks'),{loading:()=>null});
 // Explanatory Scope blocks are fetched only when their Search tab opens.
 const TraceBlocks=dynamic(()=>import('./TraceBlocks'),{loading:()=>null});
