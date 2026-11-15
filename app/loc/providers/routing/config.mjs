@@ -2,7 +2,7 @@
 // No secrets, login grants, or database calls are stored here.
 // The default control alias is server-owned. Personal database choices are
 // resolved by LOC Auth, not by this deployment-time registry.
-import {DATABASE_ACCESS_LIST} from './access.js';
+import {DATABASE_ACCESS_LIST} from '../access.js';
 
 const sourceTargets=Object.freeze(Object.fromEntries(
   DATABASE_ACCESS_LIST.map(item=>[item.target_id,Object.freeze({

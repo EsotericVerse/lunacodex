@@ -12,7 +12,7 @@ export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 import {dbAuthClient,dbBackupPublicClient,dbConfiguredPublicClient,dbPublicClient} from './db-client.mjs';
 import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './db-source-status.mjs';
 
-import {selectedDatabaseRouting} from './providers/routing-state.mjs';
+import {selectedDatabaseRouting} from './providers/routing/state.mjs';
 const recoverableReadError=error=>{
   const code=String(error?.code||'');
   const status=Number(error?.status||error?.cause?.status||0);
