@@ -62,6 +62,8 @@ export default function GalaxyInterNetBranches({scopeId,row,managementMode=false
       <div className="loc-inter-net__branches">
         {groups.map(group=><details key={group.id} className="loc-inter-net__branch"
           onToggle={event=>{
+            // Nested disclosure events must not change their parent branch.
+            if(event.target!==event.currentTarget)return;
             const open=event.currentTarget.open;
             setExpanded(previous=>open
               ?previous.includes(group.id)?previous:[...previous,group.id]
