@@ -16,7 +16,7 @@ import {createUid8} from '../uid';
 import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from '../content-policy';
 import {refreshSunoStyleMetaTags} from './suno-style-meta-tags.mjs';
 import BlockNoteEditor from '../BlockNoteEditor';
-import {blocksToPlainText,hasBlockNoteContent,plainTextToBlocks} from '../blocknote-content.mjs';
+import {blocksToPlainText,hasBlockNoteContent,plainTextToBlocks} from '../editor/blocknote-content.mjs';
 
 export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin=false}){
   useUiSection('management');

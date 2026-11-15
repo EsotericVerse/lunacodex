@@ -7,7 +7,7 @@ import {useUiSection} from '../i18n/ui-locale';
 import {useUiText} from '../i18n/UiText';
 import searchUIZh from '../i18n/sections/uiExtra.searchUI.zh_tw.js';
 registerDefaultSection('uiExtra.searchUI',searchUIZh);
-import {blocksToPlainText,looksLikeMarkdown,normalizeBlocks,plainTextToBlocks} from './blocknote-content.mjs';
+import {blocksToPlainText,looksLikeMarkdown,normalizeBlocks,plainTextToBlocks} from './editor/blocknote-content.mjs';
 import ScopeLink from '../modular/ScopeLink';
 
 // BlockNote itself is browser-only; keep this as the single public editor entrypoint.

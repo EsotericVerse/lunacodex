@@ -20,7 +20,7 @@ const ScopeBlockDraftList=dynamic(()=>import('./ScopeBlockDraftList'),{loading:(
 import {isInteractiveContentTarget} from '../content-policy.js';
 
 import {HomeBlock} from './home-block-model';
-import {BlockNoteContent} from '../blocknote-content.mjs';
+import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 
 function pageNameOf(value='index'){
   const page=String(value||'index').trim().toLowerCase();
