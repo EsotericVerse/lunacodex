@@ -42,7 +42,7 @@ const NAV_SCOPES=Object.values(SCOPES)
   .filter(scope=>scope.nav)
   .sort((a,b)=>String(a.nav.position).localeCompare(String(b.nav.position))||Number(a.nav.order||0)-Number(b.nav.order||0));
 
-import FlashMessage from './loc/FlashMessage';
+import FlashMessage from './loc/notifications/FlashMessage';
 
 function DataSourceStatus({local=false}){
   const {copy}=useUiLocale();

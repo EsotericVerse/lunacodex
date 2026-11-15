@@ -1,7 +1,7 @@
 'use client';
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {flashMessage} from '../../app/loc/flash-message';
+import {flashMessage} from '../../app/loc/notifications/flash-message';
 import {cancelTransientReads} from './transient-read-epoch.mjs';
 
 // LOC live read layer — no TanStack, no SWR, no browser cache, no polling.
