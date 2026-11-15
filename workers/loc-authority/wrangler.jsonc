@@ -11,7 +11,12 @@
   "previews": {},
   "version_metadata": {"binding": "CF_VERSION_METADATA"},
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "redact_query_string": true,
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    }
   },
   "workers_dev": false,
   "routes": [
