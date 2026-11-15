@@ -8,13 +8,14 @@ import {readLocAccess} from '../../app/loc/permissions/loc_access.mjs';
 import {
   readKeywordClasses,readKeywordStatistics,readKeywordCatalog,readKeywordDaily,
   suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope,
-  saveKeywordItem,deleteKeywordItem,synchronizeKeywordLibrary
+  readKeywordAnalysisCompletion,saveKeywordItem,deleteKeywordItem,synchronizeKeywordLibrary
 } from '../../app/loc/keyword-sql-service.mjs';
 import {queryAnchorArticles} from '../../app/loc/keyword-anchor-search.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const OPERATIONS=new Set(['analyze','reset','classes','catalog','summary','stats','suggest',
+const ATTEMPT=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const OPERATIONS=new Set(['analyze','analyzeStatus','reset','classes','catalog','summary','stats','suggest',
   'anchorSearch','saveItem','deleteItem','syncLibrary']);
 function respond(data,status=200){
   return new Response(JSON.stringify(data),{
@@ -50,9 +51,12 @@ export async function onRequestPost(context){
     const scope=String(args.scopeId||'');
     if(operation!=='suggest'&&!SCOPE.test(scope))
       error('Invalid Keyword Scope');
-    if(['catalog','stats','summary','analyze','reset'].includes(operation)&&
+    if(['catalog','stats','summary','analyze','analyzeStatus','reset'].includes(operation)&&
        !UID.test(String(args.classUid||'')))
       error('Invalid Keyword Class');
+    if((operation==='analyzeStatus'||operation==='analyze'&&args.attemptId)&&
+       !ATTEMPT.test(String(args.attemptId||'')))
+      error('Invalid Keyword analysis attempt');
     // The existing Pages native Kysely connection is server-selected; never
     // accept a target URL, SQL dialect or credential from HTTP arguments.
     const entry=await directMcpKysely(context.env);
@@ -73,7 +77,10 @@ export async function onRequestPost(context){
       });
     }else{
       const owner=await permission(db,role,claims,scope);
-      if(['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation)){
+      if(operation==='analyzeStatus'){
+        if(!owner)error('Scope Keyword management permission required',403);
+        result=await readKeywordAnalysisCompletion(db,scope,args.classUid,args.attemptId);
+      }else if(['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation)){
         if(!owner)error('Scope Keyword management permission required',403);
         const authorizeTransaction=async trx=>{
           bindLocAuthorization(trx,{role,claims});
@@ -93,10 +100,15 @@ export async function onRequestPost(context){
                   try{controller.enqueue(encoder.encode(JSON.stringify({kind,data})+'\n'));}
                   catch{/* A disconnected reader cannot change authorized writes. */}
                 };
+                // Keep long SQL/PELT phases from looking like a dead HTTP
+                // connection. Heartbeats do not poll the DB or change progress.
+                const heartbeat=setInterval(()=>emit('heartbeat',null),15000);
+                emit('heartbeat',null);
                 void (async()=>{
                   try{
                     const analyzed=await analyzeKeywordScope(db,scope,args.classUid,{
-                      authorizeTransaction,onProgress:data=>emit('progress',data)
+                      authorizeTransaction,onProgress:data=>emit('progress',data),
+                      attemptId:String(args.attemptId||'')
                     });
                     emit('result',analyzed);
                   }catch(failure){
@@ -111,6 +123,7 @@ export async function onRequestPost(context){
                       ?String(failure?.message||'分析請求被拒絕')
                       :'關鍵詞資料來源目前無法處理此請求'});
                   }finally{
+                    clearInterval(heartbeat);
                     try{controller.close();}catch{}
                   }
                 })();
@@ -121,7 +134,9 @@ export async function onRequestPost(context){
               'cache-control':'no-store','x-content-type-options':'nosniff'
             }});
           }
-          result=await analyzeKeywordScope(db,scope,args.classUid,{authorizeTransaction});
+          result=await analyzeKeywordScope(db,scope,args.classUid,{
+            authorizeTransaction,attemptId:String(args.attemptId||'')
+          });
         }
         else if(operation==='saveItem')
           result=await saveKeywordItem(db,scope,args.item,{authorizeTransaction});
