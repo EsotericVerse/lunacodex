@@ -1207,7 +1207,7 @@ export default function Culture(){
       });
       const row=rows[0];
       if(!row)throw new Error(l.workNotFound);
-      const {plainTextToBlocks}=await import('../../loc/blocknote-content.mjs');
+      const {plainTextToBlocks}=await import('../../loc/editor/blocknote-content.mjs');
       setEditDraft({
         title:String(row.title||work.title||''),
         body:String(row.content||''),
@@ -1232,7 +1232,7 @@ export default function Culture(){
     setEditBusy(true);setEditError('');
     try{
       if(!scopeData)throw new Error(l.sourceUnresolved);
-      const {blocksToPlainText}=await import('../../loc/blocknote-content.mjs');
+      const {blocksToPlainText}=await import('../../loc/editor/blocknote-content.mjs');
       const content=await requireGalaxyContent(editDraft.bodyHtml??blocksToPlainText(editDraft.bodyBlocks));
       const plainBody=blocksToPlainText(editDraft.bodyHtml??editDraft.bodyBlocks);
       await updateRows(scopeData.galaxy,{

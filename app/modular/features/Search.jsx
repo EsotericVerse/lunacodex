@@ -20,7 +20,7 @@ import dynamic from 'next/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
 import {publicPatternSuggestions} from '../../loc/search/public-pattern-suggestions.mjs';
-import {blockNoteSuggestionItems} from '../../loc/blocknote-suggestions.mjs';
+import {blockNoteSuggestionItems} from '../../loc/editor/blocknote-suggestions.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useRouter,useSearchParams} from 'next/navigation';
 
@@ -750,7 +750,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     try{
       const isGalaxy=result.resourceType==='galaxy';
       const {SearchEditDraft}=await import('./search-edit-draft');
-      const {blocksToPlainText}=isGalaxy?await import('../../loc/blocknote-content.mjs'):{blocksToPlainText:null};
+      const {blocksToPlainText}=isGalaxy?await import('../../loc/editor/blocknote-content.mjs'):{blocksToPlainText:null};
       const body=isGalaxy?await requireGalaxyContent(editDraft.bodyHtml??blocksToPlainText(editDraft.bodyBlocks)):'';
       const nextTitle=isGalaxy?resolveGalaxyTitle(editDraft.title,blocksToPlainText(editDraft.bodyHtml??editDraft.bodyBlocks)):SearchEditDraft.nullableText(editDraft.title);
       const titleChanged=editDraft.title!==editDraft.originalTitle;

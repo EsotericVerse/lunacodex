@@ -3,7 +3,7 @@
 import {SITE_IMAGES} from '../../site-images';
 import {HomeBlock} from './home-block-model';
 
-import {BlockNoteContent} from '../blocknote-content.mjs';
+import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 
 // Existing, approved site images only. New text frames have no image by default;
 // images are not uploaded to, or stored by, the block editor.

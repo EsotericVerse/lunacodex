@@ -14,7 +14,7 @@ import frameEditorZh from '../../i18n/sections/uiExtra.frameEditor.zh_tw.js';
 registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 registerDefaultSection('uiExtra.frameEditor',frameEditorZh);
 import {HomeBlock} from './home-block-model';
-import {BlockNoteContent} from '../blocknote-content.mjs';
+import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';

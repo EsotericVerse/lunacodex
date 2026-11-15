@@ -20,7 +20,7 @@ import {useAccount} from './use-account';
 import {createUid8} from './uid';
 import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from './content-policy';
 import {ObjectEditor} from './BlockNoteEditor';
-import {blocksToPlainText,plainTextToBlocks} from './blocknote-content.mjs';
+import {blocksToPlainText,plainTextToBlocks} from './editor/blocknote-content.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from './galaxy-able.mjs';
 import {galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
 
