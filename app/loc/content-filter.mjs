@@ -1,3 +1,6 @@
+// CURRENT scan-only typed projection, not a physical content column, CMS
+// migration or replacement article renderer. Match filtered visible title/body;
+// retain original Galaxy title/content/HTML for readers and editors.
 // Read-only scan projection. Galaxy title/content and their HTML remain unchanged.
 const CONTENT_FIELDS=new Set(['text','content','body','paragraph','paragraphs',
   'message','description','lyric','lyrics','story','article','html','blocks',
