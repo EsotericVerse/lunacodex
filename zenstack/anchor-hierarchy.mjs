@@ -7,6 +7,10 @@ const UID=/^[A-Za-z0-9]{8}$/;
 // These are the persisted semantic variants carried by the existing
 // eight-column Anchor row.  Keep the vocabulary in one place so the
 // hierarchy projection and the Kysely/Zod boundaries cannot silently drift.
+// TimeAnchor: date/period/era; LocationAnchor: point/path/trace.
+// MediaAnchor: image/video/suno/rune (semantic fields images/video/suno/runes).
+// KeywordAnchor: category > class > group > item > pattern; lrunes66 stays separate.
+// SiteAnchor: universe (all) > galaxy (group) > domain (collection) > from (single source).
 export const ANCHOR_TYPE_GROUPS=Object.freeze({
   time:Object.freeze(['date','period','era']),
   space:Object.freeze(['point','path','trace']),
@@ -18,6 +22,7 @@ export const ANCHOR_TYPE_GROUPS=Object.freeze({
 // Consumer projections are kept here beside the frozen ZModel type vocabulary.
 export const MEDIA_ANCHOR_COLUMNS='uid,type,title,description,createtime,attr,invisible';
 // Only Pattern postings contain Galaxy article UIDs; other hierarchy attr.uid links Anchor UIDs.
+// A Pattern's physical num equals its distinct Galaxy UID posting count; do not cache hits on Item.
 // Dynamic posting field in physical Pattern.attr. A virtual ZModel record
 // exposes it as articleUids without creating a second SQL relation.
 export const KEYWORD_PATTERN_POSTINGS_KEY='63ade525';
@@ -108,6 +113,7 @@ export const ANCHOR_GROUP_GALAXY_FIELDS=Object.freeze({
 });
 export const PERSISTED_ANCHOR_TYPES=Object.freeze(Object.values(ANCHOR_TYPE_GROUPS)
   .flat());
+// "anniversary"/historical "aniversary" is a VIRTUAL TimeAnchor suggestion.
 // Anniversary is a derived editor suggestion. It is deliberately not a
 // persisted discriminator and therefore is not included above.
 export const VIRTUAL_ANCHOR_TYPES=Object.freeze(['anniversary','aniversary']);
