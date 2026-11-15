@@ -8,6 +8,8 @@ import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keyword-s
 import {readScopePatternRows} from '../keyword-anchor-index.mjs';
 import {sourceTaxonomyFromAnchors} from '../source-classification.mjs';
 
+// Daily/overview totals scan the full requested interval; article pagination must not cap aggregates.
+// Statistics loads dimensions on demand; no periodic full-site query loop or eager Anchor/media join.
 // Statistics never read or filter Galaxy.content: content is touched only by
 // bulk keyword analysis, uid-exact article reads and search.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
