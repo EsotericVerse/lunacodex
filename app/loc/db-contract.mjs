@@ -5,6 +5,10 @@ import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from './auth
 import {assertEditorSession} from './edit-session-ttl.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './galaxy-able.mjs';
 
+// Database contract transports physical Galaxy/Anchor rows. Keyword Tree
+// adapters may expose legacy lists for editor compatibility; new persistent
+// relationships are child Anchor UIDs, with Galaxy postings on Pattern only.
+// Do not revive retired Item/Group hit caches or build separate Keyword tables.
 // Keyword read, write and reset use the shared MaxRows.
 export {MAX_ROWS as KEYWORD_CLASSIFICATION_BATCH_SIZE,MAX_ROWS as KEYWORD_CLASSIFICATION_WRITE_BATCH_SIZE,MAX_ROWS as KEYWORD_CLASSIFICATION_WRITE_PAUSE_INTERVAL};
 export const KEYWORD_CLASSIFICATION_WRITE_COOLDOWN_MS=1000;
@@ -379,6 +383,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     preflightWrite(table);
     const op=String(operation||'').toLowerCase();
     if(!['insert','update','delete'].includes(op))throw Error('Invalid KeywordAnchor operation');
+    // normalizeKeywordTreeRow accepts an editor/legacy projection; it is NOT
+    // the physical SQL schema. Save only each current Anchor type's own fields.
     const {normalizeKeywordTreeRow}=await import('./keyword-tree.mjs');
     const v=normalizeKeywordTreeRow(node),q=dbAuthRelation(table);
     const field=v.type==='item'?'keyword':'uid';
