@@ -1,5 +1,5 @@
-// Read-only connectivity check against the existing LOC Galaxy contract.
-// Reuses LOC's existing server-side Kysely pool and Cloudflare LOC_DATABASE_URI.
+// Read-only connectivity check for the native PostgreSQL driver.
+// Reuses LOC's Kysely/pg.Client transport and Cloudflare LOC_DATABASE_URI.
 // No credentials, SQL input, target selection or arbitrary parameters exposed.
 import {db_connection} from '../../app/loc/mcp/native-kysely.mjs';
 
