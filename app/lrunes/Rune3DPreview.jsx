@@ -4,7 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {createPortal} from 'react-dom';
 import EffekseerStage,{WaitingEffekseerStage,RuneMistBackdrop} from './effekseer/EffekseerStage';
-import {navigationHref} from '../modular/scope-registry.js';
+import {navigationHref} from '../modular/routing/scope-registry.js';
 import useNativeNavigation from '../modular/use-native-navigation';
 import ScopeLink from '../modular/ScopeLink';
 import {selectRows} from '../loc/db-query.mjs';

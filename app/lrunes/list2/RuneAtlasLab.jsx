@@ -6,7 +6,7 @@ import useRuneDialogFocus from '../visual/useRuneDialogFocus';
 import RuneCardInfo from '../RuneCardInfo';
 import {createPortal} from 'react-dom';
 import {selectRows} from '../../loc/db-query.mjs';
-import {navigationHref} from '../../modular/scope-registry.js';
+import {navigationHref} from '../../modular/routing/scope-registry.js';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import ScopeLink from '../../modular/ScopeLink';
 import {runeImage,groupImage} from '../rune-directory.mjs';

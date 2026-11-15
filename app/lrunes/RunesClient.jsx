@@ -1,4 +1,4 @@
-import {navigationHref} from '../modular/scope-registry.js';
+import {navigationHref} from '../modular/routing/scope-registry.js';
 import useNativeNavigation from '../modular/use-native-navigation';
 import {usePassiveSessionAccount} from '../loc/use-account';
 import ScopeLink from '../modular/ScopeLink';

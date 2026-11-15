@@ -2,7 +2,7 @@
 
 import {FeaturePage} from '../../modular/ui';
 import UiText,{useUiText} from '../../i18n/UiText';
-import {navigationHref} from '../../modular/scope-registry.js';
+import {navigationHref} from '../../modular/routing/scope-registry.js';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import ScopeLink from '../../modular/ScopeLink';

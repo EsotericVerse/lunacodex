@@ -19,7 +19,7 @@ import {cultureDensityByUnit,simpleTimeRiver} from '../../loc/loc-feature-prefer
 import dynamic from 'next/dynamic';
 import {usePathname,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useAsyncInfiniteResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
-import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeatureNavigation} from '../feature-navigation';
+import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeatureNavigation} from '../routing/feature-navigation';
 import ScopeLink from '../ScopeLink';
 import {useEditDock} from '../edit-dock';
 import {featureDataErrorMessage} from '../feature-data-state';

@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import {useAccount} from './use-account';
 import {defaultScopeData} from './scope-data';
-import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
+import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import PanelLoading from './PanelLoading';
 
 // Article Management is the author's workspace on LOC. Its media and

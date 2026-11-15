@@ -9,7 +9,7 @@ registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 import {useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useEditDock} from '../modular/edit-dock';
-import {navigationHref} from '../modular/scope-registry';
+import {navigationHref} from '../modular/routing/scope-registry';
 import useNativeNavigation from '../modular/use-native-navigation';
 import dynamic from 'next/dynamic';
 import {useAppBootstrap} from './app-bootstrap';

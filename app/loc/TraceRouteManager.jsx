@@ -7,7 +7,7 @@ import {planTraceVisibilityUids} from './trace-visibility-plan.mjs';
 import {indexZModelAnchorHierarchy} from '../../packages/zenstack/anchor-hierarchy.mjs';
 import {useSearchParams} from 'next/navigation';
 import {useAccount} from './use-account';
-import {SCOPE_ROUTE_INDEX} from '../modular/scope-route-index.js';
+import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {useEditDock,useEditDockForm} from '../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from '../../packages/zenstack/client-queries';
 import {

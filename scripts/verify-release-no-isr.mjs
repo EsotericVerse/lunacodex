@@ -53,7 +53,7 @@ if(!config.includes('PUBLISHED_SITE_BOOTSTRAP')||
   !config.includes('SCOPE_ROUTE_INDEX')||
   !config.includes('loadPublishedBlocks(id,pageName)'))
   throw Error('Missing published JS Bootstrap/Config/Blocks sources');
-const routesConfig=read('app/modular/scope-route-index.js');
+const routesConfig=read('app/modular/routing/scope-route-index.js');
 if(!routesConfig.includes('SCOPE_ROUTE_INDEX')||!routesConfig.includes('"config":'))
   throw Error('Scope Routes and Config must share one public JS module');
 const publishedBlocks=read('app/modular/published-blocks/index.js');

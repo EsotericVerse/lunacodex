@@ -2,7 +2,7 @@ import './globals.css';
 import AppShell from './AppShell';
 import {LOC_ORIGIN} from './seo/metadata';
 import {faviconForScope} from './site-favicons';
-import {SCOPE_ROUTE_INDEX} from './modular/scope-route-index.js';
+import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
 import {PUBLISHED_THEME_META} from './modular/published-theme-meta.js';
 
 // The public shell is static. Only Culture/Statistics numeric APIs use ISR.

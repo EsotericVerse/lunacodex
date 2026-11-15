@@ -1,7 +1,7 @@
 // Fixed public LOC business reads in the EXISTING Pages application runtime.
 // Kysely talks to the database itself. No generic SQL endpoint, arbitrary
 // table/column/operator input, connection URL, or browser-selected driver.
-import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';

@@ -9,7 +9,7 @@ import {defaultScopeData} from '../scope-data';
 import {selectCultureArticleListPage} from '../culture-query';
 import {selectGalaxyIdentity} from '../galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
-import {scopeHref} from '../../modular/scope-registry';
+import {scopeHref} from '../../modular/routing/scope-registry';
 import {assignedSource} from '../member-intersection-model.mjs';
 import {readPublicSourceTaxonomy} from '../source-catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../default-year-window.mjs';

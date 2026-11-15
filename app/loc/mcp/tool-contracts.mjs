@@ -1,7 +1,7 @@
 // One Zod 4 source of truth for MCP JSON Schema advertising and requests.
 // No separate hand-maintained JSON schemas, parallel validators, or SQL access.
 import {z} from 'zod';
-import {SCOPE_ROUTE_INDEX} from '../../modular/scope-route-index.js';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {ProviderIdSchema,ProviderToolSchema,ProviderArgumentsSchema}
   from './upstream-providers.mjs';
 
