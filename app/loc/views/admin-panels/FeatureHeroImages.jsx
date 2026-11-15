@@ -3,11 +3,11 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
 import dynamic from 'next/dynamic';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../../scope-data';
-import {HomeBlock} from '../../home-block-model';
-import {heroImageUrl as imageUrlOf} from '../../hero-image.mjs';
+import {HomeBlock} from '../../blocks/home-block-model';
+import {heroImageUrl as imageUrlOf} from '../../blocks/hero-image.mjs';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 
-const ScopeEditableBlocks=dynamic(()=>import('../../ScopeEditableBlocks'),{loading:()=>null});
+const ScopeEditableBlocks=dynamic(()=>import('../../blocks/ScopeEditableBlocks'),{loading:()=>null});
 const BlockNoteEditor=dynamic(()=>import('../../BlockNoteEditor'),{loading:()=>null});
 
 // Admin has six feature tabs. Management Heroes are editors INSIDE the

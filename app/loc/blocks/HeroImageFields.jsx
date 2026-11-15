@@ -1,5 +1,5 @@
 'use client';
-import UiText,{useUiText} from '../i18n/UiText';
+import UiText,{useUiText} from '../../i18n/UiText';
 import {absoluteImageUrl} from './hero-image.mjs';
 
 // Frame image settings: one image per text box, URL only. `onChange(changes,removeEmbedded)`.

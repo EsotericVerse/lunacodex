@@ -3,26 +3,26 @@
 // One autonomous editing session for every Scope home, feature hero and
 // search suggestion block. Mounted only after an authorized edit action.
 import {useRef,useState} from 'react';
-import {useEditDock,useEditDockForm} from '../modular/edit-dock';
+import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 import dynamic from 'next/dynamic';
-import {useQueryClient} from '../../packages/zenstack/client-queries';
-import UiText,{useUiText} from '../i18n/UiText';
-import {registerDefaultSection} from '../i18n/ui-copy';
-import {useUiSection} from '../i18n/ui-locale';
-import editBlocksZh from '../i18n/sections/uiExtra.editBlocks.zh_tw.js';
-import frameEditorZh from '../i18n/sections/uiExtra.frameEditor.zh_tw.js';
+import {useQueryClient} from '../../../packages/zenstack/client-queries';
+import UiText,{useUiText} from '../../i18n/UiText';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import {useUiSection} from '../../i18n/ui-locale';
+import editBlocksZh from '../../i18n/sections/uiExtra.editBlocks.zh_tw.js';
+import frameEditorZh from '../../i18n/sections/uiExtra.frameEditor.zh_tw.js';
 registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 registerDefaultSection('uiExtra.frameEditor',frameEditorZh);
 import {HomeBlock} from './home-block-model';
-import {BlockNoteContent} from './blocknote-content.mjs';
+import {BlockNoteContent} from '../blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
-import {appBootstrapKey} from './app-bootstrap';
-import {invalidateScopeBlockPage,selectLiveScopeBlocks} from './scope-data';
+import {appBootstrapKey} from '../app-bootstrap';
+import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../scope-data';
 
-const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
-const ObjectEditor=dynamic(()=>import('./BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../BlockNoteEditor'),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 
 export default function ScopeBlockEditorSession({
   initial,scopeId,pageName,slot,movableSlots=[],movableIndex=-1,
@@ -132,7 +132,7 @@ export default function ScopeBlockEditorSession({
       !HomeBlock.canSwapHomeBlockPositions(pageName,movableSlots,movableIndex,movableIndex+direction))return;
     setBusy(true);setMessage(t('uiExtra.editBlocks.moving'));
     try{
-      const {moveScopeBlock}=await import('./db-client.mjs');
+      const {moveScopeBlock}=await import('../db-client.mjs');
       const result=await moveScopeBlock(scopeId,pageName,draft.uid,direction);
       setDraft(current=>current?.uid===draft.uid?{...current,order:Number(result.block_order)||current.order}:current);
       await refreshBlockQueries();
@@ -175,7 +175,7 @@ export default function ScopeBlockEditorSession({
       };
       // Single-item editor uses the very same page-level save boundary.
       // Existing sibling Blocks stay in the snapshot instead of being removed.
-      const {dbAuthClient}=await import('./db-client.mjs');
+      const {dbAuthClient}=await import('../db-client.mjs');
       const before=await selectLiveScopeBlocks(scopeId,pageName);
       const existingRows=before.filter(row=>row.uid!==draft.uid);
       const normalized={
@@ -228,7 +228,7 @@ export default function ScopeBlockEditorSession({
     }
     setBusy(true);setMessage('');
     try{
-      const {dbAuthClient}=await import('./db-client.mjs');
+      const {dbAuthClient}=await import('../db-client.mjs');
       const current=await selectLiveScopeBlocks(scopeId,pageName);
       const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
         p_scope_id:scopeId,p_type:pageName,p_rows:current.filter(row=>row.uid!==draft.uid)

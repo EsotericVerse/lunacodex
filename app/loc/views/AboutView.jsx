@@ -1,5 +1,5 @@
-import ScopeEditableBlocks from '../ScopeEditableBlocks';
-import LocHomeBlockDisplay,{locHomeBlockClass,homeBlockMediaStyle} from '../LocHomeBlockDisplay';
+import ScopeEditableBlocks from '../blocks/ScopeEditableBlocks';
+import LocHomeBlockDisplay,{locHomeBlockClass,homeBlockMediaStyle} from '../blocks/LocHomeBlockDisplay';
 
 export default function AboutView(){
   return <section className="loc-view loc-home">

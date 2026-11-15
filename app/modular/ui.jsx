@@ -12,9 +12,9 @@ import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
 import {selectScopeBlocks,selectLiveScopeBlocks,hero_block} from '../loc/scope-data';
-import {heroImageUrl as heroImageUrlOf} from '../loc/hero-image.mjs';
+import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
-import {HomeBlock} from '../loc/home-block-model';
+import {HomeBlock} from '../loc/blocks/home-block-model';
 import ScopeLink from './ScopeLink';
 import {featureNavigationHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
