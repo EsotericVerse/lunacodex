@@ -157,7 +157,8 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
   return <>
     {['filter','dashboard'].includes(section)?<section
       className={'loc-card'+(section==='dashboard'?' scope-settings-dashboard__filter':'')}>
-      {section==='dashboard'?filterSection:<h2>{t(PATH+'featureKeywordTitle')}</h2>}
+      {section==='dashboard'?<h2>{t(PATH+'featureFilter')}</h2>:<h2>{t(PATH+'featureKeywordTitle')}</h2>}
+      {section==='dashboard'?filterSection:null}
       {section==='dashboard'?<h3>{t(PATH+'featureKeywordTitle')}</h3>:null}
       <label className="scope-stat-controls">
         <span>{t(PATH+'featureKeywordGroup')}</span>

@@ -12,7 +12,7 @@ import fieldsZh from './i18n/sections/fields.zh_tw.js';
 import dataSourceStatusZh from './i18n/sections/uiExtra.dataSourceStatus.zh_tw.js';
 registerDefaultSection('fields',fieldsZh);
 registerDefaultSection('uiExtra.dataSourceStatus',dataSourceStatusZh);
-import {FEATURES,SCOPES,featureIdForPath,getScope} from './modular/scope-registry';
+import {FEATURES,SCOPES,featureIdForPath,getScope,normalizeScopeId} from './modular/scope-registry';
 import {SCOPE_ROUTE_INDEX} from './modular/scope-route-index.js';
 import {applyTheme,themeSignature,THEME_SLOTS} from './modular/theme-registry';
 import {mergeThemeSlot,selectThemeOverride} from './loc/theme-data';
@@ -391,6 +391,12 @@ function AppShellInner({children,runtime}){
     };
   },[queryClient]);
   const {scopeId,scope,host,pathname,registryRow,configRow}=runtime;
+  // Settings is an LOC account page; its palette follows the source Scope.
+  // This URL context does not change identity, permissions or database access.
+  const settingsScopeId=['/settings','/settings/index.html','/local/settings','/local/settings/index.html'].includes(normalizePath(pathname))
+    ?normalizeScopeId(new URLSearchParams(runtime.search||'').get('scopeid')):'';
+  const themeScopeId=settingsScopeId&&settingsScopeId!=='admin'&&settingsScopeId!=='local'
+    ?settingsScopeId:scopeId;
   const protectedEditorRoute=isManagementHref(pathname)||/^\/admin(?:\/|$)/i.test(String(pathname||''));
   const editDock=useEditDock();
   const [managementDenied,setManagementDenied]=useState(false);
@@ -438,8 +444,15 @@ function AppShellInner({children,runtime}){
   },[scopeId,host]);
   const currentFeature=featureIdForPath(pathname);
   const [dockActivation,setDockActivation]=useState({id:'',count:0});
+  const [rainbowPreview,setRainbowPreview]=useState(false);
+  useEffect(()=>{
+    const onPreview=event=>setRainbowPreview(event?.detail?.active===true);
+    window.addEventListener('loc-owner-rainbow-preview',onPreview);
+    return()=>window.removeEventListener('loc-owner-rainbow-preview',onPreview);
+  },[]);
   const pageName=currentFeature||'index';
   const isSettings=['/settings','/settings/index.html','/local/setting','/local/setting/index.html','/local/settings','/local/settings/index.html'].includes(normalizePath(pathname));
+  const showRainbowPreview=rainbowPreview&&isSettings;
   const [native,setNative]=useState(false);
   const localDeadline=useSyncExternalStore(subscribeLocalDeadline,getLocalDeadline,()=>0);
   const lastLocalDeadline=useRef(0);
@@ -610,7 +623,8 @@ function AppShellInner({children,runtime}){
         href:navigationHref(localNavigation?'local':navScopeId,feature.path,native)};
     }),
     {id:'settings',icon:'settings',label:copy.common.settings||'設定',
-      href:native?'/local/settings/index.html'+(localNavigation?'?section=local':''):'/settings/'}
+      href:native?'/local/settings/index.html?scopeid='+encodeURIComponent(navScopeId)+(localNavigation?'&section=local':'')
+        :'/settings/?scopeid='+encodeURIComponent(navScopeId)}
   ];
 
   useEffect(()=>{
@@ -691,6 +705,7 @@ function AppShellInner({children,runtime}){
           </ScopeLink>;
         })}
       </LayoutGroup>}
+      {showRainbowPreview&&!localCoreActive?<output className="scope-rainbow-preview-clock" aria-label="彩虹變身預覽，靜態十五分鐘" aria-live="off">彩虹預覽 · 15:00</output>:null}
       {localCoreActive?<output className="scope-local-core-timer" aria-live="off">本機資料庫 · 測試中（不倒數）</output>:null}
       {editingDockVisible&&editDock.notice?<p className="scope-edit-dock-notice" role="status" aria-live="polite">{editDock.notice}</p>:null}
     </motion.div>
@@ -698,7 +713,7 @@ function AppShellInner({children,runtime}){
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">
         <a href="mailto:sopa2306@gmail.com">{copy.nav.contact}</a>
-        <ThemeSelect scopeId={scopeId} scopeMeta={currentScope} copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName}/>
+        {(!isSettings||runtime.locationMounted)?<ThemeSelect scopeId={themeScopeId} scopeMeta={themeScopeId===scopeId?currentScope:getScope(themeScopeId)} copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName}/>:null}
         <LanguageSelect
           locale={activeLocale}
           copy={copy}

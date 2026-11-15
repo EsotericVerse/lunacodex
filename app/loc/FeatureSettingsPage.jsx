@@ -39,7 +39,7 @@ export default function FeatureSettingsPage({embedded=false,dashboard=false,acco
   };
 
   const filterSection=<>
-          <h2>{t(KEY+'timeFilterTitle')}</h2>
+          {dashboard?<h3>{t(KEY+'timeFilterTitle')}</h3>:<h2>{t(KEY+'timeFilterTitle')}</h2>}
           <label className="scope-stat-controls">
             <span>{t(KEY+'timeFilterLabel')}</span>
             <select className="scope-select" value={timeUnit} onChange={event=>{
@@ -84,11 +84,15 @@ export default function FeatureSettingsPage({embedded=false,dashboard=false,acco
       ?<LocUserSettingsPanel verifiedSubject={account.user.id}
         section="dashboard" filterSection={filterSection}/>
       :<>
-        <section className="loc-card scope-settings-dashboard__filter">{filterSection}</section>
+        <section className="loc-card scope-settings-dashboard__filter">
+          <h2>{t(KEY+'featureFilter')}</h2>
+          {filterSection}
+          <p className="scope-settings-note">{t(KEY+'featureSettingsSignInHint')}</p>
+        </section>
         {['cultureSettings','staticsSettings','traceSettings','searchSettings']
-          .map(key=><section key={key} className="loc-card">
+          .map(key=><section key={key} className="loc-card scope-settings-dashboard__guest-panel">
             <h2>{t(KEY+key)}</h2>
-            <p className="scope-status">{t(KEY+'featureSettingsSignInHint')}</p>
+            <p className="scope-settings-dashboard__guest-label">登入後可調整</p>
           </section>)}
       </>}
   </div>;

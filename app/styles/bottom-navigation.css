@@ -207,3 +207,32 @@ body{padding-bottom:var(--loc-dock-clearance);}
 }
 .scope-home-edit-entry .loc-button{max-width:100%;}
 .scope-home-edit-entry .scope-status{margin:0;}
+
+/* Private owner preview is cosmetic: clock never starts or updates.
+   Shift the existing six keys up only while the preview label is visible. */
+.scope-feature-dock:has(.scope-rainbow-preview-clock){
+  bottom:calc(2.6rem + env(safe-area-inset-bottom,0px));
+}
+.scope-feature-dock .scope-rainbow-preview-clock{
+  position:absolute;
+  top:calc(100% + .3rem);
+  left:50%;
+  transform:translateX(-50%);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:1.65rem;
+  padding:.18rem .85rem;
+  border:1px solid var(--loc-accent);
+  border-radius:100px;
+  background:var(--loc-panel);
+  color:var(--loc-heading);
+  font-size:.79rem;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.035em;
+  white-space:nowrap;
+  pointer-events:none;
+}
+html:has(.scope-feature-dock .scope-rainbow-preview-clock){
+  --loc-dock-clearance:calc(9rem + env(safe-area-inset-bottom,0px));
+}
