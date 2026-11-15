@@ -169,7 +169,8 @@ export async function readKeywordStatistics(db,scope,classUid,{
   if(!owner&&!shared(cfg,classUid))fail('Keyword Class not published',403);
   const meta=attr({attr:cfg.keyword_meta});
   const indexReady=meta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION&&
-    Boolean(meta.by_class?.[classUid]?.completedAt);
+    Boolean(meta.by_class?.[classUid]?.completedAt)&&
+    meta.by_class?.[classUid]?.stale!==true;
   // Scope's Pattern directory is the ZModel entry. Resolve this Class's
   // Item ownership without loading postings belonging to other Classes.
   const [directory,tree]=await Promise.all([
