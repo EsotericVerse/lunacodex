@@ -7,7 +7,7 @@ import {ZenStackClient} from '@zenstackhq/orm';
 import {zenstackAdapter} from '@zenstackhq/better-auth';
 import {oauthProvider} from '@better-auth/oauth-provider';
 import {PostgresDialect} from 'kysely';
-import {Pool, neonConfig} from '@neondatabase/serverless';
+import {createAuthPostgresPool} from './pg-driver.mjs';
 import * as z from 'zod';
 import {RAINBOW_TABLES} from './rainbow-tables.mjs';
 import {rainbowSchema,RAINBOW_MODEL_NAMES} from './rainbow-zmodel.mjs';
@@ -140,18 +140,11 @@ export function checkLocAuthEnvironment(env){
 export function createLocAuth(env){
   checkLocAuthEnvironment(env);
   const cloudflare=cloudflareSsoConfig(env);
-  // Built-in Kysely PostgreSQL adapter. No hand-written Auth storage, SQL,
-  // session table, account linking, signing, PKCE or OAuth state handlers.
-  // Cloudflare Workers cannot open a raw TCP socket to Neon, so node-postgres
-  // hangs on every query. Neon's serverless driver connects over WebSocket and
-  // is pg-pool compatible, so the Kysely PostgresDialect below is unchanged and
-  // TLS is handled by the driver.
-  neonConfig.webSocketConstructor=WebSocket;
-  const pool=new Pool({
-    connectionString:env.LOC_AUTH_DATABASE_URL,
-    // Two connections at most per Worker isolate; never expand the pool for probes.
-    max:2
-  });
+  // Built-in Kysely PostgreSQL adapter, backed by native pg.Client/TCP.
+  // Match LOC Web's request-scoped transport: each acquisition opens and
+  // releases its own TLS connection, never sharing a socket across requests.
+  // No hand-written Auth storage, SQL, session, PKCE or OAuth state handling.
+  const pool=createAuthPostgresPool(env.LOC_AUTH_DATABASE_URL);
   // Official ZenStack v3 Better Auth adapter delegates all Auth storage CRUD
   // to ZenStack ORM over the existing Kysely PostgresDialect. No parallel SQL
   // adapter or runtime schema discovery is introduced.
