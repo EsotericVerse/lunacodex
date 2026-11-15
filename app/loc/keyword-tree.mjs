@@ -63,7 +63,11 @@ export function normalizeKeywordTreeRow(row){
     ?projected:compact&&Number.isSafeInteger(Number(row.uid_lists.total))
       ?Number(row.uid_lists.total):type==='item'
         ?uid_lists.reduce((sum,hit)=>sum+hit.times,0):uid_lists.length;
-  return {uid,type,name,desc,lists:[...lists],uid_lists:[...uid_lists],total};
+  // Preserve Class-specific scan rules for the editor and import/copy path.
+  // The virtual hierarchy still uses only child Anchor IDs for all parent UIDs.
+  return {uid,type,name,desc,lists:[...lists],uid_lists:[...uid_lists],
+    attr:row?.attr&&typeof row.attr==='object'&&!Array.isArray(row.attr)
+      ?{...row.attr}:{},total};
 }
 // Shared UID-linked tree used by Keywords and source classification.
 // Physical Source Anchor: attr.uid stores child Anchor UIDs, not site names.
