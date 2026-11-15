@@ -1,5 +1,9 @@
 import {PERSISTED_ANCHOR_TYPES} from '../../packages/zenstack/anchor-hierarchy.mjs';
 
+// CURRENT LOC presentation adapter: reusable Block fields are projected over
+// existing loc_anchor rows. This does not reinstate a physical loc_blocks table
+// or give ordinary Scope _blocks rows the same storage contract.
+// The editor/reader Block Model is a projection, not a new SQL entity.
 // LOC presentation Blocks are a typed projection of silver.loc_anchor.
 // Only LOC uses this mapping; other Scope _blocks tables remain independent.
 // Anchor: uid / type / title / description / invisible / attr / createtime / num.
