@@ -11,6 +11,7 @@ import ManagementSectionNav from '../modular/ManagementSectionNav';
 import ActivityMotion from '../modular/ActivityMotion';
 import FlowProgress from '../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from './keyword-class-state.mjs';
+import {SCOPE_PATTERN_INDEX_VERSION} from './keyword-anchor-index.mjs';
 
 const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
 const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
@@ -576,7 +577,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
          ?<div className="scope-search-active-filters" aria-label="Item 關聯 Pattern">
            {selectedSourceRow.patternUids.map(uid=>patternNodes.get(uid)).filter(Boolean).map(row=>
              <span key={row.uid} className="scope-search-chip">
-               {row.name} · {config.keyword_meta?.pattern_index_version==='scope_anchor_v1'&&config.keyword_meta?.pattern_scans?.[
+               {row.name} · {config.keyword_meta?.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION&&config.keyword_meta?.pattern_scans?.[
                  String(row.name||'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
                ]?Number(row.num||0).toLocaleString()+' 篇':'待解析'}
              </span>)}
