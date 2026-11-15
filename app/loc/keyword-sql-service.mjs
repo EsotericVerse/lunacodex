@@ -1,6 +1,8 @@
 // Fixed-purpose native Kysely Keyword service. Runs within the existing LOC
 // Pages application, using the server-only database profile. Never exposes
 // arbitrary SQL, a connection string, or a general SQL Gateway endpoint.
+// Pattern attr postings alone store Galaxy article UIDs; Class/Group/Item attr.uid links Anchor UIDs.
+// Keyword-derived day density deduplicates actual postings by Galaxy.date; never estimate by a ratio.
 import {parseRuneKeywordRuleSentence} from './model/rune-keyword-rules.mjs';
 import {buildKeywordSearchPatterns,keywordPatternItemMetrics,keywordPatternDailySummary} from './keyword-search-pattern.mjs';
 import {keywordClassCatalog} from './keyword-tree.mjs';
