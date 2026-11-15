@@ -8,7 +8,7 @@ export function keywordClassState(config={},classUid=''){
     ?config.keyword_meta:{};
   const record=meta.by_class?.[classUid];
   if(record&&typeof record==='object'){
-    return record.completedAt?record:null;
+    return record.completedAt&&!record.stale?record:null;
   }
   // Completion belongs exclusively to by_class[Class UID]; never fall back
   // to a shared scope-wide date, even for the configured default Class.
