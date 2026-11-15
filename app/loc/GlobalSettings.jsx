@@ -99,10 +99,12 @@ export default function GlobalSettings({initialSection='features'}={}){
   const waiting=Boolean(busy)||prefs.loading||account.loading||account.permissionLoading;
   // Account identity is independent of personal settings and management permission reads.
   const accountWaiting=account.loading;
-  // A verified Better Auth session and the canonical website owner identity
-  // are required. This is UI-only: the preview has no privileged operations.
+  // getAccountSession() already rejects unverified Better Auth sessions in
+  // loc-browser.mjs. Do not require a second emailVerified field on the
+  // client-side identity projection; it is not an additional permission check.
+  // Only the canonical owner account may see this cosmetic preview.
   const canPreviewRainbow=activeSection==='features'&&!accountWaiting&&!account.error&&
-    Boolean(account.user?.id)&&account.user?.emailVerified===true&&
+    Boolean(account.user?.id)&&
     String(account.email||'').trim().toLowerCase()==='sopa2306@gmail.com';
   useEffect(()=>{
     if(canPreviewRainbow)return;
