@@ -938,8 +938,19 @@
 .scope-settings-dashboard__filter{
   display:flex;flex-direction:column;gap:.65rem;
 }
-.scope-settings-dashboard__homepage{
-  margin-top:auto;padding-top:.65rem;border-top:1px solid var(--loc-line);
+/* Personal settings: one field, one option picker; no radio/checkbox walls. */
+.loc-user-setting-field{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(10rem,1.2fr);
+  align-items:center;gap:.5rem .85rem;min-width:0;margin:.55rem 0;
+}
+.loc-user-setting-field>span{
+  color:var(--loc-heading);font-size:.91rem;font-weight:650;
+}
+.loc-user-setting-field>.scope-select{
+  width:100%;min-width:0;min-height:2.75rem;
+}
+@media(max-width:540px){
+  .loc-user-setting-field{grid-template-columns:minmax(0,1fr);}
 }
 .scope-settings-dashboard__filter>h3{
   margin:.35rem 0 0;color:var(--loc-text);
