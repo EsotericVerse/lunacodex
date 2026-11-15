@@ -9,10 +9,10 @@ import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
 import PanelLoading from './PanelLoading';
 import {recoverChunkOnce} from './chunk-recovery.mjs';
-import {PLACE_OPTIONS} from './PlaceManagement';
+import {PLACE_OPTIONS} from './trace/PlaceManagement';
 
 const TraceManagementPanel=dynamic(()=>import('./TraceManagement'),{loading:PanelLoading});
-const PlaceManagement=dynamic(()=>import('./PlaceManagement').catch(recoverChunkOnce),{loading:PanelLoading});
+const PlaceManagement=dynamic(()=>import('./trace/PlaceManagement').catch(recoverChunkOnce),{loading:PanelLoading});
 
 const SPATIAL_OPTIONS=[
   {value:'path',label:'路線',description:'依序連接空間定錨點'},

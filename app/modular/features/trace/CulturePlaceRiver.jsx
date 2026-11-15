@@ -3,8 +3,8 @@
 import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
-import {readPlaceSummary} from '../../../loc/place-summary-client';
-import {placeRiverModel} from '../../../loc/place-statistics.mjs';
+import {readPlaceSummary} from '../../../loc/trace/place-summary-client';
+import {placeRiverModel} from '../../../loc/trace/place-statistics.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const dateOk=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
