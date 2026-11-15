@@ -47,7 +47,9 @@ function buildScopeData(row,id){
     role:String(row?.manage_role||'').trim(),
     birthday:String(row?.birthday||PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[id]||'').slice(0,10)||null,
     galaxy,
-    // One physical store for Time, Trace, Keywords and Media.
+    // TimeAnchor (Galaxy.date/createtime), LocationAnchor (location/place_id),
+// MediaAnchor (media_link), KeywordAnchor (keyword), SiteAnchor (site) all reuse Anchor.
+// One physical store for Time, Trace, Keywords and Media.
     anchor:`silver.${id}_${anchorSuffix}`,
     // Time and Keyword share the same typed physical Anchor.
     time:`silver.${id}_${anchorSuffix}`,
