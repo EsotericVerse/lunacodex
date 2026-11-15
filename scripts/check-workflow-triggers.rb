@@ -8,7 +8,6 @@ abort 'No workflow files found' if files.empty?
 
 errors = []
 files.sort.each do |file|
-  next if File.basename(file) == 'workflow-guard.yml'
   begin
     document = Psych.parse_file(file)
     root = document&.root
@@ -29,10 +28,25 @@ files.sort.each do |file|
     else
       []
     end
-    # No deployment job may start on branch push, PR merge, or schedule.
-    # Cloudflare Pages owns the one automatic main deployment; GitHub
-    # Actions workflows remain explicit owner-invoked actions only.
-    raise 'only workflow_dispatch is permitted' unless events == ['workflow_dispatch']
+    # GitHub Pages is the sole GitHub Actions workflow allowed to deploy
+    # automatically, and ONLY when main receives a push (including PR merge).
+    # Branch pushes must never start a deployment. PR Preview is handled
+    # separately and must not be mistaken for production.
+    if File.basename(file) == 'deploy-pages.yml'
+      raise 'GitHub Pages must trigger only on main push' unless events == ['push']
+      push_node = triggers.first.children.each_slice(2).find do |key, _|
+        key.is_a?(Psych::Nodes::Scalar) && key.value == 'push'
+      end&.last
+      raise 'GitHub Pages push config must be a mapping' unless push_node.is_a?(Psych::Nodes::Mapping)
+      branches = push_node.children.each_slice(2).find do |key, _|
+        key.is_a?(Psych::Nodes::Scalar) && key.value == 'branches'
+      end&.last
+      main_only = branches.is_a?(Psych::Nodes::Sequence) &&
+        branches.children.map { |entry| entry.is_a?(Psych::Nodes::Scalar) ? entry.value : nil } == ['main']
+      raise 'GitHub Pages must deploy main only (not feature branches)' unless main_only
+    else
+      raise 'only workflow_dispatch is permitted for this workflow' unless events == ['workflow_dispatch']
+    end
 
   rescue Psych::Exception, StandardError => e
     errors << "#{file}: #{e.message}"
@@ -42,4 +56,4 @@ if errors.any?
   errors.each { |error| warn "::error::#{error}" }
   exit 1
 end
-puts "Workflow guard: #{files.length} workflows verified (all deployment workflows manual only)."
+puts "Workflow guard: #{files.length} workflow YAML files valid; GitHub Pages main push + manual-only other workflows verified."
