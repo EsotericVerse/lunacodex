@@ -28,7 +28,7 @@ function SourceAnchorBranch({site}){
   const [state,setState]=useState({status:'loading'});
   useEffect(()=>{
     let active=true;
-    import('../loc/source-catalog-public.mjs')
+    import('../loc/source/catalog-public.mjs')
       .then(module=>module.readPublicSourceTaxonomy())
       .then(taxonomy=>{if(active)setState(sourceInterNetSelection(site,taxonomy));})
       .catch(()=>{if(active)setState({status:'error'});});

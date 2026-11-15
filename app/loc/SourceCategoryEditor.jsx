@@ -3,7 +3,7 @@ import {useCallback,useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {insertRows,updateRows,deleteRows,dbAuthClient} from './db-client.mjs';
-import {readPublicSourceAnchors} from './source-catalog-public.mjs';
+import {readPublicSourceAnchors} from './source/catalog-public.mjs';
 import {allocateAnchorUid} from './uid.js';
 import {nextZModelAnchorType} from '../../packages/zenstack/anchor-hierarchy.mjs';
 import {useEditDockForm} from '../modular/edit-dock';

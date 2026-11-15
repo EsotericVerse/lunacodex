@@ -6,7 +6,7 @@ import {sql} from 'kysely';
 import {zmodelRegistryJoin,zmodelGalaxyPointJoin} from '../../../packages/zenstack/model-column-guard.mjs';
 import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keywords/search-pattern.mjs';
 import {readScopePatternRows} from '../keywords/anchor-index.mjs';
-import {sourceTaxonomyFromAnchors} from '../source-classification.mjs';
+import {sourceTaxonomyFromAnchors} from '../source/classification.mjs';
 
 // Daily/overview totals scan the full requested interval; article pagination must not cap aggregates.
 // Statistics loads dimensions on demand; no periodic full-site query loop or eager Anchor/media join.

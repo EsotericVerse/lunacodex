@@ -123,7 +123,7 @@ function openPeriodRangeFromRows(scopeId,rows=[]){
 }
 
 import {assignedSource} from '../statistics/member-intersection-model.mjs';
-import {readPublicSourceTaxonomy} from '../source-catalog-public.mjs';
+import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 
 function buildLocScopeDistribution(rows=[]){
   const combined=new Map();

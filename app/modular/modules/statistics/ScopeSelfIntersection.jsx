@@ -91,7 +91,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     ()=>selectScopeSourceBreakdownRows(scope,{startDate:start,endDate:end}));
   const rows=query.data||[];
   const localCatalog=useAsyncResource(valid&&!sharedCatalog?['own-scope-source-catalog',scope?.id]:null,async()=>{
-    const {readPublicSourceTaxonomy}=await import('../../../loc/source-catalog-public.mjs');
+    const {readPublicSourceTaxonomy}=await import('../../../loc/source/catalog-public.mjs');
     return readPublicSourceTaxonomy();
   });
   const catalog=sharedCatalog||localCatalog;
@@ -102,7 +102,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       const {publishedSourceTaxonomy}=await import('../../published-source-taxonomy.js');
       const published=publishedSourceTaxonomy(scope.id);
       if(published)return {groups:published.groups||[],aliases:published.groupAliases||[]};
-      const {readPublicSourceTaxonomy}=await import('../../../loc/source-catalog-public.mjs');
+      const {readPublicSourceTaxonomy}=await import('../../../loc/source/catalog-public.mjs');
       const list=await readPublicSourceTaxonomy(scope.id);
       return {groups:list.groups||[],aliases:list.groupAliases||[]};
     }

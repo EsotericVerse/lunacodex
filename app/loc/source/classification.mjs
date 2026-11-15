@@ -1,4 +1,4 @@
-import {ANCHOR_TYPE_GROUPS,indexZModelAnchorHierarchy} from '../../packages/zenstack/anchor-hierarchy.mjs';
+import {ANCHOR_TYPE_GROUPS,indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 // Public SiteAnchor projection. The ZModel graph owns parent/child semantics.
 export const classNames=values=>[...new Set((Array.isArray(values)?values:[]).map(x=>String(x??'').trim()).filter(Boolean))];

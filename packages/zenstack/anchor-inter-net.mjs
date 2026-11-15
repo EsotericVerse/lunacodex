@@ -2,7 +2,7 @@
 // ZModel families. No new SQL schema, foreign key, fabricated parenthood or
 // unbounded graph traversal. Caller owns authorization of every supplied row.
 import {indexZModelAnchorHierarchy} from './anchor-hierarchy.mjs';
-import {auditImportedSourceSites} from '../../app/loc/source-classification.mjs';
+import {auditImportedSourceSites} from '../../app/loc/source/classification.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const FAMILIES=new Set(['source','time','space']);

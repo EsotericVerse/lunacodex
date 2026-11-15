@@ -38,7 +38,7 @@ import {deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db-query.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/default-year-window.mjs';
-import {sourceKeywordOptions} from '../../loc/source-keyword-options.mjs';
+import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
 import {mediaDay} from '../../loc/statistics/facets';
 import {useAccount} from '../../loc/use-account';
@@ -432,7 +432,7 @@ export default function Culture(){
     enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
       &&scopeId!=='local'&&Boolean(scopeData),
     queryFn:async()=>{
-      const {readPublicSourceTaxonomy}=await import('../../loc/source-catalog-public.mjs');
+      const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
       return readPublicSourceTaxonomy();
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
