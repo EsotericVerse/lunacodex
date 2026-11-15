@@ -2,16 +2,15 @@
 name: Deploy Main Next to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Keep an active Pages deployment running while coalescing pending main builds.
+# Manual GitHub Pages fallback only. Cloudflare Pages owns automatic preview/main deployment.
+# Do not re-enable push here: this would create a second build on every main merge.
 concurrency:
   group: pages
   cancel-in-progress: false
