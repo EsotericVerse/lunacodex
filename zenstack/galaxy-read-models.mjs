@@ -7,6 +7,7 @@ const required=type=>Object.freeze({type});
 // Small bricks own their fields once. Composite bricks refer to them by type,
 // rather than copying eight flags or UID relation/anchor fields into every view.
 export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
+  // Feature flags: true allows that use; false excludes it (not an invisibility flag).
   GalaxyAttr:Object.freeze({
     statics:optional('Boolean'),culture:optional('Boolean'),search:optional('Boolean'),
     trace:optional('Boolean'),list:optional('Boolean'),keyword:optional('Boolean'),
