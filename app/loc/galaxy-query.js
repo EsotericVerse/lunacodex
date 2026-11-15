@@ -4,7 +4,7 @@ import {mapBounded} from './bounded-parallel.mjs';
 import {searchOrderedScopeProviders} from './search/ordered-scope-providers.mjs';
 
 
-import {StatisticsFacets} from './statistics-facets';
+import {StatisticsFacets} from './statistics/facets';
 import {DEFAULT_LIST_BATCH_SIZE} from './db-contract.mjs';
 import {parseSearchQuery} from './search/query.mjs';
 import {normalizeRelationIds,publicContentFilters} from './content-policy';

@@ -6,14 +6,14 @@ import featureZh from '../../i18n/feature-sections/itemConfluence.zh_tw.js';
 import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {selectManagedScopes} from '../../loc/scope-data';
-import {selectLocItemDailySeries} from '../../loc/item-confluence-query';
+import {selectLocItemDailySeries} from '../../loc/statistics/item-confluence-query';
 import {realMoonPhase} from '../../loc/model/moon-phase';
 import {buildReferencedMoonRiver} from '../../lrunes/daily-moon-river.mjs';
 import {
   ITEM_CONFLUENCE_PAGE_SIZE,ITEM_LANE_OPTIONS,itemConfluenceShiftMonth,
   validateItemConfluenceRange,validateItemLane,itemLaneDescription,
   buildItemConfluenceDaily,buildItemConfluenceRiver,itemConfluenceSummary,itemRuneDisplay
-} from '../../loc/item-confluence-model.mjs';
+} from '../../loc/statistics/item-confluence-model.mjs';
 import CultureTimeline from '../modules/culture-timeline/CultureTimeline';
 
 const EMPTY_SCOPES=Object.freeze([]);
