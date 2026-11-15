@@ -11,7 +11,7 @@ import {dbAuthClient,deleteRows,insertRows,updateRows} from '../../loc/db-client
 import {revalidateServerMetadata} from '../../loc/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/culture/time-anchor-ranges.mjs';
-import {anniversarySuggestionsForDate} from '../../loc/anniversary.mjs';
+import {anniversarySuggestionsForDate} from '../../loc/culture/anniversary.mjs';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture/anchor-bulk.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';

@@ -7,7 +7,7 @@ import {selectManagedScope} from '../loc/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../loc/db-query.mjs';
 import {insertRows} from '../loc/db-client.mjs';
 import {allocateTimeUid} from '../loc/culture/time-anchor-ranges.mjs';
-import {anniversarySuggestionsForDate} from '../loc/anniversary.mjs';
+import {anniversarySuggestionsForDate} from '../loc/culture/anniversary.mjs';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/edit-session-ttl.mjs';
 
 const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});

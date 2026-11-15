@@ -9,7 +9,7 @@ import {DEFAULT_LIST_BATCH_SIZE} from './db-contract.mjs';
 import {parseSearchQuery} from './search/query.mjs';
 import {normalizeRelationIds,publicContentFilters} from './content-policy';
 import {timePeriodContainsDate} from './culture/time-anchor-ranges.mjs';
-import {anniversarySuggestionsForDate} from './anniversary.mjs';
+import {anniversarySuggestionsForDate} from './culture/anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from './db-query.mjs';
 import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from './db-client.mjs';
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';

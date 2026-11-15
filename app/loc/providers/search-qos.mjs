@@ -2,7 +2,7 @@
 // the existing search request budget enforces 429 before SQL execution.
 // Only explicit Galaxy.content text predicates are eligible. Other public
 // reads, exact UID lookup, culture, trace and statistics are unaffected.
-import {detectCountChangepoints} from '../karaul-count-changepoints.mjs';
+import {detectCountChangepoints} from '../model/karaul-count-changepoints.mjs';
 
 const TEXT_OPS=new Set(['ilike','like','contains']);
 const BUCKET_MS=5000;
