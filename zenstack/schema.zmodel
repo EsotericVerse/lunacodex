@@ -57,6 +57,8 @@ type LocAnchorLink {
 // envelope; these values select the semantic ZModel payload below. Their
 // article-side carrier mapping is date/createtime, location/place_id,
 // media_link, keyword and site respectively; no extra relation is created.
+// Physical type is singular image/rune/suno; semantic MediaAnchor fields may be plural.
+// "anniversary" (also misspelled "aniversary" in old notes) is virtual, not a stored type.
 enum LocAnchorType {
     date
     period
@@ -187,6 +189,9 @@ type MediaAnchor {
     suno SunoAnchor?
     runes RuneAnchor?
 }
+// Keyword hierarchy: category > class > group > item > pattern.
+// Class is the subject; Group groups Items; Item links Pattern Anchor UIDs.
+// Pattern alone holds Galaxy UID posting lists (physical num = article count).
 type KeywordAnchor {
     pattern PatternAnchor?
     item ItemAnchor?
@@ -194,6 +199,8 @@ type KeywordAnchor {
     class ClassAnchor?
     category CategoryAnchor?
 }
+// Site hierarchy: universe (all) > galaxy (group) > domain (collection) > from (one site).
+// Hierarchy links in attr.uid always refer to Anchor UIDs, not Galaxy article UIDs.
 type SiteAnchor {
     from FromAnchor?
     domain DomainAnchor?
@@ -234,6 +241,8 @@ type LRunes66 {
 // Small composable Galaxy value types over one physical <scope>_galaxy row.
 // This is a semantic projection, NOT SQL JOINs or separate tables.
 // SQL-nullable array columns stay on the portable Kysely transport.
+// Eight independent physical Galaxy feature switches: true=enabled, false=excluded.
+// These are NOT Anchor.invisible (true=hidden) or LOC Auth authorization grants.
 type GalaxyAttr {
     statics Boolean?
     culture Boolean?
@@ -244,11 +253,13 @@ type GalaxyAttr {
     extract Boolean?
     others Boolean?
 }
+// UID relationship projection is source_id/target_id/ref_id; no new SQL table.
 type GalaxyUidRelation {
     source_id String?
     target_id String[]?
     ref_id String?
 }
+// Media/place/time/site are already indexed in these physical Galaxy fields.
 type GalaxyUidAnchor {
     media_link String[]?
     place_id String?
@@ -256,6 +267,7 @@ type GalaxyUidAnchor {
     date DateTime?
     site String?
 }
+// GalaxyList reads uid/title/createtime/date/site plus nested GalaxyAttr.
 // Level 2: the light article list reuses the small feature-flags brick.
 type GalaxyList {
     uid String
@@ -265,6 +277,7 @@ type GalaxyList {
     site String?
     attr GalaxyAttr?
 }
+// GalaxyUidRead adds content/url and the relation + anchor context only on demand.
 // Level 3: article details compose relationship + anchor context on demand.
 type GalaxyUidRead {
     uid String
@@ -386,6 +399,8 @@ model Lo3rwangAnchor {
     @@schema("silver")
 }
 
+// Ordinary Scope Blocks have physical block_eyebrow (not "block_eybow").
+// LOC's own Blocks are mapped onto loc_anchor by loc-block-anchor.mjs instead.
 model Lo3rwangBlocks {
     block_title                  String      @db.VarChar(64) @default(dbgenerated())
     block_text                   String      @db.Text @default(dbgenerated())
