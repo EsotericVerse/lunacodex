@@ -9,12 +9,12 @@ registerDefaultSection('uiExtra.selfIntersection',selfIntersectionZh);
 import {useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy-query';
-import {assignedSource} from '../../../loc/member-intersection-model.mjs';
+import {assignedSource} from '../../../loc/statistics/member-intersection-model.mjs';
 import {semanticStatisticChartTypes,chartTypeGroups} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
-import {ownScopeCategoryCatalog} from '../../../loc/statistics-source-intersection.mjs';
+import {ownScopeCategoryCatalog} from '../../../loc/statistics/source-intersection.mjs';
 import {comparisonMetricGroups,selectedComparisonMetricGroup,firstAvailableGroupMetric} from './statistics-compare-options.mjs';
 
 const DAY_MS=86400000;

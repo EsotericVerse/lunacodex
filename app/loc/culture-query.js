@@ -122,7 +122,7 @@ function openPeriodRangeFromRows(scopeId,rows=[]){
     derived_from:'era period UID collection of actual anchor dates'};
 }
 
-import {assignedSource} from './member-intersection-model.mjs';
+import {assignedSource} from './statistics/member-intersection-model.mjs';
 import {readPublicSourceTaxonomy} from './source-catalog-public.mjs';
 
 function buildLocScopeDistribution(rows=[]){

@@ -1,5 +1,5 @@
 // Compact, public-only first view. Detail remains on the server until expanded.
-import {assignedSource} from './member-intersection-model.mjs';
+import {assignedSource} from './statistics/member-intersection-model.mjs';
 function sourceRootFor(site,taxonomy={}){
   const categories=taxonomy.categories||[];
   const code=assignedSource(site,taxonomy.aliases||[],categories);
