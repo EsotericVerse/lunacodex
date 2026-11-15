@@ -268,7 +268,7 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
     a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
-async function persistPatterns(trx,scope,classUid,patterns,stats){
+async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId=''){
   // The Pattern rows and their Item UID edges are committed in the same
   // transaction as class completion. Article bodies are never duplicated.
   await storeScopePatternMatches(trx,scope,patterns);
@@ -277,7 +277,10 @@ async function persistPatterns(trx,scope,classUid,patterns,stats){
   const record={class_uid:classUid,matchedDocuments:stats.matchedDocuments,
     analyzedDocuments:stats.analyzedDocuments,parsedDocuments:stats.parsedDocuments,
     reusedDocuments:stats.reusedDocuments,itemMatches:stats.itemMatches,
-    occurrences:stats.occurrences};
+    occurrences:stats.occurrences,
+    // Commit receipt is atomic with Pattern postings. A disconnected HTTP
+    // stream cannot turn a successful SQL transaction into an unknown state.
+    ...(attemptId?{attemptId}:{})};
   const oldMeta=attr({attr:cfg.keyword_meta});
   const alreadyNative=oldMeta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION;
   // Migration preserved legacy scan/class completion; invalidate on first cutover.
@@ -330,7 +333,8 @@ async function readCompleteKeywordMetadataGroup(db,scope,columns,{
 }
 
 export async function analyzeKeywordScope(db,scope,classUid,{
-  authorizeTransaction=()=>{},startedAt=new Date().toISOString(),onProgress=()=>{}
+  authorizeTransaction=()=>{},startedAt=new Date().toISOString(),onProgress=()=>{},
+  attemptId=''
 }={}){
   checkScope(scope);checkClass(classUid);
   const cfg=await configuration(db,scope);
@@ -401,12 +405,34 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       if(!pending)fail('Keyword patterns were not produced');
       await db.transaction().execute(async trx=>{
         await authorizeTransaction(trx);
-        await persistPatterns(trx,scope,classUid,pending,stats);
+        await persistPatterns(trx,scope,classUid,pending,stats,attemptId);
       });
     }
   });
   const {patternScans,...safe}=result;
   return {...safe,indexedWords:pending?.length||0};
+}
+
+// Fixed-purpose read-only completion check for a particular client operation.
+// No article contents, Pattern UIDs, or SQL authority leave this endpoint.
+export async function readKeywordAnalysisCompletion(db,scope,classUid,attemptId){
+  checkScope(scope);checkClass(classUid);
+  if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(attemptId||'')))
+    fail('Invalid Keyword analysis attempt',400);
+  const cfg=await configuration(db,scope);
+  const meta=attr({attr:cfg.keyword_meta});
+  const record=meta.by_class?.[classUid];
+  if(!record||record.attemptId!==attemptId||!record.completedAt)
+    return {completed:false};
+  return {completed:true,result:{
+    classUid,analyzedDocuments:Number(record.analyzedDocuments)||0,
+    matchedDocuments:Number(record.matchedDocuments)||0,
+    parsedDocuments:Number(record.parsedDocuments)||0,
+    reusedDocuments:Number(record.reusedDocuments)||0,
+    itemMatches:Number(record.itemMatches)||0,
+    occurrences:Number(record.occurrences)||0,
+    completedAt:record.completedAt
+  }};
 }
 
 // Explicit reset clears a selected Class's completion and its words ONLY when
