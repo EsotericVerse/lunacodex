@@ -2,25 +2,25 @@
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import ScopeOptionPicker from '../modular/ScopeOptionPicker';
-import {planTraceVisibilityUids} from './trace-visibility-plan.mjs';
-import {indexZModelAnchorHierarchy} from '../../packages/zenstack/anchor-hierarchy.mjs';
+import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
+import {planTraceVisibilityUids} from './visibility-plan.mjs';
+import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {useSearchParams} from 'next/navigation';
-import {useAccount} from './use-account';
-import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
-import {useEditDock,useEditDockForm} from '../modular/edit-dock';
-import {useAsyncResource,useResourceCache} from '../../packages/zenstack/client-queries';
+import {useAccount} from '../use-account';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
+import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
+import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {
   TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceAllAnchorsKey,
   traceMemberUids,readTraceMapIndex,readCurrentTraceAnchors,readAllTraceAnchors,
   addTraceMap,updateTraceMap,deleteTraceMap,updateTraceVisibilityBulk
-} from '../modular/features/trace/trace-data';
+} from '../../modular/features/trace/trace-data';
 import {
   readDefaultTraceRoute,setDefaultTraceRoute,clearDefaultTraceRoute,chooseDefaultTraceRoute
-} from '../modular/features/trace/trace-route-preference.mjs';
+} from '../../modular/features/trace/trace-route-preference.mjs';
 
-const BlockNoteEditor=dynamic(()=>import('./BlockNoteEditor'),{loading:()=>null});
-const TraceMap=dynamic(()=>import('../modular/features/trace/TraceMap'),{
+const BlockNoteEditor=dynamic(()=>import('../BlockNoteEditor'),{loading:()=>null});
+const TraceMap=dynamic(()=>import('../../modular/features/trace/TraceMap'),{
   ssr:false,loading:()=> <p className="scope-status">正在載入地圖…</p>
 });
 const TRACE_SOURCE_ROWS=SCOPE_ROUTE_INDEX.filter(row=>row.active&&TRACE_SCOPES.includes(row.scope_id)&&row.scope_id!=='loc');
