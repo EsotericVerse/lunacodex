@@ -1934,3 +1934,47 @@
   .loc-flow-progress__river-glint{animation:none}
   .loc-flow-progress__river-fill{transition:none}
 }
+
+
+/* Galaxy Inter-Net: progressively opened, pure CSS branch tree. */
+.loc-inter-net{margin:.85rem 0;min-width:0;color:var(--loc-text)}
+.loc-inter-net>details{
+  padding:.65rem .8rem;border:1px solid var(--loc-line);
+  border-radius:var(--loc-radius-sm);background:var(--loc-surface-soft)
+}
+.loc-inter-net__summary,.loc-inter-net__branch>summary{
+  cursor:pointer;list-style-position:inside;line-height:1.5;font-weight:700
+}
+.loc-inter-net__summary{display:flex;align-items:center;gap:.55rem}
+.loc-inter-net__summary::marker{content:''}
+.loc-inter-net__summary::-webkit-details-marker{display:none}
+.loc-inter-net__summary small,.loc-inter-net__branch small{
+  font-size:.73rem;font-weight:500;color:var(--loc-muted)
+}
+.loc-inter-net__spark{
+  width:.65rem;height:.65rem;transform:rotate(45deg);flex:none;
+  border:1.5px solid var(--loc-accent);box-shadow:0 0 8px var(--loc-accent-border)
+}
+.loc-inter-net__branches{margin:.65rem 0 .15rem;display:grid;gap:.5rem}
+.loc-inter-net__branch{
+  padding:.45rem .7rem;border-left:2px solid var(--loc-accent-border);
+  background:var(--loc-panel);border-radius:var(--loc-radius-sm)
+}
+.loc-inter-net__branch>summary{font-size:.89rem}
+.loc-inter-net__branch>ul{
+  margin:.45rem 0 0;padding:0;list-style:none;display:grid;gap:.3rem
+}
+.loc-inter-net__branch li{
+  display:flex;align-items:baseline;flex-wrap:wrap;gap:.3rem .6rem;
+  font-size:.84rem;overflow-wrap:anywhere
+}
+.loc-inter-net__field{color:var(--loc-muted);font-size:.75rem;min-width:3.8rem}
+.loc-inter-net a{color:var(--loc-accent);text-underline-offset:2px}
+.loc-inter-net a:hover{text-decoration-thickness:2px}
+.loc-inter-net summary:focus-visible,.loc-inter-net a:focus-visible{
+  outline:2px solid var(--loc-accent);outline-offset:3px;border-radius:3px
+}
+@media(max-width:600px){
+  .loc-inter-net>details{padding:.6rem}
+  .loc-inter-net__branch{padding:.45rem}
+}
