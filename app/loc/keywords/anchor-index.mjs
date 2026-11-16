@@ -6,7 +6,7 @@
 // Item.attr.uid contains Pattern ANCHOR UIDs; Pattern.attr[postingsKey] holds GALAXY article UIDs.
 // Only Pattern.num is the article posting count; Class/Group/Item are navigation hierarchy.
 // No database mapping registry is required for the current database.
-import {allocateAnchorUid} from '../uid.js';
+import {allocateAnchorUid} from '../model/uid.js';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {KEYWORD_PATTERN_POSTINGS_KEY,keywordPatternRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 

@@ -17,7 +17,7 @@ import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/clie
 import {canonicalImportSourceName,inferImportSourceFromFilename} from '../source/name.mjs';
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from '../scope-data';
-import {createUid8} from '../uid';
+import {createUid8} from '../model/uid';
 import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './progress-store.mjs';
 import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './checkpoint.mjs';

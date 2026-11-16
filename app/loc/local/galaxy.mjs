@@ -2,7 +2,7 @@
 // Galaxy Link Extension, but with a dedicated Galaxy store (NOT its Queue).
 // Nothing here imports cloud authentication, RPC, networking, or SQL drivers.
 import {modelWriteSchemaForSqlTable} from '../../../packages/zenstack/import-validation.mjs';
-import {createUid8} from '../uid.js';
+import {createUid8} from '../model/uid.js';
 
 export const LOCAL_GALAXY_DB='loc-local-galaxy-v1';
 export const LOCAL_GALAXY_STORE='galaxy';

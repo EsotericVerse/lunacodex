@@ -12,7 +12,7 @@ registerDefaultSection('uiExtra.importUI',importUIZh);
 import {insertRows} from '../db-client.mjs';
 import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {useAccount} from '../use-account';
-import {createUid8} from '../uid';
+import {createUid8} from '../model/uid';
 import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from '../content/content-policy';
 import {refreshSunoStyleMetaTags} from './suno-style-meta-tags.mjs';
 import BlockNoteEditor from '../editor/BlockNoteEditor';

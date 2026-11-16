@@ -6,7 +6,7 @@ import {useQueryClient} from '../../../../packages/zenstack/client-queries';
 import {useEditDock} from '../../../modular/edit-dock';
 import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
-import {allocateAnchorUid} from '../../uid.js';
+import {allocateAnchorUid} from '../../model/uid.js';
 import ManagementSectionNav from '../../../modular/ManagementSectionNav';
 import ActivityMotion from '../../../modular/ActivityMotion';
 import FlowProgress from '../../../modular/FlowProgress';

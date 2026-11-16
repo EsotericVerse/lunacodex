@@ -15,7 +15,7 @@ import {sql} from 'kysely';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {decodeRuntimeIo,encodeRuntimeIo} from '../query/query-batch-size.mjs';
-import {allocateAnchorUid} from '../uid.js';
+import {allocateAnchorUid} from '../model/uid.js';
 import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
   from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import * as z from 'zod';

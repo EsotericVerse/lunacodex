@@ -10,7 +10,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
 import {insertRows,updateRows} from '../db-client.mjs';
 import {selectRows} from '../db-query.mjs';
-import {createUid8} from '../uid';
+import {createUid8} from '../model/uid';
 import {useAccount} from '../use-account';
 import {hasIrrecoverableEncoding,repairMojibakeText} from '../content/content-policy';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';

@@ -1,5 +1,5 @@
 import {importGeoKey} from './geocoordinates.mjs';
-import {allocateAnchorUid} from '../uid.js';
+import {allocateAnchorUid} from '../model/uid.js';
 import {planImportPointVisitDelta,planImportPointCreate} from './point-date-immer.mjs';
 
 // An exact coordinate identifies an existing Trace location even if the
