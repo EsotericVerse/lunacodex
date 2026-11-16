@@ -2,7 +2,7 @@
  * Vendored third-party ChatGPT DOM extraction module.
  * Source: https://github.com/dialoguesai/chatgpt-shadow-extension/blob/main/extract.js
  * License: Apache-2.0 (see ChatGPT-Shadow-LICENSE.txt).
- * Unmodified upstream behavior below; LOC adapts only the caller/output mapping.
+ * LOC patch: preserve both legacy and search-unit ChatGPT message layouts.
  */
 // IIFE: chrome.scripting.executeScript can inject this module repeatedly in one tab.
 (() => {
@@ -279,22 +279,42 @@ const ChatGPTShadowExtract = (() => {
   }
 
   function extractMessages(root) {
-    const nodes = root.querySelectorAll(ROLE_SELECTOR);
-    if (!nodes.length) return extractUnitMessages(root);
+    // LOC compatibility: both message layouts can coexist in one ChatGPT
+    // conversation. A legacy user node must not hide newer assistant units.
+    const legacy = Array.from(root.querySelectorAll(ROLE_SELECTOR));
+    const units = Array.from(root.querySelectorAll(UNIT_SELECTOR));
+    const legacyIndex = new Map(legacy.map((node, index) => [node, index]));
+    const unitIndex = new Map(units.map((node, index) => [node, index]));
+    const nodes = root.querySelectorAll(ROLE_SELECTOR + "," + UNIT_SELECTOR);
     const messages = [];
-    nodes.forEach((el, index) => {
-      const role = String(el.getAttribute("data-message-author-role") || "").toLowerCase();
+    const seenIds = new Set();
+    Array.from(nodes).forEach((el) => {
+      const isUnit = unitIndex.has(el);
+      let role, content, id, index;
+      if (isUnit) {
+        if (isNestedUnit(el)) return;
+        role = unitRole(el);
+        content = unitText(el, role);
+        id = unitMessageId(el);
+        index = unitIndex.get(el);
+      } else {
+        // If a legacy wrapper and a search unit describe the same turn,
+        // keep the search unit only; do not archive duplicate messages.
+        if (el.closest && el.closest(UNIT_SELECTOR)) return;
+        if (el.querySelector && el.querySelector(UNIT_SELECTOR)) return;
+        role = String(el.getAttribute("data-message-author-role") || "").toLowerCase();
+        content = extractMessageText(el);
+        id = el.getAttribute("data-message-id") || "";
+        index = legacyIndex.get(el);
+      }
       if (role !== "user" && role !== "assistant") return;
-      const content = extractMessageText(el);
-      const id = el.getAttribute("data-message-id") || "";
       if (!content || isPlaceholderMessage(id, content)) return;
-      messages.push({
-        id,
-        role,
-        content,
-        index,
-        conversationId: renderedConversationId(el),
-      });
+      if (id) {
+        const key = role + ":" + id;
+        if (seenIds.has(key)) return;
+        seenIds.add(key);
+      }
+      messages.push({ id, role, content, index, conversationId: renderedConversationId(el) });
     });
     return messages;
   }
