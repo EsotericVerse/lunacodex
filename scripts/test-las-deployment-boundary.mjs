@@ -71,10 +71,18 @@ test('Retired LOC Pages MCP gateway cannot be rebuilt or reactivated',()=>{
     'functions/api/loc-native.js','app/loc/mcp/native-operations.mjs',
     'app/loc/mcp/native-kysely.mjs'])
     assert.ok(exists(file),'Keep LOC portable business/data service '+file);
-  // Upstream OAuth provider management is a distinct LOC website control
-  // surface until the operational state/credential migration is proven.
+  // Provider/OAuth/transport implementations are LAS-owned; retaining
+  // their source in LOC would duplicate a second MCP runtime on Pages.
+  for(const path of [
+    'functions/api/mcp-provider.js','functions/api/mcp-provider-extension.js',
+    'functions/api/mcp-provider-callback.js',
+    'functions/.well-known/loc-mcp-client.js',
+    ...['upstream-oauth.mjs','upstream-policy.mjs',
+      'upstream-providers.mjs','upstream-sse.mjs','upstream-tools.mjs',
+      'upstream-vault.mjs','extension-sso.mjs'].map(name=>'app/loc/mcp/'+name)
+  ]) assert.ok(!exists(path),'No duplicate LAS-owned Provider code in LOC: '+path);
   for(const route of ['/api/mcp-provider','/api/mcp-provider-extension',
     '/api/mcp-provider-callback','/.well-known/loc-mcp-client'])
-    assert.ok(routeConfig.include.includes(route),
-      'Do not cut off active LOC provider control plane '+route);
+    assert.ok(!routeConfig.include.includes(route),
+      'No LOC Pages upstream Provider route after LAS migration: '+route);
 });
