@@ -79,7 +79,7 @@ jobs:
           set -euo pipefail
           cd rune-source
           test "$(git rev-parse HEAD)" = "$LRS_RELEASE_SHA"
-          node scripts/deploy-rune-cloudflare.mjs
+          npm run deploy:cloudflare
       - name: Verify Worker version changed without touching LOC production
         env:
           LOC_LRS_EMERGENCY_REQUEST: ${{ toJSON(github.event.client_payload) }}
