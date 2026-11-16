@@ -13,7 +13,7 @@ The old LOC Pages entrypoints for `/`, `/mcp` and the two OAuth protected-resour
 
 Keep `/api/las-native`, `/api/loc-native`, `/api/loc-public-*` and LOC's own database/business authorization modules: LAS calls these fixed business operations over HTTPS, not by sharing the LAS auth secret or LOC SQL credentials.
 
-**Legacy upstream Provider Manager exception:** LOC Pages still has `/api/mcp-provider*` and `/.well-known/loc-mcp-client`. They are separate website-authenticated upstream provider controls, **not** the public inbound MCP server. They require a verified state/secret migration and end-to-end permission tests before removing them. Do not silently delete their stored credentials or browser flows.
+**Provider Manager single source:** LOC's old `/api/mcp-provider*` and `/.well-known/loc-mcp-client` Functions have also been retired. Their OAuth, Policy, Vault, SSE, provider registry and extension-login source already exists identically under LAS's `app/las/mcp/` and is retained **only** there. Since LAS does not yet expose an independently verified upstream Provider control API and storage binding, this specific optional Provider Manager capability is **not** claimed operational by this cleanup. Its final endpoint/storage authorization belongs to LAS and must be tested separately. No stored credentials or Cloudflare binding were changed by this Git source cleanup. LOC's own SQL/data operations remain available through the native bridge.
 
 ## Optional LAS → LOC deployment notification
 
