@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {insertRows,updateRows,deleteRows,dbAuthClient} from '../db-client.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
-import {allocateAnchorUid} from '../uid.js';
+import {allocateAnchorUid} from '../model/uid.js';
 import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {useEditDockForm} from '../../modular/edit-dock';
 

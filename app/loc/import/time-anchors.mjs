@@ -1,5 +1,5 @@
 import {parseImportCreatedTime} from './batch.mjs';
-import {allocateAnchorUid} from '../uid.js';
+import {allocateAnchorUid} from '../model/uid.js';
 import {planImportDateTitleDelta,planImportDateCreate} from './point-date-immer.mjs';
 
 // Importing a known check-in creates its calendar-day Time anchor independently

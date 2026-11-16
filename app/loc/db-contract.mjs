@@ -416,7 +416,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     preflightWrite(table);
     const data=await readOwnedKeywordNodes(table);
     const {indexKeywordTree,descendantsOfKeyword}=await import('./keywords/tree.mjs');
-    const {allocateAnchorUid}=await import('./uid.js');
+    const {allocateAnchorUid}=await import('./model/uid.js');
     const tree=indexKeywordTree(data);
     const original=tree.index.get(source);
     if(!original||original.type!=='class')throw new Error('找不到來源 Class');
@@ -456,7 +456,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
 
   async function copyRune66KeywordClassUnchecked(scopeId,sourceClassUid){
-    const {allocateAnchorUid}=await import('./uid.js');
+    const {allocateAnchorUid}=await import('./model/uid.js');
     const uid=allocateAnchorUid();
     return copyKeywordLibraryClass(scopeId,sourceClassUid,'符文66副本-'+uid);
   }
