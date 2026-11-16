@@ -57,6 +57,7 @@ test('LOC preview time is locked, Scope time rivers retain full navigation',()=>
   assert.match(timeline,/readOnlyViewport=false/);
   assert.match(timeline,/zoomable:!readOnlyViewport/);
   assert.match(timeline,/moveable:!readOnlyViewport/);
+  assert.match(timeline,/preserveTimelineInstance=heightVariant==='double'\|\|mode==='trace'\|\|readOnlyViewport/);
   assert.match(timeline,/!readOnlyViewport\?<div className='scope-timeline-controls'/);
   assert.match(culture,/featureNavigationHref\(id,'culture'\)/);
 });
