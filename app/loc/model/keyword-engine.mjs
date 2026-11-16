@@ -2,7 +2,7 @@
 
 import {parseRuneKeywordRuleSentence} from './rune-keyword-rules.mjs';
 import {compileKeywordLiteralMatcher} from '../keywords/literal-matcher.mjs';
-import {keywordScanText} from '../content-filter.mjs';
+import {keywordScanText} from '../keywords/content-filter.mjs';
 
 function normalizeText(value){
   return String(value??'').normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
