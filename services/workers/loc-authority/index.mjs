@@ -465,8 +465,8 @@ export default {
         const tests=await Promise.all([
           tokenTest('basic'),tokenTest('post'),tokenTest('invalid_secret')]);
         return reply({...debugInfo,keys,config,discovery,tokenTests:tests,
-          // All probes intentionally use invalid codes without a PKCE verifier.
-          // Only a genuine login callback can validate the full flow.
+          // Every probe uses an invalid code and an intentionally fake PKCE
+          // verifier. Only a genuine callback proves the end-to-end flow.
           diagnosis:tests.some(t=>t.method!=='invalid_secret'&&
             t.oauthError==='invalid_grant')?'client_auth_likely_accepted'
             :tests.every(t=>t.httpStatus===500)?'upstream_all_500'
