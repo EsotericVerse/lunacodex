@@ -940,17 +940,20 @@
 }
 /* Personal settings: one field, one option picker; no radio/checkbox walls. */
 .loc-user-setting-field{
-  display:grid;grid-template-columns:minmax(0,1fr) minmax(10rem,1.2fr);
-  align-items:center;gap:.5rem .85rem;min-width:0;margin:.55rem 0;
+  /* Labels and short options retain their intrinsic width. No card-wide selects. */
+  display:grid;grid-template-columns:max-content minmax(10rem,auto);
+  align-items:center;gap:.5rem .85rem;width:max-content;
+  max-width:100%;min-width:0;margin:.55rem 0;
 }
 .loc-user-setting-field>span{
-  color:var(--loc-heading);font-size:.91rem;font-weight:650;
+  color:var(--loc-heading);font-size:.91rem;font-weight:650;white-space:nowrap;
 }
 .loc-user-setting-field>.scope-select{
-  width:100%;min-width:0;min-height:2.75rem;
+  width:fit-content;max-width:100%;min-width:10rem;min-height:2.75rem;
 }
 @media(max-width:540px){
-  .loc-user-setting-field{grid-template-columns:minmax(0,1fr);}
+  .loc-user-setting-field{grid-template-columns:minmax(0,1fr);width:100%;}
+  .loc-user-setting-field>.scope-select{max-width:100%;min-width:0;}
 }
 .scope-settings-dashboard__filter>h3{
   margin:.35rem 0 0;color:var(--loc-text);
