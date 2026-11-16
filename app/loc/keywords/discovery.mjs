@@ -1,5 +1,5 @@
 import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
-import {content_filter,keywordScanText} from '../content-filter.mjs';
+import {content_filter,keywordScanText} from './content-filter.mjs';
 
 // On-demand, read-only discovery of new literal Keywords from Galaxy content.
 // Existing Keywords are used ONLY as an exclusion set; no classifications are changed.

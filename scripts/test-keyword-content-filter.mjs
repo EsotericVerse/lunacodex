@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {content_filter,keywordScanText} from '../app/loc/content-filter.mjs';
+import {content_filter,keywordScanText} from '../app/loc/keywords/content-filter.mjs';
 import {classSkipArticleWords} from '../app/loc/keywords/class-exceptions.mjs';
 import {createKeywordDocumentClassifier} from '../app/loc/model/keyword-engine.mjs';
 import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
