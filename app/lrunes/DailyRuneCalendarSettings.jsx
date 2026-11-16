@@ -3,7 +3,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import DailyRuneCalendar from './DailyRuneCalendar';
 import {selectDailyRuneMonth} from '../loc/runes/daily-runes';
-import {useAccount} from '../loc/use-account';
+import {useAccount} from '../loc/auth/use-account';
 
 // Settings is a read-only calendar display; daily records and their editors are untouched.
 function monthNow(){

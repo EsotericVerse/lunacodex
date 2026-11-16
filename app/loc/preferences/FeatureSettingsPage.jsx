@@ -8,7 +8,7 @@ import {useUiSection} from '../../i18n/ui-locale';
 import {useUiText} from '../../i18n/UiText';
 import {registerDefaultSection} from '../../i18n/ui-copy';
 import globalSettingsZh from '../../i18n/sections/uiExtra.globalSettings.zh_tw.js';
-import {useAccount} from '../use-account';
+import {useAccount} from '../auth/use-account';
 import useDefaultTimeUnit from './use-default-time-unit';
 import {saveDefaultTimeUnit,DEFAULT_TIME_UNITS} from './default-time-unit.mjs';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);

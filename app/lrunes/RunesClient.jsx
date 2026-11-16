@@ -1,6 +1,6 @@
 import {navigationHref} from '../modular/routing/scope-registry.js';
 import useNativeNavigation from '../modular/use-native-navigation';
-import {usePassiveSessionAccount} from '../loc/use-account';
+import {usePassiveSessionAccount} from '../loc/auth/use-account';
 import ScopeLink from '../modular/ScopeLink';
 import RuneIntroSection from './RuneIntroSection';
 import RuneCardEntryBubbles from './RuneCardEntryBubbles';

@@ -7,7 +7,7 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
-import {useAccount} from '../use-account';
+import {useAccount} from '../auth/use-account';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 
 const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks'),{loading:()=>null});
