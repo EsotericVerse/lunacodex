@@ -1,11 +1,5 @@
 name: Check LOC LAS Business Bridge
 on:
-  pull_request:
-    paths:
-      - 'functions/api/las-native.js'
-      - 'app/loc/mcp/native-operations.mjs'
-      - 'scripts/test-las-native-bridge.mjs'
-      - '.github/workflows/check-las-native-bridge.yml'
   workflow_dispatch:
 
 permissions:
