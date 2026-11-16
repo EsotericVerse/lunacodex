@@ -776,7 +776,7 @@
 }
 .scope-search-workspace .scope-search-form{
   display:grid;grid-template-columns:minmax(0,1fr) auto auto;
-  grid-template-areas:"label label label" "input submit reset";
+  grid-template-areas:"label label label" "input submit reset" "admin admin admin";
   gap:.65rem;align-items:center;
   padding:clamp(.8rem,2vw,1.3rem);
   border:1px solid var(--loc-ui-hairline);
@@ -807,6 +807,18 @@
   color:var(--loc-text);cursor:pointer;
 }
 .scope-search-workspace .scope-search-form>button[type="button"]{grid-area:reset}
+/* A Search-only switch: status and control occupy one small row. */
+.scope-search-workspace .scope-search-form>.scope-search-admin-switch{
+  grid-area:admin;display:inline-flex;align-items:center;gap:.45rem;
+  justify-self:start;font-weight:650;letter-spacing:normal;cursor:pointer;
+}
+.scope-search-admin-switch>input{
+  width:1.05rem;height:1.05rem;margin:0;accent-color:var(--loc-accent);
+}
+.scope-search-workspace .scope-search-form>.scope-search-admin-status{
+  grid-area:admin;justify-self:end;color:var(--loc-text);
+  font-size:.85rem;
+}
 .scope-search-scope-filter{display:grid;gap:.4rem;min-width:0;max-width:28rem}
 .scope-search-scope-filter label{font-size:.9rem;font-weight:750}
 .scope-search-scope-filter select{
@@ -951,7 +963,7 @@
 @media(max-width:760px){
   .scope-search-workspace .scope-search-form{
     grid-template-columns:minmax(0,1fr) auto;
-    grid-template-areas:"label label" "input input" "submit reset";
+    grid-template-areas:"label label" "input input" "submit reset" "admin admin";
   }
   .scope-search-workspace .scope-search-form>button{width:100%}
 }
