@@ -11,7 +11,7 @@ import statisticsViewZh from '../../../i18n/sections/uiExtra.statisticsView.zh_t
 registerDefaultSection('statistics',statisticsZh);
 registerDefaultSection('uiExtra.statisticsUI',statisticsUIZh);
 registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
-import {defaultScopeData} from '../../../loc/scope-data';
+import {defaultScopeData} from '../../../loc/scope/scope-data';
 import {featureNavigationHref} from '../../routing/feature-navigation';
 import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';

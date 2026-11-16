@@ -48,7 +48,7 @@ import {MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection,ANCHOR_TYPE_GROUPS} from '../
 import {galaxyAble} from '../../loc/model/galaxy-able.mjs';
 import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches} from '../../loc/galaxy-query';
 import {readPublicSourceTaxonomy as selectSourceTaxonomy} from '../../loc/source/catalog-public.mjs';
-import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope-data';
+import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope/scope-data';
 
 import {MEDIA_FALLBACK_TITLE,WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayText} from '../work-display-model';
 import {requireGalaxyContent,resolveGalaxyTitle,assertPlainGalaxyAttributes} from '../../loc/content/content-policy';

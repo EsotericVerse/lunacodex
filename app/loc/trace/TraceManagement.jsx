@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
 import {useEditDockForm} from '../../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
-import {revalidateServerMetadata} from '../scope-data';
+import {revalidateServerMetadata} from '../scope/scope-data';
 import {
   TRACE_SCOPES,traceKey,traceAllAnchorsKey,
   readTraceData,addTraceAnchor,updateTraceAnchor,renameTraceAnchorTitles,updateTraceVisibilityBulk,mergeTraceAnchorPoints

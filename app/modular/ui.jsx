@@ -11,7 +11,7 @@ import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
-import {selectScopeBlocks,selectLiveScopeBlocks,hero_block} from '../loc/scope-data';
+import {selectScopeBlocks,selectLiveScopeBlocks,hero_block} from '../loc/scope/scope-data';
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';

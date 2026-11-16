@@ -8,7 +8,7 @@ registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 import {useMemo} from 'react';
 import {useAsyncResource,useResourceCache} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
-import {defaultScopeData} from '../../../loc/scope-data';
+import {defaultScopeData} from '../../../loc/scope/scope-data';
 import {selectDailyRuneRange} from '../../../loc/runes/daily-runes';
 import {normalizeDailyDraws} from '../../../lrunes/daily-analytics-model.mjs';
 import {realMoonPhase} from '../../../loc/model/moon-phase';

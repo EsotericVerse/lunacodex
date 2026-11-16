@@ -19,7 +19,7 @@ import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
 import {appBootstrapKey} from '../runtime/app-bootstrap';
-import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../scope-data';
+import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../scope/scope-data';
 
 const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
 const ObjectEditor=dynamic(()=>import('../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});

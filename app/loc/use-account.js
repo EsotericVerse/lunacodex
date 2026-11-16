@@ -5,7 +5,7 @@ import {useQueryClient} from '../../packages/zenstack/client-queries';
 import {getAccountSession,dbAuthEvents,signInWithLocSso,signOutAccount} from './db-client.mjs';
 import {readLocEditorGrants} from './auth/editor-grants.mjs';
 import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthorizer} from './authorization-runtime.mjs';
-import {defaultScopeData,scopeDataFromManageRows} from './scope-data';
+import {defaultScopeData,scopeDataFromManageRows} from './scope/scope-data';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {shouldInvalidateManagementForAuthEvent} from './auth/account-event-guard.mjs';
 

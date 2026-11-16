@@ -8,7 +8,7 @@ import {useAsyncInfiniteResource,useAsyncResource} from '../../../../packages/ze
 import {selectRows} from '../../../loc/db-query.mjs';
 import {traceArticleIdFilters,groupedTraceDays} from './trace-panel-filters.mjs';
 import {nearestTracePlaceIds} from '../../../loc/preferences/loc-feature-preferences.mjs';
-import {defaultScopeData} from '../../../loc/scope-data';
+import {defaultScopeData} from '../../../loc/scope/scope-data';
 import {dbPublicClient} from '../../../loc/db-client.mjs';
 import {traceArticleIds,traceArticleLabels} from './trace-article-ids.mjs';
 import Article from '../../Article';
