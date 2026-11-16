@@ -1549,8 +1549,8 @@ export default function Culture(){
                         </select>
                       </label>
                     </div>
-                    <label><span>{l.styleLabel}</span>
-                      <select className='scope-select' aria-label={l.styleLabel}
+                    <label><span>文章選項</span>
+                      <select className='scope-select' aria-label='文章選項'
                         value={styleFilter==='none'&&sourceStyleOptions.some(item=>item.key===selectedRiverGroup)
                           ?'source:'+selectedRiverGroup:styleFilter}
                         onChange={event=>{
