@@ -1134,17 +1134,19 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       <form className="scope-search-form" onSubmit={runSearch}>
         {!managementMode?<label htmlFor="scope-search-query">{UI_COPY.search.textPromptLabel}</label>:null}
         {searchInput('scope-search-query','搜尋全文或公開關鍵詞')}
-        <label className="scope-search-admin-switch">
-          <input type="checkbox" role="switch" checked={adminSearchRequested}
-            onChange={event=>{
-              setAdminSearchRequested(event.target.checked);
-              resetSearchState();
-            }}/>
-          管理者
-        </label>
-        {adminSearchRequested&&!adminSearchAuthorized?<span className="scope-search-admin-status" role="status">
-          {account.loading||account.permissionLoading?'驗證中…':'無管理搜尋權限'}
-        </span>:null}
+        <div className="scope-search-admin-row">
+          <label className="scope-search-admin-switch">
+            <input type="checkbox" role="switch" checked={adminSearchRequested}
+              onChange={event=>{
+                setAdminSearchRequested(event.target.checked);
+                resetSearchState();
+              }}/>
+            管理者
+          </label>
+          {adminSearchRequested&&!adminSearchAuthorized?<span className="scope-search-admin-status" role="status">
+            {account.loading||account.permissionLoading?'驗證中…':'無管理搜尋權限'}
+          </span>:null}
+        </div>
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess||
           adminSearchRequested&&!adminSearchAuthorized}>{UI_COPY.nav.search}</button>
         {managementMode?<button type="button" className="loc-button" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
