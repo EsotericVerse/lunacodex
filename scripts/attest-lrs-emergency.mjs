@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {execFileSync} from 'node:child_process';
 import {verifyLrsEmergencyAuthorization} from './lrs-emergency-authorization.mjs';
 
@@ -135,7 +136,8 @@ async function main(){
  }
  console.log('[lrs-emergency] Verified current Worker and exact pinned source; no grant issued');
 }
-main().catch(error=>{
- console.error('[lrs-emergency] refused: '+error.message);
- process.exitCode=1;
-});
+if(process.argv[1]&&pathToFileURL(path.resolve(process.argv[1])).href===import.meta.url)
+ main().catch(error=>{
+  console.error('[lrs-emergency] refused: '+error.message);
+  process.exitCode=1;
+ });
