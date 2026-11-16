@@ -9,7 +9,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
-import {useAccount} from '../use-account';
+import {useAccount} from '../auth/use-account';
 import {FeaturePage} from '../../modular/ui';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';

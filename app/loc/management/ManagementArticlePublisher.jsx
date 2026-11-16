@@ -16,7 +16,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
 import {insertRows,updateRows} from '../db-client.mjs';
 import {selectRows} from '../db-query.mjs';
-import {useAccount} from '../use-account';
+import {useAccount} from '../auth/use-account';
 import {createUid8} from '../model/uid';
 import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from '../content/content-policy';
 import {ObjectEditor} from '../editor/BlockNoteEditor';

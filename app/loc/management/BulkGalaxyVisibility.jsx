@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from '../db-client.mjs';
-import {useAccount} from '../use-account';
+import {useAccount} from '../auth/use-account';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 
 const FIELDS=Object.freeze([

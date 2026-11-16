@@ -19,7 +19,7 @@ import {
 } from '../../loc/runes/daily-runes';
 import {selectRows} from '../../loc/db-query.mjs';
 import {lRunes66ColumnString} from '../../../packages/zenstack/lrunes-read-model.mjs';
-import {useAccount} from '../../loc/use-account';
+import {useAccount} from '../../loc/auth/use-account';
 import {useResourceCache} from '../../../packages/zenstack/client-queries';
 import {listLocalDailyRunes,importLocalDailyTransfer,updateLocalDailyRune,deleteLocalDailyRune} from '../../lrunes/local-rune-records.mjs';
 
