@@ -1,4 +1,4 @@
-import {EDIT_OPERATION_TTL_MS} from '../edit-session-ttl.mjs';
+import {EDIT_OPERATION_TTL_MS} from './edit-session-ttl.mjs';
 
 // A protected entry must settle as verified, denied or failed. Returning a
 // permanently pending client-query state is not a valid authorization outcome.

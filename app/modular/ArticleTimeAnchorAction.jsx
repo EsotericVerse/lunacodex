@@ -2,13 +2,13 @@
 
 import {useEffect,useId,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {useAccount} from '../loc/use-account';
+import {useAccount} from '../loc/auth/use-account';
 import {selectManagedScope} from '../loc/scope/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../loc/db-query.mjs';
 import {insertRows} from '../loc/db-client.mjs';
 import {allocateTimeUid} from '../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../loc/culture/anniversary.mjs';
-import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/edit-session-ttl.mjs';
+import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 
 const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const validDay=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));

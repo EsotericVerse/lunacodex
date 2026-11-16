@@ -6,7 +6,7 @@ import {loc_access,hasLocAccess,LOC_OWNER_EMAIL}
 import {bindLocAuthorization,canLocAccess}
   from '../app/loc/providers/loc-authorization.mjs';
 import {setAuthorization,clearAuthorization,canAuthorizeLocAccess,createScopeAuthorizer}
-  from '../app/loc/authorization-runtime.mjs';
+  from '../app/loc/auth/authorization-runtime.mjs';
 
 const owner=LOC_OWNER_EMAIL;
 const admin={id:'admin',email:owner,manage_role:'admin',active:false};

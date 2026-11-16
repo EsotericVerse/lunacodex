@@ -4,7 +4,7 @@ import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState} 
 import {usePathname,useRouter} from 'next/navigation';
 import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents} from '../loc/db-client.mjs';
-import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/edit-session-ttl.mjs';
+import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
 import {releaseTransientPageResources,useQueryClient} from '../../packages/zenstack/client-queries';
 
