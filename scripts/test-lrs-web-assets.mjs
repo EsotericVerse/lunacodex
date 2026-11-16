@@ -36,3 +36,9 @@ test('LOC Web build does not depend on native-only LAS Hero source',()=>{
  assert.match(source,/LOC_NATIVE_RUNE_ASSETS!=='1'/);
  assert.match(source,/Required native Galaxy Link Hero source is missing/);
 });
+
+test('LOC homepage Rune image follows LRS Web origin while native stays local',()=>{
+ const view=read('app/loc/blocks/LocHomeBlockDisplay.jsx');
+ assert.match(view,/src:\{src:runeAssetHref\(SITE_IMAGES\.lunarunes\.src\)\}/);
+ assert.match(read('app/site-images.js'),/lunarunesAsset=\{src:'\/pics\/LunaRunes\.webp'\}/);
+});
