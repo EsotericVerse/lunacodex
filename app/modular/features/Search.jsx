@@ -259,7 +259,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       :canManageSearchScope(account,scopeId)));
   const managementAuthorized=Boolean(adminListRequested&&verifiedSearchGrant);
   // This new switch is Search-only; existing /search/manage remains independent.
-  const managementMode=Boolean(!adminSearchRequested&&adminListRequested&&managementAuthorized);
+  const managementMode=Boolean(legacyManagementRoute&&adminListRequested&&managementAuthorized);
   const adminSearchAuthorized=Boolean(adminSearchRequested&&verifiedSearchGrant&&!legacyManagementRoute);
   const adminSearchActive=Boolean(adminSearchRequested&&adminSearchAuthorized&&!managementMode);
   const privilegedSearch=managementMode||adminSearchActive;
