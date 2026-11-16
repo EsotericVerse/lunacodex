@@ -1,7 +1,7 @@
 'use client';
 
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {dbAuthClient,getAccountSession} from '../../loc/db-client.mjs';
+import {dbAuthClient,getAccountSession} from '../../loc/db/db-client.mjs';
 
 // Keep the website bridge in sync with the signed Gateway and Extension Queue.
 // Permission is enforced by LOC Authority's exact Scope write grant.

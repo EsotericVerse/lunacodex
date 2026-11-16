@@ -9,7 +9,7 @@ import managementZh from '../../i18n/sections/management.zh_tw.js';
 import importUIZh from '../../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
-import {insertRows} from '../db-client.mjs';
+import {insertRows} from '../db/db-client.mjs';
 import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {useAccount} from '../auth/use-account';
 import {createUid8} from '../model/uid';

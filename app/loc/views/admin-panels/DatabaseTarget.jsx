@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {resolveDatabaseRouting} from '../../providers/routing/config.mjs';
-import {dbAuthClient} from '../../db-client.mjs';
+import {dbAuthClient} from '../../db/db-client.mjs';
 
 const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
 const ACCESS_FILE='app/loc/providers/access.js';

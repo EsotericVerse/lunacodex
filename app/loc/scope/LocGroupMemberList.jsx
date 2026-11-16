@@ -4,7 +4,7 @@ import {useState} from 'react';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import {useAccount} from '../auth/use-account';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {dbAuthClient} from '../db-client.mjs';
+import {dbAuthClient} from '../db/db-client.mjs';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 import {invalidateAppBootstrapMetadata} from '../runtime/app-bootstrap';
 

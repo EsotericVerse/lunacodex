@@ -2,8 +2,8 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
-import {dbAuthRelation} from '../loc/db-client.mjs';
-import {selectAllRows} from '../loc/db-query.mjs';
+import {dbAuthRelation} from '../loc/db/db-client.mjs';
+import {selectAllRows} from '../loc/db/db-query.mjs';
 import {writeImportBatches} from '../loc/import/batch.mjs';
 import {listLocalDailyRunes,importLocalDailyTransfer} from './local-rune-records.mjs';
 import {

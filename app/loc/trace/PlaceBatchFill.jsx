@@ -2,7 +2,7 @@
 
 import {useMemo,useRef,useState} from 'react';
 import {useEditDockForm} from '../../modular/edit-dock';
-import {dbAuthClient} from '../db-client.mjs';
+import {dbAuthClient} from '../db/db-client.mjs';
 import {defaultScopeData,revalidateServerMetadata} from '../scope/scope-data';
 import {selectCultureTimeRows} from '../culture/query';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';

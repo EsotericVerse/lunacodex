@@ -4,7 +4,7 @@ import {useAccount,readVerifiedManagementEntry} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../auth/edit-session-ttl.mjs';
-import {dbAuthEvents} from '../db-client.mjs';
+import {dbAuthEvents} from '../db/db-client.mjs';
 import {verifyManagementEntry} from '../auth/management-entry-verification.mjs';
 import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';
 

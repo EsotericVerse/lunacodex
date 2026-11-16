@@ -4,7 +4,7 @@ import {useMemo} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
-import {dbPublicClient} from '../../../loc/db-client.mjs';
+import {dbPublicClient} from '../../../loc/db/db-client.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const TYPE_LABELS=Object.freeze({image:'圖片',video:'影片',rune:'符文',suno:'音樂'});
