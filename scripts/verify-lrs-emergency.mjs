@@ -13,7 +13,8 @@ try{
  const result=verifyLrsEmergencyAuthorization({
   request:body?.request,signature:body?.signature,
   secret:process.env.CLOUDFLARE_API_TOKEN,now:Date.now(),
-  maxTtlSeconds
+  maxTtlSeconds,
+  approvedMajorSha:process.env.LRS_MAJOR_RELEASE_APPROVED_SHA||''
  });
  if(process.env.GITHUB_OUTPUT){
   appendFileSync(process.env.GITHUB_OUTPUT,

@@ -52,7 +52,7 @@ test('A secret mismatch or modified event cannot authorize an emergency',()=>{
 });
 test('No grant, renewal, generic release, or wrong Worker in signed request',()=>{
  assert.throws(()=>verify({...security,grant:true}),/no grant or renewal/);
- assert.throws(()=>verify({...security,reason:'major'}),/Ordinary release/);
+ assert.throws(()=>verify({...security,reason:'major',advisoryId:null}),/owner-approved exact SHA/);
  assert.throws(()=>verify({...security,worker:'loc-authority'}),/unapproved repository/);
  assert.throws(()=>verify({...security,desiredSha:SHA1}),/FIXED revision/);
  assert.throws(()=>verify({...security,workerVersionId:null}),/deployed version/);
@@ -62,4 +62,14 @@ test('No available secret means no emergency authority is silently granted',()=>
  assert.throws(()=>verifyLrsEmergencyAuthorization({
   request:security,signature:signed(security),secret:'',now
  }),/unavailable/);
+});
+
+test('Major LRS publication requires an explicit owner-approved exact SHA, never SemVer inference',()=>{
+ const major={...security,reason:'major',advisoryId:null};
+ assert.equal(verify(major,{approvedMajorSha:SHA2}).action,'verify-owner-major-release-before-deploy');
+ assert.throws(()=>verify(major),/owner-approved exact SHA/);
+ assert.throws(()=>verify(major,{approvedMajorSha:SHA1}),/owner-approved exact SHA/);
+ assert.throws(()=>verify({...major,advisoryId:security.advisoryId},{approvedMajorSha:SHA2}),/existing deployed version/);
+ assert.throws(()=>verify({...major,workerVersionId:null},{approvedMajorSha:SHA2}),/existing deployed version/);
+ assert.throws(()=>verify(major,{approvedMajorSha:SHA2,maxTtlSeconds:1800}),/configured TTL/);
 });

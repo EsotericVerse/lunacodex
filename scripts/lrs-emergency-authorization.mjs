@@ -35,7 +35,8 @@ export function emergencySigningPayload(request){
 
 export function verifyLrsEmergencyAuthorization({
   request,signature,secret,now=Date.now(),
-  maxTtlSeconds=MAX_EMERGENCY_TTL_SECONDS
+  maxTtlSeconds=MAX_EMERGENCY_TTL_SECONDS,
+  approvedMajorSha=''
 }){
   const content=emergencySigningPayload(request);
   if(typeof secret!=='string'||secret.length<16)
@@ -68,6 +69,16 @@ export function verifyLrsEmergencyAuthorization({
        !GHSA.test(request.advisoryId||'')||
        request.desiredSha===request.deployedSha)
       throw Error('Security emergency requires deployed version, advisory and FIXED revision');
+  }else if(request.reason==='major'){
+    // Owner explicitly approves the exact SHA in LOC GitHub Actions variables.
+    // A signed request alone is never sufficient to authorize a major release.
+    if(!SHA.test(request.deployedSha||'')||
+       !UUID.test(request.workerVersionId||'')||
+       request.advisoryId!==null||
+       request.desiredSha===request.deployedSha)
+      throw Error('Major release requires existing deployed version and exact target');
+    if(!SHA.test(approvedMajorSha)||request.desiredSha!==approvedMajorSha)
+      throw Error('Major release lacks owner-approved exact SHA');
   }else if(request.reason==='bootstrap'){
     if(request.deployedSha!==null||
        request.workerVersionId!==null||request.advisoryId!==null)
@@ -76,7 +87,8 @@ export function verifyLrsEmergencyAuthorization({
     throw Error('Ordinary release is not a permissible emergency');
   }
   return Object.freeze({
-    action:request.reason==='security'?'verify-security-before-deploy':'verify-baseline-before-deploy',
+    action:request.reason==='security'?'verify-security-before-deploy':
+      request.reason==='major'?'verify-owner-major-release-before-deploy':'verify-baseline-before-deploy',
     reason:request.reason,
     desiredSha:request.desiredSha,
     deployedSha:request.deployedSha,

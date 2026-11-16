@@ -122,7 +122,8 @@ async function main(){
  const request=context?.request;
  verifyLrsEmergencyAuthorization({
    request,signature:context?.signature,secret:token,
-   now:Date.now(),maxTtlSeconds
+   now:Date.now(),maxTtlSeconds,
+   approvedMajorSha:process.env.LRS_MAJOR_RELEASE_APPROVED_SHA||''
  });
  const versions=await workerVersions();
  assertWorkerVersion(versions,request,phase);
@@ -150,6 +151,11 @@ async function main(){
       auditContainsGhsa(after,request.advisoryId)||
       (after.metadata?.vulnerabilities?.critical||0)!==0)
      throw Error('The pinned LRS source is not proven to remediate the critical vulnerability');
+ }else if(request.reason==='major'){
+   // Major release is owner-approved by its exact SHA. No dependency advisory
+   // or missing-baseline claim is fabricated for ordinary version publishing.
+   if(request.desiredSha!==process.env.LRS_MAJOR_RELEASE_APPROVED_SHA)
+     throw Error('Major release approval changed or was revoked');
  }else{
    // A missing production must not mean a missing Worker. Never create one.
    const result=await fetch('https://api.cloudflare.com/client/v4/accounts/'+account+
