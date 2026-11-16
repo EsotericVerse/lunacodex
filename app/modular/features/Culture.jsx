@@ -714,11 +714,11 @@ export default function Culture(){
   const eraRiver=useMemo(()=>
     userActive&&userSettings.time!=='era'
       ?simpleTimeRiver(timelineItems,userSettings.time)
-      :buildEraRiver(timelineItems,expandedEraIds),
-    [timelineItems,expandedEraIds,userActive,userSettings.time]);
+      :buildEraRiver(timelineItems,expandedEraIds,{scopeId}),
+    [timelineItems,expandedEraIds,userActive,userSettings.time,scopeId]);
   const editorEraRiver=useMemo(()=>
-    buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true}),
-    [timelineItems,expandedEditorEraIds]);
+    buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
+    [timelineItems,expandedEditorEraIds,scopeId]);
   const editorRiverWindow=useMemo(editorRiverYearWindow,[]);
   const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
     current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
