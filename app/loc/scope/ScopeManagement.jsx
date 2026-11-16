@@ -8,7 +8,7 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
-import {recoverChunkOnce} from '../chunk-recovery.mjs';
+import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {PLACE_OPTIONS} from '../trace/PlaceManagement';
 
 const TraceManagementPanel=dynamic(()=>import('../trace/TraceManagement'),{loading:PanelLoading});

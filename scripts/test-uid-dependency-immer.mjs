@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
-import {planUidDependencyRepair} from '../app/loc/uid-dependency-immer.mjs';
+import {planUidDependencyRepair} from '../app/loc/providers/uid-dependency-immer.mjs';
 import {repairBeforeUidDelete} from '../app/loc/providers/uid-dependency-before-delete.mjs';
 
 const deleted='DELET001';
