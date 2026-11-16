@@ -82,6 +82,10 @@ export function googleSocialConfig(env={}){
 
 // Cloudflare Access SaaS OIDC has one canonical set of Worker bindings.
 // Never silently fall back to stale Cloudflare/Build API credentials.
+// Explicit token authentication avoids Better Auth's implicit Basic fallback
+// when Cloudflare Access discovery omits token_endpoint_auth_methods_supported.
+export const CLOUDFLARE_SSO_TOKEN_AUTH='client_secret_post';
+
 export function cloudflareSsoConfig(env={}){
   return {
     issuer:String(env.LOC_CLOUDFLARE_SSO_ISSUER||'').trim().replace(/\/+$/,''),
@@ -106,6 +110,7 @@ function cloudflareSsoProvider(cloudflare){
       userInfoEndpoint:issuer+'/userinfo',
       clientId,
       clientSecret,
+      tokenEndpointAuthentication:CLOUDFLARE_SSO_TOKEN_AUTH,
       pkce:true,
       scopes:['openid','email','profile'],
       mapping:{email:'email',emailVerified:'email_verified',name:'name'}
