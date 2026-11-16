@@ -25,7 +25,7 @@ import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/clie
 import {useRouter,useSearchParams} from 'next/navigation';
 
 import {dbAuthClient,dbPublicClient,deleteRows,updateRows} from '../../loc/db/db-client.mjs';
-import {useAccount} from '../../loc/use-account';
+import {useAccount} from '../../loc/auth/use-account';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ScopeLink from '../ScopeLink';
 import SearchSummary from '../../loc/search/Summary';
