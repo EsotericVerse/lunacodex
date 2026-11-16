@@ -4,7 +4,7 @@ import {runeAssetHref} from './rune-asset-origin.mjs';
 const GROUP_IMAGE_BY_ID=Object.freeze({
   '01':runeAssetHref('/pics/01.soul.jpg'),'02':runeAssetHref('/pics/02_connection.jpg'),'03':runeAssetHref('/pics/03_life.jpg'),
   '04':runeAssetHref('/pics/04_nature.jpg'),'05':runeAssetHref('/pics/05_mineral.jpg'),'06':runeAssetHref('/pics/06_element.jpg'),
-  '07':runeAssetHref('/pics/07_order.jpg'),'08':runeAssetHref('/pics/08_disorder.jpg'),'09':runeAssetHref('/pics/09_specia.jpg'
+  '07':runeAssetHref('/pics/07_order.jpg'),'08':runeAssetHref('/pics/08_disorder.jpg'),'09':runeAssetHref('/pics/09_specia.jpg')
 });
 
 export function groupImage(id){return GROUP_IMAGE_BY_ID[String(id).padStart(2,'0')]||'';}
