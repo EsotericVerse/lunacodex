@@ -14,9 +14,12 @@ export function onRequest({request,env}){
     return new Response('Method not allowed',{status:405,headers:{Allow:'POST'}});
   // Never use website cookies for MCP. The LOC handler verifies the original
   // MCP OAuth bearer audience + UserInfo and independently checks api.manage.
-  const headers=new Headers(request.headers);
-  headers.delete('cookie');
-  headers.delete('host');
+  const headers=new Headers();
+  // This is a fixed authenticated operation channel, not a general-purpose
+  // HTTP proxy. Never copy browser cookies, Host or forwarding headers.
+  for(const key of ['authorization','content-type','accept'])
+    if(request.headers.has(key))
+      headers.set(key,request.headers.get(key));
   const delegated=new Request(RESOURCE,{
     method:'POST',headers,body:request.body,duplex:'half',
     redirect:'error'
