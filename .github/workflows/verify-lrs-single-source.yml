@@ -71,6 +71,13 @@ jobs:
           ref: b176b6b280fbedf66c4f6fa0827b5d38310a768a
           path: rune-source
           persist-credentials: false
+      - name: Checkout pinned LAS original native Hero (no LAS code modification)
+        uses: actions/checkout@v4
+        with:
+          repository: EsotericVerse/lunarcus
+          ref: 8d48f261f21fab8fa2765f2ae8b01263c2661b9c
+          path: las-source
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.5'
