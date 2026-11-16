@@ -31,7 +31,7 @@ test('Web Rune image and authored VFX paths point to LRS; IPA uses bundled paths
  assert.match(copy,/native=process\.env\.LOC_NATIVE_RUNE_ASSETS==='1'/);
  assert.match(copy,/if\(!native\)/);
 });
-\ntest('LOC Web build does not depend on native-only LAS Hero source',()=>{
+test('LOC Web build does not depend on native-only LAS Hero source',()=>{
  const source=read('scripts/copy-local-scope-hero.mjs');
  assert.match(source,/LOC_NATIVE_RUNE_ASSETS!=='1'/);
  assert.match(source,/Required native Galaxy Link Hero source is missing/);
