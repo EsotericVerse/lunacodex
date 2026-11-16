@@ -1,4 +1,4 @@
-import {PERSISTED_ANCHOR_TYPES} from '../../packages/zenstack/anchor-hierarchy.mjs';
+import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 // CURRENT LOC presentation adapter: reusable Block fields are projected over
 // existing loc_anchor rows. This does not reinstate a physical loc_blocks table

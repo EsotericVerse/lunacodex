@@ -11,7 +11,7 @@ import {duplicateDomainLabelError} from '../../../modular/routing/scope-registry
 import {THEME_SLOTS} from '../../../modular/theme-registry';
 const ObjectEditor=dynamic(()=>import('../../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 import {ScopeFeatureToggles} from '../../../modular/ui';
-import {scopeConfigColumns,scopeFeaturePatch,scopeFeatureName} from '../../scope-config-fields.mjs';
+import {scopeConfigColumns,scopeFeaturePatch,scopeFeatureName} from '../../scope/scope-config-fields.mjs';
 import {
   deleteScope,dbAuthClient,dbAuthRelation,manageScopeRegistry,provisionScope,updateRows
 } from '../../db-client.mjs';

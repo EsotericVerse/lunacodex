@@ -3,7 +3,7 @@ import {buildKyselyUpsertQuery} from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {modelFieldsForSql} from '../../../packages/zenstack/model-column-guard.mjs';
 import {modelWriteSchemaForSqlTable,locBlocksZModelSchema} from '../../../packages/zenstack/import-validation.mjs';
-import {isLocBlockPage,locBlockToAnchor} from '../loc-block-anchor.mjs';
+import {isLocBlockPage,locBlockToAnchor} from '../blocks/loc-block-anchor.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PAGE=/^[A-Za-z][A-Za-z0-9_-]{0,60}$/;

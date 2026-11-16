@@ -1,7 +1,7 @@
 import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {portableRelation} from './sql-engine-ports.mjs';
-import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock,isLocBlockPage} from '../loc-block-anchor.mjs';
+import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock,isLocBlockPage} from '../blocks/loc-block-anchor.mjs';
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 function id(value){
   const s=String(value||'').trim().toLowerCase();
