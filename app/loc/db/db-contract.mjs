@@ -28,7 +28,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       throw new Error('Database adapter must implement public/authenticated clients and the account boundary');
     }
   function dbAuthRelation(table){
-    const [schema,name]=String(table).split('../');
+    const [schema,name]=String(table).split('.');
     return authClient.schema(schema).from(name);
   }
 

@@ -45,7 +45,7 @@ const oversizedWarned=new Set();
 function warnOversizedFilters(table,filters){
   for(const filter of filters||[]){
     if(filter?.operator==='in'&&Array.isArray(filter.value)&&filter.value.length>IN_FILTER_BUDGET){
-      const key=table+'../'+filter.column;
+      const key=table+'.'+filter.column;
       if(oversizedWarned.has(key))continue;
       oversizedWarned.add(key);
       console.warn('[db-query] IN filter on '+key+' has '+filter.value.length+' values (budget '+IN_FILTER_BUDGET+'); request size grows linearly. Page the ids or use a DB-side join/RPC.');
@@ -54,7 +54,7 @@ function warnOversizedFilters(table,filters){
 }
 
 function publicRelation(client,table){
-  const [schema,name]=String(table).split('../');
+  const [schema,name]=String(table).split('.');
   return client.schema(schema).from(name);
 }
 export function dbPublicRelation(table){
