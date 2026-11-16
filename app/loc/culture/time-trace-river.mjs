@@ -95,6 +95,26 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={})
         }
       }
     }
+    // Every Scope has a final unclassified lane on the management river.
+    // Date anchors outside all Era ranges remain selectable/editable.
+    const unassigned=datedAnchors.filter(anchor=>
+      !traces.some(trace=>withinTrace(anchor,trace)));
+    const scopeIds=[...new Set([...source.map(row=>text(row?.scope_id)).filter(Boolean),
+      ...unassigned.map(anchor=>text(anchor.scope_id))])];
+    for(const [index,scope] of scopeIds.entries()){
+      const groupId='time-undefined:'+scope;
+      groups.push({id:groupId,label:'未定義',order:(traces.length+1)*10000+index,
+        className:'scope-time-anchor-parent'});
+      for(const anchor of unassigned.filter(row=>text(row.scope_id)===scope)){
+        const uid=text(anchor.uid);
+        items.push({id:groupId+':'+uid,uid,scope_id:scope,
+          entry_type:'anchor',group_key:groupId,group_label:'未定義',
+          group_order:(traces.length+1)*10000+index,
+          start_date:text(anchor.start_date).slice(0,10),
+          title:anchor.title||uid,display_label:'●',
+          class_name:'scope-time-original-anchor'});
+      }
+    }
     return {items,groups};
   }
   for(const [traceIndex,trace] of traces.entries()){
@@ -189,21 +209,21 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={})
       }
     }
   }
-  const unassigned=editorOnly?[]:datedAnchors.filter(anchor=>
+  const unassigned=datedAnchors.filter(anchor=>
     !assigned.has(text(anchor.scope_id)+':'+text(anchor.uid)));
-  const scopes=[...new Set(unassigned.map(anchor=>text(anchor.scope_id)))];
+  const scopes=[...new Set([...source.map(row=>text(row?.scope_id)).filter(Boolean),
+    ...unassigned.map(anchor=>text(anchor.scope_id))])];
   for(const [index,scope] of scopes.entries()){
-    const groupId='time-anchors:'+scope;
-    const label=traces.length
-      ?'未歸屬定錨點':(scopes.length>1?scope+' · 定錨點':'定錨點');
+    const groupId='time-undefined:'+scope;
+    const label='未定義';
     const isExpanded=expanded.has(groupId);
-    groups.push({id:groupId,label,order:traces.length*10000+index+1,
+    groups.push({id:groupId,label,order:(traces.length+1)*10000+index,
       collapsible:true,expanded:isExpanded,className:'scope-time-anchor-parent'});
-    // Keep standalone DateAnchors visible even before expanding the group.
     for(const anchor of unassigned.filter(row=>text(row.scope_id)===scope)){
       const uid=text(anchor.uid),title=text(anchor.title)||uid;
       items.push({id:groupId+':'+uid,uid,scope_id:scope,entry_type:'anchor',
-        group_key:groupId,group_label:label,group_order:traces.length*10000+index+1,
+        group_key:groupId,group_label:label,
+        group_order:(traces.length+1)*10000+index,
         start_date:text(anchor.start_date).slice(0,10),
         display_label:isExpanded?title:'●',title,
         class_name:'scope-time-original-anchor',
