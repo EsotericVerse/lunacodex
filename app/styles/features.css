@@ -807,18 +807,38 @@
   color:var(--loc-text);cursor:pointer;
 }
 .scope-search-workspace .scope-search-form>button[type="button"]{grid-area:reset}
-/* A Search-only switch: status and control occupy one small row. */
-.scope-search-workspace .scope-search-form>.scope-search-admin-switch{
-  grid-area:admin;display:inline-flex;align-items:center;gap:.45rem;
-  justify-self:start;font-weight:650;letter-spacing:normal;cursor:pointer;
+/* Search-only manager switch, never the management editor workspace. */
+.scope-search-workspace .scope-search-form>.scope-search-admin-row{
+  grid-area:admin;display:flex;align-items:center;flex-wrap:wrap;
+  gap:.5rem 1rem;min-width:0;
+}
+.scope-search-admin-switch{
+  display:inline-flex;align-items:center;gap:.5rem;font-weight:650;
+  cursor:pointer;
 }
 .scope-search-admin-switch>input{
-  width:1.05rem;height:1.05rem;margin:0;accent-color:var(--loc-accent);
+  appearance:none;position:relative;flex:none;cursor:pointer;
+  width:2.25rem;height:1.3rem;margin:0;border-radius:2rem;
+  border:1px solid var(--loc-ui-hairline);
+  background:var(--loc-panel-2);
+  transition:background .15s ease;
 }
-.scope-search-workspace .scope-search-form>.scope-search-admin-status{
-  grid-area:admin;justify-self:end;color:var(--loc-text);
-  font-size:.85rem;
+.scope-search-admin-switch>input::before{
+  content:"";position:absolute;top:2px;left:2px;
+  width:calc(1.3rem - 6px);height:calc(1.3rem - 6px);
+  border-radius:50%;background:var(--loc-text);transition:transform .15s ease;
 }
+.scope-search-admin-switch>input:checked{background:var(--loc-accent);}
+.scope-search-admin-switch>input:checked::before{
+  transform:translateX(.95rem);background:var(--loc-bg);
+}
+.scope-search-admin-switch>input:focus-visible{
+  outline:2px solid var(--loc-accent);outline-offset:3px;
+}
+@media(prefers-reduced-motion:reduce){
+  .scope-search-admin-switch>input,.scope-search-admin-switch>input::before{transition:none;}
+}
+.scope-search-admin-status{color:var(--loc-text);font-size:.85rem;}
 .scope-search-scope-filter{display:grid;gap:.4rem;min-width:0;max-width:28rem}
 .scope-search-scope-filter label{font-size:.9rem;font-weight:750}
 .scope-search-scope-filter select{
