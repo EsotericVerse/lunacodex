@@ -2,7 +2,7 @@
 
 
 import {selectAllRows,selectRows} from './db-query.mjs';
-import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
+import {scopeConfigColumns,scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';

@@ -3,7 +3,7 @@
 // The existing ZenStack/Kysely reader is ALWAYS the authoritative fallback.
 // No SQL dialect hook, database revision table, polling, or new service.
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
-import {scopeFeatureEnabled} from '../scope-config-fields.mjs';
+import {scopeFeatureEnabled} from '../scope/scope-config-fields.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 
 const TTL_SECONDS=60;

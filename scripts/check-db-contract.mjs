@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {parse} from '@babel/parser';
-import {scopeConfigColumns,scopeFeatureColumns,scopeFeaturePatch} from '../app/loc/scope-config-fields.mjs';
+import {scopeConfigColumns,scopeFeatureColumns,scopeFeaturePatch} from '../app/loc/scope/scope-config-fields.mjs';
 import {schema as zmodel} from '../packages/zenstack/schema.mjs';
 import {ANCHOR_TYPE_GROUPS,ANCHOR_TYPE_PROJECTIONS,ANCHOR_GROUP_GALAXY_FIELDS,
   PERSISTED_ANCHOR_TYPES} from '../packages/zenstack/anchor-hierarchy.mjs';
@@ -9,7 +9,7 @@ import {GALAXY_READ_MODEL_FIELDS,galaxyReadColumns,composeGalaxyRead} from '../p
 import {galaxyInterNetEdges} from '../packages/zenstack/galaxy-inter-net.mjs';
 import {anchorInterNetChildren,sourceInterNetSelection} from '../packages/zenstack/anchor-inter-net.mjs';
 import {sourceTaxonomyFromAnchors} from '../app/loc/source/classification.mjs';
-import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/loc-block-anchor.mjs';
+import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/blocks/loc-block-anchor.mjs';
 
 const read=relative=>readFileSync(new URL('../'+relative,import.meta.url),'utf8');
 const databaseContract='app/loc/db-contract.mjs';

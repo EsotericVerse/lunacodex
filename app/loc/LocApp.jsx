@@ -16,7 +16,7 @@ import {getScope} from '../modular/routing/scope-registry';
 import ManagementAccess from './management/ManagementAccess';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {selectScopeConfig} from './scope-data';
-import {scopeFeatureEnabled} from './scope-config-fields.mjs';
+import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';
 const loading=()=> <div className="loc-loading"><UiText id="uiExtra.feature.moduleLoading"/></div>;
 // Scope feature switches gate public access even for an admin; identity never overrides publication.

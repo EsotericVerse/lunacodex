@@ -6,7 +6,7 @@ import {allocateAnchorUid} from '../../../loc/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../routing/scope-route-index.js';
 import {selectScopeGroupMemberIds,selectScopeConfig} from '../../../loc/scope-data';
-import {scopeFeatureEnabled} from '../../../loc/scope-config-fields.mjs';
+import {scopeFeatureEnabled} from '../../../loc/scope/scope-config-fields.mjs';
 import {mapBounded} from '../../../loc/bounded-parallel.mjs';
 
 const TRACE_SOURCE_SCOPES=Object.freeze(SCOPE_ROUTE_INDEX.map(row=>row.scope_id).filter(id=>id!=='loc'));

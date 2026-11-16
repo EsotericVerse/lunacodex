@@ -5,8 +5,8 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createKyselyPublicClient} from '../app/loc/providers/kysely-browser.mjs';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
-import {scopeConfigColumns} from '../app/loc/scope-config-fields.mjs';
-import {isLocBlockPage,locAnchorToBlock} from '../app/loc/loc-block-anchor.mjs';
+import {scopeConfigColumns} from '../app/loc/scope/scope-config-fields.mjs';
+import {isLocBlockPage,locAnchorToBlock} from '../app/loc/blocks/loc-block-anchor.mjs';
 import {publishPublicFiles} from './publish-public-files.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');

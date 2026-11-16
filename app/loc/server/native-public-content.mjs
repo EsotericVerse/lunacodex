@@ -2,14 +2,14 @@
 // Kysely talks to the database itself. No generic SQL endpoint, arbitrary
 // table/column/operator input, connection URL, or browser-selected driver.
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
-import {scopeConfigColumns,scopeFeatureEnabled} from '../scope-config-fields.mjs';
+import {scopeConfigColumns,scopeFeatureEnabled} from '../scope/scope-config-fields.mjs';
 import {directMcpKysely} from '../mcp/native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../packages/zenstack/policy-runtime.mjs';
 import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
 import {assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
-import {LOC_BLOCK_ANCHOR_FIELDS} from '../loc-block-anchor.mjs';
+import {LOC_BLOCK_ANCHOR_FIELDS} from '../blocks/loc-block-anchor.mjs';
 import {block_list,hero_block} from '../providers/kysely-public.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
