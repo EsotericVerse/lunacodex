@@ -53,9 +53,9 @@ if(version.schema!=='lunarunes.release-version.v1'||version.version!==cfg.releas
 
 // A checked-in LOC Rune implementation is forbidden. LOC-owned Next routes,
 // its Rune asset origin adapter and data/authorization adapters are retained.
-const tracked=new Set(git(['ls-files','-z']).split('\\0').filter(Boolean));
+const tracked=new Set(git(['ls-files','-z']).split(String.fromCharCode(0)).filter(Boolean));
 const wanted=[];
-const allowed=/\\.(?:jsx?|mjs|tsx?|css|json)$/i;
+const allowed=/\.(?:jsx?|mjs|tsx?|css|json)$/i;
 async function collect(dir){
  let entries;try{entries=await readdir(join(cache,dir),{withFileTypes:true});}
  catch(error){if(error?.code==='ENOENT')return;throw error;}
@@ -63,7 +63,7 @@ async function collect(dir){
   if(item.isSymbolicLink())throw Error('LRS source symlink is forbidden');
   const rel=dir+'/'+item.name;
   if(item.isDirectory()){await collect(rel);continue;}
-  if(!item.isFile()||!allowed.test(rel)||/\\/page\\.jsx$/.test(rel))continue;
+  if(!item.isFile()||!allowed.test(rel)||rel.endsWith('/page.jsx'))continue;
   if(rel==='app/lrunes/rune-asset-origin.mjs')continue;
   if(tracked.has(rel))throw Error('LOC still tracks duplicate LRS source: '+rel);
   wanted.push(rel);
