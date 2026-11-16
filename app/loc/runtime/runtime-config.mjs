@@ -1,6 +1,6 @@
 'use client';
 
-import {dbAuthClient} from '../db-client.mjs';
+import {dbAuthClient} from '../db/db-client.mjs';
 import {decodeRuntimeIo} from '../query/query-batch-size.mjs';
 
 // Administration settings live in api.manage. The existing protected

@@ -1,18 +1,18 @@
 'use client';
 
 import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
-import {coalescePendingPublicRead} from './query/inflight-public-read.mjs';
-import {mapBounded} from './query/bounded-parallel.mjs';
-import {transientReadSignal,transientReadGeneration} from '../../packages/zenstack/transient-read-epoch.mjs';
+import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
+import {mapBounded} from '../query/bounded-parallel.mjs';
+import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
 // Native Kysely SELECT has no Supabase Data API Max Rows ceiling.
 // Full-result readers use internal transport pages without truncating SQL totals.
 
 import {dbAuthClient,dbBackupPublicClient,dbConfiguredPublicClient,dbPublicClient} from './db-client.mjs';
-import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './providers/db-source-status.mjs';
+import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from '../providers/db-source-status.mjs';
 
-import {selectedDatabaseRouting} from './providers/routing/state.mjs';
+import {selectedDatabaseRouting} from '../providers/routing/state.mjs';
 const recoverableReadError=error=>{
   const code=String(error?.code||'');
   const status=Number(error?.status||error?.cause?.status||0);
@@ -45,7 +45,7 @@ const oversizedWarned=new Set();
 function warnOversizedFilters(table,filters){
   for(const filter of filters||[]){
     if(filter?.operator==='in'&&Array.isArray(filter.value)&&filter.value.length>IN_FILTER_BUDGET){
-      const key=table+'.'+filter.column;
+      const key=table+'../'+filter.column;
       if(oversizedWarned.has(key))continue;
       oversizedWarned.add(key);
       console.warn('[db-query] IN filter on '+key+' has '+filter.value.length+' values (budget '+IN_FILTER_BUDGET+'); request size grows linearly. Page the ids or use a DB-side join/RPC.');
@@ -54,7 +54,7 @@ function warnOversizedFilters(table,filters){
 }
 
 function publicRelation(client,table){
-  const [schema,name]=String(table).split('.');
+  const [schema,name]=String(table).split('../');
   return client.schema(schema).from(name);
 }
 export function dbPublicRelation(table){

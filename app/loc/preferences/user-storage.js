@@ -3,7 +3,7 @@
 // All web-user preferences live on one owner-scoped LOC Session row.
 // Stable setting keys remain a UI API; the database stores one scalar column
 // per preference rather than a key/value table or a JSON settings bag.
-import {dbAuthRelation} from '../db-client.mjs';
+import {dbAuthRelation} from '../db/db-client.mjs';
 
 const TABLE='silver.loc_user';
 const COLUMNS=Object.freeze({

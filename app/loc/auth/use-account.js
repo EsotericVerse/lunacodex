@@ -2,7 +2,7 @@
 
 import {useCallback,useEffect} from 'react';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
-import {getAccountSession,dbAuthEvents,signInWithLocSso,signOutAccount} from '../db-client.mjs';
+import {getAccountSession,dbAuthEvents,signInWithLocSso,signOutAccount} from '../db/db-client.mjs';
 import {readLocEditorGrants} from './editor-grants.mjs';
 import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthorizer} from './authorization-runtime.mjs';
 import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';

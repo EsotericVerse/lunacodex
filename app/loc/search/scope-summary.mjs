@@ -1,7 +1,7 @@
 'use client';
 
 
-import {dbAuthClient,dbPublicClient} from '../db-client.mjs';
+import {dbAuthClient,dbPublicClient} from '../db/db-client.mjs';
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 
