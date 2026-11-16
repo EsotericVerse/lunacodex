@@ -186,7 +186,7 @@ function normalizeAction(body){
 
 const PUBLIC_ANALYTICS=new Set(['culture_list','trace_places','trace_territory','trace_daily',
   'trace_keywords','lane_daily','shared_classes','search_summary','keyword_catalog','keyword_summary']);
-const PUBLIC_ANALYTICS_OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site','offset','media','platform','exact','withPoints']);
+const PUBLIC_ANALYTICS_OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site','offset','media','mediaTypeGroups','platform','exact','withPoints']);
 const PUBLIC_SCOPES=[...SCOPE].filter(id=>id!=='loc');
 function normalizeAnalytics(body){
   if(Object.keys(body).some(key=>!['kind','args'].includes(key))||
@@ -216,6 +216,10 @@ function normalizeAnalytics(body){
     throw invalid('Invalid public Point IDs');
   if(options.media!==undefined&&typeof options.media!=='boolean')
     throw invalid('Invalid public lane media flag');
+  if(options.mediaTypeGroups!==undefined&&
+     (mode!=='lane_daily'||options.media!==true||
+      typeof options.mediaTypeGroups!=='boolean'))
+    throw invalid('Invalid public MediaAnchor river mode');
   for(const field of ['classUid','source','site','platform','exact']){
     if(options[field]!==undefined&&options[field]!==null&&
        (typeof options[field]!=='string'||options[field].length>120))

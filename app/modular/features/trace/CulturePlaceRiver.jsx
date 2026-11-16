@@ -36,14 +36,12 @@ export default function CulturePlaceRiver({scopeId,startDate='',endDate=''}){
     {result.error?<p role="alert" className="scope-status scope-error">
       地點統計讀取失敗：{String(result.error.message||result.error)}</p>:null}
     {ready&&!result.isPending&&!result.error&&!model.items.length
-      ?<p className="scope-status">此時間範圍尚無有地點的文章。沒有打卡地點或空間定錨點都屬正常狀態。</p>:null}
+      ?<p className="scope-status">此時間範圍沒有地點資料。</p>:null}
     {ready&&!result.error&&model.items.length>0?<CultureTimeline
       key={selectedPlace||'top12'}
       items={model.items} extraGroups={model.groups}
       labelOf={()=>''} mode="source" heightVariant="double"
       windowStart={startDate} windowEnd={endDate}
     />:null}
-    {!selectedPlace&&model.places.length>12?<p className="scope-status">
-      為避免河道過長，先展示前 12 個地點；其他地點仍可由上方選單逐一查看。</p>:null}
   </section>;
 }
