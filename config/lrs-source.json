@@ -1,0 +1,7 @@
+{
+  "schema": "loc.lrs-pinned-source.v1",
+  "repository": "EsotericVerse/lunarunes",
+  "sourceCommit": "b176b6b280fbedf66c4f6fa0827b5d38310a768a",
+  "releaseVersion": "1.0R",
+  "purpose": "Source-only LOC Web adapter; LOC iOS uses independently pinned native handoff"
+}
