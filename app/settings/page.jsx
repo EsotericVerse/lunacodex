@@ -1,5 +1,5 @@
 import {Suspense} from 'react';
-import GlobalSettings from '../loc/GlobalSettings';
+import GlobalSettings from '../loc/preferences/GlobalSettings';
 import {locMetadata} from '../seo/metadata';
 
 export const metadata=locMetadata({

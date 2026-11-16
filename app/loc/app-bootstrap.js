@@ -2,7 +2,7 @@
 
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {invalidatePublicScopeMetadata,selectScopeBlocks,selectScopeConfig,selectScopeRegistry} from './scope-data';
-import {selectThemeRegistry,themeUiId} from './theme-data';
+import {selectThemeRegistry,themeUiId} from './preferences/theme-data';
 import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 
 // Shared public site snapshot (Registry/Theme/page copy) is fetched once per

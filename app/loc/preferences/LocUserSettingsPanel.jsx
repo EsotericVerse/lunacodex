@@ -1,9 +1,9 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import {useUiSection} from '../i18n/ui-locale';
-import {useUiText} from '../i18n/UiText';
-import {registerDefaultSection} from '../i18n/ui-copy';
-import globalSettingsZh from '../i18n/sections/uiExtra.globalSettings.zh_tw.js';
+import {useUiSection} from '../../i18n/ui-locale';
+import {useUiText} from '../../i18n/UiText';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import globalSettingsZh from '../../i18n/sections/uiExtra.globalSettings.zh_tw.js';
 import useLocUser from './use-loc-user';
 import {LOC_USER_DEFAULTS} from './loc-user-store.mjs';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
@@ -94,7 +94,7 @@ export default function LocUserSettingsPanel({verifiedSubject='',section='filter
     if(!['filter','dashboard'].includes(section)||!ready||!verifiedSubject)return undefined;
     let live=true;
     (async()=>{
-      const {selectAvailableKeywordClasses}=await import('./keywords/analysis');
+      const {selectAvailableKeywordClasses}=await import('../keywords/analysis');
       const scopes=[['lo3rwang',t(PATH+'featureAuthor')],['lrunes',t(PATH+'featureRunes')]];
       const results=await Promise.allSettled(scopes.map(async([scope,label])=>{
         const result=await selectAvailableKeywordClasses(scope);

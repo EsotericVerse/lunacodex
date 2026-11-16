@@ -15,7 +15,7 @@ registerDefaultSection('uiExtra.dataSourceStatus',dataSourceStatusZh);
 import {FEATURES,SCOPES,featureIdForPath,getScope,normalizeScopeId} from './modular/routing/scope-registry';
 import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
 import {applyTheme,themeSignature,THEME_SLOTS} from './modular/theme-registry';
-import {mergeThemeSlot,selectThemeOverride} from './loc/theme-data';
+import {mergeThemeSlot,selectThemeOverride} from './loc/preferences/theme-data';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';

@@ -1,5 +1,5 @@
 'use client';
-import {dbAuthRelation} from './db-client.mjs';
+import {dbAuthRelation} from '../db-client.mjs';
 
 const TABLE='silver.loc_user';
 const COLUMNS='uid,owner_id,email,culture,statics,trace,search,keyword,updated_at';

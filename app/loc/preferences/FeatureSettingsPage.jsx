@@ -13,7 +13,7 @@ import useDefaultTimeUnit from './use-default-time-unit';
 import {saveDefaultTimeUnit,DEFAULT_TIME_UNITS} from './default-time-unit.mjs';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
-import LocUserSettingsPanel from '../LocUserSettingsPanel';
+import LocUserSettingsPanel from './LocUserSettingsPanel';
 const KEY='uiExtra.globalSettings.';
 
 export default function FeatureSettingsPage({embedded=false,dashboard=false,accountCard=null}){
