@@ -335,7 +335,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryKey:['statistics-category-daily',scopeId,rankingType,queryRange.startDate,queryRange.endDate],
     enabled:placeOrMediaChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
     queryFn:async({signal})=>{
-      const {dbPublicClient}=await import('../../loc/db-client.mjs');
+      const {dbPublicClient}=await import('../../loc/db/db-client.mjs');
       // Reuse Trace's location GROUP BY and Culture's typed MediaAnchor
       // GROUP BY. Both return daily counts, not Galaxy content or media blobs.
       const {data,error}=await dbPublicClient.schema('silver').analytics({
