@@ -3,7 +3,7 @@
 // both paths share the same canonical Source discriminator set.
 // Pagination uses LOC's existing Kysely read helper: it must not silently
 // truncate the tree at the first 200 unrelated Time/Media/Keyword anchors.
-import {selectAllRows} from '../db-query.mjs';
+import {selectAllRows} from '../db/db-query.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {sourceTaxonomyFromAnchors} from './classification.mjs';
 

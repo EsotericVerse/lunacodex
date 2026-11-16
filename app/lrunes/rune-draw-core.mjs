@@ -1,5 +1,5 @@
 // Canonical draw data/reading logic, shared by the active 2D and 3D views.
-import {selectRows} from '../loc/db-query.mjs';
+import {selectRows} from '../loc/db/db-query.mjs';
 import {RUNE_ALL_DRAW_MODES} from './rune-draw-modes.mjs';
 import {buildSpreadAdvice} from './rune-guidance-engine.mjs';
 import {lRunes66ColumnString} from '../../packages/zenstack/lrunes-read-model.mjs';

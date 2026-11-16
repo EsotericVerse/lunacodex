@@ -1,7 +1,7 @@
 'use client';
 
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
-import {selectRows} from '../loc/db-query.mjs';
+import {selectRows} from '../loc/db/db-query.mjs';
 import {runeImage} from './rune-directory.mjs';
 import RuneCardInfo from './RuneCardInfo';
 import {lRunes66ColumnString} from '../../packages/zenstack/lrunes-read-model.mjs';

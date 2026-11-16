@@ -33,7 +33,7 @@ function pageFor(kind,feature){return kind+'_'+feature.id;}
 // LOC text frames are one Anchor-backed page snapshot. Save through the
 // existing authorized save_blocks transaction, not a retired Blocks table.
 async function saveLocHeroPage(page,fresh,changes){
-  const {dbAuthClient}=await import('../../db-client.mjs');
+  const {dbAuthClient}=await import('../../db/db-client.mjs');
   const original=fresh.find(row=>Number(row.block_order)===1);
   const updated=original?{...original,...changes}:{
     uid:HomeBlock.createUid(),page_name:page,block_order:1,
