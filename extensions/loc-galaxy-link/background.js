@@ -758,7 +758,14 @@ chrome.alarms.onAlarm.addListener(e=>{
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
  (async()=>{
   switch(message?.action){
-   case 'loc-connect':return connectLoc();
+   case 'loc-connect':{
+    const result=await connectLoc();
+    // When an offline Queue reconnects, send every pending capture now.
+    if(result?.connected)void flush(false).catch(async error=>{
+      await noteAction('自動傳送',false,error?.message||String(error));
+    });
+    return result;
+   }
    case 'loc-disconnect':return disconnectLoc();
    case 'mcp-status':return mcpProviderStatus();
    case 'mcp-connect':return connectMcpProvider(String(message.provider||''));
