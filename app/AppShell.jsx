@@ -19,7 +19,7 @@ import {mergeThemeSlot,selectThemeOverride} from './loc/theme-data';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
-import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/db-source-status.mjs';
+import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-source-status.mjs';
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/routing/scope-registry.js';

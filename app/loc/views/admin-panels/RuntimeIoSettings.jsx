@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {IO_LIMIT_CEILINGS,applyRuntimeIoLimits,normalizeRuntimeIoLimits} from '../../query-batch-size.mjs';
+import {IO_LIMIT_CEILINGS,applyRuntimeIoLimits,normalizeRuntimeIoLimits} from '../../query/query-batch-size.mjs';
 import {readLocRuntimeConfig,saveLocRuntimeConfig} from '../../runtime-config.mjs';
 import {useEditDockForm} from '../../../modular/edit-dock';
 

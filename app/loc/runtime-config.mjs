@@ -1,7 +1,7 @@
 'use client';
 
 import {dbAuthClient} from './db-client.mjs';
-import {decodeRuntimeIo} from './query-batch-size.mjs';
+import {decodeRuntimeIo} from './query/query-batch-size.mjs';
 
 // Administration settings live in api.manage. The existing protected
 // managed action owns this read/write; anonymous public SQL never sees it.

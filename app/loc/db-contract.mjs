@@ -1,6 +1,6 @@
 import {flashMessage} from './notifications/flash-message.js';
 import {assertPlainGalaxyAttributes} from './content/content-policy.js';
-import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query-batch-size.mjs';
+import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query/query-batch-size.mjs';
 import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from './authorization-runtime.mjs';
 import {assertEditorSession} from './edit-session-ttl.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './galaxy-able.mjs';
