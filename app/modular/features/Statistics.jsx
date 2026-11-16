@@ -50,7 +50,8 @@ import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.m
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
-const STAT_TYPES=['total','keywords','source'];
+const MEDIA_LABELS=Object.freeze({image:'圖片',video:'影片',rune:'符文',suno:'音樂'});
+const STAT_TYPES=['total','source','keywords','place','media'];
 const STAT_TYPE_KEYS=Object.freeze({
   total:'statistics.totalSource',
   source:'uiExtra.statisticsUI.sourceGroup',
@@ -120,7 +121,11 @@ function facetTotals(rows=[]){
 }
 function facetTrend(rows=[],window={},selectedCategories=[]){
   if(!window.startDate||!window.endDate)return [];
-  const categories=new Map(selectedCategories.map(value=>[String(value).normalize('NFKC').toLocaleLowerCase(),value]));
+  // Recharts treats dotted dataKey strings as object paths, so a location
+  // such as a street/domain name must use a stable ordinal key instead.
+  const categories=new Map(selectedCategories.map((value,index)=>[
+    String(value).normalize('NFKC').toLocaleLowerCase(),'category_'+index
+  ]));
   const buckets=new Map();
   for(let cursor=new Date(window.startDate+'T00:00:00Z'),end=new Date(window.endDate+'T00:00:00Z');cursor<=end;cursor.setUTCDate(cursor.getUTCDate()+1)){
     const bucket=trendBucket(cursor.toISOString().slice(0,10),window.bucket);
@@ -136,44 +141,43 @@ function facetTrend(rows=[],window={},selectedCategories=[]){
   }
   return [...buckets.values()].sort((a,b)=>a._sort.localeCompare(b._sort)).map(row=>{
     const output={period:row.period};
-    for(const category of selectedCategories)output[category]=Number(row[category])||0;
+    for(let index=0;index<selectedCategories.length;index++){
+      const key='category_'+index;
+      output[key]=Number(row[key])||0;
+    }
     return output;
   });
 }
 
-function StatisticTypeSelect({scopeId,navigation,types,selectedSource='',sourceTaxonomy=null}) {
+function StatisticTypeSelect({scopeId,navigation,types}) {
   const UI_COPY=useUiCopy();
   const t=useUiText();
   const router=useRouter();
-  // The Source group is a second selector family; it reuses the existing
-  // Source chart and the same published Anchor labels as Culture.
-  const sourceOptions=sourceKeywordOptions(sourceTaxonomy);
+  // Pick one ZModel dimension. The Source subtree is picked in a separate
+  // field only when Source is active, avoiding duplicate long dropdowns.
   const requested=String(navigation.rankingType||'');
-  const selected=sourceOptions.find(item=>item.code===selectedSource);
-  const active=types.includes(requested)
-    ?requested==='source'&&selected?'source:'+selected.code:requested
-    :(types[0]||'');
+  const active=types.includes(requested)?requested:
+    (['media_type','media_platform','media_style'].includes(requested)?'media':types[0]||'');
   if(!types.length)return null;
   return <label>
     <span>{UI_COPY.statistics.item}</span>
     <select id="statistics-ranking-type" className="scope-select" value={active} onChange={event=>{
       const value=event.target.value;
       if(!value||value===active)return;
-      const choice=sourceOptions.find(item=>'source:'+item.code===value);
-      const rankingType=choice?'source':value;
       router.push(featureNavigationHref(scopeId,'statics',{
-        ...navigation,rankingType,source:choice?.code
+        ...navigation,rankingType:value,source:undefined
       }));
     }}>
       {types.includes('total')?<option value='total'>{t(STAT_TYPE_KEYS.total)}</option>:null}
-      {(types.includes('keywords')||types.includes('source')||types.includes('daily'))?<optgroup label="關鍵詞">
-        {types.includes('keywords')?<option value="keywords">{t(STAT_TYPE_KEYS.keywords)}</option>:null}
-        {scopeId==='lrunes'&&types.includes('daily')?<option value="daily">每日符文</option>:null}
-        {types.includes('source')?<option value="source">來源</option>:null}
-        {types.includes('source')?sourceOptions.map(item=><option key={item.key} value={'source:'+item.code}>
-          {item.domain?item.domain+' / ':''}{item.label}
-        </option>):null}
+      {types.includes('source')?<optgroup label="來源">
+        <option value="source">來源</option>
       </optgroup>:null}
+      {types.includes('keywords')?<optgroup label="關鍵詞">
+        <option value="keywords">{t(STAT_TYPE_KEYS.keywords)}</option>
+      </optgroup>:null}
+      {types.includes('place')?<optgroup label="地點"><option value="place">地點</option></optgroup>:null}
+      {types.includes('media')?<optgroup label="多媒體"><option value="media">多媒體</option></optgroup>:null}
+      {scopeId==='lrunes'&&types.includes('daily')?<option value="daily">每日符文</option>:null}
     </select>
   </label>;
 }
@@ -183,9 +187,12 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const t=useUiText();
   const requested=String(navigation.rankingType||'');
   const rankingType=types.includes(requested)?requested:
-    (['media_type','media_platform','media_style','media','place'].includes(requested)||['keywords','styles'].includes(navigation.statTab)?'keywords':types[0]||'');
-  // Multimedia and locations are selected Keyword Classes, not separate data pipelines.
+    (['media_type','media_platform','media_style'].includes(requested)||navigation.statTab==='media'
+      ?'media':['keywords','styles'].includes(navigation.statTab)?'keywords':types[0]||'');
+  // Total remains the light landing. Other dimensions are independent,
+  // selected-only scoped reads; never reinterpret Media/Place as Keywords.
   const keywordDimension=rankingType==='keywords';
+  const categoryChart=rankingType==='place'||rankingType==='media';
   const dailyDimension=scopeId==='lrunes'&&rankingType==='daily';
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
@@ -196,9 +203,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // Leave potentially expensive keyword aggregation OFF until explicitly chosen.
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
   const [sourceGroup,setSourceGroup]=useState(String(navigation.source||''));
+  const [categoryChoice,setCategoryChoice]=useState('');
   useEffect(()=>{
     setSelectedKeywordClassUid('');
     setSourceGroup(requested==='source'?String(navigation.source||''):'');
+    setCategoryChoice('');
   },[scopeId,navigation.statTab,requested,navigation.source]);
   // The current full calendar year is the initial Statistics window, even when
   // Era records exist. A saved Era is selected only by an explicit UI action.
@@ -264,6 +273,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const activeSourceSelection=rankingType==='source'?sourceGroup:'';
   const totalChart=rankingType==='total'&&Boolean(targetScopes.length);
   const sourceChart=rankingType==='source'&&Boolean(targetScopes.length);
+  const placeOrMediaChart=categoryChart&&Boolean(targetScopes.length);
   // Statistics landing reads ONLY grouped daily Galaxy totals; it never
   // requests SourceAnchor taxonomy, site grouping or an article list.
   const observedEnd=queryRange.endDate<queryEndDate?queryRange.endDate:queryEndDate;
@@ -321,6 +331,24 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   },[overview.data,totalDaily.data,totalChart,knownEarliest]);
   const sourceRows={isPending:overview.isPending&&sourceChart,isSuccess:overview.isSuccess,error:overview.error,
     data:overview.data?.rows,dataUpdatedAt:overview.dataUpdatedAt};
+  const categoryDaily=useAsyncResource({
+    queryKey:['statistics-category-daily',scopeId,rankingType,queryRange.startDate,queryRange.endDate],
+    enabled:placeOrMediaChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
+    queryFn:async({signal})=>{
+      const {dbPublicClient}=await import('../../loc/db-client.mjs');
+      // Reuse Trace's location GROUP BY and Culture's typed MediaAnchor
+      // GROUP BY. Both return daily counts, not Galaxy content or media blobs.
+      const {data,error}=await dbPublicClient.schema('silver').analytics({
+        p_scope_id:scopeId,p_view:rankingType==='place'?'trace_places':'lane_daily',
+        p_start:queryRange.startDate,p_end:queryRange.endDate,signal,
+        p_options:rankingType==='media'?{media:true,mediaTypeGroups:true}:{}
+      });
+      if(error)throw error;
+      if(!Array.isArray(data))throw new Error('Invalid statistics category rows');
+      return data;
+    },
+    revalidateOnFocus:false,revalidateOnReconnect:false
+  });
   // One public model read of the existing 30 LocAnchor source nodes.
   // The native provider uses the fixed ZenStack LocAnchor model. Do not fall
   // back to ArticleTag, a hardcoded category snapshot or a media taxonomy.
@@ -354,9 +382,27 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryRange.startDate,queryRange.endDate,queryRange.bucket,activeSourceSelection]);
   const adminSourceReady=Boolean(adminSource);
   const resolvedAdminSource=adminSource||{rows:[],series:[],distribution:[],total:0};
-  const basicTrend=totalChart?totalTrend:resolvedAdminSource.rows;
-  const basicSeries=totalChart?[]:resolvedAdminSource.series;
-  const basicDistribution=totalChart?[]:resolvedAdminSource.distribution;
+  // Render selected Place or Media categories through the same Statistics
+  // chart models; default to the 12 most frequent places or four Media types.
+  const categoryWindow=useMemo(()=>rowsInWindow(categoryDaily.data||[],queryRange),
+    [categoryDaily.data,queryRange.startDate,queryRange.endDate,queryRange.bucket]);
+  const categoryCatalog=useMemo(()=>facetTotals(categoryWindow.rows),[categoryWindow.rows]);
+  const selectedCategory=categoryCatalog.find(row=>row.term===categoryChoice);
+  const displayedCategories=useMemo(()=>selectedCategory?[selectedCategory.term]:
+    categoryCatalog.slice(0,rankingType==='place'?12:4).map(row=>row.term),
+    [categoryCatalog,selectedCategory,rankingType]);
+  const categoryTrend=useMemo(()=>facetTrend(categoryWindow.rows,categoryWindow,displayedCategories),
+    [categoryWindow.rows,categoryWindow.startDate,categoryWindow.endDate,categoryWindow.bucket,displayedCategories]);
+  const categorySeries=useMemo(()=>displayedCategories.map((term,index)=>({
+    key:'category_'+index,label:rankingType==='media'?MEDIA_LABELS[term]||term:term
+  })),[displayedCategories,rankingType]);
+  const categoryDistribution=useMemo(()=>displayedCategories.map(term=>({
+    name:rankingType==='media'?MEDIA_LABELS[term]||term:term,
+    value:categoryCatalog.find(row=>row.term===term)?.item_count||0
+  })),[displayedCategories,categoryCatalog,rankingType]);
+  const basicTrend=totalChart?totalTrend:placeOrMediaChart?categoryTrend:resolvedAdminSource.rows;
+  const basicSeries=totalChart?[]:placeOrMediaChart?categorySeries:resolvedAdminSource.series;
+  const basicDistribution=totalChart?[]:placeOrMediaChart?categoryDistribution:resolvedAdminSource.distribution;
   // One grouped source-name index for the active chart, not one full scan
   // per category. Rebuild it only when the selected source dataset changes.
   const sourceNamesByCategory=useMemo(()=>{
@@ -387,14 +433,25 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     rawRows:selectedRawNames?(sourceRows.data||[]).filter(row=>row.kind!=='source'||selectedRawNames.includes(String(row.category||'').trim().toLowerCase())):sourceRows.data||[],
     catalog:sourceCatalog.data||{}
   };
+  const categorySummary={
+    total:categoryCatalog.reduce((sum,row)=>sum+Number(row.item_count||0),0),
+    sources:displayedCategories.map(term=>({
+      term:rankingType==='media'?MEDIA_LABELS[term]||term:term,
+      item_count:categoryCatalog.find(row=>row.term===term)?.item_count||0
+    })),
+    startDate:queryRange.startDate,endDate:queryRange.endDate
+  };
+  const displaySummary=placeOrMediaChart?categorySummary:sourceSummary;
+  const chartPurpose=totalChart?'total':sourceChart?'source':categoryChart?rankingType:'total';
   const optionsForCurrent=semanticStatisticChartTypes({
-    purpose:rankingType==='total'?'total':'source',
-    rows:basicTrend,series:basicSeries,distribution:basicDistribution,
-    totalKey:rankingType==='total'?'total':''
+    purpose:chartPurpose,rows:basicTrend,series:basicSeries,distribution:basicDistribution,
+    totalKey:totalChart?'total':''
   });
-  const effectiveChartType=preferredStatisticChartType({purpose:rankingType==='total'?'total':'source',available:optionsForCurrent,requested:chartType});
-  const chartGroups=chartTypeGroups(optionsForCurrent,rankingType==='total'
-    ?['line','composed','bar']:['line','stacked','pie']);
+  const effectiveChartType=preferredStatisticChartType({
+    purpose:chartPurpose,available:optionsForCurrent,requested:chartType
+  });
+  const chartGroups=chartTypeGroups(optionsForCurrent,totalChart
+    ?['line','composed','bar']:categoryChart?['bar','line','area']:['line','stacked','pie']);
   const styleRange=useMemo(()=>({
     startDate:queryRange.startDate||'',
     endDate:queryRange.endDate||''
@@ -430,14 +487,27 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       &&Boolean(styleRange.startDate&&styleRange.endDate),
   });
 
-  const sourceBreakdownTotal=sourceSummary.sources.reduce((sum,row)=>sum+(Number(row.item_count)||0),0);
+  const sourceBreakdownTotal=displaySummary.sources.reduce((sum,row)=>sum+(Number(row.item_count)||0),0);
   const showTotalOverview=totalChart&&!totalDaily.isPending&&!totalDaily.error&&Boolean(totalDaily.data);
+  const categoryPending=sourceChart?(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady):categoryDaily.isPending;
+  const categoryError=sourceChart?(sourceRows.error||sourceCatalog.error):categoryDaily.error;
+  const showCategoryOverview=(sourceChart||placeOrMediaChart)&&!categoryPending&&!categoryError
+    &&(sourceChart?adminSourceReady:Boolean(categoryDaily.data));
   return <section className="scope-stat-section statistics-dashboard">
     <div className={'scope-stat-controls statistics-dashboard__filters'+
       (showTotalOverview?' statistics-dashboard__filters--summary':'')}>
       <div className="statistics-dashboard__filter-fields">
-      <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}
-        selectedSource={activeSourceSelection} sourceTaxonomy={sourceCatalog.data}/>
+      <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}/>
+      {placeOrMediaChart?<label>
+        <span>{rankingType==='place'?'地點':'多媒體類型'}</span>
+        <select className="scope-select" aria-label={rankingType==='place'?'地點':'多媒體類型'}
+          value={selectedCategory?.term||''} onChange={event=>setCategoryChoice(event.target.value)}>
+          <option value="">{rankingType==='place'?'常見地點':'全部類型'}</option>
+          {categoryCatalog.map(row=><option key={row.term} value={row.term}>
+            {rankingType==='media'?MEDIA_LABELS[row.term]||row.term:row.term}
+          </option>)}
+        </select>
+      </label>:null}
       {keywordDimension?<label>
         <span>關鍵詞組（Class）</span>
         <select className="scope-select" aria-label="關鍵字群組" value={resolvedKeywordClassUid}
@@ -473,8 +543,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         </select>
       </label>
       {rankingType==='source'?<label>
-        <span>作品／個人分類</span>
-        <select className="scope-select" aria-label="作品／個人分類" value={activeSourceSelection}
+        <span>來源分類</span>
+        <select className="scope-select" aria-label="來源分類" value={activeSourceSelection}
           onChange={event=>setSourceGroup(event.target.value)}>
           <option value="">全部來源</option>
           {sourceKeywordOptions(sourceCatalog.data).map(source=>
@@ -487,7 +557,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {periodQuery.error?<span className="scope-status scope-error">
         時期範圍無法載入，仍可使用自選時間：{featureDataErrorMessage(periodQuery.error,UI_COPY)}
       </span>:null}
-      {sourceChart?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
+      {(sourceChart||placeOrMediaChart)?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
         {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
   {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
 </optgroup>:null}
@@ -539,25 +609,27 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         </section>}
       </StatisticsDetails>
     </>:null}
-    {(sourceChart&&!sourceRows.error&&!sourceCatalog.error&&(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady))?<div className="scope-stat-data-pending">
+    {(sourceChart||placeOrMediaChart)&&categoryPending&&!categoryError?<div className="scope-stat-data-pending">
       <p className="scope-status" role="status">統計中請稍後 <ActivityMotion kind="numbers"/></p>
     </div>:null}
-    {sourceChart&&(sourceRows.error||sourceCatalog.error)?<p className="scope-status scope-error">{featureDataErrorMessage(sourceRows.error||sourceCatalog.error,UI_COPY)}</p>:null}
-    {sourceChart&&!sourceRows.isPending&&!sourceCatalog.isPending&&adminSourceReady&&!sourceRows.error&&!sourceCatalog.error?<>
+    {(sourceChart||placeOrMediaChart)&&categoryError?<p className="scope-status scope-error">{featureDataErrorMessage(categoryError,UI_COPY)}</p>:null}
+    {showCategoryOverview?<>
       <StatisticsDashboardKpis label={t('uiExtra.statisticsView.dashboardTitle')} items={[
-        {key:'records',label:t('uiExtra.statisticsView.dashboardRecords'),value:sourceSummary.total.toLocaleString()},
-        {key:'categories',label:t('uiExtra.statisticsView.dashboardCategoryCount'),value:sourceSummary.sources.length.toLocaleString()},
+        {key:'records',label:t('uiExtra.statisticsView.dashboardRecords'),value:displaySummary.total.toLocaleString()},
+        {key:'categories',label:t('uiExtra.statisticsView.dashboardCategoryCount'),value:(placeOrMediaChart?categoryCatalog.length:displaySummary.sources.length).toLocaleString()},
         {key:'active',label:t('uiExtra.statisticsView.dashboardActiveBuckets'),
-          value:basicTrend.filter(row=>Number(row.total)>0).length.toLocaleString()}
+          value:basicTrend.filter(row=>(placeOrMediaChart
+            ?basicSeries.reduce((sum,field)=>sum+(Number(row[field.key])||0),0)
+            :Number(row.total))>0).length.toLocaleString()}
       ]}/>
       <div className="statistics-dashboard__workspace">
         <section className="statistics-dashboard__panel statistics-dashboard__panel--chart" aria-label={t('uiExtra.statisticsView.dashboardTrendTitle')}>
           <header className="statistics-dashboard__panel-heading">
             <h3>{t('uiExtra.statisticsView.dashboardTrendTitle')}</h3>
-            <p>{sourceSummary.startDate&&sourceSummary.endDate?sourceSummary.startDate+' ～ '+sourceSummary.endDate:''}</p>
+            <p>{displaySummary.startDate&&displaySummary.endDate?displaySummary.startDate+' ～ '+displaySummary.endDate:''}</p>
           </header>
           <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart key={'source:'+effectiveChartType} type={effectiveChartType} rows={basicTrend}
+            <StatisticsMultiChart key={rankingType+':'+effectiveChartType} type={effectiveChartType} rows={basicTrend}
               series={basicSeries} distribution={basicDistribution}
               totalKey={rankingType==='total'?'total':''}
               foldBlank={foldBlank} height={420}/>
@@ -567,8 +639,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           <header className="statistics-dashboard__panel-heading">
             <h3>{t('uiExtra.statisticsView.dashboardDistributionTitle')}</h3>
           </header>
-          {sourceSummary.sources.length?<div className="statistics-dashboard__breakdown">
-            {[...sourceSummary.sources].sort((a,b)=>b.item_count-a.item_count).slice(0,8).map(row=>{
+          {displaySummary.sources.length?<div className="statistics-dashboard__breakdown">
+            {[...displaySummary.sources].sort((a,b)=>b.item_count-a.item_count).slice(0,8).map(row=>{
               const ratio=sourceBreakdownTotal>0?(Number(row.item_count)||0)/sourceBreakdownTotal*100:0;
               return <div key={row.category||row.term} className="statistics-dashboard__breakdown-item">
                 <div className="statistics-dashboard__breakdown-label">
@@ -579,7 +651,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
               </div>;
             })}
           </div>:<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>}
-          {/* Source is a deliberately selected Keyword-related facet. No article list. */}
+          {/* The chart reads only the selected ZModel dimension; no article list. */}
         </aside>
       </div>
     </>:null}
