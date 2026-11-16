@@ -197,6 +197,16 @@ export async function handleNativeLocOperation(request,env={},{
         executeLocPersonal(trx,claims,body));
       return reply({data:row});
     }
+    // A normal Search toggle never asks for edit grants. Only when a search
+    // is submitted does OAuth establish the owner and loc_user opt into a
+    // private read; only then may the business Scope eligibility be checked.
+    if(body.kind==='managed-action'&&body.name==='search_galaxy_private'){
+      if(host!==WEB_HOST)throw refusal('Search is website-only',404);
+      const preference=await selected.db.selectFrom('silver.loc_user')
+        .select('search').where('owner_id','=',claims.sub).executeTakeFirst();
+      if(preference?.search?.list!==true)
+        throw refusal('Manager search preference disabled',403);
+    }
     // Extension imports and direct MCP operations share the same role-based
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
