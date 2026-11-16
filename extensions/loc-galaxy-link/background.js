@@ -635,7 +635,9 @@ async function selectOrRecord(type,includeAssistant=false,providedTab=null){
  const response=await chrome.tabs.sendMessage(tab.id,{type,includeAssistant});
  if(response?.ok!==true)throw Error('頁面沒有啟動選取／錄製工具');
  if(type==='page.record')await chrome.storage.local.set({locRecorderTabId:tab.id});
- return {message:type==='page.record'?'請點選錄製區域，開始追蹤動態貼文':'請點選要擷取的區域'};
+ return {message:type==='page.record'
+  ?(response.mode==='record'?'已開始錄製目前對話，新訊息將即時加入 Queue':'請點選錄製區域，開始追蹤動態貼文')
+  :'請點選要擷取的區域',mode:response.mode};
 }
 async function controlRecording(type){
  const tab=await recordedTab();
@@ -648,7 +650,10 @@ async function stopRecording(){
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.stop'}).catch(()=>null);
  await chrome.storage.local.remove('locRecorderTabId');
  if(reply?.error)throw Error('最後一次錄製入列失敗：'+reply.error);
- return {message:reply?.ok?'已停止錄製，最後內容已確認入列':'目前頁面沒有正在進行的錄製'};
+ return {message:reply?.ok
+  ?(reply.partial?'已停止錄製；已完成訊息已入列，仍在生成的最後一則尚未擷取':
+    '已停止錄製，最後已完成訊息已確認入列')
+  :'目前頁面沒有正在進行的錄製'};
 }
 
 // Context-menu options must reflect the actual active recording state.
@@ -732,7 +737,7 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
    case MENU_STOP:result=await stopRecording();break;
    default:return;
   }
-  if(action===MENU_RECORD)await syncMenus('pick-record');
+  if(action===MENU_RECORD)await syncMenus(result?.mode||'pick-record');
   if(action===MENU_PAUSE)await syncMenus('paused');
   if(action===MENU_RESUME)await syncMenus('record');
   if(action===MENU_STOP)await syncMenus('idle');
