@@ -2,7 +2,8 @@
  * No emitters, shaders or visual substitutions are created here.
  * Supports relative paths, absolute URLs, Windows-style paths and cache queries.
  */
-export const AMBIENT_FOG_IMAGE='/vendor/effekseer/Collections/MAGICALxSPIRAL/Texture/_fog-cloud-2048.png';
+import {runeAssetHref} from '../rune-asset-origin.mjs';
+export const AMBIENT_FOG_IMAGE=runeAssetHref('/vendor/effekseer/Collections/MAGICALxSPIRAL/Texture/_fog-cloud-2048.png');
 
 export function redirectAmbientFogTexture(path,{quality='original',onReplacement}={}){
   if(typeof path!=='string')return path;

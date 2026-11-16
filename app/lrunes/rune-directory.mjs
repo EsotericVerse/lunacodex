@@ -1,15 +1,10 @@
-import {LOC_ORIGIN} from '../seo/metadata.js';
+import {runeAssetHref} from './rune-asset-origin.mjs';
 
-// assets/ and pics/ are both published at the one deployed origin
-// (loc.lo3rwang.cc -- see scripts/copy-static-assets.mjs, which copies both
-// wholesale into the same out/ that GitHub Pages serves). Native/iOS has no
-// local copy of either, so every image reference here is an absolute URL
-// rather than a root-relative path: a relative path only resolves inside a
-// page actually served from that origin, which the native app is not.
+// Web reads the LRS release origin; the LOC IPA uses bundled real files.
 const GROUP_IMAGE_BY_ID=Object.freeze({
-  '01':LOC_ORIGIN+'/pics/01.soul.jpg','02':LOC_ORIGIN+'/pics/02_connection.jpg','03':LOC_ORIGIN+'/pics/03_life.jpg',
-  '04':LOC_ORIGIN+'/pics/04_nature.jpg','05':LOC_ORIGIN+'/pics/05_mineral.jpg','06':LOC_ORIGIN+'/pics/06_element.jpg',
-  '07':LOC_ORIGIN+'/pics/07_order.jpg','08':LOC_ORIGIN+'/pics/08_disorder.jpg','09':LOC_ORIGIN+'/pics/09_specia.jpg'
+  '01':runeAssetHref('/pics/01.soul.jpg'),'02':runeAssetHref('/pics/02_connection.jpg'),'03':runeAssetHref('/pics/03_life.jpg'),
+  '04':runeAssetHref('/pics/04_nature.jpg'),'05':runeAssetHref('/pics/05_mineral.jpg'),'06':runeAssetHref('/pics/06_element.jpg'),
+  '07':runeAssetHref('/pics/07_order.jpg'),'08':runeAssetHref('/pics/08_disorder.jpg'),'09':runeAssetHref('/pics/09_specia.jpg'
 });
 
 export function groupImage(id){return GROUP_IMAGE_BY_ID[String(id).padStart(2,'0')]||'';}
@@ -18,14 +13,14 @@ export function groupImage(id){return GROUP_IMAGE_BY_ID[String(id).padStart(2,'0
 export function groupPreviewImage(id){return groupImage(id);}
 
 // Official 月之符文 identity, not the LOC app emblem nor Rune 50 artwork.
-export const RUNE_CARD_BACK_IMAGE=LOC_ORIGIN+'/assets/site/icons/lrunes-favicon.png';
+export const RUNE_CARD_BACK_IMAGE=runeAssetHref('/assets/site/icons/lrunes-favicon.png');
 
 export function runeName(card){return String(card?.rune_name||'').replace(/之符文$/,'').trim();}
 // Rune ID is the only canonical image identity on both Web and iOS.
 export function runeImage(card){
   const id=Number(card?.rune_id??card?.id??card?.rune_number);
   if(!Number.isInteger(id)||id<0||id>66)return '';
-  return `${LOC_ORIGIN}/assets/lunarunes/cards/${String(id).padStart(2,'0')}.png`;
+  return runeAssetHref(`/assets/lunarunes/cards/${String(id).padStart(2,'0')}.png`);
 }
 export function runeNumbersForGroup(groupId){
   const id=Number(groupId);
