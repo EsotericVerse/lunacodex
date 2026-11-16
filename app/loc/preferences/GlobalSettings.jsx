@@ -1,28 +1,28 @@
 'use client';
-import UiText,{useUiText} from '../i18n/UiText';
-import {registerDefaultSection} from '../i18n/ui-copy';
-import {useUiSection} from '../i18n/ui-locale';
-import globalSettingsZh from '../i18n/sections/uiExtra.globalSettings.zh_tw.js';
+import UiText,{useUiText} from '../../i18n/UiText';
+import {registerDefaultSection} from '../../i18n/ui-copy';
+import {useUiSection} from '../../i18n/ui-locale';
+import globalSettingsZh from '../../i18n/sections/uiExtra.globalSettings.zh_tw.js';
 registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
 import {useEffect,useMemo,useState} from 'react';
-import {useAsyncResource} from '../../packages/zenstack/client-queries';
+import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
-import {useAccount} from './use-account';
-import {FeaturePage} from '../modular/ui';
-import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
-import PanelLoading from './ui/PanelLoading';
+import {useAccount} from '../use-account';
+import {FeaturePage} from '../../modular/ui';
+import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
+import PanelLoading from '../ui/PanelLoading';
 // The home/account Settings screens never download import or management editors.
-const PrivateLocalFiles=dynamic(()=>import('./local/PrivateFiles'),{loading:PanelLoading});
-const LocalScopeModeSettings=dynamic(()=>import('./local/ModeSettings'),{loading:PanelLoading});
-const LocScopeConnections=dynamic(()=>import('./scope/LocScopeConnections'),{loading:PanelLoading});
+const PrivateLocalFiles=dynamic(()=>import('../local/PrivateFiles'),{loading:PanelLoading});
+const LocalScopeModeSettings=dynamic(()=>import('../local/ModeSettings'),{loading:PanelLoading});
+const LocScopeConnections=dynamic(()=>import('../scope/LocScopeConnections'),{loading:PanelLoading});
 // 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
-const DailyRuneCalendarSettings=dynamic(()=>import('../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
-import FeatureSettingsPage from './preferences/FeatureSettingsPage';
-import {selectScopeRegistry} from './scope-data';
-import {getScope,normalizeScopeId} from '../modular/routing/scope-registry';
+const DailyRuneCalendarSettings=dynamic(()=>import('../../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
+import FeatureSettingsPage from './FeatureSettingsPage';
+import {selectScopeRegistry} from '../scope-data';
+import {getScope,normalizeScopeId} from '../../modular/routing/scope-registry';
 
 const option=(value,label,description,shortLabel)=>({value,label,description,shortLabel});
 // Always show LOC's existing full-screen login composition, backed by native LOC Auth.
