@@ -6,7 +6,7 @@ import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import {useEditDock} from '../../modular/edit-dock';
 import {useAccount} from '../use-account';
-import PanelLoading from '../PanelLoading';
+import PanelLoading from '../ui/PanelLoading';
 
 // Group managers edit work classifications and member names here.
 // Global Admin reuses its existing vis-network personnel editor here.

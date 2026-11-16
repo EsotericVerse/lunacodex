@@ -12,7 +12,7 @@ import {Capacitor} from '@capacitor/core';
 import {useAccount} from './use-account';
 import {FeaturePage} from '../modular/ui';
 import ManagementSectionNav,{useManagementSection} from '../modular/ManagementSectionNav';
-import PanelLoading from './PanelLoading';
+import PanelLoading from './ui/PanelLoading';
 // The home/account Settings screens never download import or management editors.
 const PrivateLocalFiles=dynamic(()=>import('./local/PrivateFiles'),{loading:PanelLoading});
 const LocalScopeModeSettings=dynamic(()=>import('./local/ModeSettings'),{loading:PanelLoading});

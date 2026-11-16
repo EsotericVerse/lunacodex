@@ -7,7 +7,7 @@ import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
-import PanelLoading from '../PanelLoading';
+import PanelLoading from '../ui/PanelLoading';
 import {recoverChunkOnce} from '../chunk-recovery.mjs';
 import {PLACE_OPTIONS} from '../trace/PlaceManagement';
 

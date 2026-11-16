@@ -1,7 +1,7 @@
 'use client';
 import {useEffect} from 'react';
 import {Capacitor} from '@capacitor/core';
-import LocApp from './LocApp';
+import LocApp from '../LocApp';
 
 export default function LegacyManagementRedirect({target,view,scope=null}){
   const native=Capacitor.isNativePlatform();
