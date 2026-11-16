@@ -1,8 +1,8 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import LocManagementWorkspace from '../LocManagementWorkspace';
-import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
+import LocManagementWorkspace from '../management/LocManagementWorkspace';
+import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import {useEditDock} from '../../modular/edit-dock';
 import {useAccount} from '../use-account';

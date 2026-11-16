@@ -1,12 +1,12 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
-import {useAccount,readVerifiedManagementEntry} from './use-account';
-import {useEditDock} from '../modular/edit-dock';
-import {FeaturePage} from '../modular/ui';
-import {editorSessionStatus,clearEditorSession,touchEditorSession} from './edit-session-ttl.mjs';
-import {dbAuthEvents} from './db-client.mjs';
-import {verifyManagementEntry} from './auth/management-entry-verification.mjs';
-import {releaseTransientPageResources} from '../../packages/zenstack/client-queries';
+import {useAccount,readVerifiedManagementEntry} from '../use-account';
+import {useEditDock} from '../../modular/edit-dock';
+import {FeaturePage} from '../../modular/ui';
+import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../edit-session-ttl.mjs';
+import {dbAuthEvents} from '../db-client.mjs';
+import {verifyManagementEntry} from '../auth/management-entry-verification.mjs';
+import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';
 
 const granted=(grants,id,level)=>level==='global'
   ?Boolean(grants?.canLocAccessSync('global'))

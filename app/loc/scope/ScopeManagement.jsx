@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import {useSearchParams} from 'next/navigation';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
-import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
+import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../PanelLoading';
 import {recoverChunkOnce} from '../chunk-recovery.mjs';

@@ -13,7 +13,7 @@ import {useRouter} from 'next/navigation';
 import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/routing/scope-registry';
-import ManagementAccess from './ManagementAccess';
+import ManagementAccess from './management/ManagementAccess';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {selectScopeConfig} from './scope-data';
 import {scopeFeatureEnabled} from './scope-config-fields.mjs';

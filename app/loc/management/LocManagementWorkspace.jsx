@@ -1,8 +1,8 @@
 'use client';
 
-import {FeaturePage} from '../modular/ui';
+import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from './ManagementWorkspaceFrame';
-import ManagementSectionNav from '../modular/ManagementSectionNav';
+import ManagementSectionNav from '../../modular/ManagementSectionNav';
 
 // Shared workspace layout and access boundary; each management capability
 // still owns its own route, data, editor, and lifecycle.

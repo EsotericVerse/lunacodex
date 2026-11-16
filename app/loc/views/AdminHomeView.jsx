@@ -11,7 +11,7 @@ import {useAccount} from '../use-account';
 import {useEditDock} from '../../modular/edit-dock';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../edit-session-ttl.mjs';
 import {FeaturePage} from '../../modular/ui';
-import ManagementWorkspaceFrame from '../ManagementWorkspaceFrame';
+import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../PanelLoading';
 import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';

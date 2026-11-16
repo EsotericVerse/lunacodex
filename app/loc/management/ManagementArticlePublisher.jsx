@@ -1,11 +1,11 @@
 'use client';
-import UiText,{useUiText} from '../i18n/UiText';
+import UiText,{useUiText} from '../../i18n/UiText';
 
-import {UI_COPY,registerDefaultSection} from '../i18n/ui-copy';
-import {useUiCopy,useUiSection} from '../i18n/ui-locale';
-import managementZh from '../i18n/sections/management.zh_tw.js';
-import publisherZh from '../i18n/sections/uiExtra.publisher.zh_tw.js';
-import sharingZh from '../i18n/sections/uiExtra.sharing.zh_tw.js';
+import {UI_COPY,registerDefaultSection} from '../../i18n/ui-copy';
+import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
+import managementZh from '../../i18n/sections/management.zh_tw.js';
+import publisherZh from '../../i18n/sections/uiExtra.publisher.zh_tw.js';
+import sharingZh from '../../i18n/sections/uiExtra.sharing.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.publisher',publisherZh);
 // uiExtra.sharing currently has no consumer in the codebase; it is kept
@@ -13,16 +13,16 @@ registerDefaultSection('uiExtra.publisher',publisherZh);
 // silently dropped by this split.
 registerDefaultSection('uiExtra.sharing',sharingZh);
 import {useEffect,useRef,useState} from 'react';
-import {useEditDock} from '../modular/edit-dock';
-import {insertRows,updateRows} from './db-client.mjs';
-import {selectRows} from './db-query.mjs';
-import {useAccount} from './use-account';
-import {createUid8} from './uid';
-import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from './content-policy';
-import {ObjectEditor} from './editor/BlockNoteEditor';
-import {blocksToPlainText,plainTextToBlocks} from './editor/blocknote-content.mjs';
-import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from './galaxy-able.mjs';
-import {galaxyReadColumnsFor} from '../../packages/zenstack/galaxy-read-models.mjs';
+import {useEditDock} from '../../modular/edit-dock';
+import {insertRows,updateRows} from '../db-client.mjs';
+import {selectRows} from '../db-query.mjs';
+import {useAccount} from '../use-account';
+import {createUid8} from '../uid';
+import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from '../content-policy';
+import {ObjectEditor} from '../editor/BlockNoteEditor';
+import {blocksToPlainText,plainTextToBlocks} from '../editor/blocknote-content.mjs';
+import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from '../galaxy-able.mjs';
+import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const GALAXY_PERMISSION_LABELS=Object.freeze({
   statics:'統計',culture:'文化',search:'搜尋',trace:'痕跡',list:'文章列表',
