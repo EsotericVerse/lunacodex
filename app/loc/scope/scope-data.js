@@ -1,7 +1,7 @@
 'use client';
 
 
-import {selectAllRows,selectRows} from '../db-query.mjs';
+import {selectAllRows,selectRows} from '../db/db-query.mjs';
 import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';

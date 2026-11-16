@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import UiText from '../../i18n/UiText';
-import {useAccount} from '../../loc/use-account';
+import {useAccount} from '../../loc/auth/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
 import {useEditDock} from '../edit-dock';
 import {FeaturePage} from '../ui';

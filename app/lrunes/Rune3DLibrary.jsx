@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
-import {selectRows} from '../loc/db-query.mjs';
+import {selectRows} from '../loc/db/db-query.mjs';
 import RuneArtStage from './visual/RuneArtStage';
 import RuneCardInfo from './RuneCardInfo';
 import EffekseerStage from './effekseer/EffekseerStage';

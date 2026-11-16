@@ -1,9 +1,9 @@
-import {flashMessage} from './notifications/flash-message.js';
-import {assertPlainGalaxyAttributes} from './content/content-policy.js';
-import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query/query-batch-size.mjs';
-import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from './authorization-runtime.mjs';
-import {assertEditorSession} from './edit-session-ttl.mjs';
-import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './model/galaxy-able.mjs';
+import {flashMessage} from '../notifications/flash-message.js';
+import {assertPlainGalaxyAttributes} from '../content/content-policy.js';
+import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from '../query/query-batch-size.mjs';
+import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from '../auth/authorization-runtime.mjs';
+import {assertEditorSession} from '../auth/edit-session-ttl.mjs';
+import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from '../model/galaxy-able.mjs';
 
 // Database contract transports physical Galaxy/Anchor rows. Keyword Tree
 // adapters may expose legacy lists for editor compatibility; new persistent
@@ -73,7 +73,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(!isScopedGalaxy(table))return insertRowsUnchecked(table,rows);
     for(const row of rows)validateGalaxyWrite(table,row);
     const prepared=prepareGalaxyInsertRows(table,rows);
-    const {assertZModelImportRows}=await import('../../packages/zenstack/import-validation.mjs');
+    const {assertZModelImportRows}=await import('../../../packages/zenstack/import-validation.mjs');
     assertZModelImportRows(table,prepared,{onProgress:onValidationProgress});
     return insertRowsUnchecked(table,prepared,{normalizedGalaxy:true});
   };
@@ -246,7 +246,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const uid=String(classUid||'');
     if(!/^[A-Za-z0-9]{8}$/.test(uid))
       throw new Error('尚未選取 Keywords Class');
-    const {keywordService}=await import('./keywords/service-client.mjs');
+    const {keywordService}=await import('../keywords/service-client.mjs');
     onProgress?.({phase:'resetting',completed:0,total:1});
     const result=await keywordService('reset',{scopeId:scope,classUid:uid});
     onProgress?.({phase:'completed',completed:1,total:1});
@@ -385,7 +385,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(!['insert','update','delete'].includes(op))throw Error('Invalid KeywordAnchor operation');
     // normalizeKeywordTreeRow accepts an editor/legacy projection; it is NOT
     // the physical SQL schema. Save only each current Anchor type's own fields.
-    const {normalizeKeywordTreeRow}=await import('./keywords/tree.mjs');
+    const {normalizeKeywordTreeRow}=await import('../keywords/tree.mjs');
     const v=normalizeKeywordTreeRow(node),q=dbAuthRelation(table);
     const field=v.type==='item'?'keyword':'uid';
     const attr={...(node.attr&&typeof node.attr==='object'?node.attr:{}),[field]:v.lists};
@@ -395,7 +395,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       for(const key of ['uidlists','articles','hits','total'])delete attr[key];
     }
     if(v.type==='class'){
-      const {classSkipArticleWords}=await import('./keywords/class-exceptions.mjs');
+      const {classSkipArticleWords}=await import('../keywords/class-exceptions.mjs');
       classSkipArticleWords(attr);
     }
     let query;
@@ -415,8 +415,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const table='silver.'+scope+'_anchor';
     preflightWrite(table);
     const data=await readOwnedKeywordNodes(table);
-    const {indexKeywordTree,descendantsOfKeyword}=await import('./keywords/tree.mjs');
-    const {allocateAnchorUid}=await import('./model/uid.js');
+    const {indexKeywordTree,descendantsOfKeyword}=await import('../keywords/tree.mjs');
+    const {allocateAnchorUid}=await import('../model/uid.js');
     const tree=indexKeywordTree(data);
     const original=tree.index.get(source);
     if(!original||original.type!=='class')throw new Error('找不到來源 Class');
@@ -456,7 +456,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
 
   async function copyRune66KeywordClassUnchecked(scopeId,sourceClassUid){
-    const {allocateAnchorUid}=await import('./model/uid.js');
+    const {allocateAnchorUid}=await import('../model/uid.js');
     const uid=allocateAnchorUid();
     return copyKeywordLibraryClass(scopeId,sourceClassUid,'符文66副本-'+uid);
   }

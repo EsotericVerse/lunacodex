@@ -9,7 +9,7 @@ import {useEditDock} from './edit-dock';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
-import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db-contract.mjs';
+import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
 import {selectScopeBlocks,selectLiveScopeBlocks,hero_block} from '../loc/scope/scope-data';
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
@@ -179,7 +179,7 @@ function ArticleStatisticsPreview({scopeId='',statistics=null}){
     queryKey:['article-date-stat-chart',scopeId,range,selection?.start,selection?.end],
     enabled:open&&Boolean(scopeId&&selection?.start&&selection?.end),
     queryFn:async()=>{
-      const {readScopeStatistics}=await import('../loc/db-client.mjs');
+      const {readScopeStatistics}=await import('../loc/db/db-client.mjs');
       return readScopeStatistics(scopeId,{startDate:selection.start,endDate:selection.end});
     },
     revalidateOnFocus:false,revalidateOnReconnect:false

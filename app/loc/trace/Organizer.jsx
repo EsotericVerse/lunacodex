@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {dbAuthClient} from '../db-client.mjs';
+import {dbAuthClient} from '../db/db-client.mjs';
 import {reviewPlaceNameGroups,compactPlaceName} from '../../modular/features/trace/trace-place-names.mjs';
 import {renameTraceAnchorTitles} from '../../modular/features/trace/trace-data';
 

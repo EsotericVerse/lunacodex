@@ -5,7 +5,7 @@ import LocManagementWorkspace from '../management/LocManagementWorkspace';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import {useEditDock} from '../../modular/edit-dock';
-import {useAccount} from '../use-account';
+import {useAccount} from '../auth/use-account';
 import PanelLoading from '../ui/PanelLoading';
 
 // Group managers edit work classifications and member names here.

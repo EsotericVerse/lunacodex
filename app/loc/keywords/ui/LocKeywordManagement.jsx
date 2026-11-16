@@ -3,7 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
-import {dbAuthClient} from '../../db-client.mjs';
+import {dbAuthClient} from '../../db/db-client.mjs';
 import {useEditDock} from '../../../modular/edit-dock';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;

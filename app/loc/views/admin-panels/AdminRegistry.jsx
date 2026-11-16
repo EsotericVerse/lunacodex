@@ -14,7 +14,7 @@ import {ScopeFeatureToggles} from '../../../modular/ui';
 import {scopeConfigColumns,scopeFeaturePatch,scopeFeatureName} from '../../scope/scope-config-fields.mjs';
 import {
   deleteScope,dbAuthClient,dbAuthRelation,manageScopeRegistry,provisionScope,updateRows
-} from '../../db-client.mjs';
+} from '../../db/db-client.mjs';
 
 const EMPTY_SCOPE_CREATE={scope_id:'',email:'',locale:'zh-Hant',route_mode:'directory'};
 const EMPTY_GROUP_CREATE={scope_id:'',display_name:'',route_mode:'directory',parent_scope_id:'loc'};

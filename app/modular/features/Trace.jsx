@@ -17,7 +17,7 @@ import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-setting
 import {traceWindow} from './trace/trace-panel-filters.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 import {annualGaugeGroups,annualGaugeValues} from './trace/trace-annual-gauges.mjs';
-import {dbPublicClient} from '../../loc/db-client.mjs';
+import {dbPublicClient} from '../../loc/db/db-client.mjs';
 import {publicTraceMapChoices,locReferencedPointGroups,clusterLocSharedPoints} from './trace/trace-map-choices.mjs';
 import {pickTraceDemoStop,traceDemoRoute} from './trace/trace-demo-route.mjs';
 import {

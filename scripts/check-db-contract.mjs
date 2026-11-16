@@ -12,8 +12,8 @@ import {sourceTaxonomyFromAnchors} from '../app/loc/source/classification.mjs';
 import {isLocBlockPage,LOC_BLOCK_ANCHOR_FIELDS} from '../app/loc/blocks/loc-block-anchor.mjs';
 
 const read=relative=>readFileSync(new URL('../'+relative,import.meta.url),'utf8');
-const databaseContract='app/loc/db-contract.mjs';
-const databaseClient='app/loc/db-client.mjs';
+const databaseContract='app/loc/db/db-contract.mjs';
+const databaseClient='app/loc/db/db-client.mjs';
 
 function functionsIn(source){
   return parse(source,{sourceType:'module'}).program.body

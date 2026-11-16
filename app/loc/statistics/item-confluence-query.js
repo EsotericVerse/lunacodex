@@ -1,7 +1,7 @@
 'use client';
 
 import {selectDailyRuneRange} from '../runes/daily-runes';
-import {dbPublicClient} from '../db-client.mjs';
+import {dbPublicClient} from '../db/db-client.mjs';
 import {realMoonPhase} from '../model/moon-phase';
 import {
   validateItemConfluenceRange,validateItemLane,groupItemConfluenceRunes

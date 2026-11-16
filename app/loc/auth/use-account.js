@@ -1,13 +1,13 @@
 'use client';
 
 import {useCallback,useEffect} from 'react';
-import {useQueryClient} from '../../packages/zenstack/client-queries';
-import {getAccountSession,dbAuthEvents,signInWithLocSso,signOutAccount} from './db-client.mjs';
-import {readLocEditorGrants} from './auth/editor-grants.mjs';
+import {useQueryClient} from '../../../packages/zenstack/client-queries';
+import {getAccountSession,dbAuthEvents,signInWithLocSso,signOutAccount} from '../db/db-client.mjs';
+import {readLocEditorGrants} from './editor-grants.mjs';
 import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthorizer} from './authorization-runtime.mjs';
-import {defaultScopeData,scopeDataFromManageRows} from './scope/scope-data';
-import {useAsyncResource} from '../../packages/zenstack/client-queries';
-import {shouldInvalidateManagementForAuthEvent} from './auth/account-event-guard.mjs';
+import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';
+import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import {shouldInvalidateManagementForAuthEvent} from './account-event-guard.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();
 const normalizeScopeId=value=>String(value||'').trim().toLowerCase();

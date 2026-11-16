@@ -1,4 +1,4 @@
-import {EDIT_OPERATION_TTL_MS} from '../edit-session-ttl.mjs';
+import {EDIT_OPERATION_TTL_MS} from './edit-session-ttl.mjs';
 
 // Manage RC5: a single trusted website endpoint verifies Better Auth's
 // Session and reads ZModel/PolicyPlugin api.manage rights. The browser no

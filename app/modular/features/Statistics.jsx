@@ -271,7 +271,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryKey:['statistics-total-daily-v1',scopeId,queryRange.startDate,observedEnd],
     enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd),
     queryFn:async({signal})=>{
-      const {dbPublicClient}=await import('../../loc/db-client.mjs');
+      const {dbPublicClient}=await import('../../loc/db/db-client.mjs');
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scopeId,p_view:'daily_total',
         p_start:queryRange.startDate,p_end:observedEnd,signal

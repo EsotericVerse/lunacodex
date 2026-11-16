@@ -13,7 +13,7 @@ import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import dynamic from 'next/dynamic';
 import {useAppBootstrap} from '../runtime/app-bootstrap';
-import {useAccount} from '../use-account';
+import {useAccount} from '../auth/use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
 const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
 const ScopeBlockDraftList=dynamic(()=>import('./ScopeBlockDraftList'),{loading:()=>null});

@@ -24,7 +24,7 @@ import {blockNoteSuggestionItems} from '../../loc/editor/blocknote-suggestions.m
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useRouter,useSearchParams} from 'next/navigation';
 
-import {dbAuthClient,dbPublicClient,deleteRows,updateRows} from '../../loc/db-client.mjs';
+import {dbAuthClient,dbPublicClient,deleteRows,updateRows} from '../../loc/db/db-client.mjs';
 import {useAccount} from '../../loc/use-account';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ScopeLink from '../ScopeLink';
@@ -52,8 +52,8 @@ import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateSer
 
 import {MEDIA_FALLBACK_TITLE,WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayText} from '../work-display-model';
 import {requireGalaxyContent,resolveGalaxyTitle,assertPlainGalaxyAttributes} from '../../loc/content/content-policy';
-import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db-contract.mjs';
-import {applyFilters,isAbortError,selectRows} from '../../loc/db-query.mjs';
+import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
+import {applyFilters,isAbortError,selectRows} from '../../loc/db/db-query.mjs';
 const ScopeGroupOverview=dynamic(()=>import('../../loc/scope/ScopeGroupOverview'),{loading:()=>null});
 const ScopeEditableBlocks=dynamic(()=>import('../../loc/blocks/ScopeEditableBlocks'),{loading:()=>null});
 // Explanatory Scope blocks are fetched only when their Search tab opens.

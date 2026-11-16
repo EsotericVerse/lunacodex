@@ -1,7 +1,7 @@
 // Browser-only presentation of the ONE verified loc_access result.
 // The server's ZModel/PolicyPlugin decides grants; the browser never creates
 // additional permissions or re-reads api.manage. This is not a write authority.
-import {locRolePrincipal,LOC_ROLE_LEVEL} from '../../packages/zenstack/role-hierarchy.mjs';
+import {locRolePrincipal,LOC_ROLE_LEVEL} from '../../../packages/zenstack/role-hierarchy.mjs';
 
 let userId='';
 let email='';

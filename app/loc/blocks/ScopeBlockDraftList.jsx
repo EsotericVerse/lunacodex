@@ -186,7 +186,7 @@ export default function ScopeBlockDraftList({
       if(embeddedImages===1&&!BlockNoteContent.image.firstFrameImageUrl(draft)){setBusy(false);report(t('uiExtra.editBlocks.invalidImage'));return false;}
     }
     try{
-      const {dbAuthClient}=await import('../db-client.mjs');
+      const {dbAuthClient}=await import('../db/db-client.mjs');
       const normalizeSavedHtml=value=>scopeId==='loc'&&pageName==='index'
         ?HomeBlock.stripLocHomeEditorPlaceholders(value):String(value??'');
       const savedDrafts=[];

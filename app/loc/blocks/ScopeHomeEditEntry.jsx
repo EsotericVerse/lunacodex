@@ -8,8 +8,8 @@ import editBlocksZh from '../../i18n/sections/uiExtra.editBlocks.zh_tw.js';
 registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
-import {useAccount} from '../use-account';
-import {clearEditorSession} from '../edit-session-ttl.mjs';
+import {useAccount} from '../auth/use-account';
+import {clearEditorSession} from '../auth/edit-session-ttl.mjs';
 
 // This control is shown only at the bottom of an individual Scope homepage.
 // No identity or management query runs until the visitor selects it.

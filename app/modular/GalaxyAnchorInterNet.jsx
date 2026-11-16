@@ -68,7 +68,7 @@ function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
     setState(prev=>({...prev,status:'loading'}));
     try{
       const [{selectRows},{defaultScopeData}]=await Promise.all([
-        import('../loc/db-query.mjs'),import('../loc/scope/scope-data')
+        import('../loc/db/db-query.mjs'),import('../loc/scope/scope-data')
       ]);
       if(abort.signal.aborted)return;
       const scope=defaultScopeData(scopeId);

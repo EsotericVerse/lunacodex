@@ -1,18 +1,18 @@
 'use client';
 
 import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
-import {coalescePendingPublicRead} from './query/inflight-public-read.mjs';
-import {mapBounded} from './query/bounded-parallel.mjs';
-import {transientReadSignal,transientReadGeneration} from '../../packages/zenstack/transient-read-epoch.mjs';
+import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
+import {mapBounded} from '../query/bounded-parallel.mjs';
+import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
 // Native Kysely SELECT has no Supabase Data API Max Rows ceiling.
 // Full-result readers use internal transport pages without truncating SQL totals.
 
 import {dbAuthClient,dbBackupPublicClient,dbConfiguredPublicClient,dbPublicClient} from './db-client.mjs';
-import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './providers/db-source-status.mjs';
+import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from '../providers/db-source-status.mjs';
 
-import {selectedDatabaseRouting} from './providers/routing/state.mjs';
+import {selectedDatabaseRouting} from '../providers/routing/state.mjs';
 const recoverableReadError=error=>{
   const code=String(error?.code||'');
   const status=Number(error?.status||error?.cause?.status||0);

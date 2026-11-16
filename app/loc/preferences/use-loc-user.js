@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useRef} from 'react';
-import {usePassiveSessionAccount} from '../use-account';
+import {usePassiveSessionAccount} from '../auth/use-account';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {loadOrCreateLocUser,saveLocUserField} from './loc-user-store.mjs';
 
