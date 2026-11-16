@@ -31,7 +31,7 @@ import {FeaturePage} from '../ui';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
-import {usePassiveSessionAccount} from '../../loc/use-account';
+import {usePassiveSessionAccount} from '../../loc/auth/use-account';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
 const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
 const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>m.Rune66Summary),{loading:()=>null});
