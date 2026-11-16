@@ -63,10 +63,19 @@
     const streaming=upstream.isStreaming(document);
     const title=upstream.extractTitle(document);
     const rows=upstream.messagesForUrl(upstream.extractMessages(scope),location.href);
-    return rows.filter(row=>
-      row.role==='user'||(includeAssistant&&!streaming&&row.role==='assistant'))
-      .filter(row=>typeof row.content==='string'&&row.content.trim())
-      .map(row=>({
+    // Never claim a complete snapshot while the requested AI reply is still
+    // streaming. During recording, older completed replies can still enter
+    // Queue; only the latest in-flight assistant turn is withheld.
+    if(includeAssistant&&streaming&&state.mode!=='record')
+      throw Error('AI 回覆尚在生成，對話未完整；本次不寫入 Queue');
+    const pendingIndex=streaming?rows.findLastIndex(row=>row.role==='assistant'):-1;
+    const captured=rows.filter((row,index)=>
+      row.role==='user'||(includeAssistant&&row.role==='assistant'&&index!==pendingIndex))
+      .filter(row=>typeof row.content==='string'&&row.content.trim());
+    if(includeAssistant&&rows.some(row=>row.role==='user')&&
+      !captured.some(row=>row.role==='assistant'))
+      throw Error('已勾選保存 AI 回覆，但目前無法辨識任何已完成的 AI 回覆；本次不寫入 Queue');
+    return captured.map(row=>({
         key:upstream.stableMessageId(threadId,row),source_key:source,url:source,
         title,content:'['+row.role+']\n'+row.content.slice(0,1400000)
       }));
@@ -282,7 +291,15 @@
     if(state.timer)clearTimeout(state.timer);
     state.timer=setTimeout(()=>{
       if(state.mode!=='record')return;
-      const items=extract(state.root,'record',state.includeAssistant);
+      let items;
+      try{items=extract(state.root,'record',state.includeAssistant);}
+      catch(error){
+        if(!state.emptyReported){
+          state.emptyReported=true;
+          void reportCapture(String(error?.message||error),false);
+        }
+        return;
+      }
       if(!items.length){
         if(!state.emptyReported){
           state.emptyReported=true;
@@ -347,9 +364,11 @@
       // Do not announce captured data until background acknowledges Queue.
       watch();
     }else{
-      const items=extract(root,'capture',state.includeAssistant);
-      if(!items.length)void reportCapture('選取區域內沒有可擷取內容，Queue 未變動',false);
-      else void queuePublish(items);
+      try{
+        const items=extract(root,'capture',state.includeAssistant);
+        if(!items.length)void reportCapture('選取區域內沒有可擷取內容，Queue 未變動',false);
+        else void queuePublish(items);
+      }catch(error){void reportCapture(String(error?.message||error),false);}
     }
   }
   function feedback(message,ok=false){
@@ -372,10 +391,13 @@
   chrome.runtime.onMessage.addListener((msg,_sender,reply)=>{
     if(msg.type==='page.feedback'){feedback(msg.message,msg.ok===true);reply({ok:true});return;}
     if(msg.type==='page.capture'){
-      const text=msg.selection?.trim();
-      const items=text?[{key:'selection',source_key:normalizeUrl(location.href),url:normalizeUrl(location.href),
-        title:document.title,content:text}]:extract(document.body,'capture',Boolean(msg.includeAssistant));
-      reply({items});return;
+      try{
+        const text=msg.selection?.trim();
+        const items=text?[{key:'selection',source_key:normalizeUrl(location.href),url:normalizeUrl(location.href),
+          title:document.title,content:text}]:extract(document.body,'capture',Boolean(msg.includeAssistant));
+        reply({items});
+      }catch(error){reply({error:String(error?.message||error)})}
+      return;
     }
     if(msg.type==='page.select'||msg.type==='page.record'){
       stop();state.mode=msg.type==='page.select'?'select':'pick-record';
@@ -395,7 +417,14 @@
     if(msg.type==='page.status'){reply({ok:true,mode:state.mode,count:state.seen.size});return;}
     if(msg.type==='page.stop'){
       const isRecording=state.mode==='record'||state.mode==='paused';
-      const items=isRecording&&state.root?extract(state.root,'record',state.includeAssistant):[];
+      let items=[];
+      let captureError='';
+      try{
+        if(isRecording&&state.includeAssistant&&CHAT_HOST.test(location.hostname)&&
+          globalThis.ChatGPTShadowExtract?.isStreaming(document))
+          throw Error('AI 回覆仍在生成，停止錄製時無法保證最後一則完整');
+        items=isRecording&&state.root?extract(state.root,'record',state.includeAssistant):[];
+      }catch(error){captureError=String(error?.message||error)}
       const count=state.seen.size;
       const outstanding=[...state.pendingWrites];
       stop();
@@ -403,6 +432,10 @@
         // Wait for any capture already being written before checking the final
         // snapshot; a "stop" acknowledgement must not outrun IndexedDB.
         await Promise.all(outstanding);
+        if(captureError){
+          reply({ok:false,count:state.seen.size,error:captureError});
+          return;
+        }
         const result=items.length?await queuePublish(items):{accepted:0,queued:0};
         reply({ok:!result.error,count:state.seen.size,queued:result.queued||0,
           ...(result.error?{error:result.error}:{})});
