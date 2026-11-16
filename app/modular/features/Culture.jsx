@@ -772,8 +772,10 @@ export default function Culture(){
     .filter(item=>item.entry_type==='anchor'&&item.uid)
     .sort((a,b)=>String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.display_label||'').localeCompare(String(b.display_label||''))),[timelineItems]);
   const locScopeIntervalItems=useMemo(()=>query.data?.scopeTimeRanges||[],[query.data]);
-  const locSourceRiverItems=useMemo(()=>locDensityOpen?locDensityQuery.data?.sourceRiverItems||[]:[],[locDensityQuery.data,locDensityOpen]);
-  const locSourceGroups=useMemo(()=>locDensityOpen?locDensityQuery.data?.sourceGroups||[]:[],[locDensityQuery.data,locDensityOpen]);
+  // The LOC landing preview reads only per-Scope aggregates below.
+  // Do not also construct the retired combined-source display arrays.
+  const locSourceRiverItems=useMemo(()=>scopeId!=='loc'&&locDensityOpen?locDensityQuery.data?.sourceRiverItems||[]:[],[scopeId,locDensityQuery.data,locDensityOpen]);
+  const locSourceGroups=useMemo(()=>scopeId!=='loc'&&locDensityOpen?locDensityQuery.data?.sourceGroups||[]:[],[scopeId,locDensityQuery.data,locDensityOpen]);
   const locCombinedSourceTotal=useMemo(()=>locSourceGroups.reduce((sum,item)=>sum+Number(item?.item_count||0),0),[locSourceGroups]);
   const locSourceGroupLabel=useMemo(()=>{
     const labels=new Map();
@@ -806,7 +808,7 @@ export default function Culture(){
     end_date:nextRiverDay(item?.start_date),
     group_label:locSourceGroupLabel.get(String(item?.category||item?.group_label||''))||String(item?.group_label||'')
   })),[locSourceRiverItems,locSourceGroupLabel]);
-  const locScopeDistributionItems=useMemo(()=>locDensityOpen?locDensityQuery.data?.scopeRanges||[]:[],[locDensityQuery.data,locDensityOpen]);
+  const locScopeDistributionItems=useMemo(()=>scopeId!=='loc'&&locDensityOpen?locDensityQuery.data?.scopeRanges||[]:[],[scopeId,locDensityQuery.data,locDensityOpen]);
   const locIntersectionScopeIds=useMemo(()=>query.data?.intersectionScopeIds||[],[query.data]);
   const locIntersectionStart=String(query.data?.intersectionStart||'');
   const locIntersectionEnd=String(query.data?.intersectionEnd||'');
