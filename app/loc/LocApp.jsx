@@ -41,7 +41,7 @@ const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading})
 const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading});
 const SearchManagement=dynamic(()=>import('./search/SearchManagement'),{loading});
 const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
-const RunesHomeView=dynamic(()=>import('../lrunes/RunesClient'),{loading});
+const RunesHomeView=dynamic(()=>import('./views/LrsPortalView'),{loading});
 const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading});
 const SourceManagementView=dynamic(()=>import('./source/LocSourceManagement'),{loading});
 const KeywordManagementView=dynamic(()=>import('./keywords/ui/LocKeywordManagementPage'),{loading});
@@ -81,7 +81,7 @@ const VIEW_PRELOADERS={
 };
 const HOME_PRELOADERS={
   loc:()=>import('./views/AboutView'),
-  lrunes:()=>import('../lrunes/RunesClient'),
+  lrunes:()=>import('./views/LrsPortalView'),
   lo3rwang:()=>import('./views/AuthorHomeView'),
   admin:()=>import('./views/AdminHomeView')
 };
