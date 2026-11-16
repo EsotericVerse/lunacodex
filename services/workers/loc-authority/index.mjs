@@ -1,6 +1,6 @@
 // cloudflareSsoConfig is read only by the dormant probe below; it stays
 // imported so re-enabling that block needs no other edit.
-import {createLocAuth,cloudflareSsoConfig,LOC_ISSUER,LOC_WEB} from './auth.mjs';
+import {createLocAuth,cloudflareSsoConfig,CLOUDFLARE_SSO_TOKEN_AUTH,LOC_ISSUER,LOC_WEB} from './auth.mjs';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
@@ -325,8 +325,9 @@ export default {
         // Cloudflare version_metadata is configured in wrangler.jsonc.
         // The ID identifies the deployed Worker version, not merely the
         // package version or the GitHub main commit.
-        const debugInfo={debug:'temporary',debugVersion:'sso-health-v2',
-          workerVersion:String(env.CF_VERSION_METADATA?.id||'unavailable')};
+        const debugInfo={debug:'temporary',debugVersion:'sso-health-v3',
+          workerVersion:String(env.CF_VERSION_METADATA?.id||'unavailable'),
+          tokenAuthMethod:CLOUDFLARE_SSO_TOKEN_AUTH};
         const headers={'content-type':'application/json; charset=utf-8',
           'cache-control':'no-store, max-age=0','pragma':'no-cache',
           'x-content-type-options':'nosniff','x-robots-tag':'noindex, nofollow',
@@ -426,14 +427,18 @@ export default {
             redirect_uri:LOC_ISSUER+'/api/auth/sso/callback/cloudflare-access'});
           const requestHeaders={'content-type':'application/x-www-form-urlencoded',
             accept:'application/json'};
-          if(mode==='post'){
+          if(mode==='post'||mode==='invalid_secret'){
             data.set('client_id',provider.clientId);
-            data.set('client_secret',provider.clientSecret);
+            // The negative control must use the same auth method as the real
+            // SSO exchange; otherwise its response is not comparable.
+            data.set('client_secret',mode==='invalid_secret'
+              ?'loc-sso-debug-invalid-client-secret':provider.clientSecret);
           }else{
-            const secret=mode==='invalid_secret'
-              ?'loc-sso-debug-invalid-client-secret':provider.clientSecret;
+            // Match Better Auth 1.7.18's RFC 6749 Basic encoding, including
+            // form-encoding of punctuation in the client ID and Secret.
+            const form=value=>new URLSearchParams({v:value}).toString().slice(2);
             requestHeaders.authorization='Basic '+
-              btoa(provider.clientId+':'+secret);
+              btoa(form(provider.clientId)+':'+form(provider.clientSecret));
           }
           const start=Date.now();
           try{
@@ -462,8 +467,8 @@ export default {
         const tests=await Promise.all([
           tokenTest('basic'),tokenTest('post'),tokenTest('invalid_secret')]);
         return reply({...debugInfo,keys,config,discovery,tokenTests:tests,
-          // invalid_grant from a real-secret request is compatible with
-          // accepted client authentication; equal errors are inconclusive.
+          // All probes intentionally use invalid codes without a PKCE verifier.
+          // Only a genuine login callback can validate the full flow.
           diagnosis:tests.some(t=>t.method!=='invalid_secret'&&
             t.oauthError==='invalid_grant')?'client_auth_likely_accepted'
             :tests.every(t=>t.httpStatus===500)?'upstream_all_500'
