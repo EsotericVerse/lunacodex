@@ -3,9 +3,9 @@
   "version": "1.1.1-rc.6",
   "private": true,
   "scripts": {
-    "prepare": "node scripts/setup-git-hooks.mjs && node scripts/sync-claude-skills.mjs",
-    "predev": "node scripts/prepare-effekseer-wasm.mjs && node scripts/prepare-rune-effekseer-assets.mjs && node scripts/prepare-rune-fog-hd.mjs && node scripts/prepare-rune-effekseer-hd256.mjs && node scripts/prepare-rune-effekseer-soft-matte.mjs && node scripts/prepare-rune-semantic-icons.mjs",
-    "prebuild": "node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/prepare-effekseer-wasm.mjs && node scripts/prepare-rune-effekseer-assets.mjs && node scripts/prepare-rune-fog-hd.mjs && node scripts/prepare-rune-effekseer-hd256.mjs && node scripts/prepare-rune-effekseer-soft-matte.mjs && node scripts/prepare-rune-semantic-icons.mjs",
+    "prepare": "node scripts/prepare-local-workspace.mjs",
+    "predev": "node scripts/prepare-rune-runtime-assets.mjs",
+    "prebuild": "node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/prepare-rune-runtime-assets.mjs",
     "dev": "next dev",
     "build": "next build",
     "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",
@@ -14,7 +14,10 @@
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
-    "check:loc-vendor-coupling": "node scripts/check-loc-independent-vendor-usage.mjs"
+    "check:loc-vendor-coupling": "node scripts/check-loc-independent-vendor-usage.mjs",
+    "assets:prepare": "node scripts/prepare-rune-runtime-assets.mjs",
+    "assets:plan": "node scripts/prepare-rune-runtime-assets.mjs --plan",
+    "assets:diagnose": "node scripts/diagnose-effekseer-smoke.mjs"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.18",
