@@ -7,7 +7,7 @@ import {selectRows} from '../db-query.mjs';
 import {dbPublicClient} from '../db-client.mjs';
 import {defaultScopeData} from '../scope-data';
 import {selectCultureArticleListPage} from '../culture/query';
-import {selectGalaxyIdentity} from '../galaxy-query';
+import {selectGalaxyIdentity} from '../galaxy/galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/routing/scope-registry';
 import {assignedSource} from '../statistics/member-intersection-model.mjs';

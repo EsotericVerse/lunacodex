@@ -30,7 +30,7 @@ import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs
 import {buildEraRiver} from '../../loc/culture/time-trace-river.mjs';
 import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-anchor-ranges.mjs';
 
-import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy-query';
+import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy/galaxy-query';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {revalidateServerMetadata} from '../../loc/scope-data';
 
