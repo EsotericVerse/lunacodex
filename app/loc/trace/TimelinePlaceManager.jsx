@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {dbAuthClient} from '../db-client.mjs';
+import {dbAuthClient} from '../db/db-client.mjs';
 import {readAllTraceAnchors} from '../../modular/features/trace/trace-data';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {revalidateServerMetadata} from '../scope/scope-data';

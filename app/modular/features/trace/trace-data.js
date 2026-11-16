@@ -1,6 +1,6 @@
 'use client';
 
-import {dbPublicClient,dbAuthClient} from '../../../loc/db-client.mjs';
+import {dbPublicClient,dbAuthClient} from '../../../loc/db/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
 import {allocateAnchorUid} from '../../../loc/model/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';

@@ -10,7 +10,7 @@ registerDefaultSection('uiExtra.importUI',importUIZh);
 
 import {useDeferredValue,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import {refreshScopeSearchSummary} from '../search/scope-summary.mjs';
-import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from '../db-client.mjs';
+import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from '../db/db-client.mjs';
 import {useAccount} from '../auth/use-account';
 import FlowProgress from '../../modular/FlowProgress';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
