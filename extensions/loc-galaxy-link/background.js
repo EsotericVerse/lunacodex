@@ -56,6 +56,7 @@ async function putEvents(events){
   const tx=db.transaction([STORE,ACK_STORE],'readwrite');
   const queue=tx.objectStore(STORE),ack=tx.objectStore(ACK_STORE);
   let count=0;
+  const groups=new Set();
   // Preserve immutable original captured_at when a pending record is
   // captured again. A changed captured_at with the same event UUID would
   // otherwise cause the server append fingerprint to reject safe retries.
@@ -64,10 +65,16 @@ async function putEvents(events){
    old.onsuccess=()=>{
     if(old.result)return;
     const prior=ack.get(row.id);
-    prior.onsuccess=()=>{if(!prior.result){queue.add(row);count++;}};
+    prior.onsuccess=()=>{
+     if(!prior.result){
+      queue.add(row);
+      count++;
+      groups.add(row.group_id||row.id);
+     }
+    };
    };
   }
-  tx.oncomplete=()=>{db.close();resolve(count);};
+  tx.oncomplete=()=>{db.close();resolve({chunks:count,captures:groups.size});};
   tx.onerror=()=>{db.close();reject(tx.error);};
   tx.onabort=()=>{db.close();reject(tx.error);};
  });
@@ -181,19 +188,35 @@ async function acceptItems(items){
   throw Error('擷取數量超出上限（2000 則），請分段錄製；原有 Queue 保留');
  const {locTargetScope='lo3rwang',locImportPaused=false}=
   await chrome.storage.local.get(['locTargetScope','locImportPaused']);
+ const detected=items.length;
+ const user=items.filter(x=>String(x?.content||'').startsWith('[user]\\n')).length;
+ const assistant=items.filter(x=>String(x?.content||'').startsWith('[assistant]\\n')).length;
+ const isConversation=(user+assistant)>0;
+ const summary=isConversation
+  ?'本次頁面辨識 '+detected+' 則對話訊息（使用者 '+user+'／AI '+assistant+'）'
+  :'本次頁面辨識 '+detected+' 項擷取內容';
  const events=[];
  for(let i=0;i<items.length;i+=100)
   events.push(...await toEvents(items.slice(i,i+100),locTargetScope));
- if(!events.length)return {message:'目前頁面沒有符合擷取條件的可見內容',queued:(await allEvents()).length,empty:true};
+ if(!events.length)
+  return {message:summary+'；沒有符合條件的內容入列',queued:(await allEvents()).length,
+   detected,user,assistant,insertedCaptures:0,insertedChunks:0,empty:true};
  const inserted=await putEvents(events);
  await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
- if(locImportPaused)return {message:inserted?'已保留 Queue：'+inserted+' 筆':'未新增資料：擷取內容已存在 Queue 或已保存',queued:await queueCount(),empty:inserted===0};
+ const message=summary+'；新入列 '+inserted.captures+' 項擷取內容／'+
+  inserted.chunks+' 筆 Queue 分段（不是對話來源數，也不是 Galaxy 已保存總數）';
+ if(locImportPaused)
+  return {message:message+'；Queue 已暫停傳送',queued:await queueCount(),
+   detected,user,assistant,insertedCaptures:inserted.captures,
+   insertedChunks:inserted.chunks,empty:inserted.chunks===0};
  const all=await allEvents();
  if(ready(all))void flush(false).catch(async error=>{
   console.warn('[LOC galaxy-link automatic import]',String(error));
   await noteAction('自動傳送',false,error?.message||String(error));
  });
- return {message:inserted?'新加入 Queue：'+inserted+' 筆（重複擷取已略過）':'未新增資料：此次擷取內容均已存在 Queue 或已保存',queued:all.length,empty:inserted===0};
+ return {message,queued:all.length,detected,user,assistant,
+  insertedCaptures:inserted.captures,insertedChunks:inserted.chunks,
+  empty:inserted.chunks===0};
 }
 
 function packet(rows){
