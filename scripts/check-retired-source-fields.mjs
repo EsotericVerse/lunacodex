@@ -1,5 +1,5 @@
 // One regex pass over executable source. Only active source files count.
-import {readdirSync,readFileSync} from 'node:fs';
+import {readdirSync,readFileSync,existsSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 
@@ -22,6 +22,13 @@ function visit(dir){
     }
   }
 }
-for(const folder of folders)visit(path.join(root,folder));
+for(const folder of folders){
+  const dir=path.join(root,folder);
+  // LRS and LAS workers/extensions migrated to independent repositories.
+  // A retired directory's absence is correct; still scan every extant LOC
+  // source tree rather than recreating or checking out another repository.
+  if(!existsSync(dir))continue;
+  visit(dir);
+}
 if(findings.length)throw Error('Retired source field still referenced:\n'+findings.join('\n'));
 console.log('Source-field regex clean: '+checked+' active source files scanned.');
