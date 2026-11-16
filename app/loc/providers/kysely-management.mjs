@@ -382,7 +382,17 @@ function privateSearchLike(value){
   // A query term is literal text. Escape SQL LIKE wildcards and backslashes.
   return '%'+String(value).replace(/[\\%_]/g,char=>'\\'+char)+'%';
 }
-async function searchPrivateGalaxy(trx,args){
+async function searchPrivateGalaxy(trx,args,claims){
+  // A Search manager preference is not an ACL or editor grant. Only the
+  // server-verified OAuth principal's own loc_user row may opt into this
+  // read-only path, and the existing Scope eligibility remains mandatory.
+  if(claims?.provider!=='loc'||claims?.role!=='authenticated'||
+    !/^[A-Za-z0-9_-]{8,128}$/.test(String(claims.sub||'')))
+    reject('Verified search session required',403);
+  const preferences=await trx.selectFrom('silver.loc_user')
+    .select('search').where('owner_id','=',claims.sub).executeTakeFirst();
+  if(preferences?.search?.list!==true)
+    reject('Manager search preference disabled',403);
   const parsed=privateSearchSchema.safeParse(args);
   if(!parsed.success)reject('Invalid private Search request');
   const {p_scope_id:scope,p_query:raw,p_offset:offset,p_limit:limit,
@@ -638,7 +648,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       'p_source_mode','p_sources','p_place_only']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
-  if(name==='search_galaxy_private')return searchPrivateGalaxy(trx,args);
+  if(name==='search_galaxy_private')return searchPrivateGalaxy(trx,args,claims);
   if(name==='import_site_presence'){
     // Verified Better Auth LOC Web Session + active api.manage Scope grants.
     // A single Kysely SELECT answers up to 200 exact case-insensitive site
