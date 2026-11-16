@@ -1,6 +1,7 @@
-name: LOC LRS Emergency (verified, expiring)
+name: LOC LRS Exceptional Release (verified, expiring)
 # Triggered only from the existing authenticated Cloudflare -> GitHub path.
-# Never from merge, push, normal release, schedule or LRS Workers Builds.
+# Never from merge, push, ordinary release, schedule or LRS Workers Builds.
+# Major releases require owner's explicit SHA approval in LOC repository variables.
 on:
   repository_dispatch:
     types:
@@ -40,6 +41,7 @@ jobs:
           LOC_LRS_EMERGENCY_REQUEST: ${{ toJSON(github.event.client_payload) }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           LOC_EMERGENCY_MAX_TTL_SECONDS: ${{ vars.LOC_EMERGENCY_MAX_TTL_SECONDS }}
+          LRS_MAJOR_RELEASE_APPROVED_SHA: ${{ vars.LRS_MAJOR_RELEASE_APPROVED_SHA }}
         run: node loc-source/scripts/verify-lrs-emergency.mjs
       - name: Checkout exact intended LRS revision on existing main
         env:
@@ -55,6 +57,7 @@ jobs:
           LOC_LRS_EMERGENCY_REQUEST: ${{ toJSON(github.event.client_payload) }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           LOC_EMERGENCY_MAX_TTL_SECONDS: ${{ vars.LOC_EMERGENCY_MAX_TTL_SECONDS }}
+          LRS_MAJOR_RELEASE_APPROVED_SHA: ${{ vars.LRS_MAJOR_RELEASE_APPROVED_SHA }}
           CLOUDFLARE_ACCOUNT_ID: 'f730f29a620a25bb047a69d542457fc0'
         run: node loc-source/scripts/attest-lrs-emergency.mjs before
       - name: Build only the pinned LRS artifacts, not LOC nor IPA
@@ -67,6 +70,7 @@ jobs:
           LOC_LRS_EMERGENCY_REQUEST: ${{ toJSON(github.event.client_payload) }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           LOC_EMERGENCY_MAX_TTL_SECONDS: ${{ vars.LOC_EMERGENCY_MAX_TTL_SECONDS }}
+          LRS_MAJOR_RELEASE_APPROVED_SHA: ${{ vars.LRS_MAJOR_RELEASE_APPROVED_SHA }}
           CLOUDFLARE_ACCOUNT_ID: 'f730f29a620a25bb047a69d542457fc0'
         run: node loc-source/scripts/attest-lrs-emergency.mjs before
       - name: Release existing LRS Worker (no Grant, no Worker Builds)
@@ -85,5 +89,6 @@ jobs:
           LOC_LRS_EMERGENCY_REQUEST: ${{ toJSON(github.event.client_payload) }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           LOC_EMERGENCY_MAX_TTL_SECONDS: ${{ vars.LOC_EMERGENCY_MAX_TTL_SECONDS }}
+          LRS_MAJOR_RELEASE_APPROVED_SHA: ${{ vars.LRS_MAJOR_RELEASE_APPROVED_SHA }}
           CLOUDFLARE_ACCOUNT_ID: 'f730f29a620a25bb047a69d542457fc0'
         run: node loc-source/scripts/attest-lrs-emergency.mjs after
