@@ -49,6 +49,7 @@ import ManagementWorkspaceFrame from '../../loc/management/ManagementWorkspaceFr
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 const CultureTimelineEditor=dynamic(()=>import('./CultureTimelineEditor'),{loading:()=>null});
 const CulturePlaceRiver=dynamic(()=>import('./trace/CulturePlaceRiver'),{loading:()=>null});
+const CultureMediaRiver=dynamic(()=>import('./media/CultureMediaRiver'),{loading:()=>null});
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db-contract.mjs';
 import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
@@ -253,6 +254,9 @@ export default function Culture(){
   useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
   const [styleFilter,setStyleFilter]=useState('none');
+  // The second river always uses time on X; Site (default), Keyword, Place,
+  // and typed MediaAnchor are exclusive Y dimensions. Keep their SQL lazy.
+  const usesSourceRiver=styleFilter!=='trace'&&styleFilter!=='media';
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
   const [keywordDrillSource,setKeywordDrillSource]=useState('');
   const [keywordDrillGroup,setKeywordDrillGroup]=useState('');
@@ -430,7 +434,7 @@ export default function Culture(){
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['loc-zmodel-source-taxonomy'],
     enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
-      &&scopeId!=='local'&&Boolean(scopeData),
+      &&scopeId!=='local'&&Boolean(scopeData)&&usesSourceRiver,
     queryFn:async()=>{
       const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
       return readPublicSourceTaxonomy();
@@ -445,7 +449,7 @@ export default function Culture(){
   // expanding a group, so a UI interaction never starts a second SQL job.
   const sourceRootQuery=useAsyncResource({
     queryKey:['culture-period-roots','v5-zmodel-anchors',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
-    enabled:!isTimeEditingView&&stagedSourceRiver&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&stagedSourceRiver&&usesSourceRiver&&!isLrunesDaily&&!isLocItemView
       &&Boolean(scopeData)&&classificationWindowValid,
     queryFn:async()=>{
       const {text}=await selectScopeDailyCounts(scopeData,{
@@ -469,7 +473,7 @@ export default function Culture(){
   // In a published scope expanding a lane only transforms cached numeric rows.
   const sourceSnapshotQuery=useAsyncResource({
     queryKey:['culture-period-source-snapshot','v9-zmodel-source-only',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,stagedSourceRiver?expandedSourceRootsKey:'all'],
-    enabled:!isTimeEditingView&&styleFilter!=='trace'&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
+    enabled:!isTimeEditingView&&usesSourceRiver&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
       &&Boolean(sourceTaxonomy)&&(!stagedSourceRiver||expandedSourceReady),
     queryFn:async()=>{
       const {selectScopePeriodSourceSnapshot}=await import('../../loc/culture/query');
@@ -943,7 +947,7 @@ export default function Culture(){
   // Render the selected period immediately. Multi-year PELT executes in a
   // worker, so change-point suggestions cannot freeze the Time River.
   const riverAnalysis=useRiverDensityAnalysis(densityInputBuckets,existingAnchorDates,
-    anchorSuggestOpen&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView&&styleFilter!=='trace'&&Boolean(densityInputBuckets.length));
+    anchorSuggestOpen&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView&&usesSourceRiver&&Boolean(densityInputBuckets.length));
   const styleRiverAnalysis=useRiverDensityAnalysis(keywordDrillItems,existingAnchorDates,
     anchorSuggestOpen&&styleFilter==='rune66'&&Boolean(keywordDrillItems.length));
   // LOC's single source river has no automatic anchor suggestion/PELT worker.
@@ -1086,7 +1090,7 @@ export default function Culture(){
     // (activeRoots.size>0) -- never tied to a specific lane having been
     // expanded. Expanding a category is what actually produces daily
     // buckets to analyze; the lane's existence does not wait for that.
-    if(styleFilter!=='trace'&&activeRoots.size>0){
+    if(usesSourceRiver&&activeRoots.size>0){
       // Opened but nothing computed yet -- show a "loading" label on the
       // lane itself, except when there is nothing to analyze yet because no
       // category has been expanded (no daily data exists at all), where we
@@ -1568,8 +1572,9 @@ export default function Culture(){
                           }
                           setKeywordDrillGroup('');
                         }}>
-                        <option value='none'>{l.noStyle}</option>
-                        <option value='trace'>痕跡（地點）</option>
+                        <option value='none'>來源</option>
+                        <option value='trace'>地點</option>
+                        <option value='media'>多媒體</option>
                         <optgroup label='關鍵詞'>
                           <option value='rune66'>{selectedKeywordClass?.name||l.keywordStyle}</option>
                         </optgroup>
@@ -1589,7 +1594,7 @@ export default function Culture(){
                         onChange={event=>setKeywordCustomEnd(event.target.value)}/></label>
                     </>:null}
                   </div>
-                  {styleFilter!=='trace'&&riverRangeLoading?<span className='scope-status' role='status'>{UI_COPY.common.loading}</span>:null}
+                  {usesSourceRiver&&riverRangeLoading?<span className='scope-status' role='status'>{UI_COPY.common.loading}</span>:null}
                   {riverAnalysis.error?<span className='scope-status scope-error' role='status'>{riverAnalysis.error}</span>:null}
                 </div>
                 {styleFilter==='rune66'?<section className='scope-culture-style-filter'>
@@ -1645,13 +1650,15 @@ export default function Culture(){
                 </section>:null}
                 {styleFilter==='trace'&&classificationWindowValid?<CulturePlaceRiver
                   scopeId={scopeId} startDate={classificationWindowStart} endDate={classificationWindowEnd}/>:null}
+                {styleFilter==='media'&&classificationWindowValid?<CultureMediaRiver
+                  scopeId={scopeId} startDate={classificationWindowStart} endDate={classificationWindowEnd}/>:null}
                 {!classificationWindowValid&&optionalTimeRangeUnfilled?<p className='scope-status' role='status'>尚未選擇時間範圍；可使用時代、期間或自訂日期。</p>:null}
                 {!classificationWindowValid&&!optionalTimeRangeUnfilled?<p className='scope-status scope-error' role='status'>請選擇有效的時間區間（起始日期不得晚於結束日期）。</p>:null}
-                {styleFilter!=='trace'&&sourceRootQuery.error?<p className='scope-status scope-error'>{featureDataErrorMessage(sourceRootQuery.error,UI_COPY)}</p>:null}
-                {styleFilter!=='trace'&&sourceSnapshotQuery.error
+                {usesSourceRiver&&sourceRootQuery.error?<p className='scope-status scope-error'>{featureDataErrorMessage(sourceRootQuery.error,UI_COPY)}</p>:null}
+                {usesSourceRiver&&sourceSnapshotQuery.error
                    ?<p className='scope-status scope-error' role='alert'>
                      {featureDataErrorMessage(sourceSnapshotQuery.error,UI_COPY)}</p>:null}
-                 {styleFilter!=='trace'&&stagedSourceRiver&&openCultureRoots.length>0
+                 {usesSourceRiver&&stagedSourceRiver&&openCultureRoots.length>0
                    &&sourceSnapshotQuery.isPending
                    ?<p className='scope-status' role='status'>正在展開河道的細部分布…</p>:null}
                  {/* Anchor suggestions never compute on their own just because a lane's
@@ -1659,7 +1666,7 @@ export default function Culture(){
                      explicitly clicks open the "建議定錨點" lane itself on the chart
                      above (see the dual:source:candidates group / onGroupToggle).
                      This panel is just the detail view for an already-opened lane. */}
-                 {styleFilter!=='trace'&&!riverRangeLoading&&anchorSuggestOpen?<div className='scope-culture-anchor-actions'>
+                 {usesSourceRiver&&!riverRangeLoading&&anchorSuggestOpen?<div className='scope-culture-anchor-actions'>
                   {riverAnalysis.suggestions.length>0?<>
                     <span>{formatCultureUi(l.candidateSummary,{count:riverAnalysis.suggestions.length})}</span>
                     {canUseScopeEditor?<button type='button' className='loc-button' disabled={creatingSuggestedAnchors||!selectedVirtualAnchorDates.length}
@@ -1685,14 +1692,14 @@ export default function Culture(){
                     </details>
                   </>:<p className='scope-status' role='status'>正在分析建議定錨點…</p>}
                 </div>:null}
-                {styleFilter!=='trace'&&classificationWindowValid&&!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
+                {usesSourceRiver&&classificationWindowValid&&!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
                   &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)
                   &&!cultureRiver.hasSourceData
                   ?<div className='scope-card scope-status scope-culture-no-data' role='status'>{l.noDataInPeriod}</div>:null}
                 {/* Never mount vis-timeline over an empty/pending source snapshot:
                     on first entry it otherwise creates an unready chart and then
                     replaces its DOM while groups and density analysis arrive. */}
-                {styleFilter!=='trace'&&classificationWindowValid&&!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
+                {usesSourceRiver&&classificationWindowValid&&!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
                   &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)&&cultureRiver.hasSourceData
                   ?<div className='scope-culture-double-river'>
                   {styleFilter==='none'&&openCultureRoots.length===0
