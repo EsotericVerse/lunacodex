@@ -1,16 +1,18 @@
 ---
 name: deployment
-description: "GitHub、CI/CD、Vercel、Cloudflare 部署、效能、成本與工程維運入口；不預讀全部部署插件技能。"
+description: "LOC Cloudflare Pages／GitHub Workflow／IPA 部署與按需接收 LAS 通知，不部署 LAS Auth/MCP Worker 或 LRS。"
 ---
 
-# Deployment / Operations — 部署維運入口
+# LOC Deployment／Operations
 
-先檢查 LOC 已有 CI/CD、Vercel、Cloudflare 的設定與現行工作流程；依實際錯誤、成本、部署或權限問題處理，不自行擴大部署權限、次數或環境。
+LOC 只發布 **LOC Cloudflare Pages `loc`**、自身業務 API 與現有 App／IPA 工作流。正式網域 `loc.lo3rwang.cc`；LAS 的 `auth.lo3rwang.cc` 與 `mcp.lo3rwang.cc` 都指向既有 `lunarcus` Worker，**不是 LOC Pages Gateway**。不要從 LOC 部署、打包或恢復 LAS MCP／Auth Server，也不發布 LRS。
 
-Vercel CLI、部署、成本最佳化等專用技能，只有已確認對當前問題有必要時，才由 `.agents/SKILL-LINKS.md` 開啟相應連結；不因列出多個平台而批次讀取。
+## 跨 Repo 更新的正確順序
 
-## 部署驗證與外部變更界線
+LAS 先獨立成功部署，然後自行判斷是否需要通知 LOC。Plugins、CMS Mapping、LAS Auth/MCP 內部改動通常是 `skip`，不通知 LOC、不建置 LOC。只有已發布且確實改變 LOC 依賴契約的版本，在驗證後才以 **Cloudflare LAS → LOC GitHub Workflow** 通知一次；LOC 自己驗證版本、有效授權、去重和部署條件後執行。不能把每次 LAS 更新直接 POST LOC Pages Deploy Hook，也不能把 LRS 的緊急 Workflow 當一般發布管線。未完成驗收的通知機制必須標明未完成，不自行宣稱已接通。
 
-Preview Deployment 可用於實際驗證，但「建置／部署成功」不等於 Bug 已修好。Agent 必須區分 Preview 與 main 的 commit SHA、環境與功能結果，完成合併後再確認 main 對應版本；不能讓使用者反覆代測、也不能以部署成功交差。保留目前已有的 Preview 和觸發機制，不為排錯任意改動。
+## 驗證與外部變更
 
-先以目前 repo、GitHub 記錄與合法可用的只讀資料查明原因；**不因 Agent 想加快偵錯，就要求全面開放 Cloudflare MCP**。涉及外部平台的變數、Secret、Binding、Access、Worker、路由、資源或權限的任何寫入、刪除、建立，先列對象、差異、影響、復原方式，取得使用者明確同意後才操作；通過口頭預告不算授權。不得廣泛清理資源或在未知根因時批量修改配置。
+先核對真正生效的 main SHA、Cloudflare Pages watch paths、單一正式部署、GitHub Workflow、已發行 LAS Worker 版本。必要的 Preview、Build、實際 API 測試分開紀錄，不能以 CI 綠燈代替授權及 SSO 驗收。
+
+不因 Pure docs、Skill、註解或 LAS Plugins 更新而反覆編譯或發布 LOC。對外設定（DNS、Secret、Binding、Access、Worker、路由、Build 規則）須先列出準確差異、影響與復原方式，取得當次明確授權後才操作。ISR 目前仍由既有 `loc-isr` 保留且預設關閉，往後交 LAS 必須獨立安全驗收。
