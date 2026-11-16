@@ -18,7 +18,7 @@ import {insertRows,updateRows} from '../db-client.mjs';
 import {selectRows} from '../db-query.mjs';
 import {useAccount} from '../use-account';
 import {createUid8} from '../uid';
-import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from '../content-policy';
+import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from '../content/content-policy';
 import {ObjectEditor} from '../editor/BlockNoteEditor';
 import {blocksToPlainText,plainTextToBlocks} from '../editor/blocknote-content.mjs';
 import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from '../galaxy-able.mjs';

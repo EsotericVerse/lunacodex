@@ -4,7 +4,7 @@
 import {JSONPath} from 'jsonpath-plus';
 import {archiveGalaxyRow,platformLabel} from './galaxy-row.mjs';
 import {facebookArchiveUid} from './facebook-place.mjs';
-import {repairMojibakeText} from '../content-policy.js';
+import {repairMojibakeText} from '../content/content-policy.js';
 import {archiveAttachmentReferences} from './media-evidence.mjs';
 import {parseImportCreatedTime} from '../import/batch.mjs';
 

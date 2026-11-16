@@ -15,7 +15,7 @@ import {isArchiveMediaUrl} from './media-evidence.mjs';
 import {importMapUrlCoordinates} from '../import/geocoordinates.mjs';
 import {archiveAttachmentReferences} from './media-evidence.mjs';
 import {extractFacebookGeoObjects} from './geo-objects.mjs';
-import {repairMojibakeText} from '../content-policy.js';
+import {repairMojibakeText} from '../content/content-policy.js';
 import {archiveRecordStreamPath,archiveRootContainers} from './array-layout.mjs';
 import {isPrivateArchiveEntry} from './import-safety.mjs';
 

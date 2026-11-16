@@ -1,7 +1,7 @@
 // Map records from the shared archive scanner to Galaxy's existing text contract.
 // Source adapters are hints; every row still needs real text and a stable identity.
 import {facebookArchiveGalaxyRow,facebookArchiveUid} from './facebook-place.mjs';
-import {repairMojibakeText} from '../content-policy.js';
+import {repairMojibakeText} from '../content/content-policy.js';
 import {extractImportCoordinates,importMapUrlCoordinates} from '../import/geocoordinates.mjs';
 import {facebookPostPlace} from './geo-objects.mjs';
 import {isArchiveMediaUrl} from './media-evidence.mjs';

@@ -40,7 +40,7 @@ import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportD
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
 import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
 import {MAX_ROWS,urlSafeInBatches} from '../query-batch-size.mjs';
-import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content-policy';
+import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content/content-policy';
 import {galaxyAble} from '../galaxy-able.mjs';
 import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
 import {touchEditorSession} from '../edit-session-ttl.mjs';

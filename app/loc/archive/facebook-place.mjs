@@ -1,4 +1,4 @@
-import {repairMojibakeText} from '../content-policy.js';
+import {repairMojibakeText} from '../content/content-policy.js';
 
 // Facebook Takeout *text* place metadata, not EXIF or media file lookup.
 // Never infer a check-in from post prose, filename, GPS or generic post title.

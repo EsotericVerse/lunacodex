@@ -9,7 +9,7 @@ const ObjectEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor').then(mod=
 import {UI_COPY,registerDefaultSection} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
 import UiText,{useUiText} from '../i18n/UiText';
-import {isInteractiveContentTarget} from '../loc/content-policy.js';
+import {isInteractiveContentTarget} from '../loc/content/content-policy.js';
 import {mediaAnchorHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
 import searchUIZh from '../i18n/sections/uiExtra.searchUI.zh_tw.js';
