@@ -1,14 +1,18 @@
 ---
 name: mcp-builder
-description: "Build or review MCP servers, tools, resource APIs and integrations only when the task calls for an MCP implementation."
+description: "LOC 的 MCP 相鄰業務介面及可攜式資料服務；只檢查契約，不在 LOC 實作或部署 MCP Gateway。"
 ---
-# MCP — 工作入口
+# MCP 在 LOC：業務契約，不是 Gateway
 
-MCP Gateway、Auth、Plugins 與公開 OAuth Resource Server 已歸 `EsotericVerse/lunarcus` 的既有 `lunarcus` Worker。LOC 只維護自身 `/api/las-native`、資料查詢及獨立權限；不要在 LOC 重建 `/mcp` 或 `/.well-known/oauth-protected-resource`。上游 Provider 的 OAuth、Policy、Vault、SSE 等共用源碼也只保留 LAS 原本已存在的一份。LOC 的舊 Provider Functions 已退役；該功能必須在 LAS 完成憑證／狀態管理與權限驗收後才能重新對外提供。遵守既有權限與工具授權邊界。MCP 交互不等於一併載入 Auth、SQL、Extension 技能。需要具體 MCP SDK、驗證、評測程式碼時，**才開單一 HTTP 連結**。
+**MCP Server 的單一原始碼與實際執行入口位於 LAS（`EsotericVerse/lunarcus`）。** 其既有 `lunarcus` Worker 同時服務 `auth.lo3rwang.cc`、`mcp.lo3rwang.cc`。MCP JSON-RPC、工具 schema、OAuth Protected Resource、SSE／Streamable HTTP、Provider OAuth／Policy／Vault／Tools、Plugins 相關通訊都在 LAS 維護，不能重新複製回 LOC。
 
-- [完整 MCP Skill](https://github.com/EsotericVerse/moon-runes-pwa/blob/37f76a294203a9d3618b3571b972f5e9e585722c/.agents/skills/mcp-builder/SKILL.md)
-- [Node/TypeScript 服務端參考](https://github.com/EsotericVerse/moon-runes-pwa/blob/37f76a294203a9d3618b3571b972f5e9e585722c/.agents/skills/mcp-builder/reference/node_mcp_server.md)
-- [MCP 實務](https://github.com/EsotericVerse/moon-runes-pwa/blob/37f76a294203a9d3618b3571b972f5e9e585722c/.agents/skills/mcp-builder/reference/mcp_best_practices.md)
-- 其他專題與腳本：`.agents/SKILL-LINKS.md`。
+LOC 此 Skill 的用途只限 **LAS 使用 LOC 資料服務的業務契約**：
+- `functions/api/las-native.js`：LAS 專用的固定業務 API，不接受任意 SQL、DB URL、任意代理目的地或隱性權限授予。
+- `functions/api/loc-native.js`、`app/loc/mcp/native-operations.mjs`：LOC Scope／`api.manage`／Galaxy／Anchor、匯入、查詢及 SQL Portable 的實際業務授權與資料操作。沿用仍存在的歷史目錄，不依名稱判定責任。
+- `app/loc/mcp/native-kysely.mjs` 與 LOC dialect／Z-Model：屬 LOC 資料來源；LAS 不接管 DB，也不複製一份。
 
-參考文件及腳本不在本機 Skill 目錄；需要執行腳本時，另行取得並核對版本與依賴，禁止開工時批次下載。
+工作方式：先驗證 LAS 對 LOC 的固定 operation、OAuth issuer／audience、UserInfo 身份綁定、Scope 權限、出入參數、錯誤／回執及 SQL 方言；遇到真正的 MCP 傳輸、tools/list、Provider 或 Extension 變更，移至 LAS Repo 與其 `mcp-builder`／`mcp-gateway` Skill 處理。LOC 不重建 `functions/mcp.js`、`functions/index.js` 或 `/.well-known/oauth-protected-resource*`，不再開平行的 Worker。
+
+測試以 `node --test scripts/test-las-native-bridge.mjs scripts/test-las-deployment-boundary.mjs` 和實際 LOC 業務授權為準；LAS MCP 協定的完整驗收由 LAS 負責。不要因兩個 Repo 同時引用 MCP 網域就以為需要兩份程式。
+
+更詳細的外部 MCP SDK 參考見 `.agents/SKILL-LINKS.md`；僅當 LOC 的實際介面契約需要時按需查閱，不批次載入。
