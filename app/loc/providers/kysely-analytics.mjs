@@ -287,12 +287,16 @@ const LANE_PLATFORMS=Object.freeze({
   instagram:['%instagram%','ig','%reels%']
 });
 async function laneDaily(trx,scope,start,end,options){
-  // Statistics are always a bounded window of at most one year; never a full scan.
-  if(!start||!end||(Date.parse(end)-Date.parse(start))/864e5>366)
-    reject('Lane statistics need a date range of at most one year');
+  // A selected Culture media river groups typed MediaAnchor rows by day/type
+  // in one SQL request. Older Item Confluence lanes keep their one-year limit.
   const media=options.media===true;
+  const mediaTypeGroups=options.mediaTypeGroups===true;
   const exact=options.exact==null||options.exact===''?null:String(options.exact);
   const platform=options.platform==null||options.platform===''?null:String(options.platform);
+  if(!start||!end||(!mediaTypeGroups&&(Date.parse(end)-Date.parse(start))/864e5>366))
+    reject('Lane statistics need a bounded date range');
+  if(mediaTypeGroups&&(!media||exact!==null||platform))
+    reject('Media category river requires unfiltered MediaAnchor types');
   if(platform&&(!Object.hasOwn(LANE_PLATFORMS,platform)||media||exact))
     reject('Invalid lane platform');
   const table=sql.ref('silver.'+scope+(media?'_anchor':'_galaxy'));
@@ -315,6 +319,15 @@ async function laneDaily(trx,scope,start,end,options){
     .map(pattern=>sql`g.site ilike ${pattern}`),sql` or `)})`;
   const dayExpr=media
     ?sql`(g.createtime at time zone 'Asia/Taipei')::date`:sql`g.date`;
+  if(mediaTypeGroups){
+    // Existing typed ZModel MediaAnchor: image/video/rune/suno.
+    // No Galaxy JOIN, no binary/body reads and no separate media taxonomy.
+    const result=await sql`select to_char(${dayExpr},'YYYY-MM-DD') as day,
+        g.type as category,count(*)::integer as item_count
+      from ${table} g where ${where} group by 1,2 order by 1,2`.execute(trx);
+    return result.rows.map(row=>({day:row.day,category:row.category,
+      item_count:Number(row.item_count||0)}));
+  }
   const result=await sql`select to_char(${dayExpr},'YYYY-MM-DD') as day,
       count(*)::integer as item_count
     from ${table} g where ${where} group by 1 order by 1`.execute(trx);
