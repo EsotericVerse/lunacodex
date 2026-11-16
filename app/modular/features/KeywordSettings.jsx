@@ -6,7 +6,7 @@ import {useAccount} from '../../loc/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
 import {useEditDock} from '../edit-dock';
 import {FeaturePage} from '../ui';
-import ManagementWorkspaceFrame from '../../loc/ManagementWorkspaceFrame';
+import ManagementWorkspaceFrame from '../../loc/management/ManagementWorkspaceFrame';
 import {registerDefaultSection} from '../../i18n/ui-copy';
 import {useUiSection} from '../../i18n/ui-locale';
 import keywordsZh from '../../i18n/sections/uiExtra.keywords.zh_tw.js';

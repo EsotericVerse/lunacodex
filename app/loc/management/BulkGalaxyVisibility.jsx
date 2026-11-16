@@ -1,9 +1,9 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {dbAuthClient} from './db-client.mjs';
-import {useAccount} from './use-account';
-import {useEditDock,useEditDockForm} from '../modular/edit-dock';
+import {dbAuthClient} from '../db-client.mjs';
+import {useAccount} from '../use-account';
+import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 
 const FIELDS=Object.freeze([
   ['statics','統計'],['culture','文化'],['search','搜尋'],['trace','痕跡'],

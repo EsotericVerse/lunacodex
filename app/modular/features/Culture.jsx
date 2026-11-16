@@ -44,7 +44,7 @@ import {mediaDay} from '../../loc/statistics/facets';
 import {useAccount} from '../../loc/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
-import ManagementWorkspaceFrame from '../../loc/ManagementWorkspaceFrame';
+import ManagementWorkspaceFrame from '../../loc/management/ManagementWorkspaceFrame';
 // Article cards/editing are requested only when results actually render.
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 const CultureTimelineEditor=dynamic(()=>import('./CultureTimelineEditor'),{loading:()=>null});

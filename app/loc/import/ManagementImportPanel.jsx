@@ -42,7 +42,7 @@ import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImp
 import {MAX_ROWS,urlSafeInBatches} from '../query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content-policy';
 import {galaxyAble} from '../galaxy-able.mjs';
-import BulkGalaxyVisibility from '../BulkGalaxyVisibility';
+import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
 import {touchEditorSession} from '../edit-session-ttl.mjs';
 import {PUBLISHED_LOC_ARTICLE_TAGS} from '../../modular/published-source-taxonomy.js';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';

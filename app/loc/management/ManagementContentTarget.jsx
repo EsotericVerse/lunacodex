@@ -1,18 +1,18 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import {useAccount} from './use-account';
-import {defaultScopeData} from './scope-data';
-import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
-import PanelLoading from './PanelLoading';
+import {useAccount} from '../use-account';
+import {defaultScopeData} from '../scope-data';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
+import PanelLoading from '../PanelLoading';
 
 // Article Management is the author's workspace on LOC. Its media and
 // article destinations are derived from the owner Scope, not user-selectable
 // database identifiers. Other Scope pages continue using their own scopeId.
 const DEFAULT_MANAGED_SCOPE_ID=SCOPE_ROUTE_INDEX.find(row=>row.active&&row.scope_id!=='loc')?.scope_id||'';
-const ManagementMediaWorkspace=dynamic(()=>import('./media/ManagementMediaWorkspace'),{loading:()=>null});
+const ManagementMediaWorkspace=dynamic(()=>import('../media/ManagementMediaWorkspace'),{loading:()=>null});
 const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublisher'),{loading:PanelLoading});
-const ManagementImportPanel=dynamic(()=>import('./import/ManagementImportPanel'),{loading:()=>null});
+const ManagementImportPanel=dynamic(()=>import('../import/ManagementImportPanel'),{loading:()=>null});
 
 export default function ManagementContentTarget({scopeId,mode='import',globalAdmin=false}){
   const account=useAccount();
