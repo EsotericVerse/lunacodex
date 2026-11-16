@@ -35,11 +35,17 @@ function conversation(nodes){
 }
 const doc={title:'Complete chat - ChatGPT',body:conversation([]),
   querySelector(selector){
-    return streaming&&selector==='[data-testid="stop-button"]'?{}:null;
+    if(selector==='main')return this.body;
+    return streaming&&selector==='[data-testid="stop-button"]'
+      ?{getClientRects:()=>[{}],getAttribute:()=>''}:null;
   },
-  querySelectorAll:()=>[]};
+  querySelectorAll:()=>[],addEventListener:()=>{},removeEventListener:()=>{}};
 const context=vm.createContext({
   document:doc,location:{href:url,hostname:'chatgpt.com'},URL,
+  MutationObserver:class{observe(){} disconnect(){}},
+  IntersectionObserver:class{observe(){} disconnect(){}},
+  window:{addEventListener(){},removeEventListener(){}},
+  setTimeout:()=>1,clearTimeout:()=>{},
   chrome:{runtime:{onMessage:{addListener(fn){listener=fn}},
     sendMessage:async()=>({queued:0})}}});
 vm.runInContext(vendor,context,{filename:'ChatGPTShadowExtract.js'});
@@ -75,8 +81,20 @@ check('duplicate ID dedupe',[legacyUser,
 check('mixed nested roles',[message('legacy','user','My question','nested-u',[modernAssistant]),
   modernAssistant],true,['user','assistant']);
 const missing=capture([legacyUser],true);
-assert.match(missing.error||'',/無法辨識任何已完成的 AI 回覆/);count++;
+assert.match(missing.error||'',/無法辨識任何 AI 回覆/);count++;
 streaming=true;
-const unsettled=capture([legacyUser,modernAssistant],true);
-assert.match(unsettled.error||'',/AI 回覆尚在生成/);count++;
+const unsettled=capture([legacyUser,legacyAssistant,modernAssistant],true);
+assert.equal(unsettled.error,undefined);
+assert.deepEqual(Array.from(unsettled.items,x=>x.content.match(/^\\[(user|assistant)\\]/)[1]),
+  ['user','assistant']);count++;
+streaming=false;
+// Recording starts immediately on ChatGPT, without requiring an area click.
+let started;
+listener({type:'page.record',includeAssistant:true},null,value=>{started=value});
+assert.equal(started?.ok,true);
+assert.equal(started?.mode,'record');count++;
+let finished;
+listener({type:'page.stop'},null,value=>{finished=value});
+await new Promise(resolve=>setImmediate(resolve));
+assert.equal(finished?.ok,true);count++;
 console.log('ChatGPT capture contract: '+count+' cases PASS');
