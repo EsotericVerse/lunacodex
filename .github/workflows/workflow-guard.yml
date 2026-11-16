@@ -57,3 +57,5 @@ jobs:
           NODE_PATH="$RUNNER_TEMP/loc-syntax/node_modules" node scripts/check-js-syntax.mjs
       - name: Verify LRS Web links, local IPA assets and fail-closed version plan
         run: node --test scripts/test-lrs-web-assets.mjs scripts/test-lrs-deployment-plan.mjs
+      - name: Verify independent LAS Auth and LOC Pages deployment boundary
+        run: node --test scripts/test-las-deployment-boundary.mjs
