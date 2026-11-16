@@ -11,7 +11,7 @@ import {normalizeRelationIds,publicContentFilters} from '../content/content-poli
 import {timePeriodContainsDate} from '../culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../culture/anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from '../db/db-query.mjs';
-import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
+import {dbAuthClient,readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
 import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import {portableContainsTerm} from '../providers/portable-search.mjs';
@@ -578,6 +578,54 @@ function normalizeSearch(value){
 // Deprecated Time style labels are not a search provider. Their classification
 // is handled by the Advanced Search keyword path; keep a no-op for old imports.
 export async function selectStyleKeywordMatches(){return [];}
+
+// Search-only private results use the verified Web managed-action endpoint,
+// never authenticated:true on the public SELECT transport (which is anonymous).
+// Site/Keyword/Media readers and their public visibility rules stay unchanged.
+export async function searchAuthorizedGalaxyRows(scopes,query,{
+  limit=DEFAULT_LIST_BATCH_SIZE,cursor=null,startDate='',endDate='',
+  contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false,
+  signal=null,sortDirection='asc'
+}={}){
+  const q=String(query||'').trim();
+  if(!q)return {rows:[],failures:[],hasMore:false,nextCursor:null};
+  const scopeList=(Array.isArray(scopes)?scopes:[]).filter(scope=>scope?.id&&scope?.galaxy);
+  const selection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
+  if(selection.kind==='none')return {rows:[],failures:[],hasMore:false,nextCursor:null};
+  if((selection.names||[]).length>100)throw Error('所選來源超過搜尋上限，請縮小來源範圍');
+  const providers=scopeList.map(scope=>({
+    id:scope.id+':private-galaxy',
+    async search(value,{cursor:offset=0,startDate:start='',endDate:end='',
+      limit:batch=DEFAULT_LIST_BATCH_SIZE,sortDirection:direction='asc',signal:requestSignal=null}={}){
+      if(requestSignal?.aborted){
+        const cancelled=new Error('Search cancelled');cancelled.name='AbortError';throw cancelled;
+      }
+      const {data,error}=await dbAuthClient.schema('silver').managedAction('search_galaxy_private',{
+        p_scope_id:scope.id,p_query:value,p_offset:offset,
+        p_limit:Math.max(1,Math.min(100,Math.floor(Number(batch)||DEFAULT_LIST_BATCH_SIZE))),
+        p_start_date:start||null,p_end_date:end||null,
+        p_sort_direction:direction==='desc'?'desc':'asc',
+        p_content_type:['','galaxy','lyrics_work','text_work'].includes(contentType)?contentType:'',
+        p_source_mode:selection.kind,
+        p_sources:selection.names||[],
+        p_place_only:Boolean(placeOnly)
+      });
+      if(requestSignal?.aborted){
+        const cancelled=new Error('Search cancelled');cancelled.name='AbortError';throw cancelled;
+      }
+      if(error)throw Error(error.message||'Private Search denied');
+      if(!data||!Array.isArray(data.rows))throw Error('Invalid private Search response');
+      return {
+        rows:data.rows.map(row=>recordFor(row,scope.id+' 文章',
+          scope.id+':private-galaxy',scope,scope.galaxy)),
+        hasMore:data.hasMore===true,nextCursor:data.nextCursor??null,dataSource:'verified'
+      };
+    }
+  }));
+  return searchOrderedScopeProviders(providers,q,{
+    cursor,startDate,endDate,limit,signal,sortDirection
+  });
+}
 
 export async function searchGalaxyRows(scopes,query,{
   limit=DEFAULT_LIST_BATCH_SIZE,cursor=null,startDate='',endDate='',and=[],nor=[],hiddenScopeIds=[],contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false,browse=false,signal=null,sortDirection='asc',managementOnly=false
