@@ -46,7 +46,7 @@ import {locGlobalUid} from '../../../packages/zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {galaxyAble} from '../../loc/model/galaxy-able.mjs';
-import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches} from '../../loc/galaxy/galaxy-query';
+import {searchAuthorizedGalaxyRows,searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches} from '../../loc/galaxy/galaxy-query';
 import {readPublicSourceTaxonomy as selectSourceTaxonomy} from '../../loc/source/catalog-public.mjs';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope/scope-data';
 
@@ -499,7 +499,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         :null;
       if(id!==searchId.current)return;
       // Search is one request: return title and date only. Article details load on entry.
-      const search=await searchGalaxyRows(searchScopes,q,{
+      // A search-only manager grant must use signed, scoped Kysely instead of
+      // bypassing visibility via the anonymous public SELECT transport.
+      const searchRunner=adminSearchActive?searchAuthorizedGalaxyRows:searchGalaxyRows;
+      const search=await searchRunner(searchScopes,q,{
         limit:pageSize,cursor,
         hiddenScopeIds:privilegedSearch?searchScopes.map(item=>item.id):[],
         contentType:options.contentType,sourceFilter:options.sourceFilter,sourceTaxonomy,
@@ -1430,7 +1433,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             <button type="button" className="loc-button scope-work-edit-button" onClick={()=>startEditing(editTarget)}>
               {row.resourceType==='galaxy'?'展開內文並編輯':'編輯媒體連結'}
             </button>
-          </div>:!managementMode&&row.resourceType==='galaxy'&&(row.list!==false||adminSearchActive)&&editingKey!==row.key?<div className="scope-work-fulltext-row">
+          </div>:!managementMode&&row.resourceType==='galaxy'&&row.list!==false&&editingKey!==row.key?<div className="scope-work-fulltext-row">
             <WorkFullText
               open={fullTextKey===row.key}
               loading={fullTextLoading&&fullTextKey===row.key}
