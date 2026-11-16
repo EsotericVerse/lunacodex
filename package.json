@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "prepare": "node scripts/prepare-local-workspace.mjs",
-    "prebuild": "node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs",
+    "prebuild": "node scripts/check-lrs-source-ownership.mjs && node scripts/restore-lrs-web-code.mjs && node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs",
     "dev": "next dev",
     "build": "next build",
     "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",
@@ -14,9 +14,7 @@
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
     "check:loc-vendor-coupling": "node scripts/check-loc-independent-vendor-usage.mjs",
-    "assets:prepare": "node scripts/prepare-rune-runtime-assets.mjs",
-    "assets:plan": "node scripts/prepare-rune-runtime-assets.mjs --plan",
-    "assets:diagnose": "node scripts/diagnose-effekseer-smoke.mjs"
+    "predev": "node scripts/restore-lrs-web-code.mjs"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "1.7.18",
