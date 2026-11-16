@@ -1,9 +1,4 @@
-import GameBoard from '../lrunes/game/GameBoard';
-import {lunarunesMetadata} from '../seo/metadata';
-
-export const metadata=lunarunesMetadata({
-  title:'月之符文桌遊｜本機牌局',
-  description:'LunaRunes 本機桌遊牌桌：二至四人輪流出牌、歷史事件與共振回合。',
-  path:'/game/',noIndex:true
-});
-export default function GamePage(){return <GameBoard/>;}
+// LRS is the sole Rune Web owner. The LOC IPA workflow restores the original
+// LRS page from its pinned commit into the temporary native checkout.
+import {redirect} from 'next/navigation';
+export default function LrsWebRoute(){redirect('https://lrs.lo3rwang.cc/game/');}
