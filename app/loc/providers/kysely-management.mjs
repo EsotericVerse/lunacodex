@@ -22,6 +22,8 @@ import * as z from 'zod';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {keywordPatternItemMetrics} from '../keywords/search-pattern.mjs';
 import {readScopePatternRows,storeScopePatternMatches} from '../keywords/anchor-index.mjs';
+import {parseSearchQuery} from '../search/query.mjs';
+import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -356,9 +358,81 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
-  'media_anchor_candidates','anchor_import_page','import_site_presence']);
+  'media_anchor_candidates','anchor_import_page','import_site_presence',
+  'search_galaxy_private']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
+// A Search-only, read-only action behind the verified LOC Web Session.
+// No browser SELECT may bypass Galaxy.search/list on the public query route.
+const PRIVATE_SEARCH_COLUMNS=Object.freeze(galaxyReadColumns('GalaxyList'));
+const privateSearchSchema=z.strictObject({
+  p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
+  p_query:z.string().trim().min(1).max(180),
+  p_offset:z.number().int().min(0).max(100000).default(0),
+  p_limit:z.number().int().min(1).max(100).default(50),
+  p_start_date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  p_end_date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  p_sort_direction:z.enum(['asc','desc']).default('asc'),
+  p_content_type:z.enum(['','galaxy','lyrics_work','text_work']).default(''),
+  p_source_mode:z.enum(['all','names','others','none']).default('all'),
+  p_sources:z.array(z.string().trim().min(1).max(120)).max(100).default([]),
+  p_place_only:z.boolean().default(false)
+});
+function privateSearchLike(value){
+  // A query term is literal text. Escape SQL LIKE wildcards and backslashes.
+  return '%'+String(value).replace(/[\\%_]/g,char=>'\\'+char)+'%';
+}
+async function searchPrivateGalaxy(trx,args){
+  const parsed=privateSearchSchema.safeParse(args);
+  if(!parsed.success)reject('Invalid private Search request');
+  const {p_scope_id:scope,p_query:raw,p_offset:offset,p_limit:limit,
+    p_start_date:start,p_end_date:end,p_sort_direction:direction,
+    p_content_type:contentType,p_source_mode:sourceMode,p_sources:sources,
+    p_place_only:placeOnly}=parsed.data;
+  if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
+    reject('Private Search Scope access denied',403);
+  const registry=await trx.selectFrom('api.manage')
+    .select(['manage_role','galaxy_table','active'])
+    .where('id','=',scope).executeTakeFirst();
+  if(registry?.manage_role!=='scope'||registry.active!==true||registry.galaxy_table!=='galaxy')
+    reject('Private Search Scope unavailable',403);
+  if(start&&end&&start>end)reject('Invalid private Search time range');
+  const parsedTerms=parseSearchQuery(raw);
+  if(!parsedTerms.groups.length||parsedTerms.groups.length>12||
+    parsedTerms.terms.length>24||parsedTerms.excludes.length>24||
+    [...parsedTerms.terms,...parsedTerms.excludes].some(word=>word.length>120))
+    reject('Invalid private Search terms');
+  if(sourceMode==='names'&&!sources.length)return {data:{rows:[],hasMore:false,nextCursor:null},count:0};
+  await sql`reset role`.execute(trx);
+  const field=placeOnly?'location':'content';
+  let query=trx.selectFrom('silver.'+scope+'_galaxy')
+    .select(PRIVATE_SEARCH_COLUMNS);
+  query=query.where(eb=>eb.or(parsedTerms.groups.map(group=>
+    eb.and(group.map(term=>eb(field,'ilike',privateSearchLike(term))))
+  )));
+  for(const term of parsedTerms.excludes)
+    query=query.where(field,'not ilike',privateSearchLike(term));
+  if(start)query=query.where('date','>=',start);
+  if(end)query=query.where('date','<=',end);
+  if(contentType==='lyrics_work')query=query.where('site','ilike','suno');
+  if(contentType==='text_work')query=query.where('site','not ilike','suno');
+  // Exact case-folded Source matches; never interpret user-selected %/_ as LIKE.
+  if(sourceMode==='names')
+    query=query.where(sql`lower(site)`,'in',sources.map(v=>v.toLowerCase()));
+  else if(sourceMode==='others'&&sources.length)
+    query=query.where(eb=>eb.or([
+      eb('site','is',null),
+      eb(sql`lower(site)`,'not in',sources.map(v=>v.toLowerCase()))
+    ]));
+  else if(sourceMode==='none')return {data:{rows:[],hasMore:false,nextCursor:null},count:0};
+  const rows=await query.orderBy('date',direction).orderBy('uid','asc')
+    .offset(offset).limit(limit+1).execute();
+  const visible=rows.slice(0,limit);
+  assertZModelSelectRows('silver.'+scope+'_galaxy',PRIVATE_SEARCH_COLUMNS,visible);
+  return {data:{rows:visible,hasMore:rows.length>limit,
+    nextCursor:rows.length>limit?offset+limit:null},count:visible.length};
+}
+
 const importSitePresenceArgsSchema=z.strictObject({
   p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
   p_sites:z.array(z.string().max(512)).min(1).max(200)
@@ -558,9 +632,13 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
     media_anchor_candidates:['p_scope_id','p_uids','p_urls','p_after_uid','p_limit'],
     anchor_import_page:['p_scope_id','p_types','p_after_uid','p_limit'],
-    import_site_presence:['p_scope_id','p_sites']
+    import_site_presence:['p_scope_id','p_sites'],
+    search_galaxy_private:['p_scope_id','p_query','p_offset','p_limit',
+      'p_start_date','p_end_date','p_sort_direction','p_content_type',
+      'p_source_mode','p_sources','p_place_only']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='search_galaxy_private')return searchPrivateGalaxy(trx,args);
   if(name==='import_site_presence'){
     // Verified Better Auth LOC Web Session + active api.manage Scope grants.
     // A single Kysely SELECT answers up to 200 exact case-insensitive site
