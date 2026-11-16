@@ -1,6 +1,7 @@
 // cloudflareSsoConfig is read only by the dormant probe below; it stays
 // imported so re-enabling that block needs no other edit.
 import {createLocAuth,cloudflareSsoConfig,CLOUDFLARE_SSO_TOKEN_AUTH,LOC_ISSUER,LOC_WEB} from './auth.mjs';
+import {authorizationCodeRequest} from 'better-auth';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
@@ -422,28 +423,25 @@ export default {
         // All token calls intentionally use an invalid authorization code.
         // No legitimate code, token, Session or user data is ever consumed.
         const tokenTest=async mode=>{
-          const data=new URLSearchParams({grant_type:'authorization_code',
-            code:'loc-sso-debug-intentionally-invalid-code',
-            redirect_uri:LOC_ISSUER+'/api/auth/sso/callback/cloudflare-access'});
-          const requestHeaders={'content-type':'application/x-www-form-urlencoded',
-            accept:'application/json'};
-          if(mode==='post'||mode==='invalid_secret'){
-            data.set('client_id',provider.clientId);
-            // The negative control must use the same auth method as the real
-            // SSO exchange; otherwise its response is not comparable.
-            data.set('client_secret',mode==='invalid_secret'
-              ?'loc-sso-debug-invalid-client-secret':provider.clientSecret);
-          }else{
-            // Match Better Auth 1.7.18's RFC 6749 Basic encoding, including
-            // form-encoding of punctuation in the client ID and Secret.
-            const form=value=>new URLSearchParams({v:value}).toString().slice(2);
-            requestHeaders.authorization='Basic '+
-              btoa(form(provider.clientId)+':'+form(provider.clientSecret));
-          }
           const start=Date.now();
+          const authMethod=mode==='basic'?'client_secret_basic':
+            CLOUDFLARE_SSO_TOKEN_AUTH;
           try{
+            // Use Better Auth's own request builder, including the actual
+            // Basic/POST credential encoding and PKCE code_verifier field.
+            // The authorization code and verifier here are deliberately fake.
+            const {body,headers}=await authorizationCodeRequest({
+              code:'loc-sso-debug-intentionally-invalid-code',
+              codeVerifier:'loc-sso-debug-intentionally-invalid-verifier-2026',
+              redirectURI:LOC_ISSUER+'/api/auth/sso/callback/cloudflare-access',
+              options:{clientId:provider.clientId,
+                clientSecret:mode==='invalid_secret'
+                  ?'loc-sso-debug-invalid-client-secret':provider.clientSecret},
+              tokenEndpoint:endpoint+'/token',
+              tokenEndpointAuth:{method:authMethod}
+            });
             const result=await fetch(endpoint+'/token',{method:'POST',
-              headers:requestHeaders,body:data.toString(),redirect:'manual',
+              headers,body,redirect:'manual',
               signal:AbortSignal.timeout(6000)});
             let oauthError='none';
             if(safeContentType(result)==='json'){
@@ -453,14 +451,14 @@ export default {
                 catch{oauthError='unparseable'}
               }else oauthError='oversize';
             }
-            return {method:mode,httpStatus:result.status,
+            return {method:mode,authMethod,httpStatus:result.status,
               oauthError,elapsedMs:Date.now()-start,
               contentType:safeContentType(result),
               redirect:redirectClass(result),
               mitigated:!!result.headers.get('cf-mitigated'),
               hasCfRay:!!result.headers.get('cf-ray')};
           }catch(error){
-            return {method:mode,networkError:error?.name==='TimeoutError'
+            return {method:mode,authMethod,networkError:error?.name==='TimeoutError'
               ?'timeout':'network_error',elapsedMs:Date.now()-start};
           }
         };
