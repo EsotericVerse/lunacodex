@@ -28,6 +28,7 @@ import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
 import {buildEraRiver} from '../../loc/culture/time-trace-river.mjs';
+import {buildLocCultureScopePreview} from '../../loc/culture/loc-scope-preview.mjs';
 import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-anchor-ranges.mjs';
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy/galaxy-query';
@@ -233,7 +234,7 @@ export default function Culture(){
   const [locCultureView,setLocCultureView]=useState('period');
   // LOC displays the one-year source density river immediately; no first river.
   const [locDensityOpen,setLocDensityOpen]=useState(true);
-  const [expandedLocSources,setExpandedLocSources]=useState([]);
+  const [expandedLocScopes,setExpandedLocScopes]=useState([]);
   const isLrunesDaily=!isTimeEditingView&&scopeId==='lrunes'&&lrunesView==='daily';
   const isLocItemView=scopeId==='loc'&&locCultureView==='item';
   const resourceCache=useResourceCache();
@@ -299,6 +300,7 @@ export default function Culture(){
   useEffect(()=>{
     setStyleFilter('none');
     setLocDensityOpen(true);
+    setExpandedLocScopes([]);
     setSelectedPeriodKey('year');
     setKeywordPeriodKey('year');
     setKeywordCustomStart('');
@@ -782,45 +784,28 @@ export default function Culture(){
     }
     return labels;
   },[locSourceGroups,locCombinedSourceTotal,l,locale]);
-  const locSourceScopeGroups=useMemo(()=>locDensityOpen?locDensityQuery.data?.sourceScopeGroups||[]:[],[locDensityQuery.data,locDensityOpen]);
-  const locSourceScopeItems=useMemo(()=>locDensityOpen?locDensityQuery.data?.sourceScopeRiverItems||[]:[],[locDensityQuery.data,locDensityOpen]);
+  // LOC is a read-only annual preview. The first lane is always a Scope;
+  // its child source categories are revealed from the same numeric query.
+  const locScopePreview=useMemo(()=>buildLocCultureScopePreview({
+    scopes:query.data?.scopes||[],
+    scopeRanges:locDensityQuery.data?.scopeRanges||[],
+    sourceScopeGroups:locDensityQuery.data?.sourceScopeGroups||[],
+    sourceScopeRiverItems:locDensityQuery.data?.sourceScopeRiverItems||[],
+    expandedScopeIds:expandedLocScopes
+  }),[query.data?.scopes,locDensityQuery.data,expandedLocScopes]);
+  const toggleLocScopeGroup=id=>{
+    const prefix='loc-preview:';
+    if(!String(id).startsWith(prefix))return;
+    const scope=String(id).slice(prefix.length);
+    if(!locScopePreview.scopeIds.includes(scope))return;
+    setExpandedLocScopes(current=>current.includes(scope)
+      ?current.filter(value=>value!==scope):[...current,scope]);
+  };
   const locCombinedSourceRiverItems=useMemo(()=>locSourceRiverItems.map(item=>({
-    group_key:'loc-source:'+String(item.category||''),
     ...item,
     end_date:nextRiverDay(item?.start_date),
     group_label:locSourceGroupLabel.get(String(item?.category||item?.group_label||''))||String(item?.group_label||'')
   })),[locSourceRiverItems,locSourceGroupLabel]);
-  // The LOC source root stays a single inexpensive aggregate. Expanding it
-  // reveals only its existing per-Scope numeric children, never new Galaxy IDs.
-  const locSourceTreeGroups=useMemo(()=>{
-    const roots=locSourceGroups.map((group,index)=>{
-      const code=String(group.site||'');
-      const count=Number(group.item_count)||0;
-      return {id:'loc-source:'+code,label:String(group.display_label||code)+'（'+count.toLocaleString(locale)+'）',
-        order:index*1000,collapsible:true,expanded:expandedLocSources.includes(code)};
-    });
-    for(const group of locSourceScopeGroups){
-      const code=String(group.code||'');
-      if(!expandedLocSources.includes(code))continue;
-      const order=roots.findIndex(root=>root.id==='loc-source:'+code);
-      if(order<0)continue;
-      roots.push({id:'loc-source-scope:'+code+':'+group.scope_id,
-        label:'　'+group.scope_id+'（'+Number(group.item_count||0).toLocaleString(locale)+'）',
-        order:order*1000+1+locSourceScopeGroups.findIndex(item=>item===group)});
-    }
-    return roots;
-  },[locSourceGroups,locSourceScopeGroups,expandedLocSources,locale]);
-  const locVisibleSourceItems=useMemo(()=>[
-    ...locCombinedSourceRiverItems,
-    ...locSourceScopeItems.filter(item=>expandedLocSources.includes(String(item.source_code||'')))
-  ],[locCombinedSourceRiverItems,locSourceScopeItems,expandedLocSources]);
-  const toggleLocSourceGroup=id=>{
-    const prefix='loc-source:';
-    if(!String(id).startsWith(prefix))return;
-    const code=String(id).slice(prefix.length);
-    setExpandedLocSources(current=>current.includes(code)
-      ?current.filter(value=>value!==code):[...current,code]);
-  };
   const locScopeDistributionItems=useMemo(()=>locDensityOpen?locDensityQuery.data?.scopeRanges||[]:[],[locDensityQuery.data,locDensityOpen]);
   const locIntersectionScopeIds=useMemo(()=>query.data?.intersectionScopeIds||[],[query.data]);
   const locIntersectionStart=String(query.data?.intersectionStart||'');
@@ -1416,24 +1401,25 @@ export default function Culture(){
     </FeaturePage>;
   }
 
-  // LOC Group Culture has exactly one view: the last year's combined
-  // Article Source river. Scope-specific Time/Keyword rivers are not mounted.
+  // LOC Culture is a fixed one-year overview of member Scopes.
+  // All detailed TimeAnchor rivers and article browsing live inside each Scope.
   if(scopeId==='loc'&&!isTimeEditingView)return <FeaturePage featureId="culture">
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
-      <h2>近一年文章來源</h2>
+      <h2>近一年 · 各 Scope 文化預覽</h2>
+      <p className='scope-status'>左側依 Scope 分組，點開可查看年度來源概覽。時間範圍固定，完整內容請進入各 Scope 的文化頁。</p>
       {query.isPending||Boolean(query.data?.scopes?.length)&&locDensityQuery.isPending
         ?<p className='scope-status' role='status'>{UI_COPY.common.loading}</p>:null}
       {query.error?<p className='scope-status scope-error' role='alert'>
         {featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
       {locDensityQuery.error?<p className='scope-status scope-error' role='alert'>
         {featureDataErrorMessage(locDensityQuery.error,UI_COPY)}</p>:null}
-      {!query.isPending&&(!query.data?.scopes?.length||!locDensityQuery.isPending)
-        &&!query.error&&!locDensityQuery.error&&!locCombinedSourceRiverItems.length
-        ?<p className='scope-status'>近一年沒有可顯示的文章來源。</p>:null}
-      {locVisibleSourceItems.length?<CultureTimeline
-        items={locVisibleSourceItems}
-        extraGroups={locSourceTreeGroups}
-        onGroupToggle={toggleLocSourceGroup}
+      {!query.isPending&&!locDensityQuery.isPending&&!query.error&&!locDensityQuery.error
+        &&!locScopePreview.scopeIds.length
+        ?<p className='scope-status'>目前沒有可顯示的 Scope。</p>:null}
+      {locScopePreview.groups.length?<CultureTimeline
+        items={locScopePreview.items}
+        extraGroups={locScopePreview.groups}
+        onGroupToggle={toggleLocScopeGroup}
         labelOf={emptyRiverLabel}
         focus={EMPTY_RIVER_FOCUS}
         mode='source'
@@ -1441,7 +1427,14 @@ export default function Culture(){
         windowEnd={locSourceEnd}
         fixedMin={locSourceStart}
         fixedMax={locSourceEnd}
+        naturalSourceHeight
+        readOnlyViewport
       />:null}
+      {locScopePreview.scopeIds.length?<nav className='scope-result-links' aria-label='各 Scope 文化詳情'>
+        {locScopePreview.scopeIds.map(id=><ScopeLink key={id} href={featureNavigationHref(id,'culture')}>
+          {id} · 查看完整文化
+        </ScopeLink>)}
+      </nav>:null}
     </section>
   </FeaturePage>;
 
