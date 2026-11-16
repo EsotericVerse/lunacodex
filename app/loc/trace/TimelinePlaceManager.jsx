@@ -6,7 +6,7 @@ import {readAllTraceAnchors} from '../../modular/features/trace/trace-data';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {revalidateServerMetadata} from '../scope-data';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession} from '../edit-session-ttl.mjs';
-import {TIMELINE_IO,MAX_TIMELINE_BYTES} from '../query-batch-size.mjs';
+import {TIMELINE_IO,MAX_TIMELINE_BYTES} from '../query/query-batch-size.mjs';
 import {accumulateTimelineArticles,groupTimelineMissingPlaces,selectedTimelineArticleUpdates} from './timeline-place-matcher.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 

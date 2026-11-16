@@ -1,7 +1,7 @@
 // JSON and Galaxy Markdown import. ZIP archives are parsed by the separate
 // archive streaming pipeline; no Office/PDF parser is part of this module.
 import {ARCHIVE_JSON_MAX_BYTES,importRowsFromJson} from './batch.mjs';
-import {MAX_DOCUMENT_BYTES} from '../query-batch-size.mjs';
+import {MAX_DOCUMENT_BYTES} from '../query/query-batch-size.mjs';
 export {UNIVERSAL_IMPORT_ACCEPT} from './batch.mjs';
 
 // The selected *import language* is only an encoding fallback hint. It is

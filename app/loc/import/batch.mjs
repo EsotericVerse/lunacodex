@@ -1,6 +1,6 @@
 // One format contract for JSON Import and Source Refresh. No database authority lives here.
 // Archive size limits are configuration, not proof of successful large-file import E2E.
-import {MAX_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query-batch-size.mjs';
+import {MAX_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
 // Lightweight file-selection contracts remain separate from parser implementations.

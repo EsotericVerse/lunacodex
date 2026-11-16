@@ -32,7 +32,7 @@ const built=Object.keys(routes).filter(route=>retiredRoutes.includes(route));
 if(built.length)throw Error('Retired ISR route still built: '+built.join(', '));
 const runtime=read('app/loc/runtime-config.mjs');
 const backend=read('app/loc/providers/kysely-management.mjs');
-const io=read('app/loc/query-batch-size.mjs');
+const io=read('app/loc/query/query-batch-size.mjs');
 // Only the strictly disabled Vercel ISR reservation may coexist with I/O.
 // No legacy ISR endpoint, Worker, route or active switch may be restored.
 if(!runtime.includes("const allowed=['io_limits','isr']")||

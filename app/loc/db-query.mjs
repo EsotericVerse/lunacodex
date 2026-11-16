@@ -10,7 +10,7 @@ export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 // Full-result readers use internal transport pages without truncating SQL totals.
 
 import {dbAuthClient,dbBackupPublicClient,dbConfiguredPublicClient,dbPublicClient} from './db-client.mjs';
-import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './db-source-status.mjs';
+import {isDatabaseConnectivityFailure,markPrimaryReadFailed,markPrimaryReadSucceeded,markBackupReadFailed,markBackupReadSucceeded} from './providers/db-source-status.mjs';
 
 import {selectedDatabaseRouting} from './providers/routing/state.mjs';
 const recoverableReadError=error=>{

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   RESERVED_ISR_DEFAULTS,normalizeReservedIsr,decodeRuntimeIo,encodeRuntimeIo
-} from '../app/loc/query-batch-size.mjs';
+} from '../app/loc/query/query-batch-size.mjs';
 
 const expected={enabled:false,provider:'none',revalidate_seconds:60};
 assert.deepEqual(RESERVED_ISR_DEFAULTS,expected);

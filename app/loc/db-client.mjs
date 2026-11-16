@@ -2,7 +2,7 @@
 
 import {createDatabaseClient} from './db-contract.mjs';
 import {createConfiguredAdapter} from './providers/configured.mjs';
-import {configureDbSourceLabels} from './db-source-status.mjs';
+import {configureDbSourceLabels} from './providers/db-source-status.mjs';
 
 // Provider construction is the only runtime composition point.
 // The static site reads public records from the owner's existing Data API.
