@@ -17,7 +17,7 @@ import {useAccount} from '../use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
 const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
 const ScopeBlockDraftList=dynamic(()=>import('./ScopeBlockDraftList'),{loading:()=>null});
-import {isInteractiveContentTarget} from '../content-policy.js';
+import {isInteractiveContentTarget} from '../content/content-policy.js';
 
 import {HomeBlock} from './home-block-model';
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';

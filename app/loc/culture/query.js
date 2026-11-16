@@ -7,7 +7,7 @@ import {workDisplayText} from '../../modular/work-display-model';
 import {selectScopeDailyCounts} from '../galaxy-query';
 import {selectAllRows,selectCount,selectRows} from '../db-query.mjs';
 import {mapBounded} from '../bounded-parallel.mjs';
-import {publicContentFilters} from '../content-policy';
+import {publicContentFilters} from '../content/content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from '../scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-anchor-ranges.mjs';

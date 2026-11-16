@@ -12,7 +12,7 @@ import {insertRows,updateRows} from '../db-client.mjs';
 import {selectRows} from '../db-query.mjs';
 import {createUid8} from '../uid';
 import {useAccount} from '../use-account';
-import {hasIrrecoverableEncoding,repairMojibakeText} from '../content-policy';
+import {hasIrrecoverableEncoding,repairMojibakeText} from '../content/content-policy';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
