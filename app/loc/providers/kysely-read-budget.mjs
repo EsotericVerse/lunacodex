@@ -1,4 +1,4 @@
-import {MAX_MULTIPARA} from '../bounded-parallel.mjs';
+import {MAX_MULTIPARA} from '../query/bounded-parallel.mjs';
 
 // All public browser readers share one bounded request budget.
 // Limit burst fan-out without touching authenticated writes or adding retries.

@@ -3,7 +3,7 @@ import {useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {dbPublicClient} from '../../../loc/db-client.mjs';
-import {mapBounded} from '../../../loc/bounded-parallel.mjs';
+import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
 import {readCurrentTraceAnchors,readPublishedTraceSourceScopes} from './trace-data';
 import {territoryYearWindow,territoryRegions,territoryPointReadPlan,territoryWithAnchors} from './trace-territory.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';

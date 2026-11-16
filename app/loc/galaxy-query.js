@@ -1,6 +1,6 @@
 'use client';
 import {isAbortError} from './db-query.mjs';
-import {mapBounded} from './bounded-parallel.mjs';
+import {mapBounded} from './query/bounded-parallel.mjs';
 import {searchOrderedScopeProviders} from './search/ordered-scope-providers.mjs';
 
 

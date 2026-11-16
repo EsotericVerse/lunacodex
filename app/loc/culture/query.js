@@ -6,7 +6,7 @@ import {CultureTimelineModel} from '../../modular/modules/culture-timeline/cultu
 import {workDisplayText} from '../../modular/work-display-model';
 import {selectScopeDailyCounts} from '../galaxy-query';
 import {selectAllRows,selectCount,selectRows} from '../db-query.mjs';
-import {mapBounded} from '../bounded-parallel.mjs';
+import {mapBounded} from '../query/bounded-parallel.mjs';
 import {publicContentFilters} from '../content/content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from '../scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
