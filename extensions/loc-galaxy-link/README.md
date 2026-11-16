@@ -11,7 +11,7 @@
 
 Neon／Supabase MCP 連線在同一設定頁完成：輸入一次 SSO Email，分別按 provider 的「授權一次」。上游授權完成後由 LOC MCP Gateway 加密保存並 refresh provider token；extension 不保存上游 token，也不會在每次 MCP 呼叫重新登入。
 
-僅使用既有 IndexedDB `loc-channel1-queue` 與 `pending` store，版本 2 新增 `acknowledged` 去重存儲；原有未送 Queue 不清空、不搬移、不換帳號。所有功能共用這一個 Queue、這一組 LOC Auth 與短匯入 API。滿 10 次擷取或累積約 600 KB 送出，手動可提前送出；依擷取當下的 Scope 分批，各篇以來源為單位持續 Append，完整收齊批次／UID 回執後才刪 Queue。禁止匿名、覆寫文章及跨 Scope 混合批次。
+僅使用既有 IndexedDB `loc-channel1-queue` 與 `pending` store，版本 2 新增 `acknowledged` 去重存儲；原有未送 Queue 不清空、不搬移、不換帳號。所有功能共用這一個 Queue、這一組 LOC Auth 與短匯入 API。每次擷取入列後立即嘗試發送全部待送資料，無需累積筆數或容量門檻；手動發送同樣處理全部待送資料，傳輸仍依 API 限制分批；依擷取當下的 Scope 分批，各篇以來源為單位持續 Append，完整收齊批次／UID 回執後才刪 Queue。禁止匿名、覆寫文章及跨 Scope 混合批次。
 
 非預設 Scope 由 MCP `/api/loc-native` 按 OAuth 身分與現有 `api.manage` 寫入授權核對；Extension 依擷取當時的 Scope 分批，不允許未授權 Scope 落入預設 Scope。程式不使用舊網站 Session Bridge、SQL Gateway、Clerk、Supabase Auth 或 Neon Auth。
 
@@ -36,3 +36,7 @@ ChatGPT 巢狀 DOM 以外層訊息 Turn 去重，同一則訊息不再重複入�
 ## v0.2.5：第三方 ChatGPT Shadow 擷取模組完整移植
 
 Apache-2.0 授權的 [ChatGPT Shadow](https://github.com/dialoguesai/chatgpt-shadow-extension) `extract.js` 已完整放入 `vendor/ChatGPTShadowExtract.js`，保留其原始授權文件；由 LOC 原本的 `content.js` 將新版 ChatGPT 的搜尋單元、舊版角色節點、Markdown／程式碼、訊息 ID、串流辨識，統一轉入原有的 `items.captured` 與 IndexedDB Queue。只在明確按右鍵擷取／啟動錄製時注入，不啟用 Shadow 原本的自動常駐同步、週期輪詢、Topos、另一套儲存或第三方登入。串流中的 AI 回覆不寫入；等到內容完成才納入（需原有「包含 AI 回覆」設定開啟）。新對話尚未取得正式 `/c/<id>` 時不冒險以暫存網址建立 Galaxy 來源；不同對話的殘留 DOM 會被丟棄。保留既有 Queue／Scope／OAuth／UID 回執與 Chrome Extension ID。
+
+## v0.2.11：全頁擷取、對話錄製與 Queue 發送
+
+ChatGPT／Claude 開始錄製立即監看對話主區域，不需再點選錄製範圍；整頁擷取是已載入訊息的一次快照，不會被殘留的「尚在生成」狀態阻止。只有可見的生成停止按鈕代表正在生成；已完成的訊息可持續擷取，最後一則未完成的 AI 訊息暫不保存。Queue 不再等待擷取數量或大小門檻，接收擷取後立即發送全部待送資料；離線、未授權、回執不完整時原始 Queue 照常保留，底層維持分批傳輸與失敗退避。未載入於網頁 DOM 的歷史對話仍不能視為已保存，不能以 Queue 新增筆數宣稱完整封存。
