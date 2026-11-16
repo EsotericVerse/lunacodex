@@ -1,6 +1,7 @@
 // cloudflareSsoConfig is read only by the dormant probe below; it stays
 // imported so re-enabling that block needs no other edit.
-import {createLocAuth,cloudflareSsoConfig,LOC_ISSUER,LOC_WEB} from './auth.mjs';
+import {createLocAuth,cloudflareSsoConfig,CLOUDFLARE_SSO_TOKEN_AUTH,LOC_ISSUER,LOC_WEB} from './auth.mjs';
+import {authorizationCodeRequest} from 'better-auth';
 import {oauthProviderAuthServerMetadata,oauthProviderOpenIdConfigMetadata,
   verifyOAuthQueryParams} from '@better-auth/oauth-provider';
 
@@ -325,8 +326,9 @@ export default {
         // Cloudflare version_metadata is configured in wrangler.jsonc.
         // The ID identifies the deployed Worker version, not merely the
         // package version or the GitHub main commit.
-        const debugInfo={debug:'temporary',debugVersion:'sso-health-v2',
-          workerVersion:String(env.CF_VERSION_METADATA?.id||'unavailable')};
+        const debugInfo={debug:'temporary',debugVersion:'sso-health-v3',
+          workerVersion:String(env.CF_VERSION_METADATA?.id||'unavailable'),
+          tokenAuthMethod:CLOUDFLARE_SSO_TOKEN_AUTH};
         const headers={'content-type':'application/json; charset=utf-8',
           'cache-control':'no-store, max-age=0','pragma':'no-cache',
           'x-content-type-options':'nosniff','x-robots-tag':'noindex, nofollow',
@@ -421,24 +423,25 @@ export default {
         // All token calls intentionally use an invalid authorization code.
         // No legitimate code, token, Session or user data is ever consumed.
         const tokenTest=async mode=>{
-          const data=new URLSearchParams({grant_type:'authorization_code',
-            code:'loc-sso-debug-intentionally-invalid-code',
-            redirect_uri:LOC_ISSUER+'/api/auth/sso/callback/cloudflare-access'});
-          const requestHeaders={'content-type':'application/x-www-form-urlencoded',
-            accept:'application/json'};
-          if(mode==='post'){
-            data.set('client_id',provider.clientId);
-            data.set('client_secret',provider.clientSecret);
-          }else{
-            const secret=mode==='invalid_secret'
-              ?'loc-sso-debug-invalid-client-secret':provider.clientSecret;
-            requestHeaders.authorization='Basic '+
-              btoa(provider.clientId+':'+secret);
-          }
           const start=Date.now();
+          const authMethod=mode==='basic'?'client_secret_basic':
+            CLOUDFLARE_SSO_TOKEN_AUTH;
           try{
+            // Use Better Auth's own request builder, including the actual
+            // Basic/POST credential encoding and PKCE code_verifier field.
+            // The authorization code and verifier here are deliberately fake.
+            const {body,headers}=await authorizationCodeRequest({
+              code:'loc-sso-debug-intentionally-invalid-code',
+              codeVerifier:'loc-sso-debug-intentionally-invalid-verifier-2026',
+              redirectURI:LOC_ISSUER+'/api/auth/sso/callback/cloudflare-access',
+              options:{clientId:provider.clientId,
+                clientSecret:mode==='invalid_secret'
+                  ?'loc-sso-debug-invalid-client-secret':provider.clientSecret},
+              tokenEndpoint:endpoint+'/token',
+              tokenEndpointAuth:{method:authMethod}
+            });
             const result=await fetch(endpoint+'/token',{method:'POST',
-              headers:requestHeaders,body:data.toString(),redirect:'manual',
+              headers,body,redirect:'manual',
               signal:AbortSignal.timeout(6000)});
             let oauthError='none';
             if(safeContentType(result)==='json'){
@@ -448,22 +451,22 @@ export default {
                 catch{oauthError='unparseable'}
               }else oauthError='oversize';
             }
-            return {method:mode,httpStatus:result.status,
+            return {method:mode,authMethod,httpStatus:result.status,
               oauthError,elapsedMs:Date.now()-start,
               contentType:safeContentType(result),
               redirect:redirectClass(result),
               mitigated:!!result.headers.get('cf-mitigated'),
               hasCfRay:!!result.headers.get('cf-ray')};
           }catch(error){
-            return {method:mode,networkError:error?.name==='TimeoutError'
+            return {method:mode,authMethod,networkError:error?.name==='TimeoutError'
               ?'timeout':'network_error',elapsedMs:Date.now()-start};
           }
         };
         const tests=await Promise.all([
           tokenTest('basic'),tokenTest('post'),tokenTest('invalid_secret')]);
         return reply({...debugInfo,keys,config,discovery,tokenTests:tests,
-          // invalid_grant from a real-secret request is compatible with
-          // accepted client authentication; equal errors are inconclusive.
+          // Every probe uses an invalid code and an intentionally fake PKCE
+          // verifier. Only a genuine callback proves the end-to-end flow.
           diagnosis:tests.some(t=>t.method!=='invalid_secret'&&
             t.oauthError==='invalid_grant')?'client_auth_likely_accepted'
             :tests.every(t=>t.httpStatus===500)?'upstream_all_500'
