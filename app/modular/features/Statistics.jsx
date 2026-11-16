@@ -121,7 +121,11 @@ function facetTotals(rows=[]){
 }
 function facetTrend(rows=[],window={},selectedCategories=[]){
   if(!window.startDate||!window.endDate)return [];
-  const categories=new Map(selectedCategories.map(value=>[String(value).normalize('NFKC').toLocaleLowerCase(),value]));
+  // Recharts treats dotted dataKey strings as object paths, so a location
+  // such as a street/domain name must use a stable ordinal key instead.
+  const categories=new Map(selectedCategories.map((value,index)=>[
+    String(value).normalize('NFKC').toLocaleLowerCase(),'category_'+index
+  ]));
   const buckets=new Map();
   for(let cursor=new Date(window.startDate+'T00:00:00Z'),end=new Date(window.endDate+'T00:00:00Z');cursor<=end;cursor.setUTCDate(cursor.getUTCDate()+1)){
     const bucket=trendBucket(cursor.toISOString().slice(0,10),window.bucket);
@@ -137,41 +141,36 @@ function facetTrend(rows=[],window={},selectedCategories=[]){
   }
   return [...buckets.values()].sort((a,b)=>a._sort.localeCompare(b._sort)).map(row=>{
     const output={period:row.period};
-    for(const category of selectedCategories)output[category]=Number(row[category])||0;
+    for(let index=0;index<selectedCategories.length;index++){
+      const key='category_'+index;
+      output[key]=Number(row[key])||0;
+    }
     return output;
   });
 }
 
-function StatisticTypeSelect({scopeId,navigation,types,selectedSource='',sourceTaxonomy=null}) {
+function StatisticTypeSelect({scopeId,navigation,types}) {
   const UI_COPY=useUiCopy();
   const t=useUiText();
   const router=useRouter();
-  // The Source group is a second selector family; it reuses the existing
-  // Source chart and the same published Anchor labels as Culture.
-  const sourceOptions=sourceKeywordOptions(sourceTaxonomy);
+  // Pick one ZModel dimension. The Source subtree is picked in a separate
+  // field only when Source is active, avoiding duplicate long dropdowns.
   const requested=String(navigation.rankingType||'');
-  const selected=sourceOptions.find(item=>item.code===selectedSource);
-  const active=types.includes(requested)
-    ?requested==='source'&&selected?'source:'+selected.code:requested
-    :(['media_type','media_platform','media_style'].includes(requested)?'media':types[0]||'');
+  const active=types.includes(requested)?requested:
+    (['media_type','media_platform','media_style'].includes(requested)?'media':types[0]||'');
   if(!types.length)return null;
   return <label>
     <span>{UI_COPY.statistics.item}</span>
     <select id="statistics-ranking-type" className="scope-select" value={active} onChange={event=>{
       const value=event.target.value;
       if(!value||value===active)return;
-      const choice=sourceOptions.find(item=>'source:'+item.code===value);
-      const rankingType=choice?'source':value;
       router.push(featureNavigationHref(scopeId,'statics',{
-        ...navigation,rankingType,source:choice?.code
+        ...navigation,rankingType:value,source:undefined
       }));
     }}>
       {types.includes('total')?<option value='total'>{t(STAT_TYPE_KEYS.total)}</option>:null}
       {types.includes('source')?<optgroup label="來源">
-        <option value="source">全部來源</option>
-        {sourceOptions.map(item=><option key={item.key} value={'source:'+item.code}>
-          {item.domain?item.domain+' / ':''}{item.label}
-        </option>)}
+        <option value="source">來源</option>
       </optgroup>:null}
       {types.includes('keywords')?<optgroup label="關鍵詞">
         <option value="keywords">{t(STAT_TYPE_KEYS.keywords)}</option>
@@ -394,8 +393,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     [categoryCatalog,selectedCategory,rankingType]);
   const categoryTrend=useMemo(()=>facetTrend(categoryWindow.rows,categoryWindow,displayedCategories),
     [categoryWindow.rows,categoryWindow.startDate,categoryWindow.endDate,categoryWindow.bucket,displayedCategories]);
-  const categorySeries=useMemo(()=>displayedCategories.map(term=>({
-    key:term,label:rankingType==='media'?MEDIA_LABELS[term]||term:term
+  const categorySeries=useMemo(()=>displayedCategories.map((term,index)=>({
+    key:'category_'+index,label:rankingType==='media'?MEDIA_LABELS[term]||term:term
   })),[displayedCategories,rankingType]);
   const categoryDistribution=useMemo(()=>displayedCategories.map(term=>({
     name:rankingType==='media'?MEDIA_LABELS[term]||term:term,
@@ -498,8 +497,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     <div className={'scope-stat-controls statistics-dashboard__filters'+
       (showTotalOverview?' statistics-dashboard__filters--summary':'')}>
       <div className="statistics-dashboard__filter-fields">
-      <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}
-        selectedSource={activeSourceSelection} sourceTaxonomy={sourceCatalog.data}/>
+      <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}/>
       {placeOrMediaChart?<label>
         <span>{rankingType==='place'?'地點':'多媒體類型'}</span>
         <select className="scope-select" aria-label={rankingType==='place'?'地點':'多媒體類型'}
