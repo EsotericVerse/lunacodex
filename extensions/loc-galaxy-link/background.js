@@ -187,13 +187,13 @@ async function acceptItems(items){
  if(!events.length)return {message:'目前頁面沒有符合擷取條件的可見內容',queued:(await allEvents()).length,empty:true};
  const inserted=await putEvents(events);
  await updateQueueBadge().catch(error=>console.warn('[LOC Queue badge]',String(error)));
- if(locImportPaused)return {message:'已保留 Queue：'+inserted+' 筆',queued:await queueCount()};
+ if(locImportPaused)return {message:inserted?'已保留 Queue：'+inserted+' 筆':'未新增資料：擷取內容已存在 Queue 或已保存',queued:await queueCount(),empty:inserted===0};
  const all=await allEvents();
  if(ready(all))void flush(false).catch(async error=>{
   console.warn('[LOC galaxy-link automatic import]',String(error));
   await noteAction('自動傳送',false,error?.message||String(error));
  });
- return {message:'新加入 Queue：'+inserted+' 筆（重複擷取已略過）',queued:all.length};
+ return {message:inserted?'新加入 Queue：'+inserted+' 筆（重複擷取已略過）':'未新增資料：此次擷取內容均已存在 Queue 或已保存',queued:all.length,empty:inserted===0};
 }
 
 function packet(rows){
@@ -586,6 +586,7 @@ async function currentTab(){
 async function capture(tab,selection='',includeAssistant=false){
  await inject(tab.id);
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.capture',selection,includeAssistant});
+ if(reply?.error)throw Error(String(reply.error));
  if(!Array.isArray(reply?.items))throw Error('頁面沒有回傳內容');
  if(!reply.items.length)throw Error('未找到可擷取的內容：目前頁面可能尚未載入對話，或網站 DOM 格式已變更');
  return acceptItems(reply.items);
