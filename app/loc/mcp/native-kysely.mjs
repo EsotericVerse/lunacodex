@@ -1,9 +1,8 @@
 // The LOC business backend opens its own PostgreSQL connection.
 // It never asks LOC Auth for database credentials, profiles, targets or SQL.
 import {Kysely} from 'kysely';
-import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
-import {createKyselyDialect} from '../providers/kysely-dialects.mjs';
+import {createKyselyDialect,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
 
 // Cloudflare request env wrappers can have different identities. Keep one
 // trusted business connection per isolate, not a new pool per HTTP request.
@@ -22,34 +21,8 @@ function mainUri(env){
     throw unavailable('LOC primary PostgreSQL URI incomplete');
   return value;
 }
-// Pool-shaped adapter for Kysely: one fresh pg.Client per connect(), closed on
-// release. Holds no sockets or waiters between requests.
-// A Free-plan Neon compute suspends after ~5 minutes idle; the first connection
-// after that can fail while it wakes. Only the connect step is retried (nothing
-// has been sent yet, so it is always safe); queries are never retried.
-export function requestScopedPool(options,ClientClass=pg.Client,
-    {attempts=2,delayMs=400}={}){
-  return {
-    async connect(){
-      let lastError;
-      for(let attempt=1;attempt<=attempts;attempt++){
-        const client=new ClientClass(options);
-        client.on?.('error',()=>{});
-        try{
-          await client.connect();
-          client.release=()=>{void Promise.resolve(client.end()).catch(()=>{});};
-          return client;
-        }catch(error){
-          lastError=error;
-          void Promise.resolve(client.end?.()).catch(()=>{});
-          if(attempt<attempts)await new Promise(resolve=>setTimeout(resolve,delayMs));
-        }
-      }
-      throw lastError;
-    },
-    async end(){}
-  };
-}
+export {requestScopedPool};
+
 export function mcpDatabaseConfiguration(env={}){
   const configured=Boolean(String(env?.LOC_DATABASE_URI||'').trim());
   return {publicReadConfigured:configured,privateReadConfigured:configured,
