@@ -50,7 +50,7 @@
   // The complete ChatGPT Shadow extractor handles both the legacy author-role
   // markup and 2026 search-unit turns, including markdown and message IDs.
   // Only this bridge adapts its records to LOC's existing Queue contract.
-  function shadowConversationTurns(scope,includeAssistant=false){
+  function shadowConversationTurns(scope,includeAssistant=false,mode='capture'){
     const upstream=globalThis.ChatGPTShadowExtract;
     if(!upstream)throw Error('ChatGPT Shadow 擷取模組未載入');
     const threadId=upstream.conversationIdFromUrl(location.href);
@@ -60,21 +60,19 @@
     if(!threadId||pendingId)return [];
     const source=normalizeUrl(location.href);
     if(!source)return [];
-    const streaming=upstream.isStreaming(document);
+    // Full-page capture and recording are distinct. A stale turn-state marker
+    // must never block a snapshot of completed messages. When actively
+    // recording, withhold only a visibly unfinished final assistant turn.
+    const streaming=mode==='record'&&upstream.isStreaming(document);
     const title=upstream.extractTitle(document);
     const rows=upstream.messagesForUrl(upstream.extractMessages(scope),location.href);
-    // Never claim a complete snapshot while the requested AI reply is still
-    // streaming. During recording, older completed replies can still enter
-    // Queue; only the latest in-flight assistant turn is withheld.
-    if(includeAssistant&&streaming&&state.mode!=='record')
-      throw Error('AI 回覆尚在生成，對話未完整；本次不寫入 Queue');
     const pendingIndex=streaming?rows.findLastIndex(row=>row.role==='assistant'):-1;
     const captured=rows.filter((row,index)=>
       row.role==='user'||(includeAssistant&&row.role==='assistant'&&index!==pendingIndex))
       .filter(row=>typeof row.content==='string'&&row.content.trim());
-    if(includeAssistant&&rows.some(row=>row.role==='user')&&
+    if(includeAssistant&&mode!=='record'&&rows.some(row=>row.role==='user')&&
       !captured.some(row=>row.role==='assistant'))
-      throw Error('已勾選保存 AI 回覆，但目前無法辨識任何已完成的 AI 回覆；本次不寫入 Queue');
+      throw Error('已勾選保存 AI 回覆，但目前無法辨識任何 AI 回覆；本次不寫入 Queue');
     return captured.map(row=>({
         key:upstream.stableMessageId(threadId,row),source_key:source,url:source,
         title,content:'['+row.role+']\n'+row.content.slice(0,1400000)
@@ -172,7 +170,7 @@
       // mode; do not run the old ChatGPT fallback in parallel.
       const region=mode==='record'||doc===document.body?
         (doc.closest?.('main')||doc.querySelector?.('main')||doc):doc;
-      return shadowConversationTurns(region,includeAssistant);
+      return shadowConversationTurns(region,includeAssistant,mode);
     }
     if(hostname==='claude.ai'){
       // Claude retains its own role-based extraction path.
@@ -399,6 +397,18 @@
       }catch(error){reply({error:String(error?.message||error)})}
       return;
     }
+    if(msg.type==='page.record'&&
+      (CHAT_HOST.test(location.hostname.toLowerCase())||location.hostname==='claude.ai')){
+      // Chat capture targets its main conversation immediately; users should
+      // never have to pick a second area after selecting Start Recording.
+      stop();
+      state.root=document.querySelector('main')||document.body;
+      state.includeAssistant=msg.includeAssistant===true;
+      state.seen.clear();state.emptyReported=false;
+      const ok=watch();
+      reply({ok,mode:state.mode});
+      return;
+    }
     if(msg.type==='page.select'||msg.type==='page.record'){
       stop();state.mode=msg.type==='page.select'?'select':'pick-record';
       state.includeAssistant=msg.includeAssistant===true;
@@ -420,11 +430,10 @@
       let items=[];
       let captureError='';
       try{
-        if(isRecording&&state.includeAssistant&&CHAT_HOST.test(location.hostname)&&
-          globalThis.ChatGPTShadowExtract?.isStreaming(document))
-          throw Error('AI 回覆仍在生成，停止錄製時無法保證最後一則完整');
         items=isRecording&&state.root?extract(state.root,'record',state.includeAssistant):[];
       }catch(error){captureError=String(error?.message||error)}
+      const partial=isRecording&&state.includeAssistant&&CHAT_HOST.test(location.hostname)&&
+        Boolean(globalThis.ChatGPTShadowExtract?.isStreaming(document));
       const count=state.seen.size;
       const outstanding=[...state.pendingWrites];
       stop();
@@ -438,7 +447,7 @@
         }
         const result=items.length?await queuePublish(items):{accepted:0,queued:0};
         reply({ok:!result.error,count:state.seen.size,queued:result.queued||0,
-          ...(result.error?{error:result.error}:{})});
+          partial,...(result.error?{error:result.error}:{})});
       })().catch(error=>reply({ok:false,count,error:String(error?.message||error)}));
       return true;
     }
