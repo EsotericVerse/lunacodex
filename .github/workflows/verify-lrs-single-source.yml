@@ -54,3 +54,49 @@ jobs:
           test ! -d out/vendor/effekseer
       - name: No Worker deployment or LOC production release from this job
         run: echo 'Build and file validation only; no Cloudflare writes or grants'
+
+  verify-native-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout LOC into independent native test checkout
+        uses: actions/checkout@v4
+        with:
+          path: loc-source
+          persist-credentials: false
+      - name: Checkout exact LRS source used by LOC Web
+        uses: actions/checkout@v4
+        with:
+          repository: EsotericVerse/lunarunes
+          ref: b176b6b280fbedf66c4f6fa0827b5d38310a768a
+          path: rune-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+          cache: npm
+          cache-dependency-path: loc-source/package-lock.json
+      - name: Confirm LRS source is pinned and matches LOC declared version
+        working-directory: loc-source
+        run: |
+          test "$(git -C ../rune-source rev-parse HEAD)" = "$(node -p "JSON.parse(require('fs').readFileSync('config/lrs-source.json','utf8')).sourceCommit")"
+          node scripts/check-lrs-source-ownership.mjs
+      - name: Restore original native Rune code and UI only in ephemeral checkout
+        working-directory: loc-source
+        run: node scripts/restore-lrs-native-ui.mjs ../rune-source .
+      - name: Install LOC dependencies
+        working-directory: loc-source
+        run: npm ci --no-audit --no-fund
+      - name: Verify native LOC export uses real LRS code without Web source restore
+        working-directory: loc-source
+        env:
+          LOC_NATIVE_RUNE_ASSETS: '1'
+          NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'
+        run: |
+          npm run build:static
+          test -s out/lrunes/index.html
+          test -s out/daily/log/index.html
+          test -s out/card/duel/index.html
+          test -s out/game/index.html
+      - name: Verify no new IPA flow or Cloudflare write
+        run: echo 'Native source parity only. The existing LOC IPA workflow owns actual IPA and assets.'
