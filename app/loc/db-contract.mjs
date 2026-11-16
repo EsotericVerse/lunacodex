@@ -3,7 +3,7 @@ import {assertPlainGalaxyAttributes} from './content/content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from './query/query-batch-size.mjs';
 import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from './authorization-runtime.mjs';
 import {assertEditorSession} from './edit-session-ttl.mjs';
-import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './galaxy-able.mjs';
+import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from './model/galaxy-able.mjs';
 
 // Database contract transports physical Galaxy/Anchor rows. Keyword Tree
 // adapters may expose legacy lists for editor compatibility; new persistent

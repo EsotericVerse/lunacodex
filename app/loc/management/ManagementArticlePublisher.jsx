@@ -21,7 +21,7 @@ import {createUid8} from '../model/uid';
 import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from '../content/content-policy';
 import {ObjectEditor} from '../editor/BlockNoteEditor';
 import {blocksToPlainText,plainTextToBlocks} from '../editor/blocknote-content.mjs';
-import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from '../galaxy-able.mjs';
+import {GALAXY_ABLE_KEYS,galaxyAble,privateGalaxySource} from '../model/galaxy-able.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const GALAXY_PERMISSION_LABELS=Object.freeze({
