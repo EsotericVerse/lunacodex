@@ -12,6 +12,8 @@ import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {executeLocConversation} from './conversations.mjs';
+import {readMemory as readPublicGalaxy} from './galaxy-read.mjs';
+import {articleDistribution} from './article-distribution.mjs';
 import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
@@ -29,7 +31,7 @@ const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','short-import','managed-write','managed-action','personal-read','personal-write']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','mcp-authorize','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
@@ -220,6 +222,29 @@ export async function handleNativeLocOperation(request,env={},{
       throw refusal('LOC write permission denied',403);
     // These fixed MCP operations are business data; no Authority-owned
     // custom Scope grants, token service, or SQL profile endpoint is involved.
+    // LAS asks LOC to resolve its existing active api.manage eligibility. 
+    // This is a read-only check, not a new grant or role registry.
+    if(body.kind==='mcp-authorize'){
+      if(host!==MCP_HOST)throw refusal('MCP authorization only',404);
+      if(!permission.roles?.length)throw refusal('LOC MCP role not granted',403);
+      return reply({data:{authorized:true}});
+    }
+    // Galaxy data and statistics remain owned by LOC. LAS only maps request
+    // envelopes and forwards a verified OAuth bearer to these fixed operations.
+    if(body.kind==='mcp-public-read'){
+      if(host!==MCP_HOST)throw refusal('MCP public read only',404);
+      const args=body.args||{};
+      if(args.scopeid!==undefined&&args.scopeid!==body.scopeid)
+        throw refusal('MCP Scope mismatch',400);
+      return reply({data:await readPublicGalaxy({...args,scopeid:body.scopeid},env)});
+    }
+    if(body.kind==='mcp-article-stat'){
+      if(host!==MCP_HOST||body.scopeid!=='loc')
+        throw refusal('Invalid MCP article statistics scope',400);
+      return reply({data:await articleDistribution(body.args||{},env,{
+        database:async()=>selected
+      })});
+    }
     if(body.kind==='mcp-conversation'){
       if(host!==MCP_HOST)throw refusal('MCP conversation endpoint only',404);
       const result=await selected.db.transaction().execute(trx=>

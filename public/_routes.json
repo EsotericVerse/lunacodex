@@ -10,6 +10,7 @@
     "/api/loc-public-classes",
     "/api/loc-permissions",
     "/api/loc-native",
+    "/api/las-native",
     "/api/loc-auth-connectivity",
     "/api/keywords",
     "/api/mcp-provider",
