@@ -30,7 +30,7 @@ const retiredRoutes=['/api/loc/isr-capabilities/route','/api/loc/revalidate/rout
   '/api/loc/scopes/[scopeId]/numeric/[kind]/route'];
 const built=Object.keys(routes).filter(route=>retiredRoutes.includes(route));
 if(built.length)throw Error('Retired ISR route still built: '+built.join(', '));
-const runtime=read('app/loc/runtime-config.mjs');
+const runtime=read('app/loc/runtime/runtime-config.mjs');
 const backend=read('app/loc/providers/kysely-management.mjs');
 const io=read('app/loc/query/query-batch-size.mjs');
 // Only the strictly disabled Vercel ISR reservation may coexist with I/O.
@@ -59,7 +59,7 @@ if(!routesConfig.includes('SCOPE_ROUTE_INDEX')||!routesConfig.includes('"config"
 const publishedBlocks=read('app/modular/published-blocks/index.js');
 if(!publishedBlocks.includes('()=>import('))
   throw Error('Scope Blocks must use page-level JS lazy imports');
-const app=read('app/loc/app-bootstrap.js');
+const app=read('app/loc/runtime/app-bootstrap.js');
 if(app.includes('locHomeSnapshotDelivered'))
   throw Error('LOC home still consumes site RPC Blocks');
 console.log('Verified retired ISR endpoints/workers, IO-only settings, retired PWA worker and published JS policy.');

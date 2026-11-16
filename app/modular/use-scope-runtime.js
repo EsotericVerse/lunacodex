@@ -4,7 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {usePathname} from 'next/navigation';
 import {featureIdForPath,getScope,isKnownScope,normalizeScopeId,resolveScope} from './routing/scope-registry';
 import {selectScopeRegistryEntry} from '../loc/scope-data';
-import {useAppBootstrap} from '../loc/app-bootstrap';
+import {useAppBootstrap} from '../loc/runtime/app-bootstrap';
 
 const registryCache=new Map();
 

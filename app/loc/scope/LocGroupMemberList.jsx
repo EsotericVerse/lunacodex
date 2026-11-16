@@ -6,7 +6,7 @@ import {useAccount} from '../use-account';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {dbAuthClient} from '../db-client.mjs';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
-import {invalidateAppBootstrapMetadata} from '../app-bootstrap';
+import {invalidateAppBootstrapMetadata} from '../runtime/app-bootstrap';
 
 // Group administration only: enumerate existing members, rename display titles.
 // Email, database/table mapping, create/delete and protected IDs never enter

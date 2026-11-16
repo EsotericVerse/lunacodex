@@ -1,9 +1,9 @@
 'use client';
 
-import {useAsyncResource} from '../../packages/zenstack/client-queries';
-import {invalidatePublicScopeMetadata,selectScopeBlocks,selectScopeConfig,selectScopeRegistry} from './scope-data';
-import {selectThemeRegistry,themeUiId} from './preferences/theme-data';
-import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
+import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import {invalidatePublicScopeMetadata,selectScopeBlocks,selectScopeConfig,selectScopeRegistry} from '../scope-data';
+import {selectThemeRegistry,themeUiId} from '../preferences/theme-data';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 
 // Shared public site snapshot (Registry/Theme/page copy) is fetched once per
 // client runtime. Each Scope page fetches only its own config and page blocks.

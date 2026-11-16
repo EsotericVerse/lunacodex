@@ -4,7 +4,7 @@ import FieldText from '../../../i18n/FieldText';
 import {normalizeUiLocale,UI_LOCALE_OPTIONS} from '../../../i18n/ui-copy';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
-import {invalidateAppBootstrapMetadata} from '../../app-bootstrap';
+import {invalidateAppBootstrapMetadata} from '../../runtime/app-bootstrap';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 import dynamic from 'next/dynamic';
 import {duplicateDomainLabelError} from '../../../modular/routing/scope-registry';

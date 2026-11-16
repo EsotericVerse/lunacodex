@@ -18,7 +18,7 @@ import {applyTheme,themeSignature,THEME_SLOTS} from './modular/theme-registry';
 import {mergeThemeSlot,selectThemeOverride} from './loc/preferences/theme-data';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
-import {appBootstrapPageCopy,useAppBootstrap} from './loc/app-bootstrap';
+import {appBootstrapPageCopy,useAppBootstrap} from './loc/runtime/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-source-status.mjs';
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
 import {NavigationPreferences} from './modular/navigation-preferences';
