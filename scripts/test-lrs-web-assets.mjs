@@ -1,44 +1,58 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {allowStaticSource,isLrsWebAsset} from '../scripts/lrs-static-publish-rules.mjs';
 import {readFileSync} from 'node:fs';
+import {allowStaticSource,isLrsWebAsset} from './lrs-static-publish-rules.mjs';
+
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
-test('Web builds exclude only LRS-owned card, hero and effect assets',()=>{
+test('LOC Web never publishes LRS-owned media, native handoff stays separate',()=>{
  for(const p of ['assets/lunarunes/cards/00.png','assets/lunarunes/cards/66.png',
- 'assets/pics/01.soul.jpg','assets/pics/LunaRunes.webp','assets/site/icons/lrunes-favicon.png',
- 'vendor/effekseer/effekseer.wasm','vendor/effekseer/Collections/x.efkefc',
- 'vendor/rune-semantic-icons/66.svg','LunarRunesCardCut.pdf']){
-  assert.equal(isLrsWebAsset(p),true,p);assert.equal(allowStaticSource(p),false,p);
+  'assets/pics/01.soul.jpg','assets/pics/LunaRunes.webp',
+  'assets/site/icons/lrunes-favicon.png','vendor/effekseer/effekseer.wasm',
+  'vendor/rune-semantic-icons/66.svg','LunarRunesCardCut.pdf']){
+  assert.equal(isLrsWebAsset(p),true,p);
+  assert.equal(allowStaticSource(p),false,p);
   assert.equal(allowStaticSource(p,{native:true}),true,p);
  }
  for(const p of ['assets/pics/LOC-PicAll.webp','assets/pics/lo3rwang-hero.jpg',
- 'assets/site/icons/loc-favicon.png','assets/pics/LunArcus-1.png',
- 'vendor/other-module/test.svg','assets/pics/moonriver.jpg']){
-  assert.equal(isLrsWebAsset(p),false,p);assert.equal(allowStaticSource(p),true,p);
+  'assets/site/icons/loc-favicon.png']){
+  assert.equal(isLrsWebAsset(p),false,p);
+  assert.equal(allowStaticSource(p),true,p);
  }
 });
-test('Web Rune image and authored VFX paths point to LRS; IPA uses bundled paths',()=>{
+test('Web consumes LRS implementation only from a pinned Git commit',()=>{
+ const cfg=JSON.parse(read('config/lrs-source.json'));
+ assert.equal(cfg.repository,'EsotericVerse/lunarunes');
+ assert.equal(cfg.releaseVersion,'1.0R');
+ assert.match(cfg.sourceCommit,/^[0-9a-f]{40}$/);
+ const script=read('scripts/restore-lrs-web-code.mjs');
+ assert.match(script,/sparse-checkout/);
+ assert.match(script,/cfg\.sourceCommit/);
+ assert.match(script,/LOC_NATIVE_RUNE_ASSETS/);
+ assert.match(script,/LRS source symlink is forbidden/);
+ assert.match(script,/wanted\.push\(rel\)/);
+ const next=read('next.config.mjs');
+ assert.match(next,/NEXT_PUBLIC_LRS_ASSET_ORIGIN/);
+});
+test('LOC hosts only a Web LRS route handoff; IPA restores native LRS UI',()=>{
+ const portal=read('app/loc/LocApp.jsx');
+ assert.match(portal,/views\/LrsPortalView/);
+ assert.doesNotMatch(portal,/import\('\.\.\/lrunes\/RunesClient'\)/);
+ const web=read('app/loc/views/LrsWebRedirect.jsx');
+ assert.match(web,/lrs\.lo3rwang\.cc/);
+ const native=read('scripts/restore-lrs-native-ui.mjs');
+ assert.match(native,/originalFiles/);
+ assert.match(native,/RunesClient/);
+ assert.match(native,/rune-source|LRS checkout/);
+ const ipa=read('.github/workflows/ios-device-build.yml');
+ assert.match(ipa,/LOC_NATIVE_RUNE_ASSETS: '1'[\s\S]*NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'/);
+});
+test('LOC Rune asset origin adapter stays Web URL-only and native file-only',()=>{
  const src=read('app/lrunes/rune-asset-origin.mjs');
  assert.match(src,/LRS_WEB_ORIGIN='https:\/\/lrs\.lo3rwang\.cc'/);
  assert.match(src,/NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'\?'':LRS_WEB_ORIGIN/);
- const dir=read('app/lrunes/rune-directory.mjs');
- assert.match(dir,/runeAssetHref\(\x60\/assets\/lunarunes\/cards\//);
- assert(!dir.includes('LOC_ORIGIN'));
- assert.match(read('app/lrunes/effekseer/EffekseerStage.jsx'),/SOURCE=runeAssetHref\('\/vendor\/effekseer\/'\)/);
- assert.match(read('app/lrunes/effekseer/rune-effect-library.mjs'),/runeAssetHref\('\/vendor\/effekseer\/'/);
- assert.match(read('.github/workflows/ios-device-build.yml'),/LOC_NATIVE_RUNE_ASSETS: '1'[\s\S]*NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'/);
  const copy=read('scripts/copy-static-assets.mjs');
  assert.match(copy,/native=process\.env\.LOC_NATIVE_RUNE_ASSETS==='1'/);
  assert.match(copy,/if\(!native\)/);
-});
-test('LOC Web build does not depend on native-only LAS Hero source',()=>{
- const source=read('scripts/copy-local-scope-hero.mjs');
- assert.match(source,/LOC_NATIVE_RUNE_ASSETS!=='1'/);
- assert.match(source,/Required native Galaxy Link Hero source is missing/);
-});
-
-test('LOC homepage Rune image follows LRS Web origin while native stays local',()=>{
  const view=read('app/loc/blocks/LocHomeBlockDisplay.jsx');
  assert.match(view,/src:\{src:runeAssetHref\(SITE_IMAGES\.lunarunes\.src\)\}/);
- assert.match(read('app/site-images.js'),/lunarunesAsset=\{src:'\/pics\/LunaRunes\.webp'\}/);
 });
