@@ -57,7 +57,7 @@ function check(name,nodes,includeAssistant,expectedRoles){
   streaming=false;
   const reply=capture(nodes,includeAssistant);
   assert.equal(reply.error,undefined,name+': '+reply.error);
-  assert.deepEqual(Array.from(reply.items, x=>x.content.match(/^\\[(user|assistant)\\]/)[1]),
+  assert.deepEqual(Array.from(reply.items, x=>x.content.match(/^\[(user|assistant)\]/)[1]),
     expectedRoles,name);
   count++;
 }
