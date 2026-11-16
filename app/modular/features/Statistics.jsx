@@ -19,7 +19,7 @@ import {useRouter,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 
 // Defer Galaxy's data/query engine until the selected statistics mode needs it.
-const loadGalaxyStatistics=()=>import('../../loc/galaxy-query');
+const loadGalaxyStatistics=()=>import('../../loc/galaxy/galaxy-query');
 
 
 import {defaultScopeData} from '../../loc/scope/scope-data';

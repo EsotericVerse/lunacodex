@@ -8,7 +8,7 @@ registerDefaultSection('uiExtra.selfIntersection',selfIntersectionZh);
 
 import {useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
-import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy-query';
+import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy/galaxy-query';
 import {assignedSource} from '../../../loc/statistics/member-intersection-model.mjs';
 import {semanticStatisticChartTypes,chartTypeGroups} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';

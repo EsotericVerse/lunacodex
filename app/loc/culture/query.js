@@ -4,7 +4,7 @@
 
 import {CultureTimelineModel} from '../../modular/modules/culture-timeline/culture-timeline-model';
 import {workDisplayText} from '../../modular/work-display-model';
-import {selectScopeDailyCounts} from '../galaxy-query';
+import {selectScopeDailyCounts} from '../galaxy/galaxy-query';
 import {selectAllRows,selectCount,selectRows} from '../db-query.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
 import {publicContentFilters} from '../content/content-policy';
