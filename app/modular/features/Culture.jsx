@@ -56,13 +56,10 @@ import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../.
 const LrunesDailyCulturePanel=dynamic(()=>import('../../lrunes/DailyRuneAnalytics').then(m=>m.LrunesDailyCulturePanel),{loading:()=>null});
 const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
 
-function editorRiverYearWindow(items=[]){
-  const dates=items.flatMap(item=>[item?.start_date,item?.end_date])
-    .map(value=>String(value||'').slice(0,10))
-    .filter(value=>/^\d{4}-\d{2}-\d{2}$/.test(value)).sort();
-  if(!dates.length)return {start:DEFAULT_YEAR_WINDOW.startDate,end:DEFAULT_YEAR_WINDOW.endDate};
-  const start=dates[0],end=dates.at(-1);
-  return {start,end:end>start?end:nextRiverDay(start)};
+function editorRiverYearWindow(){
+  // The timeline starts at the configured default year. Do not silently
+  // navigate to the first/last anchor after completing the data read.
+  return {start:DEFAULT_YEAR_WINDOW.startDate,end:DEFAULT_YEAR_WINDOW.endDate};
 }
 function isInteractiveTarget(target){
   return Boolean(target?.closest?.('a,button,input,select,textarea,summary,[role="button"],[contenteditable="true"]'));
@@ -736,7 +733,7 @@ export default function Culture(){
   const editorEraRiver=useMemo(()=>
     buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
     [timelineItems,expandedEditorEraIds,scopeId]);
-  const editorRiverWindow=useMemo(()=>editorRiverYearWindow(editorEraRiver.items),[editorEraRiver.items]);
+  const editorRiverWindow=useMemo(editorRiverYearWindow,[]);
   const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
     current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
   const toggleTimeTrace=groupId=>{
