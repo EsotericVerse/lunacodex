@@ -34,6 +34,37 @@ export function planLrsDeployment({desiredSha,deployedSha,desiredMediaVersion,de
    ...(desiredMediaVersion===undefined?{}:{desiredMediaVersion,deployedMediaVersion})
  });
 }
+/**
+ * LRS -> LOC is a separate direction from LOC -> LRS.
+ *
+ * Normal LRS merges, previews, hotfixes and minor media releases never
+ * schedule a LOC deployment. Only a confirmed, PUBLISHED major LRS release
+ * can ask LOC to rebuild its integrated Web application. This planner never
+ * dispatches any Cloudflare operation or obtains/retains credentials.
+ */
+export function planLocForLrsRelease({
+  sourceRepo,releaseKind,releaseTag,releaseSha,published,verified,
+  lastIntegratedSha
+}){
+  if(sourceRepo!=='EsotericVerse/lunarunes')
+    throw Error('LOC can only accept an LRS release from EsotericVerse/lunarunes');
+  if(releaseKind!=='major')
+    return Object.freeze({schema:'loc.lrs-major-integration.v1',action:'skip',reason:'not-major'});
+  if(published!==true||verified!==true)
+    throw Error('LRS major must be published and independently verified before LOC joins');
+  if(!/^v[1-9]\d*\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(releaseTag||''))
+    throw Error('LRS major release requires a validated immutable version tag');
+  if(!SHA.test(releaseSha||''))
+    throw Error('LRS major release must resolve to an exact verified Git commit');
+  if(lastIntegratedSha!==null&&!SHA.test(lastIntegratedSha||''))
+    throw Error('LOC last integrated LRS commit must be verified, or explicitly null for first integration');
+  return Object.freeze({
+    schema:'loc.lrs-major-integration.v1',
+    action:releaseSha===lastIntegratedSha?'skip':'request-loc-deployment',
+    releaseTag,releaseSha,
+    reason:releaseSha===lastIntegratedSha?'already-integrated':'published-major'
+  });
+}
 function parse(args){
  if(args.length!==2)throw Error('Usage: node scripts/plan-lrs-deployment.mjs <verified-desired-and-deployed-versions.json> <output.json>');
  return args;
