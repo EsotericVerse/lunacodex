@@ -716,11 +716,23 @@ export default function Culture(){
   const activeStructureKey=structureWindowKey==='all'||!structureWindowKey?'all'
     :primaryPeriods.some(item=>periodKey(item)===structureWindowKey)
       ?structureWindowKey:'all';
-  const eraRiver=useMemo(()=>
-    userActive&&userSettings.time!=='era'
-      ?simpleTimeRiver(timelineItems,userSettings.time)
-      :buildEraRiver(timelineItems,expandedEraIds,{scopeId}),
-    [timelineItems,expandedEraIds,userActive,userSettings.time,scopeId]);
+  const eraRiver=useMemo(()=>{
+    const classified=buildEraRiver(timelineItems,expandedEraIds,{scopeId});
+    if(!userActive||userSettings.time==='era')return classified;
+    const simplified=simpleTimeRiver(timelineItems,userSettings.time);
+    const undefinedGroups=classified.groups.filter(group=>String(group.id).startsWith('time-undefined:'));
+    const undefinedIds=new Set(undefinedGroups.map(group=>group.id));
+    const undefinedItems=classified.items.filter(item=>undefinedIds.has(item.group_key));
+    const undefinedUids=new Set(undefinedItems.map(item=>String(item.uid)));
+    // Alternate time modes keep their selected grouping, but never suppress
+    // the permanent bottom unclassified lane or duplicate its DateAnchors.
+    const items=simplified.items.filter(item=>
+      item.entry_type!=='anchor'||!undefinedUids.has(String(item.uid)));
+    const offset=1000000;
+    return {items:[...items,...undefinedItems],
+      groups:[...simplified.groups,...undefinedGroups.map((group,index)=>({
+        ...group,order:offset+index}))]};
+  },[timelineItems,expandedEraIds,userActive,userSettings.time,scopeId]);
   const editorEraRiver=useMemo(()=>
     buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
     [timelineItems,expandedEditorEraIds,scopeId]);
