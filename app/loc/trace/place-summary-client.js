@@ -6,7 +6,7 @@ import {Capacitor} from '@capacitor/core';
 // Local Scope SQL has not been provisioned; native-only reads remain disabled.
 export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
   const [{forEachAllRowsPage,selectRows},{defaultScopeData},{dbPublicClient}]=await Promise.all([
-    import('../db-query.mjs'),import('../scope-data'),import('../db-client.mjs')
+    import('../db-query.mjs'),import('../scope/scope-data'),import('../db-client.mjs')
   ]);
   const scope=defaultScopeData(scopeId);
   if(!scope)return {rows:[],anchors:[]};

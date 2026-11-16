@@ -5,7 +5,7 @@ import featureZh from '../../i18n/feature-sections/itemConfluence.zh_tw.js';
 
 import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {selectManagedScopes} from '../../loc/scope-data';
+import {selectManagedScopes} from '../../loc/scope/scope-data';
 import {selectLocItemDailySeries} from '../../loc/statistics/item-confluence-query';
 import {realMoonPhase} from '../../loc/model/moon-phase';
 import {buildReferencedMoonRiver} from '../../lrunes/daily-moon-river.mjs';

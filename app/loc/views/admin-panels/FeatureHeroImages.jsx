@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
 import dynamic from 'next/dynamic';
-import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../../scope-data';
+import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../../scope/scope-data';
 import {HomeBlock} from '../../blocks/home-block-model';
 import {heroImageUrl as imageUrlOf} from '../../blocks/hero-image.mjs';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';

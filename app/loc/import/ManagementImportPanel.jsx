@@ -16,7 +16,7 @@ import FlowProgress from '../../modular/FlowProgress';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from '../source/name.mjs';
 import {Capacitor} from '@capacitor/core';
-import {defaultScopeData} from '../scope-data';
+import {defaultScopeData} from '../scope/scope-data';
 import {createUid8} from '../model/uid';
 import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {createImportProgressStore} from './progress-store.mjs';

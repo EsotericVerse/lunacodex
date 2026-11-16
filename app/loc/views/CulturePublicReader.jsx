@@ -5,7 +5,7 @@ import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {FeaturePage} from '../../modular/ui';
 import {selectRows} from '../db-query.mjs';
 import {dbPublicClient} from '../db-client.mjs';
-import {defaultScopeData} from '../scope-data';
+import {defaultScopeData} from '../scope/scope-data';
 import {selectCultureArticleListPage} from '../culture/query';
 import {selectGalaxyIdentity} from '../galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';

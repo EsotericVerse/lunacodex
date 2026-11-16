@@ -21,7 +21,7 @@ const LocScopeConnections=dynamic(()=>import('../scope/LocScopeConnections'),{lo
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
 const DailyRuneCalendarSettings=dynamic(()=>import('../../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
 import FeatureSettingsPage from './FeatureSettingsPage';
-import {selectScopeRegistry} from '../scope-data';
+import {selectScopeRegistry} from '../scope/scope-data';
 import {getScope,normalizeScopeId} from '../../modular/routing/scope-registry';
 
 const option=(value,label,description,shortLabel)=>({value,label,description,shortLabel});

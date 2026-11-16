@@ -5,7 +5,7 @@ import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer
 import {allocateAnchorUid} from '../../../loc/model/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../routing/scope-route-index.js';
-import {selectScopeGroupMemberIds,selectScopeConfig} from '../../../loc/scope-data';
+import {selectScopeGroupMemberIds,selectScopeConfig} from '../../../loc/scope/scope-data';
 import {scopeFeatureEnabled} from '../../../loc/scope/scope-config-fields.mjs';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
 

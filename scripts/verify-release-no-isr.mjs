@@ -48,7 +48,7 @@ if(!sw.includes('self.registration.unregister()')||
    sw.includes("addEventListener('fetch'")||
    shell.includes('serviceWorker.register('))
   throw Error('Retired PWA worker must not intercept or re-register');
-const config=read('app/loc/scope-data.js');
+const config=read('app/loc/scope/scope-data.js');
 if(!config.includes('PUBLISHED_SITE_BOOTSTRAP')||
   !config.includes('SCOPE_ROUTE_INDEX')||
   !config.includes('loadPublishedBlocks(id,pageName)'))

@@ -8,7 +8,7 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useEditDock} from '../edit-dock';
 import {dbAuthClient,deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
-import {revalidateServerMetadata} from '../../loc/scope-data';
+import {revalidateServerMetadata} from '../../loc/scope/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/culture/anniversary.mjs';
