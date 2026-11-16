@@ -23,6 +23,7 @@ import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-sour
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/routing/scope-registry.js';
+import PageResourceBoundary from './modular/PageResourceBoundary';
 import {recoverChunkOnce} from './loc/ui/chunk-recovery.mjs';
 import BottomNavIcon,{DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
@@ -634,7 +635,9 @@ function AppShellInner({children,runtime}){
         </ScopeLink>
       </nav>
     </header>
-    {localCoreActive&&!localWorkspace?<main className="scope-main"><p className="scope-status" role="status">正在切換手機本機資料…</p></main>:children}
+    <PageResourceBoundary routeKey={scopeId+'|'+normalizePath(pathname)}>
+      {localCoreActive&&!localWorkspace?<main className="scope-main"><p className="scope-status" role="status">正在切換手機本機資料…</p></main>:children}
+    </PageResourceBoundary>
     <motion.div layoutRoot className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
       data-scope={localNavigation?'local':scopeId} data-local-core={localCoreActive?'active':undefined} data-action-count={editingDockVisible?editTabs.length:6}>
