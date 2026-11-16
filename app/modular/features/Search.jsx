@@ -249,6 +249,15 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // while changing. OAuth + loc_user opt-in are resolved on Search submission.
   const [adminSearchRequested,setAdminSearchRequested]=useState(false);
   const [privateResultMode,setPrivateResultMode]=useState(false);
+  const adminSwitchChanged=useRef(false);
+  const adminSwitchInitialized=useRef(false);
+  useEffect(()=>{
+    // Load the personal preference without asking for any management grant.
+    // A guest may still flip the local switch; it cannot activate private SQL.
+    if(!userActive||adminSwitchInitialized.current)return;
+    adminSwitchInitialized.current=true;
+    if(!adminSwitchChanged.current)setAdminSearchRequested(userSettings.list===true);
+  },[userActive,userSettings.list]);
   const editDock=useEditDock();
   const publicScopeEditing=Boolean(editDock?.active&&editDock.scopeId===scopeId&&scopeId!=='loc');
   // Only existing editor/legacy routes load management grants. The Search
@@ -489,16 +498,21 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // OAuth and the owner's loc_user preference. Without OAuth this is
       // ordinary public Search; neither the switch nor loc_user grants editing.
       let managerAtSearch=false;
-      if(adminSearchActive){
+      if(adminSearchActive||adminSwitchChanged.current){
         const session=await getAccountSession().catch(()=>null);
         if(session?.user&&session?.oauth){
           const user=await loadOrCreateLocUser();
-          if(user.search?.list!==true){
+          if(user.search?.list!==adminSearchActive){
+            // Store only the Search preference. Saving personal choices needs
+            // OAuth ownership, not Scope management or edit delegation.
             await saveLocUserField(user.uid,'search',{
-              ...LOC_USER_DEFAULTS.search,...user.search,list:true
+              ...LOC_USER_DEFAULTS.search,...user.search,list:adminSearchActive
             });
           }
-          managerAtSearch=true;
+          adminSwitchChanged.current=false;
+          managerAtSearch=adminSearchActive;
+        }else if(!adminSearchActive){
+          adminSwitchChanged.current=false;
         }
       }
       if(id!==searchId.current)return;
@@ -1150,6 +1164,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           <label className="scope-search-admin-switch">
             <input type="checkbox" role="switch" checked={adminSearchRequested}
               onChange={event=>{
+                adminSwitchChanged.current=true;
                 setAdminSearchRequested(event.target.checked);
                 resetSearchState();
               }}/>
