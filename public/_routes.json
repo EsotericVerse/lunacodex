@@ -1,10 +1,6 @@
 {
   "version": 1,
   "include": [
-    "/",
-    "/mcp",
-    "/.well-known/oauth-protected-resource",
-    "/.well-known/oauth-protected-resource/mcp",
     "/api/loc-public-content",
     "/api/loc-public-query",
     "/api/loc-public-classes",
