@@ -12,7 +12,7 @@ import traceZh from '../../i18n/sections/uiExtra.traceUI.zh_tw.js';
 registerDefaultSection('uiExtra.traceUI',traceZh);
 const TEXT='uiExtra.traceUI.';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {mapBounded} from '../../loc/bounded-parallel.mjs';
+import {mapBounded} from '../../loc/query/bounded-parallel.mjs';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';

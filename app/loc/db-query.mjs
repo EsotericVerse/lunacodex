@@ -1,8 +1,8 @@
 'use client';
 
 import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
-import {coalescePendingPublicRead} from './inflight-public-read.mjs';
-import {mapBounded} from './bounded-parallel.mjs';
+import {coalescePendingPublicRead} from './query/inflight-public-read.mjs';
+import {mapBounded} from './query/bounded-parallel.mjs';
 import {transientReadSignal,transientReadGeneration} from '../../packages/zenstack/transient-read-epoch.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
