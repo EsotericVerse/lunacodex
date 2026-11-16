@@ -24,7 +24,7 @@ import {blockNoteSuggestionItems} from '../../loc/editor/blocknote-suggestions.m
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useRouter,useSearchParams} from 'next/navigation';
 
-import {dbAuthClient,dbPublicClient,deleteRows,updateRows} from '../../loc/db/db-client.mjs';
+import {dbAuthClient,dbPublicClient,deleteRows,updateRows,getAccountSession} from '../../loc/db/db-client.mjs';
 import {useAccount} from '../../loc/auth/use-account';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ScopeLink from '../ScopeLink';
@@ -35,6 +35,7 @@ const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 const GalaxyInterNetBranches=dynamic(()=>import('../GalaxyInterNetBranches'),{loading:()=>null});
 import {useScopeRuntime} from '../use-scope-runtime';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
+import {loadOrCreateLocUser,saveLocUserField,LOC_USER_DEFAULTS} from '../../loc/preferences/loc-user-store.mjs';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {timeUnitBucket,localTodayKey} from '../../loc/preferences/default-time-unit.mjs';
 import {useEditDock} from '../edit-dock';
@@ -244,25 +245,23 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('search');
   // Personal list visibility is opt-in, even for an administrator.
   const adminListRequested=Boolean(userActive&&userSettings.list===true);
-  // Search-only manager switch. It is never persisted to loc_user and must
-  // not enable the management editor, batch actions or another feature.
+  // This is an ordinary visual switch. It checks no roles, grants or OAuth
+  // while changing. OAuth + loc_user opt-in are resolved on Search submission.
   const [adminSearchRequested,setAdminSearchRequested]=useState(false);
+  const [privateResultMode,setPrivateResultMode]=useState(false);
   const editDock=useEditDock();
   const publicScopeEditing=Boolean(editDock?.active&&editDock.scopeId===scopeId&&scopeId!=='loc');
-  // Only an explicit Search switch/editor entry verifies managed grants.
-  // A verified UI grant is necessary but not sufficient: private SQL reads
-  // still use dbAuthClient and server-enforced Scope authorization.
+  // Only existing editor/legacy routes load management grants. The Search
+  // preference is not an editor role and cannot enable one.
   const account=useAccount({enabled:publicScopeEditing||legacyManagementRoute||
-    adminSearchRequested||Boolean(editDock?.active&&editDock.scopeId===scopeId)});
-  const verifiedSearchGrant=Boolean(account.user&&!account.loading&&!account.permissionLoading&&
+    Boolean(editDock?.active&&editDock.scopeId===scopeId)});
+  const managementAuthorized=Boolean(adminListRequested&&account.user&&
+    !account.loading&&!account.permissionLoading&&
     (scopeId==='loc'?(account.canLocAccessSync('group','loc')||account.scopes.length>0)
       :canManageSearchScope(account,scopeId)));
-  const managementAuthorized=Boolean(adminListRequested&&verifiedSearchGrant);
-  // This new switch is Search-only; existing /search/manage remains independent.
-  const managementMode=Boolean(legacyManagementRoute&&adminListRequested&&managementAuthorized);
-  const adminSearchAuthorized=Boolean(adminSearchRequested&&verifiedSearchGrant&&!legacyManagementRoute);
-  const adminSearchActive=Boolean(adminSearchRequested&&adminSearchAuthorized&&!managementMode);
-  const privilegedSearch=managementMode||adminSearchActive;
+  const managementMode=Boolean(legacyManagementRoute&&managementAuthorized);
+  const adminSearchActive=Boolean(adminSearchRequested&&!legacyManagementRoute);
+  const privilegedSearch=managementMode;
   const locPublicSearch=scopeId==='loc'&&!privilegedSearch;
   const searchParams=useSearchParams();
   const router=useRouter();
@@ -352,7 +351,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const scopesQuery=useAsyncResource({
     queryKey:privilegedSearch?['management-search-scopes',account.email]:['loc-searchable-scopes'],
     queryFn:privilegedSearch?()=>selectScopeRegistry({scopeKind:'scope'}):selectLocSearchScopes,
-    enabled:scopeId==='loc'&&!aggregateScopes&&(!adminSearchRequested||adminSearchAuthorized),
+    enabled:scopeId==='loc'&&!aggregateScopes,
   });
   const availableScopes=useMemo(()=>{
     if(scopeId!=='loc')return [account.scopeDataFor(scopeId)||defaultScopeData(scopeId)].filter(Boolean);
@@ -413,9 +412,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
 
   async function executeSearch(rawQuery,cursor=null,{append=false,browse=false,overrideOptions=null}={}){
-    // Never downgrade a requested management search to a public search while
-    // the trusted editor-grant lookup is pending or has failed.
-    if(adminSearchRequested&&!adminSearchAuthorized)return;
     const q=String(rawQuery||'').trim();
     const options=append&&activeSearchOptionsRef.current
       ?activeSearchOptionsRef.current
@@ -489,6 +485,23 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       setStatus('搜尋中請稍後');
     }
     try{
+      // Switches are free to toggle. Only an actual Search request checks
+      // OAuth and the owner's loc_user preference. Without OAuth this is
+      // ordinary public Search; neither the switch nor loc_user grants editing.
+      let managerAtSearch=false;
+      if(adminSearchActive){
+        const session=await getAccountSession().catch(()=>null);
+        if(session?.user&&session?.oauth){
+          const user=await loadOrCreateLocUser();
+          if(user.search?.list!==true){
+            await saveLocUserField(user.uid,'search',{
+              ...LOC_USER_DEFAULTS.search,...user.search,list:true
+            });
+          }
+          managerAtSearch=true;
+        }
+      }
+      if(id!==searchId.current)return;
       // The category is a semantic database filter, not a literal
       // site. Fetch the same cached taxonomy before searching.
       const sourceTaxonomy=String(options.sourceFilter||'').startsWith('category:')
@@ -501,14 +514,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // Search is one request: return title and date only. Article details load on entry.
       // A search-only manager grant must use signed, scoped Kysely instead of
       // bypassing visibility via the anonymous public SELECT transport.
-      const searchRunner=adminSearchActive?searchAuthorizedGalaxyRows:searchGalaxyRows;
+      const searchRunner=managerAtSearch?searchAuthorizedGalaxyRows:searchGalaxyRows;
       const search=await searchRunner(searchScopes,q,{
         limit:pageSize,cursor,
-        hiddenScopeIds:privilegedSearch?searchScopes.map(item=>item.id):[],
+        hiddenScopeIds:managementMode?searchScopes.map(item=>item.id):[],
         contentType:options.contentType,sourceFilter:options.sourceFilter,sourceTaxonomy,
         placeOnly:managementMode&&Boolean(options.placeOnly),
         startDate:options.startDate,endDate:options.endDate,browse:options.browse,
-        managementOnly:privilegedSearch,sortDirection:options.sortDirection,signal
+        managementOnly:managementMode,sortDirection:options.sortDirection,signal
       });
       if(id!==searchId.current)return;
       const searchRows=search.rows||[];
@@ -526,6 +539,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // A new page replaces the previous 100 results; the cursor, not an
       // ever-growing browser array, carries the position through the search.
       setResults(pageResults.slice(0,pageSize));
+      setPrivateResultMode(managerAtSearch||managementMode);
       setHasMore(Boolean(search.hasMore));
       setNextCursor(search.nextCursor??null);
       const partial=(search.failures?.length)?t('uiExtra.searchUI.partialExtendedData'):'';
@@ -843,14 +857,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setLoadingMore(false);
     matchedQueryRef.current='';
     activeSearchOptionsRef.current=null;
-    setResults([]);setSelectedPlaceArticles([]);setBulkPreview(null);setBulkNotice('');setHasMore(false);setNextCursor(null);setBrowseResults(false);
+    setResults([]);setPrivateResultMode(false);
+    setSelectedPlaceArticles([]);setBulkPreview(null);setBulkNotice('');setHasMore(false);setNextCursor(null);setBrowseResults(false);
     setLoadMoreError('');setError('');setStatus(UI_COPY.search.start);
   }
-  // If the signed-in grant expires or is revoked, no private results stay
-  // visible in the public Search component.
-  useEffect(()=>{
-    if(adminSearchRequested&&!adminSearchAuthorized)resetSearchState();
-  },[adminSearchRequested,adminSearchAuthorized]);
   function updateSearchFilter(setter,value){
     setter(value);resetSearchState();
   }
@@ -908,7 +918,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
   function searchFromSuggestion(raw,overrides={}){
     const term=String(raw||'').trim();
-    if(!term||adminSearchRequested&&!adminSearchAuthorized)return;
+    if(!term)return;
     const filters={
       contentType,sourceFilter,startDate,endDate,
       scopeFilter:managementMode?scopeFilter:'',placeOnly,...overrides
@@ -941,7 +951,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
   function runSearch(event){
     event.preventDefault();
-    if(adminSearchRequested&&!adminSearchAuthorized)return;
     if(adminSearchActive){
       // Preserve the ordinary Search form and its own filters. This does not
       // open /search/manage or expose its editing/batch UI.
@@ -1054,7 +1063,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   },[contentType,t]);
   function followSearchSuggestion(term,patch={}){
     const text=String(term||'').trim();
-    if(!text||adminSearchRequested&&!adminSearchAuthorized)return;
+    if(!text)return;
     const next={
       contentType,sourceFilter,startDate,endDate,
       scopeFilter:managementMode?scopeFilter:'',placeOnly,...patch
@@ -1146,12 +1155,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               }}/>
             管理者
           </label>
-          {adminSearchRequested&&!adminSearchAuthorized?<span className="scope-search-admin-status" role="status">
-            {account.loading||account.permissionLoading?'驗證中…':'無管理搜尋權限'}
-          </span>:null}
         </div>
-        <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess||
-          adminSearchRequested&&!adminSearchAuthorized}>{UI_COPY.nav.search}</button>
+        <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>{UI_COPY.nav.search}</button>
         {managementMode?<button type="button" className="loc-button" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>{
             setPlaceOnly(false);
@@ -1380,7 +1385,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           editOnCardClick={false}
           managerMode={managementMode}
           uid={editTarget.editResourceId}
-          title={!privilegedSearch&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
+          title={!privateResultMode&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
           articleHref={row.resourceType==='galaxy'&&(managementMode||row.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
@@ -1413,7 +1418,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           editBusy={editBusy}
           editError={editError}
           showInlineEditorActions={!editDock?.active}
-          showHidden={privilegedSearch}
+          showHidden={privateResultMode}
           attributeFields={managementMode&&editable?(row.resourceType==='galaxy'?GALAXY_ATTR_FIELDS:row.resourceType==='media_anchor'?MEDIA_ATTR_FIELDS:null):null}
           mediaScopeId={editable&&row.resourceType==='galaxy'?row.scopeId:''}
           attributeTitle={row.resourceType==='media_anchor'?t('uiExtra.searchUI.mediaAttributes'):t('uiExtra.searchUI.attributeTitle')}
