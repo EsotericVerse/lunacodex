@@ -269,13 +269,11 @@ const ChatGPTShadowExtract = (() => {
 
   function isStreaming(root) {
     const doc = root.ownerDocument || root;
-    if (doc.querySelector(STOP_BUTTON)) return true;
-    // Only "complete" has been observed. Match the in-flight names loosely rather
-    // than treating every non-complete value as streaming: a false "streaming"
-    // holds the thread forever, a false "settled" only costs one resend.
-    return Array.from(doc.querySelectorAll(TURN_STATE_SELECTOR)).some((node) =>
-      /stream|progress|pending|generat|running/i.test(attr(node, "data-talvt-turn-state"))
-    );
+    // Old per-turn pending markers remain in long saved conversations.
+    // Only a *visible* active Stop control indicates current generation.
+    const stop = doc.querySelector(STOP_BUTTON);
+    return Boolean(stop && typeof stop.getClientRects === "function" &&
+      stop.getClientRects().length > 0 && attr(stop, "aria-hidden") !== "true");
   }
 
   function extractMessages(root) {

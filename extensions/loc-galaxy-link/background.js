@@ -1,7 +1,7 @@
 // One LOC galaxy-link extension: one LOC Auth, one queue, multiple capture modes.
 const DB_NAME='loc-channel1-queue';
 const STORE='pending',ACK_STORE='acknowledged';
-const MAX_BATCH=50,MAX_BYTES=600000,AUTO_CAPTURE_COUNT=10;
+const MAX_BATCH=50;
 const CONFIG_URL='https://loc.lo3rwang.cc/extension/oauth/config.json';
 const MCP_PROVIDER_API='https://loc.lo3rwang.cc/api/mcp-provider-extension';
 const MCP_EXTENSION_RETURN='https://hiaeafonocnjaclcfgjmdopbcgnafnna.chromiumapp.org/mcp';
@@ -11,7 +11,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const encoder=new TextEncoder();
 const sizeOf=x=>encoder.encode(JSON.stringify(x)).length;
 const DIAGNOSTIC_KEY='locDiagnostics',MAX_DIAGNOSTICS=120;
-let inFlight=null;
+let inFlight=null,flushRequested=false;
 function safeDiagnostic(value){
  let text;
  try{text=typeof value==='string'?value:JSON.stringify(value)}catch{text=String(value)}
@@ -169,10 +169,6 @@ async function noteAction(name,ok,message,tabId=null){
   message:item.name+'：'+item.message}).catch(()=>{});
  return item;
 }
-function ready(rows){
- return rows.length && (new Set(rows.map(x=>x.group_id)).size>=AUTO_CAPTURE_COUNT ||
-  sizeOf(rows)>=MAX_BYTES);
-}
 async function queueCount(){
  const db=await openDb();
  return new Promise((resolve,reject)=>{
@@ -210,7 +206,7 @@ async function acceptItems(items){
    detected,user,assistant,insertedCaptures:inserted.captures,
    insertedChunks:inserted.chunks,empty:inserted.chunks===0};
  const all=await allEvents();
- if(ready(all))void flush(false).catch(async error=>{
+ if(all.length)void flush(false).catch(async error=>{
   console.warn('[LOC galaxy-link automatic import]',String(error));
   await noteAction('自動傳送',false,error?.message||String(error));
  });
@@ -537,11 +533,10 @@ async function sendViaAuth(scopeid,batch,token,config){
  return receipt;
 }
 async function flush(force=false){
- if(inFlight)return inFlight;
+ if(inFlight){flushRequested=true;return inFlight;}
  inFlight=(async()=>{
   const rows=(await allEvents()).sort((a,b)=>String(a.captured_at||'').localeCompare(String(b.captured_at||'')));
   if(!rows.length)return {message:'Queue 已清空',sent:0};
-  if(!force&&!ready(rows))return {message:'未達批次門檻',sent:0};
   const settings=await chrome.storage.local.get(['locImportPaused','locQueueRetryAfter','locQueueRetryType','locQueueFailures','locConfig']);
   if(!force&&settings.locImportPaused)return {message:'已暫停自動傳送',sent:0};
   if(Number(settings.locQueueRetryAfter||0)>Date.now()&&
@@ -592,7 +587,17 @@ async function flush(force=false){
      await chrome.storage.local.set({locImportPaused:true});
    throw e;
   }
- })().finally(()=>{inFlight=null});return inFlight;
+ })().finally(()=>{
+  const again=flushRequested;
+  flushRequested=false;
+  inFlight=null;
+  // A capture may arrive while a previous snapshot is being sent.
+  // Drain that new work immediately instead of waiting for the retry alarm.
+  if(again)void flush(false).catch(async error=>{
+   console.warn('[LOC galaxy-link automatic import]',String(error));
+   await noteAction('自動傳送',false,error?.message||String(error));
+  });
+ });return inFlight;
 }
 
 async function inject(tabId){
@@ -630,7 +635,9 @@ async function selectOrRecord(type,includeAssistant=false,providedTab=null){
  const response=await chrome.tabs.sendMessage(tab.id,{type,includeAssistant});
  if(response?.ok!==true)throw Error('頁面沒有啟動選取／錄製工具');
  if(type==='page.record')await chrome.storage.local.set({locRecorderTabId:tab.id});
- return {message:type==='page.record'?'請點選錄製區域，開始追蹤動態貼文':'請點選要擷取的區域'};
+ return {message:type==='page.record'
+  ?(response.mode==='record'?'已開始錄製目前對話，新訊息將即時加入 Queue':'請點選錄製區域，開始追蹤動態貼文')
+  :'請點選要擷取的區域',mode:response.mode};
 }
 async function controlRecording(type){
  const tab=await recordedTab();
@@ -643,7 +650,10 @@ async function stopRecording(){
  const reply=await chrome.tabs.sendMessage(tab.id,{type:'page.stop'}).catch(()=>null);
  await chrome.storage.local.remove('locRecorderTabId');
  if(reply?.error)throw Error('最後一次錄製入列失敗：'+reply.error);
- return {message:reply?.ok?'已停止錄製，最後內容已確認入列':'目前頁面沒有正在進行的錄製'};
+ return {message:reply?.ok
+  ?(reply.partial?'已停止錄製；已完成訊息已入列，仍在生成的最後一則尚未擷取':
+    '已停止錄製，最後已完成訊息已確認入列')
+  :'目前頁面沒有正在進行的錄製'};
 }
 
 // Context-menu options must reflect the actual active recording state.
@@ -727,7 +737,7 @@ chrome.contextMenus.onClicked.addListener((info,tab)=>{
    case MENU_STOP:result=await stopRecording();break;
    default:return;
   }
-  if(action===MENU_RECORD)await syncMenus('pick-record');
+  if(action===MENU_RECORD)await syncMenus(result?.mode||'pick-record');
   if(action===MENU_PAUSE)await syncMenus('paused');
   if(action===MENU_RESUME)await syncMenus('record');
   if(action===MENU_STOP)await syncMenus('idle');
@@ -748,7 +758,14 @@ chrome.alarms.onAlarm.addListener(e=>{
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{
  (async()=>{
   switch(message?.action){
-   case 'loc-connect':return connectLoc();
+   case 'loc-connect':{
+    const result=await connectLoc();
+    // When an offline Queue reconnects, send every pending capture now.
+    if(result?.connected)void flush(false).catch(async error=>{
+      await noteAction('自動傳送',false,error?.message||String(error));
+    });
+    return result;
+   }
    case 'loc-disconnect':return disconnectLoc();
    case 'mcp-status':return mcpProviderStatus();
    case 'mcp-connect':return connectMcpProvider(String(message.provider||''));
