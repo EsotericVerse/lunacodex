@@ -32,7 +32,7 @@ import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../l
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy/galaxy-query';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {revalidateServerMetadata} from '../../loc/scope-data';
+import {revalidateServerMetadata} from '../../loc/scope/scope-data';
 
 import {deleteRows,insertRows,updateRows} from '../../loc/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db-query.mjs';

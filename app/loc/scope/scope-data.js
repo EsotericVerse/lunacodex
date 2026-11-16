@@ -1,12 +1,12 @@
 'use client';
 
 
-import {selectAllRows,selectRows} from './db-query.mjs';
-import {scopeConfigColumns,scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
+import {selectAllRows,selectRows} from '../db-query.mjs';
+import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
-import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
-import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
-import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
+import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
+import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/runtime/app-bootstrap.js); there is no

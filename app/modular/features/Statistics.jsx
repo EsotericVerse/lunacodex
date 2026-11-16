@@ -22,7 +22,7 @@ import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '
 const loadGalaxyStatistics=()=>import('../../loc/galaxy/galaxy-query');
 
 
-import {defaultScopeData} from '../../loc/scope-data';
+import {defaultScopeData} from '../../loc/scope/scope-data';
 import {featureNavigationHref,readFeatureNavigation} from '../routing/feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {useScopeRuntime} from '../use-scope-runtime';
