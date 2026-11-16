@@ -1,0 +1,17 @@
+{
+  "name": "@lo3r/loc-dialect",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "loc:dialect; standalone server-side SQL driver adapter",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "files": [
+    "index.mjs"
+  ],
+  "dependencies": {
+    "kysely": "0.29.8",
+    "pg": "8.23.1"
+  }
+}
