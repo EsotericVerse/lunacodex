@@ -35,3 +35,46 @@ test('LAS business bridge remains in LOC without a parallel LAS Auth runtime',()
   assert.ok(bridge.includes("const RESOURCE='https://mcp.lo3rwang.cc/api/loc-native'"));
   assert.ok(!bridge.includes('LAS_DATABASE_URL'));
 });
+
+
+// LAS owns the public MCP protocol server. LOC Pages may expose only its own
+// fixed business/data bridge and its independently authorized provider controls.
+test('Retired LOC Pages MCP gateway cannot be rebuilt or reactivated',()=>{
+  const retiredEntries=[
+    'functions/index.js',
+    'functions/mcp.js',
+    'functions/.well-known/oauth-protected-resource.js',
+    'functions/.well-known/oauth-protected-resource/mcp.js'
+  ];
+  const retiredModules=[
+    'app/loc/mcp/router.mjs',
+    'app/loc/mcp/business-actions.mjs',
+    'app/loc/mcp/gateway-qos.mjs',
+    'app/loc/mcp/stateless-transport.mjs',
+    'app/loc/mcp/tool-contracts.mjs',
+    'app/loc/mcp/private-galaxy.mjs',
+    'app/loc/mcp/loc-access.mjs'
+  ];
+  for(const path of [...retiredEntries,...retiredModules])
+    assert.ok(!exists(path),'LOC must not bundle retired inbound MCP server: '+path);
+  const routeConfig=JSON.parse(read('public/_routes.json'));
+  for(const route of ['/','/mcp',
+    '/.well-known/oauth-protected-resource',
+    '/.well-known/oauth-protected-resource/mcp'])
+    assert.ok(!routeConfig.include.includes(route),
+      'LOC Pages must not handle LAS MCP protocol route '+route);
+  for(const route of ['/api/las-native','/api/loc-native',
+    '/api/loc-public-content','/api/loc-public-query'])
+    assert.ok(routeConfig.include.includes(route),
+      'Keep LOC business API route '+route);
+  for(const file of ['functions/api/las-native.js',
+    'functions/api/loc-native.js','app/loc/mcp/native-operations.mjs',
+    'app/loc/mcp/native-kysely.mjs'])
+    assert.ok(exists(file),'Keep LOC portable business/data service '+file);
+  // Upstream OAuth provider management is a distinct LOC website control
+  // surface until the operational state/credential migration is proven.
+  for(const route of ['/api/mcp-provider','/api/mcp-provider-extension',
+    '/api/mcp-provider-callback','/.well-known/loc-mcp-client'])
+    assert.ok(routeConfig.include.includes(route),
+      'Do not cut off active LOC provider control plane '+route);
+});
