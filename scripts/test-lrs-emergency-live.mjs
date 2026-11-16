@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {auditContainsGhsa,assertCriticalAdvisory,assertWorkerVersion}
+import {auditContainsGhsa,assertCriticalAdvisory,assertWorkerVersion,changedDirectDependencies}
   from './attest-lrs-emergency.mjs';
 const id='GHSA-cfgh-jmpq-rvwx';
 const version='0612f4d7-338f-472c-a71c-fa646cf72bdb';
@@ -26,4 +26,11 @@ test('Deployed Cloudflare version cannot be overwritten or replayed',()=>{
  const boot={reason:'bootstrap',workerVersionId:null};
  assert.equal(assertWorkerVersion([],boot,'before'),null);
  assert.throws(()=>assertWorkerVersion([{versions:[{version_id:version}]}],boot,'before'),/baseline exists/);
+});
+
+test('Missing lockfile may not masquerade as a code dependency fix',()=>{
+ const a={dependencies:{kysely:'0.29.7',pg:'8.23.1'},devDependencies:{wrangler:'^4.148.0'}};
+ const b={dependencies:{kysely:'0.29.8',pg:'8.23.1'},devDependencies:{wrangler:'^4.148.0'}};
+ assert.deepEqual(changedDirectDependencies(a,b),['kysely']);
+ assert.deepEqual(changedDirectDependencies(a,a),[]);
 });

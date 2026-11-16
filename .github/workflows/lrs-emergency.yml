@@ -59,7 +59,7 @@ jobs:
         run: node loc-source/scripts/attest-lrs-emergency.mjs before
       - name: Build only the pinned LRS artifacts, not LOC nor IPA
         run: |
-          npm --prefix rune-source ci --no-audit --no-fund
+          npm --prefix rune-source install --no-audit --no-fund
           npm --prefix rune-source run build:cloudflare
           npm --prefix rune-source run check:cloudflare:release
       - name: Recheck TTL, advisory and deployed Worker before one-time release

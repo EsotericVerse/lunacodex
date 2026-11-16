@@ -74,14 +74,31 @@ function gitShow(sha,name){
  if(!result)throw Error('Missing pinned LRS dependency manifest: '+name);
  return result;
 }
+/** No tracked LRS package-lock exists yet. A live emergency must prove
+ * the patched commit deliberately changes a dependency and must audit the
+ * resolved dependency tree, never assume an unchanged floating tree is fixed.
+ * This is a conservative temporary proof until LRS begins pinning lockfiles.
+ */
+export function changedDirectDependencies(oldManifest,newManifest){
+ const oldDeps={...oldManifest.dependencies,...oldManifest.devDependencies};
+ const newDeps={...newManifest.dependencies,...newManifest.devDependencies};
+ return Object.keys(newDeps).filter(name=>
+   Object.hasOwn(oldDeps,name)&&oldDeps[name]!==newDeps[name]);
+}
 function auditAt(sha){
  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'loc-lrs-audit-'));
  try{
    fs.writeFileSync(path.join(tmp,'package.json'),gitShow(sha,'package.json'));
-   fs.writeFileSync(path.join(tmp,'package-lock.json'),gitShow(sha,'package-lock.json'));
    const env={...process.env};
    delete env.CLOUDFLARE_API_TOKEN;
    delete env.LOC_LRS_EMERGENCY_REQUEST;
+   // Generate an audit-only dependency resolution from THIS pinned manifest,
+   // not a mutable checked-out working directory. No scripts are executed.
+   execFileSync('npm',['install','--package-lock-only','--ignore-scripts','--no-fund','--no-audit'],{
+     cwd:tmp,env,encoding:'utf8',maxBuffer:20*1024*1024
+   });
+   if(!fs.existsSync(path.join(tmp,'package-lock.json')))
+     throw Error('Cannot independently resolve LRS pinned dependencies');
    let output;
    try{
      output=execFileSync('npm',['audit','--json'],{
@@ -120,6 +137,13 @@ async function main(){
        'User-Agent':'LOC-LRS-emergency-attestation'
      });
    assertCriticalAdvisory(advisory,request.advisoryId);
+   const oldManifest=JSON.parse(gitShow(request.deployedSha,'package.json'));
+   const patchedManifest=JSON.parse(gitShow(request.desiredSha,'package.json'));
+   const changed=changedDirectDependencies(oldManifest,patchedManifest);
+   const advisoryPackages=(advisory.vulnerabilities||[])
+     .map(x=>x.package?.name).filter(Boolean);
+   if(!changed.some(name=>advisoryPackages.includes(name)))
+     throw Error('Target commit does not update the affected LRS dependency');
    const before=auditAt(request.deployedSha);
    const after=auditAt(request.desiredSha);
    if(!auditContainsGhsa(before,request.advisoryId)||
