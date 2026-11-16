@@ -14,7 +14,7 @@ const uniqueByUid=rows=>{
   }
   return [...byUid.values()];
 };
-export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={}){
+export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scopeId=''}={}){
   const traces=uniqueByUid(source.filter(row=>row?.entry_type==='era'));
   const events=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='period'))
     .map(row=>[text(row.scope_id)+':'+text(row.uid),row]));
@@ -99,8 +99,8 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={})
     // Date anchors outside all Era ranges remain selectable/editable.
     const unassigned=datedAnchors.filter(anchor=>
       !traces.some(trace=>withinTrace(anchor,trace)));
-    const scopeIds=[...new Set([...source.map(row=>text(row?.scope_id)).filter(Boolean),
-      ...unassigned.map(anchor=>text(anchor.scope_id))])];
+    const scopeIds=[...new Set([text(scopeId),...source.map(row=>text(row?.scope_id)).filter(Boolean),
+      ...unassigned.map(anchor=>text(anchor.scope_id))].filter(Boolean))];
     for(const [index,scope] of scopeIds.entries()){
       const groupId='time-undefined:'+scope;
       groups.push({id:groupId,label:'未定義',order:(traces.length+1)*10000+index,
@@ -211,8 +211,8 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false}={})
   }
   const unassigned=datedAnchors.filter(anchor=>
     !assigned.has(text(anchor.scope_id)+':'+text(anchor.uid)));
-  const scopes=[...new Set([...source.map(row=>text(row?.scope_id)).filter(Boolean),
-    ...unassigned.map(anchor=>text(anchor.scope_id))])];
+  const scopes=[...new Set([text(scopeId),...source.map(row=>text(row?.scope_id)).filter(Boolean),
+    ...unassigned.map(anchor=>text(anchor.scope_id))].filter(Boolean))];
   for(const [index,scope] of scopes.entries()){
     const groupId='time-undefined:'+scope;
     const label='未定義';
