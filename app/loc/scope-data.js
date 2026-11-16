@@ -9,7 +9,7 @@ import {PUBLISHED_SITE_BOOTSTRAP} from '../modular/published-site-bootstrap.js';
 import {loadPublishedBlocks} from '../modular/published-blocks/index.js';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
-// app-bootstrap request (see app/loc/app-bootstrap.js); there is no
+// app-bootstrap request (see app/loc/runtime/app-bootstrap.js); there is no
 // standalone per-page RPC call for it any more.
 // api.manage owns system authorization and routing; silver.loc is the
 // Group Scope List and owns display_name/title_tw/desc_tw/birthday.

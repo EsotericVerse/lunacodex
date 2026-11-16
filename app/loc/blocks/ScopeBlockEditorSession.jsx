@@ -18,7 +18,7 @@ import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
-import {appBootstrapKey} from '../app-bootstrap';
+import {appBootstrapKey} from '../runtime/app-bootstrap';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../scope-data';
 
 const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});

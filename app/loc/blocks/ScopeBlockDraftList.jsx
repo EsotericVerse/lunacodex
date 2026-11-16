@@ -16,7 +16,7 @@ import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
-import {appBootstrapKey} from '../app-bootstrap';
+import {appBootstrapKey} from '../runtime/app-bootstrap';
 import {invalidateScopeBlockPage} from '../scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
 
