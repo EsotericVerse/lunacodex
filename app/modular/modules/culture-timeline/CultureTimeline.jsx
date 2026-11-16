@@ -248,7 +248,9 @@ export default function CultureTimeline({
   const hasTimeKinds=mode==='overview'&&rows.some(row=>String(row.group||'').startsWith('kind:'));
   // Trace expand/collapse updates datasets in place to preserve pan, zoom
   // and touch position exactly like the lower numeric river.
-  const preserveTimelineInstance=heightVariant==='double'||mode==='trace';
+  // Expanding a read-only LOC Scope preview updates the existing vis-timeline
+  // dataset in place; never destroy/recreate the full chart per click.
+  const preserveTimelineInstance=heightVariant==='double'||mode==='trace'||readOnlyViewport;
   const groupCount=Math.max(new Set([...rows.map(row=>row.group),...extraGroups.map(group=>group.id)].filter(Boolean)).size,hasTimeKinds&&!editable?4:0);
   const compactGroupCount=Math.max(1,groupCount||rows.length);
   // The double river must shrink after zero-count groups disappear.
