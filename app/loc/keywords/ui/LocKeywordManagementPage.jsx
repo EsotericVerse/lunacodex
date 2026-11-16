@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import LocManagementWorkspace from '../../management/LocManagementWorkspace';
-import PanelLoading from '../../PanelLoading';
+import PanelLoading from '../../ui/PanelLoading';
 
 const LocKeywordManagement=dynamic(()=>import('./LocKeywordManagement'),{loading:PanelLoading});
 const KEYWORD_ITEM=Object.freeze({

@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import PanelLoading from '../PanelLoading';
+import PanelLoading from '../ui/PanelLoading';
 import TimelinePlaceManager from './TimelinePlaceManager';
 
 const TraceManagement=dynamic(()=>import('./TraceManagement'),{loading:PanelLoading});

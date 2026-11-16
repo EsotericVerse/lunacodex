@@ -13,7 +13,7 @@ import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../edit
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
-import PanelLoading from '../PanelLoading';
+import PanelLoading from '../ui/PanelLoading';
 import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';
 // Group member display-name editing lives in the Group People/Works page.
 // Admin keeps only privileged registry provisioning and system configuration.
