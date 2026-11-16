@@ -189,8 +189,8 @@ async function acceptItems(items){
  const {locTargetScope='lo3rwang',locImportPaused=false}=
   await chrome.storage.local.get(['locTargetScope','locImportPaused']);
  const detected=items.length;
- const user=items.filter(x=>String(x?.content||'').startsWith('[user]\\n')).length;
- const assistant=items.filter(x=>String(x?.content||'').startsWith('[assistant]\\n')).length;
+ const user=items.filter(x=>String(x?.content||'').startsWith('[user]\n')).length;
+ const assistant=items.filter(x=>String(x?.content||'').startsWith('[assistant]\n')).length;
  const isConversation=(user+assistant)>0;
  const summary=isConversation
   ?'本次頁面辨識 '+detected+' 則對話訊息（使用者 '+user+'／AI '+assistant+'）'
