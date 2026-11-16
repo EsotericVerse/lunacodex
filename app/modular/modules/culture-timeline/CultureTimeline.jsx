@@ -187,6 +187,8 @@ export default function CultureTimeline({
   // The public Culture source river uses the library's natural content height
   // with a viewport cap; group count must never determine its container size.
   naturalSourceHeight=false,
+  // A LOC annual preview has a fixed time viewport; expanding groups is allowed.
+  readOnlyViewport=false,
   onGroupToggle=null,
   onGroupSelect=null,
   anchorInsight=null,
@@ -341,7 +343,7 @@ export default function CultureTimeline({
         },
         // Wheel/pinch zoom and dragging must not require Ctrl, Alt, or other keys.
         horizontalScroll:false,
-        zoomable:true,
+        zoomable:!readOnlyViewport,
         zoomKey:'',
         zoomMin:1000*60*60*24*14,
         zoomMax:1000*60*60*24*365*50,
@@ -349,7 +351,7 @@ export default function CultureTimeline({
         ...(fixedMin&&Number.isFinite(Date.parse(fixedMin))?{min:fixedMin}:{}),
         ...(fixedMax&&Number.isFinite(Date.parse(fixedMax))?{max:fixedMax}:{}),
         selectable:true,
-        moveable:true,
+        moveable:!readOnlyViewport,
         editable:editable?{add:Boolean(onAddRef.current),updateTime:true,updateGroup:false,remove:true,overrideItems:false}:false,
         ...(editable?{
           ...(onAddRef.current?{onAdd:(item,callback)=>settle(onAddRef.current,item,null,callback,null)}:{}),
@@ -437,7 +439,7 @@ export default function CultureTimeline({
     hasTimeKinds,preserveTimelineInstance?null:timelineMinHeight,
     preserveTimelineInstance?null:timelineMaxHeight,
     Boolean(rows.length||editable||extraGroups.length),
-    heightVariant,mode,naturalSourceHeight,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
+    heightVariant,mode,naturalSourceHeight,readOnlyViewport,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
     preserveTimelineInstance?null:hiddenDates,editable,locale,labels,timelineLocale,defaultTimeUnit]);
 
   // When a group opens, mutate existing datasets instead of destroying and
@@ -587,7 +589,7 @@ export default function CultureTimeline({
   if(!rows.length&&!editable&&!extraGroups.length)return <div className='scope-period-timeline-wrap scope-period-timeline-empty'><div className='scope-period-timeline scope-period-timeline-empty-line' role='region' aria-label={t('時間長河')}/><p><FieldText text={mode==='overview'?'尚未設定時期，目前以「所有」總覽顯示。':'目前時期尚無可顯示的時間資料。'}/></p></div>;
 
   return <div className='scope-period-timeline-wrap'>
-    <div className='scope-timeline-controls' role='group' aria-label={t('時間長河操作')}>
+    {!readOnlyViewport?<div className='scope-timeline-controls' role='group' aria-label={t('時間長河操作')}>
       <button type='button' className='loc-button' aria-label={t('往較早時間移動')} disabled={!ready} onClick={()=>changeWindow('earlier')}>←</button>
       <button type='button' className='loc-button' aria-label={t('往較晚時間移動')} disabled={!ready} onClick={()=>changeWindow('later')}>→</button>
       <button type='button' className='loc-button' aria-label={t('放大時間長河')} disabled={!ready} onClick={()=>changeWindow('zoom-in')}>＋</button>
@@ -605,7 +607,7 @@ export default function CultureTimeline({
           </motion.output>:null}
         </AnimatePresence>
       </div>:null}
-    </div>
+    </div>:null}
     {onSelect&&mode==='overview'&&rows.length<=250?<label className='scope-timeline-item-picker'>
       <span><FieldText text="選擇河道紀錄"/></span>
       <select className='scope-select' aria-label={t('選擇河道紀錄')} value={rows.some(row=>row.id===selectedRowId)?selectedRowId:''} onChange={selectFromList}>
