@@ -4,6 +4,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import * as THREE from 'three';
 import {runeGlyphProfile} from './rune-glyph-library.mjs';
+import {runeAssetHref} from '../rune-asset-origin.mjs';
 import RuneExtrudedGlyph from './RuneExtrudedGlyph';
 import {GLYPH_MOTION_TIMES,runeGlyphMotionFor} from './rune-glyph-motion.mjs';
 import {AUTHORED_EFFECT_FILES,CANONICAL_RUNE_ENGLISH,runeEffectFor} from './rune-effect-library.mjs';
@@ -13,7 +14,7 @@ import {redirectHd256ParticleTexture} from './hd256-particle-paths.mjs';
 import {redirectSoftMatteTexture} from './soft-matte-textures.mjs';
 import {redirectAmbientFogTexture} from './ambient-fog-assets.mjs';
 
-const SOURCE='/vendor/effekseer/';
+const SOURCE=runeAssetHref('/vendor/effekseer/');
 const WASM=SOURCE+'effekseer.wasm';
 // Only pre-authored Effekseer effects with semantically appropriate meanings.
 // No custom emitters, particles, shaders, or synthetic effect substitutes.

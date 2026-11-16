@@ -1,6 +1,7 @@
 /** Semantic first-glance art from Game-Icons.net (CC BY 3.0, some public domain).
  * All 66 Rune emblems are pre-authored, individually picked and checksum-pinned.
  */
+import {runeAssetHref} from '../rune-asset-origin.mjs';
 export const SEMANTIC_ICON_REVISION='82d948812bfe3f269ef8f731dcdb07b08160edc4';
 export const RUNE_SEMANTIC_ICONS=Object.freeze([
   {
@@ -475,5 +476,5 @@ export const RUNE_SEMANTIC_ICONS=Object.freeze([
 ]);
 export function runeIconFor(rune){
  const id=Number(rune?.rune_id);
- return Number.isInteger(id)&&id>=1&&id<=66?'/vendor/rune-semantic-icons/'+id+'.svg':null;
+ return Number.isInteger(id)&&id>=1&&id<=66?runeAssetHref('/vendor/rune-semantic-icons/'+id+'.svg'):null;
 }

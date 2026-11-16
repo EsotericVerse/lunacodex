@@ -1,3 +1,4 @@
+import {allowStaticSource} from './lrs-static-publish-rules.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -7,6 +8,8 @@ const output=path.join(root,'out');
 
 const assetsSource=path.join(root,'assets');
 const assetsTarget=path.join(output,'assets');
+const native=process.env.LOC_NATIVE_RUNE_ASSETS==='1';
+const sourceAllowed=source=>allowStaticSource(path.relative(root,source),{native});
 if(!fs.existsSync(assetsSource))throw new Error('Static asset source missing: assets');
 fs.rmSync(assetsTarget,{recursive:true,force:true});
 // Master artwork and original pics are selectively published below, never twice.
@@ -14,7 +17,7 @@ const unpublishedSource=path.join(assetsSource,'lunarunes','source');
 const pictureOriginals=path.join(assetsSource,'pics');
 fs.cpSync(assetsSource,assetsTarget,{recursive:true,
   filter:source=>![unpublishedSource,pictureOriginals].some(
-    folder=>source===folder||source.startsWith(folder+path.sep))});
+    folder=>source===folder||source.startsWith(folder+path.sep))&&sourceAllowed(source)});
 
 // pics/ is copied wholesale, the same as assets/ above: any image added here
 // (including new subfolders) ships to the static export automatically, with
@@ -34,13 +37,22 @@ const EXCLUDED_PICS_DIRS=[path.join(picsSource,'64Card_org')];
 if(!fs.existsSync(picsSource))throw new Error('Static asset source missing: pics');
 fs.rmSync(picsTarget,{recursive:true,force:true});
 fs.cpSync(picsSource,picsTarget,{recursive:true,
-  filter:source=>!EXCLUDED_PICS_DIRS.some(excluded=>source===excluded||source.startsWith(excluded+path.sep))});
+  filter:source=>!EXCLUDED_PICS_DIRS.some(excluded=>source===excluded||source.startsWith(excluded+path.sep))&&sourceAllowed(source)});
 
-const rootDownloads=['LunarRunesCardCut.pdf'];
+// Native needs LRS's original PDF; LOC Web links to the LRS-owned download.
+const rootDownloads=native?['LunarRunesCardCut.pdf']:[];
 for(const name of rootDownloads){
   const source=path.join(assetsSource,'lunarunes','source',name);
   if(!fs.existsSync(source))throw new Error(`Static asset source missing: ${name}`);
   fs.copyFileSync(source,path.join(output,name));
 }
 
-console.log(`[static-assets] copied assets/, pics/ (whole directory) and ${rootDownloads.length} governed root downloads into out/`);
+// Next copies public/ before this stage. Strip only the Rune-owned Web media;
+// do not delete LOC's own favicon, static chunks, Hero, or native IPA files.
+if(!native){
+  for(const name of ['effekseer','rune-semantic-icons'])
+    fs.rmSync(path.join(output,'vendor',name),{recursive:true,force:true});
+  fs.rmSync(path.join(output,'assets','site','icons','lrunes-favicon.png'),{force:true});
+  fs.rmSync(path.join(output,'LunarRunesCardCut.pdf'),{force:true});
+}
+console.log(`[static-assets] LOC ${native?'native':'Web'} assets published; LRS source/art owned by LRS, web uses links.`);

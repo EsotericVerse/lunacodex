@@ -5,6 +5,7 @@
  * Select complete authored effects over shader/material demos or bare particle samples.
  * Equal production quality is a visual acceptance criterion, not a texture-size or byte-count claim.
  */
+import {runeAssetHref} from '../rune-asset-origin.mjs';
 export const AUTHORED_EFFECT_FILES=Object.freeze({
   "M:Gohlem_Shield1": "Collections/MAGICALxSPIRAL/MxS_Gohlem_Shield1.efkefc",
   "B:Homing_Laser01": "Collections/Basic/Basic_Homing_Laser01.efkefc",
@@ -336,6 +337,6 @@ export const RUNE_VFX_OVERLAYS=Object.freeze({
 export function runeEffectFor(rune){
  const name=String(rune?.english_name||'').trim();
  const key=Object.hasOwn(RUNE_EFFECT_KEYS,name)?RUNE_EFFECT_KEYS[name]:null;
- return key?{key,path:'/vendor/effekseer/'+AUTHORED_EFFECT_FILES[key],tuning:RUNE_EFFECT_TUNING[name]||null,
-  overlays:(RUNE_VFX_OVERLAYS[name]||[]).map(([overlayKey,role])=>({key:overlayKey,role,path:'/vendor/effekseer/'+AUTHORED_EFFECT_FILES[overlayKey]}))}:null;
+ return key?{key,path:runeAssetHref('/vendor/effekseer/'+AUTHORED_EFFECT_FILES[key]),tuning:RUNE_EFFECT_TUNING[name]||null,
+  overlays:(RUNE_VFX_OVERLAYS[name]||[]).map(([overlayKey,role])=>({key:overlayKey,role,path:runeAssetHref('/vendor/effekseer/'+AUTHORED_EFFECT_FILES[overlayKey])}))}:null;
 }

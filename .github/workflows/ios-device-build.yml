@@ -145,6 +145,9 @@ jobs:
       - name: Inject pinned LRS native-only UI and modules into the temporary LOC checkout
         run: node scripts/restore-lrs-native-ui.mjs ../rune-source .
       - name: Build LOC static export for the existing native shell
+        env:
+          LOC_NATIVE_RUNE_ASSETS: '1'
+          NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'
         run: |
           npm run build:static
           test -f out/index.html
