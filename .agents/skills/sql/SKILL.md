@@ -1,12 +1,14 @@
 ---
 name: sql
-description: "處理 SQL、資料庫、查詢、JOIN、schema、效能與 SQL 相關程式整合；不按 Kysely、ZenStack、Zod、Neon 逐一載入。"
+description: "LOC SQL Portable、Z-Model／Kysely 方言、Schema、資料存取、效能與 Scope 授權；不替 LAS 或 LRS 維護資料庫。"
 ---
 
-# SQL / Database — 資料工作入口
+# LOC SQL Portable — 資料工作入口
 
-先看實際 SQL、schema、資料型別、連線與程式碼，再判斷要做查詢、寫入、JOIN、效能分析或欄位調整。**SQL 是工作類型，ORM／query builder／validation 是實作細節**，不得因程式引用 Kysely、ZenStack、Zod、Neon 就各載一份 Skill。
+**LOC 是 SQL Portable 的整合主體，不綁單一 MySQL／PostgreSQL／MSSQL。** 實作以現行 `modules/loc/dialect`、ZenStack／Z-Model、Kysely、資料模型與真正的多方言測試為準；不同引擎的可攜程度須以證據證明，不能只憑編譯結果宣稱一致。
 
-需要 ZenStack V3 查詢／關聯／交易與 Kysely `$qb` 時，一份 ZenStack 查詢文件就足夠；不要再連動讀取 Kysely。獨立 Kysely SQL builder、ZModel 結構、Zod 型別、Neon 專用特性，只有實際碰到該問題時才開對應資料。
+先看具體查詢、型別、Schema、JOIN、索引、資料庫方言與可信任授權，再決定修哪一層。Kysely／ZenStack／Zod 是工具而不是另一套 SQL Gateway；勿為了讀取不同引擎而複製資料操作或重建任意 SQL API。
 
-不預設 migration、資料庫管理權或新增抽象層。依 LOC 已有模型與使用者指示執行。必要的舊專題指引見 `.agents/SKILL-LINKS.md`（按需選一份，不批次讀）。
+**LAS Auth 固定使用其本身 PostgreSQL**；不將 LAS 的 `las_*` 身份表搬進 LOC。LRS 的資料庫與 Rune 也各自負責。LOC 透過固定、已驗證的 API 接收 LAS 提供的身份，不接受 LAS 提供任意 SQL，Scope／`api.manage` 權限仍由 LOC 做最終判斷。
+
+請保留現有 LOC 業務層 `/api/las-native`、`/api/loc-native`、`native-operations.mjs`；這不是已退休的 MCP Gateway。必要時從 `.agents/SKILL-LINKS.md` 選一份與問題相關的 SQL／Dialect 文檔，不預讀全部。
