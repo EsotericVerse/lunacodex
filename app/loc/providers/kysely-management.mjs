@@ -363,15 +363,15 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
 // A Search-only, read-only action behind the verified LOC Web Session.
- // No browser SELECT may bypass Galaxy.search/list on the public query route.
+// No browser SELECT may bypass Galaxy.search/list on the public query route.
 const PRIVATE_SEARCH_COLUMNS=Object.freeze(galaxyReadColumns('GalaxyList'));
 const privateSearchSchema=z.strictObject({
   p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
   p_query:z.string().trim().min(1).max(180),
   p_offset:z.number().int().min(0).max(100000).default(0),
   p_limit:z.number().int().min(1).max(100).default(50),
-  p_start_date:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).nullable().optional(),
-  p_end_date:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).nullable().optional(),
+  p_start_date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  p_end_date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   p_sort_direction:z.enum(['asc','desc']).default('asc'),
   p_content_type:z.enum(['','galaxy','lyrics_work','text_work']).default(''),
   p_source_mode:z.enum(['all','names','others','none']).default('all'),
@@ -380,7 +380,7 @@ const privateSearchSchema=z.strictObject({
 });
 function privateSearchLike(value){
   // A query term is literal text. Escape SQL LIKE wildcards and backslashes.
-  return '%'+String(value).replace(/[\\\\%_]/g,char=>'\\\\'+char)+'%';
+  return '%'+String(value).replace(/[\\%_]/g,char=>'\\'+char)+'%';
 }
 async function searchPrivateGalaxy(trx,args){
   const parsed=privateSearchSchema.safeParse(args);
