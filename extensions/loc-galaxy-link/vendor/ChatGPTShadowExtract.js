@@ -298,11 +298,12 @@ const ChatGPTShadowExtract = (() => {
         id = unitMessageId(el);
         index = unitIndex.get(el);
       } else {
-        // If a legacy wrapper and a search unit describe the same turn,
-        // keep the search unit only; do not archive duplicate messages.
-        if (el.closest && el.closest(UNIT_SELECTOR)) return;
-        if (el.querySelector && el.querySelector(UNIT_SELECTOR)) return;
         role = String(el.getAttribute("data-message-author-role") || "").toLowerCase();
+        // A wrapper containing a different-role unit still owns its message:
+        // never discard a legacy user merely because an assistant is nested.
+        if (el.closest && el.closest(UNIT_SELECTOR)) return;
+        const nested = el.querySelectorAll ? el.querySelectorAll(UNIT_SELECTOR) : [];
+        if (Array.from(nested).some((child) => unitRole(child) === role)) return;
         content = extractMessageText(el);
         id = el.getAttribute("data-message-id") || "";
         index = legacyIndex.get(el);
