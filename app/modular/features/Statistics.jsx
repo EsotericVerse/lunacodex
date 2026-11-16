@@ -384,7 +384,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const resolvedAdminSource=adminSource||{rows:[],series:[],distribution:[],total:0};
   // Render selected Place or Media categories through the same Statistics
   // chart models; default to the 12 most frequent places or four Media types.
-  const categoryWindow=useMemo(()=>rowsInWindow(categoryDaily.data,queryRange),
+  const categoryWindow=useMemo(()=>rowsInWindow(categoryDaily.data||[],queryRange),
     [categoryDaily.data,queryRange.startDate,queryRange.endDate,queryRange.bucket]);
   const categoryCatalog=useMemo(()=>facetTotals(categoryWindow.rows),[categoryWindow.rows]);
   const selectedCategory=categoryCatalog.find(row=>row.term===categoryChoice);
@@ -543,8 +543,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         </select>
       </label>
       {rankingType==='source'?<label>
-        <span>作品／個人分類</span>
-        <select className="scope-select" aria-label="作品／個人分類" value={activeSourceSelection}
+        <span>來源分類</span>
+        <select className="scope-select" aria-label="來源分類" value={activeSourceSelection}
           onChange={event=>setSourceGroup(event.target.value)}>
           <option value="">全部來源</option>
           {sourceKeywordOptions(sourceCatalog.data).map(source=>
