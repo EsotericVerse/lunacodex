@@ -13,7 +13,7 @@ import {anniversarySuggestionsForDate} from './culture/anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from './db-query.mjs';
 import {readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from './db-client.mjs';
 import {readTraceMapIndex} from '../modular/features/trace/trace-data.js';
-import {galaxyAble} from './galaxy-able.mjs';
+import {galaxyAble} from './model/galaxy-able.mjs';
 import {portableContainsTerm} from './providers/portable-search.mjs';
 import {galaxyReadColumns} from '../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection,MEDIA_ANCHOR_COLUMNS} from '../../packages/zenstack/anchor-hierarchy.mjs';
