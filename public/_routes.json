@@ -8,11 +8,7 @@
     "/api/loc-native",
     "/api/las-native",
     "/api/loc-auth-connectivity",
-    "/api/keywords",
-    "/api/mcp-provider",
-    "/api/mcp-provider-extension",
-    "/api/mcp-provider-callback",
-    "/.well-known/loc-mcp-client"
+    "/api/keywords"
   ],
   "exclude": []
 }
