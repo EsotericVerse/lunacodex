@@ -60,10 +60,10 @@
     if(!threadId||pendingId)return [];
     const source=normalizeUrl(location.href);
     if(!source)return [];
-    // Full-page capture and recording are distinct. A stale turn-state marker
-    // must never block a snapshot of completed messages. When actively
-    // recording, withhold only a visibly unfinished final assistant turn.
-    const streaming=mode==='record'&&upstream.isStreaming(document);
+    // Never stop an entire chat because one turn is still generating.
+    // A visible Stop button is the only active-generation signal; save all
+    // completed turns in both whole-page capture and ongoing recording.
+    const streaming=upstream.isStreaming(document);
     const title=upstream.extractTitle(document);
     const rows=upstream.messagesForUrl(upstream.extractMessages(scope),location.href);
     const pendingIndex=streaming?rows.findLastIndex(row=>row.role==='assistant'):-1;
