@@ -231,6 +231,7 @@ export default function Culture(){
   const [locCultureView,setLocCultureView]=useState('period');
   // LOC displays the one-year source density river immediately; no first river.
   const [locDensityOpen,setLocDensityOpen]=useState(true);
+  const [expandedLocSources,setExpandedLocSources]=useState([]);
   const isLrunesDaily=!isTimeEditingView&&scopeId==='lrunes'&&lrunesView==='daily';
   const isLocItemView=scopeId==='loc'&&locCultureView==='item';
   const resourceCache=useResourceCache();
@@ -767,11 +768,45 @@ export default function Culture(){
     }
     return labels;
   },[locSourceGroups,locCombinedSourceTotal,l,locale]);
+  const locSourceScopeGroups=useMemo(()=>locDensityOpen?locDensityQuery.data?.sourceScopeGroups||[]:[],[locDensityQuery.data,locDensityOpen]);
+  const locSourceScopeItems=useMemo(()=>locDensityOpen?locDensityQuery.data?.sourceScopeRiverItems||[]:[],[locDensityQuery.data,locDensityOpen]);
   const locCombinedSourceRiverItems=useMemo(()=>locSourceRiverItems.map(item=>({
+    group_key:'loc-source:'+String(item.category||''),
     ...item,
     end_date:nextRiverDay(item?.start_date),
     group_label:locSourceGroupLabel.get(String(item?.category||item?.group_label||''))||String(item?.group_label||'')
   })),[locSourceRiverItems,locSourceGroupLabel]);
+  // The LOC source root stays a single inexpensive aggregate. Expanding it
+  // reveals only its existing per-Scope numeric children, never new Galaxy IDs.
+  const locSourceTreeGroups=useMemo(()=>{
+    const roots=locSourceGroups.map((group,index)=>{
+      const code=String(group.site||'');
+      const count=Number(group.item_count)||0;
+      return {id:'loc-source:'+code,label:String(group.display_label||code)+'（'+count.toLocaleString(locale)+'）',
+        order:index*1000,collapsible:true,expanded:expandedLocSources.includes(code)};
+    });
+    for(const group of locSourceScopeGroups){
+      const code=String(group.code||'');
+      if(!expandedLocSources.includes(code))continue;
+      const order=roots.findIndex(root=>root.id==='loc-source:'+code);
+      if(order<0)continue;
+      roots.push({id:'loc-source-scope:'+code+':'+group.scope_id,
+        label:'　'+group.scope_id+'（'+Number(group.item_count||0).toLocaleString(locale)+'）',
+        order:order*1000+1+locSourceScopeGroups.findIndex(item=>item===group)});
+    }
+    return roots;
+  },[locSourceGroups,locSourceScopeGroups,expandedLocSources,locale]);
+  const locVisibleSourceItems=useMemo(()=>[
+    ...locCombinedSourceRiverItems,
+    ...locSourceScopeItems.filter(item=>expandedLocSources.includes(String(item.source_code||'')))
+  ],[locCombinedSourceRiverItems,locSourceScopeItems,expandedLocSources]);
+  const toggleLocSourceGroup=id=>{
+    const prefix='loc-source:';
+    if(!String(id).startsWith(prefix))return;
+    const code=String(id).slice(prefix.length);
+    setExpandedLocSources(current=>current.includes(code)
+      ?current.filter(value=>value!==code):[...current,code]);
+  };
   const locScopeDistributionItems=useMemo(()=>locDensityOpen?locDensityQuery.data?.scopeRanges||[]:[],[locDensityQuery.data,locDensityOpen]);
   const locIntersectionScopeIds=useMemo(()=>query.data?.intersectionScopeIds||[],[query.data]);
   const locIntersectionStart=String(query.data?.intersectionStart||'');
@@ -1381,8 +1416,10 @@ export default function Culture(){
       {!query.isPending&&(!query.data?.scopes?.length||!locDensityQuery.isPending)
         &&!query.error&&!locDensityQuery.error&&!locCombinedSourceRiverItems.length
         ?<p className='scope-status'>近一年沒有可顯示的文章來源。</p>:null}
-      {locCombinedSourceRiverItems.length?<CultureTimeline
-        items={locCombinedSourceRiverItems}
+      {locVisibleSourceItems.length?<CultureTimeline
+        items={locVisibleSourceItems}
+        extraGroups={locSourceTreeGroups}
+        onGroupToggle={toggleLocSourceGroup}
         labelOf={emptyRiverLabel}
         focus={EMPTY_RIVER_FOCUS}
         mode='source'
