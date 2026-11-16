@@ -23,7 +23,7 @@ import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-sour
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
 import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/routing/scope-registry.js';
-import {recoverChunkOnce} from './loc/chunk-recovery.mjs';
+import {recoverChunkOnce} from './loc/ui/chunk-recovery.mjs';
 import BottomNavIcon,{DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.

@@ -1,4 +1,4 @@
-import {planUidDependencyRepair,UID_DEPENDENT_ANCHOR_FIELDS} from '../uid-dependency-immer.mjs';
+import {planUidDependencyRepair,UID_DEPENDENT_ANCHOR_FIELDS} from './uid-dependency-immer.mjs';
 import {SCOPE_PATTERN_POSTING_KEY} from '../keywords/anchor-index.mjs';
 import {sql} from 'kysely';
 import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';

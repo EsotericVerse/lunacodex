@@ -7,7 +7,7 @@ import featureZh from '../i18n/sections/uiExtra.feature.zh_tw.js';
 registerDefaultSection('uiExtra.feature',featureZh);
 
 import dynamic from 'next/dynamic';
-import {recoverChunkOnce} from './chunk-recovery.mjs';
+import {recoverChunkOnce} from './ui/chunk-recovery.mjs';
 import {Suspense,useEffect,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {Capacitor} from '@capacitor/core';
