@@ -38,7 +38,7 @@ jobs:
             git sparse-checkout set \
               '/.github/workflows/**' '/app/**' '/scripts/**' \
               '/functions/api/las-native.js' '/functions/api/loc-native.js' '/config/lrs-source.json' '/packages/zenstack/**' '/package.json' '/package-lock.json' '/next.config.mjs' \
-              '/public/sw.js' '/public/_routes.json'
+              '/public/sw.js' '/public/_routes.json' '/public/themes/**'
             ref="$GITHUB_SHA"
           fi
           git -c protocol.version=2 fetch --quiet --depth=1 --filter=blob:none origin "$ref"
@@ -66,7 +66,8 @@ jobs:
             scripts/test-loc-rfc9110-browser-session.mjs \
             scripts/test-loc-browser-route-session.mjs \
             scripts/test-loc-direct-api-session-policy.mjs \
-            scripts/test-loc-direct-request-lifecycle.mjs
+            scripts/test-loc-direct-request-lifecycle.mjs \
+            scripts/test-loc-theme-demand-css.mjs
       - name: Verify LRS Web links, local IPA assets and fail-closed version plan
         run: node --test scripts/test-lrs-web-assets.mjs scripts/test-ipa-workflow-metadata.mjs scripts/test-lrs-deployment-plan.mjs scripts/test-lrs-emergency-authorization.mjs scripts/test-lrs-emergency-live.mjs
       - name: Verify ordered MCP conversations without database writes
