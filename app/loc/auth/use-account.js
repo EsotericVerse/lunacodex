@@ -216,8 +216,9 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
 
   // Last-known roles are displayed as stale context only; all authorization
   // predicates above continue to use the current verified in-memory grant.
-  const lastKnownPermissionSnapshot=typeof window==='undefined'?null:
-    readBrowserPermissions(window.sessionStorage);
+  const knownUserId=String(state.user?.id||authUserId||'');
+  const lastKnownPermissionSnapshot=typeof window==='undefined'||!knownUserId?null:
+    readBrowserPermissions(window.sessionStorage,knownUserId);
   return {
     ...state,refresh,signIn,signOut,lastKnownPermissionSnapshot,
     canLocAccessSync,scopeDataFor
