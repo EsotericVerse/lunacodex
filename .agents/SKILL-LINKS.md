@@ -1,5 +1,12 @@
 # LOC Skill 專用指引連結（不註冊為 Skill）
 
+## Awesome Open-Source AI Cheat Sheets（外部完整總目錄；按需參考）
+
+- [專案總目錄／完整速查表索引](https://github.com/sraodev/awesome-opensource-ai-cheat-sheets/blob/c8275b4bfad40f431cd22b616c74728c18e2b29f/README.md)
+- [全部 Cheatsheets 目錄（10 份）](https://github.com/sraodev/awesome-opensource-ai-cheat-sheets/tree/c8275b4bfad40f431cd22b616c74728c18e2b29f/cheatsheets)
+
+來源快照：`sraodev/awesome-opensource-ai-cheat-sheets@c8275b4bfad40f431cd22b616c74728c18e2b29f`（MIT）。這是**完整來源索引，不是按 LOC／LRS／LAS 預先分配的清單**；本 Repo 的 Agent 依當前任務與本地 `AGENTS.md`、現有 Skills 自行選擇必要章節。只按需讀取，不一次載入十份；連結不代表已安裝 Skill、增加依賴、創建 Workflow，亦不自動授權跨 Repo 或外部平台操作。
+
 這份是**按需求查閱的歷史版本索引**，不是啟動清單。現行頂層技能由 `.agents/skills/` 提供，專業細節不再安裝為同級技能。先按 `AGENTS.md` 確認任務目標，再選用或組合直接相關的 Skills 與參考連結；需要跨 Next.js、React、UI、資料或效能時可自然延伸，不設定只能讀一個 Skill／連結的上限。按需讀取，不為熟悉整個索引而全部預載，也不沿 import 追蹤所有套件。固定快照：`b4870bbeafb2733f8cbc3dd63b83cb0ea9a5a0ca`。連結保留歷史原文與相對參考檔案；若是特別新的 API，仍需核對實際安裝版本。
 
 ## SQL／資料模型
