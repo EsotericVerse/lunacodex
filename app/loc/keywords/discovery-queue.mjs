@@ -5,7 +5,10 @@ import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.m
 // Single bounded FIFO between Galaxy's ZModel read projection and the Worker.
 // Only page metadata goes through Immer: NEVER put article bodies in a draft.
 const MIN_PAGE_ROWS=256;
-const MAX_PAGE_ROWS=8192;
+// Only a ceiling on one SQL page fetch; the Worker still consumes it in its
+// own WORKER_BATCH_ROWS/BYTES slices below, so raising this does not change
+// how much a single Worker batch has to process at once.
+const MAX_PAGE_ROWS=20000;
 const INITIAL_PAGE_ROWS=2000;
 const TARGET_QUEUE_BYTES=2*1024*1024;
 const WORKER_BATCH_ROWS=768;

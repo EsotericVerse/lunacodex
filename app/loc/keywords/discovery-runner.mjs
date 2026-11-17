@@ -18,6 +18,29 @@ const WORKER_PROGRESS=z.looseObject({
 const ARTICLE_COLUMNS=galaxyReadColumns('GalaxyUidRead')
   .filter(column=>['uid','title','content','createtime','date'].includes(column));
 const aborted=()=>Object.assign(new Error('已取消關鍵詞建議掃描'),{name:'AbortError'});
+// A scan reads dozens of pages in sequence; one transient network blip must
+// not discard everything already read. Only the caller's own cancellation
+// (tagged AbortError by `aborted()` above, always rechecked before this
+// throws) skips retry. A fetch timeout surfaces as TimeoutError, not
+// AbortError, so it is retried like any other transient failure.
+const RETRYABLE_STATUS=new Set([408,425,429,500,502,503,504]);
+export const isRetryableReadError=error=>{
+  if(error?.name==='AbortError')return false;
+  const status=Number(error?.status);
+  if(Number.isFinite(status))return RETRYABLE_STATUS.has(status);
+  return true; // No HTTP status: a network-level or timeout failure.
+};
+export async function readPageWithRetry(run,signal,{attempts=4,baseDelayMs=500}={}){
+  for(let attempt=0;;attempt++){
+    try{return await run();}
+    catch(error){
+      if(signal?.aborted)throw aborted();
+      if(!isRetryableReadError(error)||attempt>=attempts-1)throw error;
+      await new Promise(resolve=>setTimeout(resolve,baseDelayMs*2**attempt));
+      if(signal?.aborted)throw aborted();
+    }
+  }
+}
 
 export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onProgress=()=>{},signal}={}){
   if(!/^silver\.[a-z][a-z0-9_]*_galaxy$/.test(String(galaxy||'')))
@@ -67,14 +90,14 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     const queue=new KeywordDiscoveryQueue();
     // Promise rejections must be observed immediately, including cancellation.
     const settled=promise=>promise.then(value=>({value}),error=>({error}));
-    const readPage=async (build,requested)=>{
+    const readPage=(build,requested)=>readPageWithRetry(async()=>{
       let query=build(dbAuthRelation(galaxy));
       if(typeof query.abortSignal==='function')query=query.abortSignal(readSignal);
       const reply=await query;
       if(signal?.aborted)throw aborted();
-      if(reply.error)throw new Error(reply.error.message||'無法讀取文章內文');
+      if(reply.error)throw reply.error;
       return {...reply,requested};
-    };
+    },signal);
     const consumePage=async (page,requested,nextPage)=>{
       queue.accept(page,requested);
       let lookahead=null;
