@@ -13,7 +13,14 @@ test('LOC is the only full website and native IPA build owner',()=>{
   assert.ok(!exists('.github/workflows/deploy-lunarcus-auth.yml'));
   const native=read('.github/workflows/ios-device-build.yml');
   assert.ok(native.includes('workflow_dispatch:'));
-  assert.ok(!native.includes('repository: EsotericVerse/lunarcus'));
+  // LOC owns packaging even when consuming a pinned, read-only LAS Hero asset.
+  // A fixed-source checkout is not a LAS-owned IPA build pipeline.
+  if(native.includes('repository: EsotericVerse/lunarcus')){
+    assert.match(native,/repository: EsotericVerse\/lunarcus\s+ref: [a-f0-9]{40}\s+path: las-source/,
+      'LAS Hero may be consumed only from an immutable commit');
+    assert.ok(!native.includes('npm --prefix las-source run build'),
+      'LOC must never compile LAS Worker as part of IPA');
+  }
 });
 
 test('LOC remains one Cloudflare Pages build; LAS triggers are external',()=>{
