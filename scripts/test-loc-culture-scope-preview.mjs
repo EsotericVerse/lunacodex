@@ -60,4 +60,5 @@ test('LOC preview time is locked, Scope time rivers retain full navigation',()=>
   assert.match(timeline,/preserveTimelineInstance=heightVariant==='double'\|\|mode==='trace'\|\|readOnlyViewport/);
   assert.match(timeline,/!readOnlyViewport\?<div className='scope-timeline-controls'/);
   assert.match(culture,/featureNavigationHref\(id,'culture'\)/);
+  assert.doesNotMatch(culture,/近一年 · 各 Scope 文化預覽|左側依 Scope 分組/);
 });
