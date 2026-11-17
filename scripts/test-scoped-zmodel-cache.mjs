@@ -97,6 +97,7 @@ test('all read/write entry points use the same ZModel cache (no idx/IndexedDB)',
   const query=read('app/loc/db/db-query.mjs');
   const transport=read('app/loc/providers/configured.mjs');
   const keywords=read('app/loc/keywords/service-client.mjs');
+  const directWriter=read('app/loc/db/db-contract.mjs');
   const store=read('packages/zenstack/scoped-read-cache.mjs');
   assert.match(scope,/getOrLoadScopedRead\(blockRelation\(id\)/);
   assert.match(scope,/getOrLoadScopedRead\('silver.loc_anchor'/);
@@ -106,6 +107,7 @@ test('all read/write entry points use the same ZModel cache (no idx/IndexedDB)',
   assert.match(transport,/invalidateScopedReadCache\(payload\?\.p_table\)/);
   assert.match(transport,/name==='save_blocks'/);
   assert.match(keywords,/invalidateScopedReadCache\('silver\.'\+scope\+'_anchor'\)/);
+  assert.match(directWriter,/invalidateScopedReadCache\(table\)/);
   assert.match(store,/modelNameForSql/);
   assert.doesNotMatch(store,/indexedDB|localStorage|setTimeout|Date\.now\(/);
 });
