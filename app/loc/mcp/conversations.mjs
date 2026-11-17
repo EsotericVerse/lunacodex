@@ -2,6 +2,7 @@
 // This module never issues/verifies OAuth tokens or stores Auth sessions.
 // The caller has already resolved Better Auth identity and read api.manage.
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {mergeOrdered} from './ordered-conversation.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -71,11 +72,11 @@ async function existingConversation(db,table,id){
 function ensurePermission(body,claims){
   const scope=String(body.scopeid||'');
   const action=String(body.action||'');
-  if(!['check','record'].includes(action))throw fail('Unsupported conversation action');
+  if(!['check','record','record_ordered'].includes(action))throw fail('Unsupported conversation action');
   if(claims?.provider!=='loc'||claims?.me!==true||
      !Array.isArray(claims.grants)||
      !(claims.grants.includes('global:manage')||
-       claims.grants.includes(scope+':'+(action==='record'?'write':'read'))))
+       claims.grants.includes(scope+':'+(action==='check'?'read':'write'))))
     throw fail('Verified LOC business permission required',403);
   return scope;
 }
@@ -93,6 +94,50 @@ export async function executeLocConversation(db,body,claims){
       updated_at:existing.UpdateTime,
       needs_sync:Date.parse(existing.UpdateTime)<Date.parse(timestamp)
     }:{found:false,scopeid:scope,needs_sync:true};
+  }
+  if(body.action==='record_ordered'){
+    // Source order is authoritative. DB write-time and capture-time are never
+    // sortable message fields. Legacy text requires a separate recovery flow.
+    const created=body.created_at&&Number.isFinite(Date.parse(body.created_at))
+      ?new Date(body.created_at):new Date(timestamp);
+    const updated=new Date(timestamp);
+    const title=String(body.title||'LOC conversation').trim().slice(0,350);
+    const date=created.toISOString().slice(0,10);
+    for(let attempt=0;attempt<4;attempt++){
+      const existing=await existingConversation(db,table,conversationId);
+      const merged=mergeOrdered(existing?.content??null,body.records);
+      if(merged.content.length>MAX_CONTENT)
+        throw fail('Conversation exceeds bounded storage size',413);
+      if(existing){
+        if(merged.added===0)return {accepted:true,duplicate:true,
+          uid:String(existing.uid).trim(),scopeid:scope,count:0,
+          messages:merged.count};
+        const builder=db.updateTable(table).set({
+          content:merged.content,UpdateTime:updated
+        }).where('uid','=',existing.uid)
+          .where('site','=','mcp').where('site_id','=',conversationId);
+        const result=await (existing.content==null?builder.where('content','is',null):
+          builder.where('content','=',existing.content)).executeTakeFirst();
+        if(Number(result?.numUpdatedRows||0)===1)return {
+          accepted:true,duplicate:false,uid:String(existing.uid).trim(),
+          scopeid:scope,count:merged.added,messages:merged.count};
+        continue;
+      }
+      const newUid=uid();
+      if(!UID.test(newUid))throw fail('Invalid generated Galaxy uid',500);
+      const row={uid:newUid,title,content:merged.content,
+        createtime:created,UpdateTime:updated,date,site:'mcp',site_id:conversationId,
+        ...Object.fromEntries(FLAGS.map(flag=>[flag,false]))};
+      try{
+        await db.insertInto(table).values(row).executeTakeFirst();
+        return {accepted:true,duplicate:false,uid:newUid,scopeid:scope,
+          count:merged.added,messages:merged.count};
+      }catch(error){
+        if(error?.code==='23505')continue;
+        throw error;
+      }
+    }
+    throw fail('Concurrent ordered conversation write conflict',409);
   }
   const rows=validatedBatch(body),{batchId,marker,content}=await batchContent(conversationId,rows);
   const created=body.created_at&&Number.isFinite(Date.parse(body.created_at))
