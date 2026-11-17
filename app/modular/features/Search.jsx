@@ -35,6 +35,7 @@ const Article=dynamic(()=>import('../Article'),{loading:()=>null});
 const GalaxyInterNetBranches=dynamic(()=>import('../GalaxyInterNetBranches'),{loading:()=>null});
 import {useScopeRuntime} from '../use-scope-runtime';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
+import {useSearchManagerSwitch} from '../../loc/preferences/use-search-manager-switch';
 import {loadOrCreateLocUser,saveLocUserField,LOC_USER_DEFAULTS} from '../../loc/preferences/loc-user-store.mjs';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {timeUnitBucket,localTodayKey} from '../../loc/preferences/default-time-unit.mjs';
@@ -243,21 +244,15 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const defaultTimeUnit=useDefaultTimeUnit();
   const {scopeId,scope}=useScopeRuntime();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('search');
-  // Personal list visibility is opt-in, even for an administrator.
-  const adminListRequested=Boolean(userActive&&userSettings.list===true);
-  // This is an ordinary visual switch. It checks no roles, grants or OAuth
-  // while changing. OAuth + loc_user opt-in are resolved on Search submission.
-  const [adminSearchRequested,setAdminSearchRequested]=useState(false);
+  // The setting is a visual switch, never a role or grant. The ordinary
+  // Search reads published search-enabled articles; list visibility controls
+  // whether their title is shown in the search results, not editor access.
+  const adminListRequested=Boolean(legacyManagementRoute&&userActive&&userSettings.list===true);
+  const {enabled:adminSearchRequested,explicit:adminSwitchExplicit,
+    setEnabled:setAdminSearchRequested}=useSearchManagerSwitch({
+    defaultValue:userSettings.list===true,preferenceReady:userActive
+  });
   const [privateResultMode,setPrivateResultMode]=useState(false);
-  const adminSwitchChanged=useRef(false);
-  const adminSwitchInitialized=useRef(false);
-  useEffect(()=>{
-    // Load the personal preference without asking for any management grant.
-    // A guest may still flip the local switch; it cannot activate private SQL.
-    if(!userActive||adminSwitchInitialized.current)return;
-    adminSwitchInitialized.current=true;
-    if(!adminSwitchChanged.current)setAdminSearchRequested(userSettings.list===true);
-  },[userActive,userSettings.list]);
   const editDock=useEditDock();
   const publicScopeEditing=Boolean(editDock?.active&&editDock.scopeId===scopeId&&scopeId!=='loc');
   // Only existing editor/legacy routes load management grants. The Search
@@ -494,25 +489,23 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       setStatus('搜尋中請稍後');
     }
     try{
-      // Switches are free to toggle. Only an actual Search request checks
-      // OAuth and the owner's loc_user preference. Without OAuth this is
-      // ordinary public Search; neither the switch nor loc_user grants editing.
+      // The switch did not check permissions or request a grant. On Search
+      // submission only, identify an OAuth session for the user's preference.
+      // Public search still requires Galaxy.search=true, regardless of list.
       let managerAtSearch=false;
-      if(adminSearchActive||adminSwitchChanged.current){
+      if(adminSearchActive||adminSwitchExplicit){
         const session=await getAccountSession().catch(()=>null);
         if(session?.user&&session?.oauth){
-          const user=await loadOrCreateLocUser();
-          if(user.search?.list!==adminSearchActive){
-            // Store only the Search preference. Saving personal choices needs
-            // OAuth ownership, not Scope management or edit delegation.
-            await saveLocUserField(user.uid,'search',{
-              ...LOC_USER_DEFAULTS.search,...user.search,list:adminSearchActive
-            });
-          }
-          adminSwitchChanged.current=false;
           managerAtSearch=adminSearchActive;
-        }else if(!adminSearchActive){
-          adminSwitchChanged.current=false;
+          try{
+            const user=await loadOrCreateLocUser();
+            if(user.search?.list!==adminSearchActive)
+              await saveLocUserField(user.uid,'search',{
+                ...LOC_USER_DEFAULTS.search,...user.search,list:adminSearchActive
+              });
+          }catch{
+            // A personal preference write failure cannot block public Search.
+          }
         }
       }
       if(id!==searchId.current)return;
@@ -528,7 +521,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // Search is one request: return title and date only. Article details load on entry.
       // A search-only manager grant must use signed, scoped Kysely instead of
       // bypassing visibility via the anonymous public SELECT transport.
-      const searchRunner=managerAtSearch?searchAuthorizedGalaxyRows:searchGalaxyRows;
+      // Manager is presentation-only here; never call the private managed
+      // action or bypass Scope grants to read search-disabled content.
+      const searchRunner=searchGalaxyRows;
       const search=await searchRunner(searchScopes,q,{
         limit:pageSize,cursor,
         hiddenScopeIds:managementMode?searchScopes.map(item=>item.id):[],
@@ -1164,7 +1159,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           <label className="scope-search-admin-switch">
             <input type="checkbox" role="switch" checked={adminSearchRequested}
               onChange={event=>{
-                adminSwitchChanged.current=true;
                 setAdminSearchRequested(event.target.checked);
                 resetSearchState();
               }}/>
