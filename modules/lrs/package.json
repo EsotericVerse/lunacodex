@@ -1,0 +1,34 @@
+{
+  "name": "@lo3r/lrs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LunaRunes private code-only modules for internal consumers",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.mjs",
+    "./rune": "./rune/index.mjs",
+    "./card": "./card/index.mjs",
+    "./daily": "./daily/index.mjs",
+    "./boardgame": "./boardgame/index.mjs",
+    "./boardgame/ui": "./boardgame/ui.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "manifest.mjs",
+    "rune",
+    "card",
+    "daily",
+    "boardgame",
+    "LICENSE",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}
