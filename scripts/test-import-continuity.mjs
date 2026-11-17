@@ -45,6 +45,19 @@ test('Notion direct page blocks compose ordered rich text without recursive craw
   assert.equal(json.pages[0].content,undefined);
 });
 
+test('Notion images join by exact page ID and keep signed URLs',()=>{
+  const page={object:'page',id:'page-img',properties:{Name:{title:[{plain_text:'Gallery'}]}}};
+  const imageBlock={object:'block',parent:{page_id:'page-img'},type:'image',
+    image:{type:'file',file:{url:'https://signed.example.org/photo?sig=xyz'}}};
+  const [joined]=importRowsFromJson({pages:[page],blocks:[imageBlock]},'','Notion');
+  assert.equal(joined.media.length,1);
+  assert.equal(joined.media[0].media_type,'image');
+  assert.equal(joined.media[0].file.url,'https://signed.example.org/photo?sig=xyz');
+  const media=normalizeImportMedia(joined.media,{title:'Gallery'});
+  assert.equal(media.records[0].media_type,'image');
+  assert.equal(media.records[0].url,'https://signed.example.org/photo?sig=xyz');
+});
+
 test('standalone Notion block collections remain supported',()=>{
   const paragraph={id:'block-1',object:'block',type:'paragraph',
     paragraph:{rich_text:[{plain_text:'Only block'}]}};
