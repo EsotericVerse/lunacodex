@@ -127,7 +127,8 @@ function pathValue(row,path){
 
 export function mappedImportValue(row,field,fieldMap={},source=''){
   const custom=String(fieldMap?.[field]||'').trim();
-  const profile=sourceImportModel(source,row);
+  const profile=source&&typeof source==='object'&&source.fields?
+    source:sourceImportModel(source,row);
   // Explicit operator mapping wins. Otherwise use the selected SOURCE ZModel's
   // paths before generic Galaxy aliases. No CMS-specific converter or parser.
   const paths=custom?custom.split(/[\n,，]/g).map(value=>value.trim()).filter(Boolean):
