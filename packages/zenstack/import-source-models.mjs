@@ -88,8 +88,8 @@ const models=[
       'quote.rich_text.*.plain_text','code.rich_text.*.plain_text',
       'properties.Content.rich_text.*.plain_text','content'],
     createtime:['created_time','createdAt','last_edited_time'],
-    url:['image.external.url','image.file.url','file.external.url',
-      'file.file.url','url'],
+    url:['url','image.external.url','image.file.url',
+      'file.external.url','file.file.url'],
     media:['image','file','media','attachments'],
     media_type:['type']
   }),
