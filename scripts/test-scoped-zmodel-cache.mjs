@@ -109,3 +109,30 @@ test('all read/write entry points use the same ZModel cache (no idx/IndexedDB)',
   assert.match(store,/modelNameForSql/);
   assert.doesNotMatch(store,/indexedDB|localStorage|setTimeout|Date\.now\(/);
 });
+
+test('PR #1759 analysis checkpoints do not invalidate Anchor until completion',()=>{
+  const client=read('app/loc/keywords/service-client.mjs');
+  const analysis=read('app/loc/keywords/analysis.js');
+  const sql=read('app/loc/keywords/sql-service.mjs');
+  assert.match(analysis,/result\?\.incomplete/);
+  assert.match(sql,/return \{incomplete:true/);
+  const start=client.indexOf('  const committed=result=>{');
+  const end=client.indexOf('  const readSignal=',start);
+  assert.ok(start>0&&end>start,'keyword cache completion guard is missing');
+  const factory=new Function('operation','write','scope','invalidateScopedReadCache',
+    client.slice(start,end)+'\nreturn committed;');
+  const touched=[];
+  const invalidate=relation=>touched.push(relation);
+  const analysisWrite=factory('analyze',true,'lo3rwang',invalidate);
+  analysisWrite({incomplete:true,completed:300,total:500});
+  assert.equal(touched.length,0,'unfinished analysis must preserve published Pattern cache');
+  analysisWrite({incomplete:false,analyzedDocuments:500});
+  assert.deepEqual(touched,['silver.lo3rwang_anchor']);
+  const receipt=factory('analyzeStatus',false,'lo3rwang',invalidate);
+  receipt({completed:false});
+  assert.equal(touched.length,1);
+  receipt({completed:true,result:{analyzedDocuments:500}});
+  assert.equal(touched.length,2);
+  factory('saveItem',true,'lo3rwang',invalidate)({uid:'ABCDEFGH'});
+  assert.equal(touched.length,3);
+});
