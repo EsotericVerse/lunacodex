@@ -144,27 +144,65 @@ type NotionBlock {
     children Json?
 }
 
-type MetaFederatedPost {
+type FacebookPost {
     contentText String?
-    caption String?
     description String?
     text String?
     message String?
     created_at String?
-    timestamp_ms Json?
     id Json?
     post_id Json?
+    id_str Json?
     fbPostId Json?
-    igMediaId Json?
-    threadsPostId Json?
-    mediaUrls Json?
+    timestamp_ms Json?
+    timestamp Json?
+    creation_timestamp Json?
+    date Json?
     data Json?
+    mediaUrls Json?
     media Json?
     attachments Json?
     content Json?
 }
 
-type MetaFederatedProfile {
+type InstagramMedia {
+    contentText String?
+    caption String?
+    description String?
+    text String?
+    created_at String?
+    id Json?
+    media_id Json?
+    fbid Json?
+    igMediaId Json?
+    taken_at Json?
+    timestamp_ms Json?
+    timestamp Json?
+    mediaUrls Json?
+    media Json?
+    attachments Json?
+}
+
+type ThreadsPost {
+    id String?
+    threadsPostId String?
+    post_id String?
+    thread_id String?
+    text String?
+    caption String?
+    body String?
+    created_at String?
+    content Json?
+    contentText Json?
+    timestamp Json?
+    timestamp_ms Json?
+    creation_timestamp Json?
+    mediaUrls Json?
+    media Json?
+    attachments Json?
+}
+
+type MetaPlatformProfile {
     scopedId String?
     username String?
     fbName String?
