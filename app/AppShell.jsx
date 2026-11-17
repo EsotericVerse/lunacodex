@@ -355,28 +355,12 @@ function AppShellInner({children,runtime}){
     }catch{}
   },[]);
   useEffect(()=>{
-    // Retire the browser PWA Service Worker. This does not affect the
-    // Cloudflare server Workers, public SQL APIs, or Capacitor native app.
-    if(Capacitor.isNativePlatform()||!('serviceWorker' in navigator))return;
-    const legacyScript='/sw.js';
-    void navigator.serviceWorker.getRegistrations().then(registrations=>
-      Promise.all(registrations.filter(reg=>{
-        try{
-          const scope=new URL(reg.scope);
-          if(scope.origin!==location.origin)return false;
-          return [reg.active,reg.waiting,reg.installing].some(worker=>{
-            if(!worker?.scriptURL)return false;
-            const script=new URL(worker.scriptURL);
-            return script.origin===location.origin&&script.pathname===legacyScript;
-          });
-        }catch{return false;}
-      }).map(reg=>reg.unregister()))
-    ).catch(()=>{});
-    if('caches' in window){
-      void caches.keys().then(keys=>Promise.all(keys
-        .filter(name=>name.startsWith('loc-public-'))
-        .map(name=>caches.delete(name)))).catch(()=>{});
-    }
+    // Register browser-only static asset caching. Native IPA remains separate;
+    // SQL, public APIs, auth, HTML and images are never intercepted.
+    if(Capacitor.isNativePlatform()||!('serviceWorker' in navigator)||
+      !/^https?:$/.test(window.location.protocol))return;
+    void navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'})
+      .catch(()=>{});
   },[]);
   // Administrative Scope metadata updates refresh the shared ZenStack
   // query state consumed by the shell, runtime, and Guest feature pages.
