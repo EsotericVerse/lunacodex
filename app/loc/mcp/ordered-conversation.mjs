@@ -58,8 +58,10 @@ export function mergeOrdered(previous,incoming){
   // separate explicit revision; it must not silently rewrite a prior turn.
   if(prior){
    if(prior.source_order!==row.source_order||prior.role!==row.role||
-      prior.parent_id!==row.parent_id||prior.text!==row.text)
-     reject('Existing message ID has conflicting source record',409);
+      prior.parent_id!==row.parent_id)
+     reject('Existing message ID has conflicting source position',409);
+   // A retry is identified by the stable message ID and location, not by
+   // scanning/re-comparing the message body. Revisions are a separate action.
    continue;
   }
   if(byOrder.has(row.source_order))
