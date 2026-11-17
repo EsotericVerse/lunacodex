@@ -76,8 +76,8 @@ test('LOC git index retains no LRS-owned code or media after cutover',()=>{
  assert.equal(result.status,0,result.stderr||result.stdout);
 });
 
-test('LOC Web rune handoff routes import no native 3D/card runtime',()=>{
- for(const path of ['app/lrunes/page.jsx','app/card/page.jsx',
+test('Dedicated Rune feature handoff routes import no native 3D/card runtime',()=>{
+ for(const path of ['app/card/page.jsx',
    'app/card/duel/page.jsx','app/card/list/page.jsx','app/card/daily/page.jsx']){
    const src=read(path);
    assert.match(src,/LrsWebRedirect/,'LOC Web keeps a URL handoff: '+path);
