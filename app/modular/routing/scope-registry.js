@@ -85,6 +85,31 @@ export function normalizeScopeId(value=''){
   return SCOPE_ID_PATTERN.test(id)?id:'';
 }
 
+// The current route is tiny, non-authorizing browser Session state.
+// It is ALWAYS derived from the canonical routing table + actual URL; these
+// stored values are hints for the current tab, never a Scope/role override.
+// Keep pathname and its containing directory separate for native index.html.
+export function rememberCurrentBrowserRoute(storage,scopeId,pathname){
+  const id=normalizeScopeId(scopeId);
+  const raw=String(pathname||'');
+  if(!id||!raw.startsWith('/'))return null;
+  const path=cleanPath(raw);
+  const directory=path==='/'?'/':/\/index\.html$/i.test(path)
+    ?path.replace(/\/index\.html$/i,'/'):path+'/';
+  const route={scopeId:id,pathname:path,directory};
+  try{
+    for(const [key,value] of [
+      ['current_scopeid',id],['current_pathname',path],
+      ['current_directory',directory]
+    ]){
+      if(storage?.getItem(key)!==value)storage?.setItem(key,value);
+    }
+  }catch{
+    // Disabled/full browser storage must never prevent ordinary navigation.
+  }
+  return route;
+}
+
 export function isKnownScope(id){
   return Boolean(SCOPES[normalizeScopeId(id)]);
 }
