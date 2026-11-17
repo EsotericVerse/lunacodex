@@ -21,7 +21,6 @@ import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/runtime/app-bootstrap';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-source-status.mjs';
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
-import {NavigationPreferences} from './modular/navigation-preferences';
 import {navigationHref} from './modular/routing/scope-registry.js';
 import PageResourceBoundary from './modular/PageResourceBoundary';
 import {recoverChunkOnce} from './loc/ui/chunk-recovery.mjs';
@@ -32,7 +31,8 @@ const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{
 import ScrollableScopeNav from './modular/ScrollableScopeNav';
 import ScopeLink,{isManagementHref} from './modular/ScopeLink';
 
-const {device:deviceNavigation}=NavigationPreferences;
+const MOBILE_HOME_ID='myphone';
+const mobileHomeHref=native=>native?'/my-phone/index.html':'/';
 
 const SYSTEM_THEME_ID='system-default';
 const DAY_THEME_ID='theme-7';
@@ -524,10 +524,10 @@ function AppShellInner({children,runtime}){
   useEffect(()=>{
     if(typeof document!=='undefined')document.documentElement.lang=activeLocale;
   },[activeLocale]);
-  // Scope navigation is canonical, not a per-user Favorites/folders list.
-  // Keep built-in and active Registry workspaces reachable after retirement.
+  // Render canonical Scope routes on web and native, in Registry NAV order.
+  // The former per-user Favorites/Folder selection no longer exists.
   const navigationScopes=NAV_SCOPES
-    .filter(item=>item.id!=='loc'&&item.id!=='admin'&&(!native||item.id==='lrunes'))
+    .filter(item=>item.id!=='loc'&&item.id!=='admin')
     .map(item=>({id:item.id,label:navDisplayNames[item.id]||item.nav.label}));
   if(!native){
     const listed=new Set(navigationScopes.map(item=>item.id));
@@ -538,7 +538,7 @@ function AppShellInner({children,runtime}){
       listed.add(id);
     }
   }else{
-    navigationScopes.push({id:deviceNavigation.MOBILE_HOME_ID,
+    navigationScopes.push({id:MOBILE_HOME_ID,
       label:translateUiField(activeLocale,'我的手機')});
   }
   const editScopeAvailable=navScopeId!=='loc'&&navScopeId!=='admin'&&!currentScope.aggregateChildren;
@@ -623,8 +623,8 @@ function AppShellInner({children,runtime}){
         <ScrollableScopeNav label="Scope 導覽"
           resetKey={navigationScopes.map(item=>item.id+':'+item.label).join('|')}>
           {navigationScopes.map(item=>{
-            const href=item.id===deviceNavigation.MOBILE_HOME_ID
-              ?deviceNavigation.mobileHomeHref(native):navigationHref(item.id,'',native);
+            const href=item.id===MOBILE_HOME_ID
+              ?mobileHomeHref(native):navigationHref(item.id,'',native);
             return <NavTarget key={item.id} href={href} label={item.label}
               current={targetIsCurrent(href,host,pathname)} native={native}/>;
           })}
