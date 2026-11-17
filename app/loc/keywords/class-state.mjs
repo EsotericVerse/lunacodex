@@ -37,3 +37,25 @@ export function activeKeywordMeta(config={},classUid=''){
   return record?{...record,by_class:config.keyword_meta?.by_class||{}}:
     {by_class:config.keyword_meta?.by_class||{}};
 }
+
+// A scan in progress (checkpointed because one HTTP request ran out of its
+// time budget before reaching the end of the Scope) is tracked separately
+// from by_class[Class UID], which only ever holds a *finished* receipt. The
+// live full-text Pattern index is never touched until a scan finishes; this
+// is only the resumable cursor + partial word postings for the NEXT request
+// to continue from, so it must never be read as if it were a completed
+// result (keywordClassState above deliberately ignores it).
+export function readKeywordScanProgress(meta={},classUid=''){
+  if(!UID.test(classUid))return null;
+  const source=meta&&typeof meta==='object'?meta:{};
+  const record=source.scan_progress?.[classUid];
+  return record&&typeof record==='object'?record:null;
+}
+export function writeKeywordScanProgress(meta={},classUid='',progress=null){
+  if(!UID.test(classUid))throw new Error('Invalid Keywords Class UID');
+  const source=meta&&typeof meta==='object'?meta:{};
+  const scan_progress={...(source.scan_progress||{})};
+  if(progress===null)delete scan_progress[classUid];
+  else scan_progress[classUid]=progress;
+  return {...source,scan_progress};
+}

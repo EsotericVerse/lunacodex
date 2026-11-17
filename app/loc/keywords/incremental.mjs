@@ -9,24 +9,56 @@ const isoMillis=value=>{
   const millis=Date.parse(String(value??''));
   return Number.isFinite(millis)?millis:null;
 };
+// Dynamic page sizing: react to how long a page actually took to classify,
+// not a fixed row count. The target is a roughly steady amount of CPU time
+// per page, same spirit as discovery-queue.mjs's byte-based adaptation, just
+// measuring elapsed ms here instead of payload bytes (this reader never
+// leaves the server, so wire size is not the cost that matters).
+const MIN_PAGE_ROWS=250,MAX_PAGE_ROWS=20000,TARGET_PAGE_MS=800;
+const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 
 // Exactly one stored word row per Scope + normalized literal. The existing
 // keyword_meta JSON stores the last *completed scan* per word, separate from
 // loc_search_pattern.update_time (changed UID set). Galaxy.UpdateTime is the
 // article's import/edit clock. No extra physical column or Class-specific index.
+//
+// A Scope's full article table rarely fits inside one HTTP request's CPU/time
+// budget. `resume` lets a caller hand back exactly what a prior, checkpointed
+// call of this same function produced (see `onCheckpoint` below) so this call
+// continues from that exact in-memory state instead of starting over. This is
+// deliberately NOT the same thing as `existingPatterns`/`patternScans`, which
+// describe the last *completed* scan and are used only to decide which words
+// still need to be rechecked for the current article. A resumed call's
+// per-word postings-so-far simply replace that baseline wherever the resume
+// state has an entry, because they already incorporate every delete/add this
+// in-progress attempt has made.
 export async function analyzeIncrementalKeywordPatterns({
   scopeId,classUid,treeRows,items,existingPatterns=[],patternScans={},
   minChars=0,exceptionWords=[],pageSize=1000,expectedCount=null,readMetadataPage,readContent,
-  writePatterns,finalize,onProgress=()=>{},startedAt=new Date().toISOString()
+  writePatterns,finalize,onProgress=()=>{},startedAt=new Date().toISOString(),
+  resume=null,onCheckpoint=null,timeBudgetMs=null,checkEveryPages=50,now=()=>Date.now()
 }={}){
   if(!Array.isArray(existingPatterns)||!patternScans||typeof patternScans!=='object'||
      Array.isArray(patternScans)||!Array.isArray(exceptionWords)||
      exceptionWords.some(word=>typeof word!=='string')||
      !Number.isSafeInteger(pageSize)||pageSize<1||
      typeof readMetadataPage!=='function'||typeof readContent!=='function'||
-     typeof writePatterns!=='function'||typeof finalize!=='function')
+     typeof writePatterns!=='function'||typeof finalize!=='function'||
+     resume!==null&&(typeof resume!=='object'||Array.isArray(resume)||
+       !('cursor' in resume)||
+       !Number.isSafeInteger(resume.scanned)||resume.scanned<0||
+       !Number.isSafeInteger(resume.parsed)||resume.parsed<0||
+       !Number.isSafeInteger(resume.reused)||resume.reused<0||
+       !resume.patternSets||typeof resume.patternSets!=='object'||
+       Array.isArray(resume.patternSets)||
+       !Array.isArray(resume.checked)||resume.checked.length!==resume.scanned||
+       resume.checked.some(uid=>typeof uid!=='string'||!UID.test(uid)))||
+     onCheckpoint!==null&&typeof onCheckpoint!=='function'||
+     timeBudgetMs!==null&&(!Number.isFinite(timeBudgetMs)||timeBudgetMs<=0)||
+     !Number.isSafeInteger(checkEveryPages)||checkEveryPages<1)
     throw new TypeError('Invalid incremental Keyword analysis adapters');
   if(isoMillis(startedAt)===null)throw new Error('Invalid analysis start time');
+  const invocationStart=now();
   // PatternAnchor is the canonical ZModel word-level entry. The Item graph
   // provides rule/ownership verification only, never an alternate word index.
   const expected=buildKeywordSearchPatterns(scopeId,items,[]);
@@ -51,16 +83,38 @@ export async function analyzeIncrementalKeywordPatterns({
       throw new Error('Invalid or duplicated stored Keyword pattern');
     oldByKey.set(k,row);
   }
+  // A resumed call's own postings-so-far override the completed-scan baseline
+  // wherever it has an entry for that word; a word it never touched keeps the
+  // ordinary baseline (seeding `sets` identically to a fresh, non-resumed call).
+  if(resume){
+    const resumeKeys=new Set(Object.keys(resume.patternSets));
+    if(resumeKeys.size!==words.length||words.some(row=>!resumeKeys.has(keyOf(row.pattern))))
+      throw new Error('Keyword analysis resume state does not match the selected Class; restart required');
+  }
   const sets=new Map(),scanMs=new Map(),wordNames=new Map();
   for(const row of words){
     const k=keyOf(row.pattern),old=oldByKey.get(k);
-    sets.set(k,new Set(old?.uid_list||[]));
+    if(resume){
+      const partial=resume.patternSets[k];
+      if(!Array.isArray(partial)||partial.some(uid=>!UID.test(String(uid))))
+        throw new Error('Invalid Keyword analysis resume postings');
+      sets.set(k,new Set(partial));
+    }else sets.set(k,new Set(old?.uid_list||[]));
     wordNames.set(k,row.pattern);
     // Existing UID lists without a known successful scan are not trusted.
     const completed=old?isoMillis(patternScans[k]):null;
     scanMs.set(k,completed);
   }
-  const checked=new Set(),compiledByWords=new Map();
+  // `checked` must track every UID seen across the WHOLE attempt (including
+  // earlier, already-checkpointed invocations), not just this call's own
+  // pages: it is the final filter that drops a deleted article's stale
+  // posting (see the `uid_list` filter at completion below). Seeding it from
+  // `resume.checked` keeps that filter correct after a resume; its length is
+  // already verified above to equal `resume.scanned`, so duplicates there
+  // would be a sign of corrupt resume state, not a silent truncation here.
+  const checked=new Set(resume?resume.checked:[]),compiledByWords=new Map();
+  if(resume&&checked.size!==resume.checked.length)
+    throw new Error('Invalid Keyword analysis resume state: duplicate checked UID');
   const skipMatcher=compileKeywordLiteralMatcher(exceptionWords
     .map(keyOf).filter(Boolean));
   // A completed word scan is an UpdateTime lower bound. Most unchanged
@@ -70,12 +124,28 @@ export async function analyzeIncrementalKeywordPatterns({
     if(completed===null){earliestComplete=null;break;}
     earliestComplete=Math.min(earliestComplete,completed);
   }
-  let offset=0,scanned=0,parsed=0,reused=0;
+  // `cursor` is opaque to this function: whatever `readMetadataPage` hands
+  // back as `nextCursor`, checkpointed and passed straight back on the next
+  // call. This file has no idea it is (date, uid) underneath — only the
+  // caller wiring up `readMetadataPage` (sql-service.mjs) knows that shape.
+  // A plain row-count offset would be wrong here: the reader is a keyset
+  // cursor, not an OFFSET-style page number.
+  let cursor=resume?resume.cursor:null,scanned=resume?resume.scanned:0,
+    parsed=resume?resume.parsed:0,reused=resume?resume.reused:0;
+  let currentPageSize=clamp(pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS),pagesSinceCheck=0;
+  const checkpointNow=async()=>{
+    const patternSets=Object.fromEntries([...sets].map(([k,set])=>[k,[...set]]));
+    await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked]});
+  };
   for(;;){
-    const page=await readMetadataPage({offset,limit:pageSize});
-    if(!Array.isArray(page)||page.length>pageSize)
+    const pageStart=now();
+    const read=await readMetadataPage({cursor,limit:currentPageSize});
+    if(!read||typeof read!=='object'||!Array.isArray(read.rows)||
+       read.rows.length>currentPageSize||!('nextCursor' in read))
       throw new Error('Invalid Galaxy metadata page');
+    const page=read.rows;
     if(!page.length)break;
+    cursor=read.nextCursor;
     const affected=new Map(),contentUids=[];
     for(const row of page){
       const uid=String(row?.uid||'');
@@ -146,8 +216,23 @@ export async function analyzeIncrementalKeywordPatterns({
       }
       parsed+=docs.length;
     }
-    scanned+=page.length;offset+=page.length;
+    scanned+=page.length;
     onProgress({phase:'reading',completed:scanned,parsed,reused});
+    // React to how long this page actually took, not a fixed row count.
+    // Capped to 2x change per page so one unusually heavy/light page cannot
+    // whiplash the next request size.
+    const pageMs=Math.max(1,now()-pageStart);
+    const wanted=Math.round(currentPageSize*TARGET_PAGE_MS/pageMs);
+    currentPageSize=clamp(wanted,MIN_PAGE_ROWS,
+      Math.min(MAX_PAGE_ROWS,currentPageSize*2));
+    pagesSinceCheck++;
+    if(onCheckpoint&&timeBudgetMs!==null&&pagesSinceCheck>=checkEveryPages){
+      pagesSinceCheck=0;
+      if(now()-invocationStart>timeBudgetMs*0.8){
+        await checkpointNow();
+        return {incomplete:true,cursor,scanned,parsed,reused};
+      }
+    }
   }
   if(expectedCount!==null&&scanned!==expectedCount)
     throw new Error('Galaxy metadata COUNT changed during analysis; no Keyword patterns written');
