@@ -1,13 +1,14 @@
-// One client-runtime read store for the existing physical ZModel Anchor/Blocks
-// relations, shared by Kysely public SELECTs and page/Home/Hero presentation.
-// NO Galaxy, Auth/Session, Grants, personal SQL, local device or browser storage.
-// No TTL, polling, ISR or API response cache. Mutations invalidate by relation.
-// These are the scoped ZModel physical names; LOC Blocks live in loc_anchor.
-// Anchor cache is deliberately limited to the two selected Scope models.
-// Other Scope Anchor data stays live. Blocks are cached per physical Scope
-// model; LOC Blocks are the block types inside silver.loc_anchor.
+// One in-memory query-result store for ALL scoped ZModel Anchor/Blocks.
+// No Galaxy, identity, grants, private read, SQL indexes/idx tables, TTL,
+// polling, ISR, persistent browser cache, or additional physical relations.
+// Model mapping is taken from LOC's existing ZModel SchemaDef (not a new
+// manually maintained table or index). LOC Blocks live in loc_anchor.
+import {modelNameForSql} from './model-column-guard.mjs';
 const RELATION=/^silver\.([a-z][a-z0-9]{0,14})_(anchor|blocks)$/;
-const ANCHOR_SCOPES=new Set(['loc','lo3rwang']);
+const ALLOWED_MODELS=new Set([
+  'LocAnchor','Lo3rwangAnchor','LrunesAnchor',
+  'Lo3rwangBlocks','LrunesBlocks'
+]);
 const MAX_ENTRIES=120;
 const entries=new Map();
 const generations=new Map();
@@ -15,9 +16,10 @@ const generations=new Map();
 export function scopedReadRelation(value){
   const name=String(value||'').trim();
   const matched=RELATION.exec(name);
-  if(!matched||name==='silver.loc_blocks'||
-    (matched[2]==='anchor'&&!ANCHOR_SCOPES.has(matched[1])))return null;
-  return {name,scopeId:matched[1],kind:matched[2]};
+  if(!matched||name==='silver.loc_blocks')return null;
+  const modelName=modelNameForSql('silver',name.slice('silver.'.length));
+  if(!ALLOWED_MODELS.has(modelName))return null;
+  return {name,scopeId:matched[1],kind:matched[2],modelName};
 }
 function touch(key,entry){
   entries.delete(key);
@@ -47,7 +49,7 @@ export function invalidateScopedReadCache(relation){
 export function getOrLoadScopedRead(relation,descriptor,load,{cacheable=()=>true}={}){
   const parsed=scopedReadRelation(relation);
   if(!parsed)return Promise.resolve().then(load);
-  const key=JSON.stringify([parsed.name,descriptor]);
+  const key=JSON.stringify([parsed.modelName,parsed.scopeId,parsed.name,descriptor]);
   const existing=entries.get(key);
   if(existing){
     touch(key,existing);
