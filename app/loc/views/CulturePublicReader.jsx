@@ -14,6 +14,7 @@ import {assignedSource} from '../statistics/member-intersection-model.mjs';
 import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../preferences/default-year-window.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {unassignedPublicDateAnchors} from '../culture/time-trace-river.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
 import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 
@@ -63,7 +64,7 @@ function anchorModel(rows,start,end,expanded){
   };
   // The first river is an era tree: collapsed rows contain only eras.
   // Date anchors belong to their eras, never to a separate sidebar lane.
-  const groups=[],items=[];
+  const groups=[],items=[],eraWindows=[];
   for(const era of eras){
     const uid=String(era.uid),attr=attributes(era);
     const periodUids=list(attr.period).map(String)
@@ -75,6 +76,11 @@ function anchorModel(rows,start,end,expanded){
       collapsible:true,expanded:expandedEra,order:groups.length});
     const ranges=refs.map(periodRange);
     const eraDates=list(attr.date||attr.dates).map(datePart).filter(Boolean).sort();
+    // Classify every date using actual era/period windows even while collapsed.
+    // Never use the era's outer envelope, which can cover unrelated dates.
+    const windows=[...ranges.filter(range=>range.start&&range.end),
+      ...eraDates.map(day=>({start:day,end:day}))];
+    eraWindows.push(...windows);
     const begins=[...ranges.map(r=>r.start),...eraDates].filter(Boolean).sort();
     const ends=[...ranges.map(r=>r.end),...eraDates].filter(Boolean).sort();
     if(begins.length&&ends.length&&ends[ends.length-1]>=start&&begins[0]<=end){
@@ -87,8 +93,6 @@ function anchorModel(rows,start,end,expanded){
     if(!expandedEra)continue;
     // Match real date points against each era's own periods. Do not use
     // the era's overall first/last date for matching: eras may have gaps.
-    const windows=[...ranges.filter(range=>range.start&&range.end),
-      ...eraDates.map(day=>({start:day,end:day}))];
     for(const row of dates){
       if(row.date<start||row.date>end||
         !windows.some(range=>row.date>=range.start&&row.date<=range.end))continue;
@@ -107,6 +111,19 @@ function anchorModel(rows,start,end,expanded){
           start_date:range.start,end_date:range.end});
       }
     });
+  }
+  // Permanent final lane: dates that belong to no Era or Period.
+  // Keep true dates (including those outside the initial viewport), not fake
+  // positions. The user may pan the timeline to any historical date.
+  const undefinedGroup='time-undefined';
+  groups.push({id:undefinedGroup,label:'未定義',order:groups.length,
+    className:'scope-time-anchor-parent'});
+  for(const row of unassignedPublicDateAnchors(dates,eraWindows)){
+    const uid=String(row.uid);
+    items.push({id:undefinedGroup+':'+uid,uid,entry_type:'anchor',
+      title:row.title||row.date,display_label:'●',start_date:row.date,
+      group_key:undefinedGroup,group_label:'未定義',
+      class_name:'scope-time-original-anchor'});
   }
   return {items,groups};
 }
