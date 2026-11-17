@@ -104,10 +104,25 @@ function pathValue(row,path){
   if(/[\[\]]/.test(normalized))return undefined;
   const segments=normalized.split('.').filter(Boolean);
   if(!segments.length)return undefined;
-  return segments.reduce((value,segment)=>{
+  if(!segments.includes('*'))return segments.reduce((value,segment)=>{
     if(value===null||value===undefined||typeof value!=='object')return undefined;
     return Object.prototype.hasOwnProperty.call(value,segment)?value[segment]:undefined;
   },row);
+  // An explicit array wildcard is a bounded projection, NOT recursive
+  // discovery. It preserves every Notion rich-text span in source order.
+  let values=[row];
+  for(const segment of segments){
+    const next=[];
+    for(const value of values){
+      if(segment==='*'&&Array.isArray(value))next.push(...value);
+      else if(value&&typeof value==='object'&&Object.hasOwn(value,segment))
+        next.push(value[segment]);
+      if(next.length>2048)throw new Error('來源陣列欄位超過 2048 筆，請縮小資料路徑。');
+    }
+    values=next;
+    if(!values.length)return undefined;
+  }
+  return values;
 }
 
 export function mappedImportValue(row,field,fieldMap={},source=''){
@@ -118,7 +133,9 @@ export function mappedImportValue(row,field,fieldMap={},source=''){
   const paths=custom?custom.split(/[\n,，]/g).map(value=>value.trim()).filter(Boolean):
     [...(profile?.fields[field]||[]),...(IMPORT_FIELD_ALIASES[field]||[])];
   for(const key of paths){
-    const value=pathValue(row,key);
+    let value=pathValue(row,key);
+    if(Array.isArray(value)&&['content','title'].includes(field)&&
+        value.every(part=>typeof part==='string'))value=value.join('');
     if(value===undefined||value===null||(typeof value==='string'&&!value.trim()))continue;
     // Do not turn REST structured fields into literal "[object Object]" text,
     // IDs or dates. Operators may still import structured media separately.
