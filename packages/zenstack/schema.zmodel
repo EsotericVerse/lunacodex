@@ -151,7 +151,7 @@ type MetaFederatedPost {
     text String?
     message String?
     created_at String?
-    timestamp_ms String?
+    timestamp_ms Json?
     id Json?
     post_id Json?
     fbPostId Json?
