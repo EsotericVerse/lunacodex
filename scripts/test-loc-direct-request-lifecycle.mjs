@@ -2,7 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createKyselyPublicClient} from '../app/loc/providers/kysely-browser.mjs';
-import {cachedRead,invalidateCachedRead} from '../app/loc/db/semi-dynamic-cache.mjs';
+import {cachedRead,invalidateCachedRead,invalidateAccountPrivateReads}
+  from '../app/loc/db/semi-dynamic-cache.mjs';
 import {cancelTransientReads} from '../packages/zenstack/transient-read-epoch.mjs';
 
 const fakeClient=()=>{
@@ -116,4 +117,52 @@ test('separate SQL/public client instances never share a pending result',async()
   assert.equal(one.calls.length,1);
   assert.equal(two.calls.length,1);
   cancelTransientReads();
+});
+
+test('private management reads are isolated across accounts and cleared on identity events',async()=>{
+  let calls=0;
+  const read=(uid,group)=>cachedRead('loc-group-member-list:'+uid+':'+group,
+    async()=>({user:uid,group,revision:++calls}));
+  const alice=await read('alice','loc');
+  const bob=await read('bob','loc');
+  assert.equal(alice.user,'alice');
+  assert.equal(bob.user,'bob');
+  assert.equal(calls,2);
+  assert.equal(await read('alice','loc'),alice);
+  const scopeConfig=await cachedRead('scope-config:test-private-clear',
+    async()=>({public:true}));
+  const runtime=await cachedRead('admin-runtime-io:loc',async()=>({private:true}));
+  assert.equal(runtime.private,true);
+  invalidateAccountPrivateReads();
+  const renewed=await read('alice','loc');
+  assert.equal(renewed.revision,3);
+  assert.notEqual(renewed,alice);
+  assert.equal(await cachedRead('scope-config:test-private-clear',
+    async()=>({public:false})),scopeConfig);
+  invalidateCachedRead('scope-config:test-private-clear');
+  invalidateAccountPrivateReads();
+});
+
+test('auth identity switches and verifier failures release private snapshots',()=>{
+  const source=readFileSync(new URL('../app/loc/auth/use-account.js',import.meta.url),'utf8');
+  const members=readFileSync(new URL('../app/loc/scope/LocGroupMemberList.jsx',import.meta.url),'utf8');
+  assert.match(source,/import \{invalidateAccountPrivateReads\} from/);
+  assert.match(source,/clearAuthorization\(\);\s*invalidateAccountPrivateReads\(\)/);
+  assert.match(source,/await signOutAccount\(\);\s*invalidateAccountPrivateReads\(\)/);
+  assert.match(members,/groupMemberCacheKey='loc-group-member-list:'\+userId\+':'\+groupId/);
+  assert.match(members,/useAsyncResource\(\['loc-group-member-list',userId,groupId\]/);
+});
+
+test('Trace example route reuses its live geometry without repeated external fetch',()=>{
+  const source=readFileSync(new URL('../app/modular/features/trace/trace-map-engine.js',import.meta.url),'utf8');
+  const start=source.indexOf('  async function showRoadRoute(){');
+  const end=source.indexOf('  function destroy(){',start);
+  assert.ok(start>0&&end>start);
+  const route=source.slice(start,end);
+  const cached=route.indexOf('if(exampleRoadData)');
+  const external=route.indexOf('await fetch(');
+  assert.ok(cached>0&&cached<external,'reuse must precede the OSRM call');
+  assert.match(route,/exampleRoadData=geometry/);
+  assert.match(route,/routeActive=true/);
+  assert.match(source.slice(end),/controller\.abort\(\);\s*exampleRoadData=null/);
 });

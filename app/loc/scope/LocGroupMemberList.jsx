@@ -22,8 +22,11 @@ export default function LocGroupMemberList({groupId='loc'}){
   const [draft,setDraft]=useState({});
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
-  const groupMemberCacheKey='loc-group-member-list:'+groupId;
-  const query=useAsyncResource(['loc-group-member-list',groupId],()=>
+  // A Group's members are private: cache identity is user + Group, not
+  // Group alone. Auth changes also clear these snapshots explicitly.
+  const userId=String(account.user?.id||'');
+  const groupMemberCacheKey='loc-group-member-list:'+userId+':'+groupId;
+  const query=useAsyncResource(['loc-group-member-list',userId,groupId],()=>
     cachedRead(groupMemberCacheKey,async()=>{
       const {data,error}=await dbAuthClient.schema('silver')
         .managedAction('read_group_members',{p_group_id:groupId});
