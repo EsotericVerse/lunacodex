@@ -64,6 +64,181 @@ type LocAnchorLink {
 // media_link, keyword and site respectively; no extra relation is created.
 // Physical type is singular image/rune/suno; semantic MediaAnchor fields may be plural.
 // "anniversary" (also misspelled "aniversary" in old notes) is virtual, not a stored type.
+// External CMS / conversation SOURCE ZModels. Nonpersistent projections only.
+// The source field inventory and declarative Galaxy/Anchor field paths are
+// shared with LAS/MCP from import-source-models.mjs; no extra SQL relations.
+// No source-platform role or @@allow grants a LOC capability.
+type WordPressPost {
+    post_title String?
+    post_content String?
+    post_excerpt String?
+    post_date String?
+    post_date_gmt String?
+    post_status String?
+    post_type String?
+    slug String?
+    link String?
+    id Json?
+    ID Json?
+    post_id Json?
+    title Json?
+    content Json?
+    excerpt Json?
+    date Json?
+    date_gmt Json?
+    guid Json?
+    parent Json?
+    meta Json?
+    categories Json?
+    tags Json?
+}
+
+type WordPressPostMeta {
+    meta_key String?
+    meta_id Json?
+    post_id Json?
+    meta_value Json?
+}
+
+type WordPressTerm {
+    name String?
+    slug String?
+    taxonomy String?
+    description String?
+    term_id Json?
+    term_taxonomy_id Json?
+    parent Json?
+}
+
+type NotionPage {
+    id String?
+    object String?
+    created_time String?
+    last_edited_time String?
+    url String?
+    properties Json?
+    title Json?
+    parent Json?
+    icon Json?
+    cover Json?
+}
+
+type NotionBlock {
+    id String?
+    type String?
+    created_time String?
+    last_edited_time String?
+    parent Json?
+    paragraph Json?
+    heading_1 Json?
+    heading_2 Json?
+    heading_3 Json?
+    bulleted_list_item Json?
+    numbered_list_item Json?
+    to_do Json?
+    quote Json?
+    code Json?
+    rich_text Json?
+    image Json?
+    file Json?
+    children Json?
+}
+
+type MetaFederatedPost {
+    contentText String?
+    caption String?
+    description String?
+    text String?
+    message String?
+    created_at String?
+    timestamp_ms String?
+    id Json?
+    post_id Json?
+    fbPostId Json?
+    igMediaId Json?
+    threadsPostId Json?
+    mediaUrls Json?
+    data Json?
+    media Json?
+    attachments Json?
+    content Json?
+}
+
+type MetaFederatedProfile {
+    scopedId String?
+    username String?
+    fbName String?
+    id Json?
+    userId Json?
+}
+
+type MetaInteraction {
+    object_type String?
+    type String?
+    payload String?
+    parent_id String?
+    root_post_id String?
+    id Json?
+    postId Json?
+    authorId Json?
+    parentId Json?
+}
+
+type ThreadsPublicReply {
+    id String?
+    root_post_id String?
+    parent_id String?
+    object_type String?
+    timestamp Json?
+    author Json?
+    content Json?
+    federation_context Json?
+    engagement_counters Json?
+}
+
+type MsnMessage {
+    session_id String?
+    object_type String?
+    timestamp Json?
+    sender Json?
+    recipient Json?
+    body Json?
+}
+
+type MessengerMessage {
+    message_id String?
+    thread_id String?
+    object_type String?
+    sender_id String?
+    timestamp_ms Json?
+    message_body Json?
+    read_receipts Json?
+}
+
+type InstagramDirectMessage {
+    item_id String?
+    thread_id String?
+    object_type String?
+    sender_id String?
+    message_type String?
+    timestamp_ms Json?
+    body Json?
+    reactions Json?
+    is_vanish_mode_message Json?
+}
+
+type XDirectMessage {
+    dm_id String?
+    conversation_id String?
+    object_type String?
+    sender_id String?
+    routing_tier String?
+    ciphertext_body String?
+    created_at_ms Json?
+    encryption_metadata Json?
+    decrypted_body_fallback_placeholder Json?
+}
+
 enum LocAnchorType {
     date
     period
