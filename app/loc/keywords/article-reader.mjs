@@ -81,20 +81,32 @@ export function createIndexedDateKeywordReader({
       dateTime.format(new Date(row.createtime))!==row.date)
       throw new Error('Galaxy 日期與發表時間不一致，未寫入分析結果');
   };
-  let lastDate=null,lastUid=null,datedDone=false,undatedDone=false;
-  const pending=[];
-  let currentDay=[];
-  const releaseDay=()=>{
-    if(!currentDay.length)return;
-    // UID is only a physical SQL cursor. Semantic order within a day remains
-    // publication time (and deterministic UID for equal timestamps).
-    currentDay.sort((a,b)=>timeOrder(a,b)||text(a.uid).localeCompare(text(b.uid)));
-    pending.push(...currentDay);
-    currentDay=[];
-  };
-  return async function readPage({limit}={}){
+  // No closure-held position any more: everything readPage needs to continue
+  // from exactly where a PRIOR call (possibly in an earlier HTTP request)
+  // left off travels in `cursor`, and the same shape comes back as
+  // `nextCursor`. This includes rows already fetched and verified from the
+  // DB but not yet handed to the caller (`pending`/`currentDay`) — dropping
+  // those on a resume would silently skip real articles, not just redo work,
+  // so they are part of the resumable state, not an internal-only detail.
+  const freshState=()=>({lastDate:null,lastUid:null,datedDone:false,
+    undatedDone:false,pending:[],currentDay:[]});
+  const validState=state=>state&&typeof state==='object'&&!Array.isArray(state)&&
+    (state.lastDate===null||validDay(state.lastDate))&&
+    (state.lastUid===null||validUid(state.lastUid))&&
+    typeof state.datedDone==='boolean'&&typeof state.undatedDone==='boolean'&&
+    Array.isArray(state.pending)&&Array.isArray(state.currentDay);
+  // UID is only a physical SQL cursor. Semantic order within a day remains
+  // publication time (and deterministic UID for equal timestamps).
+  const sortDay=rows=>[...rows].sort((a,b)=>
+    timeOrder(a,b)||text(a.uid).localeCompare(text(b.uid)));
+  return async function readPage({cursor,limit}={}){
     if(!Number.isSafeInteger(limit)||limit<1)
       throw new TypeError('Invalid article page size');
+    if(cursor!=null&&!validState(cursor))
+      throw new Error('Invalid Galaxy reader resume cursor');
+    let {lastDate,lastUid,datedDone,undatedDone}=cursor??freshState();
+    const pending=cursor?[...cursor.pending]:[];
+    let currentDay=cursor?[...cursor.currentDay]:[];
     while(pending.length<limit&&(!datedDone||!undatedDone)){
       if(!datedDone){
         const batchLimit=Math.min(1000,Math.max(250,limit));
@@ -102,7 +114,10 @@ export function createIndexedDateKeywordReader({
           limit:batchLimit});
         if(!Array.isArray(raw)||raw.length>batchLimit)
           throw new Error('Galaxy 日期分頁格式無效');
-        if(!raw.length){datedDone=true;releaseDay();continue;}
+        if(!raw.length){
+          datedDone=true;pending.push(...sortDay(currentDay));currentDay=[];
+          continue;
+        }
         for(const original of raw){
           const row={...original,date:canonicalDay(original?.date)};
           const uid=text(row.uid),day=row.date;
@@ -111,13 +126,17 @@ export function createIndexedDateKeywordReader({
               day===lastDate&&uid<=lastUid))
             throw new Error('Galaxy 日期/UID 游標排序不完整，未寫入分析結果');
           verifyDated(row);
-          if(currentDay.length&&currentDay[0].date!==day)releaseDay();
+          if(currentDay.length&&currentDay[0].date!==day){
+            pending.push(...sortDay(currentDay));currentDay=[];
+          }
           currentDay.push(row);
           if(currentDay.length>=maximumRows)
             throw new Error('Galaxy 同日文章超過完整資料範圍，未寫入分析結果');
           lastDate=day;lastUid=uid;
         }
-        if(raw.length<batchLimit){datedDone=true;releaseDay();}
+        if(raw.length<batchLimit){
+          datedDone=true;pending.push(...sortDay(currentDay));currentDay=[];
+        }
         continue;
       }
       const group=await readUndated({maximumRows});
@@ -129,10 +148,10 @@ export function createIndexedDateKeywordReader({
         throw new Error('Galaxy 無日期文章分頁不完整，未寫入分析結果');
       // A record can have a real publication timestamp without a derived
       // calendar date. Preserve its data; do not reject valid imported rows.
-      pending.push(...[...undated].sort((a,b)=>
-        timeOrder(a,b)||text(a.uid).localeCompare(text(b.uid))));
+      pending.push(...sortDay(undated));
       undatedDone=true;
     }
-    return pending.splice(0,limit);
+    const rows=pending.splice(0,limit);
+    return {rows,nextCursor:{lastDate,lastUid,datedDone,undatedDone,pending,currentDay}};
   };
 }

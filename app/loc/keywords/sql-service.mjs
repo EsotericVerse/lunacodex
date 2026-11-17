@@ -13,7 +13,7 @@ import {keywordClassCatalog} from './tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './incremental.mjs';
 import {createIndexedDateKeywordReader} from './article-reader.mjs';
 import {classSkipArticleWords} from './class-exceptions.mjs';
-import {completeKeywordClass,invalidateKeywordClass} from './class-state.mjs';
+import {completeKeywordClass,invalidateKeywordClass,readKeywordScanProgress,writeKeywordScanProgress} from './class-state.mjs';
 import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './anchor-index.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
@@ -56,6 +56,13 @@ const galaxyListMetadataColumns=Object.freeze([
 ]);
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
   .filter(column=>['uid','title','content','keyword'].includes(column)));
+// Cloudflare Pages Functions kills a request around its own CPU/wall-clock
+// budget; this is the only genuinely fixed, external number in the whole
+// resumable-scan design — every other knob (page size, checkpoint cadence)
+// reacts to measured state. analyzeIncrementalKeywordPatterns checkpoints at
+// 80% of this, leaving headroom to actually write the checkpoint before a
+// hard kill. Lower this if the platform's real ceiling turns out tighter.
+const KEYWORD_ANALYSIS_TIME_BUDGET_MS=20000;
 
 const removeLegacyKeywordHitCache=value=>{
   const {uidlists,articles,hits,total,...links}=value||{};
@@ -310,12 +317,30 @@ async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',ex
     pattern_scans:{}
   };
   const merged=completeKeywordClass(baseMeta,classUid,record,now);
-  const metadata={...merged,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
+  const completedMeta={...merged,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
     pattern_scans:{
     ...(merged.pattern_scans||{}),...stats.patternScans
   }};
+  // A finished scan's Pattern write and clearing its (now obsolete) resumable
+  // checkpoint are the same atomic fact: this Class has no scan in progress
+  // any more. Clearing it here, in the same transaction as the real write,
+  // means a checkpoint can never outlive the completed result it led to.
+  const metadata=writeKeywordScanProgress(completedMeta,classUid,null);
   await trx.updateTable(configName(scope))
     .set({keyword_meta:JSON.stringify(metadata),staticstime:null,updated_at:now})
+    .where('id','=',scope).execute();
+}
+
+// A checkpoint is a lightweight, non-authoritative bookmark: it never touches
+// Pattern/Anchor rows, only the Scope's own keyword_meta JSON, so it can be
+// written far more often than a completed scan without any risk to the live
+// full-text index.
+async function persistScanProgress(trx,scope,classUid,progress){
+  const cfg=await configuration(trx,scope);
+  const meta=attr({attr:cfg.keyword_meta});
+  const metadata=writeKeywordScanProgress(meta,classUid,progress);
+  await trx.updateTable(configName(scope))
+    .set({keyword_meta:JSON.stringify(metadata)})
     .where('id','=',scope).execute();
 }
 
@@ -362,6 +387,11 @@ export async function analyzeKeywordScope(db,scope,classUid,{
 }={}){
   checkScope(scope);checkClass(classUid);
   const cfg=await configuration(db,scope);
+  const meta=attr({attr:cfg.keyword_meta});
+  // A scan in progress from an earlier, time-budget-interrupted HTTP request
+  // is tracked separately from the completed-scan receipt in by_class; it is
+  // never read as if it were a finished result (see class-state.mjs).
+  const resume=readKeywordScanProgress(meta,classUid);
   const anchor=anchorName(scope);
   const [directory,nativeRows]=await Promise.all([
     readScopePatternDirectory(db,scope),
@@ -427,6 +457,13 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     expectedCount,minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
     exceptionWords,
     startedAt,pageSize:1000,readMetadataPage:reader,
+    resume,timeBudgetMs:KEYWORD_ANALYSIS_TIME_BUDGET_MS,
+    onCheckpoint:async progress=>{
+      await db.transaction().execute(async trx=>{
+        await authorizeTransaction(trx);
+        await persistScanProgress(trx,scope,classUid,progress);
+      });
+    },
     onProgress:({phase,completed=0,parsed=0,reused=0})=>onProgress({
       phase,total:expectedCount,completed,parsed,reused,
       percent:phase==='completed'?100:Math.min(99,Math.round(
@@ -449,6 +486,13 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       });
     }
   });
+  // A time-budget checkpoint already persisted its own progress above
+  // (onCheckpoint); nothing here has written Pattern rows, and the live
+  // full-text index is untouched. The caller must call analyze again with
+  // the same Class to pick up from this exact point.
+  if(result?.incomplete)
+    return {incomplete:true,total:expectedCount,completed:result.scanned,
+      parsed:result.parsed,reused:result.reused};
   const {patternScans,...safe}=result;
   return {...safe,indexedWords:pending?.length||0};
 }
