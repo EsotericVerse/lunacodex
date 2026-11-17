@@ -75,3 +75,21 @@ test('LOC git index retains no LRS-owned code or media after cutover',()=>{
  const result=spawnSync(process.execPath,['scripts/check-lrs-source-ownership.mjs'],{encoding:'utf8'});
  assert.equal(result.status,0,result.stderr||result.stdout);
 });
+
+test('LOC Web rune handoff routes import no native 3D/card runtime',()=>{
+ for(const path of ['app/lrunes/page.jsx','app/card/page.jsx',
+   'app/card/duel/page.jsx','app/card/list/page.jsx','app/card/daily/page.jsx']){
+   const src=read(path);
+   assert.match(src,/LrsWebRedirect/,'LOC Web keeps a URL handoff: '+path);
+   assert.doesNotMatch(src,/^import .*?(?:RuneUnifiedView|Rune3DNav|LocApp|JsonLd)/m,
+     'No native Rune UI module should enter a Web redirect: '+path);
+ }
+});
+
+test('LOC account Daily history is not substituted with LRS device-only data',()=>{
+ const daily=read('app/daily/log/page.jsx');
+ const native=read('scripts/restore-lrs-native-ui.mjs');
+ assert.match(daily,/import DailyLogClient from '.\/DailyLogClient'/);
+ assert.doesNotMatch(daily,/LrsWebRedirect/);
+ assert.match(native,/const sourceDirs=.*'app\/daily'/);
+});
