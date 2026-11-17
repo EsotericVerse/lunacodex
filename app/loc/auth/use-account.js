@@ -8,6 +8,7 @@ import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthori
 import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {shouldInvalidateManagementForAuthEvent} from './account-event-guard.mjs';
+import {editorSessionStatus} from './edit-session-ttl.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();
 const normalizeScopeId=value=>String(value||'').trim().toLowerCase();
@@ -123,6 +124,13 @@ function loadManagementAccount(queryClient,{force=false}={}){
 // Reuse the previously verified identity/role on management page navigation.
 // Auth changes clear this grant; database writes still enforce server permission.
 export function readVerifiedManagementEntry(){
+  // Cache-first only while the existing LOC browser edit Session is valid.
+  // Do not add a second timer, and do not carry a verified role past its
+  // browser Session boundary. The next protected entry then re-reads LOC.
+  if(typeof window!=='undefined'){
+    try{if(editorSessionStatus(window.sessionStorage).expired)return null}
+    catch{return null}
+  }
   const grant=readAuthorization();
   if(!grant||!authUserId||grant.userId!==authUserId||grant.email!==authEmail)return null;
   const user={id:grant.userId,email:grant.email};

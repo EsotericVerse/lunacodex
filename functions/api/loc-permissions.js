@@ -14,10 +14,15 @@ export async function onRequestGet({request,env,waitUntil}){
     const result=await readLocAccess(db,session.email,{dialect,engine,website:true});
     return response({...result,email:session.email,subject:session.userId});
   }catch(error){
-    const status=Number(error?.httpStatus)||503;
+    const status=[401,403,429,502,503].includes(Number(error?.httpStatus))
+      ?Number(error.httpStatus):503;
+    const message=status===401?'LOC authentication required'
+      :status===403?'LOC permission denied'
+      :status===429?'LOC permission verification rate limited'
+      :'LOC permission service unavailable';
+    // Preserve the HTTP distinction; a failed verifier is not a sign-out and
+    // is never cached as a successful permission result.
     return response({canWrite:false,canManage:false,grants:[],
-      error:status>=500?'LOC permission service unavailable':
-        'LOC permission denied',
-      reason:error?.reason||'unknown'},status);
+      error:message,reason:error?.reason||'unknown'},status);
   }
 }

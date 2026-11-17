@@ -76,7 +76,12 @@ export function EditDockProvider({children,scopeId}){
     const idText=String(id||'').trim();
     // Never activate an editor for a different page Scope. No Scope ID copy.
     if(!idText||idText!==scopeId)return false;
-    if(idText!=='local')try{touchEditorSession(window.sessionStorage);}catch{}
+    if(idText!=='local'){
+      // A rejected/expired browser Session is not permission to open a Dock.
+      // Explicit LOC re-verification is responsible for restarting editing.
+      try{if(!touchEditorSession(window.sessionStorage))return false}
+      catch{return false}
+    }
     setEditing(true);
     setCanManageGlobal(Boolean(globalManage));
     setNotice('');
