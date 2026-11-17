@@ -14,6 +14,18 @@ const uniqueByUid=rows=>{
   }
   return [...byUid.values()];
 };
+// Public Scope Culture follows the same unclassified-date rule as the edit
+// river. Classification depends on ALL era/period windows, never expansion.
+// A date outside every actual interval must not be assigned to an era envelope.
+export function unassignedPublicDateAnchors(dates,eraWindows){
+  const windows=list(eraWindows).filter(range=>
+    validDate(range?.start)&&validDate(range?.end)&&range.start<=range.end);
+  return list(dates).filter(anchor=>{
+    const day=text(anchor?.date).slice(0,10);
+    return validDate(day)&&!windows.some(range=>range.start<=day&&day<=range.end);
+  });
+}
+
 export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scopeId=''}={}){
   const traces=uniqueByUid(source.filter(row=>row?.entry_type==='era'));
   const events=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='period'))
