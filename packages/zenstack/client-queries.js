@@ -331,11 +331,12 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
       if(existing?.hasData){
         // Later mounts adopt the live public page snapshot without new SQL.
         setState({data:existing.data,status:'success',error:null});
-      }else if(!IDENTITY_KEYS.has(serializedKey)&&!inflight.has(serializedKey)&&
-        dataStore.has(serializedKey)){
-        // A second live reader of this exact resource key reuses its current
-        // snapshot instead of issuing another HTTP/SQL request. Invalidation
-        // still performs a real re-read, and semi-dynamic cleanup retires it.
+      }else if(!inflight.has(serializedKey)&&dataStore.has(serializedKey)){
+        // Remounts reuse the same runtime snapshot, INCLUDING the three
+        // identity/permission keys. Those are separately invalidated on real
+        // Auth changes or explicit refresh; route navigation is not a reason
+        // to re-query a previously settled Session or failed permission read.
+        // Public transient datasets are still retired by page cleanup.
         setState({data:dataStore.get(serializedKey),status:'success',error:null});
       }else void load().catch(()=>{});
     }
