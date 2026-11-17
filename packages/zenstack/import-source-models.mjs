@@ -83,7 +83,7 @@ export const SOURCE_IMPORT_MODEL_FIELDS=Object.freeze({
 // JSON fallback. No nested traversal, persistence model or per-CMS parser.
 // When more than one root is present, the importer requires an explicit path.
 const SOURCE_IMPORT_RECORD_PATHS=Object.freeze({
-  WordPress:Object.freeze(['wp_posts','posts','items','results','data']),
+  WordPress:Object.freeze(['wp_posts','posts','items','data']),
   Notion:Object.freeze(['results','pages','blocks','items']),
   Facebook:Object.freeze(['your_posts','status_updates','posts','records','data']),
   Instagram:Object.freeze(['posts','media','items','records','data']),
