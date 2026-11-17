@@ -7,6 +7,7 @@ import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 import {invalidateAppBootstrapMetadata} from '../runtime/app-bootstrap';
+import {cachedRead,invalidateCachedRead} from '../db/semi-dynamic-cache.mjs';
 
 // Group administration only: enumerate existing members, rename display titles.
 // Email, database/table mapping, create/delete and protected IDs never enter
@@ -21,12 +22,14 @@ export default function LocGroupMemberList({groupId='loc'}){
   const [draft,setDraft]=useState({});
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
-  const query=useAsyncResource(['loc-group-member-list',groupId],async()=>{
-    const {data,error}=await dbAuthClient.schema('silver')
-      .managedAction('read_group_members',{p_group_id:groupId});
-    if(error)throw new Error(error.message||'群組人員讀取失敗。');
-    return Array.isArray(data)?data:[];
-  },{enabled:allowed});
+  const groupMemberCacheKey='loc-group-member-list:'+groupId;
+  const query=useAsyncResource(['loc-group-member-list',groupId],()=>
+    cachedRead(groupMemberCacheKey,async()=>{
+      const {data,error}=await dbAuthClient.schema('silver')
+        .managedAction('read_group_members',{p_group_id:groupId});
+      if(error)throw new Error(error.message||'群組人員讀取失敗。');
+      return Array.isArray(data)?data:[];
+    }),{enabled:allowed});
   const rows=query.data||[];
   const edited=rows.filter(row=>Object.hasOwn(draft,row.id)&&draft[row.id]!==row.display_name);
   const save=async()=>{
@@ -43,6 +46,7 @@ export default function LocGroupMemberList({groupId='loc'}){
         if(error||data!==true)throw new Error(error?.message||row.id+' 無法儲存。');
       }
       setDraft({});
+      invalidateCachedRead(groupMemberCacheKey);
       invalidateAppBootstrapMetadata();
       await Promise.all([query.refetch(),queryClient.invalidateQueries({queryKey:['app-bootstrap']})]);
       setNotice('群組人員資料已更新。');
