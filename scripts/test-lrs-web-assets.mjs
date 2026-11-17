@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
 import {allowStaticSource,isLrsWebAsset} from './lrs-static-publish-rules.mjs';
 
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
@@ -68,4 +69,9 @@ test('native and Web agree on the exact LRS source; retired module tree is forbi
  assert.match(verification,new RegExp('ref: '+cfg.sourceCommit));
  assert.match(native,/const sourceDirs=\['app\/lrunes','app\/card','app\/daily','app\/game','modules\/lrs'\]/);
  assert.doesNotMatch(web,/['"]modules\/lrune['"]/);
+});
+
+test('LOC git index retains no LRS-owned code or media after cutover',()=>{
+ const result=spawnSync(process.execPath,['scripts/check-lrs-source-ownership.mjs'],{encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr||result.stdout);
 });
