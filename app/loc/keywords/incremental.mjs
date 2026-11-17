@@ -14,7 +14,10 @@ const isoMillis=value=>{
 // per page, same spirit as discovery-queue.mjs's byte-based adaptation, just
 // measuring elapsed ms here instead of payload bytes (this reader never
 // leaves the server, so wire size is not the cost that matters).
-const MIN_PAGE_ROWS=250,MAX_PAGE_ROWS=20000,TARGET_PAGE_MS=800;
+// No upper cap: page size is left to grow as far as measured performance
+// allows. Only the lower floor (MIN_PAGE_ROWS) and the per-step doubling
+// cap below protect against whiplash; there is no fixed ceiling above that.
+const MIN_PAGE_ROWS=1000,MAX_PAGE_ROWS=Infinity,TARGET_PAGE_MS=800;
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 
 // Exactly one stored word row per Scope + normalized literal. The existing
@@ -36,7 +39,7 @@ export async function analyzeIncrementalKeywordPatterns({
   scopeId,classUid,treeRows,items,existingPatterns=[],patternScans={},
   minChars=0,exceptionWords=[],pageSize=1000,expectedCount=null,readMetadataPage,readContent,
   writePatterns,finalize,onProgress=()=>{},startedAt=new Date().toISOString(),
-  resume=null,onCheckpoint=null,timeBudgetMs=null,checkEveryPages=50,now=()=>Date.now()
+  resume=null,onCheckpoint=null,timeBudgetMs=null,now=()=>Date.now()
 }={}){
   if(!Array.isArray(existingPatterns)||!patternScans||typeof patternScans!=='object'||
      Array.isArray(patternScans)||!Array.isArray(exceptionWords)||
@@ -54,8 +57,7 @@ export async function analyzeIncrementalKeywordPatterns({
        !Array.isArray(resume.checked)||resume.checked.length!==resume.scanned||
        resume.checked.some(uid=>typeof uid!=='string'||!UID.test(uid)))||
      onCheckpoint!==null&&typeof onCheckpoint!=='function'||
-     timeBudgetMs!==null&&(!Number.isFinite(timeBudgetMs)||timeBudgetMs<=0)||
-     !Number.isSafeInteger(checkEveryPages)||checkEveryPages<1)
+     timeBudgetMs!==null&&(!Number.isFinite(timeBudgetMs)||timeBudgetMs<=0))
     throw new TypeError('Invalid incremental Keyword analysis adapters');
   if(isoMillis(startedAt)===null)throw new Error('Invalid analysis start time');
   const invocationStart=now();
@@ -132,7 +134,7 @@ export async function analyzeIncrementalKeywordPatterns({
   // cursor, not an OFFSET-style page number.
   let cursor=resume?resume.cursor:null,scanned=resume?resume.scanned:0,
     parsed=resume?resume.parsed:0,reused=resume?resume.reused:0;
-  let currentPageSize=clamp(pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS),pagesSinceCheck=0;
+  let currentPageSize=clamp(pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS);
   const checkpointNow=async()=>{
     const patternSets=Object.fromEntries([...sets].map(([k,set])=>[k,[...set]]));
     await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked]});
@@ -225,13 +227,16 @@ export async function analyzeIncrementalKeywordPatterns({
     const wanted=Math.round(currentPageSize*TARGET_PAGE_MS/pageMs);
     currentPageSize=clamp(wanted,MIN_PAGE_ROWS,
       Math.min(MAX_PAGE_ROWS,currentPageSize*2));
-    pagesSinceCheck++;
-    if(onCheckpoint&&timeBudgetMs!==null&&pagesSinceCheck>=checkEveryPages){
-      pagesSinceCheck=0;
-      if(now()-invocationStart>timeBudgetMs*0.8){
-        await checkpointNow();
-        return {incomplete:true,cursor,scanned,parsed,reused};
-      }
+    // Checked every page, not batched: Date.now() itself costs nothing, and
+    // batching this by page count (as "check every N pages" once did) is
+    // unsafe here - at the target page time alone, a few dozen pages can
+    // already add up to multiples of the whole time budget, so a check that
+    // only runs every N pages can arrive well after Cloudflare has already
+    // killed the request. The actually expensive step, writing a checkpoint,
+    // still only ever runs once, right here, when the condition trips.
+    if(onCheckpoint&&timeBudgetMs!==null&&now()-invocationStart>timeBudgetMs*0.8){
+      await checkpointNow();
+      return {incomplete:true,cursor,scanned,parsed,reused};
     }
   }
   if(expectedCount!==null&&scanned!==expectedCount)
