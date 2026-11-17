@@ -49,9 +49,9 @@ test('Notion Page properties and Block Children use independent fields',()=>{
 });
 
 test('incomplete Notion pages fail rather than fabricate article bodies',()=>{
-  assert.throws(()=>normalizeCmsImportRow({object:'page',id:'id',
+  assert.throws(()=>normalizeCmsImportRow({object:'page',id:'id',created_time:'2026-01-01T00:00:00Z',
     properties:{Name:{type:'title',title:[{plain_text:'只有標題'}]}}},'Notion'),/Block Children/);
-  assert.throws(()=>normalizeCmsImportRow({object:'page',id:'id',
+  assert.throws(()=>normalizeCmsImportRow({object:'page',id:'id',created_time:'2026-01-01T00:00:00Z',
     blocks:[{type:'paragraph',has_children:true,paragraph:{rich_text:[]}}]},'Notion'),
     /子區塊/);
 });
@@ -74,4 +74,9 @@ test('CMS import rejects ambiguous WordPress time and missing featured image',()
 });
 test('structured unknown content is rejected rather than stringified',()=>{
   assert.throws(()=>normalizeCmsImportRow({title:{value:'X'},content:{html:'Y'}},'Others'),/結構化資料/);
+});
+
+test('partial CMS result pagination never imports a truncated page',()=>{
+  assert.throws(()=>importRowsFromJson({object:'list',results:[{object:'page'}],
+    has_more:true,next_cursor:'other-page'}),/next_cursor/);
 });
