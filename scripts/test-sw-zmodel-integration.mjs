@@ -6,7 +6,7 @@ import {runInNewContext} from 'node:vm';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const script=read('public/sw.js');
 
-function worker(){
+function worker({mime='application/javascript',policy='public, max-age=31536000',redirected=false}={}){
   const handlers=new Map(), responses=new Map();
   let network=0;
   const cache={
@@ -23,7 +23,9 @@ function worker(){
   };
   const ctx={self,URL,caches:{open:async()=>cache,keys:async()=>[]},
     fetch:async()=>{network++;return {
-      ok:true,type:'basic',clone(){return this;}
+      ok:true,type:'basic',redirected,
+      headers:{get:name=>name==='content-type'?mime:name==='cache-control'?policy:null},
+      clone(){return this;}
     };}};
   runInNewContext(script+'\nself.__eligible=eligible;',ctx);
   return {self,handlers,getNetwork:()=>network};
@@ -60,6 +62,23 @@ test('SW serves a second immutable asset request without another network fetch',
   assert.equal(getNetwork(),1);
   await send('/api/loc-public-query');
   assert.equal(getNetwork(),1);
+});
+test('SW refuses redirected authentication, HTML and private cache replies',async()=>{
+  for(const option of [
+    {mime:'text/html'},
+    {redirected:true},
+    {policy:'private'},
+    {policy:'no-store'}
+  ]){
+    const {handlers,getNetwork}=worker(option);
+    for(let n=0;n<2;n++){
+      let pending;
+      handlers.get('fetch')({request:request('/_next/static/chunks/versioned.js'),
+        respondWith:value=>{pending=value;}});
+      await pending;
+    }
+    assert.equal(getNetwork(),2,JSON.stringify(option));
+  }
 });
 test('Zod remains on modeled SQL read and write boundaries, not in browser SW',()=>{
   const server=read('app/loc/server/native-public-query.mjs');
