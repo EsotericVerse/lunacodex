@@ -6,7 +6,7 @@ import {runInNewContext} from 'node:vm';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const script=read('public/sw.js');
 
-function worker({mime='application/javascript',policy='public, max-age=31536000',redirected=false}={}){
+function worker({mime='application/javascript',policy='public, max-age=31536000',redirected=false,cacheUnavailable=false}={}){
   const handlers=new Map(), responses=new Map();
   let network=0;
   const cache={
@@ -21,7 +21,7 @@ function worker({mime='application/javascript',policy='public, max-age=31536000'
     skipWaiting:()=>Promise.resolve(),
     clients:{claim:()=>Promise.resolve()}
   };
-  const ctx={self,URL,caches:{open:async()=>cache,keys:async()=>[]},
+  const ctx={self,URL,caches:{open:async()=>{if(cacheUnavailable)throw Error('Cache Storage disabled');return cache;},keys:async()=>[]},
     fetch:async()=>{network++;return {
       ok:true,type:'basic',redirected,
       headers:{get:name=>name==='content-type'?mime:name==='cache-control'?policy:null},
@@ -79,6 +79,17 @@ test('SW refuses redirected authentication, HTML and private cache replies',asyn
     }
     assert.equal(getNetwork(),2,JSON.stringify(option));
   }
+});
+test('SW falls back to the network when Cache Storage fails',async()=>{
+  const {handlers,getNetwork}=worker({cacheUnavailable:true});
+  for(let i=0;i<2;i++){
+    let response=null;
+    handlers.get('fetch')({request:request('/_next/static/chunks/example.js'),
+      respondWith:value=>{response=value;}});
+    assert.ok(response);
+    await response;
+  }
+  assert.equal(getNetwork(),2);
 });
 test('Zod remains on modeled SQL read and write boundaries, not in browser SW',()=>{
   const server=read('app/loc/server/native-public-query.mjs');
