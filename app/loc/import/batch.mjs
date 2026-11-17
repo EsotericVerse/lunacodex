@@ -125,6 +125,10 @@ export function importRowsFromJson(payload,recordPath=''){
   if(selected&&container===undefined)throw new Error('找不到資料陣列路徑：'+selected);
   if(Array.isArray(container))return unwrapArchiveArrayRows(container);
   if(container&&typeof container==='object'){
+    // The Notion API paginates database/page results. Never mistake the first
+    // page for a complete export and silently omit remaining articles.
+    if(container.has_more===true&&Array.isArray(container.results))
+      throw new Error('CMS API JSON 尚有未取得的結果分頁；請先取得所有 next_cursor 頁面');
     // A Meta export can wrap the actual records in array.array, including
     // arrays of one-property array envelopes. Preserve normal record arrays
     // inside each post (media, data and attachments).
