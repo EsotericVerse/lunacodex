@@ -107,3 +107,13 @@ test('failed config read can show published fallback but is retried later',async
   assert.equal(attempts,2);
   invalidateCachedRead(key);
 });
+
+test('separate SQL/public client instances never share a pending result',async()=>{
+  const one=fakeClient(),two=fakeClient();
+  const query=client=>client.schema('silver').from('lo3rwang_galaxy')
+    .select('uid').eq('uid','ABCDEFGH').limit(1);
+  await Promise.all([query(one.client),query(two.client)]);
+  assert.equal(one.calls.length,1);
+  assert.equal(two.calls.length,1);
+  cancelTransientReads();
+});
