@@ -18,7 +18,7 @@ export const metadata = {
 };
 
 // Expose real cutout insets to the Capacitor WebView so iPhone Dynamic Island
-// is never allowed to overlap the favorites row.
+// never overlaps the canonical Scope navigation rail.
 export const viewport={width:'device-width',initialScale:1,viewportFit:'cover'};
 
 const AUTO_DAY_THEME_ID='theme-7';
