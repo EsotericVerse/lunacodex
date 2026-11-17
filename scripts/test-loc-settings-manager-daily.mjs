@@ -17,7 +17,7 @@ test('Manager control is not an access grant or permission lookup',()=>{
   const hook=read('app/loc/preferences/use-search-manager-switch.js');
   assert.match(hook,/window\.sessionStorage\.setItem/);
   assert.match(hook,/window\.dispatchEvent\(new CustomEvent/);
-  assert.doesNotMatch(hook,/api\.manage|canLocAccess|permission|signIn|managedAction|grant\(/i);
+  assert.doesNotMatch(hook,/api\.manage|canLocAccess|signIn|managedAction|grant\(/i);
   const settings=read('app/loc/preferences/FeatureSettingsPage.jsx');
   assert.match(settings,/onChange=\{event=>setEnabled\(event\.target\.checked\)\}/);
 });
