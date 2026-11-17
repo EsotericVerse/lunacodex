@@ -15,6 +15,7 @@ import {useAccount} from '../auth/use-account';
 import FlowProgress from '../../modular/FlowProgress';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {canonicalImportSourceName,inferImportSourceFromFilename} from '../source/name.mjs';
+import {detectCmsImportSource,normalizeCmsImportRow} from '../../../packages/zenstack/cms-import-model.mjs';
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from '../scope/scope-data';
 import {createUid8} from '../model/uid';
@@ -85,8 +86,12 @@ function iso(value){
   return Number.isNaN(date.getTime())?null:date.toISOString();
 }
 
-function normalizeJsonImportEntry(entry,source,fieldMap={},t){
-  const row=entry?.raw||entry||{};
+function normalizeJsonImportEntry(entry,rawSource,fieldMap={},t){
+  let adapted;
+  try{adapted=normalizeCmsImportRow(entry?.raw||entry||{},rawSource);}
+  catch(error){return {record:null,error:String(error?.message||error)};}
+  const row=adapted.row;
+  const source=adapted.source;
   const value=field=>mappedImportValue(row,field,fieldMap);
   const isFacebook=String(source||'').trim().toLowerCase()==='facebook';
   const isThreads=String(source||'').trim().toLowerCase()==='threads';
@@ -817,7 +822,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }));
       setRows(prepared);
       // Use the filename as the default source; Scope editors may override it.
-      setSource(canonicalSource(inferImportSourceFromFilename(file.name)));
+      // Source-specific CMS shape overrides a filename guess only when the
+      // actual JSON records agree. Unknown or mixed formats keep the UI choice.
+      const detectedCms=[...new Set(list.map(detectCmsImportSource).filter(Boolean))];
+      setSource(canonicalSource(detectedCms.length===1?
+        detectedCms[0]:inferImportSourceFromFilename(file.name)));
       setStatus(t('uiExtra.importUI.parsedFile',{index:index+1,total,count:list.length.toLocaleString()})+
         (parsed.length!==list.length?'；已略過 '+(parsed.length-list.length).toLocaleString()+' 筆私人紀錄。':''));
     }catch(error){
