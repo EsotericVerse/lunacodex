@@ -1166,13 +1166,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // navigation or every source-selector repaint. The imported raw JSON
       // stays untouched; the existing Galaxy write model validates it later.
       if(!archiveDetection&&/\.json$/i.test(fileName)){
-        const {assertZModelSourceImportRecord}=await import('../../../packages/zenstack/import-validation.mjs');
-        for(let index=0;index<rows.length;index++){
-          const raw=rows[index]?.raw||rows[index]||{};
-          assertZModelSourceImportRecord(raw,selected,index+1);
-          if((index+1)%512===0||index===rows.length-1)
-            showProgress('來源 ZModel 驗證',index+1,rows.length);
-        }
+        const [{assertZModelSourceImportRecord},{assertSourceImportRowsInSlices}]=
+          await Promise.all([
+            import('../../../packages/zenstack/import-validation.mjs'),
+            import('./source-validation-slices.mjs')
+          ]);
+        await assertSourceImportRowsInSlices(rows,selected,assertZModelSourceImportRecord,{
+          onProgress:({completed,total})=>
+            showProgress('來源 ZModel 驗證',completed,total)
+        });
       }
       const scope=nativeLocal?defaultScopeData('local'):account.scopeDataFor(scopeId);
       const galaxy=scope?.galaxy,mediaAnchor=scope?.anchor;
@@ -1477,8 +1479,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         updated+=result.count;
         updateQueue=[];
         updateSizer.observe(count,Date.now()-started);
-        // SQL writer has confirmed the batch; persist only a tiny receipt.
-        checkpointBatch('update',updated,existingCount,updated);
+        // A receipt's confirmed count is rows examined, not only rows
+        // changed. Most reimports update very few columns.
+        checkpointBatch('update',checkedExisting,existingCount,updated);
       };
       for(const record of unique){
         const existing=existingBySiteId.get(record.uid);
@@ -1507,11 +1510,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           missingPointUids.add(storedPointUid);
         const visitUid=savedPointExists?storedPointUid:restoredPlace;
         if(visitUid&&record.createtime)placeVisits.push({uid:visitUid,time:record.createtime});
-        if(Object.keys(changes).length){
+        if(Object.keys(changes).length)
           updateQueue.push({uid:String(existing.uid),...changes});
-          if(updateQueue.length>=updateSizer.size)await flushUpdates();
-        }
         checkedExisting++;
+        if(updateQueue.length>=updateSizer.size)await flushUpdates();
         if(checkedExisting%25===0||checkedExisting===existingCount)
           showProgress('更新既有文章',checkedExisting,existingCount);
       }
