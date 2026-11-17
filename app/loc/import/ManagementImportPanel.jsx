@@ -8,7 +8,7 @@ import importUIZh from '../../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 
-import {useDeferredValue,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {useDeferredValue,useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import {refreshScopeSearchSummary} from '../search/scope-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from '../db/db-client.mjs';
 import {useAccount} from '../auth/use-account';
@@ -578,7 +578,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [source,setSource]=useState('');
   // Explicit source-model selection is primary; filenames are only hints.
   const [sourceSelection,setSourceSelection]=useState('');
-  const [timeRange,setTimeRange]=useState('year');
+  // Historic CMS exports (including pre-2013 MSN archives) are not a recent feed.
+  // Import the full file unless the operator explicitly chooses a time filter.
+  const [timeRange,setTimeRange]=useState('all');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
   const sourceCategories={data:sourceCategoriesEnabled?PUBLISHED_SOURCE_CATEGORIES:undefined};
@@ -615,7 +617,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     // not just the preview field aliases. Reparse the queued original file
     // only for standalone JSON; ZIP uses verified per-entry source identity.
     const current=queue[queueIndex];
-    if(current&&value&&/\.json$/i.test(current.name)&&!archiveDetection)
+    if(current&&value&&!archiveDetection)
       void loadQueuedFile(current,queueIndex,queue.length,importLocale,
         format.recordPath,value);
   };
@@ -1027,13 +1029,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     }finally{setProgress(null);setBusy(false);}
   }
   async function run(){
-    if(busy||(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length))return;
+    if(busy||!analysisCurrent)return;
     if(!archiveDetection&&!sourceSelection){
       setStatus('請先選擇匯入來源模型，再確認預覽。');return;
     }
     const selected=canonicalSource(source);
     if(!selected){setStatus(t('uiExtra.importUI.selectSource'));return;}
-    if(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length){setStatus(t('uiExtra.importUI.noValidItems'));return;}
+    if(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length){
+      setStatus('沒有可寫入的有效文章或媒體；請核對來源、時間範圍及略過原因。');return;
+    }
     try{
       if(archiveDetection){
         // The public-row guard, not the archive filename, controls publishing.
@@ -1613,8 +1617,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     </label>:null}
     <label className="scope-import-source-choice">匯入時間範圍
       <select value={timeRange} disabled={busy} onChange={event=>setTimeRange(event.target.value)}>
-        <option value="all">全部的時間</option>
-        <option value="year">近一年（預設）</option>
+        <option value="all">全部的時間（預設）</option>
+        <option value="year">近一年</option>
         <option value="halfYear">近半年</option>
         <option value="month">近一月</option>
       </select>
@@ -1644,7 +1648,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       </div>
     </section>:null}
     {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">正在更新匯入資料預覽，完成後才能開始匯入。</p>:null}
-    {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄，請查看上方略過原因。</p>:null}
+    {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄。已排除 {analyzed.invalid.length.toLocaleString()} 筆格式無效資料、{analyzed.skippedByRange.toLocaleString()} 筆不在指定時間內。{analyzed.invalid[0]?.error||'請核對來源及進階資料路徑。'}</p>:null}
     {busy?<FlowProgress kind="import" stage={progress?.stage||'準備匯入資料'}
       completed={progress?.completed||0} total={progress?.total||0}
       detail={progress?.detail||''}/>:null}
