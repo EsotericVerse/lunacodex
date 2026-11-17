@@ -86,8 +86,15 @@ function iso(value){
   return Number.isNaN(date.getTime())?null:date.toISOString();
 }
 
-function normalizeJsonImportEntry(entry,source,fieldMap={},t){
+function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
   const row=entry?.raw||entry||{};
+  const declared=sourceImportModel(source);
+  const detected=sourceImportModel('',row);
+  // A user's explicit model selection must not be silently replaced by the
+  // JSON object_type. A mismatch is a visible import error, not a guessed site.
+  if(manualModel&&declared&&detected&&declared.label!==detected.label)
+    return {record:null,error:'所選來源 '+declared.label+
+      ' 與資料 object_type 所屬的 '+detected.label+' 不一致，請重新選擇。'};
   const sourceModel=sourceImportModel(source,row);
   // A recognized object_type is authoritative over a misleading filename;
   // no SiteAnchor record, UID or permission is synthesized.
@@ -607,17 +614,21 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const deferredSource=useDeferredValue(source);
   const analysisCurrent=deferredSource===source;
   const rawAnalysis=useMemo(()=>{
+    // File hints never count as the operator choosing a JSON source model.
+    if(!archiveDetection&&!sourceSelection)
+      return {valid:[],normalized:[],mediaOnly:[],invalid:[]};
     const selected=deferredSource.trim();
     const normalized=rows.map(entry=>normalizeJsonImportEntry(entry,
       canonicalImportSourceName(archiveDetection&&selected==='Mixed'?(entry?.raw?.site||selected):selected,
-        sourceCategories.data?.system||[],sourceCategories.data?.personal||[]),format.fields,t));
+        sourceCategories.data?.system||[],sourceCategories.data?.personal||[]),
+        format.fields,t,Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection)));
     return {
       valid:normalized.filter(item=>item.record).map(item=>item.record),
       normalized:normalized.filter(item=>item.record),
       mediaOnly:normalized.filter(item=>item.mediaOnlyRecord).map(item=>item.mediaOnlyRecord),
       invalid:normalized.filter(item=>item.error)
     };
-  },[rows,deferredSource,format.fields,locale,archiveDetection,sourceCategories.data]);
+  },[rows,deferredSource,format.fields,locale,archiveDetection,sourceCategories.data,sourceSelection]);
   const analyzed=useMemo(()=>filterImportAnalysisByTime(rawAnalysis,timeWindow),[rawAnalysis,timeWindow]);
   const eligibleArchiveEvidence=useMemo(()=>{
     if(!timeWindow)return archiveEvidence;
@@ -682,7 +693,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setArchiveSummary(null);
     setProgress(null);
   }
-  async function loadQueuedFile(file,index,total,language=importLocale,recordPath=format.recordPath){
+  async function loadQueuedFile(file,index,total,language=importLocale,
+    recordPath=format.recordPath,manualChoice=sourceSelection){
     clearDecodedFile();
     setReparseRequired(false);
     setCheckpointHint(readImportCheckpoint(checkpointStorage(),{
@@ -799,7 +811,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           mediaLinked:mediaEvidence.filter(item=>item.galaxy_uids?.length).length,
           mediaUnlinked:mediaPlan.media.filter(item=>!item.__article_uid).length});
         if(!imported.length&&!mediaEvidence.length){
-          if(!sourceSelection)setSource(result.sources.length===1?canonicalSource(result.sources[0]):'');
+          if(!manualChoice)setSource(result.sources.length===1?canonicalSource(result.sources[0]):'');
           setStatus((summary.geoPlaceObjects?'檔案已讀取，辨識出 '+summary.geoPlaceObjects.toLocaleString()+' 筆 Facebook 地點物件，僅供人工整理 Trace；沒有自動建立地點或文章。':'檔案已讀取，但沒有可匯入的文字文章。')+' 已解析 '+summary.totalRows+
             ' 筆、略過 '+(summary.rejectedRows+ignored)+' 筆。'+
             (summary.problems.length?' 原因：'+summary.problems.slice(0,3).join('；'):' 請檢查資料格式。'));
@@ -808,7 +820,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         setRows(imported);
         const sourceNames=[...new Set(imported.map(item=>item.raw.site))];
         if(sourceNames.length!==1)setSource('Mixed');
-        else if(!sourceSelection)setSource(canonicalSource(sourceNames[0]));
+        else if(!manualChoice)setSource(canonicalSource(sourceNames[0]));
         setStatus('已解析共 '+imported.length.toLocaleString()+' 篇公開貼文，其中有 '+
           imported.filter(item=>Boolean(item.raw?.url)).length.toLocaleString()+
           ' 篇含原始貼文連結網址；ZIP 內，共有媒體檔總數 '+summary.mediaFiles.toLocaleString()+
@@ -830,7 +842,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }));
       setRows(prepared);
       // Detection is a suggestion; do not silently overwrite manual selection.
-      if(!sourceSelection)setSource('');
+      if(!manualChoice)setSource('');
       setStatus(t('uiExtra.importUI.parsedFile',{index:index+1,total,count:list.length.toLocaleString()})+
         (parsed.length!==list.length?'；已略過 '+(parsed.length-list.length).toLocaleString()+' 筆私人紀錄。':''));
     }catch(error){
@@ -909,8 +921,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   async function nextFile(){
     const next=queueIndex+1;
     if(busy||next>=queue.length)return;
+    // Each queued file requires its own deliberate source-model choice.
+    setSourceSelection('');
+    setSource('');
     setQueueIndex(next);
-    await loadQueuedFile(queue[next],next,queue.length);
+    await loadQueuedFile(queue[next],next,queue.length,importLocale,format.recordPath,'');
   }
   const canRestoreAnchors=scopeId!=='local'&&scopeId!=='loc'&&(
     eligibleGeoRecords.length>0||
@@ -984,6 +999,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   }
   async function run(){
     if(busy||(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length))return;
+    if(!archiveDetection&&!sourceSelection){
+      setStatus('請先選擇匯入來源模型，再確認預覽。');return;
+    }
     const selected=canonicalSource(source);
     if(!selected){setStatus(t('uiExtra.importUI.selectSource'));return;}
     if(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length){setStatus(t('uiExtra.importUI.noValidItems'));return;}
@@ -1572,6 +1590,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     </label>
     </div>
     <ImportFormatSettings format={format} onChange={changeImportFormat} disabled={busy}/>
+    {rows.length&&!archiveDetection&&!sourceSelection
+      ?<p className="scope-status" role="status">資料已讀取。請先在上方選擇來源模型，才會建立匯入預覽。</p>
+      :null}
     {fileName?<p><UiText id="uiExtra.importUI.fileLabel"/><strong>{fileName}</strong><UiText id="uiExtra.importUI.fileQueue" params={{index:queueIndex+1,total:queue.length}}/><strong>{archiveDetection?(archiveDetection.sources.map(kind=>ZIP_SOURCE_NAMES[kind]||kind).join(' / ')||t('uiExtra.importUI.zipUnknown')):source||suggested}</strong></p>:null}
     {checkpointHint&&!busy&&rows.length?<details className="loc-work-subdetails">
       <summary>上次中斷的檢查點</summary>
@@ -1722,7 +1743,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       <div className="scope-management-records">
         {analyzed.valid.slice(0,5).map(record=><article className="loc-bubble" key={record.uid}>
           <strong><LinkedImportText text={record.title||record.uid}/></strong>
-          <span>{record.uid} · {String(record.createtime||'').slice(0,10)||t('uiExtra.importUI.noDate')}</span>
+          <span>{record.uid} · {record.site||'未選來源'} · {String(record.createtime||'').slice(0,10)||t('uiExtra.importUI.noDate')}</span>
           <p><LinkedImportText text={record.content} limit={180}/></p>
         </article>)}
       </div>
