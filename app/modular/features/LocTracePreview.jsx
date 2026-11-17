@@ -22,7 +22,7 @@ const routeLabel=row=>row.trace_type==='trace'?'痕跡圖':'路線圖';
 export default function LocTracePreview(){
   const [selectedKey,setSelectedKey]=useState('');
   // The LOC index delegates to published member Scopes only. It reads
-  // path/trace definitions from their *_anchor tables, never loc_anchor.
+  // path/trace definitions from their own Scope storage, never LOC's Point table.
   const index=useAsyncResource({
     queryKey:traceMapIndexKey('loc'),
     queryFn:()=>readTraceMapIndex('loc'),
