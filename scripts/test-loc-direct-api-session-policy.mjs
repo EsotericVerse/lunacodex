@@ -9,7 +9,9 @@ test('Scope Group permission display reuses the shared Session authorization',()
   const account=source('app/loc/auth/use-account.js');
   assert.match(panel,/useAccount\(\)/);
   assert.match(panel,/account\.canLocAccessSync\('group'/);
-  assert.doesNotMatch(panel,/fetch\(|\/api\/loc-permissions|setItem|grant\(/);
+  // Match executable fetch calls, not a comment that names the old endpoint.
+  assert.doesNotMatch(panel,/\b(?:globalThis\.)?fetch\s*\(/);
+  assert.doesNotMatch(panel,/\b(?:setItem|grant)\s*\(/);
   assert.match(account,/loadManagementAccount\(queryClient/);
   assert.match(account,/readVerifiedManagementEntry\(\)/);
 });
