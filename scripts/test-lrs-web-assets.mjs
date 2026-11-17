@@ -1,4 +1,6 @@
 import test from 'node:test';
+// Run focused feature-link regression in the existing LRS Web Guard job.
+import './test-rune-feature-links.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
