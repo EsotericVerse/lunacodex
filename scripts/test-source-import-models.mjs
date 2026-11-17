@@ -19,7 +19,15 @@ test('all external source models are ZModel value types, never SQL tables',()=>{
   }
   assert.equal(sourceImportModel('Notion',{object:'block'}).model,'NotionBlock');
   assert.equal(sourceImportModel('Threads',{object_type:'threads_public_reply'}).model,'ThreadsPublicReply');
-  assert.equal(sourceImportModel('Threads',{id:'th1'}).model,'MetaFederatedPost');
+  assert.equal(sourceImportModel('Facebook').model,'FacebookPost');
+  assert.equal(sourceImportModel('Instagram').model,'InstagramMedia');
+  assert.equal(sourceImportModel('Threads',{id:'th1'}).model,'ThreadsPost');
+  assert.equal(schema.typeDefs.MetaFederatedPost,undefined);
+  assert.equal(schema.typeDefs.MetaFederatedProfile,undefined);
+  assert.equal(schema.typeDefs.FacebookPost.fields.igMediaId,undefined);
+  assert.equal(schema.typeDefs.InstagramMedia.fields.fbPostId,undefined);
+  assert.equal(schema.typeDefs.ThreadsPost.fields.fbPostId,undefined);
+  assert.equal(schema.typeDefs.FacebookPost.fields.globalGraphId,undefined);
   assert.equal(canonicalImportSourceName('some-unknown-site'),'Others');
 });
 
@@ -57,6 +65,10 @@ test('Meta post models retain platform-specific identity and do not forge Galaxy
   assert.deepEqual(mappedImportValue(fb,'media',{},'Facebook'),['https://example.org/a.jpg']);
   const ig={igMediaId:'ig-1',caption:'Instagram 貼文'};
   assert.equal(mappedImportValue(ig,'site_id',{},'Instagram'),'ig-1');
+  assert.equal(mappedImportValue(fb,'site_id',{},'Instagram'),'');
+  assert.equal(mappedImportValue(ig,'site_id',{},'Facebook'),'');
+  assert.equal(sourceImportModel('Threads',{id:'th-2'}).model,'ThreadsPost');
+  assert.equal(sourceImportModel('Threads',{id:'th-2',object_type:'threads_public_reply'}).model,'ThreadsPublicReply');
   const th={id:'th-reply-1',root_post_id:'th-root-long',parent_id:'th-parent-long',
     object_type:'threads_public_reply',content:{text:'公開回覆'}};
   assert.equal(mappedImportValue(th,'content',{},'Threads'),'公開回覆');
