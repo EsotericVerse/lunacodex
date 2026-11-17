@@ -36,6 +36,7 @@ export function resolveHomeImage(slot,scopeId='loc'){
   // After the single-source cutover, only LRS serves that exact picture.
   // Preserve every other Scope and all user-provided custom image origins.
   const runeLegacyHero=scopeId==='lrunes'&&(
+    customUrl==='/pics/LunaRunes-hero.jpg'||
     customUrl==='https://loc.lo3rwang.cc/pics/LunaRunes-hero.jpg'||
     customUrl==='https://lrunes.lo3rwang.cc/pics/LunaRunes-hero.jpg');
   const displayCustomUrl=runeLegacyHero

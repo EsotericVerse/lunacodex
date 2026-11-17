@@ -18,7 +18,10 @@ test('Web and native Scope NAV use canonical order with Rune leftmost',()=>{
   assert.doesNotMatch(registry,/scopeHref\('loc','lrunes\/'/);
   assert.ok(home.includes('LocApp forcedView="home" forcedScope="lrunes"'));
   assert.doesNotMatch(home,/LrsWebRedirect/);
-  assert.match(portal,/\.\.\/\.\.\/lrunes\/RunesClient/);
+   assert.match(portal,/ScopeEditableBlocks/);
+  assert.match(portal,/scopeId="lrunes"/);
+  assert.match(portal,/page="index"/);
+  assert.doesNotMatch(portal,/RunesClient|location\.replace/);
   assert.ok(!portal.includes('location.replace')&&!portal.includes('lrs.lo3rwang.cc'));
   assert.match(shell,/navigationScopes\.push\(\{id:MOBILE_HOME_ID/);
   assert.match(shell,/mobileHomeHref\(native\)/);

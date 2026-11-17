@@ -38,7 +38,13 @@ test('LOC renders original Rune Scope UI and keeps native source separate',()=>{
  const app=read('app/loc/LocApp.jsx');
  assert.match(app,/views\/LrsPortalView/);
  const portal=read('app/loc/views/LrsPortalView.jsx');
- assert.match(portal,/\.\.\/\.\.\/lrunes\/RunesClient/);
+ assert.match(portal,/ScopeEditableBlocks/);
+ assert.match(portal,/scopeId="lrunes"/);
+ assert.match(portal,/page="index"/);
+ assert.match(portal,/allowEditing/);
+ assert.match(portal,/explicitEditButton/);
+ assert.match(portal,/RunesHomeBlockDisplay/);
+ assert.doesNotMatch(portal,/RunesClient|GenericScopeHomeView|location\.replace/);
  assert.doesNotMatch(portal,/location\.replace|lrs\.lo3rwang\.cc/);
  const home=read('app/lrunes/page.jsx');
  assert.match(home,/LocApp forcedView="home" forcedScope="lrunes"/);
@@ -52,6 +58,8 @@ test('LOC renders original Rune Scope UI and keeps native source separate',()=>{
 test('old published Rune Hero image resolves to LRS art without rewriting other Scope images',()=>{
  const src=read('app/loc/blocks/LocHomeBlockDisplay.jsx');
  const oldPublished='https://loc.lo3rwang.cc/pics/LunaRunes-hero.jpg';
+ const publishedIndex='/pics/LunaRunes-hero.jpg';
+ assert.ok(src.includes(publishedIndex));
  assert.match(src,/scopeId==='lrunes'/);
  assert.ok(src.includes(oldPublished));
  assert.match(src,/runeAssetHref\('\/pics\/LunaRunes-hero\.jpg'\)/);
