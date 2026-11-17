@@ -88,6 +88,13 @@ const locBlocksType=structuredVirtualType('LocBlocks',{
   block_eyebrow:{type:'String'},block_subtitle:{type:'String'},
   block_image:{type:'String',optional:true}
 });
+// One nonphysical CMS source record, shared by LOC imports and later MCP readers.
+const cmsImportArticleType=structuredVirtualType('CmsImportArticle',{
+  cms:{type:'String'},sourceId:{type:'String',optional:true},
+  title:{type:'String',optional:true},body:{type:'String'},
+  createdAt:{type:'String',optional:true},canonicalUrl:{type:'String',optional:true},
+  media:{type:'Json',optional:true}
+});
 const galaxyReadTypeDefs=Object.fromEntries(Object.entries(GALAXY_READ_MODEL_FIELDS)
   .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
 const anchorTypeEnum={name:'LocAnchorType',values:Object.fromEntries(
@@ -136,6 +143,7 @@ function compileFixedSchema({schema:namespace,tables}){
     enums:{LocAnchorType:anchorTypeEnum},
     typeDefs:{LocPrincipal:locPrincipal,LocFederatedRef:locFederatedRef,
       LocAnchorLink:locAnchorLink,LocBlocks:locBlocksType,
+      CmsImportArticle:cmsImportArticleType,
       ...anchorTypeDefs,...galaxyReadTypeDefs},
     authType:'LocPrincipal',
     plugins:{policy:{provider:'@zenstackhq/plugin-policy'}}};
