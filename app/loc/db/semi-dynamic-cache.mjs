@@ -42,3 +42,13 @@ export function invalidateCachedReadPrefix(prefix){
   for(const key of [...entries.keys()])
     if(key.startsWith(text))entries.delete(key);
 }
+
+/**
+ * Clear only management snapshots that belong to an authenticated browser
+ * identity. Public Scope configuration and presentation data are unaffected.
+ * Called when an identity changes, signs out, or a live permission check fails.
+ */
+export function invalidateAccountPrivateReads(){
+  invalidateCachedReadPrefix('loc-group-member-list:');
+  invalidateCachedRead('admin-runtime-io:loc');
+}

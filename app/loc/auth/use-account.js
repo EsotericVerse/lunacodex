@@ -9,6 +9,7 @@ import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {shouldInvalidateManagementForAuthEvent} from './account-event-guard.mjs';
 import {editorSessionStatus} from './edit-session-ttl.mjs';
+import {invalidateAccountPrivateReads} from '../db/semi-dynamic-cache.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();
 const normalizeScopeId=value=>String(value||'').trim().toLowerCase();
@@ -83,6 +84,7 @@ async function fetchManagementAccount(queryClient){
     // Never accept a previous local grant as proof of a failed live check.
     // Preserve the verified identity for retry but deny editor access.
     clearAuthorization();
+    invalidateAccountPrivateReads();
     scopeMetadata=[];
     authUserId='';
     authEmail='';
@@ -177,6 +179,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
   const signIn=useCallback(callbackURL=>signInWithLocSso(String(callbackURL||'').trim()),[]);
   const signOut=useCallback(async()=>{
     await signOutAccount();
+    invalidateAccountPrivateReads();
     authRevision+=1;
     authUserId='';
     authEmail='';
@@ -234,6 +237,7 @@ export function usePassiveSessionAccount(){
         authRevision+=1;
         pendingManagementVerification=null;
         clearAuthorization();
+        invalidateAccountPrivateReads();
         scopeMetadata=[];
       }
       authUserId=nextUserId;
