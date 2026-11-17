@@ -10,7 +10,7 @@ description: "LOC 的專業視覺精修、主題性格、色彩／材質層次�
 ## 適用邊界
 - **選這份作主 Skill**：主題區分不明顯、長年深藍漸層、配色過度固定、卡片「塑膠感」、視覺節奏、明暗材質、字體氣質、既有畫面的 critique／bolder／quieter／distill／colorize／polish。
 - **改由 UI/UX 主導**：資訊架構、操作流程、表單、觸控、導航、響應式與一般可用性。圖表資料和運作仍歸原功能能力，不因要美化就重寫。
-- 選定一份主 Skill；不要因看見 UI/UX、Motion、設計系統或官方 playbook 的連結就自動展開其他 Skill。不得新增預載、背景 Hooks 或自動檢查。
+- 依本次視覺問題選用或組合相關 Skill；需要 UI/UX、Motion 或現有設計能力時可以自然延伸，不指定唯一主 Skill。避免無關的批量預載、背景 Hooks 或額外檢查。
 
 ## LOC 視覺設計判準
 - **主題要有性格，不是只換色票**：從 `app/styles/tokens.css`、`app/styles/theme-contract.css`、`app/modular/theme-registry.js`、`app/styles/published-themes.css` 與實際渲染出發，檢查背景、表面、光線、字型、邊界、留白、對比是否跟主題一起變化；先辨認固定色與局部覆蓋造成的主題失效。
