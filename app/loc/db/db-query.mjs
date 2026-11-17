@@ -4,6 +4,7 @@ import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
 import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
+import {getOrLoadScopedRead} from '../../../packages/zenstack/scoped-read-cache.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 
 // Native Kysely SELECT has no Supabase Data API Max Rows ceiling.
@@ -228,12 +229,14 @@ export async function selectRows(table,{
     },{source,authenticated,signal,expectedDbId});
     return {rows:data||[],count:total,dataSource:__dataSource};
   };
-  // Never combine signed-in, cancellable or local-device reads. Successful
-  // public results are not cached: an editor's next query sees new data.
+  // Only anonymous ZModel Anchor/Blocks reads share complete results.
+  // Galaxy, authenticated rows, qualified DB reads and cancellable searches
+  // never enter this cache. A backup response is not retained as primary.
   if(authenticated||signal||expectedDbId||/^silver\.local(?:_[a-z0-9_]+)?$/.test(table))return request();
-  return coalescePendingPublicRead(JSON.stringify([
-    'rows',transientReadGeneration(),table,columns,filters,orFilter,orders,safeLimit,safeOffset,count,source
-  ]),request);
+  const signature=['rows',table,columns,filters,orFilter,orders,safeLimit,safeOffset,count,source];
+  return getOrLoadScopedRead(table,signature,()=>coalescePendingPublicRead(
+    JSON.stringify(['rows',transientReadGeneration(),...signature]),request
+  ),{cacheable:result=>result?.dataSource==='primary'});
 }
 
 export async function selectAllRows(table,{

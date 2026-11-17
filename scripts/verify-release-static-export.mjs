@@ -22,8 +22,7 @@ const missing=routes.filter(route=>{
   const path=join(root,route,'index.html');
   return !existsSync(path)||!statSync(path).isFile()||statSync(path).size===0;
 });
-// Retain only /sw.js as a retirement tombstone for existing registrations.
-// The PWA manifest has been deliberately removed.
+// Browser-only immutable Next.js asset cache; the PWA manifest remains absent.
 const pwaAssets=['sw.js'];
 const missingAssets=pwaAssets.filter(file=>{
   const target=join(root,file);

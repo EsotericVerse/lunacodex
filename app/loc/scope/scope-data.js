@@ -8,6 +8,7 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
+import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/runtime/app-bootstrap.js); there is no
@@ -128,8 +129,7 @@ export function invalidatePublicScopeMetadata(){
   managedScopesRequest=null;
   publicSiteBootstrapRequest=null;
   invalidateCachedReadPrefix('scope-config:');
-  scopeBlocksRequests.clear();
-  blockListRequests.clear();
+  invalidateScopedReadCache();
   if(typeof window!=='undefined'){
     window.dispatchEvent(new Event('loc-public-scope-metadata-changed'));
   }
@@ -274,34 +274,30 @@ export function selectScopeConfig(scopeId){
 }
 
 
-const scopeBlocksRequests=new Map();
+// Presentation Blocks and public Anchor projections share the same physical
+// ZModel-backed read cache. LOC's Blocks are typed rows in silver.loc_anchor.
+// This is NOT a SQL idx/index, IndexedDB or a second Cache Storage layer.
+const blockRelation=id=>'silver.'+(id==='loc'?'loc_anchor':id+'_blocks');
 export function invalidateScopeBlockPage(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  const rawName=String(page||'index').trim();
-  scopeBlocksRequests.delete(id+':'+rawName.toLowerCase());
-  blockListRequests.delete(id);
-  // hero_block() is deliberately uncached (see its own comment below), so
-  // there is no hero-block-specific cache entry to drop here any more.
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id))return;
+  // All projections for one written physical relation become stale together.
+  // Page is retained in the API for its existing editor callers.
+  invalidateScopedReadCache(blockRelation(id));
 }
 const BLOCK_COLUMNS='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
-const blockListRequests=new Map();
-// LOC returns index+governance; ordinary Scope returns index only.
+// Public display readers of the same Scope share one parsed Block-list result.
 export function block_list(scopeid){
   const id=String(scopeid||'').trim().toLowerCase();
   if(id==='local'||!SCOPE_ID_PATTERN.test(id))return Promise.resolve([]);
-  if(blockListRequests.has(id))return blockListRequests.get(id);
-  const promise=nativePublicContent('block_list',id)
-    .then(rows=>Array.isArray(rows)?rows:[])
-    .catch(error=>{blockListRequests.delete(id);throw error});
-  blockListRequests.set(id,promise);
-  return promise;
+  return getOrLoadScopedRead(blockRelation(id),['native','block_list'],async()=>{
+    const rows=await nativePublicContent('block_list',id);
+    return Array.isArray(rows)?rows:[];
+  });
 }
-// Specific LOC Anchor type, optionally a pair of exact types in one SQL read.
-// Deliberately NOT cached here: FeatureHeroImages.jsx's save() calls this
-// directly (through selectLiveScopeBlocks) to read the current row right
-// before writing it back. Caching at this level would let a save overwrite
-// a concurrent edit with a stale snapshot. Display-time callers cache at
-// their own call site instead (see ImageSlot/ManagementHeroDetails).
+// Preserve PR #1762: a direct Hero read is ALWAYS fresh. The editor reads
+// this before writing, so it must never consume a display-time cache entry
+// that could overwrite a concurrent edit from another browser.
 export async function hero_block(specificValue){
   const types=Array.isArray(specificValue)?specificValue:[specificValue];
   if(!types.length||types.length>2||new Set(types).size!==types.length||
@@ -312,41 +308,53 @@ export async function hero_block(specificValue){
   const rows=await nativePublicContent('hero_block','loc',types.join(','));
   return Array.isArray(rows)?rows:[];
 }
+// Edits/verification need an authoritative fresh read, not the public display
+// cache. Rendering uses selectScopeBlocks() below.
 export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim();
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[A-Za-z0-9_-]+$/.test(name))return [];
   if(id==='loc'){
     const rows=['index','governance'].includes(name)
-      ?(await block_list(id)).filter(row=>row.page_name===name)
+      ?(await nativePublicContent('block_list',id)).filter(row=>row.page_name===name)
       :await hero_block(name);
     return [...rows].sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
   }
-  if(name==='index')return block_list(id);
-  // Other Scope physical Blocks and extended pages remain untouched.
+  if(name==='index'){
+    const rows=await nativePublicContent('block_list',id);
+    return Array.isArray(rows)?rows:[];
+  }
+  // A caller-supplied signal deliberately bypasses the completed public
+  // SELECT cache for this edit-time authoritative read.
   const {rows}=await selectAllRows(`silver.${id}_blocks`,{
     columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
-    orders:[{column:'block_order',ascending:true}]
+    orders:[{column:'block_order',ascending:true}],
+    signal:new AbortController().signal
   });
   return (rows||[]).sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
 }
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
-  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||! /^[a-z0-9_-]+$/.test(name))return [];
-  const key=id+':'+name;
-  const existing=scopeBlocksRequests.get(key);
-  if(existing)return existing;
-  // Homepage edits are live SQL records. A published JS snapshot is only the
-  // offline fallback; reading it first forever hides successfully saved edits
-  // after a hard reload. Make one bounded homepage read per client runtime,
-  // with no polling or session check, and preserve the published fallback.
-  const promise=loadPublishedBlocks(id,name)
-    .then(async rows=>name==='index'||id==='loc'
-      ?selectLiveScopeBlocks(id,name).then(live=>live.length?live:rows)
-        .catch(()=>rows)
-      :rows.length?rows:selectLiveScopeBlocks(id,name))
-    .catch(error=>{scopeBlocksRequests.delete(key);throw error});
-  scopeBlocksRequests.set(key,promise);
-  return promise;
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[a-z0-9_-]+$/.test(name))return [];
+  let offlineFallback=false;
+  return getOrLoadScopedRead(blockRelation(id),['page','blocks',name],async()=>{
+    const published=await loadPublishedBlocks(id,name);
+    if(name==='index'||id==='loc'){
+      try{
+        let live;
+        if(id==='loc'&&name!=='index'&&name!=='governance'){
+          live=await hero_block(name);
+        }else{
+          const all=await block_list(id);
+          live=id==='loc'?all.filter(row=>row.page_name===name):all;
+        }
+        return live.length?live:published;
+      }catch{
+        offlineFallback=true;
+        return published;
+      }
+    }
+    return published.length?published:selectLiveScopeBlocks(id,name);
+  },{cacheable:()=>!offlineFallback});
 }

@@ -41,17 +41,18 @@ if(!runtime.includes("const allowed=['io_limits','isr']")||
    !io.includes("if(settings.enabled!==undefined&&settings.enabled!==false)")||
    !io.includes("throw new Error('Vercel ISR 尚未開放啟用')"))
   throw Error('Runtime ISR reservation must be disabled and authorized');
-// Browser PWA Service Worker has also been retired.
+// Browser PWA caches only immutable Next.js static assets, never ISR or APIs.
 const sw=read('public/sw.js');
 const shell=read('app/AppShell.jsx');
-if(!sw.includes('self.registration.unregister()')||
-   sw.includes("addEventListener('fetch'")||
-   shell.includes('serviceWorker.register('))
-  throw Error('Retired PWA worker must not intercept or re-register');
+if(!sw.includes("url.pathname.startsWith('/_next/static/')")||
+   !sw.includes("request.method!=='GET'")||
+   !shell.includes("navigator.serviceWorker.register('/sw.js'")||
+   !sw.includes("self.addEventListener('fetch'"))
+  throw Error('Browser static asset cache must be registered and narrowly scoped');
 const config=read('app/loc/scope/scope-data.js');
 if(!config.includes('PUBLISHED_SITE_BOOTSTRAP')||
   !config.includes('SCOPE_ROUTE_INDEX')||
-  !config.includes('loadPublishedBlocks(id,pageName)'))
+  !config.includes('loadPublishedBlocks(id,name)'))
   throw Error('Missing published JS Bootstrap/Config/Blocks sources');
 const routesConfig=read('app/modular/routing/scope-route-index.js');
 if(!routesConfig.includes('SCOPE_ROUTE_INDEX')||!routesConfig.includes('"config":'))
@@ -62,4 +63,4 @@ if(!publishedBlocks.includes('()=>import('))
 const app=read('app/loc/runtime/app-bootstrap.js');
 if(app.includes('locHomeSnapshotDelivered'))
   throw Error('LOC home still consumes site RPC Blocks');
-console.log('Verified retired ISR endpoints/workers, IO-only settings, retired PWA worker and published JS policy.');
+console.log('Verified retired ISR endpoints/workers, bounded browser SW and published JS policy.');

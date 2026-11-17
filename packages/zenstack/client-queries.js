@@ -1,6 +1,7 @@
 'use client';
 
-import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {createQuerySnapshotStore} from './query-snapshot-store.mjs';
 import {flashMessage} from '../../app/loc/notifications/flash-message';
 import {cancelTransientReads} from './transient-read-epoch.mjs';
 
@@ -30,6 +31,15 @@ let resourceEpoch=0; // route-entry generation invalidates old asynchronous comp
 // Only the three tiny identity states outlive their page. SQL read results
 // must be released when the last mounted consumer of their key disappears.
 const dataStore=new Map();
+// Share only explicitly opted-in public bootstrap data, never session, grants,
+// or sensitive Galaxy rows. One live snapshot per mounted query key.
+const bootstrapSnapshots=createQuerySnapshotStore();
+const EMPTY_SHARED_SNAPSHOT=Object.freeze({hasData:false,data:undefined});
+const isPublicBootstrapKey=key=>key.startsWith('["app-bootstrap",');
+function forgetStored(key){
+  dataStore.delete(key);
+  if(isPublicBootstrapKey(key))bootstrapSnapshots.release(key);
+}
 const IDENTITY_KEYS=new Set([
   ['loc-account','session'],['loc-account','verified-loc-sso'],
   ['loc-account','management']
@@ -41,12 +51,15 @@ function hasReader(serializedKey){
 }
 function releaseUnobserved(serializedKey){
   if(!IDENTITY_KEYS.has(serializedKey)&&!hasReader(serializedKey))
-    dataStore.delete(serializedKey);
+    forgetStored(serializedKey);
 }
 function retainIfObserved(serializedKey,value){
-  if(IDENTITY_KEYS.has(serializedKey)||hasReader(serializedKey))
+  if(IDENTITY_KEYS.has(serializedKey)||hasReader(serializedKey)){
+    const changed=!dataStore.has(serializedKey)||!Object.is(dataStore.get(serializedKey),value);
     dataStore.set(serializedKey,value);
-  else dataStore.delete(serializedKey);
+    if(changed&&isPublicBootstrapKey(serializedKey))
+      bootstrapSnapshots.publish(serializedKey,value);
+  }else forgetStored(serializedKey);
 }
 function register(entry){
   const id=++nextId;
@@ -151,7 +164,7 @@ function releaseExpiredTransientResources(){
   let released=0;
   for(const [key] of dataStore){
     if(!IDENTITY_KEYS.has(key)&&!hasReader(key)){
-      dataStore.delete(key);released++;
+      forgetStored(key);released++;
     }
   }
   return released;
@@ -189,13 +202,39 @@ export function prepareTransientResourceAction(action,{queryKeys=[]}={}){
 // Browser JS heap collection is managed by GC; dropping all these references
 // makes old page query payloads eligible for collection.
 export function releaseTransientPageResources(){
+  // The shell stays mounted between Next.js routes. Keep its already-complete
+  // public bootstrap until the last subscriber leaves, instead of clearing
+  // it and forcing the shell's Hero/Config to read the database again.
+  // An unfinished bootstrap may be aborted by the outgoing route epoch;
+  // re-read it only if a subscriber is STILL mounted after the transition.
+  const retryBootstrap=new Map();
+  for(const entry of registry.values()){
+    const key=serialize(entry.key);
+    if(!isPublicBootstrapKey(key))continue;
+    // An edit may have invalidated an older snapshot. If its replacement
+    // read is interrupted by navigation, resume it even while the old
+    // snapshot is still displayed. Never strand stale Hero/Config.
+    const wasReading=inflight.has(key);
+    if(!dataStore.has(key)||wasReading)
+      retryBootstrap.set(key,wasReading);
+  }
   resourceEpoch++;
-  // Abort HTTP reads and requests waiting in the bounded read queue first.
-  // The active session, permissions, and explicit writes are not affected.
+  // Abort old transient SQL reads and queued requests. Session, verified
+  // grants and explicit writes remain outside this cleanup.
   cancelTransientReads();
   abortInflight();
-  for(const key of [...dataStore.keys()])
-    if(!IDENTITY_KEYS.has(key))dataStore.delete(key);
+  for(const key of [...dataStore.keys()]){
+    if(IDENTITY_KEYS.has(key))continue;
+    if(isPublicBootstrapKey(key)&&hasReader(key))continue;
+    forgetStored(key);
+  }
+  if(retryBootstrap.size)queueMicrotask(()=>{
+    for(const [key,interruptedRefresh] of retryBootstrap){
+      if(dataStore.has(key)&&!interruptedRefresh)continue;
+      const live=[...registry.values()].find(entry=>serialize(entry.key)===key);
+      live?.refetch();
+    }
+  });
 }
 
 export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
@@ -203,10 +242,20 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
   const key=legacy?keyOrOptions.queryKey:keyOrOptions;
   const fetcher=legacy?keyOrOptions.queryFn:fetcherArg;
   const options=legacy?keyOrOptions:optionsArg;
-  const {enabled=true,fallbackData,onError}=options;
+  const {enabled=true,fallbackData,onError,shareResult=false}=options;
   const queryKey=keyOf(key);
   const serializedKey=serialize(queryKey);
   const active=Boolean(enabled)&&typeof fetcher==='function';
+  // Deliberate opt-in plus the public bootstrap key fence: identity and
+  // management records retain their independent verification lifetime.
+  const sharing=active&&shareResult===true&&isPublicBootstrapKey(serializedKey);
+  const subscribe=useCallback(listener=>sharing
+    ?bootstrapSnapshots.subscribe(serializedKey,listener):()=>{},
+    [sharing,serializedKey]);
+  const getSnapshot=useCallback(()=>sharing
+    ?bootstrapSnapshots.getSnapshot(serializedKey):EMPTY_SHARED_SNAPSHOT,
+    [sharing,serializedKey]);
+  const sharedSnapshot=useSyncExternalStore(subscribe,getSnapshot,()=>EMPTY_SHARED_SNAPSHOT);
 
   const [state,setState]=useState(()=>({
     data:fallbackData,status:active?'pending':'idle',error:null
@@ -262,7 +311,6 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
         status:active?'pending':'idle',error:null});
       setIsFetching(false);
     }
-    if(active)void load().catch(()=>{});
     const unregister=register({
       key:queryKey,
       refetch:()=>{void load().catch(()=>{});},
@@ -273,12 +321,19 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
         }
       },
       remove:()=>{
-        dataStore.delete(serializedKey);
+        forgetStored(serializedKey);
         if(isCurrent())setState({data:undefined,status:'idle',error:null});
       }
     });
+    if(active){
+      const existing=sharing?bootstrapSnapshots.getSnapshot(serializedKey):null;
+      if(existing?.hasData){
+        // Later mounts adopt the live public page snapshot without new SQL.
+        setState({data:existing.data,status:'success',error:null});
+      }else void load().catch(()=>{});
+    }
     return()=>{mountedRef.current=false;unregister();};
-  },[serializedKey,active,load]); // eslint-disable-line react-hooks/exhaustive-deps
+  },[serializedKey,active,load,sharing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The render preceding useEffect must not expose the previous Era's
   // payload while React is scheduling the new query. Loading replaces that
@@ -288,11 +343,13 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
   const visibleState=stateMatchesKey?state:{
     data:undefined,status:active?'pending':'idle',error:null
   };
+  const displayed=sharing&&stateMatchesKey&&sharedSnapshot.hasData
+    ?{data:sharedSnapshot.data,status:'success',error:null}:visibleState;
   return {
-    data:visibleState.data,error:visibleState.error,status:visibleState.status,
-    isPending:visibleState.status==='pending',isLoading:visibleState.status==='pending',
+    data:displayed.data,error:displayed.error,status:displayed.status,
+    isPending:displayed.status==='pending',isLoading:displayed.status==='pending',
     isFetching:isFetching&&stateMatchesKey,
-    isSuccess:visibleState.status==='success',isError:visibleState.status==='error',
+    isSuccess:displayed.status==='success',isError:displayed.status==='error',
     refetch:async()=>load(),
     // The one remaining imperative setter for the local-record writer. It
     // updates live state directly; nothing is persisted to a parallel cache.
@@ -300,7 +357,7 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
       if(!args.length)return load();
       const [value,config={}]=args;
       if(value===undefined){
-        dataStore.delete(serializedKey);
+        forgetStored(serializedKey);
         if(isCurrent())setState({data:undefined,status:'idle',error:null});
       }else{
         if(isCurrent()){
@@ -460,11 +517,11 @@ export const queryClient={
     for(const storedKey of [...dataStore.keys()]){
       const parsed=JSON.parse(storedKey);
       if(typeof filter.predicate==='function'){
-        if(filter.predicate({queryKey:parsed}))dataStore.delete(storedKey);
+        if(filter.predicate({queryKey:parsed}))forgetStored(storedKey);
       }else if(filter.exact){
-        if(storedKey===serialize(filter.queryKey))dataStore.delete(storedKey);
+        if(storedKey===serialize(filter.queryKey))forgetStored(storedKey);
       }else if(prefixMatch(parsed,filter.queryKey??[])){
-        dataStore.delete(storedKey);
+        forgetStored(storedKey);
       }
     }
     return Promise.resolve();
