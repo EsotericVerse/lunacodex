@@ -4,6 +4,9 @@ import {useEffect,useRef,useState} from 'react';
 import {IO_LIMIT_CEILINGS,applyRuntimeIoLimits,normalizeRuntimeIoLimits} from '../../query/query-batch-size.mjs';
 import {readLocRuntimeConfig,saveLocRuntimeConfig} from '../../runtime/runtime-config.mjs';
 import {useEditDockForm} from '../../../modular/edit-dock';
+import {cachedRead,invalidateCachedRead} from '../../db/semi-dynamic-cache.mjs';
+
+const RUNTIME_IO_CACHE_KEY='admin-runtime-io:loc';
 
 const FIELDS=[
   {key:'archiveMiB',label:'備份檔案上限',unit:'MiB',min:1},
@@ -21,7 +24,7 @@ export default function RuntimeIoSettings(){
   const initial=useRef('');
   useEffect(()=>{
     let active=true;
-    readLocRuntimeConfig().then(row=>{
+    cachedRead(RUNTIME_IO_CACHE_KEY,()=>readLocRuntimeConfig()).then(row=>{
       if(!active)return;
       const values=fromRow(row);initial.current=JSON.stringify(values);setDraft(values);
     }).catch(error=>{if(active)setNotice(String(error?.message||error));});
@@ -34,6 +37,7 @@ export default function RuntimeIoSettings(){
     try{
       const settings=normalizeRuntimeIoLimits(draft);
       const saved=await saveLocRuntimeConfig({io_limits:settings});
+      invalidateCachedRead(RUNTIME_IO_CACHE_KEY);
       const next=fromRow(saved);
       applyRuntimeIoLimits(next);
       initial.current=JSON.stringify(next);setDraft(next);

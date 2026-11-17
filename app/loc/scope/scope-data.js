@@ -7,6 +7,7 @@ import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
+import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/runtime/app-bootstrap.js); there is no
@@ -126,7 +127,7 @@ let publicSiteBootstrapRequest=null;
 export function invalidatePublicScopeMetadata(){
   managedScopesRequest=null;
   publicSiteBootstrapRequest=null;
-  scopeConfigInFlight.clear();
+  invalidateCachedReadPrefix('scope-config:');
   scopeBlocksRequests.clear();
   blockListRequests.clear();
   if(typeof window!=='undefined'){
@@ -183,6 +184,8 @@ export async function selectLocSearchScopes(){
 
 // Group reads use explicitly published membership on ordinary pages; keep the
 // caller's exact Culture/Trace range, pagination and visibility queries intact.
+// Pure in-memory lookup against the already-loaded published bootstrap —
+// no network call, so there is nothing here that needs a cache at all.
 const groupMembershipRequests=new Map();
 export function selectScopeGroupMemberIds(groupId='loc',type='culture'){
   const key=groupId+':'+type;
@@ -257,29 +260,28 @@ async function nativePublicContent(kind,scope,feature=''){
   return payload.data;
 }
 const publishedConfig=id=>SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id&&row.active!==false)?.config||null;
-const scopeConfigInFlight=new Map();
 export function selectScopeConfig(scopeId){
   const scope=defaultScopeData(scopeId);
   if(!scope)return Promise.resolve(null);
-  const existing=scopeConfigInFlight.get(scope.id);
-  if(existing)return existing;
+  if(scope.id==='local')return Promise.resolve(null);
   // Published configuration is the guest fallback. Live feature configuration
   // is read through the existing application runtime's native Kysely driver.
   // Never let an unavailable SQL connection blank a public Scope page.
-  const request=scope.id==='local'?Promise.resolve(null):
-    nativePublicContent('config',scope.id)
+  return cachedRead('scope-config:'+scope.id,
+    ()=>nativePublicContent('config',scope.id)
       .then(data=>data||publishedConfig(scope.id))
-      .catch(()=>publishedConfig(scope.id));
-  if(scope.id!=='local')scopeConfigInFlight.set(scope.id,request);
-  return request;
+      .catch(()=>publishedConfig(scope.id)));
 }
 
 
 const scopeBlocksRequests=new Map();
 export function invalidateScopeBlockPage(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  scopeBlocksRequests.delete(id+':'+String(page||'index').trim().toLowerCase());
+  const rawName=String(page||'index').trim();
+  scopeBlocksRequests.delete(id+':'+rawName.toLowerCase());
   blockListRequests.delete(id);
+  // hero_block() is deliberately uncached (see its own comment below), so
+  // there is no hero-block-specific cache entry to drop here any more.
 }
 const BLOCK_COLUMNS='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
 const blockListRequests=new Map();
@@ -295,6 +297,11 @@ export function block_list(scopeid){
   return promise;
 }
 // Specific LOC Anchor type, optionally a pair of exact types in one SQL read.
+// Deliberately NOT cached here: FeatureHeroImages.jsx's save() calls this
+// directly (through selectLiveScopeBlocks) to read the current row right
+// before writing it back. Caching at this level would let a save overwrite
+// a concurrent edit with a stale snapshot. Display-time callers cache at
+// their own call site instead (see ImageSlot/ManagementHeroDetails).
 export async function hero_block(specificValue){
   const types=Array.isArray(specificValue)?specificValue:[specificValue];
   if(!types.length||types.length>2||new Set(types).size!==types.length||
