@@ -17,6 +17,20 @@ function eligible(request){
   if(url.origin!==self.location.origin||!url.pathname.startsWith('/_next/static/'))return false;
   return /\.(?:js|css|woff2?)$/i.test(url.pathname);
 }
+// Never persist a redirected login/error page or a private/no-store reply
+// under a hashed JS URL. The public build must serve an expected MIME type.
+function cacheable(request,response){
+  if(!response.ok||response.type!=='basic'||response.redirected)return false;
+  const type=String(response.headers?.get('content-type')||'').toLowerCase();
+  const policy=String(response.headers?.get('cache-control')||'');
+  if(/\\b(?:private|no-store)\\b/i.test(policy))return false;
+  const path=new URL(request.url).pathname;
+  if(/\\.js$/i.test(path))return /(?:javascript|ecmascript)/.test(type);
+  if(/\\.css$/i.test(path))return /^text\\/css(?:;|$)/.test(type);
+  if(/\\.woff2?$/i.test(path))
+    return /^(?:font\\/woff2?|application\\/(?:font-woff2?|octet-stream))(?:;|$)/.test(type);
+  return false;
+}
 self.addEventListener('fetch',event=>{
   const request=event.request;
   if(!eligible(request))return;
@@ -25,7 +39,7 @@ self.addEventListener('fetch',event=>{
     const hit=await cache.match(request);
     if(hit)return hit;
     const response=await fetch(request);
-    if(response.ok&&response.type==='basic'){
+    if(cacheable(request,response)){
       await cache.put(request,response.clone()).catch(()=>{});
       const keys=await cache.keys();
       if(keys.length>MAX_ENTRIES)
