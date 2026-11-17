@@ -2,6 +2,8 @@
 // Better Auth Session and api.manage ZModel rights are verified once by the
 // destination API, then again only inside the protected write transaction.
 // Do not preflight /api/loc-permissions and duplicate both network checks.
+import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
+
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
 // A missing terminal frame does not prove either success or failure. Keep the
@@ -28,6 +30,14 @@ export async function keywordService(operation,args={},options={}){
   if(!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
   const write=['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation);
+  const committed=result=>{
+    // /api/keywords writes Anchor/Pattern directly, outside managedWrite.
+    // Refresh the same ZModel relation cache only when the server confirms
+    // success; an unconfirmed analysis must NOT be assumed committed.
+    if(write||(operation==='analyzeStatus'&&result?.completed))
+      invalidateScopedReadCache('silver.'+scope+'_anchor');
+    return result;
+  };
   const readSignal=options?.signal||null;
   const stream=operation==='analyze'&&typeof options?.onProgress==='function';
   // A completion receipt is committed with the Pattern transaction, so a
@@ -112,7 +122,7 @@ export async function keywordService(operation,args={},options={}){
         options.onProgress({phase:'completed',completed:receipt.result.analyzedDocuments,
           total:receipt.result.analyzedDocuments,percent:100,
           label:'資料庫已確認分析完成'});
-        return receipt.result;
+        return committed(receipt.result);
       }
       // Explicit server failures are real errors. Unexpected EOF/network
       // errors remain *unconfirmed*, so preserve the attempt for user-driven
@@ -124,8 +134,8 @@ export async function keywordService(operation,args={},options={}){
         scopeId:scope,classUid:String(args.classUid||''),attemptId
       });
     }
-    return result;
+    return committed(result);
   }
   const payload=await response.json().catch(()=>null);
-  return payload?.data;
+  return committed(payload?.data);
 }
