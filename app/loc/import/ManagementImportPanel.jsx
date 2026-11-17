@@ -1006,6 +1006,18 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     };
     showProgress('準備匯入文章');
     try{
+      // Load ZenStack/Zod only on an actual JSON write request, not on page
+      // navigation or every source-selector repaint. The imported raw JSON
+      // stays untouched; the existing Galaxy write model validates it later.
+      if(!archiveDetection&&/\.json$/i.test(fileName)){
+        const {assertZModelSourceImportRecord}=await import('../../../packages/zenstack/import-validation.mjs');
+        for(let index=0;index<rows.length;index++){
+          const raw=rows[index]?.raw||rows[index]||{};
+          assertZModelSourceImportRecord(raw,selected,index+1);
+          if((index+1)%512===0||index===rows.length-1)
+            showProgress('來源 ZModel 驗證',index+1,rows.length);
+        }
+      }
       const scope=nativeLocal?defaultScopeData('local'):account.scopeDataFor(scopeId);
       const galaxy=scope?.galaxy,mediaAnchor=scope?.anchor;
       if(!galaxy||!mediaAnchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
