@@ -56,6 +56,18 @@ files.sort.each do |file|
       valid = types.is_a?(Psych::Nodes::Sequence) &&
         types.children.map{|e| e.is_a?(Psych::Nodes::Scalar) ? e.value : nil } == ['loc-lrs-emergency']
       raise 'LRS emergency dispatch type is not restricted' unless valid
+    elsif File.basename(file) == 'receive-las-deployment.yml'
+      raise 'LAS receiver must use only repository_dispatch' unless events == ['repository_dispatch']
+      event = triggers.first.children.each_slice(2).find do |key, _|
+        key.is_a?(Psych::Nodes::Scalar) && key.value == 'repository_dispatch'
+      end&.last
+      raise 'LAS receiver requires a typed dispatch mapping' unless event.is_a?(Psych::Nodes::Mapping)
+      types = event.children.each_slice(2).find do |key, _|
+        key.is_a?(Psych::Nodes::Scalar) && key.value == 'types'
+      end&.last
+      valid = types.is_a?(Psych::Nodes::Sequence) &&
+        types.children.map{|entry| entry.is_a?(Psych::Nodes::Scalar) ? entry.value : nil } == ['loc-las-published']
+      raise 'LAS dispatch type not restricted' unless valid
     else
       raise 'only workflow_dispatch is permitted for this workflow' unless events == ['workflow_dispatch']
     end
