@@ -105,7 +105,10 @@ const SOURCE_IMPORT_RELATIONS=Object.freeze({
   ]),
   Notion:Object.freeze([
     Object.freeze({collection:'blocks',primaryKey:'id',foreignKey:'parent.page_id',
-      target:'content',mode:'append-text',field:'content'})
+      target:'content',mode:'append-text',field:'content'}),
+    Object.freeze({collection:'blocks',primaryKey:'id',foreignKey:'parent.page_id',
+      target:'media',mode:'collect-media',field:'media',typeField:'type',
+      allowedTypes:Object.freeze(['image','video'])})
   ])
 });
 
