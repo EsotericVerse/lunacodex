@@ -618,10 +618,19 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     if(!archiveDetection&&!sourceSelection)
       return {valid:[],normalized:[],mediaOnly:[],invalid:[]};
     const selected=deferredSource.trim();
-    const normalized=rows.map(entry=>normalizeJsonImportEntry(entry,
-      canonicalImportSourceName(archiveDetection&&selected==='Mixed'?(entry?.raw?.site||selected):selected,
-        sourceCategories.data?.system||[],sourceCategories.data?.personal||[]),
-        format.fields,t,Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection)));
+    const normalized=rows.map(entry=>{
+      const embedded=archiveDetection?String(entry?.raw?.site||'').trim():'';
+      const entrySource=canonicalImportSourceName(embedded||selected,
+        sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
+      // ZIP scanning has already verified per-record provenance. A manual
+      // selection cannot silently relabel records from another platform.
+      if(embedded&&sourceSelection&&sourceSelection!=='__custom__'&&
+          selected!=='Mixed'&&entrySource!==canonicalSource(sourceSelection))
+        return {record:null,error:'所選來源 '+sourceSelection+
+          ' 與封存檔記錄來源 '+entrySource+' 不一致，請核對來源。'};
+      return normalizeJsonImportEntry(entry,entrySource,format.fields,t,
+        Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection));
+    });
     return {
       valid:normalized.filter(item=>item.record).map(item=>item.record),
       normalized:normalized.filter(item=>item.record),
