@@ -31,8 +31,8 @@ const NATIVE_STATIC_ROUTE_SCRIPT=`(()=>{try{
   if(!/\\/index\\.html$/.test(pathname))return;
   window.history.replaceState(window.history.state,'',pathname.slice(0,-'index.html'.length)+search+hash);
 }catch{}})();`;
-// Tiny, public identity/colour-scheme map only: the full eight palette JSON
-// modules remain lazy; published CSS applies the correct one at first paint.
+// Static Scope -> Theme ID; bootstrap inserts ONE render-blocking CSS link
+// before first paint rather than bundling all eight palettes.
 const PUBLISHED_THEME_BY_SCOPE=Object.fromEntries(SCOPE_ROUTE_INDEX.map(row=>
   [row.scope_id,String(row.config?.theme||'')]));
 const PUBLISHED_THEME_SCHEMES=Object.fromEntries(PUBLISHED_THEME_META.map(row=>[row[0],row[2]]));
@@ -58,13 +58,24 @@ const INITIAL_THEME_SCRIPT=`(()=>{try{
     selected=String(prefs?.[scope]||(admin?window.sessionStorage.getItem('loc-active-theme-id-v1'):null)||'');
   }catch{}
   if(!Object.hasOwn(schemes,selected))selected='';
-  const themeId=selected||(game?'${GAME_BOOTSTRAP_THEME_ID}':defaults[scope]||auto);
-  const scheme=schemes[themeId]||schemes[auto]||'light';
+  const requested=selected||(game?'${GAME_BOOTSTRAP_THEME_ID}':defaults[scope]||auto);
+  const themeId=Object.hasOwn(schemes,requested)?requested:auto;
+  const scheme=schemes[themeId]||'light';
   const root=document.documentElement;
   root.dataset.theme=scheme;
   root.dataset.themeId=themeId;
   root.style.colorScheme=scheme;
   root.dataset.themeBootstrap='correct-id';
+  // Session stores only Theme ID, never CSS. Insert one stylesheet before
+  // first paint; client navigation reuses the existing linked resource.
+  const link=document.createElement('link');
+  link.id='loc-theme-stylesheet';
+  link.rel='stylesheet';
+  link.href='/themes/'+themeId+'.css';
+  link.dataset.themeId=themeId;
+  link.setAttribute('blocking','render');
+  link.addEventListener('load',()=>{link.dataset.loaded='true'},{once:true});
+  document.head.appendChild(link);
 }catch{}})();`;
 
 export default function RootLayout({ children }) {
