@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {schema} from '../packages/zenstack/schema.mjs';
+import {assertZModelSourceImportRecord} from '../packages/zenstack/import-validation.mjs';
 import {SOURCE_IMPORT_MODELS,sourceImportModel} from '../packages/zenstack/import-source-models.mjs';
 import {mappedImportValue,importRowsFromJson} from '../app/loc/import/batch.mjs';
 import {canonicalImportSourceName,inferImportSourceFromFilename}
@@ -95,4 +96,15 @@ test('WordPress drafts remain private; public post records stay eligible',()=>{
   assert.equal(isPrivateStandaloneRow({post_status:'draft',post_content:'草稿'}),true);
   assert.equal(isPrivateStandaloneRow({type:'post',status:'private',content:{rendered:'秘密'}}),true);
   assert.equal(isPrivateStandaloneRow({post_status:'publish',post_content:'文章'}),false);
+});
+
+test('ZenStack-derived Zod schema validates source records without rewriting the payload',()=>{
+  const wordpress={id:123,post_title:'文章',post_content:'內容'};
+  assert.equal(assertZModelSourceImportRecord(wordpress,'WordPress'),wordpress);
+  const notion={object:'block',id:'notion-block',type:'paragraph',
+    paragraph:{rich_text:[{plain_text:'你好'}]}};
+  assert.equal(assertZModelSourceImportRecord(notion,'Notion'),notion);
+  assert.equal(assertZModelSourceImportRecord({timestamp_ms:1794883200000,contentText:'貼文'},'Facebook')
+    .contentText,'貼文');
+  assert.throws(()=>assertZModelSourceImportRecord({post_title:42},'WordPress',5),/來源 ZModel 驗證失敗/);
 });
