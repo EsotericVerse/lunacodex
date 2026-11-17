@@ -157,8 +157,9 @@ export function normalizeCmsImportRow(input,selectedSource=''){
     return {row:input,source};
   }
   const declared=source.toLowerCase();
-  if(supported.has(declared)&&declared!==detected.toLowerCase())
-    throw new Error('選擇的 CMS 類型與實際匯出格式不一致：'+source+' / '+detected);
+  if((supported.has(declared)||['facebook','threads','instagram'].includes(declared))&&
+    declared!==detected.toLowerCase())
+    throw new Error('選擇的 CMS／社群來源與實際資料格式不一致：'+source+' / '+detected);
   const cms=detected.toLowerCase();
   if(!supported.has(cms))return {row:input,source};
   const candidate=cms==='wordpress'?wpArticle(input):notionArticle(input);
