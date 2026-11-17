@@ -14,7 +14,10 @@ const isoMillis=value=>{
 // per page, same spirit as discovery-queue.mjs's byte-based adaptation, just
 // measuring elapsed ms here instead of payload bytes (this reader never
 // leaves the server, so wire size is not the cost that matters).
-const MIN_PAGE_ROWS=250,MAX_PAGE_ROWS=20000,TARGET_PAGE_MS=800;
+// No upper cap: page size is left to grow as far as measured performance
+// allows. Only the lower floor (MIN_PAGE_ROWS) and the per-step doubling
+// cap below protect against whiplash; there is no fixed ceiling above that.
+const MIN_PAGE_ROWS=250,MAX_PAGE_ROWS=Infinity,TARGET_PAGE_MS=800;
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 
 // Exactly one stored word row per Scope + normalized literal. The existing
