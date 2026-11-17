@@ -4,6 +4,7 @@
 import {createSchemaFactory} from '@zenstackhq/zod';
 import * as z from 'zod';
 import {schema} from './schema.mjs';
+import {sourceImportModel,SOURCE_IMPORT_MODEL_FIELDS} from './import-source-models.mjs';
 import physicalContract from './schema-contract.mjs';
 import {modelNameForSql} from './model-column-guard.mjs';
 import {zodValidationAdapter} from './kysera-validation-adapter.mjs';
@@ -12,6 +13,32 @@ import {ANCHOR_GROUP_MODEL_NAMES,ANCHOR_TYPE_GROUP_FIELDS,ANCHOR_TYPE_GROUPS,
   from './anchor-hierarchy.mjs';
 
 const modelFactory=createSchemaFactory(schema);
+const sourceImportValidators=new Map();
+
+// Validate only the source ZModel's declared fields; unknown export metadata
+// remains untouched and never becomes an implicit Galaxy column. This is a
+// write-time boundary, not a client-side background cache or access grant.
+export function assertZModelSourceImportRecord(row,source,index=null){
+  const profile=sourceImportModel(source,row);
+  if(!profile)return row;
+  if(!row||typeof row!=='object'||Array.isArray(row))
+    throw new TypeError('來源 ZModel 必須接收一筆 JSON 物件');
+  const fields=SOURCE_IMPORT_MODEL_FIELDS[profile.model];
+  if(!fields)throw new TypeError('找不到來源 ZModel：'+profile.model);
+  if(!Object.keys(fields).some(key=>Object.hasOwn(row,key)))return row;
+  let validator=sourceImportValidators.get(profile.model);
+  if(!validator){
+    validator=modelFactory.makeTypeSchema(profile.model);
+    sourceImportValidators.set(profile.model,validator);
+  }
+  const result=validator.safeParse(row);
+  if(result.success)return row;
+  const issue=result.error.issues?.[0];
+  const where=index===null?'':'第 '+index+' 筆 ';
+  const field=issue?.path?.join('.')||'(record)';
+  throw new TypeError(where+profile.label+' 來源 ZModel 驗證失敗：'+field+
+    ' — '+(issue?.message||'invalid value'));
+}
 // LOC-only presentation value type. Its physical storage is LocAnchor,
 // not a separate loc_blocks relation or a second table model.
 export const locBlocksZModelSchema=modelFactory.makeTypeSchema('LocBlocks');

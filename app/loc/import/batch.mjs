@@ -3,6 +3,7 @@
 import {MAX_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
+import {sourceImportModel} from '../../../packages/zenstack/import-source-models.mjs';
 // Lightweight file-selection contracts remain separate from parser implementations.
 export const UNIVERSAL_IMPORT_ACCEPT='.zip,.json,.md';
 export {MAX_ARCHIVE_BYTES as ARCHIVE_MAX_BYTES,MAX_JSON_BYTES as ARCHIVE_JSON_MAX_BYTES};
@@ -57,7 +58,9 @@ export function normalizeImportMedia(value,{title='',createtime=null,location=''
     const source=typeof item==='string'?{url:item}:item;
     if(!source||typeof source!=='object')continue;
     const explicitId=String(source.uid||'').trim();
-    const rawUrl=String(source.media_url||source.mediaUrl||source.image_url||source.video_url||source.download_url||source.downloadUrl||source.url||source.uri||source.href||source.link||'').trim();
+    const rawUrl=String(source.media_url||source.mediaUrl||source.image_url||source.video_url||source.download_url||source.downloadUrl||source.source_url||source.thumbnail_url||
+      source.external?.url||source.file?.url||source.image?.url||
+      source.url||source.uri||source.href||source.link||'').trim();
     if(explicitId&&!IMPORT_MEDIA_UID.test(explicitId))throw new Error('媒體 uid 必須為 8 碼英數字。');
     if((typeof item==='string'&&IMPORT_MEDIA_UID.test(item))||(explicitId&&!rawUrl&&!source.media_type&&!source.type&&!source.title&&!source.name&&!source.description)){
       references.push(typeof item==='string'?item:explicitId);
@@ -65,7 +68,9 @@ export function normalizeImportMedia(value,{title='',createtime=null,location=''
     }
     const external=/^https?:\/\//i.test(rawUrl)?rawUrl:null;
     if(!external&&!rawUrl&&!source.media_type&&!source.type&&!source.mime_type&&!source.title&&!source.name&&!source.description&&source.rune_references==null)continue;
-    const media_type=importMediaType(rawUrl,source.media_type||source.type||source.mime_type||
+    const hint=String(source.type||'').toLowerCase();
+    const media_type=importMediaType(rawUrl,source.media_type||
+      (hint==='external'||hint==='file'?'':source.type)||source.mime_type||
       (source.image_url?'image':source.video_url?'video':source.rune_references!=null?'runes':''));
     const record={
       ...(explicitId?{uid:explicitId}:{}),
@@ -103,18 +108,45 @@ function pathValue(row,path){
   if(/[\[\]]/.test(normalized))return undefined;
   const segments=normalized.split('.').filter(Boolean);
   if(!segments.length)return undefined;
-  return segments.reduce((value,segment)=>{
+  if(!segments.includes('*'))return segments.reduce((value,segment)=>{
     if(value===null||value===undefined||typeof value!=='object')return undefined;
     return Object.prototype.hasOwnProperty.call(value,segment)?value[segment]:undefined;
   },row);
+  // An explicit array wildcard is a bounded projection, NOT recursive
+  // discovery. It preserves every Notion rich-text span in source order.
+  let values=[row];
+  for(const segment of segments){
+    const next=[];
+    for(const value of values){
+      if(segment==='*'&&Array.isArray(value))next.push(...value);
+      else if(value&&typeof value==='object'&&Object.hasOwn(value,segment))
+        next.push(value[segment]);
+      if(next.length>2048)throw new Error('來源陣列欄位超過 2048 筆，請縮小資料路徑。');
+    }
+    values=next;
+    if(!values.length)return undefined;
+  }
+  return values;
 }
 
-export function mappedImportValue(row,field,fieldMap={}){
+export function mappedImportValue(row,field,fieldMap={},source=''){
   const custom=String(fieldMap?.[field]||'').trim();
-  const paths=custom?custom.split(/[\n,，]/g).map(value=>value.trim()).filter(Boolean):(IMPORT_FIELD_ALIASES[field]||[]);
+  const profile=source&&typeof source==='object'&&source.fields?
+    source:sourceImportModel(source,row);
+  // Explicit operator mapping wins. Otherwise use the selected SOURCE ZModel's
+  // paths before generic Galaxy aliases. No CMS-specific converter or parser.
+  const paths=custom?custom.split(/[\n,，]/g).map(value=>value.trim()).filter(Boolean):
+    [...(profile?.fields[field]||[]),...(IMPORT_FIELD_ALIASES[field]||[])];
   for(const key of paths){
-    const value=pathValue(row,key);
-    if(value!==undefined&&value!==null&&!(typeof value==='string'&&value.trim()===''))return value;
+    let value=pathValue(row,key);
+    if(Array.isArray(value)&&['content','title'].includes(field)&&
+        value.every(part=>typeof part==='string'))value=value.join('');
+    if(value===undefined||value===null||(typeof value==='string'&&!value.trim()))continue;
+    // Do not turn REST structured fields into literal "[object Object]" text,
+    // IDs or dates. Operators may still import structured media separately.
+    if(['content','title','site_id','createtime','url'].includes(field)&&
+        typeof value==='object')continue;
+    return value;
   }
   return '';
 }
@@ -128,7 +160,8 @@ export function importRowsFromJson(payload,recordPath=''){
     // A Meta export can wrap the actual records in array.array, including
     // arrays of one-property array envelopes. Preserve normal record arrays
     // inside each post (media, data and attachments).
-    const keys=['items','posts','data','records','status_updates','your_posts',
+    const keys=['items','posts','data','records','results','blocks','pages','messages',
+      'wp_posts','status_updates','your_posts',
       'text_post_app_text_posts','threads_posts','thread_posts','threads_and_replies','array'];
     for(const key of keys){
       if(Array.isArray(container[key]))return unwrapArchiveArrayRows(container[key]);
@@ -137,7 +170,9 @@ export function importRowsFromJson(payload,recordPath=''){
         if(nested.length)return nested;
       }
     }
-    if(selected||['content','body','text','message','description','title','uid']
+    if(selected||['content','body','text','message','description','title','uid',
+      'post_content','message_body','object_type','properties','paragraph',
+      'contentText','message_id','item_id','dm_id','session_id']
       .some(key=>Object.prototype.hasOwnProperty.call(container,key)))return [container];
   }
   throw new Error('找不到可匯入的資料陣列；請在格式設定指定資料路徑。');

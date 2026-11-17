@@ -47,6 +47,7 @@ import {touchEditorSession} from '../auth/edit-session-ttl.mjs';
 import {PUBLISHED_LOC_ARTICLE_TAGS} from '../../modular/published-source-taxonomy.js';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/zenstack/import-source-models.mjs';
 // The published LOC ArticleTag list is already bundled in the static site;
 // never create an async query/resource just to read this in-memory constant.
 // Keep one stable object so import analysis does not re-run on every UI repaint.
@@ -85,12 +86,23 @@ function iso(value){
   return Number.isNaN(date.getTime())?null:date.toISOString();
 }
 
-function normalizeJsonImportEntry(entry,source,fieldMap={},t){
+function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
   const row=entry?.raw||entry||{};
-  const value=field=>mappedImportValue(row,field,fieldMap);
-  const isFacebook=String(source||'').trim().toLowerCase()==='facebook';
-  const isThreads=String(source||'').trim().toLowerCase()==='threads';
-  const isInstagram=String(source||'').trim().toLowerCase()==='instagram';
+  const declared=sourceImportModel(source);
+  const detected=sourceImportModel('',row);
+  // A user's explicit model selection must not be silently replaced by the
+  // JSON object_type. A mismatch is a visible import error, not a guessed site.
+  if(manualModel&&declared&&detected&&declared.label!==detected.label)
+    return {record:null,error:'所選來源 '+declared.label+
+      ' 與資料 object_type 所屬的 '+detected.label+' 不一致，請重新選擇。'};
+  const sourceModel=sourceImportModel(source,row);
+  // A recognized object_type is authoritative over a misleading filename;
+  // no SiteAnchor record, UID or permission is synthesized.
+  const selectedSource=sourceModel?.label||source;
+  const value=field=>mappedImportValue(row,field,fieldMap,sourceModel||selectedSource);
+  const isFacebook=String(selectedSource||'').trim().toLowerCase()==='facebook';
+  const isThreads=String(selectedSource||'').trim().toLowerCase()==='threads';
+  const isInstagram=String(selectedSource||'').trim().toLowerCase()==='instagram';
   // The generic "place" alias can hold a Meta object. Only actual text
   // belongs in Galaxy.location; never stringify [object Object].
   const mappedPlace=value('location');
@@ -191,7 +203,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       ...(importPlaceAddress?{__importPlaceAddress:importPlaceAddress}:{}),
       ...(importPlaceUrl?{__importPlaceUrl:importPlaceUrl}:{})}:{}),
     ...galaxyAble({
-      site:String(source||'').trim(),
+      site:String(selectedSource||'').trim(),
       site_id:String(originalSiteId||'').trim(),
       title:rawTitle,
       statics:statisticsEnabled,culture:statisticsEnabled,
@@ -207,7 +219,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
     ref_id:String(value('ref_id')||'').trim()||null,
     url:!isArchiveMediaUrl(rawUrl)&&!importMapUrlCoordinates(rawUrl)?rawUrl||null:null,
     ...(mediaRefs.length?{media_link:mediaRefs}:{}),
-    site:String(source||'').trim()
+    site:String(selectedSource||'').trim()
   };
   return {record,mediaRecords,mediaRefs,error:''};
 }
@@ -564,11 +576,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [queue,setQueue]=useState([]);
   const [queueIndex,setQueueIndex]=useState(0);
   const [source,setSource]=useState('');
+  // Explicit source-model selection is primary; filenames are only hints.
+  const [sourceSelection,setSourceSelection]=useState('');
   const [timeRange,setTimeRange]=useState('year');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
   const sourceCategories={data:sourceCategoriesEnabled?PUBLISHED_SOURCE_CATEGORIES:undefined};
-  const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[])])];
+  const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[]),...IMPORT_SOURCE_MODEL_LABELS])];
   const canonicalSource=value=>canonicalImportSourceName(value,sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
@@ -592,20 +606,38 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [summaryMessage,setSummaryMessage]=useState('');
   const [summaryError,setSummaryError]=useState(false);
   const suggested=useMemo(()=>inferImportSourceFromFilename(fileName),[fileName]);
+  const suggestedModel=sourceImportModel(suggested)?.label||'';
+  const chooseSource=value=>{
+    setSourceSelection(value);
+    setSource(value==='__custom__'?'':value);
+  };
   const deferredSource=useDeferredValue(source);
   const analysisCurrent=deferredSource===source;
   const rawAnalysis=useMemo(()=>{
+    // File hints never count as the operator choosing a JSON source model.
+    if(!archiveDetection&&!sourceSelection)
+      return {valid:[],normalized:[],mediaOnly:[],invalid:[]};
     const selected=deferredSource.trim();
-    const normalized=rows.map(entry=>normalizeJsonImportEntry(entry,
-      canonicalImportSourceName(archiveDetection&&selected==='Mixed'?(entry?.raw?.site||selected):selected,
-        sourceCategories.data?.system||[],sourceCategories.data?.personal||[]),format.fields,t));
+    const normalized=rows.map(entry=>{
+      const embedded=archiveDetection?String(entry?.raw?.site||'').trim():'';
+      const entrySource=canonicalImportSourceName(embedded||selected,
+        sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
+      // ZIP scanning has already verified per-record provenance. A manual
+      // selection cannot silently relabel records from another platform.
+      if(embedded&&sourceSelection&&sourceSelection!=='__custom__'&&
+          selected!=='Mixed'&&entrySource!==canonicalSource(sourceSelection))
+        return {record:null,error:'所選來源 '+sourceSelection+
+          ' 與封存檔記錄來源 '+entrySource+' 不一致，請核對來源。'};
+      return normalizeJsonImportEntry(entry,entrySource,format.fields,t,
+        Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection));
+    });
     return {
       valid:normalized.filter(item=>item.record).map(item=>item.record),
       normalized:normalized.filter(item=>item.record),
       mediaOnly:normalized.filter(item=>item.mediaOnlyRecord).map(item=>item.mediaOnlyRecord),
       invalid:normalized.filter(item=>item.error)
     };
-  },[rows,deferredSource,format.fields,locale,archiveDetection,sourceCategories.data]);
+  },[rows,deferredSource,format.fields,locale,archiveDetection,sourceCategories.data,sourceSelection]);
   const analyzed=useMemo(()=>filterImportAnalysisByTime(rawAnalysis,timeWindow),[rawAnalysis,timeWindow]);
   const eligibleArchiveEvidence=useMemo(()=>{
     if(!timeWindow)return archiveEvidence;
@@ -670,7 +702,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setArchiveSummary(null);
     setProgress(null);
   }
-  async function loadQueuedFile(file,index,total,language=importLocale,recordPath=format.recordPath){
+  async function loadQueuedFile(file,index,total,language=importLocale,
+    recordPath=format.recordPath,manualChoice=sourceSelection){
     clearDecodedFile();
     setReparseRequired(false);
     setCheckpointHint(readImportCheckpoint(checkpointStorage(),{
@@ -787,7 +820,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           mediaLinked:mediaEvidence.filter(item=>item.galaxy_uids?.length).length,
           mediaUnlinked:mediaPlan.media.filter(item=>!item.__article_uid).length});
         if(!imported.length&&!mediaEvidence.length){
-          setSource(result.sources.length===1?canonicalSource(result.sources[0]):'');
+          if(!manualChoice)setSource(result.sources.length===1?canonicalSource(result.sources[0]):'');
           setStatus((summary.geoPlaceObjects?'檔案已讀取，辨識出 '+summary.geoPlaceObjects.toLocaleString()+' 筆 Facebook 地點物件，僅供人工整理 Trace；沒有自動建立地點或文章。':'檔案已讀取，但沒有可匯入的文字文章。')+' 已解析 '+summary.totalRows+
             ' 筆、略過 '+(summary.rejectedRows+ignored)+' 筆。'+
             (summary.problems.length?' 原因：'+summary.problems.slice(0,3).join('；'):' 請檢查資料格式。'));
@@ -795,7 +828,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         }
         setRows(imported);
         const sourceNames=[...new Set(imported.map(item=>item.raw.site))];
-        setSource(sourceNames.length===1?canonicalSource(sourceNames[0]):'Mixed');
+        if(sourceNames.length!==1)setSource('Mixed');
+        else if(!manualChoice)setSource(canonicalSource(sourceNames[0]));
         setStatus('已解析共 '+imported.length.toLocaleString()+' 篇公開貼文，其中有 '+
           imported.filter(item=>Boolean(item.raw?.url)).length.toLocaleString()+
           ' 篇含原始貼文連結網址；ZIP 內，共有媒體檔總數 '+summary.mediaFiles.toLocaleString()+
@@ -816,8 +850,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         import_uid:createUid8()
       }));
       setRows(prepared);
-      // Use the filename as the default source; Scope editors may override it.
-      setSource(canonicalSource(inferImportSourceFromFilename(file.name)));
+      // Detection is a suggestion; do not silently overwrite manual selection.
+      if(!manualChoice)setSource('');
       setStatus(t('uiExtra.importUI.parsedFile',{index:index+1,total,count:list.length.toLocaleString()})+
         (parsed.length!==list.length?'；已略過 '+(parsed.length-list.length).toLocaleString()+' 筆私人紀錄。':''));
     }catch(error){
@@ -887,6 +921,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setReparseRequired(false);
     setFileName('');
     setSource('');
+    setSourceSelection('');
     setQueue(current=>{
       const remaining=current.map((file,index)=>index===queueIndex?null:file);
       return remaining.some(Boolean)?remaining:[];
@@ -896,8 +931,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   async function nextFile(){
     const next=queueIndex+1;
     if(busy||next>=queue.length)return;
+    // Each queued file requires its own deliberate source-model choice.
+    setSourceSelection('');
+    setSource('');
     setQueueIndex(next);
-    await loadQueuedFile(queue[next],next,queue.length);
+    await loadQueuedFile(queue[next],next,queue.length,importLocale,format.recordPath,'');
   }
   const canRestoreAnchors=scopeId!=='local'&&scopeId!=='loc'&&(
     eligibleGeoRecords.length>0||
@@ -971,6 +1009,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   }
   async function run(){
     if(busy||(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length))return;
+    if(!archiveDetection&&!sourceSelection){
+      setStatus('請先選擇匯入來源模型，再確認預覽。');return;
+    }
     const selected=canonicalSource(source);
     if(!selected){setStatus(t('uiExtra.importUI.selectSource'));return;}
     if(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length){setStatus(t('uiExtra.importUI.noValidItems'));return;}
@@ -1000,6 +1041,18 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     };
     showProgress('準備匯入文章');
     try{
+      // Load ZenStack/Zod only on an actual JSON write request, not on page
+      // navigation or every source-selector repaint. The imported raw JSON
+      // stays untouched; the existing Galaxy write model validates it later.
+      if(!archiveDetection&&/\.json$/i.test(fileName)){
+        const {assertZModelSourceImportRecord}=await import('../../../packages/zenstack/import-validation.mjs');
+        for(let index=0;index<rows.length;index++){
+          const raw=rows[index]?.raw||rows[index]||{};
+          assertZModelSourceImportRecord(raw,selected,index+1);
+          if((index+1)%512===0||index===rows.length-1)
+            showProgress('來源 ZModel 驗證',index+1,rows.length);
+        }
+      }
       const scope=nativeLocal?defaultScopeData('local'):account.scopeDataFor(scopeId);
       const galaxy=scope?.galaxy,mediaAnchor=scope?.anchor;
       if(!galaxy||!mediaAnchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
@@ -1501,8 +1554,25 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       void loadQueuedFile(queue[queueIndex],queueIndex,queue.length,importLocale,next.recordPath);
   }
   const pending=queue.length>queueIndex+1;
+  const mixedArchive=Boolean(archiveDetection&&source==='Mixed');
   return <div className="scope-import-body">
     <div className="scope-import-primary-row">
+      <label className="scope-import-source-choice">匯入來源（ZModel）
+        <select className="scope-select" value={mixedArchive?'__mixed__':sourceSelection}
+          disabled={busy||mixedArchive} onChange={event=>chooseSource(event.target.value)}>
+          <option value="">請選擇來源模型</option>
+          <option value="__mixed__" disabled>混合來源 ZIP（按原始來源逐筆處理）</option>
+          {sourceOptions.map(name=><option key={name} value={name}>{name}</option>)}
+          <option value="__custom__">其他／自訂來源（通用格式）</option>
+        </select>
+        <small className="scope-import-range-hint">
+          {mixedArchive?'混合 ZIP 已逐筆辨識來源，保留每筆原始 Site，無法強制套用單一模型'
+            :sourceSelection&&sourceSelection!=='__custom__'
+              ?'已選擇來源；自動套用相應欄位模型'
+              :suggestedModel?'檔名建議：'+suggestedModel+'（不自動套用）'
+                :'請選擇來源；沒有模型時可使用通用格式'}
+        </small>
+      </label>
       <label><UiText id="uiExtra.importUI.importLanguage"/>
         <select className="scope-select" value={importLocale} disabled={busy} onChange={chooseImportLocale}>
           {UI_LOCALE_OPTIONS.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
@@ -1513,14 +1583,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       </label>
     </div>
     <div className="scope-import-options-row">
-    <label className="scope-import-source-choice"><UiText id="uiExtra.importUI.sourceLabel"/>
+    {sourceSelection==='__custom__'&&!mixedArchive?<label className="scope-import-source-choice">
+      <UiText id="uiExtra.importUI.sourceLabel"/>
       <input type="text" list={'scope-import-sources-'+scopeId} maxLength={80} required
         value={source} onChange={event=>setSource(event.target.value)}
-        disabled={busy||!rows.length} placeholder={suggested}/>
+        disabled={busy} placeholder="自訂來源名稱"/>
       <datalist id={'scope-import-sources-'+scopeId}>
         {sourceOptions.map(name=><option key={name} value={name}/>)}
       </datalist>
-    </label>
+    </label>:null}
     <label className="scope-import-source-choice">匯入時間範圍
       <select value={timeRange} disabled={busy} onChange={event=>setTimeRange(event.target.value)}>
         <option value="all">全部的時間</option>
@@ -1532,6 +1603,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     </label>
     </div>
     <ImportFormatSettings format={format} onChange={changeImportFormat} disabled={busy}/>
+    {rows.length&&!archiveDetection&&!sourceSelection
+      ?<p className="scope-status" role="status">資料已讀取。請先在上方選擇來源模型，才會建立匯入預覽。</p>
+      :null}
     {fileName?<p><UiText id="uiExtra.importUI.fileLabel"/><strong>{fileName}</strong><UiText id="uiExtra.importUI.fileQueue" params={{index:queueIndex+1,total:queue.length}}/><strong>{archiveDetection?(archiveDetection.sources.map(kind=>ZIP_SOURCE_NAMES[kind]||kind).join(' / ')||t('uiExtra.importUI.zipUnknown')):source||suggested}</strong></p>:null}
     {checkpointHint&&!busy&&rows.length?<details className="loc-work-subdetails">
       <summary>上次中斷的檢查點</summary>
@@ -1682,7 +1756,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       <div className="scope-management-records">
         {analyzed.valid.slice(0,5).map(record=><article className="loc-bubble" key={record.uid}>
           <strong><LinkedImportText text={record.title||record.uid}/></strong>
-          <span>{record.uid} · {String(record.createtime||'').slice(0,10)||t('uiExtra.importUI.noDate')}</span>
+          <span>{record.uid} · {record.site||'未選來源'} · {String(record.createtime||'').slice(0,10)||t('uiExtra.importUI.noDate')}</span>
           <p><LinkedImportText text={record.content} limit={180}/></p>
         </article>)}
       </div>

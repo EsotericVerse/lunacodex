@@ -6,6 +6,7 @@
 import contract from './schema-contract.mjs';
 import {PERSISTED_ANCHOR_TYPES,ANCHOR_PAYLOAD_DEFS} from './anchor-hierarchy.mjs';
 import {GALAXY_READ_MODEL_FIELDS} from './galaxy-read-models.mjs';
+import {SOURCE_IMPORT_MODEL_FIELDS} from './import-source-models.mjs';
 
 const formatTypes=Object.freeze({
   text:'String',varchar:'String',bpchar:'String',bool:'Boolean',
@@ -90,6 +91,8 @@ const locBlocksType=structuredVirtualType('LocBlocks',{
 });
 const galaxyReadTypeDefs=Object.fromEntries(Object.entries(GALAXY_READ_MODEL_FIELDS)
   .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
+const sourceImportTypeDefs=Object.fromEntries(Object.entries(SOURCE_IMPORT_MODEL_FIELDS)
+  .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
 const anchorTypeEnum={name:'LocAnchorType',values:Object.fromEntries(
   PERSISTED_ANCHOR_TYPES.map(type=>[type,type]))};
 
@@ -136,7 +139,7 @@ function compileFixedSchema({schema:namespace,tables}){
     enums:{LocAnchorType:anchorTypeEnum},
     typeDefs:{LocPrincipal:locPrincipal,LocFederatedRef:locFederatedRef,
       LocAnchorLink:locAnchorLink,LocBlocks:locBlocksType,
-      ...anchorTypeDefs,...galaxyReadTypeDefs},
+      ...anchorTypeDefs,...galaxyReadTypeDefs,...sourceImportTypeDefs},
     authType:'LocPrincipal',
     plugins:{policy:{provider:'@zenstackhq/plugin-policy'}}};
 }

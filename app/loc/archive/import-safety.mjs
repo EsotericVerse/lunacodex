@@ -2,9 +2,13 @@
 // ZIP chat backups belong only to the device-local SQLite Scope.
 export const PRIVATE_ARCHIVE_SOURCES=Object.freeze([
   'messenger','chatgpt','claude','gemini','msn','whatsapp','telegram',
-  'discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai'
+  'discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai',
+  'instagram dm','ig dm','instagram direct message','x dm','twitter dm'
 ]);
 const privateSources=new Set(PRIVATE_ARCHIVE_SOURCES);
+const privateMessageKinds=new Set(['msn_im_message','fb_messenger_message',
+  'instagram_direct_message','twitter_direct_message']);
+const isPrivateMessageKind=row=>privateMessageKinds.has(String(row?.object_type||'').trim().toLowerCase());
 const publishablePlatforms=new Set(['facebook','threads','instagram','x']);
 const publishableKinds=new Set(['post','media','story']);
 const privatePath=/(?:^|\/)(?:messages?|inbox|archived_threads|message_requests|filtered_threads|direct[-_]?messages?|dm)(?:\/|$)|(?:^|\/)(?:conversations?|chat_history|messages?|direct[-_]?messages?(?:[-_]?group)?|dm[-_]?conversations?)(?:[-_]?part\d+)?\.(?:json|js|xml)$/i;
@@ -18,7 +22,7 @@ export function isPrivateArchiveRecord(record){
   const platform=String(record?.platform||'').toLowerCase().trim();
   const kind=String(record?.kind||'').toLowerCase().trim();
   const raw=record?.raw||{};
-  return isPrivateArchiveSource(platform)||kind==='message'||kind==='conversation'||
+  return isPrivateArchiveSource(platform)||isPrivateMessageKind(raw)||kind==='message'||kind==='conversation'||
     Boolean(record?.conversationId)||privatePath.test(String(record?.sourcePath||'').replace(/\\/g,'/'))||
     Boolean(raw.directMessage||raw.dmConversation||raw.messageCreate)||
     (raw.mapping&&typeof raw.mapping==='object')||
@@ -57,7 +61,15 @@ export function assertArchiveRecordDestination(record,nativeLocal=false){
 }
 export function isPrivateStandaloneRow(input){
   const row=input?.raw||input||{};
+  const wordpressStatus=String(row.post_status||
+    (['post','page'].includes(String(row.type||'').toLowerCase())?row.status:'')||'')
+    .trim().toLowerCase();
   return isPrivateArchiveSource(row.site)||isPrivateArchiveSource(row.platform)||
+    isPrivateMessageKind(row)||
+    Boolean(row.message_body&&row.thread_id)||
+    Boolean(row.sender_name&&(row.content||row.text))||
+    Boolean(row.dm_id||row.session_id||(row.item_id&&row.thread_id))||
+    ['draft','pending','private','trash','auto-draft','future'].includes(wordpressStatus)||
     ['message','conversation'].includes(String(row.kind||'').toLowerCase())||
     isPrivateArchiveEntry(row.sourcePath||row.source_path||'')||
     (row.mapping&&typeof row.mapping==='object')||
