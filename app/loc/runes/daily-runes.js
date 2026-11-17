@@ -137,13 +137,21 @@ export async function selectDailyRuneMonth({year,month}={}){
   const start=`${safeYear}-${String(safeMonth).padStart(2,'0')}-01`;
   const nextDate=new Date(Date.UTC(safeYear,safeMonth,1));
   const end=`${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth()+1).padStart(2,'0')}-01`;
-  const rows=await selectDailyRangeRows([
-    {column:'record_date',operator:'gte',value:start},
-    {column:'record_date',operator:'lt',value:end}
-  ],[
-    {column:'record_date',ascending:true},
-    {column:'draw_kind',ascending:true}
-  ]);
+  // The monthly calendar has at most two draw kinds per day (62 entries).
+  // A bounded month SELECT avoids selectAllRows() pagination and releases
+  // its database cursor when Settings switches away from Records.
+  const {rows}=await selectRows('silver.lrunes_daily',{
+    columns:'record_date,draw_kind,rune_number,direction,recorded_phase',
+    filters:[
+      {column:'record_date',operator:'gte',value:start},
+      {column:'record_date',operator:'lt',value:end}
+    ],
+    orders:[
+      {column:'record_date',ascending:true},
+      {column:'draw_kind',ascending:true}
+    ],
+    limit:100,offset:0
+  });
   return attachRuneMeta(rows);
 }
 
