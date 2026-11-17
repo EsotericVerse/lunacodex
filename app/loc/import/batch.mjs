@@ -151,31 +151,45 @@ export function mappedImportValue(row,field,fieldMap={},source=''){
   return '';
 }
 
-export function importRowsFromJson(payload,recordPath=''){
+// One source-model-directed record selection boundary for standalone JSON.
+// Explicit operator path wins. Ambiguous collections fail visibly instead of
+// choosing the first generic key (e.g. metadata.data instead of posts).
+export function importRowsFromJson(payload,recordPath='',source=''){
   const selected=String(recordPath||'').trim();
   const container=selected?pathValue(payload,selected):payload;
   if(selected&&container===undefined)throw new Error('找不到資料陣列路徑：'+selected);
   if(Array.isArray(container))return unwrapArchiveArrayRows(container);
   if(container&&typeof container==='object'){
-    // A Meta export can wrap the actual records in array.array, including
-    // arrays of one-property array envelopes. Preserve normal record arrays
-    // inside each post (media, data and attachments).
-    const keys=['items','posts','data','records','results','blocks','pages','messages',
-      'wp_posts','status_updates','your_posts',
-      'text_post_app_text_posts','threads_posts','thread_posts','threads_and_replies','array'];
-    for(const key of keys){
-      if(Array.isArray(container[key]))return unwrapArchiveArrayRows(container[key]);
-      if(key==='array'&&container[key]&&typeof container[key]==='object'){
-        const nested=importRowsFromJson(container[key]);
-        if(nested.length)return nested;
-      }
-    }
-    if(selected||['content','body','text','message','description','title','uid',
-      'post_content','message_body','object_type','properties','paragraph',
-      'contentText','message_id','item_id','dm_id','session_id']
-      .some(key=>Object.prototype.hasOwnProperty.call(container,key)))return [container];
+    if(selected)return [container];
+    // A singular CMS post can contain its own media/data arrays. Never
+    // promote those arrays to article rows just because they are called data.
+    const singleKeys=['post_content','post_title','message_body','object_type',
+      'properties','paragraph','contentText','content','body','text',
+      'message','description','title','uid','message_id','item_id','dm_id',
+      'session_id','caption','threadsPostId','fbPostId','igMediaId'];
+    if(singleKeys.some(key=>Object.hasOwn(container,key)))return [container];
+
+    const profile=sourceImportModel(source);
+    const generic=['items','posts','data','records','results','blocks','pages',
+      'messages','wp_posts','status_updates','your_posts',
+      'text_post_app_text_posts','threads_posts','thread_posts',
+      'threads_and_replies','array'];
+    const roots=profile?.recordPaths?.length?profile.recordPaths:generic;
+    const candidates=roots.filter(key=>Array.isArray(container[key]));
+    const populated=candidates.filter(key=>container[key].length>0);
+    const matches=populated.length?populated:candidates;
+    if(matches.length>1)
+      throw new Error('找到多個資料陣列（'+matches.join('、')+
+        '）；請在進階格式設定選擇資料路徑，避免匯入錯誤內容。');
+    if(matches.length===1)return unwrapArchiveArrayRows(container[matches[0]]);
+
+    // Retain the existing one-property Meta array envelope, without
+    // recursively walking unrelated CMS blocks or nested post contents.
+    if(container.array&&typeof container.array==='object'&&
+        !Array.isArray(container.array)&&Object.keys(container).length===1)
+      return importRowsFromJson(container.array,'',source);
   }
-  throw new Error('找不到可匯入的資料陣列；請在格式設定指定資料路徑。');
+  throw new Error('找不到所選來源可匯入的資料列；請核對來源或在進階格式指定資料路徑。');
 }
 
 // Preserve the original timestamp when available. Unix seconds and milliseconds
