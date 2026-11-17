@@ -2,7 +2,8 @@
 // executes every bounded SELECT with the server-owned Kysely SQL dialect.
 // LOC OAuth delegation is still mandatory for all mutations.
 import {withPublicReadBudget} from './kysely-read-budget.mjs';
-import {transientReadSignal} from '../../../packages/zenstack/transient-read-epoch.mjs';
+import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
+import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
 
 const IDENT=/^[A-Za-z_][A-Za-z0-9_]*$/;
 const FIELD=value=>{
@@ -79,6 +80,14 @@ export function createKyselyPublicClient({
     const perform=()=>fetchImpl(url,{...options,signal});
     return role==='anon'?withPublicReadBudget(perform,signal):perform();
   };
+  // Deduplicate only concurrent anonymous requests of exactly the same
+  // shape and route epoch. No completed HTTP no-store body is retained.
+  // Explicit AbortSignals, identity and protected reads remain independent.
+  const pendingPublic=(kind,args,perform,share=true)=>{
+    if(role!=='anon'||!share)return perform();
+    const key=JSON.stringify(['native-public',transientReadGeneration(),kind,args]);
+    return key.length<=16000?coalescePendingPublicRead(key,perform):perform();
+  };
   async function read(q){
     // Pre-queued public reads and actual browser fetch use the same route epoch.
     q.signal=transientReadSignal(q.signal);
@@ -117,6 +126,7 @@ export function createKyselyPublicClient({
     return {data:payload.data,error:null,count:payload.count??null,status:response.status};
   }
   async function analytics(args={}){
+    const work=async()=>{
     const view=String(args.p_view||''),scope=String(args.p_scope_id||'');
     if(!['culture_anchors','culture_density','daily','daily_total','overview','earliest','totals','loc',
       'culture_list','trace_places','trace_territory','trace_daily','lane_daily','trace_keywords','shared_classes',
@@ -157,8 +167,14 @@ export function createKyselyPublicClient({
     if(!payload||!Object.hasOwn(payload,'data'))
       throw Error('Invalid LOC Kysely analytics response');
     return {data:payload.data,error:null,status:response.status};
+    };
+    return pendingPublic('analytics',{
+      scope:args.p_scope_id,view:args.p_view,start:args.p_start,
+      end:args.p_end,options:args.p_options
+    },work,!args.signal);
   }
   async function publicAction(name,args={}){
+    const work=async()=>{
     const requestSignal=AbortSignal.any([transientReadSignal(),AbortSignal.timeout(9000)]);
     const response=await publicReadFetch('/api/loc-public-query',{
       method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
@@ -174,6 +190,8 @@ export function createKyselyPublicClient({
     if(!payload||!Object.hasOwn(payload,'data'))
       throw Error('Invalid LOC public action response');
     return {data:payload.data,error:null,count:payload.count??null,status:response.status};
+    };
+    return pendingPublic('public-action',{name,args},work);
   }
   async function write(q){
     if(role!=='authenticated'||!mutate)throw Error('LOC management grant required');
@@ -208,8 +226,17 @@ export function createKyselyPublicClient({
     schema(schema){
       FIELD(schema);
       return {from(table){return new Query(q=>{
-        q.signal=transientReadSignal(q.signal);
-        return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
+        const callerSignal=q.signal;
+        const perform=()=>{
+          q.signal=transientReadSignal(callerSignal);
+          return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
+        };
+        return pendingPublic('select',{
+          schema:q.schema,table:q.table,columns:q.columns,
+          filters:q.filters,orFilters:q.orFilters,orders:q.orders,
+          limit:q.rowLimit,offset:q.offset,head:q.head,
+          count:q.count,cardinality:q.cardinality
+        },perform,!callerSignal&&!q.dbId);
       },schema,table,mutate?write:null)},
       analytics,managedWrite:noWrite,managedAction:noWrite,
       publicAction,anchor:noWrite};

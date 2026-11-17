@@ -21,8 +21,12 @@ export function cachedRead(key,fetcher){
   const cacheKey=String(key||'');
   const existing=entries.get(cacheKey);
   if(existing)return existing;
-  const promise=Promise.resolve().then(fetcher)
-    .catch(error=>{entries.delete(cacheKey);throw error;});
+  let promise;
+  promise=Promise.resolve().then(fetcher).catch(error=>{
+    // A failed old read must not remove a newer snapshot started after save.
+    if(entries.get(cacheKey)===promise)entries.delete(cacheKey);
+    throw error;
+  });
   entries.set(cacheKey,promise);
   return promise;
 }

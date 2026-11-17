@@ -267,10 +267,12 @@ export function selectScopeConfig(scopeId){
   // Published configuration is the guest fallback. Live feature configuration
   // is read through the existing application runtime's native Kysely driver.
   // Never let an unavailable SQL connection blank a public Scope page.
+  // Only cache successful live SQL reads. Offline published fallbacks still
+  // render immediately, but must not prevent a later live retry.
   return cachedRead('scope-config:'+scope.id,
-    ()=>nativePublicContent('config',scope.id)
-      .then(data=>data||publishedConfig(scope.id))
-      .catch(()=>publishedConfig(scope.id)));
+    ()=>nativePublicContent('config',scope.id))
+    .then(data=>data||publishedConfig(scope.id))
+    .catch(()=>publishedConfig(scope.id));
 }
 
 

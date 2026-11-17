@@ -65,7 +65,8 @@ jobs:
             scripts/test-page-resource-boundary.mjs \
             scripts/test-loc-rfc9110-browser-session.mjs \
             scripts/test-loc-browser-route-session.mjs \
-            scripts/test-loc-direct-api-session-policy.mjs
+            scripts/test-loc-direct-api-session-policy.mjs \
+            scripts/test-loc-direct-request-lifecycle.mjs
       - name: Verify LRS Web links, local IPA assets and fail-closed version plan
         run: node --test scripts/test-lrs-web-assets.mjs scripts/test-ipa-workflow-metadata.mjs scripts/test-lrs-deployment-plan.mjs scripts/test-lrs-emergency-authorization.mjs scripts/test-lrs-emergency-live.mjs
       - name: Verify ordered MCP conversations without database writes
