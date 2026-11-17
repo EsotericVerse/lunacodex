@@ -92,7 +92,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
   // A recognized object_type is authoritative over a misleading filename;
   // no SiteAnchor record, UID or permission is synthesized.
   const selectedSource=sourceModel?.label||source;
-  const value=field=>mappedImportValue(row,field,fieldMap,selectedSource);
+  const value=field=>mappedImportValue(row,field,fieldMap,sourceModel||selectedSource);
   const isFacebook=String(selectedSource||'').trim().toLowerCase()==='facebook';
   const isThreads=String(selectedSource||'').trim().toLowerCase()==='threads';
   const isInstagram=String(selectedSource||'').trim().toLowerCase()==='instagram';
