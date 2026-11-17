@@ -16,7 +16,7 @@ const generations=new Map();
 export function scopedReadRelation(value){
   const name=String(value||'').trim();
   const matched=RELATION.exec(name);
-  if(!matched||name==='silver.loc_blocks')return null;
+  if(!matched||name==='silver.loc_blocks'||matched[1]==='local')return null;
   const modelName=modelNameForSql('silver',name.slice('silver.'.length));
   if(!ALLOWED_MODELS.has(modelName))return null;
   return {name,scopeId:matched[1],kind:matched[2],modelName};
