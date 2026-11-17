@@ -10,7 +10,7 @@ on:
         required: false
         type: string
       lrs_commit:
-        description: 'Optional exact LunaRunes SHA for native real-file handoff (empty retains existing assets)'
+        description: 'Optional exact LunaRunes SHA override (empty uses LOC pinned 1.01R source)'
         required: false
         type: string
 
@@ -78,10 +78,10 @@ jobs:
             exit 1
           fi
           if [[ -z "$REQUESTED_LRS_COMMIT" ]]; then
-            REQUESTED_LRS_COMMIT="$(git ls-remote https://github.com/EsotericVerse/lunarunes.git refs/heads/main | awk '{print $1}')"
+            REQUESTED_LRS_COMMIT="$(node -p "JSON.parse(require('fs').readFileSync('config/lrs-source.json','utf8')).sourceCommit")"
           fi
           if [[ ! "$REQUESTED_LRS_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo '::error::Unable to pin LunaRunes main commit for native handoff.'
+            echo '::error::Unable to obtain the immutable LunaRunes source commit for native handoff.'
             exit 1
           fi
           printf '%s\n' \

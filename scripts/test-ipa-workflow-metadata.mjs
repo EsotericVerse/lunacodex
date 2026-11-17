@@ -15,17 +15,19 @@ assert.ok(runStart>start&&runEnd>runStart,'IPA metadata shell must be identifiab
 const script=workflow.slice(runStart+'        run: |\n'.length,runEnd)
   .split('\n').map(line=>line.startsWith('          ')?line.slice(10):line).join('\n');
 
-test('real IPA metadata bash step emits six correct outputs with one pinned LOC SHA',()=>{
+test('real IPA metadata bash step uses the same pinned LRS SHA by default',()=>{
   const tmp=mkdtempSync(join(tmpdir(),'las-ipa-metadata-'));
   try{
     const version='1.1.1-rc.1';
     writeFileSync(join(tmp,'package.json'),JSON.stringify({version}));
     writeFileSync(join(tmp,'package-lock.json'),JSON.stringify({version,packages:{'':{version}}}));
+    mkdirSync(join(tmp,'config'));
+    writeFileSync(join(tmp,'config','lrs-source.json'),JSON.stringify({sourceCommit:'0123456789abcdef0123456789abcdef01234567'}));
     const bin=join(tmp,'bin');
     mkdirSync(bin);
     const locSha='abcdef0123456789abcdef0123456789abcdef01';
     const runeSha='0123456789abcdef0123456789abcdef01234567';
-    writeFileSync(join(bin,'git'),'#!/bin/sh\nif [ "$1" = "ls-remote" ]; then printf "%s\\trefs/heads/main\\n" '+runeSha+'; else printf "%s\\n" '+locSha+'; fi\n',{mode:0o755});
+    writeFileSync(join(bin,'git'),'#!/bin/sh\nprintf "%s\\n" '+locSha+'\n',{mode:0o755});
     const output=join(tmp,'GITHUB_OUTPUT');
     const env={...process.env,GITHUB_OUTPUT:output,REQUESTED_LRS_COMMIT:'',PATH:bin+':'+process.env.PATH};
     for(const tag of ['','v'+version]){

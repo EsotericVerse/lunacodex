@@ -41,7 +41,7 @@ if(!ready){
  git(['-C',cache,'sparse-checkout','set','--no-cone',
   '/app/lrunes/**','/app/daily/log/**',
   '/app/styles/runes.css','/app/styles/home-runes.css',
-  '/modules/lrs/**','/modules/lrune/**','/release/version.json']);
+  '/modules/lrs/**','/release/version.json']);
  git(['-C',cache,'-c','protocol.version=2','fetch','--depth=1','--filter=blob:none','origin',cfg.sourceCommit]);
  git(['-C',cache,'checkout','--detach','FETCH_HEAD']);
 }
@@ -69,7 +69,7 @@ async function collect(dir){
   wanted.push(rel);
  }
 }
-for(const dir of ['app/lrunes','app/daily/log','modules/lrs','modules/lrune'])
+for(const dir of ['app/lrunes','app/daily/log','modules/lrs'])
  await collect(dir);
 for(const file of ['app/styles/runes.css','app/styles/home-runes.css']){
  if(tracked.has(file))throw Error('LOC still tracks duplicate LRS source style: '+file);
