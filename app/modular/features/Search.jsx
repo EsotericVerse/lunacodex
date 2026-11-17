@@ -25,7 +25,7 @@ import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/clie
 import {useRouter,useSearchParams} from 'next/navigation';
 
 import {dbAuthClient,dbPublicClient,deleteRows,updateRows,getAccountSession} from '../../loc/db/db-client.mjs';
-import {useAccount} from '../../loc/auth/use-account';
+import {useAccount,readVerifiedManagementEntry} from '../../loc/auth/use-account';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ScopeLink from '../ScopeLink';
 import SearchSummary from '../../loc/search/Summary';
@@ -493,7 +493,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // Public search still requires Galaxy.search=true, regardless of list.
       let managerAtSearch=false;
       if(adminSearchActive||adminSwitchExplicit){
-        const session=await getAccountSession().catch(()=>null);
+        // Cache-first: reuse the already verified browser edit Session when
+        // available. Only a public Search without that identity asks LOC Auth.
+        // The preference toggle itself performs no permission query or grant.
+        const current=readVerifiedManagementEntry();
+        const session=current?.user?{user:current.user,oauth:{email:current.user.email}}
+          :account.user&&account.email&&!account.loading&&!account.permissionLoading
+            ?{user:account.user,oauth:{email:account.email}}
+            :await getAccountSession().catch(()=>null);
         if(session?.user&&session?.oauth){
           managerAtSearch=adminSearchActive;
           try{
@@ -743,7 +750,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       {
         // The preference opens the interface, never grants write permission.
         // Verify the current Scope when the user actually enters its editor.
-        const verified=await account.refresh({forceVerify:true});
+        // A still-valid, already verified editing Session is sufficient for
+        // the UI; actual writes are reauthorized on the server. Recheck LOC
+        // only when the existing Session projection is absent or expired.
+        const verified=readVerifiedManagementEntry()||
+          await account.refresh({forceVerify:true});
         const grants=verified?.authorizer;
         if(!verified?.user||!(grants?.canLocAccessSync('scope',result.scopeId)||
           grants?.canLocAccessSync('global')||grants?.canLocAccessSync('group','loc')))
