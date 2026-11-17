@@ -54,7 +54,7 @@ import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/ze
 const PUBLISHED_SOURCE_CATEGORIES=Object.freeze({
   system:PUBLISHED_LOC_ARTICLE_TAGS,personal:Object.freeze([])
 });
-const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[]});
+const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[],warnings:[]});
 const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
   .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
 const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
@@ -140,7 +140,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
   const mediaCandidates=[value('media'),value('media_link'),
     ...(isArchiveMediaUrl(rawUrl)?[rawUrl]:[])]
     .filter(item=>item!==''&&item!==undefined&&item!==null);
-  let mediaRecords=[],mediaRefs=[];
+  let mediaRecords=[],mediaRefs=[],mediaWarning='';
   const importedRuneReferences=value('rune_references');
   const runeResultText=runeDrawText(importedRuneReferences);
   try{
@@ -158,6 +158,14 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
       seenMediaKeys.add(key);return true;
     });
     mediaRefs=[...new Set(mediaRefs)];
+    // Unsupported document/object types must not abort an otherwise valid
+    // article halfway through MediaAnchor writes. Report them in the preview.
+    const rejected=new Set();
+    mediaRecords=mediaRecords.filter(record=>{
+      try{canonicalMediaAnchorType(record.media_type,record.url);return true;}
+      catch{rejected.add(String(record.media_type||'unknown'));return false;}
+    });
+    if(rejected.size)mediaWarning='附件型別不支援，已略過：'+[...rejected].join('、');
     // A text article may carry a top-level card draw, even when the import
     // did not provide a nested media array. Attach one media record to its UID.
     if(content&&runeResultText)mediaRecords.push({
@@ -166,6 +174,12 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     });
   }catch(error){return {record:null,error:String(error.message||error)}}
   if(!content){
+    // Pages containing images but no authored text belong to MediaAnchor,
+    // not a fabricated Galaxy article. Keep only real accessible URLs.
+    const independent=mediaRecords.filter(record=>Boolean(record.url))
+      .map(({__article_uid:unused,...media})=>({...media,location:null}));
+    if(independent.length)return {record:null,error:'',mediaOnlyRecords:independent,
+      warning:mediaWarning};
     const type=String(value('media_type')||(runeResultText?'rune':'')).trim();
     const url=String(value('url')||'').trim();
     if(type){
@@ -227,7 +241,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     ...(mediaRefs.length?{media_link:mediaRefs}:{}),
     site:String(selectedSource||'').trim()
   };
-  return {record,mediaRecords,mediaRefs,error:''};
+  return {record,mediaRecords,mediaRefs,error:'',warning:mediaWarning};
 }
 
 const IMPORT_FORMAT_FIELDS=Object.freeze([
@@ -641,7 +655,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const rawAnalysis=analysisCurrent?analysisSnapshot.result:EMPTY_IMPORT_ANALYSIS;
   useEffect(()=>{
     let cancelled=false,task=null,index=0;
-    const normalized=[],valid=[],mediaOnly=[],invalid=[];
+    const normalized=[],valid=[],mediaOnly=[],invalid=[],warnings=[];
     setAnalysisSnapshot(null);
     setAnalysisProgress({completed:0,total:rows.length});
     if(!archiveDetection&&!sourceSelection)return;
@@ -667,7 +681,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           }else item=normalizeJsonImportEntry(entry,entrySource,format.fields,t,manual);
           if(item.record){normalized.push(item);valid.push(item.record);}
           if(item.mediaOnlyRecord)mediaOnly.push(item.mediaOnlyRecord);
+          if(Array.isArray(item.mediaOnlyRecords))mediaOnly.push(...item.mediaOnlyRecords);
           if(item.error)invalid.push(item);
+          if(item.warning)warnings.push(item.warning);
         }catch(error){
           invalid.push({record:null,error:'第 '+(index+1)+' 筆來源資料無法對應：'+
             String(error?.message||error)});
@@ -681,7 +697,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }
       setAnalysisSnapshot({rows,source:deferredSource,fields:format.fields,
         locale,archive:archiveDetection,categories:sourceCategories.data,
-        selection:sourceSelection,result:{valid,normalized,mediaOnly,invalid}});
+        selection:sourceSelection,result:{valid,normalized,mediaOnly,invalid,warnings}});
       setAnalysisProgress({completed:index,total:rows.length});
     };
     task=setTimeout(process,0);
@@ -1685,6 +1701,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       </button>
       <div className="scope-import-save-summary">
         {!busy&&analysisCurrent?<p className="scope-import-ready-counts">{t('uiExtra.importUI.importReadyCounts',{articles:analyzed.valid.length.toLocaleString(),media:(analyzed.mediaOnly.length+eligibleArchiveMediaPlan.media.length).toLocaleString()})}</p>:null}
+        {!busy&&analysisCurrent&&analyzed.warnings?.length?<p className="scope-status" role="status">
+          {analyzed.warnings.length.toLocaleString()} 筆含未支援的附件型別，文字文章仍可匯入；例如：{analyzed.warnings[0]}
+        </p>:null}
       </div>
     </section>:null}
     {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">
