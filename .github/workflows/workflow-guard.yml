@@ -37,7 +37,7 @@ jobs:
           else
             git sparse-checkout set \
               '/.github/workflows/**' '/app/**' '/scripts/**' \
-              '/functions/api/las-native.js' '/functions/api/loc-native.js' '/package.json' '/package-lock.json' '/next.config.mjs' \
+              '/functions/api/las-native.js' '/functions/api/loc-native.js' '/config/lrs-source.json' '/package.json' '/package-lock.json' '/next.config.mjs' \
               '/public/sw.js' '/public/_routes.json'
             ref="$GITHUB_SHA"
           fi
