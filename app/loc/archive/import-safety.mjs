@@ -66,6 +66,9 @@ export function isPrivateStandaloneRow(input){
     .trim().toLowerCase();
   return isPrivateArchiveSource(row.site)||isPrivateArchiveSource(row.platform)||
     isPrivateMessageKind(row)||
+    Boolean(row.message_body&&row.thread_id)||
+    Boolean(row.sender_name&&(row.content||row.text))||
+    Boolean(row.dm_id||row.session_id||(row.item_id&&row.thread_id))||
     ['draft','pending','private','trash','auto-draft','future'].includes(wordpressStatus)||
     ['message','conversation'].includes(String(row.kind||'').toLowerCase())||
     isPrivateArchiveEntry(row.sourcePath||row.source_path||'')||
