@@ -28,7 +28,7 @@ export function mcpDatabaseConfiguration(env={}){
   return {publicReadConfigured:configured,privateReadConfigured:configured,
     privateWriteConfigured:configured,verification:'configuration-only'};
 }
-export async function db_connection(env={},verifiedAlias='',{probeTicket=''}={}){
+export async function db_connection(env={},verifiedAlias='',{probeTicket='',waitUntil}={}){
   if(!env||typeof env!=='object')throw unavailable('LOC backend environment missing');
   // A caller's string can never select a different SQL target. LOC currently
   // uses one production Neon PostgreSQL database for its business data.
@@ -37,18 +37,26 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket=''}={})
     throw unavailable('Additional database connection not configured');
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
   const uri=mainUri(env);
-  if(cachedConnection?.uri===uri)return cachedConnection.connection;
+  if(cachedConnection?.uri===uri){
+    // The pool object is reused across requests on a warm isolate, but
+    // `waitUntil` is a per-request handle. Always point release() at the
+    // caller requesting it now, never at whichever request first built
+    // this pool (see requestScopedPool's comment on why this matters).
+    cachedConnection.connection.pool.setWaitUntil?.(waitUntil);
+    return cachedConnection.connection;
+  }
   // Cloudflare forbids using a socket or waiting on a promise that was created
   // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
   // when several requests run queries at once. Open a short-lived client per
   // acquisition instead; it always lives inside the request that uses it.
   const pool=requestScopedPool({connectionString:uri,
     connectionTimeoutMillis:3500,ssl:{rejectUnauthorized:true}});
+  pool.setWaitUntil(waitUntil);
   // Use Kysely's upstream dialect factory. LOC's selected primary remains
   // PostgreSQL today, while the same trusted boundary can compile MySQL or
   // SQL Server targets when their caller-supplied pool is enabled.
   const dialect=createKyselyDialect(primary?.engine||'postgres',{pool});
-  const connection={db:new Kysely({dialect}),dialect,
+  const connection={db:new Kysely({dialect}),dialect,pool,
     engine:'postgres',namespace:'silver',tableName:'',fieldMap:{}};
   cachedConnection={uri,connection};
   return connection;

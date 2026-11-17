@@ -24,6 +24,7 @@ export function onRequestOptions({request}){
 export async function onRequest(context){
   if(context.request.method==='OPTIONS')
     return onRequestOptions(context);
-  const response=await handleNativeLocOperation(context.request,context.env);
+  const response=await handleNativeLocOperation(context.request,context.env,
+    {waitUntil:context.waitUntil});
   return cors(context.request,response);
 }

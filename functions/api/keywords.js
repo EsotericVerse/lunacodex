@@ -37,6 +37,7 @@ export async function onRequestPost(context){
   let stage='request';
   try{
     const request=context.request;
+    const {waitUntil}=context;
     if(Number(request.headers.get('content-length')||0)>16000)
       error('Keyword request too large',413);
     const raw=await request.text();
@@ -62,7 +63,7 @@ export async function onRequestPost(context){
     // The existing Pages native Kysely connection is server-selected; never
     // accept a target URL, SQL dialect or credential from HTTP arguments.
     stage='database';
-    const entry=await directMcpKysely(context.env);
+    const entry=await directMcpKysely(context.env,'',{waitUntil});
     const db=entry.db;
     // This is the independent database role decision, not LOC Auth.
     stage='authorization';

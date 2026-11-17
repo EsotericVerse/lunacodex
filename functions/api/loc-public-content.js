@@ -5,5 +5,6 @@ import {withOptionalNumericEdgeCache} from '../../app/loc/server/optional-numeri
 // when ON, a miss/error always falls through to the same native SQL reader.
 export function onRequestGet(context){
   return withOptionalNumericEdgeCache(context,
-    ()=>handleNativePublicContent(context.request,context.env));
+    ()=>handleNativePublicContent(context.request,context.env,
+      {waitUntil:context.waitUntil}));
 }

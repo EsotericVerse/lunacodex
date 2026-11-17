@@ -43,6 +43,51 @@ test('native pg Client is fresh per acquisition and released',async()=>{
   assert.equal(clients.length,2);
 });
 
+test('release() extends the request via waitUntil when one is set',async()=>{
+  let ended=false;
+  class FakePgClient{
+    on(){}
+    async connect(){}
+    async end(){await Promise.resolve();ended=true;}
+  }
+  const pool=requestScopedPool({connectionString:'postgres://example.invalid/test'},
+    FakePgClient,{attempts:1,delayMs:0});
+  const waited=[];
+  pool.setWaitUntil(promise=>waited.push(promise));
+  const client=await pool.connect();
+  client.release();
+  assert.equal(waited.length,1,'release() must hand its close promise to waitUntil');
+  assert.equal(ended,false,'close is still in flight synchronously after release()');
+  await waited[0];
+  assert.equal(ended,true,'awaiting the handed-off promise lets the close finish');
+});
+
+test('release() still closes the client with no waitUntil set (unchanged default)',async()=>{
+  let ended=false;
+  class FakePgClient{
+    on(){}
+    async connect(){}
+    async end(){ended=true;}
+  }
+  const pool=requestScopedPool({connectionString:'postgres://example.invalid/test'},
+    FakePgClient,{attempts:1,delayMs:0});
+  const client=await pool.connect();
+  client.release();
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(ended,true);
+});
+
+test('db_connection points a cached/reused pool at the current request\'s waitUntil',async()=>{
+  const env={LOC_DATABASE_URI:'postgresql://loc_reader:password@postgres.example.com:5432/lunacodex'};
+  const first=await db_connection(env,'loc-main',{waitUntil:()=>{}});
+  const seenByFirst=[];
+  first.pool.setWaitUntil=original=>{seenByFirst.push(original);};
+  const marker=()=>{};
+  await db_connection(env,'loc-main',{waitUntil:marker});
+  assert.equal(seenByFirst[0],marker,
+    'reusing the cached connection must re-point release() at the new caller\'s waitUntil, not the one captured when the pool was first built');
+});
+
 test('healthy direct PostgreSQL connection needs no Galaxy rows',async()=>{
   let calls=0;
   const response=await testLocAuthConnection(
