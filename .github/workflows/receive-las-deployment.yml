@@ -30,7 +30,8 @@ jobs:
         id: verify
         env:
           LOC_LAS_NOTIFICATION: ${{ toJSON(github.event.client_payload) }}
-          LOC_WORKFLOW_KEY: ${{ secrets.LOC_WORKFLOW_KEY }}
+          LOC_LAS_SENDER_ID: ${{ github.event.sender.id }}
+          LOC_LAS_SENDER_LOGIN: ${{ github.event.sender.login }}
           GH_TOKEN: ${{ github.token }}
           LOC_PAGES_DEPLOY_HOOK: ${{ secrets.LOC_PAGES_DEPLOY_HOOK }}
         run: node scripts/receive-las-deployment.mjs

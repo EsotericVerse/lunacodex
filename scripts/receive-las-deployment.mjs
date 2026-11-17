@@ -6,7 +6,9 @@ import {
   LAS_REPO,LOC_REPO,STATE_BRANCH,EVENT
 } from './las-deploy-authorization.mjs';
 const payload=JSON.parse(process.env.LOC_LAS_NOTIFICATION||'null');
-const request=verifyLasNotification(payload,process.env.LOC_WORKFLOW_KEY);
+const request=verifyLasNotification(payload,{
+  id:Number(process.env.LOC_LAS_SENDER_ID),login:process.env.LOC_LAS_SENDER_LOGIN
+});
 const token=process.env.GH_TOKEN||'';
 if(!token)throw Error('Missing LOC GitHub Actions identity');
 const root='https://api.github.com/repos/';
