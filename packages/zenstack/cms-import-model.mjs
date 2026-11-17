@@ -17,6 +17,21 @@ const absoluteHttpUrl=value=>{
 };
 const richTextText=parts=>Array.isArray(parts)?parts.map(part=>
   string(part?.plain_text)||string(part?.text?.content)).join(''):'';
+const wpTitleEntities=Object.freeze({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",
+  nbsp:' ',hellip:'…',ndash:'–',mdash:'—',lsquo:'‘',rsquo:'’',
+  ldquo:'“',rdquo:'”'});
+function wordPressTitle(value){
+  return string(value).replace(/<\\/?[a-z][^>]*>/gi,'')
+    .replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z][a-z0-9]+);/gi,(match,entity)=>{
+      if(entity[0]==='#'){
+        const hex=/^#x/i.test(entity);
+        const n=Number.parseInt(entity.slice(hex?2:1),hex?16:10);
+        return Number.isInteger(n)&&n>0&&n<=0x10ffff&&
+          !(n>=0xd800&&n<=0xdfff)?String.fromCodePoint(n):match;
+      }
+      return wpTitleEntities[entity.toLowerCase()]??match;
+    });
+}
 
 function wordPressShape(row){
   return recordObject(row)&&recordObject(row.title)&&
@@ -45,8 +60,11 @@ function publishedAt(row){
     const iso=new Date(utc+suffix);
     if(!Number.isNaN(iso.getTime()))return iso.toISOString();
   }
-  // WP site-local date does not encode timezone. Do not pretend it is UTC.
-  return string(row.date);
+  // A timezone-naive WordPress local timestamp cannot be converted safely.
+  const local=string(row.date);
+  if(local&&!/[zZ]|[+-]\\d{2}:?\\d{2}$/.test(local))
+    throw new Error('WordPress date 缺少時區；請提供 date_gmt，避免匯入錯誤時間');
+  return local;
 }
 function wpArticle(row){
   const url=absoluteHttpUrl(row.link)||absoluteHttpUrl(row.url);
@@ -61,7 +79,7 @@ function wpArticle(row){
     throw new Error('WordPress 有精選圖片但沒有媒體網址；請使用含 _embed 的 REST 資料重新匯出');
   const time=publishedAt(row);
   return {cms:'wordpress',...(sourceId?{sourceId}:{}),
-    title:string(row.title.rendered),body:row.content.rendered,
+    title:wordPressTitle(row.title.raw||row.title.rendered),body:row.content.rendered,
     ...(time?{createdAt:time}:{}),
     ...(url?{canonicalUrl:url}:{}),...(media.length?{media}:{})};
 }
