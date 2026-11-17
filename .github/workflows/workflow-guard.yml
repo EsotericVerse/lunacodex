@@ -38,7 +38,7 @@ jobs:
             git sparse-checkout set \
               '/.github/workflows/**' '/app/**' '/scripts/**' \
               '/functions/api/las-native.js' '/functions/api/loc-native.js' '/package.json' '/package-lock.json' '/next.config.mjs' \
-              '/public/sw.js' '/public/_routes.json'
+              '/public/sw.js' '/public/_routes.json' '/config/lrs-source.json'
             ref="$GITHUB_SHA"
           fi
           git -c protocol.version=2 fetch --quiet --depth=1 --filter=blob:none origin "$ref"
