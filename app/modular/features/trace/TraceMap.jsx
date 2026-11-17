@@ -90,7 +90,7 @@ const STRINGS={
   }
 };
 
-export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026,onReady=null}){
+export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,routeOnly=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026,onReady=null}){
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
   const containerRef=useRef(null);
@@ -132,7 +132,8 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   const [stemsVisible,setStemsVisible]=useState(false);
   const [timeProgress,setTimeProgress]=useState(0);
   const [timePlaying,setTimePlaying]=useState(false);
-  const timeEvents=useMemo(()=>traceTimeEvents(spatialData?.anchors||[]),[spatialData?.anchors]);
+  // Route-only LOC preview never computes individual visit histories.
+  const timeEvents=useMemo(()=>routeOnly?[]:traceTimeEvents(spatialData?.anchors||[]),[routeOnly,spatialData?.anchors]);
   const timeBounds=useMemo(()=>traceTimeBounds(timeEvents),[timeEvents]);
   const cursorTime=traceTimeAt(timeBounds,timeProgress/1000);
   const timeActiveKeys=useMemo(()=>traceTimeActiveKeys(timeEvents,cursorTime),[timeEvents,cursorTime]);
@@ -150,7 +151,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     let instance=null;
     try{
       instance=createTraceMap(containerRef.current,{
-        anchors:spatialData?.anchors||[],
+        anchors:routeOnly?[]:spatialData?.anchors||[],
         showAnchorPopup:!publicTrace,
         territoryMode,
         onGaugeVisibilityChange:visible=>{if(active)gaugeVisibleRef.current?.(visible);},
@@ -212,18 +213,23 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   },[ready,timeActiveKeys]);
 
   useEffect(()=>{
-    mapRef.current?.setAnchors(spatialData?.anchors||[]);
+    // Keep the coordinates in memory for saved-line projection, but hide
+    // individual place markers from the LOC preview map.
+    mapRef.current?.setAnchors(routeOnly?[]:spatialData?.anchors||[]);
     const selectedMap=(spatialData?.maps||[]).find(map=>
       String(map.uid||map.id)===selectedRouteUid)||null;
     mapRef.current?.setSavedRoute(selectedMap);
     // An area is a saved set of routes, not a single joined queue.
     // Only explicit saved segments survive the geographic projection.
-    mapRef.current?.setSavedGraph(selectedMap
-      ?spaceGraphGeojson(selectedMap,[
-        ...(spatialData?.anchors||[]),...(spatialData?.maps||[])
-      ],{scopeId:selectedMap.source_scope||selectedMap.scope_id})
-      :null);
-  },[ready,spatialData,selectedRouteUid]);
+    const graph=selectedMap?spaceGraphGeojson(selectedMap,[
+      ...(spatialData?.anchors||[]),...(spatialData?.maps||[])
+    ],{scopeId:selectedMap.source_scope||selectedMap.scope_id}):null;
+    // Only line geometry is meaningful on LOC's routes-only map. Excluding
+    // route-stop points prevents creating a second dense place marker layer.
+    mapRef.current?.setSavedGraph(routeOnly&&graph
+      ?{...graph,features:graph.features.filter(feature=>feature.geometry?.type==='LineString')}
+      :graph);
+  },[ready,spatialData,selectedRouteUid,routeOnly]);
   useEffect(()=>{
     if(ready&&focusLocation)mapRef.current?.focusCoordinates(focusLocation);
   },[ready,focusLocation]);
@@ -240,12 +246,12 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   // the annual territory's implicit overview is disabled; its explicit
   // '年度全版圖' button is still available when requested by the viewer.
   useEffect(()=>{
-    if(!ready||territoryMode||selectedRouteUid||!spatialData?.anchors?.length)return;
+    if(!ready||routeOnly||territoryMode||selectedRouteUid||!spatialData?.anchors?.length)return;
     const scope=spatialData.anchors[0].source_scope||'';
     if(autoOverviewScopeRef.current===scope)return;
     autoOverviewScopeRef.current=scope;
     mapRef.current?.overview();
-  },[ready,selectedRouteUid,spatialData?.anchors,territoryMode]);
+  },[ready,selectedRouteUid,spatialData?.anchors,territoryMode,routeOnly]);
   // The visible resize grip lives outside MapLibre's canvas and controls, so
   // its pointer events do not conflict with map pan/rotate or attribution.
   function resizeFrame(width,height){
@@ -398,7 +404,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
       {publicTrace&&children?<div className="loc-trace-floating-content">{children}</div>:null}
       {publicTrace&&status!=='ready'?<p className="loc-trace-float-map-status" role="status">{copy.status[status]||copy.status.loading}</p>:null}
     </div>
-    {!selectingLocation&&!territoryMode&&spatialData&&<div className="loc-trace-time-axis" role="group"
+    {!routeOnly&&!selectingLocation&&!territoryMode&&spatialData&&<div className="loc-trace-time-axis" role="group"
       aria-label="等比例時間線">
       <div className="loc-trace-time-axis-heading">
         <strong>等比例時間線</strong>

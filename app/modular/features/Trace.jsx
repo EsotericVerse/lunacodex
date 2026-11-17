@@ -5,6 +5,7 @@ import {useSearchParams} from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import {FeaturePage} from '../ui';
+import LocTracePreview from './LocTracePreview';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 import {registerDefaultSection} from '../../i18n/ui-copy';
@@ -42,7 +43,14 @@ const TracePlaceResults=dynamic(()=>import('./trace/TracePlaceResults'),{
   loading:()=> <p className="scope-status"><UiText id="uiExtra.traceUI.loadingPlaceResults"/></p>
 });
 
+// Keep LOC's preview in a separate component tree. Its mount performs no
+// yearly-article analytics, loc_anchor reads or legacy territory rendering.
+// Scope Trace retains its existing full-detail feature independently.
 export default function Trace({scopeId='loc'}){
+  return scopeId==='loc'?<LocTracePreview/>:<ScopeTrace scopeId={scopeId}/>;
+}
+
+function ScopeTrace({scopeId='lo3rwang'}){
   useUiSection('uiExtra.traceUI');
   const reduceMotion=useReducedMotion();
   const translate=useUiText();
