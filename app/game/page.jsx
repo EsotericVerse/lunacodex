@@ -1,6 +1,5 @@
 // LOC Web redirects to sole LRS implementation; LOC iOS overlays original LRS page.
 import LrsWebRedirect from '../loc/views/LrsWebRedirect';
-import GameBoard from '../lrunes/game/GameBoard';
 import {lunarunesMetadata} from '../seo/metadata';
 
 export const metadata=lunarunesMetadata({
