@@ -26,7 +26,6 @@ export default {
   "settings": "设置",
   "chooseSettings": "选择设置功能",
   "defaultHome": "默认首页",
-  "favorites": "我的收藏",
   "login": "登录",
   "logout": "退出登录",
   "switchAccount": "切换 Google 账号",
