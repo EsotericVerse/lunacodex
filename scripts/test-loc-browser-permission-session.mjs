@@ -49,3 +49,11 @@ test('invalid stored permissions cannot be consumed as a valid snapshot',()=>{
   }));
   assert.equal(readBrowserPermissions(s,'user-1'),null);
 });
+
+test('identity remount uses the same settled query snapshot rather than another request',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const source=readFileSync(new URL('../packages/zenstack/client-queries.js',import.meta.url),'utf8');
+  assert.match(source,/else if\(!inflight\.has\(serializedKey\)&&dataStore\.has\(serializedKey\)\)/);
+  assert.match(source,/const IDENTITY_KEYS=new Set/);
+  assert.match(source,/if\(IDENTITY_KEYS\.has\(key\)\)continue/);
+});
