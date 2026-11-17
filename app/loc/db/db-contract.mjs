@@ -3,6 +3,7 @@ import {assertPlainGalaxyAttributes} from '../content/content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from '../query/query-batch-size.mjs';
 import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from '../auth/authorization-runtime.mjs';
 import {assertEditorSession} from '../auth/edit-session-ttl.mjs';
+import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from '../model/galaxy-able.mjs';
 
 // Database contract transports physical Galaxy/Anchor rows. Keyword Tree
@@ -406,6 +407,9 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     else query=q.delete().eq('uid',v.uid).eq('type',v.type).select('uid');
     const {data,error}=await query;
     if(error||data?.length!==1)throw Error(error?.message||'KeywordAnchor write affected no rows');
+    // This direct authenticated row writer bypasses managedWrite; ensure its
+    // committed Anchor change invalidates the SAME scoped ZModel read cache.
+    invalidateScopedReadCache(table);
     return {uid:v.uid,count:1};
   }
   async function copyKeywordLibraryClass(scopeId,sourceClassUid,targetClassName){
