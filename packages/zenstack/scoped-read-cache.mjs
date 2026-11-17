@@ -3,7 +3,11 @@
 // NO Galaxy, Auth/Session, Grants, personal SQL, local device or browser storage.
 // No TTL, polling, ISR or API response cache. Mutations invalidate by relation.
 // These are the scoped ZModel physical names; LOC Blocks live in loc_anchor.
+// Anchor cache is deliberately limited to the two selected Scope models.
+// Other Scope Anchor data stays live. Blocks are cached per physical Scope
+// model; LOC Blocks are the block types inside silver.loc_anchor.
 const RELATION=/^silver\.([a-z][a-z0-9]{0,14})_(anchor|blocks)$/;
+const ANCHOR_SCOPES=new Set(['loc','lo3rwang']);
 const MAX_ENTRIES=120;
 const entries=new Map();
 const generations=new Map();
@@ -11,7 +15,8 @@ const generations=new Map();
 export function scopedReadRelation(value){
   const name=String(value||'').trim();
   const matched=RELATION.exec(name);
-  if(!matched||name==='silver.loc_blocks')return null;
+  if(!matched||name==='silver.loc_blocks'||
+    (matched[2]==='anchor'&&!ANCHOR_SCOPES.has(matched[1])))return null;
   return {name,scopeId:matched[1],kind:matched[2]};
 }
 function touch(key,entry){
