@@ -1407,8 +1407,6 @@ export default function Culture(){
   // All detailed TimeAnchor rivers and article browsing live inside each Scope.
   if(scopeId==='loc'&&!isTimeEditingView)return <FeaturePage featureId="culture">
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
-      <h2>近一年 · 各 Scope 文化預覽</h2>
-      <p className='scope-status'>左側依 Scope 分組，點開可查看年度來源概覽。時間範圍固定，完整內容請進入各 Scope 的文化頁。</p>
       {query.isPending||Boolean(query.data?.scopes?.length)&&locDensityQuery.isPending
         ?<p className='scope-status' role='status'>{UI_COPY.common.loading}</p>:null}
       {query.error?<p className='scope-status scope-error' role='alert'>
