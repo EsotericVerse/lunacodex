@@ -302,21 +302,6 @@ type GalaxyUidRead {
     anchor GalaxyUidAnchor?
 }
 
-
-// Nonphysical, shared CMS import envelope for LOC today and LAS/MCP later.
-// Source adapters transform native CMS records into this semantic shape.
-// No SQL table, ACL, new relation or migration is created.
-type CmsImportArticle {
-    cms String
-    sourceId String?
-    title String?
-    body String
-    createdAt String?
-    canonicalUrl String?
-    media Json?
-}
-
-
 model Game {
     game_key                     String      @id @db.Text
     record_type                  String      @db.Text
