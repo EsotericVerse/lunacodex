@@ -198,6 +198,24 @@ function projectImportSourceRelations(rows,payload,source=''){
         const previous=typeof projected[rule.target]==='string'?
           projected[rule.target].trim():'';
         projected={...projected,[rule.target]:[previous,...parts].filter(Boolean).join('\n\n')};
+      }else if(rule.mode==='collect-media'){
+        const candidates=children.flatMap(child=>{
+          const kind=String(pathValue(child,rule.typeField)||'').trim();
+          if(rule.allowedTypes&&!rule.allowedTypes.includes(kind))return [];
+          const raw=mappedImportValue(child,rule.field,{},profile);
+          const items=Array.isArray(raw)?raw:[raw];
+          return items.flatMap(item=>{
+            if(!item)return [];
+            if(typeof item==='string')return [{url:item,media_type:kind}];
+            if(typeof item==='object'&&!Array.isArray(item))
+              return [{...item,media_type:kind}];
+            return [];
+          });
+        });
+        if(!candidates.length)continue;
+        const existing=projected[rule.target];
+        projected={...projected,[rule.target]:[
+          ...(Array.isArray(existing)?existing:existing?[existing]:[]),...candidates]};
       }
     }
     return projected;
