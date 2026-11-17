@@ -137,6 +137,7 @@ export function importRowsFromJson(payload,recordPath=''){
         if(nested.length)return nested;
       }
     }
+    if(container.object==='page'&&typeof container.id==='string')return [container];
     if(selected||['content','body','text','message','description','title','uid']
       .some(key=>Object.prototype.hasOwnProperty.call(container,key)))return [container];
   }
