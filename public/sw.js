@@ -23,12 +23,12 @@ function cacheable(request,response){
   if(!response.ok||response.type!=='basic'||response.redirected)return false;
   const type=String(response.headers?.get('content-type')||'').toLowerCase();
   const policy=String(response.headers?.get('cache-control')||'');
-  if(/\\b(?:private|no-store)\\b/i.test(policy))return false;
+  if(/\b(?:private|no-store)\b/i.test(policy))return false;
   const path=new URL(request.url).pathname;
-  if(/\\.js$/i.test(path))return /(?:javascript|ecmascript)/.test(type);
-  if(/\\.css$/i.test(path))return /^text\\/css(?:;|$)/.test(type);
-  if(/\\.woff2?$/i.test(path))
-    return /^(?:font\\/woff2?|application\\/(?:font-woff2?|octet-stream))(?:;|$)/.test(type);
+  if(/\.js$/i.test(path))return /(?:javascript|ecmascript)/.test(type);
+  if(/\.css$/i.test(path))return /^text\/css(?:;|$)/.test(type);
+  if(/\.woff2?$/i.test(path))
+    return /^(?:font\/woff2?|application\/(?:font-woff2?|octet-stream))(?:;|$)/.test(type);
   return false;
 }
 self.addEventListener('fetch',event=>{
