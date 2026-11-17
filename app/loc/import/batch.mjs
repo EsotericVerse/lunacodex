@@ -163,11 +163,10 @@ export function importRowsFromJson(payload,recordPath='',source=''){
     if(selected)return [container];
     // A singular CMS post can contain its own media/data arrays. Never
     // promote those arrays to article rows just because they are called data.
-    const singleKeys=['post_content','post_title','message_body','object_type',
-      'properties','paragraph','contentText','content','body','text',
-      'message','description','title','uid','message_id','item_id','dm_id',
+    const strongRowKeys=['post_content','post_title','message_body','object_type',
+      'properties','paragraph','contentText','message_id','item_id','dm_id',
       'session_id','caption','threadsPostId','fbPostId','igMediaId'];
-    if(singleKeys.some(key=>Object.hasOwn(container,key)))return [container];
+    if(strongRowKeys.some(key=>Object.hasOwn(container,key)))return [container];
 
     const profile=sourceImportModel(source);
     const generic=['items','posts','data','records','results','blocks','pages',
@@ -182,6 +181,10 @@ export function importRowsFromJson(payload,recordPath='',source=''){
       throw new Error('找到多個資料陣列（'+matches.join('、')+
         '）；請在進階格式設定選擇資料路徑，避免匯入錯誤內容。');
     if(matches.length===1)return unwrapArchiveArrayRows(container[matches[0]]);
+    // Generic title/description fields can also describe an export envelope.
+    // They only identify a standalone row after collection roots are excluded.
+    if(['content','body','text','message','description','title','uid']
+      .some(key=>Object.hasOwn(container,key)))return [container];
 
     // Retain the existing one-property Meta array envelope, without
     // recursively walking unrelated CMS blocks or nested post contents.
