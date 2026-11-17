@@ -1,24 +1,7 @@
 name: Verify LOC uses sole pinned LRS source (no deployment)
+# Heavy source-parity verification is manual only; branch pushes run the lightweight Guard.
+# Automatic PR builds would duplicate LOC builds and violate the workflow trigger policy.
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'config/lrs-source.json'
-      - 'scripts/restore-lrs-web-code.mjs'
-      - 'scripts/check-lrs-source-ownership.mjs'
-      - 'scripts/test-lrs-web-assets.mjs'
-      - 'app/lrunes/**'
-      - 'app/card/**'
-      - 'app/daily/**'
-      - 'app/loc/LocApp.jsx'
-      - 'app/loc/views/LrsWebRedirect.jsx'
-      - 'app/loc/views/LrsPortalView.jsx'
-      - 'app/styles/**'
-      - 'assets/lunarunes/**'
-      - 'public/vendor/effekseer/**'
-      - 'package.json'
-      - 'next.config.mjs'
-      - '.github/workflows/verify-lrs-single-source.yml'
   workflow_dispatch:
 
 permissions:
