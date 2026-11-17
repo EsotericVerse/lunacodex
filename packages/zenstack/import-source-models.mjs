@@ -80,12 +80,12 @@ const models=[
   },['wordpress.org','wp']),
   makeSource('Notion','NotionPage',{
     site_id:['id','page_id','block_id'],
-    title:['properties.Name.title.0.plain_text','properties.title.title.0.plain_text','title.0.plain_text','title'],
-    content:['paragraph.rich_text.0.plain_text','heading_1.rich_text.0.plain_text',
-      'heading_2.rich_text.0.plain_text','heading_3.rich_text.0.plain_text',
-      'bulleted_list_item.rich_text.0.plain_text','numbered_list_item.rich_text.0.plain_text',
-      'quote.rich_text.0.plain_text','code.rich_text.0.plain_text',
-      'properties.Content.rich_text.0.plain_text','content'],
+    title:['properties.Name.title.*.plain_text','properties.title.title.*.plain_text','title.*.plain_text','title'],
+    content:['paragraph.rich_text.*.plain_text','heading_1.rich_text.*.plain_text',
+      'heading_2.rich_text.*.plain_text','heading_3.rich_text.*.plain_text',
+      'bulleted_list_item.rich_text.*.plain_text','numbered_list_item.rich_text.*.plain_text',
+      'quote.rich_text.*.plain_text','code.rich_text.*.plain_text',
+      'properties.Content.rich_text.*.plain_text','content'],
     createtime:['created_time','createdAt','last_edited_time'],
     url:['url'],
     media:['media','attachments']
@@ -109,9 +109,7 @@ const models=[
     content:['content.text','contentText','text','caption','body'],
     title:['title'],
     createtime:['timestamp','timestamp_ms','created_at','creation_timestamp'],
-    media:['mediaUrls','media','attachments'],
-    source_id:['root_post_id'],
-    ref_id:['parent_id']
+    media:['mediaUrls','media','attachments']
   }),
   makeSource('Messenger','MessengerMessage',{
     site_id:['message_id','id'],
@@ -158,5 +156,13 @@ export function sourceImportModel(source='',row=null){
   const explicit=byAlias.get(key);
   const kind=String(row?.object_type||'').trim().toLowerCase();
   const fromKind=byAlias.get(byObjectType[kind]?.toLowerCase());
-  return fromKind||explicit||null;
+  if(fromKind)return fromKind;
+  // Notion pages and blocks have distinct virtual types; both use the same
+  // declarative source-to-Galaxy field paths. Ordinary Threads posts differ
+  // from reply objects without inventing a cross-platform Graph ID.
+  if(explicit?.label==='Notion'&&row?.object==='block')
+    return {...explicit,model:'NotionBlock'};
+  if(explicit?.label==='Threads'&&kind!=='threads_public_reply')
+    return {...explicit,model:'MetaFederatedPost'};
+  return explicit||null;
 }
