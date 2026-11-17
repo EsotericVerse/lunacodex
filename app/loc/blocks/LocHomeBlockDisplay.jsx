@@ -3,6 +3,7 @@
 import {SITE_IMAGES} from '../../site-images';
 import {runeAssetHref} from '../../lrunes/rune-asset-origin.mjs';
 import {HomeBlock} from './home-block-model';
+import {rewriteRuneFeatureAnchors} from './rune-feature-links.mjs';
 
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 
@@ -76,8 +77,9 @@ export function homeBlockMediaStyle(slot,scopeId='loc'){
     :undefined;
 }
 
-function RichHtml({html,className='',stripImage=false}){
-  const content=HomeBlock.stripLocHomeEditorPlaceholders(stripImage?BlockNoteContent.image.stripHeroImageTag(html):html||'');
+function RichHtml({html,className='',stripImage=false,scopeId='loc'}){
+  const base=HomeBlock.stripLocHomeEditorPlaceholders(stripImage?BlockNoteContent.image.stripHeroImageTag(html):html||'');
+  const content=scopeId==='lrunes'?rewriteRuneFeatureAnchors(base):base;
   return content.trim()?<div className={className} dangerouslySetInnerHTML={{__html:content}}/>:null;
 }
 
@@ -94,7 +96,7 @@ function SharedHomeBlockDisplay(slot,scopeId='loc'){
     {slot.title?<Heading>{slot.title}</Heading>:null}
     {slot.subtitle?<p className="loc-subtitle loc-home-block__subtitle">{HomeBlock.plainBlockLine(slot.subtitle)}</p>:null}
   </header>;
-  const body=<RichHtml html={slot.text} stripImage className="loc-home-block__body"/>;
+  const body=<RichHtml html={slot.text} stripImage scopeId={scopeId} className="loc-home-block__body"/>;
   const media=image.src?(hero?<figure className="loc-home-block__media home-hero-visual" aria-label={image.alt}>
     <picture>{image.small?<source media="(max-width: 760px)" srcSet={image.small.src}/>:null}
       <img src={image.src} alt="" aria-hidden="true" loading="eager" fetchPriority="high" decoding="async"/></picture>
@@ -114,7 +116,7 @@ function SharedHomeBlockDisplay(slot,scopeId='loc'){
         return <article className={'loc-home-block__child '+(card?'loc-home-block__child--card':'loc-home-block__child--bubble')}
           key={entity.uid||'child-'+index}>
           {card?<h3>{entity.title}</h3>:null}
-          <RichHtml html={entity.text} stripImage className="loc-home-block__child-copy"/>
+          <RichHtml html={entity.text} stripImage scopeId={scopeId} className="loc-home-block__child-copy"/>
         </article>;
       })}
     </div>:null}

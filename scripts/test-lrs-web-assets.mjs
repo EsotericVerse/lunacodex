@@ -1,4 +1,6 @@
 import test from 'node:test';
+// Run focused feature-link regression in the existing LRS Web Guard job.
+import './test-rune-feature-links.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -97,19 +99,26 @@ test('LOC git index retains no LRS-owned code or media after cutover',()=>{
  assert.equal(result.status,0,result.stderr||result.stdout);
 });
 
-test('LOC native-like Rune draw and boardgame pages remain on LOC routes',()=>{
- const pages={
-  'app/card/page.jsx':/RuneCardHub/,
-  'app/card/duel/page.jsx':/RuneUnifiedView feature="duel"/,
-  'app/card/list/page.jsx':/RuneUnifiedView feature="list"/,
-  'app/card/daily/page.jsx':/RuneUnifiedView feature="daily"/,
-  'app/game/page.jsx':/GameBoard/
+test('only standalone Rune card/game Web feature pages hand off to LRS',()=>{
+ const routes={
+  'app/card/page.jsx':'/card/',
+  'app/card/duel/page.jsx':'/card/duel/',
+  'app/card/daily/page.jsx':'/card/daily/',
+  'app/card/list/page.jsx':'/card/list/',
+  'app/game/page.jsx':'/game/'
  };
- for(const [path,pattern] of Object.entries(pages)){
-  const source=read(path);
-  assert.match(source,pattern,path);
-  assert.doesNotMatch(source,/LrsWebRedirect|location\.replace|lrs\.lo3rwang\.cc/,path);
+ for(const [path,destination] of Object.entries(routes)){
+  const content=read(path);
+  assert.match(content,/NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'/,path);
+  assert.match(content,/LrsWebRedirect/,path);
+  assert.ok(content.includes('path="'+destination+'"'),path);
  }
+ const home=read('app/lrunes/page.jsx');
+ assert.match(home,/LocApp forcedView="home" forcedScope="lrunes"/);
+ assert.doesNotMatch(home,/LrsWebRedirect/);
+ const portal=read('app/loc/views/LrsPortalView.jsx');
+ assert.match(portal,/ScopeEditableBlocks/);
+ assert.match(portal,/scopeId="lrunes"/);
  const registry=read('app/modular/routing/scope-registry.js');
  assert.match(registry,/if\(!native\)return scopeHref\(scopeId,localPath\)/);
  assert.doesNotMatch(registry,/scopeHref\('loc','lrunes\/'/);
