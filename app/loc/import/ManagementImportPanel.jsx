@@ -569,6 +569,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [queue,setQueue]=useState([]);
   const [queueIndex,setQueueIndex]=useState(0);
   const [source,setSource]=useState('');
+  // Explicit source-model selection is primary; filenames are only hints.
+  const [sourceSelection,setSourceSelection]=useState('');
   const [timeRange,setTimeRange]=useState('year');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
@@ -597,6 +599,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [summaryMessage,setSummaryMessage]=useState('');
   const [summaryError,setSummaryError]=useState(false);
   const suggested=useMemo(()=>inferImportSourceFromFilename(fileName),[fileName]);
+  const suggestedModel=sourceImportModel(suggested)?.label||'';
+  const chooseSource=value=>{
+    setSourceSelection(value);
+    setSource(value==='__custom__'?'':value);
+  };
   const deferredSource=useDeferredValue(source);
   const analysisCurrent=deferredSource===source;
   const rawAnalysis=useMemo(()=>{
@@ -792,7 +799,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           mediaLinked:mediaEvidence.filter(item=>item.galaxy_uids?.length).length,
           mediaUnlinked:mediaPlan.media.filter(item=>!item.__article_uid).length});
         if(!imported.length&&!mediaEvidence.length){
-          setSource(result.sources.length===1?canonicalSource(result.sources[0]):'');
+          if(!sourceSelection)setSource(result.sources.length===1?canonicalSource(result.sources[0]):'');
           setStatus((summary.geoPlaceObjects?'檔案已讀取，辨識出 '+summary.geoPlaceObjects.toLocaleString()+' 筆 Facebook 地點物件，僅供人工整理 Trace；沒有自動建立地點或文章。':'檔案已讀取，但沒有可匯入的文字文章。')+' 已解析 '+summary.totalRows+
             ' 筆、略過 '+(summary.rejectedRows+ignored)+' 筆。'+
             (summary.problems.length?' 原因：'+summary.problems.slice(0,3).join('；'):' 請檢查資料格式。'));
@@ -800,7 +807,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         }
         setRows(imported);
         const sourceNames=[...new Set(imported.map(item=>item.raw.site))];
-        setSource(sourceNames.length===1?canonicalSource(sourceNames[0]):'Mixed');
+        if(sourceNames.length!==1)setSource('Mixed');
+        else if(!sourceSelection)setSource(canonicalSource(sourceNames[0]));
         setStatus('已解析共 '+imported.length.toLocaleString()+' 篇公開貼文，其中有 '+
           imported.filter(item=>Boolean(item.raw?.url)).length.toLocaleString()+
           ' 篇含原始貼文連結網址；ZIP 內，共有媒體檔總數 '+summary.mediaFiles.toLocaleString()+
@@ -821,8 +829,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         import_uid:createUid8()
       }));
       setRows(prepared);
-      // Use the filename as the default source; Scope editors may override it.
-      setSource(canonicalSource(inferImportSourceFromFilename(file.name)));
+      // Detection is a suggestion; do not silently overwrite manual selection.
+      if(!sourceSelection)setSource('');
       setStatus(t('uiExtra.importUI.parsedFile',{index:index+1,total,count:list.length.toLocaleString()})+
         (parsed.length!==list.length?'；已略過 '+(parsed.length-list.length).toLocaleString()+' 筆私人紀錄。':''));
     }catch(error){
@@ -1520,6 +1528,20 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const pending=queue.length>queueIndex+1;
   return <div className="scope-import-body">
     <div className="scope-import-primary-row">
+      <label className="scope-import-source-choice">匯入來源（ZModel）
+        <select className="scope-select" value={sourceSelection}
+          disabled={busy} onChange={event=>chooseSource(event.target.value)}>
+          <option value="">請選擇來源模型</option>
+          {sourceOptions.map(name=><option key={name} value={name}>{name}</option>)}
+          <option value="__custom__">其他／自訂來源（通用格式）</option>
+        </select>
+        <small className="scope-import-range-hint">
+          {sourceSelection&&sourceSelection!=='__custom__'
+            ?'已選擇來源；自動套用相應欄位模型'
+            :suggestedModel?'檔名建議：'+suggestedModel+'（不自動套用）'
+              :'請選擇來源；沒有模型時可使用通用格式'}
+        </small>
+      </label>
       <label><UiText id="uiExtra.importUI.importLanguage"/>
         <select className="scope-select" value={importLocale} disabled={busy} onChange={chooseImportLocale}>
           {UI_LOCALE_OPTIONS.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
@@ -1530,14 +1552,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       </label>
     </div>
     <div className="scope-import-options-row">
-    <label className="scope-import-source-choice"><UiText id="uiExtra.importUI.sourceLabel"/>
+    {sourceSelection==='__custom__'?<label className="scope-import-source-choice">
+      <UiText id="uiExtra.importUI.sourceLabel"/>
       <input type="text" list={'scope-import-sources-'+scopeId} maxLength={80} required
         value={source} onChange={event=>setSource(event.target.value)}
-        disabled={busy||!rows.length} placeholder={suggested}/>
+        disabled={busy} placeholder="自訂來源名稱"/>
       <datalist id={'scope-import-sources-'+scopeId}>
         {sourceOptions.map(name=><option key={name} value={name}/>)}
       </datalist>
-    </label>
+    </label>:null}
     <label className="scope-import-source-choice">匯入時間範圍
       <select value={timeRange} disabled={busy} onChange={event=>setTimeRange(event.target.value)}>
         <option value="all">全部的時間</option>
