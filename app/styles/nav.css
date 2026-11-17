@@ -144,12 +144,6 @@
   border-top:1px solid color-mix(in srgb,var(--loc-line) 65%,transparent);
 }
 .scope-nav-folder-empty{color:var(--loc-muted);padding:.45rem;font-size:.82rem;}
-.scope-favorite-setting-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;}
-.scope-favorite-setting-row>select{flex:0 1 14rem;}
-.scope-favorite-folder-editor{display:grid;gap:.6rem;min-width:0;width:100%;margin-top:.8rem;}
-.scope-favorite-folder-row{display:flex;align-items:center;gap:.5rem;min-width:0;flex-wrap:wrap;}
-.scope-favorite-folder-row>input{flex:1 1 12rem;min-width:0;max-width:24rem;}
-.scope-favorite-folder-row>button{flex:0 0 auto;}
 @media(max-width:760px){
   .scope-global{
     width:min(calc(100% - 1rem),var(--loc-ui-max));

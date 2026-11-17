@@ -249,20 +249,6 @@
 .loc-settings-select option{background:var(--loc-panel);color:var(--loc-text)}
 .management-workspace-panel .loc-settings-select{max-width:32rem;}
 
-/* Read-only favorites remain a compact preview inside Homepage settings. */
-.scope-settings-favorite-preview{
-  display:flex;align-items:center;flex-wrap:wrap;gap:.55rem 1rem;
-  border-top:1px solid var(--loc-line);padding-top:.75rem;margin-top:.9rem;
-}
-.scope-settings-favorite-preview>strong{font-weight:600;white-space:nowrap;}
-.scope-settings-favorite-items{display:flex;gap:.4rem;flex-wrap:wrap;min-width:0;}
-.scope-settings-favorite-item{
-  display:inline-flex;align-items:center;min-height:2rem;
-  padding:.3rem .55rem;border:1px solid var(--loc-line);
-  border-radius:var(--loc-ui-radius-sm,8px);
-  color:var(--loc-text);background:var(--loc-surface-soft);font-size:.85rem;
-}
-
 @media(max-width:820px){
   .management-workspace{grid-template-columns:minmax(0,1fr);}
   .management-section-nav{padding:.8rem;}

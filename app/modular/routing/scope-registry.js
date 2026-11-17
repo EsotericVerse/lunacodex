@@ -55,8 +55,7 @@ export const SCOPES=Object.freeze({
   // known-but-restricted one. No `nav` key on purpose: it never appears in
   // the built-in Scope switcher (NAV_SCOPES in AppShell.jsx filters on
   // `scope.nav`, same reason `admin` above stays out of it); reachable only
-  // by an explicit link from Settings, and optionally pinned to My
-  // Favorites the same way `admin`-adjacent MOBILE_HOME_ID already is.
+  // only by explicit navigation from Settings, not by a personal Favorites list.
   local:Object.freeze({
     id:'local',
     nativeOnly:true,

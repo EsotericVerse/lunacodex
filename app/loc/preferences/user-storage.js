@@ -7,9 +7,6 @@ import {dbAuthRelation} from '../db/db-client.mjs';
 
 const TABLE='silver.loc_user';
 const COLUMNS=Object.freeze({
-  'loc-home-scope-v1':['home_scope'],
-  'loc-favorite-scopes-v1':['favorite_scopes'],
-  'loc-favorite-folders-v1':['favorite_folders'],
   'loc-ui-settings-v1':['draw_response','list_page_size'],
   'loc-locale-v1':['locale']
 });
@@ -46,7 +43,7 @@ export async function getSettings(keys=[]){
   if(!names.length)return {};
   const columns=[...new Set(names.flatMap(key=>keyColumns(key)||[]))];
   if(!columns.length)return Object.fromEntries(names.map(key=>[key,null]));
-  // One owner_id-bound query for navigation Home/Favorites/Folders.
+  // Only active personal options are queried; obsolete navigation preferences are retired.
   const {data,error}=await dbAuthRelation(TABLE).select(columns.join(',')).limit(1);
   if(error)throw Error(error.message||'個人設定讀取失敗');
   const row=data?.[0]||null;

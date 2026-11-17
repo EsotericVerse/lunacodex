@@ -26,7 +26,6 @@ export default {
   "settings": "設定",
   "chooseSettings": "選擇設定功能",
   "defaultHome": "預設首頁",
-  "favorites": "我的最愛",
   "login": "登入",
   "logout": "登出",
   "switchAccount": "切換 Cloudflare 帳號",
