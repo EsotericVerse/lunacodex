@@ -207,11 +207,16 @@ export function releaseTransientPageResources(){
   // it and forcing the shell's Hero/Config to read the database again.
   // An unfinished bootstrap may be aborted by the outgoing route epoch;
   // re-read it only if a subscriber is STILL mounted after the transition.
-  const retryBootstrap=new Set();
+  const retryBootstrap=new Map();
   for(const entry of registry.values()){
     const key=serialize(entry.key);
-    if(isPublicBootstrapKey(key)&&!dataStore.has(key))
-      retryBootstrap.add(key);
+    if(!isPublicBootstrapKey(key))continue;
+    // An edit may have invalidated an older snapshot. If its replacement
+    // read is interrupted by navigation, resume it even while the old
+    // snapshot is still displayed. Never strand stale Hero/Config.
+    const wasReading=inflight.has(key);
+    if(!dataStore.has(key)||wasReading)
+      retryBootstrap.set(key,wasReading);
   }
   resourceEpoch++;
   // Abort old transient SQL reads and queued requests. Session, verified
@@ -224,8 +229,8 @@ export function releaseTransientPageResources(){
     forgetStored(key);
   }
   if(retryBootstrap.size)queueMicrotask(()=>{
-    for(const key of retryBootstrap){
-      if(dataStore.has(key))continue;
+    for(const [key,interruptedRefresh] of retryBootstrap){
+      if(dataStore.has(key)&&!interruptedRefresh)continue;
       const live=[...registry.values()].find(entry=>serialize(entry.key)===key);
       live?.refetch();
     }
