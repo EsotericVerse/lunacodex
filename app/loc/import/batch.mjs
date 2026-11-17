@@ -125,14 +125,10 @@ export function importRowsFromJson(payload,recordPath=''){
   if(selected&&container===undefined)throw new Error('找不到資料陣列路徑：'+selected);
   if(Array.isArray(container))return unwrapArchiveArrayRows(container);
   if(container&&typeof container==='object'){
-    // The Notion API paginates database/page results. Never mistake the first
-    // page for a complete export and silently omit remaining articles.
-    if(container.has_more===true&&Array.isArray(container.results))
-      throw new Error('CMS API JSON 尚有未取得的結果分頁；請先取得所有 next_cursor 頁面');
     // A Meta export can wrap the actual records in array.array, including
     // arrays of one-property array envelopes. Preserve normal record arrays
     // inside each post (media, data and attachments).
-    const keys=['items','posts','data','records','results','pages','status_updates','your_posts',
+    const keys=['items','posts','data','records','status_updates','your_posts',
       'text_post_app_text_posts','threads_posts','thread_posts','threads_and_replies','array'];
     for(const key of keys){
       if(Array.isArray(container[key]))return unwrapArchiveArrayRows(container[key]);
@@ -141,7 +137,6 @@ export function importRowsFromJson(payload,recordPath=''){
         if(nested.length)return nested;
       }
     }
-    if(container.object==='page'&&typeof container.id==='string')return [container];
     if(selected||['content','body','text','message','description','title','uid']
       .some(key=>Object.prototype.hasOwnProperty.call(container,key)))return [container];
   }
