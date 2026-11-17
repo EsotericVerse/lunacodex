@@ -331,7 +331,8 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
       if(existing?.hasData){
         // Later mounts adopt the live public page snapshot without new SQL.
         setState({data:existing.data,status:'success',error:null});
-      }else if(!IDENTITY_KEYS.has(serializedKey)&&dataStore.has(serializedKey)){
+      }else if(!IDENTITY_KEYS.has(serializedKey)&&!inflight.has(serializedKey)&&
+        dataStore.has(serializedKey)){
         // A second live reader of this exact resource key reuses its current
         // snapshot instead of issuing another HTTP/SQL request. Invalidation
         // still performs a real re-read, and semi-dynamic cleanup retires it.
@@ -536,7 +537,8 @@ export const queryClient={
     const serializedKey=serialize(queryKey);
     // getOrLoad must consult the existing live resource before new transport.
     // Identity/grants are deliberately excluded from generic query reuse.
-    if(!IDENTITY_KEYS.has(serializedKey)&&dataStore.has(serializedKey))
+    if(!IDENTITY_KEYS.has(serializedKey)&&!inflight.has(serializedKey)&&
+      dataStore.has(serializedKey))
       return dataStore.get(serializedKey);
     const generation=resourceEpoch;
     const value=await runFetch(serializedKey,()=>queryFn());
