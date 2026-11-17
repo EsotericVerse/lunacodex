@@ -160,12 +160,14 @@ export function mappedImportValue(row,field,fieldMap={},source=''){
 // Do not recursively traverse CMS trees or create any SQL relation.
 function projectImportSourceRelations(rows,payload,source=''){
   const profile=sourceImportModel(source);
-  if(!profile?.relations?.length||!payload||typeof payload!=='object'||
-      Array.isArray(payload))return rows;
+  if(!profile?.relations?.length||!payload||typeof payload!=='object')
+    return rows;
   const validId=value=>(typeof value==='string'||typeof value==='number')
     ?String(value).trim():'';
   const joins=profile.relations.flatMap(rule=>{
-    const related=payload[rule.collection];
+    const related=Array.isArray(payload)?payload:
+      [rule.collection,...(rule.fallbackCollections||[])]
+        .map(key=>payload[key]).find(Array.isArray);
     if(!Array.isArray(related))return [];
     const byParent=new Map();
     for(const child of related){
@@ -178,13 +180,16 @@ function projectImportSourceRelations(rows,payload,source=''){
     return [{rule,byParent}];
   });
   if(!joins.length)return rows;
-  return rows.map(row=>{
+  const consumedChildren=new Set();
+  const projectedRows=rows.map(row=>{
     if(!row||typeof row!=='object'||Array.isArray(row))return row;
     let projected=row;
     for(const {rule,byParent} of joins){
       const key=validId(pathValue(row,rule.primaryKey));
       const children=key?byParent.get(key):null;
       if(!children?.length)continue;
+      if(rule.omitMatchedChildren)
+        for(const child of children)if(child!==row)consumedChildren.add(child);
       if(rule.mode==='attach'){
         const original=projected[rule.target];
         // A source-native object is already authoritative; don't overwrite it.
@@ -220,6 +225,8 @@ function projectImportSourceRelations(rows,payload,source=''){
     }
     return projected;
   });
+  return consumedChildren.size?projectedRows.filter((_,index)=>
+    !consumedChildren.has(rows[index])):projectedRows;
 }
 
 export function importRowsFromJson(payload,recordPath='',source=''){
