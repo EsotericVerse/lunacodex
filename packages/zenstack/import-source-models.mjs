@@ -95,11 +95,26 @@ const SOURCE_IMPORT_RECORD_PATHS=Object.freeze({
   'X DM':Object.freeze(['messages','records','items','data'])
 });
 
+// Declarative, source-owned one-level relationships for exports containing
+// multiple flat collections. These are NOT new Galaxy/Anchor tables or a CMS
+// converter: the importer performs one exact-ID join and retains source data.
+const SOURCE_IMPORT_RELATIONS=Object.freeze({
+  WordPress:Object.freeze([
+    Object.freeze({collection:'wp_postmeta',primaryKey:'ID',foreignKey:'post_id',
+      target:'meta',mode:'attach'})
+  ]),
+  Notion:Object.freeze([
+    Object.freeze({collection:'blocks',primaryKey:'id',foreignKey:'parent.page_id',
+      target:'content',mode:'append-text',field:'content'})
+  ])
+});
+
 const makeSource=(label,model,fields,aliases=[])=>Object.freeze({
   label,model,fields:Object.freeze(Object.fromEntries(
     Object.entries(fields).map(([field,paths])=>[field,Object.freeze(paths)]))),
   aliases:Object.freeze(aliases),
-  recordPaths:SOURCE_IMPORT_RECORD_PATHS[label]||Object.freeze([])
+  recordPaths:SOURCE_IMPORT_RECORD_PATHS[label]||Object.freeze([]),
+  relations:SOURCE_IMPORT_RELATIONS[label]||Object.freeze([])
 });
 const models=[
   makeSource('WordPress','WordPressPost',{
