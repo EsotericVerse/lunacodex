@@ -218,6 +218,11 @@ export function featureIdForPath(pathname='/'){
 // Static-export iOS bundle contains local /lrunes and /lo3rwang mounts.
 // External canonical Scope hosts must not eject the iOS app into Safari.
 export function navigationHref(scopeId='loc',localPath='',native=false){
+  // LOC's Rune Scope NAV is internal. The separate LRS service is not a
+  // user-approved replacement for this Scope's homepage or feature dock.
+  // Keep static iOS route resolution untouched.
+  if(!native&&normalizeScopeId(scopeId)==='lrunes')
+    return scopeHref('loc','lrunes/'+String(localPath||'').replace(/^\\/+/, ''));
   if(!native)return scopeHref(scopeId,localPath);
   const id=normalizeScopeId(scopeId)||'loc';
   const part=String(localPath||'').split('/').filter(Boolean).join('/');
