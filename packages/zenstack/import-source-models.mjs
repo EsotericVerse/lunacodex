@@ -23,8 +23,8 @@ export const SOURCE_IMPORT_MODEL_FIELDS=Object.freeze({
     ...json('term_id term_taxonomy_id parent')
   }),
   NotionPage:Object.freeze({
-    ...strings('id object created_time last_edited_time url'),
-    ...json('properties title parent icon cover')
+    ...strings('id object created_time last_edited_time url content'),
+    ...json('properties title parent icon cover media')
   }),
   NotionBlock:Object.freeze({
     ...strings('id type created_time last_edited_time'),
@@ -95,11 +95,31 @@ const SOURCE_IMPORT_RECORD_PATHS=Object.freeze({
   'X DM':Object.freeze(['messages','records','items','data'])
 });
 
+// Declarative, source-owned one-level relationships for exports containing
+// multiple flat collections. These are NOT new Galaxy/Anchor tables or a CMS
+// converter: the importer performs one exact-ID join and retains source data.
+const SOURCE_IMPORT_RELATIONS=Object.freeze({
+  WordPress:Object.freeze([
+    Object.freeze({collection:'wp_postmeta',primaryKey:'ID',foreignKey:'post_id',
+      target:'meta',mode:'attach',omitMatchedChildren:true})
+  ]),
+  Notion:Object.freeze([
+    Object.freeze({collection:'blocks',fallbackCollections:Object.freeze(['results','items']),
+      primaryKey:'id',foreignKey:'parent.page_id',
+      target:'content',mode:'append-text',field:'content',omitMatchedChildren:true}),
+    Object.freeze({collection:'blocks',fallbackCollections:Object.freeze(['results','items']),
+      primaryKey:'id',foreignKey:'parent.page_id',
+      target:'media',mode:'collect-media',field:'media',typeField:'type',
+      allowedTypes:Object.freeze(['image','video']),omitMatchedChildren:true})
+  ])
+});
+
 const makeSource=(label,model,fields,aliases=[])=>Object.freeze({
   label,model,fields:Object.freeze(Object.fromEntries(
     Object.entries(fields).map(([field,paths])=>[field,Object.freeze(paths)]))),
   aliases:Object.freeze(aliases),
-  recordPaths:SOURCE_IMPORT_RECORD_PATHS[label]||Object.freeze([])
+  recordPaths:SOURCE_IMPORT_RECORD_PATHS[label]||Object.freeze([]),
+  relations:SOURCE_IMPORT_RELATIONS[label]||Object.freeze([])
 });
 const models=[
   makeSource('WordPress','WordPressPost',{

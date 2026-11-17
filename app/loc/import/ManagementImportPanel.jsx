@@ -8,7 +8,7 @@ import importUIZh from '../../i18n/sections/uiExtra.importUI.zh_tw.js';
 registerDefaultSection('management',managementZh);
 registerDefaultSection('uiExtra.importUI',importUIZh);
 
-import {useDeferredValue,useMemo,useRef,useState,useSyncExternalStore} from 'react';
+import {useDeferredValue,useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import {refreshScopeSearchSummary} from '../search/scope-summary.mjs';
 import {insertRows,insertImportRows,dbAuthRelation,dbAuthClient,updateImportRows} from '../db/db-client.mjs';
 import {useAccount} from '../auth/use-account';
@@ -54,6 +54,7 @@ import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/ze
 const PUBLISHED_SOURCE_CATEGORIES=Object.freeze({
   system:PUBLISHED_LOC_ARTICLE_TAGS,personal:Object.freeze([])
 });
+const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[],warnings:[]});
 const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
   .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
 const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
@@ -139,12 +140,13 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
   const mediaCandidates=[value('media'),value('media_link'),
     ...(isArchiveMediaUrl(rawUrl)?[rawUrl]:[])]
     .filter(item=>item!==''&&item!==undefined&&item!==null);
-  let mediaRecords=[],mediaRefs=[];
+  let mediaRecords=[],mediaRefs=[],mediaWarning='';
   const importedRuneReferences=value('rune_references');
   const runeResultText=runeDrawText(importedRuneReferences);
   try{
     for(const item of mediaCandidates){
-      const media=normalizeImportMedia(item,{title:rawTitle,createtime:createdAt,location:sourcePlace,article_uid:uid});
+      const media=normalizeImportMedia(item,{title:rawTitle,createtime:createdAt,
+        location:sourcePlace,article_uid:uid,defaultMediaType:String(value('media_type')||'')});
       mediaRecords.push(...media.records);
       mediaRefs.push(...media.references);
     }
@@ -156,6 +158,14 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
       seenMediaKeys.add(key);return true;
     });
     mediaRefs=[...new Set(mediaRefs)];
+    // Unsupported document/object types must not abort an otherwise valid
+    // article halfway through MediaAnchor writes. Report them in the preview.
+    const rejected=new Set();
+    mediaRecords=mediaRecords.filter(record=>{
+      try{canonicalMediaAnchorType(record.media_type,record.url);return true;}
+      catch{rejected.add(String(record.media_type||'unknown'));return false;}
+    });
+    if(rejected.size)mediaWarning='附件型別不支援，已略過：'+[...rejected].join('、');
     // A text article may carry a top-level card draw, even when the import
     // did not provide a nested media array. Attach one media record to its UID.
     if(content&&runeResultText)mediaRecords.push({
@@ -164,9 +174,19 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     });
   }catch(error){return {record:null,error:String(error.message||error)}}
   if(!content){
+    // Pages containing images but no authored text belong to MediaAnchor,
+    // not a fabricated Galaxy article. Keep only real accessible URLs.
+    const independent=mediaRecords.filter(record=>Boolean(record.url))
+      .map(({__article_uid:unused,...media})=>({...media,location:null}));
+    if(independent.length)return {record:null,error:'',mediaOnlyRecords:independent,
+      warning:mediaWarning};
     const type=String(value('media_type')||(runeResultText?'rune':'')).trim();
     const url=String(value('url')||'').trim();
     if(type){
+      try{canonicalMediaAnchorType(type,url);}catch(error){
+        return {record:null,error:'來源只有媒體物件，但型別不支援：'+type+
+          '。'+String(error?.message||error)};
+      }
       const rawId=String(row.uid||'').trim();
       if(rawId&&!/^[A-Z0-9]{8}$/i.test(rawId))return {record:null,error:t('uiExtra.importUI.invalidMediaId')};
       return {record:null,error:'',mediaOnlyRecord:{
@@ -221,7 +241,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     ...(mediaRefs.length?{media_link:mediaRefs}:{}),
     site:String(selectedSource||'').trim()
   };
-  return {record,mediaRecords,mediaRefs,error:''};
+  return {record,mediaRecords,mediaRefs,error:'',warning:mediaWarning};
 }
 
 const IMPORT_FORMAT_FIELDS=Object.freeze([
@@ -578,7 +598,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [source,setSource]=useState('');
   // Explicit source-model selection is primary; filenames are only hints.
   const [sourceSelection,setSourceSelection]=useState('');
-  const [timeRange,setTimeRange]=useState('year');
+  // Historic CMS exports (including pre-2013 MSN archives) are not a recent feed.
+  // Import the full file unless the operator explicitly chooses a time filter.
+  const [timeRange,setTimeRange]=useState('all');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
   const sourceCategories={data:sourceCategoriesEnabled?PUBLISHED_SOURCE_CATEGORIES:undefined};
@@ -587,6 +609,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
+  const fileLoadGeneration=useRef(0);
   // A failed write must not retain decoded ZIP/JSON article arrays in React.
   // Keep only the original File reference for an explicit, revalidated retry.
   const [reparseRequired,setReparseRequired]=useState(false);
@@ -615,37 +638,73 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     // not just the preview field aliases. Reparse the queued original file
     // only for standalone JSON; ZIP uses verified per-entry source identity.
     const current=queue[queueIndex];
-    if(current&&value&&/\.json$/i.test(current.name)&&!archiveDetection)
+    if(current&&value&&!archiveDetection)
       void loadQueuedFile(current,queueIndex,queue.length,importLocale,
         format.recordPath,value);
   };
   const deferredSource=useDeferredValue(source);
-  const analysisCurrent=deferredSource===source;
-  const rawAnalysis=useMemo(()=>{
-    // File hints never count as the operator choosing a JSON source model.
-    if(!archiveDetection&&!sourceSelection)
-      return {valid:[],normalized:[],mediaOnly:[],invalid:[]};
+  const [analysisSnapshot,setAnalysisSnapshot]=useState(null);
+  const [analysisProgress,setAnalysisProgress]=useState({completed:0,total:0});
+  // Only the current file, source ZModel and user field overrides can unlock
+  // writing. An older completed preview is never valid for a newer selection.
+  const analysisCurrent=Boolean(analysisSnapshot&&
+    analysisSnapshot.rows===rows&&analysisSnapshot.source===deferredSource&&
+    analysisSnapshot.fields===format.fields&&analysisSnapshot.locale===locale&&
+    analysisSnapshot.archive===archiveDetection&&
+    analysisSnapshot.categories===sourceCategories.data&&
+    analysisSnapshot.selection===sourceSelection);
+  const rawAnalysis=analysisCurrent?analysisSnapshot.result:EMPTY_IMPORT_ANALYSIS;
+  useEffect(()=>{
+    let cancelled=false,task=null,index=0;
+    const normalized=[],valid=[],mediaOnly=[],invalid=[],warnings=[];
+    setAnalysisSnapshot(null);
+    setAnalysisProgress({completed:0,total:rows.length});
+    if(!archiveDetection&&!sourceSelection)return;
     const selected=deferredSource.trim();
-    const normalized=rows.map(entry=>{
-      const embedded=archiveDetection?String(entry?.raw?.site||'').trim():'';
-      const entrySource=canonicalImportSourceName(embedded||selected,
-        sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
-      // ZIP scanning has already verified per-record provenance. A manual
-      // selection cannot silently relabel records from another platform.
-      if(embedded&&sourceSelection&&sourceSelection!=='__custom__'&&
-          selected!=='Mixed'&&entrySource!==canonicalSource(sourceSelection))
-        return {record:null,error:'所選來源 '+sourceSelection+
-          ' 與封存檔記錄來源 '+entrySource+' 不一致，請核對來源。'};
-      return normalizeJsonImportEntry(entry,entrySource,format.fields,t,
-        Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection));
-    });
-    return {
-      valid:normalized.filter(item=>item.record).map(item=>item.record),
-      normalized:normalized.filter(item=>item.record),
-      mediaOnly:normalized.filter(item=>item.mediaOnlyRecord).map(item=>item.mediaOnlyRecord),
-      invalid:normalized.filter(item=>item.error)
+    const system=sourceCategories.data?.system||[];
+    const personal=sourceCategories.data?.personal||[];
+    const manual=Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection);
+    const process=()=>{
+      if(cancelled)return;
+      // Do not block the browser main thread for the entire archive. Source
+      // mapping is still the existing ZModel projection, not a new parser.
+      const boundary=Math.min(rows.length,index+160);
+      for(;index<boundary;index++){
+        const entry=rows[index];
+        try{
+          const embedded=archiveDetection?String(entry?.raw?.site||'').trim():'';
+          const entrySource=canonicalImportSourceName(embedded||selected,system,personal);
+          let item;
+          if(embedded&&sourceSelection&&sourceSelection!=='__custom__'&&
+              selected!=='Mixed'&&entrySource!==canonicalImportSourceName(sourceSelection,system,personal)){
+            item={record:null,error:'所選來源 '+sourceSelection+
+              ' 與封存檔記錄來源 '+entrySource+' 不一致，請核對來源。'};
+          }else item=normalizeJsonImportEntry(entry,entrySource,format.fields,t,manual);
+          if(item.record){normalized.push(item);valid.push(item.record);}
+          if(item.mediaOnlyRecord)mediaOnly.push(item.mediaOnlyRecord);
+          if(Array.isArray(item.mediaOnlyRecords))mediaOnly.push(...item.mediaOnlyRecords);
+          if(item.error)invalid.push(item);
+          if(item.warning)warnings.push(item.warning);
+        }catch(error){
+          invalid.push({record:null,error:'第 '+(index+1)+' 筆來源資料無法對應：'+
+            String(error?.message||error)});
+        }
+      }
+      if(cancelled)return;
+      if(index<rows.length){
+        if(index%960<160)setAnalysisProgress({completed:index,total:rows.length});
+        task=setTimeout(process,0);
+        return;
+      }
+      setAnalysisSnapshot({rows,source:deferredSource,fields:format.fields,
+        locale,archive:archiveDetection,categories:sourceCategories.data,
+        selection:sourceSelection,result:{valid,normalized,mediaOnly,invalid,warnings}});
+      setAnalysisProgress({completed:index,total:rows.length});
     };
-  },[rows,deferredSource,format.fields,locale,archiveDetection,sourceCategories.data,sourceSelection]);
+    task=setTimeout(process,0);
+    return ()=>{cancelled=true;if(task!==null)clearTimeout(task);};
+  },[rows,deferredSource,format.fields,locale,archiveDetection,
+    sourceCategories.data,sourceSelection]);
   const analyzed=useMemo(()=>filterImportAnalysisByTime(rawAnalysis,timeWindow),[rawAnalysis,timeWindow]);
   const eligibleArchiveEvidence=useMemo(()=>{
     if(!timeWindow)return archiveEvidence;
@@ -712,6 +771,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   }
   async function loadQueuedFile(file,index,total,language=importLocale,
     recordPath=format.recordPath,manualChoice=sourceSelection){
+    const generation=++fileLoadGeneration.current;
+    const isCurrent=()=>generation===fileLoadGeneration.current;
     clearDecodedFile();
     setReparseRequired(false);
     setCheckpointHint(readImportCheckpoint(checkpointStorage(),{
@@ -729,18 +790,20 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus(t('uiExtra.importUI.zipTooLarge'));
       return;
     }
-    const firstBytes=new Uint8Array(await file.slice(0,4).arrayBuffer());
-    const isZip=/\.zip$/i.test(file.name)||(firstBytes[0]===80&&firstBytes[1]===75&&[3,5,7].includes(firstBytes[2]));
-    // An explicit source choice outranks filename heuristics. Route only
-    // verified Threads/Facebook exports into their existing archive scanner.
-    const selectedFileSource=sourceImportModel(manualChoice)?.label||'';
-    const isThreadsJson=!isZip&&selectedFileSource==='Threads'&&/\.json$/i.test(file.name)&&
-      /(?:^|[-_. ])(?:threads|text_post_app_text_posts)(?:$|[-_. ])/i.test(file.name);
-    const isFacebookGeoJson=!isZip&&selectedFileSource==='Facebook'&&
-      /(?:^|\/)places_you_have_been_tagged_in\.json$/i.test(file.name);
     setBusy(true);
-    if(isZip)setStatus(t('uiExtra.importUI.zipInspecting'));
     try{
+      // Include the first read in the guarded phase; a File.slice error must
+      // never leave a silent unhandled rejection or half-selected file.
+      const firstBytes=new Uint8Array(await file.slice(0,4).arrayBuffer());
+      if(!isCurrent())return;
+      const isZip=/\.zip$/i.test(file.name)||(firstBytes[0]===80&&firstBytes[1]===75&&[3,5,7].includes(firstBytes[2]));
+      // Explicitly selected source outranks heuristics.
+      const selectedFileSource=sourceImportModel(manualChoice)?.label||'';
+      const isThreadsJson=!isZip&&selectedFileSource==='Threads'&&/\.json$/i.test(file.name)&&
+        /(?:^|[-_. ])(?:threads|text_post_app_text_posts)(?:$|[-_. ])/i.test(file.name);
+      const isFacebookGeoJson=!isZip&&selectedFileSource==='Facebook'&&
+        /(?:^|\/)places_you_have_been_tagged_in\.json$/i.test(file.name);
+      if(isZip)setStatus(t('uiExtra.importUI.zipInspecting'));
       if(isZip||isThreadsJson||isFacebookGeoJson){
         // ZIP, standalone Threads posts and independent Facebook visit JSON use the scanner;
         // source names are only hints, each record must be a public post.
@@ -751,6 +814,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             sources:[isFacebookGeoJson?'facebook':'threads'],confidence:1,
             evidence:[{source:isFacebookGeoJson?'facebook':'threads',path:file.name,verified:false}],
             structure:null,audit:null};
+        if(!isCurrent())return;
         setArchiveDetection(result);
         // Mixed ZIPs are classified per entry and each imported record is checked.
         // Inspect every supported source through the shared ZIP scanner.
@@ -811,6 +875,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             imported.push({raw:article,import_uid:article.uid});
           }
         }});
+        if(!isCurrent())return;
         const mediaEvidence=collector.rows({scopeId,archiveName:file.name,archiveSize:file.size})
           .filter(item=>nativeLocal||item.referenced_by_post||(imported.length>0&&item.galaxy_uids?.some(uid=>issuedArticleUids.has(uid))));
         const previewArticleTimes=new Map(imported.map(item=>[String(item.raw.uid),item.raw.createtime]));
@@ -856,6 +921,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const {parseUniversalImportFile}=await import('./universal-file.mjs');
       const parsed=await parseUniversalImportFile(file,{recordPath,importLocale:language,
         source:manualChoice==='__custom__'?'':manualChoice});
+      if(!isCurrent())return;
       const list=filterStandalonePublicRows(parsed,nativeLocal);
       assertStandaloneImportDestination({nativeLocal,fileName:file.name,rows:list});
       const prepared=list.map(row=>({
@@ -868,6 +934,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus(t('uiExtra.importUI.parsedFile',{index:index+1,total,count:list.length.toLocaleString()})+
         (parsed.length!==list.length?'；已略過 '+(parsed.length-list.length).toLocaleString()+' 筆私人紀錄。':''));
     }catch(error){
+      if(!isCurrent())return;
       clearDecodedFile();
       setReparseRequired(true);
       const wasBlocked=['LOC_PRIVATE_ARCHIVE_BLOCKED','LOC_UNVERIFIED_ARCHIVE_BLOCKED'].includes(error?.code);
@@ -885,7 +952,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         ?'第 '+(index+1)+' 檔已阻止匯入：'+String(error?.message||error)+'；本次未寫入資料庫。'
         :t('uiExtra.importUI.parseFileFailed',{index:index+1,error:error?.message||error}));
     }finally{
-      setBusy(false);setProgress(null);
+      if(isCurrent()){setBusy(false);setProgress(null);}
     }
   }
   async function chooseFile(event){
@@ -1027,13 +1094,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     }finally{setProgress(null);setBusy(false);}
   }
   async function run(){
-    if(busy||(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length))return;
+    if(busy||!analysisCurrent)return;
     if(!archiveDetection&&!sourceSelection){
       setStatus('請先選擇匯入來源模型，再確認預覽。');return;
     }
     const selected=canonicalSource(source);
     if(!selected){setStatus(t('uiExtra.importUI.selectSource'));return;}
-    if(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length){setStatus(t('uiExtra.importUI.noValidItems'));return;}
+    if(!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveEvidence.length){
+      setStatus('沒有可寫入的有效文章或媒體；請核對來源、時間範圍及略過原因。');return;
+    }
     try{
       if(archiveDetection){
         // The public-row guard, not the archive filename, controls publishing.
@@ -1613,8 +1682,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     </label>:null}
     <label className="scope-import-source-choice">匯入時間範圍
       <select value={timeRange} disabled={busy} onChange={event=>setTimeRange(event.target.value)}>
-        <option value="all">全部的時間</option>
-        <option value="year">近一年（預設）</option>
+        <option value="all">全部的時間（預設）</option>
+        <option value="year">近一年</option>
         <option value="halfYear">近半年</option>
         <option value="month">近一月</option>
       </select>
@@ -1641,10 +1710,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       </button>
       <div className="scope-import-save-summary">
         {!busy&&analysisCurrent?<p className="scope-import-ready-counts">{t('uiExtra.importUI.importReadyCounts',{articles:analyzed.valid.length.toLocaleString(),media:(analyzed.mediaOnly.length+eligibleArchiveMediaPlan.media.length).toLocaleString()})}</p>:null}
+        {!busy&&analysisCurrent&&analyzed.warnings?.length?<p className="scope-status" role="status">
+          {analyzed.warnings.length.toLocaleString()} 筆含未支援的附件型別，文字文章仍可匯入；例如：{analyzed.warnings[0]}
+        </p>:null}
       </div>
     </section>:null}
-    {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">正在更新匯入資料預覽，完成後才能開始匯入。</p>:null}
-    {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄，請查看上方略過原因。</p>:null}
+    {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">
+      正在按所選 ZModel 整理匯入預覽：{analysisProgress.completed.toLocaleString()}／{analysisProgress.total.toLocaleString()} 筆。完成後才會開放寫入。
+    </p>:null}
+    {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄。已排除 {analyzed.invalid.length.toLocaleString()} 筆格式無效資料、{analyzed.skippedByRange.toLocaleString()} 筆不在指定時間內。{analyzed.invalid[0]?.error||'請核對來源及進階資料路徑。'}</p>:null}
     {busy?<FlowProgress kind="import" stage={progress?.stage||'準備匯入資料'}
       completed={progress?.completed||0} total={progress?.total||0}
       detail={progress?.detail||''}/>:null}
