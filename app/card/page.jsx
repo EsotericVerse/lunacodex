@@ -1,7 +1,6 @@
 // LOC Web redirects to sole LRS implementation; LOC iOS overlays original LRS page.
 import LrsWebRedirect from '../loc/views/LrsWebRedirect';
 import {lunarunesMetadata} from '../seo/metadata';
-import RuneArtNav from '../lrunes/Rune3DNav';
 
 export const metadata=lunarunesMetadata({
   title:'符文美術場域｜月之符文',
