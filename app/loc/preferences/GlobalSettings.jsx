@@ -44,7 +44,7 @@ export default function GlobalSettings({initialSection='features'}={}){
     ]:[])
   ];
   // Preserve old deep links without mounting a second settings homepage.
-  const [section,setSection]=useManagementSection(sections,initialSection,{favorites:'features',home:'features',account:'features'});
+  const [section,setSection]=useManagementSection(sections,initialSection,{home:'features',account:'features'});
 
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
