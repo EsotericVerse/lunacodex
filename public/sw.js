@@ -35,15 +35,25 @@ self.addEventListener('fetch',event=>{
   const request=event.request;
   if(!eligible(request))return;
   event.respondWith((async()=>{
-    const cache=await caches.open(CACHE);
-    const hit=await cache.match(request);
-    if(hit)return hit;
+    // Cache Storage can be unavailable (private mode, quota or eviction).
+    // Never let that failure turn a valid JS/CSS download into a blank page.
+    let cache=null;
+    try{
+      cache=await caches.open(CACHE);
+      const hit=await cache.match(request);
+      if(hit)return hit;
+    }catch{cache=null;}
     const response=await fetch(request);
-    if(cacheable(request,response)){
-      await cache.put(request,response.clone()).catch(()=>{});
-      const keys=await cache.keys();
-      if(keys.length>MAX_ENTRIES)
-        await Promise.all(keys.slice(0,keys.length-MAX_ENTRIES).map(key=>cache.delete(key)));
+    if(cache&&cacheable(request,response)){
+      try{
+        await cache.put(request,response.clone());
+        const keys=await cache.keys();
+        if(keys.length>MAX_ENTRIES)
+          await Promise.all(keys.slice(0,keys.length-MAX_ENTRIES)
+            .map(key=>cache.delete(key)));
+      }catch{
+        // Best-effort persistence; successful network response stays valid.
+      }
     }
     return response;
   })());
