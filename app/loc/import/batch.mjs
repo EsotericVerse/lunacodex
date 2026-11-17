@@ -3,6 +3,7 @@
 import {MAX_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
+import {sourceImportModel} from '../../../packages/zenstack/import-source-models.mjs';
 // Lightweight file-selection contracts remain separate from parser implementations.
 export const UNIVERSAL_IMPORT_ACCEPT='.zip,.json,.md';
 export {MAX_ARCHIVE_BYTES as ARCHIVE_MAX_BYTES,MAX_JSON_BYTES as ARCHIVE_JSON_MAX_BYTES};
@@ -109,12 +110,21 @@ function pathValue(row,path){
   },row);
 }
 
-export function mappedImportValue(row,field,fieldMap={}){
+export function mappedImportValue(row,field,fieldMap={},source=''){
   const custom=String(fieldMap?.[field]||'').trim();
-  const paths=custom?custom.split(/[\n,，]/g).map(value=>value.trim()).filter(Boolean):(IMPORT_FIELD_ALIASES[field]||[]);
+  const profile=sourceImportModel(source,row);
+  // Explicit operator mapping wins. Otherwise use the selected SOURCE ZModel's
+  // paths before generic Galaxy aliases. No CMS-specific converter or parser.
+  const paths=custom?custom.split(/[\n,，]/g).map(value=>value.trim()).filter(Boolean):
+    [...(profile?.fields[field]||[]),...(IMPORT_FIELD_ALIASES[field]||[])];
   for(const key of paths){
     const value=pathValue(row,key);
-    if(value!==undefined&&value!==null&&!(typeof value==='string'&&value.trim()===''))return value;
+    if(value===undefined||value===null||(typeof value==='string'&&!value.trim()))continue;
+    // Do not turn REST structured fields into literal "[object Object]" text,
+    // IDs or dates. Operators may still import structured media separately.
+    if(['content','title','site_id','createtime','url'].includes(field)&&
+        typeof value==='object')continue;
+    return value;
   }
   return '';
 }
@@ -128,7 +138,8 @@ export function importRowsFromJson(payload,recordPath=''){
     // A Meta export can wrap the actual records in array.array, including
     // arrays of one-property array envelopes. Preserve normal record arrays
     // inside each post (media, data and attachments).
-    const keys=['items','posts','data','records','status_updates','your_posts',
+    const keys=['items','posts','data','records','results','blocks','pages','messages',
+      'wp_posts','status_updates','your_posts',
       'text_post_app_text_posts','threads_posts','thread_posts','threads_and_replies','array'];
     for(const key of keys){
       if(Array.isArray(container[key]))return unwrapArchiveArrayRows(container[key]);
@@ -137,7 +148,9 @@ export function importRowsFromJson(payload,recordPath=''){
         if(nested.length)return nested;
       }
     }
-    if(selected||['content','body','text','message','description','title','uid']
+    if(selected||['content','body','text','message','description','title','uid',
+      'post_content','message_body','object_type','properties','paragraph',
+      'contentText','message_id','item_id','dm_id','session_id']
       .some(key=>Object.prototype.hasOwnProperty.call(container,key)))return [container];
   }
   throw new Error('找不到可匯入的資料陣列；請在格式設定指定資料路徑。');
