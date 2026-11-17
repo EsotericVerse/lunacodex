@@ -9,8 +9,8 @@ import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {shouldInvalidateManagementForAuthEvent} from './account-event-guard.mjs';
 import {editorSessionStatus} from './edit-session-ttl.mjs';
-import {rememberBrowserPermissions,markBrowserPermissionUnavailable,
-  clearBrowserPermissions} from './browser-permission-session.mjs';
+import {rememberBrowserPermissions,readBrowserPermissions,
+  markBrowserPermissionUnavailable,clearBrowserPermissions} from './browser-permission-session.mjs';
 import {invalidateAccountPrivateReads} from '../db/semi-dynamic-cache.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();
@@ -214,8 +214,12 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
       ||(state.authorizer?.canLocAccessSync('global')?defaultScopeData(id):null);
   },[state.authorizer,state.scopes]);
 
+  // Last-known roles are displayed as stale context only; all authorization
+  // predicates above continue to use the current verified in-memory grant.
+  const lastKnownPermissionSnapshot=typeof window==='undefined'?null:
+    readBrowserPermissions(window.sessionStorage);
   return {
-    ...state,refresh,signIn,signOut,
+    ...state,refresh,signIn,signOut,lastKnownPermissionSnapshot,
     canLocAccessSync,scopeDataFor
   };
 }
