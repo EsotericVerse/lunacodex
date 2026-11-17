@@ -89,10 +89,9 @@ function iso(value){
 function normalizeJsonImportEntry(entry,source,fieldMap={},t){
   const row=entry?.raw||entry||{};
   const sourceModel=sourceImportModel(source,row);
-  // Exact source object_type may identify a model even if the filename does
-  // not. Preserve explicit SiteAnchor labels; never synthesize a source UID.
-  const selectedSource=sourceModel&&(!source||source==='Others')
-    ?sourceModel.label:source;
+  // A recognized object_type is authoritative over a misleading filename;
+  // no SiteAnchor record, UID or permission is synthesized.
+  const selectedSource=sourceModel?.label||source;
   const value=field=>mappedImportValue(row,field,fieldMap,selectedSource);
   const isFacebook=String(selectedSource||'').trim().toLowerCase()==='facebook';
   const isThreads=String(selectedSource||'').trim().toLowerCase()==='threads';
