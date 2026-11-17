@@ -34,27 +34,8 @@ export async function selectThemeRegistry(){
   }));
 }
 
-// Each JSON is a separate dynamic module. Only the active theme is imported;
-// switching themes retires the previous palette from React state.
-const PALETTE_LOADERS={
-  'theme-1':()=>import('../../modular/themes/theme-1.json'),
-  'theme-2':()=>import('../../modular/themes/theme-2.json'),
-  'theme-3':()=>import('../../modular/themes/theme-3.json'),
-  'theme-4':()=>import('../../modular/themes/theme-4.json'),
-  'theme-5':()=>import('../../modular/themes/theme-5.json'),
-  'theme-6':()=>import('../../modular/themes/theme-6.json'),
-  'theme-7':()=>import('../../modular/themes/theme-7.json'),
-  'theme-8':()=>import('../../modular/themes/theme-8.json')
-};
-export async function selectThemeOverride(themeId){
-  const id=themeUiId(themeId);
-  const load=PALETTE_LOADERS[id];
-  if(!load)return null;
-  const module=await load();
-  const row=module.default||module;
-  if(themeUiId(row?.theme_id)!==id)throw Error('Published theme identity mismatch: '+id);
-  return {...row,theme_id:id};
-}
+// Published palettes are now CSS-only for visitors. Historical Theme JSON
+// remains a separate publishing artifact, not a browser import dependency.
 
 export function mergeThemeSlot(themeId,override=null){
   const base=getThemeSlot(themeId);

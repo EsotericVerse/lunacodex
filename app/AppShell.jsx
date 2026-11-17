@@ -14,8 +14,7 @@ registerDefaultSection('fields',fieldsZh);
 registerDefaultSection('uiExtra.dataSourceStatus',dataSourceStatusZh);
 import {FEATURES,SCOPES,featureIdForPath,getScope,normalizeScopeId} from './modular/routing/scope-registry';
 import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
-import {applyTheme,themeSignature,THEME_SLOTS} from './modular/theme-registry';
-import {mergeThemeSlot,selectThemeOverride} from './loc/preferences/theme-data';
+import {activatePublishedTheme,THEME_SLOTS} from './modular/theme-registry';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {appBootstrapPageCopy,useAppBootstrap} from './loc/runtime/app-bootstrap';
@@ -173,39 +172,19 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||
     (scopeId==='admin'?readLastActiveTheme():'')||automaticThemeId(now);
   const effectiveThemeId=selectedThemeId===SYSTEM_THEME_ID?systemDefaultThemeId:selectedThemeId;
-  const [activePalette,setActivePalette]=useState(null);
-  useEffect(()=>{
-    let live=true;
-    setActivePalette(null);
-    // Only the selected palette is imported; previous async completions may
-    // never replace the newly selected theme.
-    selectThemeOverride(effectiveThemeId).then(row=>{
-      if(live)setActivePalette({id:effectiveThemeId,row});
-    }).catch(()=>{if(live)setActivePalette({id:effectiveThemeId,row:null});});
-    return()=>{live=false;};
-  },[effectiveThemeId]);
+  // Published CSS owns the complete public palette. No Theme JSON import is
+  // needed on ordinary Scope navigation.
   const themeChoices=(bootstrap.data?.theme_list||[]).length
     ?bootstrap.data.theme_list.map(row=>({
       id:row.theme_id,label:row.theme_name||row.theme_id
     }))
     :THEME_SLOTS.map(item=>({id:item.id,label:item.label}));
-  const slot=useMemo(()=>mergeThemeSlot(effectiveThemeId,
-    activePalette?.id===effectiveThemeId?activePalette.row:null),
-    [effectiveThemeId,activePalette]);
-
   useEffect(()=>{
     rememberActiveTheme(effectiveThemeId);
+    // Preserve the current theme until its replacement CSS is loaded.
+    // Unchanged Theme IDs perform no additional HTTP request.
+    void activatePublishedTheme(effectiveThemeId);
   },[effectiveThemeId]);
-  useEffect(()=>{
-    // Published CSS already contains the eight canonical palette declarations.
-    // The first paint uses the exact theme ID from the head bootstrap script.
-    // The selected JSON is loaded only for metadata/live override values.
-    const root=document.documentElement;
-    if(root.dataset.themeId===effectiveThemeId&&
-      !activePalette?.row&&root.dataset.themeBootstrap!=='scheme-only')return;
-    if(root.dataset.themeSignature!==themeSignature(slot))
-      applyTheme(slot);
-  },[slot,scopeId,effectiveThemeId,activePalette]);
 
   useEffect(()=>{
     if(selectedThemeId!==SYSTEM_THEME_ID||fixedDefaultThemeId||configuredDefaultThemeId)return undefined;
