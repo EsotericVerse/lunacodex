@@ -609,6 +609,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
+  const fileLoadGeneration=useRef(0);
   // A failed write must not retain decoded ZIP/JSON article arrays in React.
   // Keep only the original File reference for an explicit, revalidated retry.
   const [reparseRequired,setReparseRequired]=useState(false);
@@ -770,6 +771,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   }
   async function loadQueuedFile(file,index,total,language=importLocale,
     recordPath=format.recordPath,manualChoice=sourceSelection){
+    const generation=++fileLoadGeneration.current;
+    const isCurrent=()=>generation===fileLoadGeneration.current;
     clearDecodedFile();
     setReparseRequired(false);
     setCheckpointHint(readImportCheckpoint(checkpointStorage(),{
@@ -787,18 +790,20 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus(t('uiExtra.importUI.zipTooLarge'));
       return;
     }
-    const firstBytes=new Uint8Array(await file.slice(0,4).arrayBuffer());
-    const isZip=/\.zip$/i.test(file.name)||(firstBytes[0]===80&&firstBytes[1]===75&&[3,5,7].includes(firstBytes[2]));
-    // An explicit source choice outranks filename heuristics. Route only
-    // verified Threads/Facebook exports into their existing archive scanner.
-    const selectedFileSource=sourceImportModel(manualChoice)?.label||'';
-    const isThreadsJson=!isZip&&selectedFileSource==='Threads'&&/\.json$/i.test(file.name)&&
-      /(?:^|[-_. ])(?:threads|text_post_app_text_posts)(?:$|[-_. ])/i.test(file.name);
-    const isFacebookGeoJson=!isZip&&selectedFileSource==='Facebook'&&
-      /(?:^|\/)places_you_have_been_tagged_in\.json$/i.test(file.name);
     setBusy(true);
-    if(isZip)setStatus(t('uiExtra.importUI.zipInspecting'));
     try{
+      // Include the first read in the guarded phase; a File.slice error must
+      // never leave a silent unhandled rejection or half-selected file.
+      const firstBytes=new Uint8Array(await file.slice(0,4).arrayBuffer());
+      if(!isCurrent())return;
+      const isZip=/\.zip$/i.test(file.name)||(firstBytes[0]===80&&firstBytes[1]===75&&[3,5,7].includes(firstBytes[2]));
+      // Explicitly selected source outranks heuristics.
+      const selectedFileSource=sourceImportModel(manualChoice)?.label||'';
+      const isThreadsJson=!isZip&&selectedFileSource==='Threads'&&/\.json$/i.test(file.name)&&
+        /(?:^|[-_. ])(?:threads|text_post_app_text_posts)(?:$|[-_. ])/i.test(file.name);
+      const isFacebookGeoJson=!isZip&&selectedFileSource==='Facebook'&&
+        /(?:^|\/)places_you_have_been_tagged_in\.json$/i.test(file.name);
+      if(isZip)setStatus(t('uiExtra.importUI.zipInspecting'));
       if(isZip||isThreadsJson||isFacebookGeoJson){
         // ZIP, standalone Threads posts and independent Facebook visit JSON use the scanner;
         // source names are only hints, each record must be a public post.
@@ -809,6 +814,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             sources:[isFacebookGeoJson?'facebook':'threads'],confidence:1,
             evidence:[{source:isFacebookGeoJson?'facebook':'threads',path:file.name,verified:false}],
             structure:null,audit:null};
+        if(!isCurrent())return;
         setArchiveDetection(result);
         // Mixed ZIPs are classified per entry and each imported record is checked.
         // Inspect every supported source through the shared ZIP scanner.
@@ -869,6 +875,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             imported.push({raw:article,import_uid:article.uid});
           }
         }});
+        if(!isCurrent())return;
         const mediaEvidence=collector.rows({scopeId,archiveName:file.name,archiveSize:file.size})
           .filter(item=>nativeLocal||item.referenced_by_post||(imported.length>0&&item.galaxy_uids?.some(uid=>issuedArticleUids.has(uid))));
         const previewArticleTimes=new Map(imported.map(item=>[String(item.raw.uid),item.raw.createtime]));
@@ -914,6 +921,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const {parseUniversalImportFile}=await import('./universal-file.mjs');
       const parsed=await parseUniversalImportFile(file,{recordPath,importLocale:language,
         source:manualChoice==='__custom__'?'':manualChoice});
+      if(!isCurrent())return;
       const list=filterStandalonePublicRows(parsed,nativeLocal);
       assertStandaloneImportDestination({nativeLocal,fileName:file.name,rows:list});
       const prepared=list.map(row=>({
@@ -926,6 +934,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       setStatus(t('uiExtra.importUI.parsedFile',{index:index+1,total,count:list.length.toLocaleString()})+
         (parsed.length!==list.length?'；已略過 '+(parsed.length-list.length).toLocaleString()+' 筆私人紀錄。':''));
     }catch(error){
+      if(!isCurrent())return;
       clearDecodedFile();
       setReparseRequired(true);
       const wasBlocked=['LOC_PRIVATE_ARCHIVE_BLOCKED','LOC_UNVERIFIED_ARCHIVE_BLOCKED'].includes(error?.code);
@@ -943,7 +952,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         ?'第 '+(index+1)+' 檔已阻止匯入：'+String(error?.message||error)+'；本次未寫入資料庫。'
         :t('uiExtra.importUI.parseFileFailed',{index:index+1,error:error?.message||error}));
     }finally{
-      setBusy(false);setProgress(null);
+      if(isCurrent()){setBusy(false);setProgress(null);}
     }
   }
   async function chooseFile(event){
