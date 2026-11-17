@@ -609,7 +609,15 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
+  const [parsingJson,setParsingJson]=useState(false);
   const fileLoadGeneration=useRef(0);
+  const jsonReadAbort=useRef(null);
+  useEffect(()=>()=>{
+    // Releasing the import page also releases its pending JSON Worker.
+    ++fileLoadGeneration.current;
+    jsonReadAbort.current?.abort();
+    jsonReadAbort.current=null;
+  },[]);
   // A failed write must not retain decoded ZIP/JSON article arrays in React.
   // Keep only the original File reference for an explicit, revalidated retry.
   const [reparseRequired,setReparseRequired]=useState(false);
@@ -771,6 +779,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   }
   async function loadQueuedFile(file,index,total,language=importLocale,
     recordPath=format.recordPath,manualChoice=sourceSelection){
+    jsonReadAbort.current?.abort();
+    const controller=new AbortController();
+    jsonReadAbort.current=controller;
     const generation=++fileLoadGeneration.current;
     const isCurrent=()=>generation===fileLoadGeneration.current;
     clearDecodedFile();
@@ -918,9 +929,23 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           ' 筆（安全問題、空文章、已刪除內容等）。請核對預覽後，在「作品儲存資料庫」按開始匯入。');
         return;
       }
-      const {parseUniversalImportFile}=await import('./universal-file.mjs');
-      const parsed=await parseUniversalImportFile(file,{recordPath,importLocale:language,
-        source:manualChoice==='__custom__'?'':manualChoice});
+      const options={recordPath,importLocale:language,
+        source:manualChoice==='__custom__'?'':manualChoice};
+      const parseAsJson=/\.json$/i.test(file.name);
+      if(parseAsJson)setParsingJson(true);
+      let parsed;
+      try{
+        parsed=parseAsJson
+          ?await import('./json-worker-client.mjs').then(({parseJsonImportOffMainThread})=>
+            parseJsonImportOffMainThread(file,options,{
+              signal:controller.signal,
+              onProgress:stage=>{if(isCurrent())setProgress({stage,completed:0,total:0});}
+            }))
+          :await import('./universal-file.mjs').then(({parseUniversalImportFile})=>
+            parseUniversalImportFile(file,options));
+      }finally{
+        if(isCurrent())setParsingJson(false);
+      }
       if(!isCurrent())return;
       const list=filterStandalonePublicRows(parsed,nativeLocal);
       assertStandaloneImportDestination({nativeLocal,fileName:file.name,rows:list});
@@ -952,8 +977,16 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         ?'第 '+(index+1)+' 檔已阻止匯入：'+String(error?.message||error)+'；本次未寫入資料庫。'
         :t('uiExtra.importUI.parseFileFailed',{index:index+1,error:error?.message||error}));
     }finally{
-      if(isCurrent()){setBusy(false);setProgress(null);}
+      if(isCurrent()){
+        jsonReadAbort.current=null;
+        setParsingJson(false);
+        setBusy(false);setProgress(null);
+      }
     }
+  }
+  function cancelJsonParse(){
+    if(!parsingJson||!jsonReadAbort.current)return;
+    jsonReadAbort.current.abort();
   }
   async function chooseFile(event){
     if(busy)return;
@@ -1722,6 +1755,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     {busy?<FlowProgress kind="import" stage={progress?.stage||'準備匯入資料'}
       completed={progress?.completed||0} total={progress?.total||0}
       detail={progress?.detail||''}/>:null}
+    {busy&&parsingJson?<button type="button" className="loc-button"
+      onClick={cancelJsonParse}>取消 JSON 解析</button>:null}
     {/* Rendered right under the import button/progress area, not after every
         intermediate ZIP/archive detail section below — the user is watching
         here, and a result (success, "no changes", or an error like the
