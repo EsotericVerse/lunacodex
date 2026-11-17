@@ -45,6 +45,26 @@ test('Notion direct page blocks compose ordered rich text without recursive craw
   assert.equal(json.pages[0].content,undefined);
 });
 
+test('one flat Notion results array joins direct blocks once without nesting',()=>{
+  const page={object:'page',id:'p-1',properties:{Name:{title:[{plain_text:'P'}]}}};
+  const block={object:'block',id:'b-1',parent:{page_id:'p-1'},type:'paragraph',
+    paragraph:{rich_text:[{plain_text:'Joined'}]}};
+  const fromResults=importRowsFromJson({results:[page,block]},'','Notion');
+  const fromArray=importRowsFromJson([page,block],'','Notion');
+  for(const rows of [fromResults,fromArray]){
+    assert.equal(rows.length,1,'joined block must not become an extra article');
+    assert.equal(rows[0].content,'Joined');
+  }
+});
+
+test('flat WordPress postmeta is attached, not separately published',()=>{
+  const post={ID:9,post_title:'P',post_content:'正文'};
+  const meta={post_id:9,meta_key:'subtitle',meta_value:'副標'};
+  const rows=importRowsFromJson([post,meta],'','WordPress');
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].meta[0].meta_value,'副標');
+});
+
 test('Notion images join by exact page ID and keep signed URLs',()=>{
   const page={object:'page',id:'page-img',properties:{Name:{title:[{plain_text:'Gallery'}]}}};
   const imageBlock={object:'block',parent:{page_id:'page-img'},type:'image',
