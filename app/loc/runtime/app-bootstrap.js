@@ -58,5 +58,9 @@ export function appBootstrapPageCopy(data,scopeId){
 
 export function useAppBootstrap(scopeId,pageName='index',{enabled=true}={}){
   const key=appBootstrapKey(scopeId,pageName);
-  return useAsyncResource(key,()=>selectAppBootstrap(scopeId,pageName),{enabled});
+  // The public bootstrap is non-authorizing metadata. All mounted shell,
+  // theme and page readers share its completed snapshot until the last one
+  // leaves; protected queries and Auth never opt into this policy.
+  return useAsyncResource(key,()=>selectAppBootstrap(scopeId,pageName),
+    {enabled,shareResult:true});
 }
