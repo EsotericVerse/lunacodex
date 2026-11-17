@@ -143,18 +143,29 @@ function buildLocScopeDistribution(rows=[]){
 function buildLocSourceRiver(rows=[],taxonomy={}){
   const categories=new Map((taxonomy.categories||[]).map(row=>
     [row.category_code,row]));
-  const combined=new Map(),totals=new Map();
+  const combined=new Map(),totals=new Map(),scopeDaily=new Map(),scopeTotals=new Map();
   for(const row of rows){
     const code=assignedSource(row.category,taxonomy.aliases||[],taxonomy.categories||[]);
     const category=categories.get(code)?.display_name||'未分類';
     const count=Number(row.item_count)||0;
     totals.set(code,(totals.get(code)||0)+count);
+    const scope=scopeIdOf(row.scope_id);
+    if(scope){
+      const scopeKey=JSON.stringify([code,scope]);
+      scopeTotals.set(scopeKey,(scopeTotals.get(scopeKey)||0)+count);
+    }
     const day=String(row.day||'').slice(0,10);
     if(!day)continue;
     const key=code+'|'+day;
     const current=combined.get(key)||{code,category,day,item_count:0};
     current.item_count+=count;
     combined.set(key,current);
+    if(scope){
+      const scopeDayKey=JSON.stringify([code,scope,day]);
+      const scoped=scopeDaily.get(scopeDayKey)||{code,scope,day,category,item_count:0};
+      scoped.item_count+=count;
+      scopeDaily.set(scopeDayKey,scoped);
+    }
   }
   const perCategoryMax=new Map();
   let globalMax=0;
@@ -180,7 +191,23 @@ function buildLocSourceRiver(rows=[],taxonomy={}){
       site:code,display_label:categories.get(code)?.display_name||'未分類',
       item_count:count
     }));
-  return {sourceRiverItems,sourceGroups};
+  const sourceScopeGroups=[...scopeTotals].filter(([,count])=>count>0)
+    .map(([key,count])=>{
+      const [code,scope_id]=JSON.parse(key);
+      return {code,scope_id,item_count:count,
+        category:categories.get(code)?.display_name||'未分類'};
+    }).sort((a,b)=>a.code.localeCompare(b.code)||a.scope_id.localeCompare(b.scope_id));
+  const sourceScopeRiverItems=[...scopeDaily.values()].map(row=>({
+    id:'loc-source-scope:'+row.code+':'+row.scope+':'+row.day,
+    entry_id:'loc-source-scope:'+row.code+':'+row.scope+':'+row.day,
+    entry_type:'source_density',scope_id:row.scope,source_code:row.code,
+    group_key:'loc-source-scope:'+row.code+':'+row.scope,
+    group_label:row.scope,category:row.code,
+    start_date:row.day,item_count:row.item_count,
+    density_ratio:row.item_count/Math.max(1,perCategoryMax.get(row.code)||1),
+    title:row.day+' · '+row.category+' / '+row.scope+' · '+row.item_count+' 項'
+  })).sort((a,b)=>a.start_date.localeCompare(b.start_date)||a.scope_id.localeCompare(b.scope_id));
+  return {sourceRiverItems,sourceGroups,sourceScopeRiverItems,sourceScopeGroups};
 }
 
 function sourceLabel(value){return String(value||'').trim();}
@@ -283,7 +310,7 @@ export async function selectLocCultureDensity({
 }={}){
   const start=startDate||intersectionStart,end=endDate||intersectionEnd;
   if(!scopes.length||!start||!end||start>end)
-    return {scopeRanges:[],sourceRiverItems:[],sourceGroups:[]};
+    return {scopeRanges:[],sourceRiverItems:[],sourceGroups:[],sourceScopeRiverItems:[],sourceScopeGroups:[]};
   const validDate=row=>{
     const day=String(row.day||'').slice(0,10);
     return day>=start&&day<=end&&
@@ -301,7 +328,9 @@ export async function selectLocCultureDensity({
   return {
     scopeRanges:buildLocScopeDistribution(aggregateRows),
     sourceRiverItems:built.sourceRiverItems,
-    sourceGroups:built.sourceGroups
+    sourceGroups:built.sourceGroups,
+    sourceScopeRiverItems:built.sourceScopeRiverItems,
+    sourceScopeGroups:built.sourceScopeGroups
   };
 }
 
