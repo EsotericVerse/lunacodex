@@ -41,13 +41,14 @@ if(!runtime.includes("const allowed=['io_limits','isr']")||
    !io.includes("if(settings.enabled!==undefined&&settings.enabled!==false)")||
    !io.includes("throw new Error('Vercel ISR 尚未開放啟用')"))
   throw Error('Runtime ISR reservation must be disabled and authorized');
-// Browser PWA Service Worker has also been retired.
+// Browser PWA caches only immutable Next.js static assets, never ISR or APIs.
 const sw=read('public/sw.js');
 const shell=read('app/AppShell.jsx');
-if(!sw.includes('self.registration.unregister()')||
-   sw.includes("addEventListener('fetch'")||
-   shell.includes('serviceWorker.register('))
-  throw Error('Retired PWA worker must not intercept or re-register');
+if(!sw.includes("url.pathname.startsWith('/_next/static/')")||
+   !sw.includes("request.method!=='GET'")||
+   !shell.includes("navigator.serviceWorker.register('/sw.js'")||
+   !sw.includes("self.addEventListener('fetch'"))
+  throw Error('Browser static asset cache must be registered and narrowly scoped');
 const config=read('app/loc/scope/scope-data.js');
 if(!config.includes('PUBLISHED_SITE_BOOTSTRAP')||
   !config.includes('SCOPE_ROUTE_INDEX')||
