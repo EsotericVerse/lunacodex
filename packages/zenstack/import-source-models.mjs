@@ -23,8 +23,8 @@ export const SOURCE_IMPORT_MODEL_FIELDS=Object.freeze({
     ...json('term_id term_taxonomy_id parent')
   }),
   NotionPage:Object.freeze({
-    ...strings('id object created_time last_edited_time url'),
-    ...json('properties title parent icon cover')
+    ...strings('id object created_time last_edited_time url content'),
+    ...json('properties title parent icon cover media')
   }),
   NotionBlock:Object.freeze({
     ...strings('id type created_time last_edited_time'),
