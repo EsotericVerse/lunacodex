@@ -8,8 +8,8 @@ import editBlocksZh from '../../i18n/sections/uiExtra.editBlocks.zh_tw.js';
 registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
-import {useAccount} from '../auth/use-account';
-import {clearEditorSession} from '../auth/edit-session-ttl.mjs';
+import {useAccount,readVerifiedManagementEntry} from '../auth/use-account';
+import {editorSessionStatus,clearEditorSession} from '../auth/edit-session-ttl.mjs';
 
 // This control is shown only at the bottom of an individual Scope homepage.
 // No identity or management query runs until the visitor selects it.
@@ -32,9 +32,10 @@ export default function ScopeHomeEditEntry(){
         setMessage({error:'Local Scope 尚未啟用，請先設定資料庫引擎。'});
         return;
       }
-      // One live verification for this edit entry. An earlier result is not
-      // used to bypass authorization; writes remain protected by server RLS.
-      const result=await account.refresh();
+      // Cache-first within the existing LOC browser Session. Re-read only
+      // when that verified result is unavailable/expired; every write still
+      // rechecks authorization on the trusted LOC database connection.
+      const result=readVerifiedManagementEntry()||await account.refresh();
       if(!result?.user){
         setMessage({key:'uiExtra.editBlocks.signInToEnterEditMode',showLogin:true});
         return;
@@ -47,9 +48,10 @@ export default function ScopeHomeEditEntry(){
         setMessage({key:'uiExtra.editBlocks.editPermissionDenied'});
         return;
       }
-      // A new verified edit entry starts a fresh 30-minute idle / 2-hour
-      // edit session; otherwise a previously locked session can never reopen.
-      clearEditorSession(window.sessionStorage);
+      // Never reset an active browser Session when entering another editor.
+      // A verified expired entry can start a new LOC edit Session instead.
+      if(editorSessionStatus(window.sessionStorage).expired)
+        clearEditorSession(window.sessionStorage);
       // The route owns Scope ID. Entering edit mode only toggles the Dock;
       // nothing is copied to sessionStorage or saved for later restoration.
       if(!editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canLocAccessSync('global'))}))
