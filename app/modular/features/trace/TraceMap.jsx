@@ -151,7 +151,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     let instance=null;
     try{
       instance=createTraceMap(containerRef.current,{
-        anchors:spatialData?.anchors||[],
+        anchors:routeOnly?[]:spatialData?.anchors||[],
         showAnchorPopup:!publicTrace,
         territoryMode,
         onGaugeVisibilityChange:visible=>{if(active)gaugeVisibleRef.current?.(visible);},
