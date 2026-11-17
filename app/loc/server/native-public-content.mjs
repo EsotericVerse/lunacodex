@@ -116,7 +116,7 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
 }
 
 export async function handleNativePublicContent(request,env={},{
-  database=directMcpKysely
+  database=directMcpKysely,waitUntil
 }={}){
   if(request.method!=='GET')return respond({error:'GET required'},405);
   const url=new URL(request.url);
@@ -156,7 +156,7 @@ export async function handleNativePublicContent(request,env={},{
     // determine the engine, endpoint, connection profile or SQL relation.
     const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
     if(!primary)throw Error('LOC main SQL target is not configured');
-    const port=await database(env,primary.target_id);
+    const port=await database(env,primary.target_id,{waitUntil});
     if(!port?.db||!['postgres','mysql','mssql'].includes(port.engine))
       return respond({error:'LOC native database unavailable',stage:'driver'},503);
     const query=port.db;

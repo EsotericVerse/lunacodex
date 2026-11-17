@@ -11,7 +11,7 @@ function reply(body,status=200){
   return new Response(JSON.stringify(body),{status,headers:jsonHeaders});
 }
 export async function handleNativePublicClasses(request,env={},{
-  database=directMcpKysely
+  database=directMcpKysely,waitUntil
 }={}){
   if(request.method!=='GET')return reply({error:'Method not allowed'},405);
   if(new URL(request.url).hostname!=='mcp.lo3rwang.cc')
@@ -23,7 +23,7 @@ export async function handleNativePublicClasses(request,env={},{
   try{
     // Public directory always reads the trusted default source, never a
     // browser-selected database ID, credentials or arbitrary relation.
-    const port=await database(env);
+    const port=await database(env,'',{waitUntil});
     const namespace=port.namespace||'silver';
     const control=portableRelation(scope,port.engine,namespace);
     const anchor=portableRelation(scope+'_anchor',port.engine,namespace);

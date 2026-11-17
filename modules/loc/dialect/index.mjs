@@ -25,9 +25,25 @@ export function createKyselyDialect(engine,config){
 
 // A pg.Client is acquired and released inside the same request. This also
 // avoids reusing a Cloudflare request-owned socket in a later request.
+// Kysely's own releaseConnection() never awaits what `client.release()`
+// returns (it calls it fire-and-forget), so closing the socket cannot ride
+// on that call. Cloudflare may freeze/reclaim the isolate the instant the
+// HTTP response is sent, before an un-awaited close actually reaches
+// PostgreSQL. Without a clean close, the server-side connection can sit
+// open until Neon's own idle timeout reclaims it — under concurrent
+// requests, these pile up faster than they are reclaimed and exhaust the
+// connection ceiling, surfacing as unrelated-looking 503s elsewhere.
+// `waitUntil` (from the Cloudflare request context) tells the platform to
+// keep the isolate alive until the close actually finishes. The pool
+// object can be reused across requests when the connection is cached by
+// isolate (see db_connection()), so `setWaitUntil` lets each request
+// update which `waitUntil` `release()` uses, instead of a stale one
+// captured by whichever request first built this pool.
 export function requestScopedPool(options,ClientClass=pg.Client,
     {attempts=2,delayMs=400}={}){
+  let currentWaitUntil=null;
   return {
+    setWaitUntil(fn){currentWaitUntil=typeof fn==='function'?fn:null;},
     async connect(){
       let lastError;
       for(let attempt=1;attempt<=attempts;attempt++){
@@ -35,7 +51,10 @@ export function requestScopedPool(options,ClientClass=pg.Client,
         client.on?.('error',()=>{});
         try{
           await client.connect();
-          client.release=()=>{void Promise.resolve(client.end()).catch(()=>{});};
+          client.release=()=>{
+            const closing=Promise.resolve(client.end()).catch(()=>{});
+            if(currentWaitUntil)currentWaitUntil(closing);
+          };
           return client;
         }catch(error){
           lastError=error;

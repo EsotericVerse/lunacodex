@@ -121,7 +121,7 @@ async function signedClaims(request,fetchImpl){
     delegatedScopes:String(claims.scope||'').split(/\s+/).filter(Boolean)};
 }
 export async function handleNativeLocOperation(request,env={},{
-  fetchImpl=globalThis.fetch,database=directMcpKysely
+  fetchImpl=globalThis.fetch,database=directMcpKysely,waitUntil
 }={}){
   if(request.method!=='POST')return reply({error:{message:'Method not allowed'}},405);
   const host=new URL(request.url).hostname;
@@ -185,7 +185,7 @@ export async function handleNativeLocOperation(request,env={},{
     const externalTarget=claims.db_target&&claims.db_target!==primaryId
       ?claims.db_target:'';
     if(operationKind==='short-import')importPhase='database';
-    const selected=await database(env,control?'':externalTarget);
+    const selected=await database(env,control?'':externalTarget,{waitUntil});
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     // Personal preferences are self-service under the verified website Session.
@@ -236,7 +236,7 @@ export async function handleNativeLocOperation(request,env={},{
       const args=body.args||{};
       if(args.scopeid!==undefined&&args.scopeid!==body.scopeid)
         throw refusal('MCP Scope mismatch',400);
-      return reply({data:await readPublicGalaxy({...args,scopeid:body.scopeid},env)});
+      return reply({data:await readPublicGalaxy({...args,scopeid:body.scopeid},env,{waitUntil})});
     }
     if(body.kind==='mcp-article-stat'){
       if(host!==MCP_HOST||body.scopeid!=='loc')

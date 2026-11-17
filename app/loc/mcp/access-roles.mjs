@@ -24,14 +24,14 @@ export async function loadMcpLocAccess(db,email,{dialect,engine}={}){
 }
 
 export async function authorizeMcpRole(email,env={},{
-  database=directMcpKysely
+  database=directMcpKysely,waitUntil
 }={}){
   const verified=String(email||'').trim().toLowerCase();
   if(!VerifiedEmail.safeParse(verified).success)
     throw denial('Verified LOC identity required',401);
   let permissions;
   try{
-    const {db,dialect,engine}=await database(env);
+    const {db,dialect,engine}=await database(env,'',{waitUntil});
     permissions=await readLocAccess(db,verified,{dialect,engine});
   }catch{
     throw denial('LOC MCP role service unavailable',503);
@@ -44,7 +44,7 @@ export async function authorizeMcpRole(email,env={},{
 // The verified RFC 9068 token and UserInfo bind identity to the same Session;
 // no browser-supplied role or new black/allow list can elevate access.
 export async function authorizeMcpBearer(token,subject,env={},{
-  fetchImpl=globalThis.fetch,database=directMcpKysely
+  fetchImpl=globalThis.fetch,database=directMcpKysely,waitUntil
 }={}){
   if(!token||typeof subject!=='string'||!subject)
     throw denial('LOC OAuth access token required',401);
@@ -63,5 +63,5 @@ export async function authorizeMcpBearer(token,subject,env={},{
   const parsed=VerifiedLocUserInfoSchema.safeParse(await response.json().catch(()=>null));
   if(!parsed.success||parsed.data.sub!==subject)
     throw denial('Verified LOC OAuth identity required',401);
-  return authorizeMcpRole(parsed.data.email,env,{database});
+  return authorizeMcpRole(parsed.data.email,env,{database,waitUntil});
 }
