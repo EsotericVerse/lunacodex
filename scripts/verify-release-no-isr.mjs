@@ -52,7 +52,7 @@ if(!sw.includes("url.pathname.startsWith('/_next/static/')")||
 const config=read('app/loc/scope/scope-data.js');
 if(!config.includes('PUBLISHED_SITE_BOOTSTRAP')||
   !config.includes('SCOPE_ROUTE_INDEX')||
-  !config.includes('loadPublishedBlocks(id,pageName)'))
+  !config.includes('loadPublishedBlocks(id,name)'))
   throw Error('Missing published JS Bootstrap/Config/Blocks sources');
 const routesConfig=read('app/modular/routing/scope-route-index.js');
 if(!routesConfig.includes('SCOPE_ROUTE_INDEX')||!routesConfig.includes('"config":'))
@@ -63,4 +63,4 @@ if(!publishedBlocks.includes('()=>import('))
 const app=read('app/loc/runtime/app-bootstrap.js');
 if(app.includes('locHomeSnapshotDelivered'))
   throw Error('LOC home still consumes site RPC Blocks');
-console.log('Verified retired ISR endpoints/workers, IO-only settings, retired PWA worker and published JS policy.');
+console.log('Verified retired ISR endpoints/workers, bounded browser SW and published JS policy.');

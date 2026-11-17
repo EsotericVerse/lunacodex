@@ -2,12 +2,13 @@
 
 
 import {selectAllRows,selectRows} from '../db/db-query.mjs';
-import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
+import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
+import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/runtime/app-bootstrap.js); there is no
@@ -127,7 +128,7 @@ let publicSiteBootstrapRequest=null;
 export function invalidatePublicScopeMetadata(){
   managedScopesRequest=null;
   publicSiteBootstrapRequest=null;
-  scopeConfigInFlight.clear();
+  invalidateCachedReadPrefix('scope-config:');
   invalidateScopedReadCache();
   if(typeof window!=='undefined'){
     window.dispatchEvent(new Event('loc-public-scope-metadata-changed'));
@@ -183,6 +184,8 @@ export async function selectLocSearchScopes(){
 
 // Group reads use explicitly published membership on ordinary pages; keep the
 // caller's exact Culture/Trace range, pagination and visibility queries intact.
+// Pure in-memory lookup against the already-loaded published bootstrap —
+// no network call, so there is nothing here that needs a cache at all.
 const groupMembershipRequests=new Map();
 export function selectScopeGroupMemberIds(groupId='loc',type='culture'){
   const key=groupId+':'+type;
@@ -257,37 +260,33 @@ async function nativePublicContent(kind,scope,feature=''){
   return payload.data;
 }
 const publishedConfig=id=>SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id&&row.active!==false)?.config||null;
-const scopeConfigInFlight=new Map();
 export function selectScopeConfig(scopeId){
   const scope=defaultScopeData(scopeId);
   if(!scope)return Promise.resolve(null);
-  const existing=scopeConfigInFlight.get(scope.id);
-  if(existing)return existing;
+  if(scope.id==='local')return Promise.resolve(null);
   // Published configuration is the guest fallback. Live feature configuration
   // is read through the existing application runtime's native Kysely driver.
   // Never let an unavailable SQL connection blank a public Scope page.
-  const request=scope.id==='local'?Promise.resolve(null):
-    nativePublicContent('config',scope.id)
+  return cachedRead('scope-config:'+scope.id,
+    ()=>nativePublicContent('config',scope.id)
       .then(data=>data||publishedConfig(scope.id))
-      .catch(()=>publishedConfig(scope.id));
-  if(scope.id!=='local')scopeConfigInFlight.set(scope.id,request);
-  return request;
+      .catch(()=>publishedConfig(scope.id)));
 }
 
 
-// All Blocks share the same ZModel-aware in-memory read store used by
-// ordinary Anchor/Blocks Kysely SELECTs. Do not maintain parallel promise
-// maps, separate idx indexes or a second TTL-based page cache.
+// Presentation Blocks and public Anchor projections share the same physical
+// ZModel-backed read cache. LOC's Blocks are typed rows in silver.loc_anchor.
+// This is NOT a SQL idx/index, IndexedDB or a second Cache Storage layer.
 const blockRelation=id=>'silver.'+(id==='loc'?'loc_anchor':id+'_blocks');
 export function invalidateScopeBlockPage(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  if(!SCOPE_ID_PATTERN.test(id)||id==='local')return;
-  // The physical relation is the invalidation boundary. For LOC this also
-  // invalidates the Block projections of loc_anchor's typed Anchor rows.
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id))return;
+  // All projections for one written physical relation become stale together.
+  // Page is retained in the API for its existing editor callers.
   invalidateScopedReadCache(blockRelation(id));
 }
 const BLOCK_COLUMNS='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
-// LOC returns index+governance; ordinary Scope returns index only.
+// Public display readers of the same Scope share one parsed Block-list result.
 export function block_list(scopeid){
   const id=String(scopeid||'').trim().toLowerCase();
   if(id==='local'||!SCOPE_ID_PATTERN.test(id))return Promise.resolve([]);
@@ -296,7 +295,9 @@ export function block_list(scopeid){
     return Array.isArray(rows)?rows:[];
   });
 }
-// Specific LOC Anchor type, optionally a pair of exact types in one SQL read.
+// Preserve PR #1762: a direct Hero read is ALWAYS fresh. The editor reads
+// this before writing, so it must never consume a display-time cache entry
+// that could overwrite a concurrent edit from another browser.
 export async function hero_block(specificValue){
   const types=Array.isArray(specificValue)?specificValue:[specificValue];
   if(!types.length||types.length>2||new Set(types).size!==types.length||
@@ -304,26 +305,31 @@ export async function hero_block(specificValue){
       !/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(type)||
       ['from','domain','galaxy','universe','index','governance'].includes(type)))
     return [];
-  return getOrLoadScopedRead('silver.loc_anchor',['native','hero_block',types.join(',')],async()=>{
-    const rows=await nativePublicContent('hero_block','loc',types.join(','));
-    return Array.isArray(rows)?rows:[];
-  });
+  const rows=await nativePublicContent('hero_block','loc',types.join(','));
+  return Array.isArray(rows)?rows:[];
 }
+// Edits/verification need an authoritative fresh read, not the public display
+// cache. Rendering uses selectScopeBlocks() below.
 export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim();
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[A-Za-z0-9_-]+$/.test(name))return [];
   if(id==='loc'){
     const rows=['index','governance'].includes(name)
-      ?(await block_list(id)).filter(row=>row.page_name===name)
+      ?(await nativePublicContent('block_list',id)).filter(row=>row.page_name===name)
       :await hero_block(name);
     return [...rows].sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
   }
-  if(name==='index')return block_list(id);
-  // Other Scope physical Blocks and extended pages remain untouched.
+  if(name==='index'){
+    const rows=await nativePublicContent('block_list',id);
+    return Array.isArray(rows)?rows:[];
+  }
+  // A caller-supplied signal deliberately bypasses the completed public
+  // SELECT cache for this edit-time authoritative read.
   const {rows}=await selectAllRows(`silver.${id}_blocks`,{
     columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
-    orders:[{column:'block_order',ascending:true}]
+    orders:[{column:'block_order',ascending:true}],
+    signal:new AbortController().signal
   });
   return (rows||[]).sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
 }
@@ -331,12 +337,24 @@ export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[a-z0-9_-]+$/.test(name))return [];
+  let offlineFallback=false;
   return getOrLoadScopedRead(blockRelation(id),['page','blocks',name],async()=>{
-    // Live SQL rows remain authoritative after edits. Published rows are
-    // fallback only, not a second data cache with independent invalidation.
-    const rows=await loadPublishedBlocks(id,name);
-    return name==='index'||id==='loc'
-      ?selectLiveScopeBlocks(id,name).then(live=>live.length?live:rows).catch(()=>rows)
-      :rows.length?rows:selectLiveScopeBlocks(id,name);
-  });
+    const published=await loadPublishedBlocks(id,name);
+    if(name==='index'||id==='loc'){
+      try{
+        let live;
+        if(id==='loc'&&name!=='index'&&name!=='governance'){
+          live=await hero_block(name);
+        }else{
+          const all=await block_list(id);
+          live=id==='loc'?all.filter(row=>row.page_name===name):all;
+        }
+        return live.length?live:published;
+      }catch{
+        offlineFallback=true;
+        return published;
+      }
+    }
+    return published.length?published:selectLiveScopeBlocks(id,name);
+  },{cacheable:()=>!offlineFallback});
 }

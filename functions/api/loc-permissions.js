@@ -4,13 +4,13 @@ import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
 
 // The website checks LOC Auth's Session, then reads one policy-enforced
 // api.manage ZModel projection. No second role registry or query loop.
-export async function onRequestGet({request,env}){
+export async function onRequestGet({request,env,waitUntil}){
   const response=(body,status=200)=>new Response(JSON.stringify(body),{
     status,headers:{'content-type':'application/json','cache-control':'no-store'}
   });
   try{
     const session=await verifiedLocWebsiteSession(request);
-    const {db,dialect,engine}=await directMcpKysely(env);
+    const {db,dialect,engine}=await directMcpKysely(env,'',{waitUntil});
     const result=await readLocAccess(db,session.email,{dialect,engine,website:true});
     return response({...result,email:session.email,subject:session.userId});
   }catch(error){

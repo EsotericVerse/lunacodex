@@ -7,7 +7,7 @@ import {handleNativeLocOperation} from '../../app/loc/mcp/native-operations.mjs'
 const HOST='loc.lo3rwang.cc';
 const RESOURCE='https://mcp.lo3rwang.cc/api/loc-native';
 
-export function onRequest({request,env}){
+export function onRequest({request,env,waitUntil}){
   if(new URL(request.url).hostname!==HOST)
     return new Response('Not found',{status:404});
   if(request.method!=='POST')
@@ -24,5 +24,5 @@ export function onRequest({request,env}){
     method:'POST',headers,body:request.body,duplex:'half',
     redirect:'error'
   });
-  return handleNativeLocOperation(delegated,env);
+  return handleNativeLocOperation(delegated,env,{waitUntil});
 }

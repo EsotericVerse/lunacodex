@@ -100,12 +100,22 @@ test('all read/write entry points use the same ZModel cache (no idx/IndexedDB)',
   const directWriter=read('app/loc/db/db-contract.mjs');
   const store=read('packages/zenstack/scoped-read-cache.mjs');
   assert.match(scope,/getOrLoadScopedRead\(blockRelation\(id\)/);
-  assert.match(scope,/getOrLoadScopedRead\('silver.loc_anchor'/);
+  // LOC's Blocks are mapped through blockRelation('loc') -> loc_anchor.
+  // PR #1762 requires raw Hero edit-time reads to bypass the display cache.
+  assert.match(scope,/id==='loc'\?'loc_anchor'/);
+  const hero=scope.slice(scope.indexOf('export async function hero_block'),
+    scope.indexOf('export async function selectLiveScopeBlocks'));
+  assert.doesNotMatch(hero,/getOrLoadScopedRead/);
+  assert.match(hero,/nativePublicContent\('hero_block'/);
+  assert.match(scope,/cachedRead\('scope-config:'/);
   assert.doesNotMatch(scope,/const scopeBlocksRequests=new Map/);
   assert.doesNotMatch(scope,/const blockListRequests=new Map/);
   assert.match(query,/getOrLoadScopedRead\(table,signature/);
   assert.match(transport,/invalidateScopedReadCache\(payload\?\.p_table\)/);
   assert.match(transport,/name==='save_blocks'/);
+  assert.match(transport,/name==='save_scope_trace_place_names'/);
+  assert.match(transport,/name==='merge_scope_trace_place_names'/);
+  assert.match(transport,/name==='import_shared_keyword_class'/);
   assert.match(keywords,/invalidateScopedReadCache\('silver\.'\+scope\+'_anchor'\)/);
   assert.match(directWriter,/invalidateScopedReadCache\(table\)/);
   assert.match(store,/modelNameForSql/);

@@ -83,6 +83,9 @@ export function createConfiguredAdapter({
     if(/^[a-z][a-z0-9]{0,14}$/.test(scope)){
       if(name==='save_blocks'||name==='move_scope_block')
         invalidateScopedReadCache('silver.'+(scope==='loc'?'loc_anchor':scope+'_blocks'));
+      else if(name==='save_scope_trace_place_names'||
+        name==='merge_scope_trace_place_names'||name==='import_shared_keyword_class')
+        invalidateScopedReadCache('silver.'+scope+'_anchor');
       else if(name==='provision_scope'||name==='delete_scope'){
         invalidateScopedReadCache('silver.'+scope+'_anchor');
         invalidateScopedReadCache('silver.'+scope+'_blocks');

@@ -250,7 +250,7 @@ function withFilters(q,body){
   return q;
 }
 export async function handleNativePublicQuery(request,env={},{
-  database=directMcpKysely
+  database=directMcpKysely,waitUntil
 }={}){
   if(request.method!=='POST')return respond({error:'POST required'},405);
   let body,normalized,analytics=null,action=null;
@@ -286,7 +286,7 @@ export async function handleNativePublicQuery(request,env={},{
     // Force the same fixed control target used by api.manage authorization.
     const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
     if(!primary)throw Error('LOC primary SQL target is not configured');
-    const selected=await database(env,primary.target_id);
+    const selected=await database(env,primary.target_id,{waitUntil});
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw Error('LOC Kysely driver unavailable');
     const table=analytics||action?null:portableRelation(normalized.table,selected.engine,

@@ -43,21 +43,41 @@ export async function selectAvailableKeywordClasses(scopeId){
   return keywordService('classes',{scopeId:normalizeScopeId(scopeId)});
 }
 // Browser only asks the verified server to run the indexed word analysis.
+// A whole Scope's article table rarely finishes inside one HTTP request's
+// time budget: the server checkpoints its progress (never the live Pattern
+// index — see sql-service.mjs) and reports {incomplete:true}, asking for
+// the same Class to be analyzed again to continue from exactly that point.
+// This loop is what makes "再打一次就接著掃" automatic instead of requiring
+// the user to click 重新分析 repeatedly; it never retries a failed write,
+// only a server-reported "still going, call me again".
 export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUid='',onProgress}={}){
   const id=normalizeScopeId(scopeId);
   const classUid=String(requestedClassUid||'');
   if(!/^[0-9A-Za-z]{8}$/.test(classUid))
     throw new Error('尚未指定有效的 Keywords Class');
   reportBatchProgress(onProgress,'reading',0,0,0,'解析關鍵詞中請稍後');
-  const result=await keywordService('analyze',{scopeId:id,classUid},{
-    onProgress:progress=>reportBatchProgress(onProgress,
-      progress?.phase||'reading',
-      Math.max(0,Number(progress?.completed)||0),
-      Math.max(0,Number(progress?.total)||0),
-      Math.max(0,Number(progress?.percent)||0),
-      String(progress?.label||'正在逐批分析文章'),
-      {parsed:Number(progress?.parsed)||0,reused:Number(progress?.reused)||0})
-  });
+  const forward=progress=>reportBatchProgress(onProgress,
+    progress?.phase||'reading',
+    Math.max(0,Number(progress?.completed)||0),
+    Math.max(0,Number(progress?.total)||0),
+    Math.max(0,Number(progress?.percent)||0),
+    String(progress?.label||'正在逐批分析文章'),
+    {parsed:Number(progress?.parsed)||0,reused:Number(progress?.reused)||0});
+  let result,lastScanned=-1;
+  for(;;){
+    result=await keywordService('analyze',{scopeId:id,classUid},{onProgress:forward});
+    if(!result?.incomplete)break;
+    const scanned=Math.max(0,Number(result.completed)||0);
+    // A checkpoint that reports the same position twice in a row means the
+    // server is not actually making progress; looping forever on that is
+    // worse than surfacing it as a real error.
+    if(scanned<=lastScanned)throw new Error('關鍵詞分析未能繼續推進，請稍後重試');
+    lastScanned=scanned;
+    const total=Math.max(0,Number(result.total)||0);
+    forward({phase:'reading',completed:scanned,total,
+      percent:total?scanned/total*100:0,label:'進度已存檔，正在繼續下一批',
+      parsed:result.parsed,reused:result.reused});
+  }
   reportBatchProgress(onProgress,'completed',
     Number(result?.analyzedDocuments)||0,
     Number(result?.analyzedDocuments)||0,100,'分析已完成');

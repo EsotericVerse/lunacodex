@@ -20,8 +20,8 @@ function scopeAllowed(value){
   if(!PUBLIC_SCOPE_IDS.includes(id))throw bad('Only configured public Galaxy Scopes are available');
   return id;
 }
-async function scopedDatabase(scopeid,env){
-  const port=await directMcpKysely(env);
+async function scopedDatabase(scopeid,env,waitUntil){
+  const port=await directMcpKysely(env,'',{waitUntil});
   if(!port?.db||typeof port.db.selectFrom!=='function'||
      port.engine!=='postgres')
     throw unavailable('LOC MCP direct SQL driver is unavailable');
@@ -49,7 +49,7 @@ async function scopedDatabase(scopeid,env){
 // from a public Galaxy read even if a historical Boolean was set incorrectly.
 const publicSite=sql`( ${sql.ref('site')} is null or lower(${sql.ref('site')}) not in (${sql.join(['mcp','github'])}) )`;
 
-export async function searchMemory(args={},env={}){
+export async function searchMemory(args={},env={},{waitUntil}={}){
   if(args.user_requested!==true)
     throw bad('只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。');
   const scopeid=scopeAllowed(args.scopeid);
@@ -63,7 +63,7 @@ export async function searchMemory(args={},env={}){
   const offset=args.offset===undefined?0:Number(args.offset);
   if(!Number.isInteger(limit)||limit<1||limit>20)throw bad('limit must be between 1 and 20');
   if(!Number.isInteger(offset)||offset<0||offset>500)throw bad('offset must be between 0 and 500');
-  const {db,table}=await scopedDatabase(scopeid,env);
+  const {db,table}=await scopedDatabase(scopeid,env,waitUntil);
   const spec=portableContainsSpec(term);
   const columnLike=column=>sql`${spec.fold?sql`lower(${sql.ref(column)})`:sql.ref(column)} like ${spec.pattern} escape '!'`;
   const rows=await db.selectFrom(table)
@@ -80,7 +80,7 @@ export async function searchMemory(args={},env={}){
       extract:row.extract??null,others:row.others??null})),
     has_more:rows.length===limit};
 }
-export async function readMemory(args={},env={}){
+export async function readMemory(args={},env={},{waitUntil}={}){
   const scopeid=scopeAllowed(args.scopeid);
   const uid=String(args.uid||'').trim();
   if(!UID.test(uid))throw bad('uid must be an 8-character, case-sensitive Base62 ID');
@@ -89,7 +89,7 @@ export async function readMemory(args={},env={}){
   if(!Number.isInteger(offset)||offset<0||offset>1000000)throw bad('offset must be 0–1000000');
   if(!Number.isInteger(maxChars)||maxChars<1||maxChars>40000)
     throw bad('max_chars must be 1–40000');
-  const {db,table}=await scopedDatabase(scopeid,env);
+  const {db,table}=await scopedDatabase(scopeid,env,waitUntil);
   const rows=await db.selectFrom(table)
     .select(galaxyReadColumns('GalaxyUidRead'))
     .where('uid','=',uid).where('list','=',true).where(publicSite)
