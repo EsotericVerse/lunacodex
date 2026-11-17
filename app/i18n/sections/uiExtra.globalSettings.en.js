@@ -26,7 +26,6 @@ export default {
   "settings": "Settings",
   "chooseSettings": "Select settings section",
   "defaultHome": "Default homepage",
-  "favorites": "Favorites",
   "login": "Sign in",
   "logout": "Sign out",
   "switchAccount": "Switch Cloudflare account",
