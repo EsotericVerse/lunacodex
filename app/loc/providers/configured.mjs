@@ -4,6 +4,7 @@
 import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
 import {transientReadSignal} from '../../../packages/zenstack/transient-read-epoch.mjs';
+import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const PERSONAL=new Set(['silver.loc_user']);
@@ -76,10 +77,25 @@ export function createConfiguredAdapter({
     // still comes from the signed claim, and each handler revalidates its own
     // args.p_scope_id; naming the Scope here never widens what it may touch.
     const result=await operation('managed-action',String(args?.p_scope_id||''),{name,args});
+    // After a trusted successful mutation, expire only its physical ZModel
+    // Anchor/Blocks relation. Galaxy and management reads never use this cache.
+    const scope=String(args?.p_scope_id||'').trim().toLowerCase();
+    if(/^[a-z][a-z0-9]{0,14}$/.test(scope)){
+      if(name==='save_blocks'||name==='move_scope_block')
+        invalidateScopedReadCache('silver.'+(scope==='loc'?'loc_anchor':scope+'_blocks'));
+      else if(name==='provision_scope'||name==='delete_scope'){
+        invalidateScopedReadCache('silver.'+scope+'_anchor');
+        invalidateScopedReadCache('silver.'+scope+'_blocks');
+      }
+    }
     return {data:result?.data,error:null};
   };
   const managedWrite=async payload=>{
     const result=await operation('managed-write','',{payload});
+    // This is the common successful write boundary for ZModel Anchor/Blocks,
+    // including keyword Anchor insert/update/delete and ordinary block writes.
+    // Do not trigger another SELECT or invalidate Galaxy cache (none exists).
+    invalidateScopedReadCache(payload?.p_table);
     return {data:result?.data,error:null};
   };
   const authenticatedClient=createKyselyPublicClient({
@@ -92,7 +108,10 @@ export function createConfiguredAdapter({
   const shortImport=async(scopeid,batch)=>{
     if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scopeid||'')))
       throw Error('Invalid LOC import Scope');
-    return operation('short-import',scopeid,{batch});
+    const result=await operation('short-import',scopeid,{batch});
+    // The import endpoint can also materialize Time/Place Anchor rows.
+    invalidateScopedReadCache('silver.'+scopeid+'_anchor');
+    return result;
   };
   const authClient={...authenticatedClient,shortImport,
     schema(name){return {...authenticatedClient.schema(name),
