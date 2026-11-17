@@ -154,11 +154,61 @@ export function mappedImportValue(row,field,fieldMap={},source=''){
 // One source-model-directed record selection boundary for standalone JSON.
 // Explicit operator path wins. Ambiguous collections fail visibly instead of
 // choosing the first generic key (e.g. metadata.data instead of posts).
+// Exact, one-level joins declared by the selected ZModel. Keep WordPress
+// duplicate meta_key rows intact, and append only direct Notion page blocks.
+// Do not recursively traverse CMS trees or create any SQL relation.
+function projectImportSourceRelations(rows,payload,source=''){
+  const profile=sourceImportModel(source);
+  if(!profile?.relations?.length||!payload||typeof payload!=='object'||
+      Array.isArray(payload))return rows;
+  const validId=value=>(typeof value==='string'||typeof value==='number')
+    ?String(value).trim():'';
+  const joins=profile.relations.flatMap(rule=>{
+    const related=payload[rule.collection];
+    if(!Array.isArray(related))return [];
+    const byParent=new Map();
+    for(const child of related){
+      if(!child||typeof child!=='object'||Array.isArray(child))continue;
+      const key=validId(pathValue(child,rule.foreignKey));
+      if(!key)continue;
+      if(!byParent.has(key))byParent.set(key,[]);
+      byParent.get(key).push(child);
+    }
+    return [{rule,byParent}];
+  });
+  if(!joins.length)return rows;
+  return rows.map(row=>{
+    if(!row||typeof row!=='object'||Array.isArray(row))return row;
+    let projected=row;
+    for(const {rule,byParent} of joins){
+      const key=validId(pathValue(row,rule.primaryKey));
+      const children=key?byParent.get(key):null;
+      if(!children?.length)continue;
+      if(rule.mode==='attach'){
+        const original=projected[rule.target];
+        // A source-native object is already authoritative; don't overwrite it.
+        if(original!=null&&!Array.isArray(original))continue;
+        projected={...projected,[rule.target]:[
+          ...(Array.isArray(original)?original:[]),...children]};
+      }else if(rule.mode==='append-text'){
+        const parts=children.map(child=>mappedImportValue(child,rule.field,{},profile))
+          .filter(value=>typeof value==='string'&&value.trim());
+        if(!parts.length)continue;
+        const previous=typeof projected[rule.target]==='string'?
+          projected[rule.target].trim():'';
+        projected={...projected,[rule.target]:[previous,...parts].filter(Boolean).join('\n\n')};
+      }
+    }
+    return projected;
+  });
+}
+
 export function importRowsFromJson(payload,recordPath='',source=''){
   const selected=String(recordPath||'').trim();
   const container=selected?pathValue(payload,selected):payload;
   if(selected&&container===undefined)throw new Error('找不到資料陣列路徑：'+selected);
-  if(Array.isArray(container))return unwrapArchiveArrayRows(container);
+  if(Array.isArray(container))return projectImportSourceRelations(
+    unwrapArchiveArrayRows(container),payload,source);
   if(container&&typeof container==='object'){
     if(selected)return [container];
     // A singular CMS post can contain its own media/data arrays. Never
@@ -180,7 +230,8 @@ export function importRowsFromJson(payload,recordPath='',source=''){
     if(matches.length>1)
       throw new Error('找到多個資料陣列（'+matches.join('、')+
         '）；請在進階格式設定選擇資料路徑，避免匯入錯誤內容。');
-    if(matches.length===1)return unwrapArchiveArrayRows(container[matches[0]]);
+    if(matches.length===1)return projectImportSourceRelations(
+      unwrapArchiveArrayRows(container[matches[0]]),payload,source);
     // Generic title/description fields can also describe an export envelope.
     // They only identify a standalone row after collection roots are excluded.
     if(['content','body','text','message','description','title','uid']
