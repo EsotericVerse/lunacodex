@@ -174,6 +174,7 @@ export function sourceImportModel(source='',row=null){
   const key=String(source||'').trim().toLowerCase();
   const explicit=byAlias.get(key);
   const kind=String(row?.object_type||'').trim().toLowerCase();
+  if(kind==='threads_public_reply')return threadsReplyModel;
   const fromKind=byAlias.get(byObjectType[kind]?.toLowerCase());
   if(fromKind)return fromKind;
   // Notion pages and blocks have distinct virtual types; both use the same
@@ -181,7 +182,5 @@ export function sourceImportModel(source='',row=null){
   // from reply objects without inventing a cross-platform Graph ID.
   if(explicit?.label==='Notion'&&row?.object==='block')
     return notionBlockModel;
-  if(explicit?.label==='Threads'&&kind==='threads_public_reply')
-    return threadsReplyModel;
   return explicit||null;
 }
