@@ -73,24 +73,3 @@ jobs:
         run: node --check app/loc/mcp/conversations.mjs && node --check app/loc/mcp/native-operations.mjs && node --test scripts/test-mcp-ordered-conversation.mjs
       - name: Verify independent LAS Auth and LOC Pages deployment boundary
         run: node --test scripts/test-las-deployment-boundary.mjs scripts/test-las-deploy-authorization.mjs
-      - name: One-off public HTTP smoke (branch only, remove before merge)
-        shell: bash
-        run: |
-          set -uo pipefail
-          urls=(
-            'https://loc.lo3rwang.cc/'
-            'https://loc.lo3rwang.cc/api/loc-public-content?kind=config&scope=lo3rwang'
-            'https://loc.lo3rwang.cc/api/loc-public-content?kind=block_list&scope=lo3rwang'
-            'https://loc.lo3rwang.cc/api/loc-permissions'
-          )
-          for url in "${urls[@]}"; do
-            echo "::group::Live LOC GET: ${url}"
-            code=$(curl --noproxy '*' --silent --show-error --max-time 18 --max-filesize 2500000 \
-              -H 'Accept: application/json' -H 'Cache-Control: no-cache' \
-              -D /tmp/loc-live-headers -o /tmp/loc-live-body \
-              -w '%{http_code}' "${url}") || code="curl-error"
-            echo "HTTP_STATUS=${code}"
-            grep -iE '^(HTTP/|cache-control:|content-type:|location:|cf-ray:)' /tmp/loc-live-headers | head -n 12 || true
-            head -c 240 /tmp/loc-live-body || true
-            echo; echo "::endgroup::"
-          done
