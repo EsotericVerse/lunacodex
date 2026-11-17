@@ -85,7 +85,13 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     if(!allowed||entered)return;
     if(editorSessionStatus(window.sessionStorage).expired){setLocked(true);return;}
     setLocked(false);
-    dock?.begin(scopeId,{globalManage:Boolean(verification.authorizer?.canLocAccessSync('global'))});
+    const started=dock?.begin(scopeId,{globalManage:Boolean(verification.authorizer?.canLocAccessSync('global'))});
+    if(started!==true){
+      // Do not leave the editor in an endless "opening" state if the route
+      // Scope or browser Session cannot activate the existing Edit Dock.
+      setVerification(previous=>({...previous,user:null,authorizer:null,
+        error:'LOC 編輯 Session 無法啟用，請重新確認目前 Scope 與 Session。'}));
+    }
   },[allowed,entered,scopeId,dock?.begin,verification.authorizer]);
 
   if(ready&&(!allowed||locked))return <FeaturePage featureId={featureId}>

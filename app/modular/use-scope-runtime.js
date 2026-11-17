@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import {usePathname} from 'next/navigation';
-import {featureIdForPath,getScope,isKnownScope,normalizeScopeId,resolveScope} from './routing/scope-registry';
+import {featureIdForPath,getScope,isKnownScope,normalizeScopeId,resolveScope,rememberCurrentBrowserRoute} from './routing/scope-registry';
 import {selectScopeRegistryEntry} from '../loc/scope/scope-data';
 import {useAppBootstrap} from '../loc/runtime/app-bootstrap';
 
@@ -34,6 +34,13 @@ export function useScopeRuntime(){
   const genericId=useMemo(()=>genericRouteScope(pathname,location.search),[pathname,location.search]);
   const scopeId=genericId||(genericShell?'':resolveScope(location.host,pathname));
   const dynamic=Boolean(genericShell&&(!genericId||!isKnownScope(genericId)));
+  // Keep the browser's current Scope, pathname and directory in its existing
+  // tab Session, using routing as the authority. No fetch, permission check,
+  // second storage model or duplication of the existing edit clock.
+  useEffect(()=>{
+    if(!location.mounted||!scopeId)return;
+    rememberCurrentBrowserRoute(window.sessionStorage,scopeId,pathname);
+  },[location.mounted,scopeId,pathname]);
   const cached=scopeId?registryCache.get(scopeId):null;
   const [registryRow,setRegistryRow]=useState(cached||null);
   const [registryResolved,setRegistryResolved]=useState(!dynamic||(Boolean(scopeId)&&registryCache.has(scopeId)));

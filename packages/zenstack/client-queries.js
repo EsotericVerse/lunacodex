@@ -5,11 +5,12 @@ import {createQuerySnapshotStore} from './query-snapshot-store.mjs';
 import {flashMessage} from '../../app/loc/notifications/flash-message';
 import {cancelTransientReads} from './transient-read-epoch.mjs';
 
-// LOC live read layer — no TanStack, no SWR, no browser cache, no polling.
-// LOC is a read-only presentation surface over other systems' data, so every
-// hook performs a single FRESH read. Concurrent identical reads share one
-// in-flight request (dedup), and "invalidate" means "re-read the mounted
-// consumers of a key" — never "serve a stale value from a store".
+// LOC cache-first HTTP resource lifecycle (RFC 9110/9111 semantics).
+// First reuse an already-mounted, still-owned query snapshot; otherwise
+// request it. Explicit invalidate/refetch always revalidates. This existing
+// in-memory presentation store is NOT an HTTP cache for no-store responses,
+// never persists private data, and is retired by semi-dynamic page cleanup.
+// Identity and grants retain their separate browser Session checks. No polling.
 // The query-client shim below keeps the previous call sites unchanged.
 
 const keyOf=key=>Array.isArray(key)?key:[key];
@@ -330,6 +331,12 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
       if(existing?.hasData){
         // Later mounts adopt the live public page snapshot without new SQL.
         setState({data:existing.data,status:'success',error:null});
+      }else if(!IDENTITY_KEYS.has(serializedKey)&&!inflight.has(serializedKey)&&
+        dataStore.has(serializedKey)){
+        // A second live reader of this exact resource key reuses its current
+        // snapshot instead of issuing another HTTP/SQL request. Invalidation
+        // still performs a real re-read, and semi-dynamic cleanup retires it.
+        setState({data:dataStore.get(serializedKey),status:'success',error:null});
       }else void load().catch(()=>{});
     }
     return()=>{mountedRef.current=false;unregister();};
@@ -528,6 +535,11 @@ export const queryClient={
   },
   fetchQuery:async({queryKey,queryFn})=>{
     const serializedKey=serialize(queryKey);
+    // getOrLoad must consult the existing live resource before new transport.
+    // Identity/grants are deliberately excluded from generic query reuse.
+    if(!IDENTITY_KEYS.has(serializedKey)&&!inflight.has(serializedKey)&&
+      dataStore.has(serializedKey))
+      return dataStore.get(serializedKey);
     const generation=resourceEpoch;
     const value=await runFetch(serializedKey,()=>queryFn());
     // A previous page must never refill the store after management entry.
