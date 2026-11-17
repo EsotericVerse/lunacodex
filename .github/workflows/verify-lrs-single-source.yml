@@ -51,7 +51,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: EsotericVerse/lunarunes
-          ref: b176b6b280fbedf66c4f6fa0827b5d38310a768a
+          ref: 1bd1c13a649beaa428055da9693f5142946f9275
           path: rune-source
           persist-credentials: false
       - name: Checkout pinned LAS original native Hero (no LAS code modification)

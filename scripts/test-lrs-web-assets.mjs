@@ -56,3 +56,16 @@ test('LOC Rune asset origin adapter stays Web URL-only and native file-only',()=
  const view=read('app/loc/blocks/LocHomeBlockDisplay.jsx');
  assert.match(view,/src:\{src:runeAssetHref\(SITE_IMAGES\.lunarunes\.src\)\}/);
 });
+
+test('native and Web agree on the exact LRS source; retired module tree is forbidden',()=>{
+ const cfg=JSON.parse(read('config/lrs-source.json'));
+ const native=read('scripts/restore-lrs-native-ui.mjs');
+ const web=read('scripts/restore-lrs-web-code.mjs');
+ const ipa=read('.github/workflows/ios-device-build.yml');
+ const verification=read('.github/workflows/verify-lrs-single-source.yml');
+ assert.match(ipa,/readFileSync\('config\/lrs-source\.json','utf8'\)\)\.sourceCommit/);
+ assert.doesNotMatch(ipa,/git ls-remote/);
+ assert.match(verification,new RegExp('ref: '+cfg.sourceCommit));
+ assert.match(native,/const sourceDirs=\['app\/lrunes','app\/card','app\/daily','app\/game','modules\/lrs'\]/);
+ assert.doesNotMatch(web,/['"]modules\/lrune['"]/);
+});

@@ -25,7 +25,7 @@ for(const name of originalFiles){
 }
 
 const excludedScopeDirs=/^app\/lrunes\/(?:culture|search|statics|trace|manage)\//;
-const sourceDirs=['app/lrunes','app/card','app/daily','app/game','modules/lrs','modules/lrune'];
+const sourceDirs=['app/lrunes','app/card','app/daily','app/game','modules/lrs'];
 let count=0;
 async function walk(dir){
   for(const item of await readdir(join(lrs,dir),{withFileTypes:true})){
