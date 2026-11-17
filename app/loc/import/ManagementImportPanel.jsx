@@ -54,6 +54,7 @@ import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/ze
 const PUBLISHED_SOURCE_CATEGORIES=Object.freeze({
   system:PUBLISHED_LOC_ARTICLE_TAGS,personal:Object.freeze([])
 });
+const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[]});
 const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
   .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
 const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
@@ -622,32 +623,66 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         format.recordPath,value);
   };
   const deferredSource=useDeferredValue(source);
-  const analysisCurrent=deferredSource===source;
-  const rawAnalysis=useMemo(()=>{
-    // File hints never count as the operator choosing a JSON source model.
-    if(!archiveDetection&&!sourceSelection)
-      return {valid:[],normalized:[],mediaOnly:[],invalid:[]};
+  const [analysisSnapshot,setAnalysisSnapshot]=useState(null);
+  const [analysisProgress,setAnalysisProgress]=useState({completed:0,total:0});
+  // Only the current file, source ZModel and user field overrides can unlock
+  // writing. An older completed preview is never valid for a newer selection.
+  const analysisCurrent=Boolean(analysisSnapshot&&
+    analysisSnapshot.rows===rows&&analysisSnapshot.source===deferredSource&&
+    analysisSnapshot.fields===format.fields&&analysisSnapshot.locale===locale&&
+    analysisSnapshot.archive===archiveDetection&&
+    analysisSnapshot.categories===sourceCategories.data&&
+    analysisSnapshot.selection===sourceSelection);
+  const rawAnalysis=analysisCurrent?analysisSnapshot.result:EMPTY_IMPORT_ANALYSIS;
+  useEffect(()=>{
+    let cancelled=false,task=null,index=0;
+    const normalized=[],valid=[],mediaOnly=[],invalid=[];
+    setAnalysisSnapshot(null);
+    setAnalysisProgress({completed:0,total:rows.length});
+    if(!archiveDetection&&!sourceSelection)return;
     const selected=deferredSource.trim();
-    const normalized=rows.map(entry=>{
-      const embedded=archiveDetection?String(entry?.raw?.site||'').trim():'';
-      const entrySource=canonicalImportSourceName(embedded||selected,
-        sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
-      // ZIP scanning has already verified per-record provenance. A manual
-      // selection cannot silently relabel records from another platform.
-      if(embedded&&sourceSelection&&sourceSelection!=='__custom__'&&
-          selected!=='Mixed'&&entrySource!==canonicalSource(sourceSelection))
-        return {record:null,error:'所選來源 '+sourceSelection+
-          ' 與封存檔記錄來源 '+entrySource+' 不一致，請核對來源。'};
-      return normalizeJsonImportEntry(entry,entrySource,format.fields,t,
-        Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection));
-    });
-    return {
-      valid:normalized.filter(item=>item.record).map(item=>item.record),
-      normalized:normalized.filter(item=>item.record),
-      mediaOnly:normalized.filter(item=>item.mediaOnlyRecord).map(item=>item.mediaOnlyRecord),
-      invalid:normalized.filter(item=>item.error)
+    const system=sourceCategories.data?.system||[];
+    const personal=sourceCategories.data?.personal||[];
+    const manual=Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection);
+    const process=()=>{
+      if(cancelled)return;
+      // Do not block the browser main thread for the entire archive. Source
+      // mapping is still the existing ZModel projection, not a new parser.
+      const boundary=Math.min(rows.length,index+160);
+      for(;index<boundary;index++){
+        const entry=rows[index];
+        try{
+          const embedded=archiveDetection?String(entry?.raw?.site||'').trim():'';
+          const entrySource=canonicalImportSourceName(embedded||selected,system,personal);
+          let item;
+          if(embedded&&sourceSelection&&sourceSelection!=='__custom__'&&
+              selected!=='Mixed'&&entrySource!==canonicalImportSourceName(sourceSelection,system,personal)){
+            item={record:null,error:'所選來源 '+sourceSelection+
+              ' 與封存檔記錄來源 '+entrySource+' 不一致，請核對來源。'};
+          }else item=normalizeJsonImportEntry(entry,entrySource,format.fields,t,manual);
+          if(item.record){normalized.push(item);valid.push(item.record);}
+          if(item.mediaOnlyRecord)mediaOnly.push(item.mediaOnlyRecord);
+          if(item.error)invalid.push(item);
+        }catch(error){
+          invalid.push({record:null,error:'第 '+(index+1)+' 筆來源資料無法對應：'+
+            String(error?.message||error)});
+        }
+      }
+      if(cancelled)return;
+      if(index<rows.length){
+        if(index%960<160)setAnalysisProgress({completed:index,total:rows.length});
+        task=setTimeout(process,0);
+        return;
+      }
+      setAnalysisSnapshot({rows,source:deferredSource,fields:format.fields,
+        locale,archive:archiveDetection,categories:sourceCategories.data,
+        selection:sourceSelection,result:{valid,normalized,mediaOnly,invalid}});
+      setAnalysisProgress({completed:index,total:rows.length});
     };
-  },[rows,deferredSource,format.fields,locale,archiveDetection,sourceCategories.data,sourceSelection]);
+    task=setTimeout(process,0);
+    return ()=>{cancelled=true;if(task!==null)clearTimeout(task);};
+  },[rows,deferredSource,format.fields,locale,archiveDetection,
+    sourceCategories.data,sourceSelection]);
   const analyzed=useMemo(()=>filterImportAnalysisByTime(rawAnalysis,timeWindow),[rawAnalysis,timeWindow]);
   const eligibleArchiveEvidence=useMemo(()=>{
     if(!timeWindow)return archiveEvidence;
@@ -1647,7 +1682,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         {!busy&&analysisCurrent?<p className="scope-import-ready-counts">{t('uiExtra.importUI.importReadyCounts',{articles:analyzed.valid.length.toLocaleString(),media:(analyzed.mediaOnly.length+eligibleArchiveMediaPlan.media.length).toLocaleString()})}</p>:null}
       </div>
     </section>:null}
-    {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">正在更新匯入資料預覽，完成後才能開始匯入。</p>:null}
+    {rows.length&&!busy&&!analysisCurrent?<p className="scope-status" role="status">
+      正在按所選 ZModel 整理匯入預覽：{analysisProgress.completed.toLocaleString()}／{analysisProgress.total.toLocaleString()} 筆。完成後才會開放寫入。
+    </p>:null}
     {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄。已排除 {analyzed.invalid.length.toLocaleString()} 筆格式無效資料、{analyzed.skippedByRange.toLocaleString()} 筆不在指定時間內。{analyzed.invalid[0]?.error||'請核對來源及進階資料路徑。'}</p>:null}
     {busy?<FlowProgress kind="import" stage={progress?.stage||'準備匯入資料'}
       completed={progress?.completed||0} total={progress?.total||0}
