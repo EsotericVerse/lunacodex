@@ -222,7 +222,7 @@ export function navigationHref(scopeId='loc',localPath='',native=false){
   // user-approved replacement for this Scope's homepage or feature dock.
   // Keep static iOS route resolution untouched.
   if(!native&&normalizeScopeId(scopeId)==='lrunes')
-    return scopeHref('loc','lrunes/'+String(localPath||'').replace(/^\\/+/, ''));
+    return scopeHref('loc','lrunes/'+String(localPath||'').split('/').filter(Boolean).join('/'));
   if(!native)return scopeHref(scopeId,localPath);
   const id=normalizeScopeId(scopeId)||'loc';
   const part=String(localPath||'').split('/').filter(Boolean).join('/');
