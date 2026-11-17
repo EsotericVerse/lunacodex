@@ -141,14 +141,14 @@ export async function parseGalaxyMarkdownFile(file,{importLocale='zh-Hant'}={}){
   }];
 }
 
-export async function parseUniversalImportFile(file,{recordPath='',importLocale='zh-Hant'}={}){
+export async function parseUniversalImportFile(file,{recordPath='',importLocale='zh-Hant',source=''}={}){
   if(!file||typeof file.name!=='string')throw new Error('請選擇有效的匯入檔案。');
   const type=extensionOf(file.name);
   if(type==='json'){
     if(!Number.isFinite(file.size)||file.size<=0||file.size>ARCHIVE_JSON_MAX_BYTES)
       throw new Error('JSON 檔案為空或超過 50 MiB 單檔上限；未讀取或解析。');
     const parsed=JSON.parse(await decodeImportText(file,importLocale));
-    return importRowsFromJson(parsed,recordPath);
+    return importRowsFromJson(parsed,recordPath,source);
   }
   if(type==='md'){
     if(!Number.isFinite(file.size)||file.size<=0||file.size>MAX_DOCUMENT_BYTES)

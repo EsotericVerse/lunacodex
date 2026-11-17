@@ -79,10 +79,27 @@ export const SOURCE_IMPORT_MODEL_FIELDS=Object.freeze({
   })
 });
 
+// A selected source determines its possible record roots before the generic
+// JSON fallback. No nested traversal, persistence model or per-CMS parser.
+// When more than one root is present, the importer requires an explicit path.
+const SOURCE_IMPORT_RECORD_PATHS=Object.freeze({
+  WordPress:Object.freeze(['wp_posts','posts','items','data']),
+  Notion:Object.freeze(['results','pages','blocks','items']),
+  Facebook:Object.freeze(['your_posts','status_updates','posts','records','data']),
+  Instagram:Object.freeze(['posts','media','items','records','data']),
+  Threads:Object.freeze(['text_post_app_text_posts','threads_posts','thread_posts',
+    'threads_and_replies','posts','records','data']),
+  Messenger:Object.freeze(['messages','records','items','data']),
+  'Instagram DM':Object.freeze(['messages','items','records','data']),
+  MSN:Object.freeze(['messages','records','items','data']),
+  'X DM':Object.freeze(['messages','records','items','data'])
+});
+
 const makeSource=(label,model,fields,aliases=[])=>Object.freeze({
   label,model,fields:Object.freeze(Object.fromEntries(
     Object.entries(fields).map(([field,paths])=>[field,Object.freeze(paths)]))),
-  aliases:Object.freeze(aliases)
+  aliases:Object.freeze(aliases),
+  recordPaths:SOURCE_IMPORT_RECORD_PATHS[label]||Object.freeze([])
 });
 const models=[
   makeSource('WordPress','WordPressPost',{

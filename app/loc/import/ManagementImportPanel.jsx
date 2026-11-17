@@ -608,8 +608,16 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const suggested=useMemo(()=>inferImportSourceFromFilename(fileName),[fileName]);
   const suggestedModel=sourceImportModel(suggested)?.label||'';
   const chooseSource=value=>{
+    if(busy)return;
     setSourceSelection(value);
     setSource(value==='__custom__'?'':value);
+    // Changing the selected source changes the record collection itself,
+    // not just the preview field aliases. Reparse the queued original file
+    // only for standalone JSON; ZIP uses verified per-entry source identity.
+    const current=queue[queueIndex];
+    if(current&&value&&/\.json$/i.test(current.name)&&!archiveDetection)
+      void loadQueuedFile(current,queueIndex,queue.length,importLocale,
+        format.recordPath,value);
   };
   const deferredSource=useDeferredValue(source);
   const analysisCurrent=deferredSource===source;
@@ -723,9 +731,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     }
     const firstBytes=new Uint8Array(await file.slice(0,4).arrayBuffer());
     const isZip=/\.zip$/i.test(file.name)||(firstBytes[0]===80&&firstBytes[1]===75&&[3,5,7].includes(firstBytes[2]));
-    const isThreadsJson=!isZip&&/\.json$/i.test(file.name)&&
+    // An explicit source choice outranks filename heuristics. Route only
+    // verified Threads/Facebook exports into their existing archive scanner.
+    const selectedFileSource=sourceImportModel(manualChoice)?.label||'';
+    const isThreadsJson=!isZip&&selectedFileSource==='Threads'&&/\.json$/i.test(file.name)&&
       /(?:^|[-_. ])(?:threads|text_post_app_text_posts)(?:$|[-_. ])/i.test(file.name);
-    const isFacebookGeoJson=!isZip&&/(?:^|\/)places_you_have_been_tagged_in\.json$/i.test(file.name);
+    const isFacebookGeoJson=!isZip&&selectedFileSource==='Facebook'&&
+      /(?:^|\/)places_you_have_been_tagged_in\.json$/i.test(file.name);
     setBusy(true);
     if(isZip)setStatus(t('uiExtra.importUI.zipInspecting'));
     try{
@@ -842,7 +854,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         return;
       }
       const {parseUniversalImportFile}=await import('./universal-file.mjs');
-      const parsed=await parseUniversalImportFile(file,{recordPath,importLocale:language});
+      const parsed=await parseUniversalImportFile(file,{recordPath,importLocale:language,
+        source:manualChoice==='__custom__'?'':manualChoice});
       const list=filterStandalonePublicRows(parsed,nativeLocal);
       assertStandaloneImportDestination({nativeLocal,fileName:file.name,rows:list});
       const prepared=list.map(row=>({
@@ -883,6 +896,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     // later also works without retaining the old FileList.
     event.target.value='';
     if(!files.length)return;
+    if(!sourceSelection){
+      setStatus('請先選擇匯入來源模型，再選擇檔案。');
+      return;
+    }
     setQueue(files);setQueueIndex(0);
     await loadQueuedFile(files[0],0,files.length);
   }
@@ -935,7 +952,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setSourceSelection('');
     setSource('');
     setQueueIndex(next);
-    await loadQueuedFile(queue[next],next,queue.length,importLocale,format.recordPath,'');
+    setFileName(queue[next].name);
+    clearDecodedFile();
+    setStatus('請為下一個檔案選擇匯入來源，再進行解析。');
   }
   const canRestoreAnchors=scopeId!=='local'&&scopeId!=='loc'&&(
     eligibleGeoRecords.length>0||
