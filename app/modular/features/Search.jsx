@@ -248,8 +248,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // Search reads published search-enabled articles; list visibility controls
   // whether their title is shown in the search results, not editor access.
   const adminListRequested=Boolean(legacyManagementRoute&&userActive&&userSettings.list===true);
-  const {enabled:adminSearchRequested,explicit:adminSwitchExplicit,
-    setEnabled:setAdminSearchRequested}=useSearchManagerSwitch({
+  const {enabled:adminSearchRequested,explicit:adminSwitchExplicit}=useSearchManagerSwitch({
     defaultValue:userSettings.list===true,preferenceReady:userActive
   });
   const [privateResultMode,setPrivateResultMode]=useState(false);
@@ -1155,16 +1154,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       <form className="scope-search-form" onSubmit={runSearch}>
         {!managementMode?<label htmlFor="scope-search-query">{UI_COPY.search.textPromptLabel}</label>:null}
         {searchInput('scope-search-query','搜尋全文或公開關鍵詞')}
-        <div className="scope-search-admin-row">
-          <label className="scope-search-admin-switch">
-            <input type="checkbox" role="switch" checked={adminSearchRequested}
-              onChange={event=>{
-                setAdminSearchRequested(event.target.checked);
-                resetSearchState();
-              }}/>
-            管理者
-          </label>
-        </div>
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>{UI_COPY.nav.search}</button>
         {managementMode?<button type="button" className="loc-button" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>{
