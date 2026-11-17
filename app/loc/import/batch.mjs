@@ -128,7 +128,7 @@ export function importRowsFromJson(payload,recordPath=''){
     // A Meta export can wrap the actual records in array.array, including
     // arrays of one-property array envelopes. Preserve normal record arrays
     // inside each post (media, data and attachments).
-    const keys=['items','posts','data','records','status_updates','your_posts',
+    const keys=['items','posts','data','records','results','pages','status_updates','your_posts',
       'text_post_app_text_posts','threads_posts','thread_posts','threads_and_replies','array'];
     for(const key of keys){
       if(Array.isArray(container[key]))return unwrapArchiveArrayRows(container[key]);
