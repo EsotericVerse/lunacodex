@@ -5,6 +5,9 @@ import {withPublicReadBudget} from './kysely-read-budget.mjs';
 import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
 import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
 
+// Pending coalescing is per transport instance, never shared across an
+// unrelated public client or a separately selected SQL target.
+let nextPublicTransportId=0;
 const IDENT=/^[A-Za-z_][A-Za-z0-9_]*$/;
 const FIELD=value=>{
   const field=String(value||'');
@@ -72,6 +75,7 @@ export function createKyselyPublicClient({
   role='anon',fetch:fetchImpl=globalThis.fetch,readPrivate=null,mutate=null
 }={}){
   if(typeof fetchImpl!=='function')throw Error('LOC Kysely fetch is unavailable');
+  const transportId=++nextPublicTransportId;
   // Analytics/Fixed Public Actions were bypassing the same three-request
   // bounded spool used by SELECT. Keep a SINGLE shared queue for all
   // anonymous public reads, including heavy culture/trace/stats aggregates.
@@ -85,7 +89,7 @@ export function createKyselyPublicClient({
   // Explicit AbortSignals, identity and protected reads remain independent.
   const pendingPublic=(kind,args,perform,share=true)=>{
     if(role!=='anon'||!share)return perform();
-    const key=JSON.stringify(['native-public',transientReadGeneration(),kind,args]);
+    const key=JSON.stringify(['native-public',transportId,transientReadGeneration(),kind,args]);
     return key.length<=16000?coalescePendingPublicRead(key,perform):perform();
   };
   async function read(q){
