@@ -609,6 +609,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
+  const [parsingJson,setParsingJson]=useState(false);
   const fileLoadGeneration=useRef(0);
   const jsonReadAbort=useRef(null);
   useEffect(()=>()=>{
@@ -930,14 +931,21 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }
       const options={recordPath,importLocale:language,
         source:manualChoice==='__custom__'?'':manualChoice};
-      const parsed=/\.json$/i.test(file.name)
-        ?await import('./json-worker-client.mjs').then(({parseJsonImportOffMainThread})=>
-          parseJsonImportOffMainThread(file,options,{
-            signal:controller.signal,
-            onProgress:stage=>{if(isCurrent())setProgress({stage,completed:0,total:0});}
-          }))
-        :await import('./universal-file.mjs').then(({parseUniversalImportFile})=>
-          parseUniversalImportFile(file,options));
+      const parseAsJson=/\.json$/i.test(file.name);
+      if(parseAsJson)setParsingJson(true);
+      let parsed;
+      try{
+        parsed=parseAsJson
+          ?await import('./json-worker-client.mjs').then(({parseJsonImportOffMainThread})=>
+            parseJsonImportOffMainThread(file,options,{
+              signal:controller.signal,
+              onProgress:stage=>{if(isCurrent())setProgress({stage,completed:0,total:0});}
+            }))
+          :await import('./universal-file.mjs').then(({parseUniversalImportFile})=>
+            parseUniversalImportFile(file,options));
+      }finally{
+        if(isCurrent())setParsingJson(false);
+      }
       if(!isCurrent())return;
       const list=filterStandalonePublicRows(parsed,nativeLocal);
       assertStandaloneImportDestination({nativeLocal,fileName:file.name,rows:list});
@@ -971,9 +979,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     }finally{
       if(isCurrent()){
         jsonReadAbort.current=null;
+        setParsingJson(false);
         setBusy(false);setProgress(null);
       }
     }
+  }
+  function cancelJsonParse(){
+    if(!parsingJson||!jsonReadAbort.current)return;
+    jsonReadAbort.current.abort();
   }
   async function chooseFile(event){
     if(busy)return;
@@ -1742,6 +1755,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     {busy?<FlowProgress kind="import" stage={progress?.stage||'準備匯入資料'}
       completed={progress?.completed||0} total={progress?.total||0}
       detail={progress?.detail||''}/>:null}
+    {busy&&parsingJson?<button type="button" className="loc-button"
+      onClick={cancelJsonParse}>取消 JSON 解析</button>:null}
     {/* Rendered right under the import button/progress area, not after every
         intermediate ZIP/archive detail section below — the user is watching
         here, and a result (success, "no changes", or an error like the
