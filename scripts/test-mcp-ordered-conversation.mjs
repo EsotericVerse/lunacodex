@@ -20,7 +20,10 @@ test('idempotent replays do not duplicate a message',()=>{
 });
 test('IDs or ordinals cannot silently override existing turns',()=>{
  const prior=mergeOrdered(null,[msg(5)]);
- assert.throws(()=>mergeOrdered(prior.content,[msg(5,'user','different')]),/conflicting source record/);
+ const retried=mergeOrdered(prior.content,[msg(5,'user','different')]);
+ assert.equal(retried.added,0,'Same source identity is an idempotent retry');
+ assert.equal(readOrdered(retried.content)[0].text,'turn 5','Retries do not rewrite existing text');
+ assert.throws(()=>mergeOrdered(prior.content,[{...msg(5),source_order:6}]),/conflicting source position/);
  assert.throws(()=>mergeOrdered(prior.content,[{...msg(6),source_order:5}]),/belongs to another/);
  assert.throws(()=>orderedBatch([msg(1),{...msg(1),message_id:'other'}]),/Duplicate/);
  assert.throws(()=>orderedBatch([{...msg(1),source_order:null}]),/ordinal/);
