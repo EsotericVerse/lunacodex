@@ -21,6 +21,7 @@ const LocScopeConnections=dynamic(()=>import('../scope/LocScopeConnections'),{lo
 // 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
 const DailyRuneCalendarSettings=dynamic(()=>import('../../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
 import FeatureSettingsPage from './FeatureSettingsPage';
+import {clearSearchManagerSwitch} from './use-search-manager-switch';
 import {selectScopeRegistry} from '../scope/scope-data';
 import {getScope,normalizeScopeId} from '../../modular/routing/scope-registry';
 
@@ -98,6 +99,7 @@ export default function GlobalSettings({initialSection='features'}={}){
     setBusy(true);setStatus('');
     try{
       await account.signOut();
+      clearSearchManagerSwitch();
       // Signing out is explicit, but never automatically opens the login page.
       setStatus('已登出 LOC Session');
     }catch(error){setStatus(String(error?.message||error));}
