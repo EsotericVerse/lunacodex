@@ -59,12 +59,17 @@ function publishedAt(row){
     const suffix=/[zZ]|[+-]\d{2}:?\d{2}$/.test(utc)?'':'Z';
     const iso=new Date(utc+suffix);
     if(!Number.isNaN(iso.getTime()))return iso.toISOString();
+    throw new Error('WordPress date_gmt 不是有效時間，已停止匯入');
   }
   // A timezone-naive WordPress local timestamp cannot be converted safely.
   const local=string(row.date);
   if(local&&!/[zZ]|[+-]\\d{2}:?\\d{2}$/.test(local))
     throw new Error('WordPress date 缺少時區；請提供 date_gmt，避免匯入錯誤時間');
-  return local;
+  if(!local)throw new Error('WordPress 缺少原始發文時間，不能用匯入當下時間替代');
+  const parsed=new Date(local);
+  if(Number.isNaN(parsed.getTime()))
+    throw new Error('WordPress date 不是有效時間，已停止匯入');
+  return parsed.toISOString();
 }
 function wpArticle(row){
   const url=absoluteHttpUrl(row.link)||absoluteHttpUrl(row.url);
@@ -133,13 +138,18 @@ function notionFlatten(blocks,parts,media,depth=0){
 function notionArticle(row){
   const blocks=Array.isArray(row.blocks)?row.blocks:
     Array.isArray(row.children)?row.children:null;
+  if(row.has_more===true||row.blocks_has_more===true)
+    throw new Error('Notion Block Children 尚有未取得的分頁，請取得完整資料再匯入');
+  const created=string(row.created_time);
+  if(!created||Number.isNaN(Date.parse(created)))
+    throw new Error('Notion Page 缺少有效 created_time，不以匯入時間替代');
   if(!blocks)throw new Error('Notion Page 只有 Properties，沒有正文 Block Children；請匯入包含 Blocks 的完整資料');
   const parts=[],media=[];
   notionFlatten(blocks,parts,media);
   const url=absoluteHttpUrl(row.url)||absoluteHttpUrl(row.public_url);
   return {cms:'notion',...(string(row.id)?{sourceId:row.id}:{}),
     title:notionPageTitle(row),body:parts.join('\n\n'),
-    ...(string(row.created_time)?{createdAt:row.created_time}:{}),
+    createdAt:new Date(created).toISOString(),
     ...(url?{canonicalUrl:url}:{}),...(media.length?{media}:{})};
 }
 
