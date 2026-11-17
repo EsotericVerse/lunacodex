@@ -152,3 +152,17 @@ test('auth identity switches and verifier failures release private snapshots',()
   assert.match(members,/groupMemberCacheKey='loc-group-member-list:'\+userId\+':'\+groupId/);
   assert.match(members,/useAsyncResource\(\['loc-group-member-list',userId,groupId\]/);
 });
+
+test('Trace example route reuses its live geometry without repeated external fetch',()=>{
+  const source=readFileSync(new URL('../app/modular/features/trace/trace-map-engine.js',import.meta.url),'utf8');
+  const start=source.indexOf('  async function showRoadRoute(){');
+  const end=source.indexOf('  function destroy(){',start);
+  assert.ok(start>0&&end>start);
+  const route=source.slice(start,end);
+  const cached=route.indexOf('if(exampleRoadData)');
+  const external=route.indexOf('await fetch(');
+  assert.ok(cached>0&&cached<external,'reuse must precede the OSRM call');
+  assert.match(route,/exampleRoadData=geometry/);
+  assert.match(route,/routeActive=true/);
+  assert.match(source.slice(end),/controller\.abort\(\);\s*exampleRoadData=null/);
+});
