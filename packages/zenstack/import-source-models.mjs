@@ -101,14 +101,16 @@ const SOURCE_IMPORT_RECORD_PATHS=Object.freeze({
 const SOURCE_IMPORT_RELATIONS=Object.freeze({
   WordPress:Object.freeze([
     Object.freeze({collection:'wp_postmeta',primaryKey:'ID',foreignKey:'post_id',
-      target:'meta',mode:'attach'})
+      target:'meta',mode:'attach',omitMatchedChildren:true})
   ]),
   Notion:Object.freeze([
-    Object.freeze({collection:'blocks',primaryKey:'id',foreignKey:'parent.page_id',
-      target:'content',mode:'append-text',field:'content'}),
-    Object.freeze({collection:'blocks',primaryKey:'id',foreignKey:'parent.page_id',
+    Object.freeze({collection:'blocks',fallbackCollections:Object.freeze(['results','items']),
+      primaryKey:'id',foreignKey:'parent.page_id',
+      target:'content',mode:'append-text',field:'content',omitMatchedChildren:true}),
+    Object.freeze({collection:'blocks',fallbackCollections:Object.freeze(['results','items']),
+      primaryKey:'id',foreignKey:'parent.page_id',
       target:'media',mode:'collect-media',field:'media',typeField:'type',
-      allowedTypes:Object.freeze(['image','video'])})
+      allowedTypes:Object.freeze(['image','video']),omitMatchedChildren:true})
   ])
 });
 
