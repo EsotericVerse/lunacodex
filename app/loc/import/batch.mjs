@@ -52,7 +52,7 @@ function parseMediaArray(value){
 }
 // Preserve references to existing media IDs; prepare new media records without inventing
 // accessible URLs for archive-local attachment paths.
-export function normalizeImportMedia(value,{title='',createtime=null,location='',article_uid=''}={}){
+export function normalizeImportMedia(value,{title='',createtime=null,location='',article_uid='',defaultMediaType=''}={}){
   const references=[],records=[],seen=new Set();
   for(const [index,item] of parseMediaArray(value).entries()){
     const source=typeof item==='string'?{url:item}:item;
@@ -70,7 +70,8 @@ export function normalizeImportMedia(value,{title='',createtime=null,location=''
     if(!external&&!rawUrl&&!source.media_type&&!source.type&&!source.mime_type&&!source.title&&!source.name&&!source.description&&source.rune_references==null)continue;
     const hint=String(source.type||'').toLowerCase();
     const media_type=importMediaType(rawUrl,source.media_type||
-      (hint==='external'||hint==='file'?'':source.type)||source.mime_type||
+      (hint==='external'||hint==='file'?'':source.type)||
+      defaultMediaType||source.mime_type||
       (source.image_url?'image':source.video_url?'video':source.rune_references!=null?'runes':''));
     const record={
       ...(explicitId?{uid:explicitId}:{}),
@@ -224,7 +225,11 @@ export function importRowsFromJson(payload,recordPath='',source=''){
       'text_post_app_text_posts','threads_posts','thread_posts',
       'threads_and_replies','array'];
     const roots=profile?.recordPaths?.length?profile.recordPaths:generic;
-    const candidates=roots.filter(key=>Array.isArray(container[key]));
+    const relationRoots=new Set(profile?.relations?.map(rule=>rule.collection)||[]);
+    const populatedPrimary=roots.filter(key=>Array.isArray(container[key])&&
+      !relationRoots.has(key));
+    const candidates=roots.filter(key=>Array.isArray(container[key])&&
+      (!relationRoots.has(key)||!populatedPrimary.length));
     const populated=candidates.filter(key=>container[key].length>0);
     const matches=populated.length?populated:candidates;
     if(matches.length>1)
