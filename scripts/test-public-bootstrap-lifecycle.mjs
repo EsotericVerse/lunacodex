@@ -16,7 +16,7 @@ function runtime(){
     'createQuerySnapshotStore','cancelTransientReads','flashMessage',
     'useCallback','useEffect','useMemo','useRef','useState','useSyncExternalStore',
     'queueMicrotask',
-    source+'\nreturn {register,serialize,retainIfObserved,releaseTransientPageResources,bootstrapSnapshots,dataStore};'
+    source+'\nreturn {register,serialize,retainIfObserved,releaseTransientPageResources,bootstrapSnapshots,dataStore,inflight};'
   );
   const instance=build(createQuerySnapshotStore,
     ()=>{cancelled++;},()=>{},
@@ -81,4 +81,21 @@ test('a superseded public bootstrap must not retry after its reader unmounts',()
   stop();
   x.flush();
   assert.equal(reads,0);
+});
+
+test('navigation resumes an interrupted edit refresh even if old public data exists',()=>{
+  const x=runtime(),key=['app-bootstrap','loc','index'];
+  const serialized=x.serialize(key);
+  let reads=0;
+  const stop=x.register({key,refetch:()=>{reads++;}});
+  const prior={blocks:[{uid:'old'}]};
+  x.retainIfObserved(serialized,prior);
+  const controller=new AbortController();
+  x.inflight.set(serialized,{key,controller,promise:Promise.resolve()});
+  x.releaseTransientPageResources();
+  assert.equal(controller.signal.aborted,true);
+  assert.equal(x.bootstrapSnapshots.getSnapshot(serialized).data,prior);
+  x.flush();
+  assert.equal(reads,1,'interrupted published-data refresh must be retried');
+  stop();
 });
