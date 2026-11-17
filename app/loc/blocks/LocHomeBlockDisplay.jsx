@@ -32,7 +32,15 @@ export function resolveHomeImage(slot,scopeId='loc'){
     ?config.source:(embedded?'custom':preset?'default':'none');
   const source=picked;
   const customUrl=BlockNoteContent.image.normalizeImageSource(config?.url||embedded);
-  const src=source==='none'?'':source==='default'?preset?.src?.src||'':customUrl;
+  // The original published Rune Hero still references LOC's former art URL.
+  // After the single-source cutover, only LRS serves that exact picture.
+  // Preserve every other Scope and all user-provided custom image origins.
+  const runeLegacyHero=scopeId==='lrunes'&&(
+    customUrl==='https://loc.lo3rwang.cc/pics/LunaRunes-hero.jpg'||
+    customUrl==='https://lrunes.lo3rwang.cc/pics/LunaRunes-hero.jpg');
+  const displayCustomUrl=runeLegacyHero
+    ?runeAssetHref('/pics/LunaRunes-hero.jpg'):customUrl;
+  const src=source==='none'?'':source==='default'?preset?.src?.src||'':displayCustomUrl;
   const position=Number(slot?.order)===1?'right':['left','right','top','bottom','only'].includes(config?.position)
     ?config.position:(preset?.position||'right');
   const width=Number.isFinite(Number(config?.width))&&Number(config?.width)>=160&&Number(config?.width)<=800

@@ -49,6 +49,17 @@ test('LOC renders original Rune Scope UI and keeps native source separate',()=>{
  const ipa=read('.github/workflows/ios-device-build.yml');
  assert.match(ipa,/LOC_NATIVE_RUNE_ASSETS: '1'[\s\S]*NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'/);
 });
+test('old published Rune Hero image resolves to LRS art without rewriting other Scope images',()=>{
+ const src=read('app/loc/blocks/LocHomeBlockDisplay.jsx');
+ const oldPublished='https://loc.lo3rwang.cc/pics/LunaRunes-hero.jpg';
+ assert.match(src,/scopeId==='lrunes'/);
+ assert.ok(src.includes(oldPublished));
+ assert.match(src,/runeAssetHref\('\/pics\/LunaRunes-hero\.jpg'\)/);
+ assert.match(src,/source==='none'\?'':source==='default'/);
+ const legacy=read('app/lrunes/rune-asset-origin.mjs');
+ assert.match(legacy,/NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'\?'':LRS_WEB_ORIGIN/);
+});
+
 test('LOC Rune asset origin adapter stays Web URL-only and native file-only',()=>{
  const src=read('app/lrunes/rune-asset-origin.mjs');
  assert.match(src,/LRS_WEB_ORIGIN='https:\/\/lrs\.lo3rwang\.cc'/);
