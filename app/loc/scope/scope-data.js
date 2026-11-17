@@ -2,6 +2,7 @@
 
 
 import {selectAllRows,selectRows} from '../db/db-query.mjs';
+import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
@@ -127,8 +128,7 @@ export function invalidatePublicScopeMetadata(){
   managedScopesRequest=null;
   publicSiteBootstrapRequest=null;
   scopeConfigInFlight.clear();
-  scopeBlocksRequests.clear();
-  blockListRequests.clear();
+  invalidateScopedReadCache();
   if(typeof window!=='undefined'){
     window.dispatchEvent(new Event('loc-public-scope-metadata-changed'));
   }
@@ -275,24 +275,26 @@ export function selectScopeConfig(scopeId){
 }
 
 
-const scopeBlocksRequests=new Map();
+// All Blocks share the same ZModel-aware in-memory read store used by
+// ordinary Anchor/Blocks Kysely SELECTs. Do not maintain parallel promise
+// maps, separate idx indexes or a second TTL-based page cache.
+const blockRelation=id=>'silver.'+(id==='loc'?'loc_anchor':id+'_blocks');
 export function invalidateScopeBlockPage(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  scopeBlocksRequests.delete(id+':'+String(page||'index').trim().toLowerCase());
-  blockListRequests.delete(id);
+  if(!SCOPE_ID_PATTERN.test(id)||id==='local')return;
+  // The physical relation is the invalidation boundary. For LOC this also
+  // invalidates the Block projections of loc_anchor's typed Anchor rows.
+  invalidateScopedReadCache(blockRelation(id));
 }
 const BLOCK_COLUMNS='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
-const blockListRequests=new Map();
 // LOC returns index+governance; ordinary Scope returns index only.
 export function block_list(scopeid){
   const id=String(scopeid||'').trim().toLowerCase();
   if(id==='local'||!SCOPE_ID_PATTERN.test(id))return Promise.resolve([]);
-  if(blockListRequests.has(id))return blockListRequests.get(id);
-  const promise=nativePublicContent('block_list',id)
-    .then(rows=>Array.isArray(rows)?rows:[])
-    .catch(error=>{blockListRequests.delete(id);throw error});
-  blockListRequests.set(id,promise);
-  return promise;
+  return getOrLoadScopedRead(blockRelation(id),['native','block_list'],async()=>{
+    const rows=await nativePublicContent('block_list',id);
+    return Array.isArray(rows)?rows:[];
+  });
 }
 // Specific LOC Anchor type, optionally a pair of exact types in one SQL read.
 export async function hero_block(specificValue){
@@ -302,8 +304,10 @@ export async function hero_block(specificValue){
       !/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(type)||
       ['from','domain','galaxy','universe','index','governance'].includes(type)))
     return [];
-  const rows=await nativePublicContent('hero_block','loc',types.join(','));
-  return Array.isArray(rows)?rows:[];
+  return getOrLoadScopedRead('silver.loc_anchor',['native','hero_block',types.join(',')],async()=>{
+    const rows=await nativePublicContent('hero_block','loc',types.join(','));
+    return Array.isArray(rows)?rows:[];
+  });
 }
 export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
@@ -326,20 +330,13 @@ export async function selectLiveScopeBlocks(scopeId,page='index'){
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
-  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||! /^[a-z0-9_-]+$/.test(name))return [];
-  const key=id+':'+name;
-  const existing=scopeBlocksRequests.get(key);
-  if(existing)return existing;
-  // Homepage edits are live SQL records. A published JS snapshot is only the
-  // offline fallback; reading it first forever hides successfully saved edits
-  // after a hard reload. Make one bounded homepage read per client runtime,
-  // with no polling or session check, and preserve the published fallback.
-  const promise=loadPublishedBlocks(id,name)
-    .then(async rows=>name==='index'||id==='loc'
-      ?selectLiveScopeBlocks(id,name).then(live=>live.length?live:rows)
-        .catch(()=>rows)
-      :rows.length?rows:selectLiveScopeBlocks(id,name))
-    .catch(error=>{scopeBlocksRequests.delete(key);throw error});
-  scopeBlocksRequests.set(key,promise);
-  return promise;
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[a-z0-9_-]+$/.test(name))return [];
+  return getOrLoadScopedRead(blockRelation(id),['page','blocks',name],async()=>{
+    // Live SQL rows remain authoritative after edits. Published rows are
+    // fallback only, not a second data cache with independent invalidation.
+    const rows=await loadPublishedBlocks(id,name);
+    return name==='index'||id==='loc'
+      ?selectLiveScopeBlocks(id,name).then(live=>live.length?live:rows).catch(()=>rows)
+      :rows.length?rows:selectLiveScopeBlocks(id,name);
+  });
 }
