@@ -145,7 +145,8 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
   const runeResultText=runeDrawText(importedRuneReferences);
   try{
     for(const item of mediaCandidates){
-      const media=normalizeImportMedia(item,{title:rawTitle,createtime:createdAt,location:sourcePlace,article_uid:uid});
+      const media=normalizeImportMedia(item,{title:rawTitle,createtime:createdAt,
+        location:sourcePlace,article_uid:uid,defaultMediaType:String(value('media_type')||'')});
       mediaRecords.push(...media.records);
       mediaRefs.push(...media.references);
     }
@@ -168,6 +169,10 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     const type=String(value('media_type')||(runeResultText?'rune':'')).trim();
     const url=String(value('url')||'').trim();
     if(type){
+      try{canonicalMediaAnchorType(type,url);}catch(error){
+        return {record:null,error:'來源只有媒體物件，但型別不支援：'+type+
+          '。'+String(error?.message||error)};
+      }
       const rawId=String(row.uid||'').trim();
       if(rawId&&!/^[A-Z0-9]{8}$/i.test(rawId))return {record:null,error:t('uiExtra.importUI.invalidMediaId')};
       return {record:null,error:'',mediaOnlyRecord:{
