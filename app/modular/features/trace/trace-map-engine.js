@@ -572,7 +572,6 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       if(!Array.isArray(coordinates)||coordinates.length<2)throw new Error('沒有可用的道路路線');
       if(removed)return false;
       const geometry=routeGeometry(coordinates);
-      if(removed)return false;
       exampleRoadData=geometry;
       map.getSource('loc-trace-route')?.setData(geometry);
       routeActive=true;
