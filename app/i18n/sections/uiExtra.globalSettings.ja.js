@@ -26,7 +26,6 @@ export default {
   "settings": "設定",
   "chooseSettings": "設定項目を選択",
   "defaultHome": "既定のホーム",
-  "favorites": "お気に入り",
   "login": "ログイン",
   "logout": "ログアウト",
   "switchAccount": "Google アカウントを切り替え",
