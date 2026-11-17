@@ -31,7 +31,8 @@ export const SOURCE_IMPORT_MODEL_FIELDS=Object.freeze({
     ...json('parent paragraph heading_1 heading_2 heading_3 bulleted_list_item numbered_list_item to_do quote code rich_text image file children')
   }),
   MetaFederatedPost:Object.freeze({
-    ...strings('contentText caption description text message created_at timestamp_ms'),
+    ...strings('contentText caption description text message created_at'),
+    ...json('timestamp_ms'),
     ...json('id post_id fbPostId igMediaId threadsPostId mediaUrls data media attachments content')
   }),
   MetaFederatedProfile:Object.freeze({
