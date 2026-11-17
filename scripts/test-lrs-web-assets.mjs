@@ -34,16 +34,18 @@ test('Web consumes LRS implementation only from a pinned Git commit',()=>{
  const next=read('next.config.mjs');
  assert.match(next,/NEXT_PUBLIC_LRS_ASSET_ORIGIN/);
 });
-test('LOC hosts only a Web LRS route handoff; IPA restores native LRS UI',()=>{
- const portal=read('app/loc/LocApp.jsx');
- assert.match(portal,/views\/LrsPortalView/);
- assert.doesNotMatch(portal,/import\('\.\.\/lrunes\/RunesClient'\)/);
- const web=read('app/loc/views/LrsWebRedirect.jsx');
- assert.match(web,/lrs\.lo3rwang\.cc/);
+test('LOC renders original Rune Scope UI and keeps native source separate',()=>{
+ const app=read('app/loc/LocApp.jsx');
+ assert.match(app,/views\/LrsPortalView/);
+ const portal=read('app/loc/views/LrsPortalView.jsx');
+ assert.match(portal,/\.\.\/\.\.\/lrunes\/RunesClient/);
+ assert.doesNotMatch(portal,/location\.replace|lrs\.lo3rwang\.cc/);
+ const home=read('app/lrunes/page.jsx');
+ assert.match(home,/LocApp forcedView="home" forcedScope="lrunes"/);
+ assert.doesNotMatch(home,/LrsWebRedirect/);
  const native=read('scripts/restore-lrs-native-ui.mjs');
  assert.match(native,/originalFiles/);
  assert.match(native,/RunesClient/);
- assert.match(native,/rune-source|LRS checkout/);
  const ipa=read('.github/workflows/ios-device-build.yml');
  assert.match(ipa,/LOC_NATIVE_RUNE_ASSETS: '1'[\s\S]*NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'/);
 });
@@ -76,16 +78,23 @@ test('LOC git index retains no LRS-owned code or media after cutover',()=>{
  assert.equal(result.status,0,result.stderr||result.stdout);
 });
 
-test('Dedicated Rune feature handoff routes import no native 3D/card runtime',()=>{
- for(const path of ['app/card/page.jsx',
-   'app/card/duel/page.jsx','app/card/list/page.jsx','app/card/daily/page.jsx']){
-   const src=read(path);
-   assert.match(src,/LrsWebRedirect/,'LOC Web keeps a URL handoff: '+path);
-   assert.doesNotMatch(src,/^import .*?(?:RuneUnifiedView|Rune3DNav|LocApp|JsonLd)/m,
-     'No native Rune UI module should enter a Web redirect: '+path);
+test('LOC native-like Rune draw and boardgame pages remain on LOC routes',()=>{
+ const pages={
+  'app/card/page.jsx':/RuneCardHub/,
+  'app/card/duel/page.jsx':/RuneUnifiedView feature="duel"/,
+  'app/card/list/page.jsx':/RuneUnifiedView feature="list"/,
+  'app/card/daily/page.jsx':/RuneUnifiedView feature="daily"/,
+  'app/game/page.jsx':/GameBoard/
+ };
+ for(const [path,pattern] of Object.entries(pages)){
+  const source=read(path);
+  assert.match(source,pattern,path);
+  assert.doesNotMatch(source,/LrsWebRedirect|location\.replace|lrs\.lo3rwang\.cc/,path);
  }
+ const registry=read('app/modular/routing/scope-registry.js');
+ assert.match(registry,/if\(!native\)return scopeHref\(scopeId,localPath\)/);
+ assert.doesNotMatch(registry,/scopeHref\('loc','lrunes\/'/);
 });
-
 test('LOC account Daily history is not substituted with LRS device-only data',()=>{
  const daily=read('app/daily/log/page.jsx');
  const native=read('scripts/restore-lrs-native-ui.mjs');

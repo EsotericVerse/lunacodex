@@ -1,4 +1,3 @@
-// LOC's LunaRunes Scope homepage renders LOC-owned presentation only.
-// Rune drawing, media and game engines stay owned by the independent LRS
-// repository; do not redirect this Scope's homepage without authorization.
-export {default} from './GenericScopeHomeView';
+// LOC Rune Scope presents the original UI from the pinned LRS source.
+// No navigation or domain rewrite; native is packaged separately by LOC.
+export {default} from '../../lrunes/RunesClient';
