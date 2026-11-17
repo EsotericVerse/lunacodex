@@ -57,6 +57,8 @@ function wpArticle(row){
     row._embedded['wp:featuredmedia']:[]).map(item=>
     absoluteHttpUrl(item?.source_url)).filter(Boolean)
     .map(url=>({media_type:'image',url}));
+  if(Number(row.featured_media)>0&&!media.length)
+    throw new Error('WordPress 有精選圖片但沒有媒體網址；請使用含 _embed 的 REST 資料重新匯出');
   const time=publishedAt(row);
   return {cms:'wordpress',...(sourceId?{sourceId}:{}),
     title:string(row.title.rendered),body:row.content.rendered,
@@ -78,6 +80,9 @@ function notionText(block){
   if(kind==='child_page')return string(value.title);
   if(kind==='bookmark'||kind==='embed')return string(value.url);
   if(kind==='equation')return string(value.expression);
+  if(kind==='table_row')return Array.isArray(value.cells)?
+    value.cells.map(richTextText).join(' | '):'';
+  if(kind==='child_database')return string(value.title);
   const text=richTextText(value?.rich_text||value?.title);
   const prefix=kind==='bulleted_list_item'?'- ':
     kind==='numbered_list_item'?'1. ':
@@ -94,6 +99,8 @@ function notionFlatten(blocks,parts,media,depth=0){
     const data=recordObject(block[type])?block[type]:{};
     const content=notionText(block);
     if(content)parts.push(content);
+    if(['image','video','file','pdf','audio'].includes(type)&&data?.file?.url)
+      throw new Error('Notion 內建附件網址具有期限，無法直接當永久媒體匯入；請先提供可保存的媒體');
     if(['image','video'].includes(type)){
       // Notion-hosted file URLs expire; only external HTTP URLs qualify.
       const url=absoluteHttpUrl(data?.external?.url);
@@ -124,7 +131,16 @@ function notionArticle(row){
 export function normalizeCmsImportRow(input,selectedSource=''){
   const source=String(selectedSource||'').trim();
   const detected=detectCmsImportSource(input);
-  if(!detected)return {row:input,source};
+  if(!detected){
+    const declared=source.toLowerCase();
+    if(recordObject(input?.content)||recordObject(input?.title)||
+      (supported.has(declared)&&input?.object==='page'))
+      throw new Error('CMS 正文或標題是結構化資料，但找不到相符來源模型；已停止匯入避免產生 [object Object]');
+    return {row:input,source};
+  }
+  const declared=source.toLowerCase();
+  if(supported.has(declared)&&declared!==detected.toLowerCase())
+    throw new Error('選擇的 CMS 類型與實際匯出格式不一致：'+source+' / '+detected);
   const cms=detected.toLowerCase();
   if(!supported.has(cms))return {row:input,source};
   const candidate=cms==='wordpress'?wpArticle(input):notionArticle(input);
