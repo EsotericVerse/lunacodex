@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {buildEraRiver} from '../app/loc/culture/time-trace-river.mjs';
+import {buildEraRiver,unassignedPublicDateAnchors} from '../app/loc/culture/time-trace-river.mjs';
 
 const anchor=(uid,date='2026-01-01')=>({
   uid,scope_id:'lo3rwang',entry_type:'anchor',start_date:date,title:uid
@@ -33,3 +33,20 @@ for(const editorOnly of [false,true]){
     assert.deepEqual(undefinedRows.map(item=>item.uid),['outside']);
   });
 }
+
+test('public Scope Culture puts only out-of-era DateAnchors on the final 未定義 lane',()=>{
+  const dates=[
+    {uid:'first',date:'2026-01-10'},
+    {uid:'gap',date:'2026-02-10'},
+    {uid:'second',date:'2026-03-10'},
+    {uid:'outside',date:'2026-05-10'},
+    {uid:'undated',date:''}
+  ];
+  // Disjoint periods must not make the gap a continuous era interval.
+  const windows=[{start:'2026-01-01',end:'2026-01-31'},
+    {start:'2026-03-01',end:'2026-03-31'}];
+  assert.deepEqual(unassignedPublicDateAnchors(dates,windows).map(row=>row.uid),
+    ['gap','outside']);
+  assert.deepEqual(unassignedPublicDateAnchors(dates,[]).map(row=>row.uid),
+    ['first','gap','second','outside']);
+});
