@@ -125,7 +125,10 @@ function rememberActiveTheme(themeId){
 function readUserTheme(scopeId){
   try{
     const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
-    const candidate=String(prefs?.[scopeId]||'');
+    const stored=prefs?.[scopeId];
+    // RFC 9110 browser Session keeps only the 1..8 palette number per Scope.
+    // Accept previous theme-N values without discarding an existing choice.
+    const candidate=/^[1-8]$/.test(String(stored??''))?'theme-'+stored:String(stored||'');
     return THEME_SLOTS.some(slot=>slot.id===candidate)?candidate:SYSTEM_THEME_ID;
   }catch{return SYSTEM_THEME_ID;}
 }
@@ -133,7 +136,7 @@ function rememberUserTheme(scopeId,themeId){
   try{
     const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
     if(themeId===SYSTEM_THEME_ID)delete prefs[scopeId];
-    else if(THEME_SLOTS.some(slot=>slot.id===themeId))prefs[scopeId]=themeId;
+    else if(THEME_SLOTS.some(slot=>slot.id===themeId))prefs[scopeId]=Number(themeId.slice(6));
     window.sessionStorage.setItem(USER_THEME_SESSION_KEY,JSON.stringify(prefs));
   }catch{}
 }
