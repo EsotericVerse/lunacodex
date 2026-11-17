@@ -21,7 +21,8 @@ test('resource release keeps identity, session and grant exceptions',()=>{
   assert.match(queries,/const IDENTITY_KEYS=new Set/);
   assert.match(queries,/\['loc-account','session'\]/);
   assert.match(queries,/\['loc-account','management'\]/);
-  assert.match(queries,/if\(!IDENTITY_KEYS\.has\(key\)\)forgetStored\(key\)/);
+  assert.match(queries,/if\(IDENTITY_KEYS\.has\(key\)\)continue/);
+  assert.match(queries,/isPublicBootstrapKey\(key\)&&hasReader\(key\)/);
   assert.match(queries,/function forgetStored\(key\)/);
   assert.match(queries,/bootstrapSnapshots\.release\(key\)/);
 });
