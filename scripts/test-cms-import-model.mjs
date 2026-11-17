@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {schema} from '../packages/zenstack/schema.mjs';
+import {importRowsFromJson} from '../app/loc/import/batch.mjs';
 import {detectCmsImportSource,normalizeCmsImportRow}
   from '../packages/zenstack/cms-import-model.mjs';
 
@@ -40,6 +41,8 @@ test('Notion Page properties and Block Children use independent fields',()=>{
   assert.equal(result.source,'Notion');
   assert.equal(result.row.site_id,'page-123');
   assert.equal(result.row.title,'完整標題');
+  assert.deepEqual(importRowsFromJson(row),[row]);
+  assert.deepEqual(importRowsFromJson({results:[row]}),[row]);
   assert.equal(result.row.createtime,'2025-12-31T16:00:00.000Z');
   assert.equal(result.row.content,'# 第一章\n\n正文段落');
   assert.deepEqual(result.row.media,[{media_type:'image',url:'https://cdn.example/photo.png'}]);
@@ -59,4 +62,16 @@ test('unknown JSON continues through the unchanged generic import path',()=>{
   const result=normalizeCmsImportRow(row,'Vocus');
   assert.equal(result.row,row);
   assert.equal(result.source,'Vocus');
+});
+
+test('CMS import rejects ambiguous WordPress time and missing featured image',()=>{
+  const native={id:5,title:{rendered:'A &amp; B'},content:{rendered:'<p>正文</p>'},
+    link:'https://wp.example/?p=5'};
+  const value=normalizeCmsImportRow({...native,date_gmt:'2026-02-04T10:00:00'},'WordPress');
+  assert.equal(value.row.title,'A & B');
+  assert.throws(()=>normalizeCmsImportRow({...native,date:'2026-02-04T10:00:00'},'WordPress'),/date_gmt/);
+  assert.throws(()=>normalizeCmsImportRow({...native,featured_media:5,date_gmt:'2026-02-04T10:00:00'},'WordPress'),/_embed/);
+});
+test('structured unknown content is rejected rather than stringified',()=>{
+  assert.throws(()=>normalizeCmsImportRow({title:{value:'X'},content:{html:'Y'}},'Others'),/結構化資料/);
 });
