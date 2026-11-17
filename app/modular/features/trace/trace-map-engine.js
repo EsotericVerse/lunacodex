@@ -121,6 +121,10 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let loaded=false;
   let routeActive=false;
   let routeLoading=false;
+  // The three example coordinates never change during this map instance.
+  // Hide/show reuses the already downloaded public road shape, then frees it
+  // with the map; no repeat OSRM request and no persistent image/data cache.
+  let exampleRoadData=null;
   let markers=[];
   let timelineMarkers=[];
   let timelineRows=[];
@@ -547,6 +551,12 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       status('routeHidden');
       return false;
     }
+    if(exampleRoadData){
+      map.getSource('loc-trace-route')?.setData(exampleRoadData);
+      routeActive=true;
+      status('routeReady');
+      return true;
+    }
     routeLoading=true;
     status('routeLoading');
     try{
@@ -561,7 +571,10 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       const coordinates=payload.routes?.[0]?.geometry?.coordinates;
       if(!Array.isArray(coordinates)||coordinates.length<2)throw new Error('沒有可用的道路路線');
       if(removed)return false;
-      map.getSource('loc-trace-route')?.setData(routeGeometry(coordinates));
+      const geometry=routeGeometry(coordinates);
+      if(removed)return false;
+      exampleRoadData=geometry;
+      map.getSource('loc-trace-route')?.setData(geometry);
       routeActive=true;
       status('routeReady');
       return true;
@@ -576,6 +589,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(removed)return;
     removed=true;
     controller.abort();
+    exampleRoadData=null;
     markers.forEach(marker=>marker.remove());
     markers=[];
     timelineMarkers.forEach(marker=>marker.remove());
