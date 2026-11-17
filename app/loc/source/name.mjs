@@ -1,4 +1,4 @@
-export const OFFICIAL_SOURCE_LABELS=Object.freeze({facebook:'Facebook',threads:'Threads',instagram:'Instagram'});
+export const OFFICIAL_SOURCE_LABELS=Object.freeze({facebook:'Facebook',threads:'Threads',instagram:'Instagram',wordpress:'WordPress',notion:'Notion'});
 export function canonicalImportSourceName(value,system=[],personal=[]){
   const name=String(value||'').trim();
   if(!name)return '';
@@ -9,7 +9,7 @@ export function canonicalImportSourceName(value,system=[],personal=[]){
 export function inferImportSourceFromFilename(fileName=''){
   const value=String(fileName).toLowerCase();
   if(/your_posts|status_updates|facebook_activity|places_you_have_been_tagged_in/i.test(value))return 'Facebook';
-  for(const key of ['threads','facebook','instagram','pixnet','ptt','vocus']){
+  for(const key of ['threads','facebook','instagram','wordpress','notion','pixnet','ptt','vocus']){
     if(value.includes(key))return canonicalImportSourceName(key);
   }
   return String(fileName).replace(/\.[a-z0-9]+$/i,'').trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'-')||'import';
