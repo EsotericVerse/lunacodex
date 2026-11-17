@@ -47,6 +47,7 @@ import {touchEditorSession} from '../auth/edit-session-ttl.mjs';
 import {PUBLISHED_LOC_ARTICLE_TAGS} from '../../modular/published-source-taxonomy.js';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/zenstack/import-source-models.mjs';
 // The published LOC ArticleTag list is already bundled in the static site;
 // never create an async query/resource just to read this in-memory constant.
 // Keep one stable object so import analysis does not re-run on every UI repaint.
@@ -87,10 +88,15 @@ function iso(value){
 
 function normalizeJsonImportEntry(entry,source,fieldMap={},t){
   const row=entry?.raw||entry||{};
-  const value=field=>mappedImportValue(row,field,fieldMap);
-  const isFacebook=String(source||'').trim().toLowerCase()==='facebook';
-  const isThreads=String(source||'').trim().toLowerCase()==='threads';
-  const isInstagram=String(source||'').trim().toLowerCase()==='instagram';
+  const sourceModel=sourceImportModel(source,row);
+  // Exact source object_type may identify a model even if the filename does
+  // not. Preserve explicit SiteAnchor labels; never synthesize a source UID.
+  const selectedSource=sourceModel&&(!source||source==='Others')
+    ?sourceModel.label:source;
+  const value=field=>mappedImportValue(row,field,fieldMap,selectedSource);
+  const isFacebook=String(selectedSource||'').trim().toLowerCase()==='facebook';
+  const isThreads=String(selectedSource||'').trim().toLowerCase()==='threads';
+  const isInstagram=String(selectedSource||'').trim().toLowerCase()==='instagram';
   // The generic "place" alias can hold a Meta object. Only actual text
   // belongs in Galaxy.location; never stringify [object Object].
   const mappedPlace=value('location');
@@ -191,7 +197,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
       ...(importPlaceAddress?{__importPlaceAddress:importPlaceAddress}:{}),
       ...(importPlaceUrl?{__importPlaceUrl:importPlaceUrl}:{})}:{}),
     ...galaxyAble({
-      site:String(source||'').trim(),
+      site:String(selectedSource||'').trim(),
       site_id:String(originalSiteId||'').trim(),
       title:rawTitle,
       statics:statisticsEnabled,culture:statisticsEnabled,
@@ -207,7 +213,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t){
     ref_id:String(value('ref_id')||'').trim()||null,
     url:!isArchiveMediaUrl(rawUrl)&&!importMapUrlCoordinates(rawUrl)?rawUrl||null:null,
     ...(mediaRefs.length?{media_link:mediaRefs}:{}),
-    site:String(source||'').trim()
+    site:String(selectedSource||'').trim()
   };
   return {record,mediaRecords,mediaRefs,error:''};
 }
@@ -568,7 +574,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
   const sourceCategories={data:sourceCategoriesEnabled?PUBLISHED_SOURCE_CATEGORIES:undefined};
-  const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[])])];
+  const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[]),...IMPORT_SOURCE_MODEL_LABELS])];
   const canonicalSource=value=>canonicalImportSourceName(value,sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
