@@ -143,6 +143,8 @@ export const IMPORT_SOURCE_MODEL_LABELS=Object.freeze(models.map(model=>model.la
 const byAlias=new Map();
 for(const model of models)for(const alias of [model.label,...model.aliases])
   byAlias.set(alias.trim().toLowerCase(),model);
+const notionBlockModel=Object.freeze({...byAlias.get('notion'),model:'NotionBlock'});
+const threadsPostModel=Object.freeze({...byAlias.get('threads'),model:'MetaFederatedPost'});
 const byObjectType=Object.freeze({
   msn_im_message:'MSN',
   fb_messenger_message:'Messenger',
@@ -162,8 +164,8 @@ export function sourceImportModel(source='',row=null){
   // declarative source-to-Galaxy field paths. Ordinary Threads posts differ
   // from reply objects without inventing a cross-platform Graph ID.
   if(explicit?.label==='Notion'&&row?.object==='block')
-    return {...explicit,model:'NotionBlock'};
+    return notionBlockModel;
   if(explicit?.label==='Threads'&&kind!=='threads_public_reply')
-    return {...explicit,model:'MetaFederatedPost'};
+    return threadsPostModel;
   return explicit||null;
 }
