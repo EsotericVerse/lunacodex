@@ -161,7 +161,7 @@ export async function handleNativeLocOperation(request,env={},{
     // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
       'managed-write','managed-action',
-      ...(body.kind==='mcp-conversation'&&body.action==='record'?['mcp-conversation']:[])]);
+      ...(body.kind==='mcp-conversation'&&['record','record_ordered'].includes(body.action)?['mcp-conversation']:[])]);
     // MCP write requires both an OAuth delegation for importing and the
     // independently checked LOC business permission. OAuth alone never grants
     // writing; a read-only token cannot be promoted by a tool payload.
