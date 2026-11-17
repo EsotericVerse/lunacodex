@@ -912,6 +912,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setReparseRequired(false);
     setFileName('');
     setSource('');
+    setSourceSelection('');
     setQueue(current=>{
       const remaining=current.map((file,index)=>index===queueIndex?null:file);
       return remaining.some(Boolean)?remaining:[];
@@ -1544,20 +1545,23 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       void loadQueuedFile(queue[queueIndex],queueIndex,queue.length,importLocale,next.recordPath);
   }
   const pending=queue.length>queueIndex+1;
+  const mixedArchive=Boolean(archiveDetection&&source==='Mixed');
   return <div className="scope-import-body">
     <div className="scope-import-primary-row">
       <label className="scope-import-source-choice">匯入來源（ZModel）
-        <select className="scope-select" value={sourceSelection}
-          disabled={busy} onChange={event=>chooseSource(event.target.value)}>
+        <select className="scope-select" value={mixedArchive?'__mixed__':sourceSelection}
+          disabled={busy||mixedArchive} onChange={event=>chooseSource(event.target.value)}>
           <option value="">請選擇來源模型</option>
+          <option value="__mixed__" disabled>混合來源 ZIP（按原始來源逐筆處理）</option>
           {sourceOptions.map(name=><option key={name} value={name}>{name}</option>)}
           <option value="__custom__">其他／自訂來源（通用格式）</option>
         </select>
         <small className="scope-import-range-hint">
-          {sourceSelection&&sourceSelection!=='__custom__'
-            ?'已選擇來源；自動套用相應欄位模型'
-            :suggestedModel?'檔名建議：'+suggestedModel+'（不自動套用）'
-              :'請選擇來源；沒有模型時可使用通用格式'}
+          {mixedArchive?'混合 ZIP 已逐筆辨識來源，保留每筆原始 Site，無法強制套用單一模型'
+            :sourceSelection&&sourceSelection!=='__custom__'
+              ?'已選擇來源；自動套用相應欄位模型'
+              :suggestedModel?'檔名建議：'+suggestedModel+'（不自動套用）'
+                :'請選擇來源；沒有模型時可使用通用格式'}
         </small>
       </label>
       <label><UiText id="uiExtra.importUI.importLanguage"/>
@@ -1570,7 +1574,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       </label>
     </div>
     <div className="scope-import-options-row">
-    {sourceSelection==='__custom__'?<label className="scope-import-source-choice">
+    {sourceSelection==='__custom__'&&!mixedArchive?<label className="scope-import-source-choice">
       <UiText id="uiExtra.importUI.sourceLabel"/>
       <input type="text" list={'scope-import-sources-'+scopeId} maxLength={80} required
         value={source} onChange={event=>setSource(event.target.value)}
