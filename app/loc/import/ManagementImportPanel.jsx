@@ -731,9 +731,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     }
     const firstBytes=new Uint8Array(await file.slice(0,4).arrayBuffer());
     const isZip=/\.zip$/i.test(file.name)||(firstBytes[0]===80&&firstBytes[1]===75&&[3,5,7].includes(firstBytes[2]));
-    const isThreadsJson=!isZip&&/\.json$/i.test(file.name)&&
+    // An explicit source choice outranks filename heuristics. Route only
+    // verified Threads/Facebook exports into their existing archive scanner.
+    const selectedFileSource=sourceImportModel(manualChoice)?.label||'';
+    const isThreadsJson=!isZip&&selectedFileSource==='Threads'&&/\.json$/i.test(file.name)&&
       /(?:^|[-_. ])(?:threads|text_post_app_text_posts)(?:$|[-_. ])/i.test(file.name);
-    const isFacebookGeoJson=!isZip&&/(?:^|\/)places_you_have_been_tagged_in\.json$/i.test(file.name);
+    const isFacebookGeoJson=!isZip&&selectedFileSource==='Facebook'&&
+      /(?:^|\/)places_you_have_been_tagged_in\.json$/i.test(file.name);
     setBusy(true);
     if(isZip)setStatus(t('uiExtra.importUI.zipInspecting'));
     try{
