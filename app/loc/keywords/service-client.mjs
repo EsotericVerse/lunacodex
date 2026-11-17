@@ -32,9 +32,11 @@ export async function keywordService(operation,args={},options={}){
   const write=['analyze','reset','saveItem','deleteItem','syncLibrary'].includes(operation);
   const committed=result=>{
     // /api/keywords writes Anchor/Pattern directly, outside managedWrite.
-    // Refresh the same ZModel relation cache only when the server confirms
-    // success; an unconfirmed analysis must NOT be assumed committed.
-    if(write||(operation==='analyzeStatus'&&result?.completed))
+    // PR #1759 checkpoints incomplete analysis across HTTP requests WITHOUT
+    // publishing the Pattern index. Keep existing Anchor snapshots until a
+    // completed analyze receipt or another confirmed Keyword mutation.
+    const confirmedWrite=write&&!(operation==='analyze'&&result?.incomplete===true);
+    if(confirmedWrite||(operation==='analyzeStatus'&&result?.completed))
       invalidateScopedReadCache('silver.'+scope+'_anchor');
     return result;
   };
