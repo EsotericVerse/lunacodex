@@ -25,6 +25,7 @@ test('Manager control is not an access grant or permission lookup',()=>{
 test('Search applies the preference at query time, not on toggle',()=>{
   const search=read('app/modular/features/Search.jsx');
   assert.match(search,/useSearchManagerSwitch\(/);
+  assert.doesNotMatch(search,/scope-search-admin-row|scope-search-admin-switch/);
   assert.match(search,/if\(adminSearchActive\|\|adminSwitchExplicit\)/);
   assert.match(search,/getAccountSession\(\)/);
   assert.match(search,/await saveLocUserField/);
