@@ -30,12 +30,26 @@ export const SOURCE_IMPORT_MODEL_FIELDS=Object.freeze({
     ...strings('id type created_time last_edited_time'),
     ...json('parent paragraph heading_1 heading_2 heading_3 bulleted_list_item numbered_list_item to_do quote code rich_text image file children')
   }),
-  MetaFederatedPost:Object.freeze({
-    ...strings('contentText caption description text message created_at'),
-    ...json('timestamp_ms'),
-    ...json('id post_id fbPostId igMediaId threadsPostId mediaUrls data media attachments content')
+  // Preserve platform-owned identities: a FB post ID is not an IG media ID
+  // or a Threads post ID. No invented shared Meta Graph ID or cross-posting.
+  FacebookPost:Object.freeze({
+    ...strings('contentText description text message created_at'),
+    ...json('id post_id id_str fbPostId timestamp_ms timestamp creation_timestamp date'),
+    ...json('data mediaUrls media attachments content')
   }),
-  MetaFederatedProfile:Object.freeze({
+  InstagramMedia:Object.freeze({
+    ...strings('contentText caption description text created_at'),
+    ...json('id media_id fbid igMediaId taken_at timestamp_ms timestamp'),
+    ...json('mediaUrls media attachments')
+  }),
+  ThreadsPost:Object.freeze({
+    ...strings('id threadsPostId post_id thread_id text caption body created_at'),
+    ...json('content contentText timestamp timestamp_ms creation_timestamp'),
+    ...json('mediaUrls media attachments')
+  }),
+  // Platform profiles are independent source payloads. Correlating two
+  // profiles to one real person requires verified external evidence.
+  MetaPlatformProfile:Object.freeze({
     ...strings('scopedId username fbName'),
     ...json('id userId')
   }),
@@ -93,21 +107,21 @@ const models=[
     media:['image','file','media','attachments'],
     media_type:['type']
   }),
-  makeSource('Facebook','MetaFederatedPost',{
+  makeSource('Facebook','FacebookPost',{
     site_id:['fbPostId','post_id','id_str','id'],
     content:['contentText','data.0.post','message','text','description','body'],
     title:['title','name','subject'],
     createtime:['created_at','timestamp_ms','timestamp','creation_timestamp','date'],
     media:['mediaUrls','media','attachments']
   },['fb']),
-  makeSource('Instagram','MetaFederatedPost',{
+  makeSource('Instagram','InstagramMedia',{
     site_id:['igMediaId','media_id','id','fbid'],
     content:['contentText','caption','text','description'],
     title:['title','name'],
     createtime:['created_at','taken_at','timestamp_ms','timestamp'],
     media:['mediaUrls','media','attachments']
   },['ig']),
-  makeSource('Threads','ThreadsPublicReply',{
+  makeSource('Threads','ThreadsPost',{
     site_id:['threadsPostId','id','post_id','thread_id'],
     content:['content.text','contentText','text','caption','body'],
     title:['title'],
@@ -146,7 +160,7 @@ const byAlias=new Map();
 for(const model of models)for(const alias of [model.label,...model.aliases])
   byAlias.set(alias.trim().toLowerCase(),model);
 const notionBlockModel=Object.freeze({...byAlias.get('notion'),model:'NotionBlock'});
-const threadsPostModel=Object.freeze({...byAlias.get('threads'),model:'MetaFederatedPost'});
+const threadsReplyModel=Object.freeze({...byAlias.get('threads'),model:'ThreadsPublicReply'});
 const byObjectType=Object.freeze({
   msn_im_message:'MSN',
   fb_messenger_message:'Messenger',
@@ -167,7 +181,7 @@ export function sourceImportModel(source='',row=null){
   // from reply objects without inventing a cross-platform Graph ID.
   if(explicit?.label==='Notion'&&row?.object==='block')
     return notionBlockModel;
-  if(explicit?.label==='Threads'&&kind!=='threads_public_reply')
-    return threadsPostModel;
+  if(explicit?.label==='Threads'&&kind==='threads_public_reply')
+    return threadsReplyModel;
   return explicit||null;
 }
