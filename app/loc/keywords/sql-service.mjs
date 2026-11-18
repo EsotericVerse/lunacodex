@@ -565,7 +565,13 @@ export async function resetKeywordScope(db,scope,classUid,{
           attr:eb.ref('excluded.attr'),num:eb.ref('excluded.num')
         }))).execute();
     }
-    const meta=invalidateKeywordClass(existing.keyword_meta,classUid);
+    // Clearing the completion receipt (by_class) without also clearing any
+    // in-flight resumable checkpoint (scan_progress) left a stale cursor,
+    // currentPageSize/lastPageMs and partial patternSets/checked-uid-list
+    // behind: the NEXT scan picked that up via readKeywordScanProgress and
+    // continued the old, supposedly-cleared run instead of starting clean.
+    const meta=writeKeywordScanProgress(
+      invalidateKeywordClass(existing.keyword_meta,classUid),classUid,null);
     const scans={...(meta.pattern_scans||{})};
     for(const word of unique)delete scans[word];
     const updated={...meta,pattern_scans:scans};
