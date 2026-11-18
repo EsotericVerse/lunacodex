@@ -68,6 +68,8 @@ jobs:
             scripts/test-loc-direct-api-session-policy.mjs \
             scripts/test-loc-direct-request-lifecycle.mjs \
             scripts/test-loc-theme-demand-css.mjs
+      - name: Verify selected page language JSON and Web-native asset parity
+        run: node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs
       - name: Verify disposable JSON import Worker lifecycle
         run: node --test scripts/test-json-import-worker.mjs scripts/test-source-validation-slices.mjs
       - name: Verify LRS Web links, local IPA assets and fail-closed version plan
