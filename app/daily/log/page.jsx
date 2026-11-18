@@ -1,10 +1,12 @@
-import LocApp from '../../loc/LocApp';
-import {lunarunesMetadata} from '../../seo/metadata';
+import LrsWebRedirect from '../../loc/views/LrsWebRedirect';
+import {lrsMetadata} from '../../seo/metadata';
 
-export const metadata=lunarunesMetadata({
-  title:'每日符文紀錄｜月之符文',
-  description:'以行事曆保存每日符文，顯示真實月相邊界、當日指引，以及上一筆相同符文的日期與狀況形容。',
+// Historical daily URLs belong to the independent LRS /daily namespace.
+export const metadata=lrsMetadata({
+  title:'每日符文紀錄｜LunaRunes',
+  description:'每日符文紀錄由 LunaRunes 獨立提供。',
   path:'/daily/log/'
 });
-
-export default function Page(){return <LocApp forcedView="home" forcedScope="lrunes"/>;}
+export default function DailyLogRedirect(){
+  return <LrsWebRedirect path="/daily/log/"/>;
+}
