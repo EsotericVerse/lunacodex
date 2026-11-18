@@ -566,12 +566,14 @@ export default function Culture(){
       &&Boolean(styleQuery.data?.keywordMeta?.class_uid)&&Boolean(scopeData?.keywords),
     queryFn:async()=>{
       const {keywordService}=await import('../../loc/keywords/service-client.mjs');
-      const {keywordTreeCatalog}=await import('../../loc/keywords/tree-report.mjs');
+      const {keywordClassCatalog}=await import('../../loc/keywords/tree.mjs');
       const result=await keywordService('catalog',{scopeId,classUid:resolvedKeywordClassUid});
       if(!result.class_uid)return [];
-      const catalog=keywordTreeCatalog(result.rows,result.class_uid);
-      return (catalog.groups.find(group=>group.uid===keywordDrillGroup)?.items||[])
-        .map((item,index)=>({...item,order_no:index}));
+      const {catalog}=keywordClassCatalog(result.rows,result.class_uid);
+      // The canonical UID Tree already supplies Group membership; no legacy
+      // Group/Item article-hit lists are needed to label the Culture river.
+      return catalog.filter(item=>item.group_uid===keywordDrillGroup)
+        .map((item,index)=>({uid:item.uid,name:item.item_name,order_no:index}));
     },
     revalidateOnFocus:false,
     revalidateOnReconnect:false,

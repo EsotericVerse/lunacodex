@@ -240,13 +240,13 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
     enabled:shown==='both'&&Boolean(scopeId&&meta.class_uid&&data.staticstime),
     queryFn:async()=>{
       const {keywordService}=await import('../../../loc/keywords/service-client.mjs');
-      const {keywordTreeCatalog}=await import('../../../loc/keywords/tree-report.mjs');
+      const {keywordClassCatalog}=await import('../../../loc/keywords/tree.mjs');
       const result=await keywordService('catalog',{scopeId,classUid:meta.class_uid});
       if(!result.class_uid)return [];
-      const tree=keywordTreeCatalog(result.rows,result.class_uid);
-      return tree.groups.flatMap(group=>group.items.map(item=>({
-        uid:item.uid,group_uid:group.uid,class_group:group.name
-      })));
+      const {catalog}=keywordClassCatalog(result.rows,result.class_uid);
+      return catalog.map(item=>({
+        uid:item.uid,group_uid:item.group_uid,class_group:item.class_group
+      }));
     }
   });
   // UID is the identity: two Groups can have the same visible name.

@@ -148,12 +148,14 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     enabled:valid&&keywordModeActive&&Boolean(scope?.keywords&&keywords.data?.keywordMeta?.class_uid),
     queryFn:async()=>{
       const {keywordService}=await import('../../../loc/keywords/service-client.mjs');
-      const {keywordTreeCatalog}=await import('../../../loc/keywords/tree-report.mjs');
+      const {keywordClassCatalog}=await import('../../../loc/keywords/tree.mjs');
       const result=await keywordService('catalog',{
         scopeId:scope.id,classUid:keywords.data.keywordMeta.class_uid});
       if(!result.class_uid)return [];
-      return keywordTreeCatalog(result.rows,result.class_uid).groups.flatMap(group=>
-        group.items.map(item=>({uid:item.uid,group_uid:group.uid,class_group:group.name})));
+      const {catalog}=keywordClassCatalog(result.rows,result.class_uid);
+      return catalog.map(item=>({
+        uid:item.uid,group_uid:item.group_uid,class_group:item.class_group
+      }));
     }
   });
   const keywordItemGroup=useMemo(()=>new Map((keywordCatalog.data||[])

@@ -125,9 +125,9 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     (isThreads?row.media?.find?.(item=>item?.creation_timestamp)?.creation_timestamp:null)||
     (isFacebook?facebookBackupTimestamp(row):null);
   const createdAt=parseImportCreatedTime(rawDate)||extractImportCreatedAt(row);
-  const originalSiteId=value('site_id')||((isFacebook||isThreads||isInstagram)?
-    (row.post_id||row.id_str||row.id||(isThreads?row.thread_id:null)||
-      (isInstagram?row.fbid:null)):null);
+  // Platform-owned IDs are resolved by the selected source ZModel, not by
+  // another Meta-specific fallback order in the UI.
+  const originalSiteId=value('site_id');
   // On social imports the source ID is optional metadata; Galaxy UID is
   // generated locally by the importer and never derived from source content.
   const uid=String(((isFacebook||isThreads||isInstagram)&&entry?.import_uid)||
