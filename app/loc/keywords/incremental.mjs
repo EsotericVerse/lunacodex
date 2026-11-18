@@ -55,7 +55,11 @@ export async function analyzeIncrementalKeywordPatterns({
        !resume.patternSets||typeof resume.patternSets!=='object'||
        Array.isArray(resume.patternSets)||
        !Array.isArray(resume.checked)||resume.checked.length!==resume.scanned||
-       resume.checked.some(uid=>typeof uid!=='string'||!UID.test(uid)))||
+       resume.checked.some(uid=>typeof uid!=='string'||!UID.test(uid))||
+       // Older checkpoints predate this field; absent just means "resume at
+       // the caller's starting pageSize", not an invalid checkpoint.
+       'currentPageSize' in resume&&(!Number.isSafeInteger(resume.currentPageSize)||
+         resume.currentPageSize<1))||
      onCheckpoint!==null&&typeof onCheckpoint!=='function'||
      timeBudgetMs!==null&&(!Number.isFinite(timeBudgetMs)||timeBudgetMs<=0))
     throw new TypeError('Invalid incremental Keyword analysis adapters');
@@ -134,10 +138,50 @@ export async function analyzeIncrementalKeywordPatterns({
   // cursor, not an OFFSET-style page number.
   let cursor=resume?resume.cursor:null,scanned=resume?resume.scanned:0,
     parsed=resume?resume.parsed:0,reused=resume?resume.reused:0;
-  let currentPageSize=clamp(pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS);
+  // Carry the page size a resumed scan had already grown to into this round,
+  // instead of restarting the doubling ramp-up from the floor every single
+  // HTTP round. Without this, a scan that needs many rounds never spends
+  // long enough at a large page size to finish in few-enough rounds, and
+  // checkpoints end up far more frequent (and far smaller) than necessary.
+  let currentPageSize=clamp(resume?.currentPageSize??pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS);
+  // Shared by the per-page write below and the final write at completion:
+  // the live uid_list for every word, as of whatever `sets`/`checked` state
+  // exists right now. Safe to call mid-scan - `checked` only grows, so an
+  // uid this call filters out for not being checked yet simply reappears
+  // once a later page does check it.
+  const buildPatterns=()=>words.map(row=>{
+    const k=keyOf(row.pattern);
+    const uid_list=[...sets.get(k)].filter(uid=>checked.has(uid)).sort();
+    return {...row,count:uid_list.length,uid_list};
+  });
   const checkpointNow=async()=>{
     const patternSets=Object.fromEntries([...sets].map(([k,set])=>[k,[...set]]));
-    await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked]});
+    await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked],
+      currentPageSize});
+  };
+  // Writing to the live Anchor table opens its own DB connection
+  // (storeScopePatternMatches's own transaction) separate from the
+  // metadata/content reads above. Flushing on every SQL page ties that
+  // connection-open rate to the READ page size - which is sized for read
+  // throughput, not for how many articles were actually small/large. A run
+  // of many small articles pages through fast (small content, many pages
+  // per round) and would otherwise open one write-connection per page in
+  // quick succession; a few huge articles can land in one page and still
+  // only need one write. So the write is paced by accumulated characters
+  // actually scanned - the real "stream volume" - not by page count: pull
+  // content, scan it (no DB connection needed while classifying), and only
+  // reconnect to write back once enough volume has piled up.
+  // Kept conservative on purpose: a bigger number means fewer connection
+  // opens but a bigger single write transaction (and more work resting
+  // unwritten if a later page in the same round throws). Pool headroom is
+  // the thing actually at risk here, so this errs toward smaller/safer
+  // rather than toward minimizing connection count.
+  const PATTERN_WRITE_FLUSH_CHARS=500_000;
+  let pendingChars=0;
+  const flushPatterns=async()=>{
+    if(!pendingChars)return;
+    await writePatterns({classUid,items,patterns:buildPatterns()});
+    pendingChars=0;
   };
   for(;;){
     const pageStart=now();
@@ -169,8 +213,12 @@ export async function analyzeIncrementalKeywordPatterns({
       if(row.keyword!==false)contentUids.push(uid);
     }
     const bodies=new Map();
-    for(let i=0;i<contentUids.length;i+=500){
-      const batch=contentUids.slice(i,i+500);
+    // Content-batch size follows the same dynamic page size as the metadata
+    // page itself (no separate fixed ceiling): a hardcoded small batch here
+    // would force extra DB round-trips per page regardless of how large
+    // currentPageSize has already grown, undoing that growth.
+    for(let i=0;i<contentUids.length;i+=currentPageSize){
+      const batch=contentUids.slice(i,i+currentPageSize);
       const rows=await readContent(batch);
       if(!Array.isArray(rows)||rows.length!==batch.length||
          rows.some(row=>!UID.test(String(row?.uid||''))||
@@ -217,9 +265,15 @@ export async function analyzeIncrementalKeywordPatterns({
         }
       }
       parsed+=docs.length;
+      pendingChars+=docs.reduce((sum,doc)=>sum+doc.scan_text.length,0);
     }
     scanned+=page.length;
     onProgress({phase:'reading',completed:scanned,parsed,reused});
+    // Flush once enough characters have actually been scanned, not once per
+    // page - see the comment on PATTERN_WRITE_FLUSH_CHARS above.
+    // storeScopePatternMatches is idempotent (diffs uid_list before
+    // writing), so the final write at completion repeating this is harmless.
+    if(pendingChars>=PATTERN_WRITE_FLUSH_CHARS)await flushPatterns();
     // React to how long this page actually took, not a fixed row count.
     // Capped to 2x change per page so one unusually heavy/light page cannot
     // whiplash the next request size.
@@ -235,6 +289,9 @@ export async function analyzeIncrementalKeywordPatterns({
     // killed the request. The actually expensive step, writing a checkpoint,
     // still only ever runs once, right here, when the condition trips.
     if(onCheckpoint&&timeBudgetMs!==null&&now()-invocationStart>timeBudgetMs*0.8){
+      // Flush whatever volume has piled up before giving the connection
+      // back, rather than letting it sit unwritten until a later round.
+      await flushPatterns();
       await checkpointNow();
       return {incomplete:true,cursor,scanned,parsed,reused};
     }
@@ -243,11 +300,7 @@ export async function analyzeIncrementalKeywordPatterns({
     throw new Error('Galaxy metadata COUNT changed during analysis; no Keyword patterns written');
   // Deletions do not emit UpdateTime: a lightweight metadata scan still
   // detects and removes their stale UIDs without loading any full article.
-  const patterns=words.map(row=>{
-    const k=keyOf(row.pattern);
-    const uid_list=[...sets.get(k)].filter(uid=>checked.has(uid)).sort();
-    return {...row,count:uid_list.length,uid_list};
-  });
+  const patterns=buildPatterns();
   const summary=keywordPatternItemMetrics(items,patterns);
   const progress=Object.fromEntries(wordNames.keys().map(k=>[k,startedAt]));
   const stats={
