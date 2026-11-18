@@ -171,7 +171,12 @@ export async function analyzeIncrementalKeywordPatterns({
   // actually scanned - the real "stream volume" - not by page count: pull
   // content, scan it (no DB connection needed while classifying), and only
   // reconnect to write back once enough volume has piled up.
-  const PATTERN_WRITE_FLUSH_CHARS=2_000_000;
+  // Kept conservative on purpose: a bigger number means fewer connection
+  // opens but a bigger single write transaction (and more work resting
+  // unwritten if a later page in the same round throws). Pool headroom is
+  // the thing actually at risk here, so this errs toward smaller/safer
+  // rather than toward minimizing connection count.
+  const PATTERN_WRITE_FLUSH_CHARS=500_000;
   let pendingChars=0;
   const flushPatterns=async()=>{
     if(!pendingChars)return;
