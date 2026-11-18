@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "prepare": "node scripts/prepare-local-workspace.mjs",
-    "prebuild": "node scripts/check-lrs-source-ownership.mjs && node scripts/restore-lrs-web-code.mjs && node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs",
+    "prebuild": "node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs",
     "dev": "next dev",
     "build": "next build",
     "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",
@@ -14,7 +14,7 @@
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
     "check:loc-vendor-coupling": "node scripts/check-loc-independent-vendor-usage.mjs",
-    "predev": "node scripts/restore-lrs-web-code.mjs && node scripts/sync-page-locale-assets.mjs",
+    "predev": "node scripts/sync-page-locale-assets.mjs",
     "check:locales": "node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs"
   },
   "dependencies": {
@@ -45,7 +45,6 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "recharts": "3.10.1",
-    "three": "0.187.0",
     "vis-data": "8.0.6",
     "vis-network": "10.1.5",
     "vis-timeline": "8.5.6",
