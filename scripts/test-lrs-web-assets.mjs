@@ -7,7 +7,6 @@ import {allowStaticSource,isLrsWebAsset} from './lrs-static-publish-rules.mjs';
 const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 test('LOC Web never publishes LRS-owned media, native handoff stays separate',()=>{
  for(const p of ['assets/lunarunes/cards/00.png','assets/lunarunes/cards/66.png',
-  'assets/pics/01.soul.jpg','assets/pics/LunaRunes.webp',
   'assets/site/icons/lrunes-favicon.png','vendor/effekseer/effekseer.wasm',
   'vendor/rune-semantic-icons/66.svg','LunarRunesCardCut.pdf']){
   assert.equal(isLrsWebAsset(p),true,p);
@@ -17,7 +16,8 @@ test('LOC Web never publishes LRS-owned media, native handoff stays separate',()
  for(const p of ['assets/pics/LOC-PicAll.webp','assets/pics/lo3rwang-hero.jpg',
   'assets/site/icons/loc-favicon.png',
   'assets/pics/LunaRunes-hero.jpg','assets/pics/LunaRunes-hero_s.webp',
-  'assets/pics/LunaRunesGame.jpg','pics/LunaRunes-hero.jpg',
+  'assets/pics/LunaRunesGame.jpg','assets/pics/01.soul.jpg','assets/pics/LunaRunes.webp',
+  'pics/01.soul.jpg','pics/LunaRunes.webp','pics/LunaRunes-hero.jpg',
   'pics/LunaRunes-hero_s.webp','pics/LunaRunesGame.jpg']){
   assert.equal(isLrsWebAsset(p),false,p);
   assert.equal(allowStaticSource(p),true,p);
