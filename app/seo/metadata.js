@@ -3,6 +3,7 @@ import {faviconForScope} from '../site-favicons';
 
 export const LOC_ORIGIN='https://loc.lo3rwang.cc';
 export const LUNARUNES_ORIGIN='https://lrunes.lo3rwang.cc';
+export const LRS_ORIGIN='https://lrs.lo3rwang.cc';
 
 const LOC_IMAGE=LOC_ORIGIN+SITE_IMAGES.locHero.src;
 const LUNARUNES_IMAGE=LUNARUNES_ORIGIN+SITE_IMAGES.lunarunes.src;
@@ -38,7 +39,7 @@ function pageMetadata({
   return {
     title,
     description,
-    icons:{icon:[{url:faviconForScope(faviconScope),type:'image/png'}]},
+    icons:{icon:[{url:faviconForScope(faviconScope)}]},
     alternates:{canonical},
     openGraph:{
       title,
@@ -70,6 +71,15 @@ export function lunarunesMetadata({title,description,path='/',noIndex=false,imag
   return pageMetadata({
     origin:LUNARUNES_ORIGIN,path,siteName:'月之符文',title,description,
     image,imageAlt,noIndex,faviconScope:'lrunes'
+  });
+}
+
+// Game, card and daily features are served by the separate LRS deployment.
+// lrunes.lo3rwang.cc remains the LOC Scope origin and is not replaced here.
+export function lrsMetadata({title,description,path='/',noIndex=true}){
+  return pageMetadata({
+    origin:LRS_ORIGIN,path,siteName:'LunaRunes 遊戲',title,description,
+    image:LUNARUNES_IMAGE,imageAlt:'LunaRunes',noIndex,faviconScope:'lrunes'
   });
 }
 

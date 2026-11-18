@@ -1,10 +1,8 @@
 'use client';
 
-import {selectDailyRuneRange} from '../runes/daily-runes';
 import {dbPublicClient} from '../db/db-client.mjs';
-import {realMoonPhase} from '../model/moon-phase';
 import {
-  validateItemConfluenceRange,validateItemLane,groupItemConfluenceRunes
+  validateItemConfluenceRange,validateItemLane
 } from './item-confluence-model.mjs';
 
 // One server-side GROUP BY: the database counts per Taipei day and returns
@@ -30,14 +28,6 @@ export async function selectLocItemDailySeries({scope,lane,startDate,endDate,kno
   if(!range.valid)throw new Error(range.reason);
   const spec=validateItemLane(lane,knownScopes);
   if(!spec.valid||spec.scopeId!==scope?.id)throw new Error(spec.reason||'Scope 與河道不符。');
-  if(spec.source==='daily:rune'){
-    const rows=await selectDailyRuneRange(range);
-    // A dedicated semantic source. The astronomical phase is calculated from
-    // the draw date even if an old recorded_phase value exists.
-    return groupItemConfluenceRunes(rows,day=>
-      realMoonPhase(new Date(day+'T12:00:00+08:00'))
-    );
-  }
   // One Kysely aggregate is the only LOC Galaxy/MediaAnchor lane pipeline.
   return selectLaneDailyGrouped({scope,spec,range});
 }

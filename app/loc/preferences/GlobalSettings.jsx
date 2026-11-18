@@ -14,9 +14,6 @@ import PanelLoading from '../ui/PanelLoading';
 const PrivateLocalFiles=dynamic(()=>import('../local/PrivateFiles'),{loading:PanelLoading});
 const LocalScopeModeSettings=dynamic(()=>import('../local/ModeSettings'),{loading:PanelLoading});
 const LocScopeConnections=dynamic(()=>import('../scope/LocScopeConnections'),{loading:PanelLoading});
-// 每日符文紀錄：沿用既有的獨立頁面元件（/daily/log/），同一份邏輯透過它自己
-// 既有的 embedded 模式嵌入這裡，不複製任何讀寫邏輯。
-const DailyRuneCalendarSettings=dynamic(()=>import('../../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});
 import FeatureSettingsPage from './FeatureSettingsPage';
 import {clearSearchManagerSwitch} from './use-search-manager-switch';
 import {selectScopeRegistry} from '../scope/scope-data';
@@ -33,7 +30,6 @@ export default function GlobalSettings({initialSection='features'}={}){
   const [native,setNative]=useState(false);
   const sections=[
     option('features',uiT('uiExtra.globalSettings.featureSettingsHome'),'',uiT('uiExtra.globalSettings.featureSettingsHome')),
-    ...(native||account.user?[option('dailyRune',uiT('uiExtra.globalSettings.dailyRune'),'',uiT('uiExtra.globalSettings.tabDailyRune'))]:[]),
     option('mcp',uiT('uiExtra.globalSettings.mcpSelfServiceTitle'),'',uiT('uiExtra.globalSettings.mcpTab')),
     ...(native?[
       option('local','本機資料庫','','本機'),
@@ -153,7 +149,6 @@ export default function GlobalSettings({initialSection='features'}={}){
       {activeSection==='mcp'?<LocScopeConnections availableScopes={choices} verifiedAccount={verifiedLocAccount}/>:null}
       {native&&activeSection==='local'?<LocalScopeModeSettings/>:null}
 
-      {activeSection==='dailyRune'?<DailyRuneCalendarSettings/>:null}
 
       {/* Device management never mounts website Scope/Article/Admin capabilities. */}
       {native&&activeSection==='manage'?<PrivateLocalFiles/>:null}

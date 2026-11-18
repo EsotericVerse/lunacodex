@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('Settings dashboard contains only login and one manager control',()=>{
@@ -35,17 +35,10 @@ test('Search applies the preference at query time, not on toggle',()=>{
   assert.match(search,/account\.refresh\(\{forceVerify:true\}\)/);
 });
 
-test('Settings Daily Rune is lazily mounted, retired on tab change and month reads bounded',()=>{
+test('Settings is LOC-only and no longer mounts LRS daily records',()=>{
   const global=read('app/loc/preferences/GlobalSettings.jsx');
-  const nav=read('app/modular/ManagementSectionNav.jsx');
-  const daily=read('app/loc/runes/daily-runes.js');
-  assert.match(global,/const DailyRuneCalendarSettings=dynamic/);
-  assert.match(global,/activeSection==='dailyRune'\?<DailyRuneCalendarSettings\/>/);
-  assert.match(nav,/prepareTransientResourceAction\('management'\)/);
-  const month=daily.slice(daily.indexOf('export async function selectDailyRuneMonth'),daily.indexOf('const DAILY_DRAW_KINDS'));
-  assert.match(month,/selectRows\('silver\.lrunes_daily'/);
-  assert.match(month,/limit:100,offset:0/);
-  assert.doesNotMatch(month,/selectDailyRangeRows\(/);
+  assert.doesNotMatch(global,/DailyRuneCalendarSettings|activeSection==='dailyRune'/);
+  assert.equal(existsSync(new URL('../app/loc/runes/daily-runes.js',import.meta.url)),false);
 });
 
 test('Signing out clears the device-only manager toggle',()=>{

@@ -20,11 +20,8 @@ jobs:
             'https://loc.lo3rwang.cc/api/loc-public-content?kind=earliest&scope=lo3rwang'
             'https://loc.lo3rwang.cc/api/loc-public-content?kind=config&scope=lo3rwang'
             'https://loc.lo3rwang.cc/api/loc-public-content?kind=loc&scope=loc&start=2026-11-01&end=2026-11-09'
-            'https://auth.lo3rwang.cc/.well-known/oauth-authorization-server'
-            'https://auth.lo3rwang.cc/v1/auth/session'
-            'https://auth.lo3rwang.cc/oauth/login?provider=google'
-            'https://auth.lo3rwang.cc/oauth/login?provider=github'
-            'https://mcp.lo3rwang.cc/.well-known/oauth-protected-resource'
+            'https://lrunes.lo3rwang.cc/'
+            'https://loc.lo3rwang.cc/lrunes/'
           )
           for url in "${urls[@]}"; do
             echo "::group::curl ${url}"

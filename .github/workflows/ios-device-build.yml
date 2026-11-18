@@ -1,16 +1,12 @@
 name: LOC iOS Device Unsigned IPA
 run-name: LOC IPA · ${{ github.ref_name }} · ${{ github.sha }}
 
-# Manual only: no new IPA until requested by the owner.
+# LOC-only, manual IPA build. LRS has its own native delivery pipeline.
 on:
   workflow_dispatch:
     inputs:
       release_tag:
         description: 'Attach unsigned IPA to the matching current RC prerelease (optional)'
-        required: false
-        type: string
-      lrs_commit:
-        description: 'Optional exact LunaRunes SHA override (empty uses LOC pinned 1.01R source)'
         required: false
         type: string
 
@@ -37,7 +33,6 @@ jobs:
       ipa_name: ${{ steps.meta.outputs.ipa_name }}
       release_tag: ${{ steps.meta.outputs.release_tag }}
       loc_sha: ${{ steps.meta.outputs.loc_sha }}
-      lrs_commit: ${{ steps.meta.outputs.lrs_commit }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -59,7 +54,6 @@ jobs:
         shell: bash
         env:
           REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
-          REQUESTED_LRS_COMMIT: ${{ inputs.lrs_commit }}
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
@@ -73,29 +67,17 @@ jobs:
             echo "::error::Requested tag does not match package version."
             exit 1
           fi
-          if [[ -n "$REQUESTED_LRS_COMMIT" && ! "$REQUESTED_LRS_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo '::error::LunaRunes source must be pinned to an exact lowercase 40-character commit SHA.'
-            exit 1
-          fi
-          if [[ -z "$REQUESTED_LRS_COMMIT" ]]; then
-            REQUESTED_LRS_COMMIT="$(node -p "JSON.parse(require('fs').readFileSync('config/lrs-source.json','utf8')).sourceCommit")"
-          fi
-          if [[ ! "$REQUESTED_LRS_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo '::error::Unable to obtain the immutable LunaRunes source commit for native handoff.'
-            exit 1
-          fi
           printf '%s\n' \
             "version=$version" \
             "base_version=${version%%-*}" \
             "ipa_name=LOC-$version-device-unsigned.ipa" \
             "release_tag=$REQUESTED_RELEASE_TAG" \
-            "loc_sha=$(git rev-parse HEAD)" \
-            "lrs_commit=$REQUESTED_LRS_COMMIT" >> "$GITHUB_OUTPUT"
+            "loc_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - run: npm ci --no-audit --no-fund
       - name: Parse JavaScript and JSX before paying for the macOS build
         run: npm run check:syntax
-      - name: Verify restored LOC IPA metadata and LRS real-file handoff
-        run: node --test scripts/test-ipa-workflow-metadata.mjs scripts/test-las-ipa-runes.mjs
+      - name: Verify independent LOC IPA metadata
+        run: node --test scripts/test-ipa-workflow-metadata.mjs
 
   build-device-ipa:
     needs: guard
@@ -110,7 +92,6 @@ jobs:
       LOC_IPA_NAME: ${{ needs.guard.outputs.ipa_name }}
       LOC_RELEASE_TAG: ${{ needs.guard.outputs.release_tag }}
       LOC_BUILD_NUMBER: ${{ github.run_number }}
-      LRS_COMMIT: ${{ needs.guard.outputs.lrs_commit }}
     steps:
       - name: Checkout pinned LOC source for existing IPA flow
         uses: actions/checkout@v4
@@ -118,20 +99,6 @@ jobs:
           repository: EsotericVerse/lunacodex
           ref: ${{ needs.guard.outputs.loc_sha }}
           path: loc-source
-          persist-credentials: false
-      - name: Checkout pinned LunaRunes source
-        uses: actions/checkout@v4
-        with:
-          repository: EsotericVerse/lunarunes
-          ref: ${{ needs.guard.outputs.lrs_commit }}
-          path: rune-source
-          persist-credentials: false
-      - name: Checkout pinned LAS original native Hero (no LAS code modification)
-        uses: actions/checkout@v4
-        with:
-          repository: EsotericVerse/lunarcus
-          ref: 8d48f261f21fab8fa2765f2ae8b01263c2661b9c
-          path: las-source
           persist-credentials: false
       - name: Install Node.js 22
         uses: actions/setup-node@v4
@@ -149,28 +116,14 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/loc-capacitor-cli" --no-save --no-package-lock --no-audit --no-fund "@capacitor/cli@8.5.3"
           test -x "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap"
-      - name: Inject pinned LRS native-only UI and modules into the temporary LOC checkout
-        run: node scripts/restore-lrs-native-ui.mjs ../rune-source .
       - name: Build LOC static export for the existing native shell
         env:
-          LOC_NATIVE_RUNE_ASSETS: '1'
           NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'
         run: |
           npm run build:static
           test -f out/index.html
-      - name: Install the independent LRS native material toolchain
-        run: npm --prefix ../rune-source install --ignore-scripts --no-audit --no-fund
-      - name: Produce pinned LRS native art and authored Effekseer files
-        run: |
-          test "$(git -C ../rune-source rev-parse HEAD)" = "$LRS_COMMIT"
-          node ../rune-source/scripts/prepare-rune-runtime-assets.mjs
-          node ../rune-source/scripts/build-rune-artifacts.mjs --target=ios
-      - name: Inject checksum-verified real Rune files into existing LOC export
-        run: node scripts/consume-lrs-ios-artifacts.mjs ../rune-source/dist/ios out
       - name: Check Guest and Admin static route exports
         run: node scripts/verify-release-static-export.mjs
-      - name: Verify numeric source Rune card files (never rewrite)
-        run: python3 scripts/prepare-ios-static-assets.py out
       - name: Generate ephemeral iOS project and sync
         run: |
           "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap" add ios
@@ -232,11 +185,7 @@ jobs:
           with ZipFile('dist/'+os.environ['LOC_IPA_NAME']) as archive:
               paths=archive.namelist()
               assert all(name.isascii() for name in paths), 'Unicode filenames remain inside IPA'
-              prefix='Payload/App.app/public/assets/lunarunes/cards/'
-              actual={name for name in paths if name.startswith(prefix) and name.endswith('.png')}
-              expected={prefix+f'{index:02}.png' for index in range(0,67)}
-              assert actual==expected, f'Expected 67 ASCII-named card images, got {len(actual)}'
-              print('IPA verified: ASCII-only paths and 67 numeric card images')
+              print('LOC IPA verified: ASCII-only paths; no LRS cards required')
           PY
           test -s "$PWD/dist/$LOC_IPA_NAME"
           echo "Unsigned IPA generated. It must be signed on the user's machine; this CI artifact is NOT directly installable."

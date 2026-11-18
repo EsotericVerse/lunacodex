@@ -23,11 +23,6 @@ export function availableMemberMeasures(datasets=[],categories=[]){
     {id:'multimedia',name:'多媒體'},
     ...categories.filter(x=>x.enabled!==false).map(row=>({id:'source:'+row.category_code,name:'作品分類 · '+row.display_name})),
     ...[...media].sort().map(id=>({id:'media:'+id,name:'多媒體類型 · '+id})),
-    {id:'daily',name:'每日符文'},
-    {id:'daily:kind:main',name:'每日符文 · 主抽'},
-    {id:'daily:kind:supplement',name:'每日符文 · 補抽'},
-    ...['正位','半正位','半逆位','逆位'].map(direction=>({id:'daily:direction:'+direction,name:'每日符文 · '+direction})),
-    ...['新月','上弦','滿月','下弦','空亡'].map(phase=>({id:'daily:phase:'+phase,name:'每日符文 · '+phase}))
   ];
 }
 function measureRows(rows=[],metric,categories,aliases){
@@ -61,21 +56,8 @@ export function calculateMemberCross(lanes=[],datasets=new Map(),{
   if(!ISO_DATE.test(from)||!ISO_DATE.test(to)||from>to)return {rows:[],series:[],totals:[],commonDays:0,unionDays:0,daysPerLane:[]};
   const selected=lanes.slice(0,4).map((lane,i)=>({
     ...lane,key:'line'+i,
-    values:lane.metric.startsWith('daily')
-      ?new Map()
-      :measureRows(datasets.get(lane.person)?.rows||[],lane.metric,categories,aliases)
+    values:measureRows(datasets.get(lane.person)?.rows||[],lane.metric,categories,aliases)
   }));
-  for(const lane of selected)if(lane.metric.startsWith('daily')){
-    if(lane.person!=='lrunes')continue;
-    for(const row of datasets.get(lane.person)?.daily||[]){
-      const day=String(row.record_date||'').slice(0,10),metric=lane.metric;
-      const match=metric==='daily'
-        ||(metric.startsWith('daily:kind:')&&String(row.draw_kind||'')===metric.slice(11))
-        ||(metric.startsWith('daily:direction:')&&String(row.direction||'')===metric.slice(16))
-        ||(metric.startsWith('daily:phase:')&&String(row.phase||row.recorded_phase||'')===metric.slice(12));
-      if(ISO_DATE.test(day)&&match)lane.values.set(day,(lane.values.get(day)||0)+1);
-    }
-  }
   const rows=new Map(),daysPerLane=selected.map(()=>0);
   let commonDays=0,unionDays=0;
   for(let d=time(from),end=time(to);d<=end;d.setUTCDate(d.getUTCDate()+1)){

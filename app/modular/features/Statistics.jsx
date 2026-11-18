@@ -31,8 +31,6 @@ const ScopeSelfIntersection=dynamic(()=>import('../modules/statistics/ScopeSelfI
 const ScopeGroupStatistics=dynamic(()=>import('../modules/statistics/ScopeGroupStatistics'),{loading:()=>null});
 const ScopeGroupOverview=dynamic(()=>import('../../loc/scope/ScopeGroupOverview'),{loading:()=>null});
 const StatisticsInsightsPanel=dynamic(()=>import('../modules/statistics/StatisticsInsightsPanel'),{loading:()=>null});
-// Standalone daily-draw analytics are mounted only for LunaRunes when selected.
-const LrunesDailyStatisticsPanel=dynamic(()=>import('../../lrunes/DailyRuneAnalytics').then(m=>m.LrunesDailyStatisticsPanel),{loading:()=>null});
 import StatisticsChartFrame from '../modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
@@ -168,7 +166,6 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
       </optgroup>:null}
       {types.includes('place')?<optgroup label="地點"><option value="place">地點</option></optgroup>:null}
       {types.includes('media')?<optgroup label="多媒體"><option value="media">多媒體</option></optgroup>:null}
-      {scopeId==='lrunes'&&types.includes('daily')?<option value="daily">每日符文</option>:null}
     </select>
   </label>;
 }
@@ -184,7 +181,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // selected-only scoped reads; never reinterpret Media/Place as Keywords.
   const keywordDimension=rankingType==='keywords';
   const categoryChart=rankingType==='place'||rankingType==='media';
-  const dailyDimension=scopeId==='lrunes'&&rankingType==='daily';
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
@@ -646,8 +642,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         </aside>
       </div>
     </>:null}
-    {dailyDimension?<LrunesDailyStatisticsPanel range={queryRange}
-      zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}/>:null}
     {keywordDimension?<>
       {keywordClassQuery.isPending?<p className="scope-status">正在讀取關鍵詞組設定…</p>:null}
       {!keywordClassQuery.isPending&&!keywordClassQuery.error&&!scopedKeywordClasses.length?<p className="scope-status">目前沒有可查看的關鍵詞科目；請先建立或公開科目。</p>:null}
@@ -711,7 +705,7 @@ export default function Statistics(){
         scopeId={scopeId}
         aggregateScopes={Boolean(scope?.aggregateChildren)}
         navigation={activeNavigation}
-        types={scopeId==='lrunes'?[...STAT_TYPES,'daily']:STAT_TYPES}
+        types={STAT_TYPES}
         canManageSources={false}
       />
     </section>

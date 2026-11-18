@@ -1,7 +1,6 @@
 'use client';
 
 import {SITE_IMAGES} from '../../site-images';
-import {runeAssetHref} from '../../lrunes/rune-asset-origin.mjs';
 import {HomeBlock} from './home-block-model';
 
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
@@ -9,7 +8,7 @@ import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 // Existing, approved site images only. New text frames have no image by default;
 // images are not uploaded to, or stored by, the block editor.
 const LOC_MEDIA=Object.freeze({
-  2:{src:{src:runeAssetHref(SITE_IMAGES.lunarunes.src)},alt:'LunaRunes 月之符文',position:'right',width:'420px'},
+  2:{src:SITE_IMAGES.lunarunes,alt:'LunaRunes 月之符文',position:'right',width:'420px'},
   3:{src:SITE_IMAGES.locArchitecture,alt:'LOC 月典文化與架構示意圖',position:'left',width:'540px'},
   5:{src:SITE_IMAGES.author,alt:'作者 Lucas Oscar Wang 政德',position:'right',width:'360px'}
 });

@@ -5,10 +5,6 @@ import {useUiSection} from '../../../i18n/ui-locale';
 import {useMemo} from 'react';
 import {useAsyncResource,useResourceCache} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
-import {defaultScopeData} from '../../../loc/scope/scope-data';
-import {selectDailyRuneRange} from '../../../loc/runes/daily-runes';
-import {normalizeDailyDraws} from '../../../lrunes/daily-analytics-model.mjs';
-import {realMoonPhase} from '../../../loc/model/moon-phase';
 import {availableMemberMeasures,calculateMemberCross} from '../../../loc/statistics/member-intersection-model.mjs';
 import {semanticStatisticChartTypes} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
@@ -30,25 +26,18 @@ export default function LocMemberIntersection({
   const rangeKey=startDate+'|'+endDate;
   // The caller supplies Scope IDs and display names from the existing registry result.
   const names=useMemo(()=>new Map(scopes.map(row=>[row.id,row.label||row.id])),[scopes]);
-  // Daily Rune is a dedicated test feed, not a registered Galaxy source or a
-  // group/personal source classification. It is always a LOC comparison choice.
-  const available=[
-    ...scopes.filter(scope=>scope.id!=='lrunes')
-      .map(scope=>({id:scope.id,label:names.get(scope.id)||scope.id,scope})),
-    {id:'lrunes',label:names.get('lrunes')||'月之符文',
-      scope:scopes.find(scope=>scope.id==='lrunes')||defaultScopeData('lrunes')}
-  ];
+  const available=scopes.map(scope=>({id:scope.id,label:names.get(scope.id)||scope.id,scope}));
   // Each Scope is compared only by its own totals and media types; source groups are never merged across Scopes.
-  const allows=(person,metric)=>metric.startsWith('daily')?person==='lrunes':!metric.startsWith('source:');
+  const allows=(person,metric)=>!metric.startsWith('source:');
   const lanes=Array.from({length:laneCount},(_,index)=>{
     const candidate=choices[index]||{};
     const fallback=available[index%Math.max(available.length,1)]?.id||'';
     const person=available.some(p=>p.id===candidate.person)?candidate.person:fallback;
-    return {person,metric:candidate.metric|| (person==='lrunes'?'daily':'total')};
+    return {person,metric:candidate.metric||'total'};
   });
   const chosenIds=[...new Set(lanes.map(lane=>lane.person).filter(Boolean))];
   const fetched=useAsyncResource({
-    queryKey:['loc-member-cross',startDate,endDate,chosenIds.join('|'),lanes.some(x=>x.metric.startsWith('daily'))],
+    queryKey:['loc-member-cross',startDate,endDate,chosenIds.join('|')],
     enabled:Boolean(loadGalaxyStatistics&&startDate&&endDate&&chosenIds.length),
     queryFn:async()=>{
       const pairs=await mapBounded(chosenIds,3,async id=>{
@@ -60,16 +49,7 @@ export default function LocMemberIntersection({
             queryFn:async()=>(await loadGalaxyStatistics()).selectScopeSourceBreakdownRows(scope,{startDate,endDate}),
           })
           :[];
-        const daily=id==='lrunes'&&lanes.some(lane=>lane.person===id&&lane.metric.startsWith('daily'))
-          ?await resourceCache.getOrLoad({
-            queryKey:['loc-member-daily-runes',startDate,endDate],
-            queryFn:()=>selectDailyRuneRange({startDate,endDate}),
-          })
-          :[];
-        const draws=id==='lrunes'
-          ?normalizeDailyDraws(daily,date=>realMoonPhase(new Date(date+'T12:00:00+08:00')))
-          :[];
-        return [id,{rows,daily:draws}];
+        return [id,{rows}];
       });
       return {rangeKey,datasets:new Map(pairs)};
     },
@@ -80,7 +60,7 @@ export default function LocMemberIntersection({
   const adjusted=lanes.map((lane,index)=>({
     ...lane,
     metric:measures.some(item=>item.id===lane.metric)&&allows(lane.person,lane.metric)
-      ?lane.metric:(lane.person==='lrunes'?'daily':'total'),
+      ?lane.metric:'total',
     label:(names.get(lane.person)||lane.person)+' · '+(measures.find(item=>item.id===lane.metric)?.name||t('uiExtra.statisticsView.memberCrossAllWorks'))
   }));
   const calculated=useMemo(()=>calculateMemberCross(adjusted,datasets,{
@@ -115,14 +95,13 @@ export default function LocMemberIntersection({
     <div className="scope-stat-controls">
       {lanes.map((lane,index)=><div className="scope-inline-card" key={index}>
         <label><UiText id="uiExtra.statisticsView.memberCrossPerson"/> {index+1}
-          <select className="scope-select" value={lane.person} onChange={e=>update(index,{person:e.target.value,metric:e.target.value==='lrunes'?'daily':'total'})}>
+          <select className="scope-select" value={lane.person} onChange={e=>update(index,{person:e.target.value,metric:'total'})}>
             {available.map(member=><option key={member.id} value={member.id}>{member.label}</option>)}
           </select>
         </label>
         <label><UiText id="uiExtra.statisticsView.memberCrossMetric"/>
           <select className="scope-select" value={adjusted[index].metric} onChange={e=>update(index,{metric:e.target.value})}>
-            {measures.filter(item=>(!item.id.startsWith('daily')||lane.person==='lrunes')&&
-            allows(lane.person,item.id)).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
+            {measures.filter(item=>allows(lane.person,item.id)).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
       </div>)}

@@ -6,12 +6,10 @@ import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {selectManagedScopes} from '../../loc/scope/scope-data';
 import {selectLocItemDailySeries} from '../../loc/statistics/item-confluence-query';
-import {realMoonPhase} from '../../loc/model/moon-phase';
-import {buildReferencedMoonRiver} from '../../../modules/lrs/daily/moon-river.mjs';
 import {
   ITEM_CONFLUENCE_PAGE_SIZE,ITEM_LANE_OPTIONS,itemConfluenceShiftMonth,
   validateItemConfluenceRange,validateItemLane,itemLaneDescription,
-  buildItemConfluenceDaily,buildItemConfluenceRiver,itemConfluenceSummary,itemRuneDisplay
+  buildItemConfluenceDaily,buildItemConfluenceRiver,itemConfluenceSummary
 } from '../../loc/statistics/item-confluence-model.mjs';
 import CultureTimeline from '../modules/culture-timeline/CultureTimeline';
 
@@ -27,28 +25,24 @@ function nowInTaipei(){
 }
 function labelOf(row){return String(row?.display_label||'');}
 function laneDayText(row,index,lane,l){
-  if(lane?.source==='daily:rune'){
-    const draws=row?.runeDraws?.[index]||[];
-    return draws.length?draws.map(itemRuneDisplay).join(' ／ '):l.noneToday;
-  }
   const count=Number(row?.counts?.[index])||0;
   return count.toLocaleString()+l.recordUnit+((Number(row?.ratios?.[index])||0)*100).toFixed(1)+'%';
 }
 function laneColumnLabel(lane,l){
-  return lane?.source==='daily:rune'?l.runeColumn:l.mediaColumn;
+  return l.mediaColumn;
 }
 function defaultLane(scopeId,source){return {scopeId,source,exact:''};}
 function LanePicker({label,lane,scopes,onChange}){
   const l=useFeatureCopy('itemConfluence');
   const scopeOptions=scopes.filter(scope=>scope.id!=='loc');
-  const sourceOptions=ITEM_LANE_OPTIONS.filter(option=>option.value!=='daily:rune'||lane.scopeId==='lrunes');
+  const sourceOptions=ITEM_LANE_OPTIONS;
   return <fieldset className="scope-card" style={{minWidth:0,flex:'1 1 250px'}}>
     <legend>{label}</legend>
     <div className="scope-stat-controls">
       <label><span>Scope</span>
         <select className="scope-select" value={lane.scopeId} onChange={event=>{
           const id=event.target.value;
-          onChange({...lane,scopeId:id,source:lane.source==='daily:rune'&&id!=='lrunes'?'galaxy:all':lane.source});
+          onChange({...lane,scopeId:id});
         }}>
           {!scopeOptions.some(scope=>scope.id===lane.scopeId)?<option value="">{l.select}</option>:null}
           {scopeOptions.map(scope=><option key={scope.id} value={scope.id}>{scope.id}</option>)}
@@ -57,7 +51,7 @@ function LanePicker({label,lane,scopes,onChange}){
       <label><span>{l.laneItem}</span>
         <select className="scope-select" value={sourceOptions.some(item=>item.value===lane.source)?lane.source:'galaxy:all'}
           onChange={event=>onChange({...lane,source:event.target.value,exact:''})}>
-          {sourceOptions.map(option=><option key={option.value} value={option.value}>{l[({ 'galaxy:facebook':'galaxyFacebook','galaxy:threads':'galaxyThreads','galaxy:instagram':'galaxyInstagram','galaxy:all':'galaxyAll','galaxy:exact':'galaxyExact','media:all':'mediaAll','media:exact':'mediaExact','daily:rune':'dailyRune'})[option.value]]||option.label}</option>)}
+          {sourceOptions.map(option=><option key={option.value} value={option.value}>{l[({ 'galaxy:facebook':'galaxyFacebook','galaxy:threads':'galaxyThreads','galaxy:instagram':'galaxyInstagram','galaxy:all':'galaxyAll','galaxy:exact':'galaxyExact','media:all':'mediaAll','media:exact':'mediaExact'})[option.value]]||option.label}</option>)}
         </select>
       </label>
       {lane.source.endsWith(':exact')?<label><span>{l.exactType}</span>
@@ -94,21 +88,13 @@ export default function LocItemConfluence(){
   const labels=useMemo(()=>[laneA,laneB].map(lane=>{
     const label=itemLaneDescription(lane);
     const option=ITEM_LANE_OPTIONS.find(item=>item.value===lane.source);
-    const keys={'galaxy:facebook':'galaxyFacebook','galaxy:threads':'galaxyThreads','galaxy:instagram':'galaxyInstagram','galaxy:all':'galaxyAll','galaxy:exact':'galaxyExact','media:all':'mediaAll','media:exact':'mediaExact','daily:rune':'dailyRune'};
+    const keys={'galaxy:facebook':'galaxyFacebook','galaxy:threads':'galaxyThreads','galaxy:instagram':'galaxyInstagram','galaxy:all':'galaxyAll','galaxy:exact':'galaxyExact','media:all':'mediaAll','media:exact':'mediaExact'};
     return String(lane.scopeId||'')+' · '+(lane.source.endsWith(':exact')?(lane.source.startsWith('media:')?l.mediaLabel:l.textLabel)+String(lane.exact||''):(l[keys[option?.value]]||label||l.unselected));
   }),[laneA,laneB,l]);
   const daily=useMemo(()=>valid&&query.data?buildItemConfluenceDaily({
     startDate:range.startDate,endDate:range.endDate,lanes:[laneA,laneB],series:query.data
   }):[],[valid,query.data,range.startDate,range.endDate,laneA,laneB]);
   const river=useMemo(()=>buildItemConfluenceRiver(daily,labels,[laneA,laneB]),[daily,labels,laneA,laneB]);
-  const runeRecordCount=useMemo(()=>river.reduce((count,item)=>
-    count+(item.entry_type==='item_daily_rune'?(item.daily_draws?.length||0):0),0
-  ),[river]);
-  const moonRiver=useMemo(()=>valid&&query.isSuccess?buildReferencedMoonRiver(
-    range.startDate,range.endDate,[laneA,laneB],
-    date=>realMoonPhase(new Date(date+'T12:00:00+08:00')),runeRecordCount
-  ):[],[valid,query.isSuccess,range.startDate,range.endDate,laneA.scopeId,laneA.source,laneB.scopeId,laneB.source,runeRecordCount]);
-  const combinedRiver=useMemo(()=>[...moonRiver,...river],[moonRiver,river]);
   const summary=useMemo(()=>itemConfluenceSummary(daily),[daily]);
   const lanes=[laneA,laneB];
   const selectedRow=daily.find(row=>row.day===selectedDay)||null;
@@ -139,13 +125,11 @@ export default function LocItemConfluence(){
     {valid&&query.data&&!query.error?<div>
       <p className="scope-status">{range.startDate} ～ {range.endDate} · {lanes.map((lane,index)=>{
         const total=summary.totals[index];
-        return l.streamPrefix+(index===0?'A':'B')+' '+(lane.source==='daily:rune'
-          ?daily.filter(row=>row.runeDraws?.[index]?.length).length+l.runeDays
-          :total.toLocaleString()+l.entries);
+        return l.streamPrefix+(index===0?'A':'B')+' '+total.toLocaleString()+l.entries;
       }).join(' · ')}{l.bothDays}{summary.bothActiveDays}{l.dayUnit}</p>
       <p className="scope-status">{l.note}</p>
-      {combinedRiver.length?<CultureTimeline
-        items={combinedRiver}
+      {river.length?<CultureTimeline
+        items={river}
         labelOf={labelOf}
         focus={EMPTY_FOCUS}
         mode="source"
