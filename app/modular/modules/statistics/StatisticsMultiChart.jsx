@@ -3,16 +3,12 @@
 import {cloneElement,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
-import {UI_COPY,registerDefaultSection} from '../../../i18n/ui-copy';
+import {UI_COPY} from '../../../i18n/ui-copy';
 import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,semanticStatisticChartTypes,preferredStatisticChartType,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color,pointColor} from './statistics-time-zoom.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
 import UiText,{useUiText} from '../../../i18n/UiText';
 import StatisticsDetails from './StatisticsDetails';
-import statisticsViewZh from '../../../i18n/sections/uiExtra.statisticsView.zh_tw.js';
-import chartLabelsZh from '../../../i18n/sections/uiExtra.chartLabels.zh_tw.js';
-registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
-registerDefaultSection('uiExtra.chartLabels',chartLabelsZh);
 import {
   Area,AreaChart,Bar,BarChart,Brush,CartesianGrid,Cell,ComposedChart,
   Legend,Line,LineChart,Pie,PieChart,PolarAngleAxis,PolarGrid,

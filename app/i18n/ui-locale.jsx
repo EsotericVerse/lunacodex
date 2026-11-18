@@ -1,73 +1,49 @@
 'use client';
 
 import {createContext,useContext,useEffect,useMemo,useState} from 'react';
-import {featureSection,isFeatureCopyLoaded,isSectionLoaded,isUiLocaleLoaded,loadFeatureCopy,loadSection,loadUiLocale,normalizeUiLocale,subscribeSectionVersion,uiCopy,UI_LOCALE} from './ui-copy';
+import {featureSection,isUiLocaleLoaded,loadUiLocale,normalizeUiLocale,
+  subscribeSectionVersion,uiCopy,UI_LOCALE} from './ui-copy';
 
 const UiLocaleContext=createContext(Object.freeze({
   locale:UI_LOCALE,
   copy:uiCopy(UI_LOCALE)
 }));
 
-// Fetches the selected language on demand and re-renders once it has arrived.
-export function useLoadedUiLocale(locale){
-  const normalized=normalizeUiLocale(locale);
-  const [readyLocale,setReadyLocale]=useState(()=>isUiLocaleLoaded(normalized)?normalized:null);
-  useEffect(()=>{
-    if(isUiLocaleLoaded(normalized)){setReadyLocale(normalized);return undefined;}
-    let active=true;
-    loadUiLocale(normalized)
-      .then(()=>{if(active)setReadyLocale(normalized);})
-      .catch(()=>{if(active)setReadyLocale(null);});
-    return ()=>{active=false;};
-  },[normalized]);
-  return readyLocale===normalized||isUiLocaleLoaded(normalized);
-}
-
-// Bumps whenever any section (search, statistics, uiExtra.editBlocks, …)
-// finishes loading anywhere in the tree, so the context value below is
-// recomputed and every UiText/FieldText/useUiCopy consumer re-renders with
-// the freshly merged dictionary, without each needing its own plumbing.
-function useSectionTick(){
-  const [tick,setTick]=useState(0);
-  useEffect(()=>subscribeSectionVersion(()=>setTick(t=>t+1)),[]);
-  return tick;
-}
-
-export function UiLocaleProvider({locale=UI_LOCALE,children}){
-  const normalized=normalizeUiLocale(locale);
-  const ready=useLoadedUiLocale(normalized);
-  const sectionTick=useSectionTick();
-  const value=useMemo(()=>({locale:normalized,copy:uiCopy(normalized)}),[normalized,ready,sectionTick]);
-  return <UiLocaleContext.Provider value={value}>{children}</UiLocaleContext.Provider>;
-}
-
-export function useUiLocale(){
-  return useContext(UiLocaleContext);
-}
-
-export function useUiCopy(){
-  return useUiLocale().copy;
-}
-
-// Copy for one lazily loaded feature. `defaults` is that feature's own
-// Traditional Chinese section; other languages are fetched on demand.
-export function useFeatureCopy(section,defaults){
-  const {locale}=useUiLocale();
+// The client pathname resolves to the directory containing page.jsx.
+// Wait for the Scope's real locale before any request (no zh_tw prefetch).
+export function useLoadedUiLocale(locale,pathname='/',enabled=true){
+  const language=normalizeUiLocale(locale);
   const [,refresh]=useState(0);
   useEffect(()=>{
-    if(isFeatureCopyLoaded(locale,section))return undefined;
+    if(!enabled)return undefined;
     let active=true;
-    loadFeatureCopy(locale,section).then(()=>{if(active)refresh(n=>n+1);}).catch(()=>{});
+    loadUiLocale(language,pathname)
+      .then(()=>{if(active)refresh(value=>value+1);})
+      .catch(()=>{if(active)refresh(value=>value+1);});
     return ()=>{active=false;};
-  },[locale,section]);
-  return featureSection(locale,section,defaults);
+  },[language,pathname,enabled]);
+  return Boolean(enabled)&&isUiLocaleLoaded(language,pathname);
 }
-
-export function useUiSection(path){
-  const {locale}=useUiLocale();
-  useEffect(()=>{
-    if(isSectionLoaded(locale,path))return undefined;
-    loadSection(locale,path).catch(()=>{});
-    return undefined;
-  },[locale,path]);
+function useSectionTick(){
+  const [tick,setTick]=useState(0);
+  useEffect(()=>subscribeSectionVersion(()=>setTick(value=>value+1)),[]);
+  return tick;
 }
+export function UiLocaleProvider({locale=UI_LOCALE,pathname='/',children}){
+  const language=normalizeUiLocale(locale);
+  const ready=useLoadedUiLocale(language,pathname);
+  const tick=useSectionTick();
+  const copy=useMemo(()=>uiCopy(language,pathname),[language,pathname,ready,tick]);
+  return <UiLocaleContext.Provider value={{locale:language,copy}}>
+    {ready?children:<div className="loc-loading" role="status">Loading interface…</div>}
+  </UiLocaleContext.Provider>;
+}
+export function useUiLocale(){return useContext(UiLocaleContext);}
+export function useUiCopy(){return useUiLocale().copy;}
+export function useFeatureCopy(section,defaults={}){
+  const {locale,copy}=useUiLocale();
+  return copy.featureCopy?.[section]||featureSection(locale,section,defaults);
+}
+// The page owns the selected locale dictionary; individual sections no longer
+// fetch or register anything. Existing call sites remain source compatible.
+export function useUiSection(_path){}

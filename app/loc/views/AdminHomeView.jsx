@@ -1,10 +1,5 @@
 'use client';
-import {registerDefaultSection} from '../../i18n/ui-copy';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
-import adminZh from '../../i18n/sections/admin.zh_tw.js';
-import adminViewZh from '../../i18n/sections/uiExtra.adminView.zh_tw.js';
-registerDefaultSection('admin',adminZh);
-registerDefaultSection('uiExtra.adminView',adminViewZh);
 import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../auth/use-account';

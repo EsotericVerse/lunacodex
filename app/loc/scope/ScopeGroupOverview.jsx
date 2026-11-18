@@ -2,14 +2,11 @@
 
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import UiText,{useUiText} from '../../i18n/UiText';
-import {registerDefaultSection} from '../../i18n/ui-copy';
 import {useUiSection} from '../../i18n/ui-locale';
-import scopeGroupZh from '../../i18n/sections/uiExtra.scopeGroup.zh_tw.js';
 import {selectScopeGroupChildren} from './scope-data';
 import {navigationHref} from '../../modular/routing/scope-registry.js';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import ScopeLink from '../../modular/ScopeLink';
-registerDefaultSection('uiExtra.scopeGroup',scopeGroupZh);
 
 const FEATURE_PATH=Object.freeze({search:'search',statics:'statics',culture:'culture',trace:'trace'});
 const FEATURE_LABEL=Object.freeze({search:'nav.search',statics:'features.statics.title',culture:'features.culture.title',trace:'features.trace.title'});

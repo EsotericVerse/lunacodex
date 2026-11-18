@@ -1,9 +1,7 @@
 'use client';
 import FieldText from '../../../i18n/FieldText';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
-import {translateUiField,registerDefaultSection} from '../../../i18n/ui-copy';
-import cultureTimelineZh from '../../../i18n/sections/uiExtra.cultureTimeline.zh_tw.js';
-registerDefaultSection('uiExtra.cultureTimeline',cultureTimelineZh);
+import {translateUiField} from '../../../i18n/ui-copy';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {DataSet} from 'vis-data/esnext';

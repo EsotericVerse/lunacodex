@@ -3,9 +3,6 @@
 import {useState} from 'react';
 import UiText from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
-import {registerDefaultSection} from '../../i18n/ui-copy';
-import editBlocksZh from '../../i18n/sections/uiExtra.editBlocks.zh_tw.js';
-registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
 import {useAccount,readVerifiedManagementEntry} from '../auth/use-account';

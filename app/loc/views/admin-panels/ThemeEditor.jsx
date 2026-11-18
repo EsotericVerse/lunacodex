@@ -2,14 +2,11 @@
 import {useEffect,useState} from 'react';
 import UiText from '../../../i18n/UiText';
 import FieldText from '../../../i18n/FieldText';
-import {registerDefaultSection} from '../../../i18n/ui-copy';
 import {useUiSection} from '../../../i18n/ui-locale';
-import adminViewZh from '../../../i18n/sections/uiExtra.adminView.zh_tw.js';
 import {THEME_SLOTS,THEME_TOKEN_KEYS} from '../../../modular/theme-registry';
 import {mergeThemeSlot,THEME_DB_COLUMNS,themeColumnForToken,themeUiId,themeNumber,normalizeThemeHex,deriveThemeTokens} from '../../preferences/theme-data';
 import {dbAuthRelation,dbAuthClient} from '../../db/db-client.mjs';
 import {useEditDockForm} from '../../../modular/edit-dock';
-registerDefaultSection('uiExtra.adminView',adminViewZh);
 
 export default function ThemeEditor(){
   useUiSection('uiExtra.adminView');

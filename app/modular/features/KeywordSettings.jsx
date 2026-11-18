@@ -7,10 +7,7 @@ import {useScopeRuntime} from '../use-scope-runtime';
 import {useEditDock} from '../edit-dock';
 import {FeaturePage} from '../ui';
 import ManagementWorkspaceFrame from '../../loc/management/ManagementWorkspaceFrame';
-import {registerDefaultSection} from '../../i18n/ui-copy';
 import {useUiSection} from '../../i18n/ui-locale';
-import keywordsZh from '../../i18n/sections/uiExtra.keywords.zh_tw.js';
-registerDefaultSection('uiExtra.keywords',keywordsZh);
 
 const KeywordLibraryPanel=dynamic(()=>import('../../loc/keywords/ui/KeywordLibraryPanel'),{
   loading:()=> <p className="scope-status"><UiText id="uiExtra.keywords.settingsLoading"/></p>

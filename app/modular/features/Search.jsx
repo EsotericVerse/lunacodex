@@ -1,19 +1,9 @@
 'use client';
 import FieldText from '../../i18n/FieldText';
 
-import {UI_COPY,registerDefaultSection} from '../../i18n/ui-copy';
+import {UI_COPY} from '../../i18n/ui-copy';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
-import searchZh from '../../i18n/sections/search.zh_tw.js';
-import searchUIZh from '../../i18n/sections/uiExtra.searchUI.zh_tw.js';
-import editBlocksZh from '../../i18n/sections/uiExtra.editBlocks.zh_tw.js';
-import cultureViewZh from '../../i18n/sections/uiExtra.cultureView.zh_tw.js';
-import paginationZh from '../../i18n/sections/uiExtra.pagination.zh_tw.js';
-registerDefaultSection('search',searchZh);
-registerDefaultSection('uiExtra.searchUI',searchUIZh);
-registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
-registerDefaultSection('uiExtra.cultureView',cultureViewZh);
-registerDefaultSection('uiExtra.pagination',paginationZh);
 
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
