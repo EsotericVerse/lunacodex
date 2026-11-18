@@ -6,8 +6,6 @@ import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {selectManagedScopes} from '../../loc/scope/scope-data';
 import {selectLocItemDailySeries} from '../../loc/statistics/item-confluence-query';
-import {realMoonPhase} from '../../loc/model/moon-phase';
-import {buildReferencedMoonRiver} from '../../../modules/lrs/daily/moon-river.mjs';
 import {
   ITEM_CONFLUENCE_PAGE_SIZE,ITEM_LANE_OPTIONS,itemConfluenceShiftMonth,
   validateItemConfluenceRange,validateItemLane,itemLaneDescription,
@@ -101,14 +99,6 @@ export default function LocItemConfluence(){
     startDate:range.startDate,endDate:range.endDate,lanes:[laneA,laneB],series:query.data
   }):[],[valid,query.data,range.startDate,range.endDate,laneA,laneB]);
   const river=useMemo(()=>buildItemConfluenceRiver(daily,labels,[laneA,laneB]),[daily,labels,laneA,laneB]);
-  const runeRecordCount=useMemo(()=>river.reduce((count,item)=>
-    count+(item.entry_type==='item_daily_rune'?(item.daily_draws?.length||0):0),0
-  ),[river]);
-  const moonRiver=useMemo(()=>valid&&query.isSuccess?buildReferencedMoonRiver(
-    range.startDate,range.endDate,[laneA,laneB],
-    date=>realMoonPhase(new Date(date+'T12:00:00+08:00')),runeRecordCount
-  ):[],[valid,query.isSuccess,range.startDate,range.endDate,laneA.scopeId,laneA.source,laneB.scopeId,laneB.source,runeRecordCount]);
-  const combinedRiver=useMemo(()=>[...moonRiver,...river],[moonRiver,river]);
   const summary=useMemo(()=>itemConfluenceSummary(daily),[daily]);
   const lanes=[laneA,laneB];
   const selectedRow=daily.find(row=>row.day===selectedDay)||null;
@@ -144,8 +134,8 @@ export default function LocItemConfluence(){
           :total.toLocaleString()+l.entries);
       }).join(' · ')}{l.bothDays}{summary.bothActiveDays}{l.dayUnit}</p>
       <p className="scope-status">{l.note}</p>
-      {combinedRiver.length?<CultureTimeline
-        items={combinedRiver}
+      {river.length?<CultureTimeline
+        items={river}
         labelOf={labelOf}
         focus={EMPTY_FOCUS}
         mode="source"
