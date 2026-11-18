@@ -22,7 +22,6 @@ const isDuplicate=p=>{
  if(p==='app/daily/log/DailyLogClient.jsx'||p==='app/daily/log/daily-record-slots.mjs')return true;
  if(['app/styles/runes.css','app/styles/home-runes.css'].includes(p))return true;
  if(p.startsWith('modules/lrs/')||p.startsWith('modules/lrune/'))return true;
- if(p.startsWith('assets/pics/64Card_org/'))return true;
  if(p.startsWith('public/vendor/effekseer/')||p.startsWith('public/vendor/rune-semantic-icons/'))return true;
  if(p==='assets/site/icons/lrunes-favicon.png'||p==='LunarRunesCardCut.pdf')return true;
  if(isLrsWebAsset(p))return true;
