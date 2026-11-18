@@ -124,7 +124,18 @@
       "othersCategory": "其他",
       "othersLoadFailed": "作品自定义分类加载失败：{error}",
       "othersBreakdownTitle": "作品自定义分类",
-      "othersUnclassified": "未分类"
+      "othersUnclassified": "未分类",
+      "dashboardTitle": "统计仪表板",
+      "dashboardScopeHelp": "以现有统计结果呈现时间趋势、来源分布与深度分析。",
+      "dashboardLocHelp": "查看 LOC 所属 Scope 的整体记录与分布。",
+      "dashboardRecords": "统计记录总数",
+      "dashboardCategoryCount": "有数据的来源分类",
+      "dashboardScopeCount": "所属 Scope",
+      "dashboardActiveBuckets": "有记录的时间区段",
+      "dashboardTrendTitle": "时间趋势",
+      "dashboardDistributionTitle": "来源分类分布",
+      "dashboardScopeDistributionTitle": "Scope 分布",
+      "dashboardEmpty": "此区间目前没有可显示的数据。"
     },
     "chartTypes": {
       "line": "折线图 · 时间趋势",

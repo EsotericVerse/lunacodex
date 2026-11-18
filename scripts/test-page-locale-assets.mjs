@@ -17,8 +17,25 @@ function visit(dir,out=[]){
 }
 const pages=visit(app);
 assert(pages.length>0,'At least one page.jsx required');
+const sharedCopies=Object.fromEntries(langs.map(lang=>[
+  lang,JSON.parse(fs.readFileSync(path.join(app,'i18n','shared',lang+'.json'),'utf8'))
+]));
+function allLeafKeys(value,prefix='',keys=[]){
+  if(value&&typeof value==='object'&&!Array.isArray(value)){
+    for(const [field,child] of Object.entries(value))
+      allLeafKeys(child,prefix?prefix+'.'+field:field,keys);
+  }else keys.push(prefix);
+  return keys;
+}
+function combinedLeafKeys(lang,page){
+  const common=sharedCopies[lang];
+  const combined={...common,...page,
+    uiExtra:{...(common.uiExtra||{}),...(page.uiExtra||{})}};
+  return allLeafKeys(combined).sort();
+}
 for(const dir of pages){
   const route=path.relative(app,dir).replace(/\\/g,'/')||'index';
+  let referenceKeys=null;
   for(const lang of langs){
     const pageRoute=path.relative(app,dir).replace(/\\/g,'/');
     const canonical=pageRoute==='lrunes'?'':pageRoute.startsWith('lrunes/')?pageRoute.slice(7):null;
@@ -28,6 +45,10 @@ for(const dir of pages){
     assert(fs.existsSync(target),'Not emitted: '+target);
     const data=JSON.parse(fs.readFileSync(source,'utf8'));
     assert(data&&typeof data==='object'&&!Array.isArray(data),'Object required: '+source);
+    const keys=combinedLeafKeys(lang,data);
+    if(referenceKeys===null)referenceKeys=keys;
+    else assert.deepEqual(keys,referenceKeys,
+      'Missing or extra translated UI keys in '+route+' ('+lang+')');
     assert.equal(fs.readFileSync(target,'utf8'),fs.readFileSync(source,'utf8'),
       'Public asset must equal colocated page JSON');
   }
