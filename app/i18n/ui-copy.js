@@ -56,6 +56,7 @@ function withFormat(core,page){
   return content;
 }
 export const UI_COPY=withFormat(SEED,{});
+const EMPTY_COPY=withFormat(SEED,{});
 export const UI_DICTIONARIES={};
 const sharedCache=new Map();
 const loadedPages=new Map();
@@ -159,7 +160,7 @@ export function loadUiLocale(locale=UI_LOCALE,pathname='/'){
 }
 export function uiCopy(locale=UI_LOCALE,pathname='/'){
   const key=localeKey(locale,pathname);
-  return loadedPages.get(key)||UI_COPY;
+  return loadedPages.get(key)||UI_DICTIONARIES[normalizeUiLocale(locale)]||EMPTY_COPY;
 }
 export function featureSection(locale,section,defaults={}){
   return uiCopy(locale).featureCopy?.[section]||defaults;

@@ -106,6 +106,21 @@ try{
   await loadUiLocale('en','/culture/');
   assert.deepEqual(requests.slice(3),['/i18n/shared/en.json','/i18n/pages/culture/en.json']);
   assert(requests.every(url=>!url.includes('zh_tw')&&!url.includes('zh_cn')));
+  // A legacy locale-only lookup must never borrow another language's
+  // active page: no hidden Traditional Chinese or English fallback request.
+  assert.equal(uiCopy('ja').nav.home,
+    JSON.parse(fs.readFileSync(path.join(app,'i18n','shared','ja.json'),'utf8')).nav.home);
+  assert.equal(uiCopy('zh-Hant').nav.home,'Home');
+  const {uiLocaleLoadError}=await import('../app/i18n/ui-copy.js');
+  const pending=[loadUiLocale('ja','/trace/'),loadUiLocale('ja','/search/')];
+  await Promise.all(pending);
+  assert.deepEqual(requests.slice(5),['/i18n/pages/trace/ja.json','/i18n/pages/search/ja.json']);
+  const missing='/not-found-route/';
+  await assert.rejects(loadUiLocale('ja',missing),/HTTP 404/);
+  assert(uiLocaleLoadError('ja',missing),'Failed page JSON must expose its error');
+  await assert.rejects(loadUiLocale('ja',missing),/HTTP 404/);
+  assert.equal(requests.filter(x=>x==='/i18n/pages/not-found-route/ja.json').length,2,
+    'Failed request must be retryable; errors must not poison page cache');
 }finally{
   globalThis.fetch=previousFetch;
 }
