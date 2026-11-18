@@ -1,5 +1,4 @@
 import LrsWebRedirect from '../../loc/views/LrsWebRedirect';
-import RuneUnifiedView from '../../lrunes/RuneUnifiedView';
 import {lunarunesMetadata} from '../../seo/metadata';
 
 export const metadata=lunarunesMetadata({
@@ -10,7 +9,5 @@ export const metadata=lunarunesMetadata({
 // Only the Web card/game entry goes to the LRS standalone feature.
 // The existing LOC native bundle continues to render the original component.
 export default function RuneCardDuel(){
-  return process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'
-    ?<RuneUnifiedView feature="duel" defaultView="3d"/>
-    :<LrsWebRedirect path="/card/duel/"/>;
+  return <LrsWebRedirect path="/card/duel/"/>;
 }
