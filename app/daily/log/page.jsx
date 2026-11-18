@@ -1,4 +1,4 @@
-import DailyLogClient from './DailyLogClient';
+import LocApp from '../../loc/LocApp';
 import {lunarunesMetadata} from '../../seo/metadata';
 
 export const metadata=lunarunesMetadata({
@@ -7,4 +7,4 @@ export const metadata=lunarunesMetadata({
   path:'/daily/log/'
 });
 
-export default function Page(){return <DailyLogClient/>;}
+export default function Page(){return <LocApp forcedView="home" forcedScope="lrunes"/>;}
