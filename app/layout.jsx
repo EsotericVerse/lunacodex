@@ -55,7 +55,9 @@ const INITIAL_THEME_SCRIPT=`(()=>{try{
   let selected='';
   try{
     const prefs=JSON.parse(window.sessionStorage.getItem('loc-user-theme-selection-v1')||'{}');
-    selected=String(prefs?.[scope]||(admin?window.sessionStorage.getItem('loc-active-theme-id-v1'):null)||'');
+    const stored=prefs?.[scope];
+    selected=/^[1-8]$/.test(String(stored??''))?'theme-'+stored:
+      String(stored||(admin?window.sessionStorage.getItem('loc-active-theme-id-v1'):null)||'');
   }catch{}
   if(!Object.hasOwn(schemes,selected))selected='';
   const requested=selected||(game?'${GAME_BOOTSTRAP_THEME_ID}':defaults[scope]||auto);
