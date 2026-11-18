@@ -31,10 +31,18 @@ if(!pages.length)throw new Error('No page.jsx routes found');
 // other public files or another Agent's assets.
 for(const suffix of ['pages','shared'])
   fs.rmSync(path.join(target,suffix),{recursive:true,force:true});
+function localeSource(dir,locale){
+  const route=path.relative(app,dir).replace(/\\/g,'/');
+  // LRS owns non-page sources under app/lrunes; these page.jsx wrappers
+  // reuse their LOC feature route JSON, never a tracked LRS-owned copy.
+  const canonical=route==='lrunes'?'':route.startsWith('lrunes/')?route.slice(7):null;
+  return canonical===null?path.join(dir,'i18n',locale+'.json')
+    :path.join(app,canonical,'i18n',locale+'.json');
+}
 for(const dir of pages){
   const route=path.relative(app,dir).replace(/\\/g,'/')||'index';
   for(const locale of locales)
-    verifiedCopy(path.join(dir,'i18n',locale+'.json'),
+    verifiedCopy(localeSource(dir,locale),
       path.join(target,'pages',route,locale+'.json'));
 }
 for(const locale of locales)

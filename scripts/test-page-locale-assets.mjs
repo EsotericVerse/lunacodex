@@ -20,7 +20,9 @@ assert(pages.length>0,'At least one page.jsx required');
 for(const dir of pages){
   const route=path.relative(app,dir).replace(/\\/g,'/')||'index';
   for(const lang of langs){
-    const source=path.join(dir,'i18n',lang+'.json');
+    const pageRoute=path.relative(app,dir).replace(/\\/g,'/');
+    const canonical=pageRoute==='lrunes'?'':pageRoute.startsWith('lrunes/')?pageRoute.slice(7):null;
+    const source=path.join(canonical===null?dir:path.join(app,canonical),'i18n',lang+'.json');
     const target=path.join(publicDir,'i18n','pages',route,lang+'.json');
     assert(fs.existsSync(source),'Missing '+source);
     assert(fs.existsSync(target),'Not emitted: '+target);
