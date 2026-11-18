@@ -15,7 +15,10 @@ test('LOC Web never publishes LRS-owned media, native handoff stays separate',()
   assert.equal(allowStaticSource(p,{native:true}),true,p);
  }
  for(const p of ['assets/pics/LOC-PicAll.webp','assets/pics/lo3rwang-hero.jpg',
-  'assets/site/icons/loc-favicon.png']){
+  'assets/site/icons/loc-favicon.png',
+  'assets/pics/LunaRunes-hero.jpg','assets/pics/LunaRunes-hero_s.webp',
+  'assets/pics/LunaRunesGame.jpg','pics/LunaRunes-hero.jpg',
+  'pics/LunaRunes-hero_s.webp','pics/LunaRunesGame.jpg']){
   assert.equal(isLrsWebAsset(p),false,p);
   assert.equal(allowStaticSource(p),true,p);
  }
