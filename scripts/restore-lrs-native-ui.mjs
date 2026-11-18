@@ -78,7 +78,7 @@ for(const rel of [...nativeStyles,...runePictures.map(name=>'assets/pics/'+name)
 // Restore native-only feature entrypoints in the temporary IPA checkout.
 // Web entrypoints stay independent LRS links; the lrunes Scope homepage is untouched.
 const nativeEntrypoints=[
- ['app/card/page.jsx',"import RuneArtNav from '../lrunes/Rune3DNav';\\nimport RuneCardHub from '../lrunes/RuneCardHub';",'<RuneCardHub Navigation={RuneArtNav}/>'],
+ ['app/card/page.jsx',["import RuneArtNav from '../lrunes/Rune3DNav';","import RuneCardHub from '../lrunes/RuneCardHub';"].join('\n'),'<RuneCardHub Navigation={RuneArtNav}/>'],
  ['app/card/duel/page.jsx',"import RuneUnifiedView from '../../lrunes/RuneUnifiedView';",'<RuneUnifiedView feature="duel" defaultView="3d"/>'],
  ['app/card/daily/page.jsx',"import RuneUnifiedView from '../../lrunes/RuneUnifiedView';",'<RuneUnifiedView feature="daily" defaultView="3d"/>'],
  ['app/card/list/page.jsx',"import RuneUnifiedView from '../../lrunes/RuneUnifiedView';",'<RuneUnifiedView feature="list" defaultView="3d"/>'],
@@ -92,12 +92,12 @@ for(const [relativePath,nativeImport,render] of nativeEntrypoints){
  if(!existing.includes('import LrsWebRedirect from ')||!existing.includes('return <LrsWebRedirect path='))
    throw Error('LOC Web-only entrypoint contract changed: '+relativePath);
  const rewritten=existing
-   .replace(/^import LrsWebRedirect from [^\\n]+;\\n/m,nativeImport.replaceAll('\\\\n','\\n')+'\\n')
-   .replace(/return <LrsWebRedirect path="[^"]+"\\/>;/, 'return '+render+';');
+   .replace(/^import LrsWebRedirect from [^\n]+;\n/m,nativeImport+'\n')
+   .replace(/return <LrsWebRedirect path="[^"]+"\/>;/, 'return '+render+';');
  await writeFile(file,rewritten);
 }
-await writeFile(join(loc,'app/daily/trend/page.jsx'),"export {metadata,default} from '../log/page';\\n");
-await writeFile(join(loc,'app/game/room/page.jsx'),"export {metadata,default} from '../page';\\n");
+await writeFile(join(loc,'app/daily/trend/page.jsx'),"export {metadata,default} from '../log/page';\n");
+await writeFile(join(loc,'app/game/room/page.jsx'),"export {metadata,default} from '../page';\n");
 
 const globals=join(loc,'app/globals.css');
 let css=await readFile(globals,'utf8');
