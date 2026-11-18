@@ -489,8 +489,11 @@ function AppShellInner({children,runtime}){
   },[activeLocale]);
   // Render canonical Scope routes on web and native, in Registry NAV order.
   // The former per-user Favorites/Folder selection no longer exists.
+  // 1.0.2 NAV: Rune stays first in the scrollable rail; the personal
+  // homepage is pinned at the far right. All other Scopes, including LOC,
+  // share the rail without Favorites or reserved empty slots.
   const navigationScopes=NAV_SCOPES
-    .filter(item=>item.id!=='loc'&&item.id!=='admin')
+    .filter(item=>item.id!=='loc'&&item.id!=='lo3rwang'&&item.id!=='admin')
     .map(item=>({id:item.id,label:navDisplayNames[item.id]||item.nav.label}));
   if(!native){
     const listed=new Set(navigationScopes.map(item=>item.id));
@@ -504,6 +507,9 @@ function AppShellInner({children,runtime}){
     navigationScopes.push({id:MOBILE_HOME_ID,
       label:translateUiField(activeLocale,'我的手機')});
   }
+  // LOC is still directly reachable, but no longer occupies the fixed
+  // rightmost slot reserved for the author's personal Scope homepage.
+  navigationScopes.push({id:'loc',label:copy.nav.home});
   const editScopeAvailable=navScopeId!=='loc'&&navScopeId!=='admin'&&!currentScope.aggregateChildren;
   // A Scope homepage may live at /, /scopeid/, /scope-shell/ or /scopeid/index.html.
   const homeParts=String(pathname||'/').split('/').filter(Boolean);
@@ -592,9 +598,10 @@ function AppShellInner({children,runtime}){
               current={targetIsCurrent(href,host,pathname)} native={native}/>;
           })}
         </ScrollableScopeNav>
-        <ScopeLink href={navigationHref('loc','',native)} native={native}
-          className="scope-nav-loc-home" aria-current={scopeId==='loc'&&pathname==='/'?'page':undefined}>
-          {copy.nav.home}
+        <ScopeLink href={navigationHref('lo3rwang','',native)} native={native}
+          className="scope-nav-personal-home"
+          aria-current={targetIsCurrent(navigationHref('lo3rwang','',native),host,pathname)?'page':undefined}>
+          {copy.nav.author}
         </ScopeLink>
       </nav>
     </header>
