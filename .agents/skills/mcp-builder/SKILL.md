@@ -13,6 +13,6 @@ LOC 此 Skill 的用途只限 **LAS 使用 LOC 資料服務的業務契約**：
 
 工作方式：先驗證 LAS 對 LOC 的固定 operation、OAuth issuer／audience、UserInfo 身份綁定、Scope 權限、出入參數、錯誤／回執及 SQL 方言；遇到真正的 MCP 傳輸、tools/list、Provider 或 Extension 變更，移至 LAS Repo 與其 `mcp-builder`／`mcp-gateway` Skill 處理。LOC 不重建 `functions/mcp.js`、`functions/index.js` 或 `/.well-known/oauth-protected-resource*`，不再開平行的 Worker。
 
-測試以 `node --test scripts/test-las-native-bridge.mjs scripts/test-las-deployment-boundary.mjs` 和實際 LOC 業務授權為準；LAS MCP 協定的完整驗收由 LAS 負責。不要因兩個 Repo 同時引用 MCP 網域就以為需要兩份程式。
+LOC 不再保留專用 `test-*` 腳本；以 LOC 語法檢查、獨立 Build／Preview 和必要的實際業務回應判斷 LOC 部分的狀態。LAS MCP 協定不由 LOC 測試或部署。
 
 更詳細的外部 MCP SDK 參考見 `.agents/SKILL-LINKS.md`；僅當 LOC 的實際介面契約需要時按需查閱，不批次載入。

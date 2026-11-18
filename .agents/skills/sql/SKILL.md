@@ -1,11 +1,11 @@
 ---
 name: sql
-description: "LOC SQL Portable、Z-Model／Kysely 方言、Schema、資料存取、效能與 Scope 授權；不替 LAS 或 LRS 維護資料庫。"
+description: "LOC SQL Portable、ZModel／Kysely 方言、Schema、資料存取、效能與 Scope 授權；不替 LAS 或 LRS 維護資料庫。"
 ---
 
 # LOC SQL Portable — 資料工作入口
 
-**LOC 是 SQL Portable 的整合主體，不綁單一 MySQL／PostgreSQL／MSSQL。** 實作以現行 `modules/loc/dialect`、ZenStack／Z-Model、Kysely、資料模型與真正的多方言測試為準；不同引擎的可攜程度須以證據證明，不能只憑編譯結果宣稱一致。
+**LOC 是 SQL Portable 的整合主體，不綁單一 MySQL／PostgreSQL／MSSQL。** 實作以現行 `modules/loc/dialect`、ZenStack／ZModel、Kysely、資料模型與實際支援的方言與執行證據為準；不同引擎的可攜程度須以證據證明，不能只憑編譯結果宣稱一致。
 
 先看具體查詢、型別、Schema、JOIN、索引、資料庫方言與可信任授權，再決定修哪一層。Kysely／ZenStack／Zod 是工具而不是另一套 SQL Gateway；勿為了讀取不同引擎而複製資料操作或重建任意 SQL API。
 
