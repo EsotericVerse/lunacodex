@@ -1,1 +1,0 @@
-LOC相關架構請以MCP參照galaxy:55970CD5.
