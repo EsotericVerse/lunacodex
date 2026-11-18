@@ -7,10 +7,7 @@ import useNativeNavigation from '../../modular/use-native-navigation';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import ScopeLink from '../../modular/ScopeLink';
 import dynamic from 'next/dynamic';
-import {registerDefaultSection} from '../../i18n/ui-copy';
 import {useUiSection} from '../../i18n/ui-locale';
-import genericScopeZh from '../../i18n/sections/uiExtra.genericScope.zh_tw.js';
-registerDefaultSection('uiExtra.genericScope',genericScopeZh);
 // Only one of these mutually exclusive home capabilities is needed per Scope.
 // Scope Groups must not load the editing implementation.
 const ScopeGroupOverview=dynamic(()=>import('../scope/ScopeGroupOverview'),{loading:()=>null});

@@ -6,16 +6,12 @@ import dynamic from 'next/dynamic';
 // A plain-text article does not need an editor chunk; edit and rich view mount on demand.
 const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const ObjectEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
-import {UI_COPY,registerDefaultSection} from '../i18n/ui-copy';
+import {UI_COPY} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
 import UiText,{useUiText} from '../i18n/UiText';
 import {isInteractiveContentTarget} from '../loc/content/content-policy.js';
 import {mediaAnchorHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
-import searchUIZh from '../i18n/sections/uiExtra.searchUI.zh_tw.js';
-import editBlocksZh from '../i18n/sections/uiExtra.editBlocks.zh_tw.js';
-registerDefaultSection('uiExtra.searchUI',searchUIZh);
-registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 
 
 // The existing BlockNote read-only canvas is needed only once a rich-text

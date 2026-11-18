@@ -2,11 +2,9 @@
 
 import dynamic from 'next/dynamic';
 import {Fragment} from 'react';
-import {UI_COPY,registerDefaultSection} from '../../i18n/ui-copy';
+import {UI_COPY} from '../../i18n/ui-copy';
 import {useUiSection} from '../../i18n/ui-locale';
 import {useUiText} from '../../i18n/UiText';
-import searchUIZh from '../../i18n/sections/uiExtra.searchUI.zh_tw.js';
-registerDefaultSection('uiExtra.searchUI',searchUIZh);
 import {blocksToPlainText,looksLikeMarkdown,normalizeBlocks,plainTextToBlocks} from './blocknote-content.mjs';
 import ScopeLink from '../../modular/ScopeLink';
 

@@ -1,10 +1,7 @@
 'use client';
 import {useState} from 'react';
 import UiText from '../../../i18n/UiText';
-import {registerDefaultSection} from '../../../i18n/ui-copy';
 import {useUiSection} from '../../../i18n/ui-locale';
-import statisticsViewZh from '../../../i18n/sections/uiExtra.statisticsView.zh_tw.js';
-registerDefaultSection('uiExtra.statisticsView',statisticsViewZh);
 
 export default function StatisticsDetails({children,summary=null,className='scope-stat-details',onOpen=null}){
   useUiSection('uiExtra.statisticsView');

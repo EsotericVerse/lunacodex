@@ -1,3 +1,0 @@
-export default {
-  "guide": "此 Scope Group 仅用于成员总览与导航；实际内容和分析由各子 Scope 处理。"
-};

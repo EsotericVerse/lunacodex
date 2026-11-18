@@ -8,6 +8,7 @@
  */
 import {cp,mkdir,readFile,readdir,writeFile} from 'node:fs/promises';
 import {resolve,relative,join,dirname,sep} from 'node:path';
+import {adaptRestoredLrsLocale} from './adapt-lrs-locale-imports.mjs';
 
 const [runeArg,locArg,...extra]=process.argv.slice(2);
 if(!runeArg||!locArg||extra.length)
@@ -44,6 +45,8 @@ async function walk(dir){
   }
 }
 for(const dir of sourceDirs)await walk(dir);
+// Update only the temporary native restored file, not the LRS repository.
+await adaptRestoredLrsLocale(loc);
 
 // The original Rune CSS and public-facing image assets are native-only LOC
 // checkout inputs now. The LOC Web source/release never carries these files.
