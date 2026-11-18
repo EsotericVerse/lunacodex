@@ -183,7 +183,7 @@
       },
       "formatSummary": "推奨形式",
       "recordPath": "データ配列のパス（ルート配列／items／posts／data／records）",
-      "recordPathHint": "例：result.entries、空欄なら自動検出",
+      "recordPathHint": "空欄の場合、記事一覧を自動検索します。",
       "batchSize": "バッチあたりの件数",
       "itemsPerBatch": "{count} 件／バッチ",
       "parsedFile": "{index}/{total} 件目のファイルを解析し、{count} 件を取得しました。プレビュー確認後に保存してください。",
