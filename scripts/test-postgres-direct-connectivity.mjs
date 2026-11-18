@@ -30,7 +30,7 @@ test('native pg Client is fresh per acquisition and released',async()=>{
     async end(){this.ended=true;}
   }
   const pool=requestScopedPool({connectionString:'postgres://example.invalid/test'},
-    FakePgClient,{attempts:1,delayMs:0});
+    FakePgClient,{attempts:1,baseDelayMs:0});
   const first=await pool.connect();
   first.release();
   await Promise.resolve();
@@ -51,7 +51,7 @@ test('release() extends the request via waitUntil when one is set',async()=>{
     async end(){await Promise.resolve();ended=true;}
   }
   const pool=requestScopedPool({connectionString:'postgres://example.invalid/test'},
-    FakePgClient,{attempts:1,delayMs:0});
+    FakePgClient,{attempts:1,baseDelayMs:0});
   const waited=[];
   pool.setWaitUntil(promise=>waited.push(promise));
   const client=await pool.connect();
@@ -70,7 +70,7 @@ test('release() still closes the client with no waitUntil set (unchanged default
     async end(){ended=true;}
   }
   const pool=requestScopedPool({connectionString:'postgres://example.invalid/test'},
-    FakePgClient,{attempts:1,delayMs:0});
+    FakePgClient,{attempts:1,baseDelayMs:0});
   const client=await pool.connect();
   client.release();
   await Promise.resolve();await Promise.resolve();

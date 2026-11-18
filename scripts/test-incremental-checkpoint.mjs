@@ -99,12 +99,18 @@ test('page size carries across a checkpoint/resume instead of resetting to the f
   // Cost scales with page size (20 rows/ms) like a real SQL read would, so
   // growth self-stabilizes around the ~800ms target instead of running
   // away unboundedly the way a flat per-page cost would in this harness.
+  // `served` is a plain monotonic counter advanced by exactly `limit` each
+  // call and used as the START of this page's UID range - this stays
+  // collision-free even when a later page requests FEWER rows than an
+  // earlier one (e.g. a budget-aware shrink near the time limit), unlike
+  // incrementing `served` before reading from it.
   const readMetadataPage=async({limit})=>{
     requestedLimits.push(limit);
     now+=Math.max(1,limit/20);
+    const start=served;
     served+=limit;
     return {rows:Array.from({length:limit},(_,i)=>({
-      uid:String(served+i).padStart(8,'0').replace(/\d/g,d=>'ABCDEFGHIJ'[d]),
+      uid:String(start+i).padStart(8,'0').replace(/\d/g,d=>'ABCDEFGHIJ'[d]),
       UpdateTime:null,keyword:false
     })),nextCursor:{}};
   };
