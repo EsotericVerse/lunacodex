@@ -159,6 +159,25 @@ export async function analyzeIncrementalKeywordPatterns({
     await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked],
       currentPageSize});
   };
+  // Writing to the live Anchor table opens its own DB connection
+  // (storeScopePatternMatches's own transaction) separate from the
+  // metadata/content reads above. Flushing on every SQL page ties that
+  // connection-open rate to the READ page size - which is sized for read
+  // throughput, not for how many articles were actually small/large. A run
+  // of many small articles pages through fast (small content, many pages
+  // per round) and would otherwise open one write-connection per page in
+  // quick succession; a few huge articles can land in one page and still
+  // only need one write. So the write is paced by accumulated characters
+  // actually scanned - the real "stream volume" - not by page count: pull
+  // content, scan it (no DB connection needed while classifying), and only
+  // reconnect to write back once enough volume has piled up.
+  const PATTERN_WRITE_FLUSH_CHARS=2_000_000;
+  let pendingChars=0;
+  const flushPatterns=async()=>{
+    if(!pendingChars)return;
+    await writePatterns({classUid,items,patterns:buildPatterns()});
+    pendingChars=0;
+  };
   for(;;){
     const pageStart=now();
     const read=await readMetadataPage({cursor,limit:currentPageSize});
@@ -241,16 +260,15 @@ export async function analyzeIncrementalKeywordPatterns({
         }
       }
       parsed+=docs.length;
+      pendingChars+=docs.reduce((sum,doc)=>sum+doc.scan_text.length,0);
     }
     scanned+=page.length;
     onProgress({phase:'reading',completed:scanned,parsed,reused});
-    // Push this page's matches into the live Anchor table now, not just once
-    // at the very end: a dynamically-sized page is routinely millions of
-    // characters, so deferring every write to a single final write makes
-    // that one final write the risky operation. storeScopePatternMatches is
-    // idempotent (diffs uid_list before writing), so calling it again at
-    // completion with the fuller, final patterns array is harmless.
-    await writePatterns({classUid,items,patterns:buildPatterns()});
+    // Flush once enough characters have actually been scanned, not once per
+    // page - see the comment on PATTERN_WRITE_FLUSH_CHARS above.
+    // storeScopePatternMatches is idempotent (diffs uid_list before
+    // writing), so the final write at completion repeating this is harmless.
+    if(pendingChars>=PATTERN_WRITE_FLUSH_CHARS)await flushPatterns();
     // React to how long this page actually took, not a fixed row count.
     // Capped to 2x change per page so one unusually heavy/light page cannot
     // whiplash the next request size.
@@ -266,6 +284,9 @@ export async function analyzeIncrementalKeywordPatterns({
     // killed the request. The actually expensive step, writing a checkpoint,
     // still only ever runs once, right here, when the condition trips.
     if(onCheckpoint&&timeBudgetMs!==null&&now()-invocationStart>timeBudgetMs*0.8){
+      // Flush whatever volume has piled up before giving the connection
+      // back, rather than letting it sit unwritten until a later round.
+      await flushPatterns();
       await checkpointNow();
       return {incomplete:true,cursor,scanned,parsed,reused};
     }
