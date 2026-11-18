@@ -55,7 +55,11 @@ export async function analyzeIncrementalKeywordPatterns({
        !resume.patternSets||typeof resume.patternSets!=='object'||
        Array.isArray(resume.patternSets)||
        !Array.isArray(resume.checked)||resume.checked.length!==resume.scanned||
-       resume.checked.some(uid=>typeof uid!=='string'||!UID.test(uid)))||
+       resume.checked.some(uid=>typeof uid!=='string'||!UID.test(uid))||
+       // Older checkpoints predate this field; absent just means "resume at
+       // the caller's starting pageSize", not an invalid checkpoint.
+       'currentPageSize' in resume&&(!Number.isSafeInteger(resume.currentPageSize)||
+         resume.currentPageSize<1))||
      onCheckpoint!==null&&typeof onCheckpoint!=='function'||
      timeBudgetMs!==null&&(!Number.isFinite(timeBudgetMs)||timeBudgetMs<=0))
     throw new TypeError('Invalid incremental Keyword analysis adapters');
@@ -134,10 +138,16 @@ export async function analyzeIncrementalKeywordPatterns({
   // cursor, not an OFFSET-style page number.
   let cursor=resume?resume.cursor:null,scanned=resume?resume.scanned:0,
     parsed=resume?resume.parsed:0,reused=resume?resume.reused:0;
-  let currentPageSize=clamp(pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS);
+  // Carry the page size a resumed scan had already grown to into this round,
+  // instead of restarting the doubling ramp-up from the floor every single
+  // HTTP round. Without this, a scan that needs many rounds never spends
+  // long enough at a large page size to finish in few-enough rounds, and
+  // checkpoints end up far more frequent (and far smaller) than necessary.
+  let currentPageSize=clamp(resume?.currentPageSize??pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS);
   const checkpointNow=async()=>{
     const patternSets=Object.fromEntries([...sets].map(([k,set])=>[k,[...set]]));
-    await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked]});
+    await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked],
+      currentPageSize});
   };
   for(;;){
     const pageStart=now();

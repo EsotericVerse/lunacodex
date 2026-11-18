@@ -85,6 +85,51 @@ test('a resumed call continues from the checkpoint and finishes the remaining pa
   assert.ok(finalized);
 });
 
+test('page size carries across a checkpoint/resume instead of resetting to the floor',async()=>{
+  // Pages always take the same wall time no matter how many rows are
+  // requested, so currentPageSize should keep doubling page after page. A
+  // resume that forgets currentPageSize would restart this ramp-up from
+  // MIN_PAGE_ROWS every round, needing far more (and far smaller) rounds
+  // than necessary to finish a large scan - exactly the bug reported.
+  let now=0,served=0;
+  const requestedLimits=[];
+  // An effectively endless source: there is always another page, so the
+  // loop only ever stops via the time-budget checkpoint, never by running
+  // out of rows (which would otherwise mask the bug this test targets).
+  // Cost scales with page size (20 rows/ms) like a real SQL read would, so
+  // growth self-stabilizes around the ~800ms target instead of running
+  // away unboundedly the way a flat per-page cost would in this harness.
+  const readMetadataPage=async({limit})=>{
+    requestedLimits.push(limit);
+    now+=Math.max(1,limit/20);
+    served+=limit;
+    return {rows:Array.from({length:limit},(_,i)=>({
+      uid:String(served+i).padStart(8,'0').replace(/\d/g,d=>'ABCDEFGHIJ'[d]),
+      UpdateTime:null,keyword:false
+    })),nextCursor:{}};
+  };
+  const checkpoints=[];
+  const run=resume=>analyzeIncrementalKeywordPatterns({
+    scopeId:SCOPE_ID,classUid:CLASS_UID,treeRows:[],items:[],
+    existingPatterns:[],patternScans:{},
+    pageSize:1000,readMetadataPage,now:()=>now,
+    resume,timeBudgetMs:1000,onCheckpoint:async progress=>{checkpoints.push(progress);},
+    readContent:async()=>[],writePatterns:async()=>{},finalize:async()=>{}
+  });
+  const first=await run(null);
+  assert.equal(first.incomplete,true);
+  const grownSize=checkpoints[0].currentPageSize;
+  assert.ok(grownSize>1000,'page size should have grown past the floor within one round: got '+grownSize);
+
+  // Only the clock resets (a fresh HTTP request/invocation); `served` must
+  // keep advancing so the resumed round's UIDs are new, not a repeat of
+  // what the checkpoint already recorded as checked.
+  now=0;requestedLimits.length=0;
+  await run(checkpoints[0]);
+  assert.equal(requestedLimits[0],grownSize,
+    'resumed round must continue from the previously-grown page size, not reset to the floor');
+});
+
 test('no onCheckpoint/timeBudgetMs means the old one-shot behavior (never checkpoints)',async()=>{
   const h=harness({pageRows:Array(3).fill(10),msPerPage:5000,timeBudgetMs:null});
   const result=await analyzeIncrementalKeywordPatterns({
