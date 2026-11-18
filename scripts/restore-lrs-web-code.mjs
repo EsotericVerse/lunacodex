@@ -11,6 +11,7 @@ import {spawnSync} from 'node:child_process';
 import {readFile,readdir,mkdir,copyFile,rm,stat} from 'node:fs/promises';
 import {join,dirname,resolve,relative,sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {adaptRestoredLrsLocale} from './adapt-lrs-locale-imports.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const cfg=JSON.parse(await readFile(join(root,'config/lrs-source.json'),'utf8'));
@@ -87,5 +88,6 @@ for(const rel of wanted){
  await mkdir(dirname(dest),{recursive:true});
  await copyFile(join(cache,...rel.split('/')),dest);
 }
+await adaptRestoredLrsLocale(root);
 console.log('[loc:lrs] Source-only '+cfg.releaseVersion+' @ '+cfg.sourceCommit.slice(0,12)+
  ': '+wanted.length+' code files, no media, no LOC copies committed');

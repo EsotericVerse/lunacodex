@@ -15,6 +15,14 @@ function visit(dir,out=[]){
   }
   return out;
 }
+const restoredAnalytics=path.join(app,'lrunes','DailyRuneAnalytics.jsx');
+if(fs.existsSync(restoredAnalytics)){
+  const restored=fs.readFileSync(restoredAnalytics,'utf8');
+  assert(!restored.includes('feature-sections/dailyRune.zh_tw.js'),
+    'Pinned LRS restore must not import retired Traditional Chinese JS');
+  assert(restored.includes("useFeatureCopy('dailyRune')"),
+    'Pinned LRS analytics must consume the selected page locale');
+}
 const pages=visit(app);
 assert(pages.length>0,'At least one page.jsx required');
 const sharedCopies=Object.fromEntries(langs.map(lang=>[
