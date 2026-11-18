@@ -53,21 +53,18 @@ test('LOC renders original Rune Scope UI and keeps native source separate',()=>{
  assert.doesNotMatch(home,/LrsWebRedirect/);
  const native=read('scripts/restore-lrs-native-ui.mjs');
  assert.match(native,/originalFiles/);
- assert.match(native,/RunesClient/);
+ assert.doesNotMatch(native,/import\('\.\.\/lrunes\/RunesClient'\)/);
+ assert.match(native,/rel\.endsWith\('\/page\.jsx'\)/);
+ assert.match(native,/LOC retains the same lrunes Scope homepage/);
  const ipa=read('.github/workflows/ios-device-build.yml');
  assert.match(ipa,/LOC_NATIVE_RUNE_ASSETS: '1'[\s\S]*NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'/);
 });
-test('old published Rune Hero image resolves to LRS art without rewriting other Scope images',()=>{
+test('saved lrunes Scope image URLs and links are not rewritten to LRS',()=>{
  const src=read('app/loc/blocks/LocHomeBlockDisplay.jsx');
- const oldPublished='https://loc.lo3rwang.cc/pics/LunaRunes-hero.jpg';
- const publishedIndex='/pics/LunaRunes-hero.jpg';
- assert.ok(src.includes(publishedIndex));
- assert.match(src,/scopeId==='lrunes'/);
- assert.ok(src.includes(oldPublished));
- assert.match(src,/runeAssetHref\('\/pics\/LunaRunes-hero\.jpg'\)/);
- assert.match(src,/source==='none'\?'':source==='default'/);
- const legacy=read('app/lrunes/rune-asset-origin.mjs');
- assert.match(legacy,/NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'\?'':LRS_WEB_ORIGIN/);
+ assert.match(src,/const displayCustomUrl=customUrl/);
+ assert.doesNotMatch(src,/rewriteRuneFeatureAnchors/);
+ const hero=read('app/loc/blocks/hero-image.mjs');
+ assert.match(hero,/\['index','hero','game'\]\.includes\(pageName\)/);
 });
 
 test('LOC Rune asset origin adapter stays Web URL-only and native file-only',()=>{
