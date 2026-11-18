@@ -46,7 +46,6 @@ const CultureMediaRiver=dynamic(()=>import('./media/CultureMediaRiver'),{loading
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
-const LrunesDailyCulturePanel=dynamic(()=>import('../../lrunes/DailyRuneAnalytics').then(m=>m.LrunesDailyCulturePanel),{loading:()=>null});
 const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
 
 function editorRiverYearWindow(){
@@ -222,12 +221,10 @@ export default function Culture(){
     pathname.endsWith('/culture/manage/')||searchParams?.get('edit')==='1');
   // Public Culture does not load management grants; editing must verify them.
   const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor});
-  const [lrunesView,setLrunesView]=useState('daily');
   const [locCultureView,setLocCultureView]=useState('period');
   // LOC displays the one-year source density river immediately; no first river.
   const [locDensityOpen,setLocDensityOpen]=useState(true);
   const [expandedLocScopes,setExpandedLocScopes]=useState([]);
-  const isLrunesDaily=!isTimeEditingView&&scopeId==='lrunes'&&lrunesView==='daily';
   const isLocItemView=scopeId==='loc'&&locCultureView==='item';
   const resourceCache=useResourceCache();
   const navigation=useMemo(()=>readFeatureNavigation(searchParams),[searchParams]);
@@ -237,7 +234,7 @@ export default function Culture(){
       const {selectScopeCultureData}=await import('../../loc/culture/query');
       return selectScopeCultureData(scopeId);
     },
-    enabled:!isLrunesDaily&&!isLocItemView,
+    enabled:!isLocItemView,
   });
 
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('year');
@@ -430,7 +427,7 @@ export default function Culture(){
   // The persisted Source hierarchy (attr.uid) replaces ArticleTag snapshots.
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['loc-zmodel-source-taxonomy'],
-    enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&!isAggregateScope&&!isLocItemView
       &&scopeId!=='local'&&Boolean(scopeData)&&usesSourceRiver,
     queryFn:async()=>{
       const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
@@ -446,7 +443,7 @@ export default function Culture(){
   // expanding a group, so a UI interaction never starts a second SQL job.
   const sourceRootQuery=useAsyncResource({
     queryKey:['culture-period-roots','v5-zmodel-anchors',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
-    enabled:!isTimeEditingView&&stagedSourceRiver&&usesSourceRiver&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&stagedSourceRiver&&usesSourceRiver&&!isLocItemView
       &&Boolean(scopeData)&&classificationWindowValid,
     queryFn:async()=>{
       const {text}=await selectScopeDailyCounts(scopeData,{
@@ -470,7 +467,7 @@ export default function Culture(){
   // In a published scope expanding a lane only transforms cached numeric rows.
   const sourceSnapshotQuery=useAsyncResource({
     queryKey:['culture-period-source-snapshot','v9-zmodel-source-only',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,stagedSourceRiver?expandedSourceRootsKey:'all'],
-    enabled:!isTimeEditingView&&usesSourceRiver&&!isLrunesDaily&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
+    enabled:!isTimeEditingView&&usesSourceRiver&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
       &&Boolean(sourceTaxonomy)&&(!stagedSourceRiver||expandedSourceReady),
     queryFn:async()=>{
       const {selectScopePeriodSourceSnapshot}=await import('../../loc/culture/query');
@@ -486,7 +483,7 @@ export default function Culture(){
     queryKey:['scope-active-keyword-class-name',scopeId],
     // Opening/focusing the style selector is the first reason to look up
     // the active Class. Ordinary Time River viewing performs no keyword SQL.
-    enabled:!isTimeEditingView&&styleFilter==='rune66'&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView,
+    enabled:!isTimeEditingView&&styleFilter==='rune66'&&!isAggregateScope&&!isLocItemView,
     queryFn:async()=>{
       const {selectAvailableKeywordClasses}=await import('../../loc/keywords/analysis');
       return selectAvailableKeywordClasses(scopeId);
@@ -505,7 +502,7 @@ export default function Culture(){
       const {selectKeywordAnalysisSummary}=await import('../../loc/keywords/analysis');
       return selectKeywordAnalysisSummary({scopeId,classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,endDate:keywordWindowEnd});
     },
-    enabled:!isTimeEditingView&&!isAggregateScope&&!isLrunesDaily&&styleFilter==='rune66'&&Boolean(resolvedKeywordClassUid)&&keywordWindowValid,
+    enabled:!isTimeEditingView&&!isAggregateScope&&styleFilter==='rune66'&&Boolean(resolvedKeywordClassUid)&&keywordWindowValid,
   });
   // The original source-classification river must not wait for (or disappear
   // when) a separate keyword-density query runs.
@@ -518,7 +515,7 @@ export default function Culture(){
   const keywordDetailRequested=Boolean(keywordDrillSource);
   const keywordDensityQuery=useAsyncResource({
     queryKey:['culture-keyword-attributes',scopeId,resolvedKeywordClassUid,keywordWindowStart,keywordWindowEnd,keywordDrillSource,keywordDrillGroup],
-    enabled:!isTimeEditingView&&styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView
+    enabled:!isTimeEditingView&&styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLocItemView
       &&Boolean(scopeData)&&keywordWindowValid&&Boolean(styleQuery.data?.statisticsEnabled),
     queryFn:async()=>{
       const {keywordService}=await import('../../loc/keywords/service-client.mjs');
@@ -642,7 +639,7 @@ export default function Culture(){
       classificationWindowEnd,effectiveCategoryKey||'',articleSort],
     initialPageParam:null,
     getNextPageParam:lastPage=>lastPage.hasMore?lastPage.nextCursor:undefined,
-    enabled:!isTimeEditingView&&worksOpen&&styleFilter==='none'&&!isLrunesDaily
+    enabled:!isTimeEditingView&&worksOpen&&styleFilter==='none'
       &&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedGroup)
       &&classificationWindowValid,
     queryFn:async({pageParam,signal})=>{
@@ -975,7 +972,7 @@ export default function Culture(){
   // Render the selected period immediately. Multi-year PELT executes in a
   // worker, so change-point suggestions cannot freeze the Time River.
   const riverAnalysis=useRiverDensityAnalysis(densityInputBuckets,existingAnchorDates,
-    anchorSuggestOpen&&!isAggregateScope&&!isLrunesDaily&&!isLocItemView&&usesSourceRiver&&Boolean(densityInputBuckets.length));
+    anchorSuggestOpen&&!isAggregateScope&&!isLocItemView&&usesSourceRiver&&Boolean(densityInputBuckets.length));
   const styleRiverAnalysis=useRiverDensityAnalysis(keywordDrillItems,existingAnchorDates,
     anchorSuggestOpen&&styleFilter==='rune66'&&Boolean(keywordDrillItems.length));
   // LOC's single source river has no automatic anchor suggestion/PELT worker.
@@ -1432,19 +1429,13 @@ export default function Culture(){
 
   return <FeaturePage featureId="culture">
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
-      {scopeId==='lrunes'?<div className='scope-stat-controls'><label><span><UiText id="uiExtra.cultureView.timelineContent"/></span>
-        <select className='scope-select' value={lrunesView} onChange={event=>setLrunesView(event.target.value)}>
-          <option value='daily'><UiText id="uiExtra.cultureView.dailyRunes"/></option>
-          <option value='works'><UiText id="uiExtra.cultureView.worksAndPeriods"/></option>
-        </select>
-      </label></div>:null}
       {scopeId==='loc'?<div className='scope-stat-controls'><label><span>{UI_COPY.culture.viewMode}</span>
         <select className='scope-select' aria-label={UI_COPY.culture.viewMode} value={locCultureView} onChange={event=>setLocCultureView(event.target.value)}>
           <option value='period'><UiText id="uiExtra.cultureView.periodIntersectionWorks"/></option>
           <option value='item'><UiText id="uiExtra.cultureView.itemIntersectionTwoRivers"/></option>
         </select>
       </label></div>:null}
-      {isLrunesDaily?<LrunesDailyCulturePanel/>:isLocItemView?<LocItemConfluence/>:<>
+      {isLocItemView?<LocItemConfluence/>:<>
       <p className='loc-eyebrow'>{UI_COPY.culture.distribution}</p>
       <h2>{UI_COPY.culture.river}</h2>
       {query.isPending?<p className="scope-status" role="status" aria-live="polite">{UI_COPY.common.loading}</p>:null}
