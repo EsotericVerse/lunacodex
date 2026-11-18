@@ -75,16 +75,29 @@ for(const rel of [...nativeStyles,...runePictures.map(name=>'assets/pics/'+name)
 // No native build step may replace its homepage component with LRS RunesClient.
 // LRS supplies only feature implementations to the existing LOC IPA build.
 
-// The LOC Web settings page links to LRS rather than loading native-only
-// daily Rune settings. Restore that original dependency for the IPA export.
-const preferences=join(loc,'app/loc/preferences/GlobalSettings.jsx');
-let preferencesCode=await readFile(preferences,'utf8');
-const webSettings="const DailyRuneCalendarSettings=dynamic(()=>import('./LrsDailySettingsLink'),{loading:PanelLoading});";
-const nativeSettings="const DailyRuneCalendarSettings=dynamic(()=>import('../../lrunes/DailyRuneCalendarSettings'),{loading:PanelLoading});";
-if(!preferencesCode.includes(webSettings)&&!preferencesCode.includes(nativeSettings))
-  throw Error('Native LRS settings import contract changed');
-preferencesCode=preferencesCode.replace(webSettings,nativeSettings);
-await writeFile(preferences,preferencesCode);
+// Restore native-only feature entrypoints in the temporary IPA checkout.
+// Web entrypoints stay independent LRS links; the lrunes Scope homepage is untouched.
+const nativeEntrypoints=[
+ ['app/card/page.jsx',"import RuneArtNav from '../lrunes/Rune3DNav';\\nimport RuneCardHub from '../lrunes/RuneCardHub';",'<RuneCardHub Navigation={RuneArtNav}/>'],
+ ['app/card/duel/page.jsx',"import RuneUnifiedView from '../../lrunes/RuneUnifiedView';",'<RuneUnifiedView feature="duel" defaultView="3d"/>'],
+ ['app/card/daily/page.jsx',"import RuneUnifiedView from '../../lrunes/RuneUnifiedView';",'<RuneUnifiedView feature="daily" defaultView="3d"/>'],
+ ['app/card/list/page.jsx',"import RuneUnifiedView from '../../lrunes/RuneUnifiedView';",'<RuneUnifiedView feature="list" defaultView="3d"/>'],
+ ['app/game/page.jsx',"import GameBoard from '../../modules/lrs/boardgame/GameBoard.jsx';",'<GameBoard/>'],
+ ['app/daily/log/page.jsx',"import DailyLogClient from './DailyLogClient';",'<DailyLogClient/>'],
+ ['app/daily/page.jsx',"import DailyLogClient from './log/DailyLogClient';",'<DailyLogClient/>']
+];
+for(const [relativePath,nativeImport,render] of nativeEntrypoints){
+ const file=join(loc,...relativePath.split('/'));
+ const existing=await readFile(file,'utf8');
+ if(!existing.includes('import LrsWebRedirect from ')||!existing.includes('return <LrsWebRedirect path='))
+   throw Error('LOC Web-only entrypoint contract changed: '+relativePath);
+ const rewritten=existing
+   .replace(/^import LrsWebRedirect from [^\\n]+;\\n/m,nativeImport.replaceAll('\\\\n','\\n')+'\\n')
+   .replace(/return <LrsWebRedirect path="[^"]+"\\/>;/, 'return '+render+';');
+ await writeFile(file,rewritten);
+}
+await writeFile(join(loc,'app/daily/trend/page.jsx'),"export {metadata,default} from '../log/page';\\n");
+await writeFile(join(loc,'app/game/room/page.jsx'),"export {metadata,default} from '../page';\\n");
 
 const globals=join(loc,'app/globals.css');
 let css=await readFile(globals,'utf8');
