@@ -2,6 +2,21 @@ import {buildKeywordSearchPatterns,keywordPatternItemMetrics} from './search-pat
 import {createKeywordUidDocumentClassifier} from '../model/keyword-uid-analysis.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
+import {JSONParser} from '@streamparser/json';
+
+// A content batch is handed off to the pattern classifier as JSON, parsed
+// back through the same streaming parser already used for LOC's other
+// bounded JSON transport (app/loc/mcp/stream-json.mjs), instead of the
+// caller's row array being consumed directly.
+async function streamJsonRows(rows){
+  const parser=new JSONParser({paths:['$'],stringBufferSize:65536});
+  let root,seen=false;
+  parser.onValue=({value})=>{if(seen)throw new Error('Multiple JSON roots');root=value;seen=true;};
+  parser.write(JSON.stringify(rows));
+  if(!parser.isEnded)parser.end();
+  if(!seen)throw new Error('Invalid or empty Galaxy content JSON');
+  return root;
+}
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const keyOf=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -241,7 +256,7 @@ export async function analyzeIncrementalKeywordPatterns({
     // currentPageSize has already grown, undoing that growth.
     for(let i=0;i<contentUids.length;i+=currentPageSize){
       const batch=contentUids.slice(i,i+currentPageSize);
-      const rows=await readContent(batch);
+      const rows=await streamJsonRows(await readContent(batch));
       if(!Array.isArray(rows)||rows.length!==batch.length||
          rows.some(row=>!UID.test(String(row?.uid||''))||
            !batch.includes(row.uid)||bodies.has(row.uid)))
