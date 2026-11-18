@@ -1,7 +1,7 @@
 #!/bin/sh
 # Normal pushes check irreversible bulk-delete/rename risk only.
-# If work was interrupted or recovery is uncertain, run npm run check:syntax
-# first (or the manual Workflow guard in GitHub Actions if npm is unavailable).
+# Syntax is checked by npm run check:syntax (and during LOC builds).
+# This hook checks only the net file deletion/rename count.
 # Enable once per clone: git config core.hooksPath .githooks
 set -e
 echo "pre-push: checking mass deletion/rename safety..."

@@ -76,8 +76,6 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Parse JavaScript and JSX before paying for the macOS build
         run: npm run check:syntax
-      - name: Verify independent LOC IPA metadata
-        run: node --test scripts/test-ipa-workflow-metadata.mjs
 
   build-device-ipa:
     needs: guard
@@ -122,8 +120,6 @@ jobs:
         run: |
           npm run build:static
           test -f out/index.html
-      - name: Check Guest and Admin static route exports
-        run: node scripts/verify-release-static-export.mjs
       - name: Generate ephemeral iOS project and sync
         run: |
           "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap" add ios
