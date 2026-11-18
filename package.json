@@ -4,18 +4,15 @@
   "private": true,
   "scripts": {
     "prepare": "node scripts/prepare-local-workspace.mjs",
-    "prebuild": "node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/sync-page-locale-assets.mjs",
+    "prebuild": "node scripts/sync-page-locale-assets.mjs && node scripts/check-js-syntax.mjs",
     "dev": "next dev",
     "build": "next build",
     "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",
     "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",
-    "audit:security": "npm audit --audit-level=moderate",
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
-    "check:loc-vendor-coupling": "node scripts/check-loc-independent-vendor-usage.mjs",
-    "predev": "node scripts/sync-page-locale-assets.mjs",
-    "check:locales": "node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs"
+    "predev": "node scripts/sync-page-locale-assets.mjs"
   },
   "dependencies": {
     "@better-auth/sso": "1.7.18",

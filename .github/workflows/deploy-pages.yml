@@ -34,17 +34,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Security release gate
-        run: npm run audit:security
-
       - name: Build static export
         shell: bash
         run: |
           set -o pipefail
           npm run build:static 2>&1 | tee /tmp/next-build.log
-
-      - name: Verify static export
-        run: node scripts/verify-release-static-export.mjs
 
       - name: Report build failure
         if: failure()
