@@ -9,8 +9,7 @@ export const ITEM_LANE_OPTIONS=Object.freeze([
   {value:'galaxy:all',label:'文字 · 全部來源'},
   {value:'galaxy:exact',label:'文字 · 指定 site'},
   {value:'media:all',label:'媒體 · 全部類型'},
-  {value:'media:exact',label:'媒體 · 指定類型'},
-  {value:'daily:rune',label:'每日符文（僅符韻）'}
+  {value:'media:exact',label:'媒體 · 指定類型'}
 ]);
 export function itemConfluenceDate(value){
   const day=String(value||'').slice(0,10);
@@ -45,8 +44,6 @@ export function validateItemLane(lane,scopes){
     return {valid:false,reason:'請選擇可以讀取的 Scope。'};
   if(!ITEM_LANE_OPTIONS.some(option=>option.value===source))
     return {valid:false,reason:'請選擇有效的河道項目。'};
-  if(source==='daily:rune'&&scopeId!=='lrunes')
-    return {valid:false,reason:'每日符文只能從符韻 Scope 讀取。'};
   if(source.endsWith(':exact')&&(!exact||exact.length>100))
     return {valid:false,reason:'請輸入有效的來源／媒體類型（最多 100 字）。'};
   return {valid:true,scopeId,source,exact};
@@ -56,44 +53,6 @@ export function itemLaneDescription(lane){
   return String(lane?.scopeId||'')+' · '+(lane?.source?.endsWith(':exact')
     ?(String(lane?.source||'').startsWith('media:')?'媒體 · ':'文字 · ')+String(lane?.exact||'')
     :option?.label||'未選擇');
-}
-
-// Only the LunaRunes daily stream has semantic daily entries.
-// Never reinterpret another Scope's frequency data as rune meanings.
-const RUNE_KIND_LABELS=Object.freeze({
-  main:'主抽',supplement:'補抽',history_1:'歷史一',history_2:'歷史二'
-});
-const RUNE_KIND_ORDER=Object.freeze({main:0,supplement:1,history_1:2,history_2:3});
-export function itemRuneDisplay(draw){
-  const name=String(draw?.rune_name||draw?.rune_number||'未知符文');
-  const direction=String(draw?.direction||'方向未記錄');
-  const phase=String(draw?.true_moon_phase||'月相未知');
-  const kind=RUNE_KIND_LABELS[draw?.draw_kind]||String(draw?.draw_kind||'紀錄');
-  return kind+' · '+name+' · '+direction+' · '+phase;
-}
-export function groupItemConfluenceRunes(rows=[],moonPhaseAtDate=()=> '未知'){
-  const days=new Map();
-  for(const source of Array.isArray(rows)?rows:[]){
-    const day=itemConfluenceDate(source?.record_date);
-    if(!day)continue;
-    // Astronomical phase belongs to the calendar day, not to an inferred
-    // density value or to another Scope's posts.
-    const true_moon_phase=String(moonPhaseAtDate(day)||'未知');
-    const draw={
-      draw_kind:String(source.draw_kind||''),
-      rune_number:Number(source.rune_number),
-      rune_name:String(source.rune_name||source.rune_number||'未知符文'),
-      direction:String(source.direction||''),
-      true_moon_phase
-    };
-    if(!days.has(day))days.set(day,[]);
-    days.get(day).push(draw);
-  }
-  return [...days.entries()].map(([day,draws])=>{
-    draws.sort((a,b)=>(RUNE_KIND_ORDER[a.draw_kind]??9)-(RUNE_KIND_ORDER[b.draw_kind]??9)
-      ||a.rune_number-b.rune_number);
-    return {day,count:draws.length,draws};
-  }).sort((a,b)=>a.day.localeCompare(b.day));
 }
 
 export function buildItemConfluenceDaily({startDate,endDate,lanes=[],series=[]}={}){
@@ -108,9 +67,7 @@ export function buildItemConfluenceDaily({startDate,endDate,lanes=[],series=[]}=
     const day=date.toISOString().slice(0,10);
     const counts=lookup.map(map=>Number(map.get(day)?.count)||0);
     const ratios=counts.map((count,index)=>maximum[index]>0?count/maximum[index]:0);
-    const runeDraws=lookup.map((map,index)=>lanes[index]?.source==='daily:rune'
-      ?(map.get(day)?.draws||[]):[]);
-    result.push({day,counts,ratios,runeDraws});
+    result.push({day,counts,ratios});
   }
   return result;
 }
@@ -120,27 +77,6 @@ export function buildItemConfluenceRiver(daily=[],labels=[],lanes=[]){
     row.counts.forEach((count,index)=>{
       if(count<=0)return;
       const label=labels[index]||('河道 '+(index+1));
-      // LunaRunes is the sole content-type lane: name + four-way direction
-      // + true moon phase. Do not paint these records as density.
-      if(lanes[index]?.source==='daily:rune'){
-        const draws=row.runeDraws?.[index]||[];
-        if(!draws.length)return;
-        const runeText=draws.map(itemRuneDisplay).join(' ／ ');
-        result.push({
-          id:'loc-item:rune:'+index+':'+row.day,
-          entry_id:'loc-item:rune:'+index+':'+row.day,
-          entry_type:'item_daily_rune',
-          scope_id:'lrunes',
-          group_key:'loc-item-lane:'+index,
-          group_label:label,
-          group_order:index,
-          start_date:row.day,
-          display_label:runeText,
-          title:row.day+' · 每日符文 · '+runeText+'（真實月相依紀錄日期計算）',
-          daily_draws:draws
-        });
-        return;
-      }
       const end=new Date(row.day+'T00:00:00Z');
       end.setUTCDate(end.getUTCDate()+1);
       result.push({
