@@ -109,7 +109,11 @@ export function createIndexedDateKeywordReader({
     let currentDay=cursor?[...cursor.currentDay]:[];
     while(pending.length<limit&&(!datedDone||!undatedDone)){
       if(!datedDone){
-        const batchLimit=Math.min(1000,Math.max(250,limit));
+        // limit already carries the caller's fully dynamic page size (no
+        // ceiling by design, see incremental.mjs MAX_PAGE_ROWS); re-capping
+        // it to 1000 here would silently undo that and freeze every SQL
+        // read at the old fixed size regardless of measured performance.
+        const batchLimit=limit;
         const raw=await readDateBatch({afterDate:lastDate,afterUid:lastUid,
           limit:batchLimit});
         if(!Array.isArray(raw)||raw.length>batchLimit)

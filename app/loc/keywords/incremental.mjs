@@ -169,8 +169,12 @@ export async function analyzeIncrementalKeywordPatterns({
       if(row.keyword!==false)contentUids.push(uid);
     }
     const bodies=new Map();
-    for(let i=0;i<contentUids.length;i+=500){
-      const batch=contentUids.slice(i,i+500);
+    // Content-batch size follows the same dynamic page size as the metadata
+    // page itself (no separate fixed ceiling): a hardcoded small batch here
+    // would force extra DB round-trips per page regardless of how large
+    // currentPageSize has already grown, undoing that growth.
+    for(let i=0;i<contentUids.length;i+=currentPageSize){
+      const batch=contentUids.slice(i,i+currentPageSize);
       const rows=await readContent(batch);
       if(!Array.isArray(rows)||rows.length!==batch.length||
          rows.some(row=>!UID.test(String(row?.uid||''))||
