@@ -94,7 +94,7 @@
       "entries": " entries",
       "bothDays": " · Both active ",
       "dayUnit": " days",
-      "note": "Text and media streams show counts and relative density. Daily runes show names, orientations and lunar phases instead. With rune draws in the chosen period, a continuous day-level lunar event stream is added, based on Taiwan's lunar calendar; it is not an exact astronomical new/full-moon timestamp.",
+      "note": "Text and media show counts and density; daily runes show runes, orientations and lunar phases.",
       "empty": "No observable public data in the selected period. Change the source or date range.",
       "selectedDay": "Selected date: ",
       "dailyData": "Daily intersection data",
