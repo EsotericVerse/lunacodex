@@ -1,7 +1,0 @@
-{
-  "schema": "loc.lrs-pinned-source.v1",
-  "repository": "EsotericVerse/lunarunes",
-  "sourceCommit": "69fbaff27398121dcd9fa803364c601963fbc9d2",
-  "releaseVersion": "1.0.2",
-  "purpose": "One immutable LRS code source for LOC Web integration and default LOC IPA native handoff"
-}

@@ -5,6 +5,22 @@ import {existsSync,readFileSync} from 'node:fs';
 const exists=path=>existsSync(new URL('../'+path,import.meta.url));
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
+test('LOC package boundary has no retired LAS/LRS build dependencies',()=>{
+  const pkg=JSON.parse(read('package.json'));
+  const lock=JSON.parse(read('package-lock.json'));
+  const dialect=JSON.parse(read('modules/loc/dialect/package.json'));
+  assert.equal(pkg.scripts.prebuild.includes('copy-local-scope-hero'),false);
+  assert.equal(dialect.dependencies.kysely,pkg.dependencies.kysely);
+  for(const name of ['@better-auth/oauth-provider','@zenstackhq/better-auth']){
+    assert.equal(pkg.dependencies[name],undefined);
+    assert.equal(lock.packages[''].dependencies[name],undefined);
+    assert.equal(lock.packages['node_modules/'+name],undefined);
+  }
+  assert.equal(pkg.overrides['vscode-jsonrpc'],undefined);
+  assert.ok(!exists('scripts/copy-local-scope-hero.mjs'));
+  assert.ok(!exists('packages/zenstack/lrunes-read-model.mjs'));
+});
+
 test('LOC builds only its own website and native IPA',()=>{
   assert.ok(exists('.github/workflows/ios-device-build.yml'));
   assert.ok(exists('.github/workflows/deploy-pages.yml'));
