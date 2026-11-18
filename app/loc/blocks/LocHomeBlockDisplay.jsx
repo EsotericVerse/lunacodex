@@ -3,7 +3,6 @@
 import {SITE_IMAGES} from '../../site-images';
 import {runeAssetHref} from '../../lrunes/rune-asset-origin.mjs';
 import {HomeBlock} from './home-block-model';
-import {rewriteRuneFeatureAnchors} from './rune-feature-links.mjs';
 
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 
@@ -33,15 +32,8 @@ export function resolveHomeImage(slot,scopeId='loc'){
     ?config.source:(embedded?'custom':preset?'default':'none');
   const source=picked;
   const customUrl=BlockNoteContent.image.normalizeImageSource(config?.url||embedded);
-  // The original published Rune Hero still references LOC's former art URL.
-  // After the single-source cutover, only LRS serves that exact picture.
-  // Preserve every other Scope and all user-provided custom image origins.
-  const runeLegacyHero=scopeId==='lrunes'&&(
-    customUrl==='/pics/LunaRunes-hero.jpg'||
-    customUrl==='https://loc.lo3rwang.cc/pics/LunaRunes-hero.jpg'||
-    customUrl==='https://lrunes.lo3rwang.cc/pics/LunaRunes-hero.jpg');
-  const displayCustomUrl=runeLegacyHero
-    ?runeAssetHref('/pics/LunaRunes-hero.jpg'):customUrl;
+  // Scope images use their saved origin verbatim; never transfer ownership to LRS.
+  const displayCustomUrl=customUrl;
   const src=source==='none'?'':source==='default'?preset?.src?.src||'':displayCustomUrl;
   const position=Number(slot?.order)===1?'right':['left','right','top','bottom','only'].includes(config?.position)
     ?config.position:(preset?.position||'right');
@@ -79,7 +71,7 @@ export function homeBlockMediaStyle(slot,scopeId='loc'){
 
 function RichHtml({html,className='',stripImage=false,scopeId='loc'}){
   const base=HomeBlock.stripLocHomeEditorPlaceholders(stripImage?BlockNoteContent.image.stripHeroImageTag(html):html||'');
-  const content=scopeId==='lrunes'?rewriteRuneFeatureAnchors(base):base;
+  const content=base;
   return content.trim()?<div className={className} dangerouslySetInnerHTML={{__html:content}}/>:null;
 }
 
