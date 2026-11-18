@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "prepare": "node scripts/prepare-local-workspace.mjs",
-    "prebuild": "node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/sync-page-locale-assets.mjs",
+    "prebuild": "node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/sync-page-locale-assets.mjs",
     "dev": "next dev",
     "build": "next build",
     "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",
@@ -18,7 +18,6 @@
     "check:locales": "node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "1.7.18",
     "@better-auth/sso": "1.7.18",
     "@blocknote/core": "0.55.0",
     "@blocknote/mantine": "0.55.0",
@@ -27,7 +26,6 @@
     "@capacitor/filesystem": "8.0.0",
     "@capacitor/share": "8.0.0",
     "@streamparser/json": "0.0.26",
-    "@zenstackhq/better-auth": "3.10.2",
     "@zenstackhq/orm": "3.10.2",
     "@zenstackhq/plugin-policy": "3.10.2",
     "@zenstackhq/zod": "3.10.2",
@@ -54,8 +52,7 @@
     "source-map-js": "1.2.2",
     "cuid": "npm:@paralleldrive/cuid2@2.3.1",
     "uuid": "11.1.1",
-    "use-sync-external-store": "1.6.0",
-    "vscode-jsonrpc": "8.2.0"
+    "use-sync-external-store": "1.6.0"
   },
   "devDependencies": {
     "@babel/parser": "7.29.14",
