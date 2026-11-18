@@ -10,9 +10,8 @@
 .loc-global-header .loc-next-home{margin-left:.15rem}
 @media(max-width:900px){.loc-global-header{padding:.65rem .8rem}.loc-global-header .loc-next-nav-primary{gap:.1rem}.loc-global-header .loc-next-nav-primary a{padding:.42rem .58rem}.loc-global-header .loc-next-search{margin-left:.35rem}.loc-global-header .loc-next-search input{width:150px}}
 
-/* 1.0.2 Scope NAV: normal document flow, never sticky or floating.
-   Rune is first in the rail; the personal homepage stays pinned on the right.
-   The LOC return belongs to the rail and no Favorites slot is retained. */
+/* Canonical Scope NAV: Rune first, author second, then other Scopes.
+   LOC stays visible at the far right; only the Scope rail scrolls. */
 .scope-global{
   position:static;
   top:auto;
@@ -70,7 +69,7 @@
   min-width:100%;
   white-space:nowrap;
 }
-.scope-nav-items>a,.scope-nav-items>.scope-nav-current,.scope-nav-folder,.scope-nav-personal-home{
+.scope-nav-items>a,.scope-nav-items>.scope-nav-current,.scope-nav-folder,.scope-nav-loc-home{
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -93,20 +92,20 @@
   cursor:pointer;
   scroll-snap-align:start;
 }
-.scope-nav-items>a:hover,.scope-nav-folder:hover,.scope-nav-personal-home:hover,
-.scope-nav-items>a:focus-visible,.scope-nav-folder:focus-visible,.scope-nav-personal-home:focus-visible{
+.scope-nav-items>a:hover,.scope-nav-folder:hover,.scope-nav-loc-home:hover,
+.scope-nav-items>a:focus-visible,.scope-nav-folder:focus-visible,.scope-nav-loc-home:focus-visible{
   color:var(--loc-text);
   background:color-mix(in srgb,var(--loc-panel) 65%,transparent);
 }
 .scope-nav-items>.scope-nav-current,
-.scope-nav-items>[aria-current="page"],.scope-nav-personal-home[aria-current="page"],
+.scope-nav-items>[aria-current="page"],.scope-nav-loc-home[aria-current="page"],
 .scope-nav-folder[aria-expanded="true"]{
   color:var(--loc-text);
   border-bottom-color:var(--loc-accent);
   background:transparent;
   box-shadow:none;
 }
-.scope-nav-personal-home{
+.scope-nav-loc-home{
   margin-left:auto;
   padding-left:.75rem;
   flex:0 0 auto;
@@ -151,7 +150,7 @@
     padding:max(.35rem,env(safe-area-inset-top)) 0 .3rem;
   }
   .scope-nav{gap:.2rem;}
-  .scope-nav-personal-home{min-width:44px;min-height:44px;font-size:.76rem;padding:.45rem .4rem;}
+  .scope-nav-loc-home{min-width:44px;min-height:44px;font-size:.76rem;padding:.45rem .4rem;}
   .scope-nav-items>a,.scope-nav-items>.scope-nav-current,.scope-nav-folder{font-size:.78rem;padding:.38rem .42rem;min-height:44px;}
   .scope-nav-arrow,.scope-nav-close-folder{min-width:44px;min-height:44px;padding:.15rem;}
 }
@@ -165,7 +164,7 @@
 .scope-global[data-native="ios"] .scope-nav-items>a,
 .scope-global[data-native="ios"] .scope-nav-items>.scope-nav-current,
 .scope-global[data-native="ios"] .scope-nav-folder,
-.scope-global[data-native="ios"] .scope-nav-personal-home,
+.scope-global[data-native="ios"] .scope-nav-loc-home,
 .scope-global[data-native="ios"] .scope-nav-arrow,
 .scope-global[data-native="ios"] .scope-nav-close-folder{
   min-height:44px;
