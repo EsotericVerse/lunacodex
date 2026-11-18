@@ -32,9 +32,11 @@ async function walk(dir){
   for(const item of await readdir(join(lrs,dir),{withFileTypes:true})){
     if(item.isSymbolicLink())throw Error('Native LRS source must not contain symlinks: '+dir);
     const rel=dir+'/'+item.name;
-    if(excludedScopeDirs.test(rel)||rel==='app/lrunes/RunesClient.jsx')continue;
-    // LOC's own Scope route and homepage are never overwritten by LRS.
-    if(rel==='app/lrunes/page.jsx'||rel==='app/lrunes/rune-asset-origin.mjs')continue;
+    if(excludedScopeDirs.test(rel)||
+       ['app/lrunes/RunesClient.jsx','app/lrunes/RuneIntroSection.jsx',
+        'app/lrunes/RuneCardEntryBubbles.jsx','app/lrunes/rune-asset-origin.mjs'].includes(rel))continue;
+    // Every LOC Next route, including lrunes Scope, stays owned by LOC.
+    if(rel.endsWith('/page.jsx'))continue;
     if(item.isDirectory()){await walk(rel);continue;}
     if(!item.isFile())throw Error('Unexpected native LRS source type: '+rel);
     const source=join(lrs,...rel.split('/'));
