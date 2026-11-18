@@ -1,11 +1,10 @@
 import {SITE_IMAGES} from './site-images';
-import {runeAssetHref} from './lrunes/rune-asset-origin.mjs';
 
 // Browser favicon identity is Scope-specific; the author uses the existing
 // "作者的話" image, never generated artwork.
 export const SCOPE_FAVICONS=Object.freeze({
   loc:'/assets/site/icons/loc-favicon.png',
-  lrunes:runeAssetHref('/assets/site/icons/lrunes-favicon.png'),
+  lrunes:SITE_IMAGES.lunarunes.src,
   lo3rwang:SITE_IMAGES.author.src
 });
 
