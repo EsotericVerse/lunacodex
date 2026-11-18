@@ -367,7 +367,7 @@
       "databaseTable": "儲存文章的資料表",
       "databaseKey": "資料庫存取金鑰",
       "databaseKeyUnchanged": "留空即沿用原認證",
-      "databaseNoNewTables": "僅連接既有資料表，不新增資料表。SQL 連線憑證只保存在獨立 Gateway 伺服器，不經瀏覽器或 MCP 傳送。",
+      "databaseNoNewTables": "僅連接既有資料表，不會新增資料表。",
       "databaseSave": "儲存資料庫連線",
       "databaseSaving": "正在儲存…",
       "databaseSaved": "連線設定已加密儲存。",
