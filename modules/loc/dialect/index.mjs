@@ -39,8 +39,17 @@ export function createKyselyDialect(engine,config){
 // isolate (see db_connection()), so `setWaitUntil` lets each request
 // update which `waitUntil` `release()` uses, instead of a stale one
 // captured by whichever request first built this pool.
+// Any serverless/pooled Postgres provider (Neon, Aurora Serverless v2, etc)
+// can momentarily fail a brand-new connection: a suspended compute waking
+// up, a pooler briefly out of free slots, a transient network blip. None of
+// that is specific to whichever vendor is behind `url` today, so this is
+// handled here, in the connection layer itself, instead of by tuning any
+// one vendor's dashboard settings - the fix has to survive switching DBs.
+// Exponential backoff over more attempts gives a slow cold start real room
+// to finish, while still failing well inside a single HTTP request's own
+// CPU/wall-clock budget (worst case here is under ~9s total).
 export function requestScopedPool(options,ClientClass=pg.Client,
-    {attempts=2,delayMs=400}={}){
+    {attempts=4,baseDelayMs=300}={}){
   let currentWaitUntil=null;
   return {
     setWaitUntil(fn){currentWaitUntil=typeof fn==='function'?fn:null;},
@@ -60,7 +69,7 @@ export function requestScopedPool(options,ClientClass=pg.Client,
           lastError=error;
           void Promise.resolve(client.end?.()).catch(()=>{});
           if(attempt<attempts)
-            await new Promise(resolve=>setTimeout(resolve,delayMs));
+            await new Promise(resolve=>setTimeout(resolve,baseDelayMs*2**(attempt-1)));
         }
       }
       throw lastError;
@@ -82,8 +91,12 @@ export function dialect(driver,url){
   try{parsed=new URL(url)}catch{throw new TypeError('Invalid database URL')}
   if(!['postgres:','postgresql:'].includes(parsed.protocol)||!parsed.hostname)
     throw new TypeError('Expected a PostgreSQL URL');
+  // 3.5s was too tight to ever let a cold-starting compute finish waking
+  // up; a single short timeout just converted "the DB needed a moment" into
+  // an immediate, user-visible failure. 6s per attempt, retried with
+  // backoff above, gives real cold starts room without blocking forever.
   const pool=requestScopedPool({
-    connectionString:url,connectionTimeoutMillis:3500
+    connectionString:url,connectionTimeoutMillis:6000
   });
   return new Kysely({dialect:createKyselyDialect('postgres',{pool})});
 }
