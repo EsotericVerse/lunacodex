@@ -94,9 +94,14 @@ export function indexAnchorTree(rows=[],{normalize,rootType}){
   if(!family)throw new Error('Unknown ZModel Anchor hierarchy');
   const canonical=[...index.values()].map(row=>({
     uid:row.uid,type:row.type,title:row.name,
-    attr:row.type==='item'?{keyword:row.lists}:{uid:row.lists}
+    // Keep the real Item -> Pattern Anchor UID edges alongside word labels.
+    // A catalog/editor snapshot can omit Pattern rows; missing edges remain
+    // explicitly unresolved instead of being replaced by a legacy word tree.
+    attr:row.type==='item'?{...row.attr,keyword:row.lists}:{uid:row.lists}
   }));
-  const graph=indexZModelAnchorHierarchy(canonical,{family,strict:true});
+  const graph=indexZModelAnchorHierarchy(canonical,{
+    family,strict:family==='source'
+  });
   for(const uid of index.keys()){
     const parents=graph.parentsOf(uid);
     if(parents.length)parent.set(uid,parents[0]);

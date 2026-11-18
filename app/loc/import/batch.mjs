@@ -134,10 +134,15 @@ export function mappedImportValue(row,field,fieldMap={},source=''){
   const custom=String(fieldMap?.[field]||'').trim();
   const profile=source&&typeof source==='object'&&source.fields?
     source:sourceImportModel(source,row);
-  // Explicit operator mapping wins. Otherwise use the selected SOURCE ZModel's
-  // paths before generic Galaxy aliases. No CMS-specific converter or parser.
+  // A selected source ZModel owns its declared fields. Falling through to
+  // unrelated generic Galaxy aliases could silently interpret another CMS's
+  // title/content/ID as this platform's data. Generic aliases belong only to
+  // custom imports and fields not declared by the selected source model.
+  // A native LOC site_id remains an explicit final path for reimported rows.
+  const declared=profile?.fields[field];
   const paths=custom?custom.split(/[\n,，]/g).map(value=>value.trim()).filter(Boolean):
-    [...(profile?.fields[field]||[]),...(IMPORT_FIELD_ALIASES[field]||[])];
+    declared?.length?[...declared,...(field==='site_id'?['site_id']:[])]:
+      (IMPORT_FIELD_ALIASES[field]||[]);
   for(const key of paths){
     let value=pathValue(row,key);
     if(Array.isArray(value)&&['content','title'].includes(field)&&
