@@ -8,18 +8,19 @@ test('Web and native Scope NAV use canonical order with Rune leftmost',()=>{
   const registry=read('app/modular/routing/scope-registry.js');
   assert.match(registry,/id:'lrunes'[\s\S]*?nav:Object\.freeze\(\{position:'before',order:1/);
   assert.match(shell,/const NAV_SCOPES=Object\.values\(SCOPES\)/);
-  assert.match(shell,/\.sort\(\(a,b\)=>String\(a\.nav\.position\)/);
-  assert.match(shell,/\.filter\(item=>item\.id!=='loc'&&item\.id!=='lo3rwang'&&item\.id!=='admin'\)/);
-  assert.match(shell,/navigationScopes\.push\(\{id:'loc',label:copy\.nav\.home\}\)/);
-  assert.match(shell,/href=\{navigationHref\('lo3rwang','',native\)\}/);
-  assert.match(shell,/className="scope-nav-personal-home"/);
-  assert.match(shell,/\{copy\.nav\.author\}/);
-  assert.doesNotMatch(shell,/className="scope-nav-loc-home"/);
-  assert.ok(shell.indexOf('navigationScopes.push({id:\'loc\'')>
-    shell.indexOf('const navigationScopes=NAV_SCOPES'));
+  assert.match(shell,/\.sort\(\(a,b\)=>\(a\.nav\.position==='before'\?0:1\)-\(b\.nav\.position==='before'\?0:1\)/);
+  // Built-in Scope positions: Rune first, author second, LOC has a separate pin.
+  assert.match(registry,/id:'lo3rwang'[\s\S]*?nav:Object\.freeze\(\{position:'after',order:1/);
+  assert.match(shell,/\.filter\(item=>item\.id!=='loc'&&item\.id!=='admin'\)/);
+  assert.doesNotMatch(shell,/navigationScopes\.push\(\{id:'loc'/);
+  assert.match(shell,/href=\{navigationHref\('loc','',native\)\}/);
+  assert.match(shell,/className="scope-nav-loc-home"/);
+  assert.match(shell,/\{copy\.nav\.home\}/);
+  assert.doesNotMatch(shell,/scope-nav-personal-home/);
+  assert.ok(shell.indexOf('<ScrollableScopeNav')<shell.indexOf('className="scope-nav-loc-home"'));
   const nav=read('app/styles/nav.css');
-  assert.match(nav,/\.scope-nav-personal-home\{[\s\S]*?margin-left:auto/);
-  assert.doesNotMatch(nav,/\.scope-nav-loc-home/);
+  assert.match(nav,/\.scope-nav-loc-home\{[\s\S]*?margin-left:auto/);
+  assert.doesNotMatch(nav,/\.scope-nav-personal-home/);
   assert.doesNotMatch(shell,/NavigationPreferences|favorite_scopes|favorite_folders/);
   assert.match(shell,/navigationHref\(item\.id,'',native\)/);
   const home=read('app/lrunes/page.jsx');
