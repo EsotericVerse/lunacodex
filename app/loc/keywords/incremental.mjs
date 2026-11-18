@@ -2,23 +2,6 @@ import {buildKeywordSearchPatterns,keywordPatternItemMetrics} from './search-pat
 import {createKeywordUidDocumentClassifier} from '../model/keyword-uid-analysis.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
-import {JSONParser} from '@streamparser/json';
-
-// A content batch is dumped to JSON and parsed back one article at a time
-// through the same streaming parser already used for LOC's other bounded
-// JSON transport (app/loc/mcp/stream-json.mjs) - '$.*' emits each array
-// element as the parser reaches it, so an article is available before the
-// rest of the batch's JSON has even been parsed, instead of '$' (root-only),
-// which buffers the whole document and hands back one array at the end -
-// no different from a plain JSON.parse, just slower.
-async function streamJsonRows(rows){
-  const parser=new JSONParser({paths:['$.*'],stringBufferSize:65536});
-  const out=[];
-  parser.onValue=({value,partial})=>{if(!partial)out.push(value);};
-  parser.write(JSON.stringify(rows));
-  if(!parser.isEnded)parser.end();
-  return out;
-}
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const keyOf=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -258,7 +241,7 @@ export async function analyzeIncrementalKeywordPatterns({
     // currentPageSize has already grown, undoing that growth.
     for(let i=0;i<contentUids.length;i+=currentPageSize){
       const batch=contentUids.slice(i,i+currentPageSize);
-      const rows=await streamJsonRows(await readContent(batch));
+      const rows=await readContent(batch);
       if(!Array.isArray(rows)||rows.length!==batch.length||
          rows.some(row=>!UID.test(String(row?.uid||''))||
            !batch.includes(row.uid)||bodies.has(row.uid)))
