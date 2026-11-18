@@ -39,7 +39,7 @@ function pageMetadata({
   return {
     title,
     description,
-    icons:{icon:[{url:faviconForScope(faviconScope),type:'image/png'}]},
+    icons:{icon:[{url:faviconForScope(faviconScope)}]},
     alternates:{canonical},
     openGraph:{
       title,
