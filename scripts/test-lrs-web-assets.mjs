@@ -41,6 +41,8 @@ test('LOC builds from its own repo; CSS copies stay local',()=>{
  assert.doesNotMatch(ipa,/rune-source|lrs_commit|LRS_COMMIT|three@|consume-lrs|restore-lrs/);
 });
 test('lrunes remains a genuine LOC Scope with original content and pictures',()=>{
+ assert.equal(existsSync(new URL('../assets/site/local/lunarcus-rainbow-hero.avif',import.meta.url)),true);
+ assert.equal(existsSync(new URL('../public/assets/site/local/lunarcus-rainbow-hero.avif',import.meta.url)),true);
  const registry=read('app/modular/routing/scope-route-index.js');
  assert.match(registry,/"scope_id":"loc","domain":"loc\.lo3rwang\.cc"/);
  assert.match(registry,/"scope_id":"lrunes","domain":"lrunes\.lo3rwang\.cc"/);
