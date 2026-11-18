@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "prepare": "node scripts/prepare-local-workspace.mjs",
-    "prebuild": "node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs",
+    "prebuild": "node scripts/copy-local-scope-hero.mjs && node scripts/check-retired-source-fields.mjs && node scripts/check-db-contract.mjs && node scripts/sync-page-locale-assets.mjs",
     "dev": "next dev",
     "build": "next build",
     "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",

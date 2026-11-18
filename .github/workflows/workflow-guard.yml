@@ -37,7 +37,7 @@ jobs:
           else
             git sparse-checkout set \
               '/.github/workflows/**' '/app/**' '/scripts/**' \
-              '/functions/api/las-native.js' '/functions/api/loc-native.js' '/config/lrs-source.json' '/packages/zenstack/**' '/package.json' '/package-lock.json' '/next.config.mjs' \
+              '/functions/api/las-native.js' '/functions/api/loc-native.js' '/packages/zenstack/**' '/package.json' '/package-lock.json' '/next.config.mjs' \
               '/public/sw.js' '/public/_routes.json' '/public/themes/**'
             ref="$GITHUB_SHA"
           fi
@@ -68,12 +68,12 @@ jobs:
             scripts/test-loc-direct-api-session-policy.mjs \
             scripts/test-loc-direct-request-lifecycle.mjs \
             scripts/test-loc-theme-demand-css.mjs
-      - name: Verify selected page language JSON and Web-native asset parity
+      - name: Verify required per-route JSON and locale selection
         run: node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs
       - name: Verify disposable JSON import Worker lifecycle
         run: node --test scripts/test-json-import-worker.mjs scripts/test-source-validation-slices.mjs
-      - name: Verify LRS Web links, local IPA assets and fail-closed version plan
-        run: node --test scripts/test-lrs-web-assets.mjs scripts/test-ipa-workflow-metadata.mjs scripts/test-lrs-deployment-plan.mjs scripts/test-lrs-emergency-authorization.mjs scripts/test-lrs-emergency-live.mjs
+      - name: Verify independent LOC Web/IPA, Scope routes, pictures and CSS
+        run: node --test scripts/test-lrs-web-assets.mjs scripts/test-ipa-workflow-metadata.mjs
       - name: Verify ordered MCP conversations without database writes
         run: node --check app/loc/mcp/conversations.mjs && node --check app/loc/mcp/native-operations.mjs && node --test scripts/test-mcp-ordered-conversation.mjs
       - name: Verify independent LAS Auth and LOC Pages deployment boundary

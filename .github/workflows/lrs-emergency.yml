@@ -35,6 +35,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.5'
+      - name: Check emergency authorization logic before any release action
+        run: node --test loc-source/scripts/test-lrs-emergency-authorization.mjs loc-source/scripts/test-lrs-emergency-live.mjs
       - name: Verify HMAC and explicit emergency TTL (no token refresh)
         id: gate
         env:

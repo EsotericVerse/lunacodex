@@ -1,6 +1,4 @@
-/** LOC Web publishes LOC-owned assets including lrunes Scope hero art; LRS owns draw/game media and effects.
- * The existing LOC IPA has a separate, explicit native asset handoff.
- */
+/** LOC Web and LOC IPA ship only LOC art; independent LRS games and effects ship from LRS. */
 // Homepage Hero and Game editorial artwork are LOC Scope assets, not LRS VFX.
 // Preserve their original /pics and /assets/pics locations on LOC Web.
 export function isLrsWebAsset(rel){
@@ -11,6 +9,6 @@ export function isLrsWebAsset(rel){
    normalized==='vendor/rune-semantic-icons'||normalized.startsWith('vendor/rune-semantic-icons/')||
    normalized==='LunarRunesCardCut.pdf';
 }
-export function allowStaticSource(rel,{native=false}={}){
- return native||!isLrsWebAsset(rel);
+export function allowStaticSource(rel){
+ return !isLrsWebAsset(rel);
 }
