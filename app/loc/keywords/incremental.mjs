@@ -4,18 +4,20 @@ import {keywordScanText} from './content-filter.mjs';
 import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 import {JSONParser} from '@streamparser/json';
 
-// A content batch is handed off to the pattern classifier as JSON, parsed
-// back through the same streaming parser already used for LOC's other
-// bounded JSON transport (app/loc/mcp/stream-json.mjs), instead of the
-// caller's row array being consumed directly.
+// A content batch is dumped to JSON and parsed back one article at a time
+// through the same streaming parser already used for LOC's other bounded
+// JSON transport (app/loc/mcp/stream-json.mjs) - '$.*' emits each array
+// element as the parser reaches it, so an article is available before the
+// rest of the batch's JSON has even been parsed, instead of '$' (root-only),
+// which buffers the whole document and hands back one array at the end -
+// no different from a plain JSON.parse, just slower.
 async function streamJsonRows(rows){
-  const parser=new JSONParser({paths:['$'],stringBufferSize:65536});
-  let root,seen=false;
-  parser.onValue=({value})=>{if(seen)throw new Error('Multiple JSON roots');root=value;seen=true;};
+  const parser=new JSONParser({paths:['$.*'],stringBufferSize:65536});
+  const out=[];
+  parser.onValue=({value,partial})=>{if(!partial)out.push(value);};
   parser.write(JSON.stringify(rows));
   if(!parser.isEnded)parser.end();
-  if(!seen)throw new Error('Invalid or empty Galaxy content JSON');
-  return root;
+  return out;
 }
 
 const UID=/^[A-Za-z0-9]{8}$/;
