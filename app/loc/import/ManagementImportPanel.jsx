@@ -2,11 +2,7 @@
 
 import {useUiCopy,useUiLocale,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
-import {registerDefaultSection,UI_LOCALE_OPTIONS} from '../../i18n/ui-copy';
-import managementZh from '../../i18n/sections/management.zh_tw.js';
-import importUIZh from '../../i18n/sections/uiExtra.importUI.zh_tw.js';
-registerDefaultSection('management',managementZh);
-registerDefaultSection('uiExtra.importUI',importUIZh);
+import {UI_LOCALE_OPTIONS} from '../../i18n/ui-copy';
 
 import {useDeferredValue,useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import {refreshScopeSearchSummary} from '../search/scope-summary.mjs';

@@ -1,10 +1,7 @@
 'use client';
 import {parseBlockImage} from './hero-image.mjs';
 import UiText from '../../i18n/UiText';
-import {registerDefaultSection} from '../../i18n/ui-copy';
 import {useUiSection} from '../../i18n/ui-locale';
-import editBlocksZh from '../../i18n/sections/uiExtra.editBlocks.zh_tw.js';
-registerDefaultSection('uiExtra.editBlocks',editBlocksZh);
 
 import {useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';

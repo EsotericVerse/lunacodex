@@ -1,11 +1,7 @@
 'use client';
 import UiText,{useUiText} from '../../i18n/UiText';
-import {UI_COPY,registerDefaultSection} from '../../i18n/ui-copy';
+import {UI_COPY} from '../../i18n/ui-copy';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
-import managementZh from '../../i18n/sections/management.zh_tw.js';
-import importUIZh from '../../i18n/sections/uiExtra.importUI.zh_tw.js';
-registerDefaultSection('management',managementZh);
-registerDefaultSection('uiExtra.importUI',importUIZh);
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
 import {insertRows,updateRows} from '../db/db-client.mjs';

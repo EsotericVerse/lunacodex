@@ -2,11 +2,8 @@
 import {useEffect,useRef,useState} from 'react';
 import {useUiSection} from '../../i18n/ui-locale';
 import {useUiText} from '../../i18n/UiText';
-import {registerDefaultSection} from '../../i18n/ui-copy';
-import globalSettingsZh from '../../i18n/sections/uiExtra.globalSettings.zh_tw.js';
 import useLocUser from './use-loc-user';
 import {LOC_USER_DEFAULTS} from './loc-user-store.mjs';
-registerDefaultSection('uiExtra.globalSettings',globalSettingsZh);
 
 const PATH='uiExtra.globalSettings.';
 const FIELDS=Object.freeze([

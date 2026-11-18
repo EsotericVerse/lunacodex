@@ -5,13 +5,9 @@ import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
 import {useQueryClient} from '../packages/zenstack/client-queries';
-import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,registerDefaultSection,isSectionLoaded,loadSection} from './i18n/ui-copy';
+import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,uiLocaleLoadError} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
-import fieldsZh from './i18n/sections/fields.zh_tw.js';
-import dataSourceStatusZh from './i18n/sections/uiExtra.dataSourceStatus.zh_tw.js';
-registerDefaultSection('fields',fieldsZh);
-registerDefaultSection('uiExtra.dataSourceStatus',dataSourceStatusZh);
 import {FEATURES,SCOPES,featureIdForPath,getScope,normalizeScopeId} from './modular/routing/scope-registry';
 import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
 import {activatePublishedTheme,THEME_SLOTS} from './modular/theme-registry';
@@ -450,18 +446,11 @@ function AppShellInner({children,runtime}){
   const configLocaleEnabled=Boolean(scopeId)&&!currentScope.aggregateChildren&&scopeId!=='admin';
   const configuredLocale=configLocaleEnabled?normalizeUiLocale(bootstrap.data?.config?.locale):'zh-Hant';
   const activeLocale=manualLocale?.scopeId===scopeId?manualLocale.locale:configuredLocale;
-  const localeReady=useLoadedUiLocale(activeLocale);
-  const copy=useMemo(()=>uiCopy(activeLocale),[activeLocale,localeReady]);
+  // Do not fetch the fallback language while the published Scope locale is unresolved.
+  const localeConfigured=!configLocaleEnabled||manualLocale?.scopeId===scopeId||!bootstrap.isPending;
+  const localeReady=useLoadedUiLocale(activeLocale,pathname,localeConfigured);
+  const copy=useMemo(()=>uiCopy(activeLocale,pathname),[activeLocale,pathname,localeReady]);
   useEffect(()=>{document.documentElement.lang=activeLocale;},[activeLocale]);
-  const [,refreshFieldLabels]=useState(0);
-  useEffect(()=>{
-    if(isSectionLoaded(activeLocale,'fields'))return undefined;
-    let active=true;
-    loadSection(activeLocale,'fields')
-      .then(()=>{if(active)refreshFieldLabels(n=>n+1);})
-      .catch(()=>{});
-    return ()=>{active=false;};
-  },[activeLocale]);
   const isMyPhone=native&&['/my-phone','/my-phone/index.html'].includes(normalizePath(pathname));
   // /local and My Phone share the on-device Galaxy IndexedDB core.
   const localWorkspace=native&&(isMyPhone||scopeId==='local');
@@ -496,7 +485,8 @@ function AppShellInner({children,runtime}){
   // LOC stays pinned on the far right, outside the scrollable Scope rail.
   const navigationScopes=NAV_SCOPES
     .filter(item=>item.id!=='loc'&&item.id!=='admin')
-    .map(item=>({id:item.id,label:navDisplayNames[item.id]||item.nav.label}));
+    .map(item=>({id:item.id,label:navDisplayNames[item.id]||
+      (item.id==='lrunes'?copy.nav.lunarunes:item.id==='lo3rwang'?copy.nav.author:item.nav.label)}));
   if(!native){
     const listed=new Set(navigationScopes.map(item=>item.id));
     for(const row of registryScopes){
@@ -581,7 +571,15 @@ function AppShellInner({children,runtime}){
         :'/settings/?scopeid='+encodeURIComponent(navScopeId)}
   ];
 
-  return <UiLocaleProvider locale={activeLocale}>
+  // A page renders only after its own selected-language JSON is available.
+  if(!localeReady){
+    const error=uiLocaleLoadError(activeLocale,pathname);
+    return error?<main className="scope-main"><section className="scope-page">
+      <p role="alert">Unable to load interface language files.</p>
+      <button type="button" onClick={()=>window.location.reload()}>Retry</button>
+    </section></main>:<div className="loc-loading" role="status">Loading interface…</div>;
+  }
+  return <UiLocaleProvider locale={activeLocale} pathname={pathname}>
     <ScopePageCopy scopeId={localNavigation?'local':scopeId}
       display_name={localNavigation?'本機銀河':configRow?.display_name||registryRow?.display_name}
       pageName={pageName}/>

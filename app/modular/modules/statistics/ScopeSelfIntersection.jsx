@@ -2,9 +2,6 @@
 import FieldText from '../../../i18n/FieldText';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
 import UiText,{useUiText} from '../../../i18n/UiText';
-import {registerDefaultSection} from '../../../i18n/ui-copy';
-import selfIntersectionZh from '../../../i18n/sections/uiExtra.selfIntersection.zh_tw.js';
-registerDefaultSection('uiExtra.selfIntersection',selfIntersectionZh);
 
 import {useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';

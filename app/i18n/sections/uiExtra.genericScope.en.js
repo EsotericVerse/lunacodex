@@ -1,3 +1,0 @@
-export default {
-  "guide": "This Scope Group only provides member navigation. Each child Scope manages its own content and analytics."
-};
