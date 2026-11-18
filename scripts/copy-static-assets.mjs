@@ -19,21 +19,11 @@ fs.cpSync(assetsSource,assetsTarget,{recursive:true,
   filter:source=>![unpublishedSource,pictureOriginals].some(
     folder=>source===folder||source.startsWith(folder+path.sep))&&sourceAllowed(source)});
 
-// pics/ is copied wholesale, the same as assets/ above: any image added here
-// (including new subfolders) ships to the static export automatically, with
-// no per-file whitelist to maintain by hand.
-//
-// One exception: pics/64Card_org/ holds the 66 raw, Chinese-filename rune
-// card source images (the originals the numeric assets/lunarunes/cards/
-// 01.png..66.png set is derived from). Nothing in the app reads them by
-// path -- the draw UI resolves cards through the numeric set instead -- and
-// their non-ASCII filenames fail the iOS workflow's "ASCII-only paths
-// inside the IPA" check. They still live at their real published address
-// (loc.lo3rwang.cc/pics/64Card_org/...) on the deployed website; this only
-// keeps them out of the static export / native app bundle.
+// LOC pics/ is independent from LRS and is published on LOC Web.
+// Native packaging continues to exclude non-ASCII raw card filenames.
 const picsSource=path.join(assetsSource,'pics');
 const picsTarget=path.join(output,'pics');
-const EXCLUDED_PICS_DIRS=[path.join(picsSource,'64Card_org')];
+const EXCLUDED_PICS_DIRS=native?[path.join(picsSource,'64Card_org')]:[];
 if(!fs.existsSync(picsSource))throw new Error('Static asset source missing: pics');
 fs.rmSync(picsTarget,{recursive:true,force:true});
 fs.cpSync(picsSource,picsTarget,{recursive:true,
