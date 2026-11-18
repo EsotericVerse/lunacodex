@@ -183,7 +183,7 @@
       },
       "formatSummary": "Suggested format",
       "recordPath": "Record array path (root/items/posts/data/records supported)",
-      "recordPathHint": "e.g. result.entries; leave empty to detect automatically",
+      "recordPathHint": "Leave blank to find the article list automatically.",
       "batchSize": "Records per batch",
       "itemsPerBatch": "{count} per batch",
       "parsedFile": "File {index}/{total}: parsed {count} records. Review the source and preview before importing.",
