@@ -1,6 +1,4 @@
 import test from 'node:test';
-// Run focused feature-link regression in the existing LRS Web Guard job.
-import './test-rune-feature-links.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -63,6 +61,8 @@ test('saved lrunes Scope image URLs and links are not rewritten to LRS',()=>{
  const src=read('app/loc/blocks/LocHomeBlockDisplay.jsx');
  assert.match(src,/const displayCustomUrl=customUrl/);
  assert.doesNotMatch(src,/rewriteRuneFeatureAnchors/);
+ const web=read('scripts/restore-lrs-web-code.mjs');
+ assert.match(web,/app\/lrunes\/RunesClient\.jsx/);
  const hero=read('app/loc/blocks/hero-image.mjs');
  assert.match(hero,/\['index','hero','game'\]\.includes\(pageName\)/);
 });
