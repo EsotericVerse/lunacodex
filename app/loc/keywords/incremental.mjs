@@ -143,7 +143,28 @@ export async function analyzeIncrementalKeywordPatterns({
   // HTTP round. Without this, a scan that needs many rounds never spends
   // long enough at a large page size to finish in few-enough rounds, and
   // checkpoints end up far more frequent (and far smaller) than necessary.
-  let currentPageSize=clamp(resume?.currentPageSize??pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS);
+  //
+  // BUT a raw carried-over row count is only safe if the NEXT page costs
+  // about what the page that produced it cost. A resumed round's very
+  // first page has no fresh measurement yet in THIS invocation, so if the
+  // carried size was grown against unusually light content, the first
+  // real page of a heavier resumed round can single-handedly exceed the
+  // whole request's CPU/wall-clock budget before a single checkpoint can
+  // be written - the request gets hard-killed with no progress saved, and
+  // the next resume starts right back at the same unsafe size: a
+  // deterministic repeat failure, not a random one. `resume.lastPageMs` is
+  // the real cost that was actually measured for `resume.currentPageSize`;
+  // reusing it here derates the carried size against THIS invocation's own
+  // time budget instead of trusting it blindly.
+  const resumeMsPerRow=resume?.lastPageMs&&resume?.currentPageSize
+    ?resume.lastPageMs/resume.currentPageSize:null;
+  const budgetSafeRows=(msPerRow,budgetMs)=>
+    msPerRow&&budgetMs!=null?Math.floor(budgetMs*0.5/msPerRow):Infinity;
+  let currentPageSize=clamp(
+    resumeMsPerRow!==null
+      ?Math.min(resume.currentPageSize,budgetSafeRows(resumeMsPerRow,timeBudgetMs))
+      :resume?.currentPageSize??pageSize,
+    MIN_PAGE_ROWS,MAX_PAGE_ROWS);
   // Shared by the per-page write below and the final write at completion:
   // the live uid_list for every word, as of whatever `sets`/`checked` state
   // exists right now. Safe to call mid-scan - `checked` only grows, so an
@@ -154,10 +175,11 @@ export async function analyzeIncrementalKeywordPatterns({
     const uid_list=[...sets.get(k)].filter(uid=>checked.has(uid)).sort();
     return {...row,count:uid_list.length,uid_list};
   });
+  let lastPageMs=resumeMsPerRow!==null?resume.lastPageMs:null;
   const checkpointNow=async()=>{
     const patternSets=Object.fromEntries([...sets].map(([k,set])=>[k,[...set]]));
     await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked],
-      currentPageSize});
+      currentPageSize,lastPageMs});
   };
   // Writing to the live Anchor table opens its own DB connection
   // (storeScopePatternMatches's own transaction) separate from the
@@ -276,11 +298,20 @@ export async function analyzeIncrementalKeywordPatterns({
     if(pendingChars>=PATTERN_WRITE_FLUSH_CHARS)await flushPatterns();
     // React to how long this page actually took, not a fixed row count.
     // Capped to 2x change per page so one unusually heavy/light page cannot
-    // whiplash the next request size.
+    // whiplash the next request size. ALSO capped so the next page's
+    // estimated cost (using the rate just measured) can never threaten more
+    // than half of whatever is left of this invocation's time budget - a
+    // page that happened to be unusually light must not license a next
+    // page so big that, if the next batch of articles is heavier, it alone
+    // blows the whole request before any checkpoint can save progress.
     const pageMs=Math.max(1,now()-pageStart);
+    lastPageMs=pageMs;
     const wanted=Math.round(currentPageSize*TARGET_PAGE_MS/pageMs);
-    currentPageSize=clamp(wanted,MIN_PAGE_ROWS,
-      Math.min(MAX_PAGE_ROWS,currentPageSize*2));
+    const remainingMs=timeBudgetMs!==null
+      ?Math.max(1,timeBudgetMs-(now()-invocationStart)):null;
+    currentPageSize=clamp(
+      Math.min(wanted,budgetSafeRows(pageMs/currentPageSize,remainingMs)),
+      MIN_PAGE_ROWS,Math.min(MAX_PAGE_ROWS,currentPageSize*2));
     // Checked every page, not batched: Date.now() itself costs nothing, and
     // batching this by page count (as "check every N pages" once did) is
     // unsafe here - at the target page time alone, a few dozen pages can
