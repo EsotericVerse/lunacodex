@@ -8,8 +8,8 @@ const output=path.join(root,'out');
 
 const assetsSource=path.join(root,'assets');
 const assetsTarget=path.join(output,'assets');
-const native=process.env.LOC_NATIVE_RUNE_ASSETS==='1';
-const sourceAllowed=source=>allowStaticSource(path.relative(root,source),{native});
+const native=process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1';
+const sourceAllowed=source=>allowStaticSource(path.relative(root,source));
 if(!fs.existsSync(assetsSource))throw new Error('Static asset source missing: assets');
 fs.rmSync(assetsTarget,{recursive:true,force:true});
 // Master artwork and original pics are selectively published below, never twice.
@@ -29,20 +29,14 @@ fs.rmSync(picsTarget,{recursive:true,force:true});
 fs.cpSync(picsSource,picsTarget,{recursive:true,
   filter:source=>!EXCLUDED_PICS_DIRS.some(excluded=>source===excluded||source.startsWith(excluded+path.sep))&&sourceAllowed(source)});
 
-// Native needs LRS's original PDF; LOC Web links to the LRS-owned download.
-const rootDownloads=native?['LunarRunesCardCut.pdf']:[];
-for(const name of rootDownloads){
-  const source=path.join(assetsSource,'lunarunes','source',name);
-  if(!fs.existsSync(source))throw new Error(`Static asset source missing: ${name}`);
-  fs.copyFileSync(source,path.join(output,name));
-}
-
-// Next copies public/ before this stage. Strip only the Rune-owned Web media;
+// LOC publishes only its own files for both Web and native; standalone LRS
+// artifacts are never injected into this build.
+// Next copies public/ before this stage. Strip only the LRS-owned media;
 // do not delete LOC's own favicon, static chunks, Hero, or native IPA files.
-if(!native){
+{
   for(const name of ['effekseer','rune-semantic-icons'])
     fs.rmSync(path.join(output,'vendor',name),{recursive:true,force:true});
   fs.rmSync(path.join(output,'assets','site','icons','lrunes-favicon.png'),{force:true});
   fs.rmSync(path.join(output,'LunarRunesCardCut.pdf'),{force:true});
 }
-console.log(`[static-assets] LOC ${native?'native':'Web'} assets published; LRS source/art owned by LRS, web uses links.`);
+console.log(`[static-assets] LOC ${native?'native':'Web'} assets published from LOC repository only.`);
