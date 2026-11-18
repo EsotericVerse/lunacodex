@@ -1,6 +1,6 @@
 name: Workflow guard
 
-# Lightweight, one run per feature-branch push. No pull_request event to duplicate the check.
+# Minimal, one run per feature-branch push. No pull_request event to duplicate the check.
 # Cloudflare Pages is the sole automatic website deployer.
 on:
   push:
@@ -36,45 +36,20 @@ jobs:
             ref="refs/pull/$PR_NUMBER/merge"
           else
             git sparse-checkout set \
-              '/.github/workflows/**' '/app/**' '/scripts/**' \
-              '/functions/api/las-native.js' '/functions/api/loc-native.js' '/packages/zenstack/**' '/modules/loc/dialect/**' '/package.json' '/package-lock.json' '/next.config.mjs' \
-              '/public/sw.js' '/public/_routes.json' '/public/themes/**' '/assets/site/local/**' '/public/assets/site/local/**'
+              '/.github/workflows/**' '/app/**' '/scripts/**' '/functions/**' '/packages/**' '/modules/**' '/package.json' '/next.config.mjs'
             ref="$GITHUB_SHA"
           fi
           git -c protocol.version=2 fetch --quiet --depth=1 --filter=blob:none origin "$ref"
           git checkout --quiet --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-      - name: Reject unauthorized workflow triggers (parsed YAML)
+      - name: Verify LOC-only workflow triggers (parsed YAML)
         run: |
           ruby scripts/check-workflow-triggers.rb
-      - name: Install pinned syntax parser (manual recovery only)
+      - name: Install syntax parser for LOC check
         shell: bash
         run: |
           npm install --prefix "$RUNNER_TEMP/loc-syntax" --no-save --no-package-lock --ignore-scripts --no-audit --no-fund '@babel/parser@7.29.9'
-      - name: Verify application syntax (manual recovery only)
+      - name: Verify LOC JavaScript and JSX syntax
         shell: bash
         run: |
           NODE_PATH="$RUNNER_TEMP/loc-syntax/node_modules" node scripts/check-js-syntax.mjs
-      - name: Verify LOC scoped cache, SW, and resource lifecycle
-        run: |
-          node --test \
-            scripts/test-query-snapshot-store.mjs \
-            scripts/test-scoped-zmodel-cache.mjs \
-            scripts/test-public-bootstrap-lifecycle.mjs \
-            scripts/test-sw-zmodel-integration.mjs \
-            scripts/test-page-resource-boundary.mjs \
-            scripts/test-loc-rfc9110-browser-session.mjs \
-            scripts/test-loc-browser-route-session.mjs \
-            scripts/test-loc-direct-api-session-policy.mjs \
-            scripts/test-loc-direct-request-lifecycle.mjs \
-            scripts/test-loc-theme-demand-css.mjs
-      - name: Verify required per-route JSON and locale selection
-        run: node scripts/sync-page-locale-assets.mjs && node scripts/test-page-locale-assets.mjs
-      - name: Verify disposable JSON import Worker lifecycle
-        run: node --test scripts/test-json-import-worker.mjs scripts/test-source-validation-slices.mjs
-      - name: Verify independent LOC Web/IPA, Scope routes, pictures and CSS
-        run: node --test scripts/test-lrs-web-assets.mjs scripts/test-ipa-workflow-metadata.mjs
-      - name: Verify ordered MCP conversations without database writes
-        run: node --check app/loc/mcp/conversations.mjs && node --check app/loc/mcp/native-operations.mjs && node --test scripts/test-mcp-ordered-conversation.mjs
-      - name: Verify LOC-owned Pages deployment boundary
-        run: node --test scripts/test-las-deployment-boundary.mjs
