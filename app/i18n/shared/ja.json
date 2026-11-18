@@ -367,7 +367,7 @@
       "databaseTable": "既存テーブル名",
       "databaseKey": "データベース API 認証キー",
       "databaseKeyUnchanged": "空欄なら現在の認証情報を維持",
-      "databaseNoNewTables": "既存の Galaxy 互換テーブルのみ使用し、新しいテーブルは作成しません。認証情報は LOC Authority で暗号化し、MCP チャットへ送信しません。",
+      "databaseNoNewTables": "既存のテーブルにのみ接続し、新しいテーブルは作成しません。",
       "databaseSave": "データベース接続を保存",
       "databaseSaving": "保存中…",
       "databaseSaved": "接続設定を暗号化して保存しました。",

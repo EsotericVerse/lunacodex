@@ -183,7 +183,7 @@
       },
       "formatSummary": "建議格式",
       "recordPath": "檔案中的資料位置（選填）",
-      "recordPathHint": "例如 result.entries；留空會自動尋找文章清單",
+      "recordPathHint": "可留空，自動尋找文章清單。",
       "batchSize": "每批匯入數量",
       "itemsPerBatch": "{count} 筆／批",
       "parsedFile": "第 {index}／{total} 檔已解析 {count} 筆；請檢查來源與預覽後再寫入。",
