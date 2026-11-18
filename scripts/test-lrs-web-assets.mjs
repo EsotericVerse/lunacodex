@@ -25,7 +25,7 @@ test('LOC Web never publishes LRS-owned media, native handoff stays separate',()
 test('Web consumes LRS implementation only from a pinned Git commit',()=>{
  const cfg=JSON.parse(read('config/lrs-source.json'));
  assert.equal(cfg.repository,'EsotericVerse/lunarunes');
- assert.equal(cfg.releaseVersion,'1.01R');
+ assert.equal(cfg.releaseVersion,'1.0.2');
  assert.match(cfg.sourceCommit,/^[0-9a-f]{40}$/);
  const script=read('scripts/restore-lrs-web-code.mjs');
  assert.match(script,/sparse-checkout/);

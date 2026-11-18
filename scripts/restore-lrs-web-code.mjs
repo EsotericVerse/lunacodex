@@ -17,7 +17,7 @@ const cfg=JSON.parse(await readFile(join(root,'config/lrs-source.json'),'utf8'))
 const SHA=/^[a-f0-9]{40}$/;
 if(cfg.schema!=='loc.lrs-pinned-source.v1'||
  cfg.repository!=='EsotericVerse/lunarunes'||!SHA.test(cfg.sourceCommit)||
- !/^[0-9]+(?:\.[0-9]+)?R$/.test(cfg.releaseVersion))throw Error('Invalid immutable LRS source contract');
+ !/^(?:[0-9]+(?:\.[0-9]+)?R|[0-9]+\.[0-9]+\.[0-9]+)$/.test(cfg.releaseVersion))throw Error('Invalid immutable LRS source contract');
 if(process.env.LOC_NATIVE_RUNE_ASSETS==='1'||process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'){
  console.log('[loc:lrs] Native flow owns pinned full Rune UI; Web source restore skipped');
  process.exit(0);
