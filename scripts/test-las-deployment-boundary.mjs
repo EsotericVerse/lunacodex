@@ -5,25 +5,27 @@ import {existsSync,readFileSync} from 'node:fs';
 const exists=path=>existsSync(new URL('../'+path,import.meta.url));
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('LOC is the only full website and native IPA build owner',()=>{
+test('LOC builds only its own website and native IPA',()=>{
   assert.ok(exists('.github/workflows/ios-device-build.yml'));
   assert.ok(exists('.github/workflows/deploy-pages.yml'));
   assert.ok(!exists('services/workers/lunarcus'));
   assert.ok(!exists('services/workers/loc-authority'));
   assert.ok(!exists('.github/workflows/deploy-lunarcus-auth.yml'));
+  assert.ok(!exists('.github/workflows/lrs-emergency.yml'));
+  assert.ok(!exists('.github/workflows/receive-las-deployment.yml'));
+  assert.ok(!exists('scripts/receive-las-deployment.mjs'));
+  assert.ok(!exists('scripts/verify-lrs-emergency.mjs'));
+  assert.ok(!exists('scripts/plan-lrs-deployment.mjs'));
+  assert.ok(!exists('scripts/las-deploy-authorization.mjs'));
   const native=read('.github/workflows/ios-device-build.yml');
   assert.ok(native.includes('workflow_dispatch:'));
-  // LOC owns packaging even when consuming a pinned, read-only LAS Hero asset.
-  // A fixed-source checkout is not a LAS-owned IPA build pipeline.
-  if(native.includes('repository: EsotericVerse/lunarcus')){
-    assert.match(native,/repository: EsotericVerse\/lunarcus\s+ref: [a-f0-9]{40}\s+path: las-source/,
-      'LAS Hero may be consumed only from an immutable commit');
-    assert.ok(!native.includes('npm --prefix las-source run build'),
-      'LOC must never compile LAS Worker as part of IPA');
-  }
+  assert.ok(!native.includes('repository: EsotericVerse/lunarcus'));
+  assert.ok(!native.includes('repository: EsotericVerse/lunarunes'));
+  assert.ok(!native.includes('rune-source'));
+  assert.ok(!native.includes('las-source'));
 });
 
-test('LOC remains one Cloudflare Pages build; LAS triggers are external',()=>{
+test('LOC uses its own Cloudflare Pages build without external deployment triggers',()=>{
   const fallback=read('.github/workflows/deploy-pages.yml');
   assert.ok(fallback.includes('workflow_dispatch:'));
   assert.ok(!/^\s+push:\s*$/m.test(fallback),'Do not auto-publish duplicate GitHub Pages build');
