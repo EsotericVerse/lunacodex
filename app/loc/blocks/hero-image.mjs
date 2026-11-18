@@ -20,6 +20,6 @@ export function absoluteImageUrl(src){
 export function isHomeFrameFor(scopeId,pageName,order){
   const n=Number(order);
   if(!(n>=1))return false;
-  if(scopeId==='lrunes')return ['hero','game'].includes(pageName);
+  if(scopeId==='lrunes')return ['index','hero','game'].includes(pageName);
   return pageName==='index'&&['loc','lo3rwang'].includes(scopeId);
 }

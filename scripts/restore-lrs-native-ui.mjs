@@ -17,7 +17,7 @@ const lrs=resolve(runeArg),loc=resolve(locArg);
 if(lrs===loc||lrs.startsWith(loc+sep)||loc.startsWith(lrs+sep))
   throw Error('LOC and LRS checkout directories must be separate');
 
-const originalFiles=['app/lrunes/RunesClient.jsx','app/lrunes/RuneUnifiedView.jsx',
+const originalFiles=['app/lrunes/RuneUnifiedView.jsx',
   'app/card/page.jsx','app/card/duel/page.jsx','app/daily/log/DailyLogClient.jsx',
   'app/game/page.jsx','modules/lrs/rune/rune-directory.mjs'];
 for(const name of originalFiles){
@@ -32,7 +32,11 @@ async function walk(dir){
   for(const item of await readdir(join(lrs,dir),{withFileTypes:true})){
     if(item.isSymbolicLink())throw Error('Native LRS source must not contain symlinks: '+dir);
     const rel=dir+'/'+item.name;
-    if(excludedScopeDirs.test(rel))continue;
+    if(excludedScopeDirs.test(rel)||
+       ['app/lrunes/RunesClient.jsx','app/lrunes/RuneIntroSection.jsx',
+        'app/lrunes/RuneCardEntryBubbles.jsx','app/lrunes/rune-asset-origin.mjs'].includes(rel))continue;
+    // Every LOC Next route, including lrunes Scope, stays owned by LOC.
+    if(rel.endsWith('/page.jsx'))continue;
     if(item.isDirectory()){await walk(rel);continue;}
     if(!item.isFile())throw Error('Unexpected native LRS source type: '+rel);
     const source=join(lrs,...rel.split('/'));
@@ -67,22 +71,9 @@ for(const rel of [...nativeStyles,...runePictures.map(name=>'assets/pics/'+name)
 }
 
 
-// LOC Web deliberately imports its tiny LRS link view. Restore the original
-// Rune homepage *only in this temporary native checkout* before Next build.
-// These two exact, checked substitutions leave every other LOC edit intact.
-const app=join(loc,'app/loc/LocApp.jsx');
-let code=await readFile(app,'utf8');
-const replacements=[
-  ["const RunesHomeView=dynamic(()=>import('./views/LrsPortalView'),{loading});",
-   "const RunesHomeView=dynamic(()=>import('../lrunes/RunesClient'),{loading});"],
-  ["lrunes:()=>import('./views/LrsPortalView')",
-   "lrunes:()=>import('../lrunes/RunesClient')"]
-];
-for(const [from,to] of replacements){
-  if(!code.includes(from)&&!code.includes(to))throw Error('Native Rune entry contract changed: '+from);
-  code=code.replace(from,to);
-}
-await writeFile(app,code);
+// LOC retains the same lrunes Scope homepage on Web and iOS.
+// No native build step may replace its homepage component with LRS RunesClient.
+// LRS supplies only feature implementations to the existing LOC IPA build.
 
 // The LOC Web settings page links to LRS rather than loading native-only
 // daily Rune settings. Restore that original dependency for the IPA export.
@@ -109,4 +100,4 @@ if(!(await readFile(pdfFile)).length)throw Error('Missing original LRS PDF');
 await mkdir(dirname(join(loc,...pdf.split('/'))),{recursive:true});
 await cp(pdfFile,join(loc,...pdf.split('/')),{force:true});
 
-console.log('LOC native Rune UI restored from pinned LRS: '+count+' source files; LOC Web repository unchanged');
+console.log('LOC native draw/game dependencies from pinned LRS: '+count+' source files; LOC Scope homepage unchanged');

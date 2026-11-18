@@ -65,7 +65,9 @@ async function collect(dir){
   const rel=dir+'/'+item.name;
   if(item.isDirectory()){await collect(rel);continue;}
   if(!item.isFile()||!allowed.test(rel)||rel.endsWith('/page.jsx'))continue;
-  if(rel==='app/lrunes/rune-asset-origin.mjs')continue;
+  // Scope homepage belongs to LOC, not to the LRS card/game source.
+  if(['app/lrunes/rune-asset-origin.mjs','app/lrunes/RunesClient.jsx',
+      'app/lrunes/RuneIntroSection.jsx'].includes(rel))continue;
   if(tracked.has(rel))throw Error('LOC still tracks duplicate LRS source: '+rel);
   wanted.push(rel);
  }
