@@ -144,6 +144,16 @@ export async function analyzeIncrementalKeywordPatterns({
   // long enough at a large page size to finish in few-enough rounds, and
   // checkpoints end up far more frequent (and far smaller) than necessary.
   let currentPageSize=clamp(resume?.currentPageSize??pageSize,MIN_PAGE_ROWS,MAX_PAGE_ROWS);
+  // Shared by the per-page write below and the final write at completion:
+  // the live uid_list for every word, as of whatever `sets`/`checked` state
+  // exists right now. Safe to call mid-scan - `checked` only grows, so an
+  // uid this call filters out for not being checked yet simply reappears
+  // once a later page does check it.
+  const buildPatterns=()=>words.map(row=>{
+    const k=keyOf(row.pattern);
+    const uid_list=[...sets.get(k)].filter(uid=>checked.has(uid)).sort();
+    return {...row,count:uid_list.length,uid_list};
+  });
   const checkpointNow=async()=>{
     const patternSets=Object.fromEntries([...sets].map(([k,set])=>[k,[...set]]));
     await onCheckpoint({cursor,scanned,parsed,reused,patternSets,checked:[...checked],
@@ -234,6 +244,13 @@ export async function analyzeIncrementalKeywordPatterns({
     }
     scanned+=page.length;
     onProgress({phase:'reading',completed:scanned,parsed,reused});
+    // Push this page's matches into the live Anchor table now, not just once
+    // at the very end: a dynamically-sized page is routinely millions of
+    // characters, so deferring every write to a single final write makes
+    // that one final write the risky operation. storeScopePatternMatches is
+    // idempotent (diffs uid_list before writing), so calling it again at
+    // completion with the fuller, final patterns array is harmless.
+    await writePatterns({classUid,items,patterns:buildPatterns()});
     // React to how long this page actually took, not a fixed row count.
     // Capped to 2x change per page so one unusually heavy/light page cannot
     // whiplash the next request size.
@@ -257,11 +274,7 @@ export async function analyzeIncrementalKeywordPatterns({
     throw new Error('Galaxy metadata COUNT changed during analysis; no Keyword patterns written');
   // Deletions do not emit UpdateTime: a lightweight metadata scan still
   // detects and removes their stale UIDs without loading any full article.
-  const patterns=words.map(row=>{
-    const k=keyOf(row.pattern);
-    const uid_list=[...sets.get(k)].filter(uid=>checked.has(uid)).sort();
-    return {...row,count:uid_list.length,uid_list};
-  });
+  const patterns=buildPatterns();
   const summary=keywordPatternItemMetrics(items,patterns);
   const progress=Object.fromEntries(wordNames.keys().map(k=>[k,startedAt]));
   const stats={

@@ -476,7 +476,19 @@ export async function analyzeKeywordScope(db,scope,classUid,{
         .select(galaxyUidContentColumns)
         .where('uid','in',uids).execute();
     },
-    writePatterns:async ({patterns})=>{pending=patterns;},
+    writePatterns:async ({patterns})=>{
+      pending=patterns;
+      // Written into the live Anchor table on every call, not just the final
+      // one: each dynamically-sized page is routinely millions of
+      // characters, so a single all-at-once write at completion would be
+      // the risky operation. storeScopePatternMatches only issues SQL for
+      // uid_list values that actually changed, so repeating it per-page
+      // costs nothing extra once a uid's set has stopped growing.
+      await db.transaction().execute(async trx=>{
+        await authorizeTransaction(trx);
+        await storeScopePatternMatches(trx,scope,patterns);
+      });
+    },
     finalize:async stats=>{
       if(!pending)fail('Keyword patterns were not produced');
       await db.transaction().execute(async trx=>{
