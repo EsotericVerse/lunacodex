@@ -1,5 +1,4 @@
 import LrsWebRedirect from '../loc/views/LrsWebRedirect';
-import GameBoard from '../../modules/lrs/boardgame/GameBoard.jsx';
 import {lunarunesMetadata} from '../seo/metadata';
 
 export const metadata=lunarunesMetadata({
@@ -10,7 +9,5 @@ export const metadata=lunarunesMetadata({
 // Only the Web card/game entry goes to the LRS standalone feature.
 // The existing LOC native bundle continues to render the original component.
 export default function GamePage(){
-  return process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'
-    ?<GameBoard/>
-    :<LrsWebRedirect path="/game/"/>;
+  return <LrsWebRedirect path="/game/"/>;
 }
