@@ -183,7 +183,7 @@
       },
       "formatSummary": "建议格式",
       "recordPath": "数据数组路径（支持根数组／items／posts／data／records）",
-      "recordPathHint": "例如 result.entries；留空自动识别",
+      "recordPathHint": "可留空，自动查找文章列表。",
       "batchSize": "每批写入条数",
       "itemsPerBatch": "{count} 条／批",
       "parsedFile": "第 {index}／{total} 个文件已解析 {count} 条；确认来源与预览后再写入。",
