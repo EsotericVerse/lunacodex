@@ -5,7 +5,9 @@ description: "LOC Cloudflare Pages／GitHub Workflow／IPA 部署與按需接收
 
 # LOC Deployment／Operations
 
-LOC 只發布 **LOC Cloudflare Pages `loc`**、自身業務 API 與現有 App／IPA 工作流。正式網域 `loc.lo3rwang.cc`；LAS 的 `auth.lo3rwang.cc` 與 `mcp.lo3rwang.cc` 都指向既有 `lunarcus` Worker，**不是 LOC Pages Gateway**。不要從 LOC 部署、打包或恢復 LAS MCP／Auth Server，也不發布 LRS。
+LOC 只發布 **LOC Cloudflare Pages `loc`**、自身業務 API 與 **LOC 自己的 App／IPA**。LRS 自己負責 LRS Web 與 LRS App／IPA，LAS 自己部署 Auth／MCP／Plugins；三者不互相觸發例行建置。正式網域 `loc.lo3rwang.cc`；LAS 的 `auth.lo3rwang.cc` 與 `mcp.lo3rwang.cc` 都指向既有 `lunarcus` Worker，**不是 LOC Pages Gateway**。不要從 LOC 部署、打包或恢復 LAS MCP／Auth Server，也不發布 LRS。
+
+LOC 的網站與 Scope 路由表只由 LOC 維護；LRS 另有自己的 Web 路由表，LAS 的 Auth／MCP 主機與協定路由由 LAS 管理。跨 Repo 只使用既有連結或驗證過的 API 契約，不以共用 Routing Table 或聯動部署整合。
 
 ## 跨 Repo 更新的正確順序
 
