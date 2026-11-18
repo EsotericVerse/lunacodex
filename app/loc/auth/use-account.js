@@ -9,8 +9,6 @@ import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {shouldInvalidateManagementForAuthEvent} from './account-event-guard.mjs';
 import {editorSessionStatus} from './edit-session-ttl.mjs';
-import {rememberBrowserPermissions,readBrowserPermissions,
-  markBrowserPermissionUnavailable,clearBrowserPermissions} from './browser-permission-session.mjs';
 import {invalidateAccountPrivateReads} from '../db/semi-dynamic-cache.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();
@@ -75,8 +73,6 @@ async function fetchManagementAccount(queryClient){
         ({id:scopeid,manage_role:role}))
     );
     scopeMetadata=metadata;
-    if(typeof window!=='undefined')rememberBrowserPermissions(
-      window.sessionStorage,user,readAuthorization()?.entries||[]);
     authUserId=String(user.id);
     authEmail=normalizeAuthEmail(user.email);
     const authorizer=createScopeAuthorizer(user);
@@ -88,10 +84,6 @@ async function fetchManagementAccount(queryClient){
     // Never accept a previous local grant as proof of a failed live check.
     // Preserve the verified identity for retry but deny editor access.
     clearAuthorization();
-    if(typeof window!=='undefined'){
-      if(error?.status===401)clearBrowserPermissions(window.sessionStorage);
-      else markBrowserPermissionUnavailable(window.sessionStorage);
-    }
     invalidateAccountPrivateReads();
     scopeMetadata=[];
     authUserId='';
@@ -192,7 +184,6 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     authUserId='';
     authEmail='';
     clearAuthorization();
-    if(typeof window!=='undefined')clearBrowserPermissions(window.sessionStorage);
     scopeMetadata=[];
     pendingManagementVerification=null;
     await queryClient.cancelQueries({queryKey:['loc-account']});
@@ -214,13 +205,8 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
       ||(state.authorizer?.canLocAccessSync('global')?defaultScopeData(id):null);
   },[state.authorizer,state.scopes]);
 
-  // Last-known roles are displayed as stale context only; all authorization
-  // predicates above continue to use the current verified in-memory grant.
-  const knownUserId=String(state.user?.id||authUserId||'');
-  const lastKnownPermissionSnapshot=typeof window==='undefined'||!knownUserId?null:
-    readBrowserPermissions(window.sessionStorage,knownUserId);
   return {
-    ...state,refresh,signIn,signOut,lastKnownPermissionSnapshot,
+    ...state,refresh,signIn,signOut,
     canLocAccessSync,scopeDataFor
   };
 }
@@ -251,7 +237,6 @@ export function usePassiveSessionAccount(){
         authRevision+=1;
         pendingManagementVerification=null;
         clearAuthorization();
-        if(typeof window!=='undefined')clearBrowserPermissions(window.sessionStorage);
         invalidateAccountPrivateReads();
         scopeMetadata=[];
       }
