@@ -5,7 +5,6 @@ import {useUiSection} from '../../../i18n/ui-locale';
 import {useMemo} from 'react';
 import {useAsyncResource,useResourceCache} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
-import {defaultScopeData} from '../../../loc/scope/scope-data';
 import {availableMemberMeasures,calculateMemberCross} from '../../../loc/statistics/member-intersection-model.mjs';
 import {semanticStatisticChartTypes} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
@@ -27,6 +26,7 @@ export default function LocMemberIntersection({
   const rangeKey=startDate+'|'+endDate;
   // The caller supplies Scope IDs and display names from the existing registry result.
   const names=useMemo(()=>new Map(scopes.map(row=>[row.id,row.label||row.id])),[scopes]);
+  const available=scopes.map(scope=>({id:scope.id,label:names.get(scope.id)||scope.id,scope}));
   // Each Scope is compared only by its own totals and media types; source groups are never merged across Scopes.
   const allows=(person,metric)=>!metric.startsWith('source:');
   const lanes=Array.from({length:laneCount},(_,index)=>{
