@@ -367,7 +367,7 @@
       "databaseTable": "Existing table name",
       "databaseKey": "Database API credential",
       "databaseKeyUnchanged": "Leave blank to keep the current credential",
-      "databaseNoNewTables": "Only existing Galaxy-compatible tables. No tables will be created. Credentials are encrypted by LOC Authority and never sent in MCP chats.",
+      "databaseNoNewTables": "Connects to existing tables only. No new tables are created.",
       "databaseSave": "Save database connection",
       "databaseSaving": "Saving…",
       "databaseSaved": "Connection configuration encrypted and saved.",
