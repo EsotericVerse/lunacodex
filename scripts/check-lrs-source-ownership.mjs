@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Fail a LOC build if the repository starts tracking a second LRS code/art source.
  * LOC keeps Next routing, LOC DB/authorization adapters and the existing native
- * handoff; the single LRS source is consumed at an immutable Git revision.
+ * handoff; shared presentation CSS is copied into LOC and owned locally.
  */
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
@@ -20,7 +20,6 @@ const files=execFileSync('git',['ls-files','-z'],{cwd:root,encoding:'utf8'})
 const isDuplicate=p=>{
  if(p.startsWith('app/lrunes/')&&p!=='app/lrunes/rune-asset-origin.mjs'&&!p.endsWith('/page.jsx'))return true;
  if(p==='app/daily/log/DailyLogClient.jsx'||p==='app/daily/log/daily-record-slots.mjs')return true;
- if(['app/styles/runes.css','app/styles/home-runes.css'].includes(p))return true;
  if(p.startsWith('modules/lrs/')||p.startsWith('modules/lrune/'))return true;
  if(p.startsWith('public/vendor/effekseer/')||p.startsWith('public/vendor/rune-semantic-icons/'))return true;
  if(p==='assets/site/icons/lrunes-favicon.png'||p==='LunarRunesCardCut.pdf')return true;
