@@ -7,7 +7,7 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
-import {useAccount} from '../auth/use-account';
+import {useVerifiedManagementGrants} from '../management/ManagementAccess';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
@@ -44,7 +44,7 @@ const OLD_SCOPE_SECTION_ALIASES=Object.freeze({
 export default function SearchManagement(){
   const {scopeId}=useScopeRuntime();
   const editDock=useEditDock();
-  const account=useAccount({enabled:false});
+  const account=useVerifiedManagementGrants();
   const searchParams=useSearchParams();
   const isLocAdmin=scopeId==='loc';
   // Personal preferences belong to the last Settings tab, not Article Control.

@@ -35,6 +35,12 @@ export function ProtectedManagementSlot({children}){
   </section>;
 }
 
+export function useVerifiedManagementGrants(){
+  const entry=useContext(ManagementEntryContext);
+  return {canLocAccessSync:(level,scopeId='')=>Boolean(entry?.ready&&entry?.allowed&&
+    !entry.locked&&entry.verification?.authorizer?.canLocAccessSync(level,scopeId))};
+}
+
 // Each protected management entry verifies Scope permission before rendering
 // editing controls. An OAuth session alone never grants LOC Scope access.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',staticFrame=false,children}){

@@ -5,7 +5,7 @@ import LocManagementWorkspace from '../management/LocManagementWorkspace';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import {useEditDock} from '../../modular/edit-dock';
-import {useAccount} from '../auth/use-account';
+import {useVerifiedManagementGrants} from '../management/ManagementAccess';
 import PanelLoading from '../ui/PanelLoading';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
@@ -24,8 +24,8 @@ const SOURCE_OPTION=Object.freeze({value:'sources',label:'文章來源',shortLab
 const ITEM=Object.freeze({value:'members',label:'人員作品管理'});
 
 export default function LocSourceManagement(){
-  const account=useAccount({enabled:false});
-  const isSystemAdmin=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canLocAccessSync('global'));
+  const account=useVerifiedManagementGrants();
+  const isSystemAdmin=account.canLocAccessSync('global');
   // The three published section labels are static. Permissions decide
   // whether privileged editors mount, not whether the menu exists.
   const sections=[SYSTEM_PERSONNEL_OPTION,...OPTIONS,SOURCE_OPTION];

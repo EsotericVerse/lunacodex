@@ -14,6 +14,7 @@ import ManagementAccess from './management/ManagementAccess';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {selectScopeConfig} from './scope/scope-data';
 import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
+import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {FeaturePage} from '../modular/ui';
 const loading=()=> <div className="loc-loading"><UiText id="uiExtra.feature.moduleLoading"/></div>;
 // Scope feature switches gate public access even for an admin; identity never overrides publication.
@@ -59,29 +60,6 @@ const VIEWS={
   setting:LocalSettingView
 };
 const HOME_VIEWS={loc:AboutView,lrunes:RunesHomeView,lo3rwang:AuthorHomeView,admin:AdminHomeView};
-// Same modules as the dynamic() declarations above, so the bundler reuses the same
-// chunks. Only the view that is about to render is requested, and it is requested
-// immediately, in parallel with the registry and FeatureGate config queries,
-// instead of after they finish.
-const VIEW_PRELOADERS={
-  admin:()=>import('./views/AdminHomeView'),
-  statics:()=>import('../modular/features/Statistics'),
-  keywords:()=>import('../modular/features/KeywordSettings'),
-  culture:()=>import('../modular/features/Culture'),
-  search:()=>import('../modular/features/Search'),
-  searchManage:()=>import('./search/SearchManagement'),
-  trace:()=>import('../modular/features/Trace'),
-  manage:()=>import('./scope/ScopeManagement'),
-  sourceManage:()=>import('./source/LocSourceManagement'),
-  keywordManage:()=>import('./keywords/ui/LocKeywordManagementPage'),
-  setting:()=>import('./views/LocalSettingView')
-};
-const HOME_PRELOADERS={
-  loc:()=>import('./views/AboutView'),
-  lrunes:()=>import('./views/LrsPortalView'),
-  lo3rwang:()=>import('./views/AuthorHomeView'),
-  admin:()=>import('./views/AdminHomeView')
-};
 const FEATURE_FLAGS=Object.freeze({
   statics:'statistics_able',
   keywords:'statistics_able',
@@ -94,11 +72,18 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   const flag=FEATURE_FLAGS[view]||'';
   const scope=scopeMeta||getScope(scopeId);
   const enabled=Boolean(flag)&&!scope.aggregateChildren&&scope.id!=='admin';
-  // Public feature gating reads only the Scope's four switches.
-  // Do not fetch unrelated page Blocks or management permissions.
+  // Published feature availability is a static routing contract, shared
+  // with the public server. Only genuinely dynamic Scopes read live config.
+  const published=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId&&row.active!==false);
   const query=useAsyncResource(['public-feature-flags',scopeId],
-    ()=>selectScopeConfig(scopeId),{enabled});
+    ()=>selectScopeConfig(scopeId),{enabled:enabled&&!published});
   if(!enabled)return children;
+  if(published){
+    if(scopeFeatureEnabled(published.config,flag))return children;
+    return <FeaturePage featureId={view==='keywords'?'statics':view}>
+      <p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p>
+    </FeaturePage>;
+  }
   if(query.isPending)return <FeaturePage featureId={view==='keywords'?'statics':view}>
     <section className="loc-card scope-feature-card scope-feature-loading">
       <div className="scope-feature-loading__controls" aria-hidden="true"><span/><span/><span/></div>
@@ -138,20 +123,6 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   // an overview/guide only: never query another Scope's Galaxy or Time here.
   const groupOverviewView=Boolean(scopeMeta?.aggregateChildren&&scopeId!=='loc'&&
     ['statics','culture'].includes(forcedView));
-
-  useEffect(()=>{
-    if(scopeMeta?.nativeOnly&&!nativeOnlyReady)return;
-    if(scopeId==='local'&&forcedView!=='setting'){
-      import('./local/Workspace').catch(()=>{});
-      return;
-    }
-    const preload=publicCulture?()=>import('./views/CulturePublicReader'):
-      forcedView==='home'
-        ?HOME_PRELOADERS[scopeId]||(()=>import('./views/GenericScopeHomeView'))
-        :VIEW_PRELOADERS[forcedView]||HOME_PRELOADERS.loc;
-    preload().catch(()=>{});
-    if(groupOverviewView)import('./scope/ScopeGroupOverview').catch(()=>{});
-  },[forcedView,scopeId,groupOverviewView,scopeMeta?.nativeOnly,nativeOnlyReady,publicCulture]);
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){
     return <main className="scope-main"><section className="scope-page">
