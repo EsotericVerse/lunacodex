@@ -12,8 +12,8 @@ const FILE_FOR_LOCALE=Object.freeze({
   'zh-Hant':'zh_tw','zh-Hans':'zh_cn',en:'en',ja:'ja'
 });
 
-// A tiny neutral, synchronous bootstrap contract for module-level UI_COPY
-// references. It is not a Traditional Chinese dictionary or a fetched fallback.
+// A tiny synchronous Traditional Chinese shell seed for the first paint.
+// Page-local dictionaries are fetched only for the page actually requested.
 const SEED={
   common:{save:'儲存',saving:'儲存中…',cancel:'取消',title:'標題',body:'內容',
     language:'語系',theme:'主題',systemTheme:'系統預設',settings:'設定',
