@@ -19,6 +19,10 @@ export function importTimeRangeWindow(range='year',now=new Date()){
 
 export function importWithinTimeRange(row,window){
   if(!window)return true;
+  // Unknown-source-time rows have no historical timestamp to filter on.
+  // Keep them for the dedicated final import fallback instead of silently
+  // dropping them before they can receive a unique createtime.
+  if(row?.__importTimeSource==='missing')return true;
   const timestamp=Date.parse(String(row?.createtime??''));
   return Number.isFinite(timestamp)&&timestamp>=Date.parse(window.start)&&
     timestamp<=Date.parse(window.end);
