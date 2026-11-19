@@ -34,7 +34,7 @@ import {reconcileExistingImportAnchors} from './reconcile-anchors.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from '../archive/import-safety.mjs';
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
-import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
+import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
 import {MAX_ROWS,urlSafeInBatches} from '../query/query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content/content-policy';
 import {galaxyAble} from '../model/galaxy-able.mjs';
@@ -124,7 +124,12 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
   const rawDate=value('createtime')||
     (isThreads?row.media?.find?.(item=>item?.creation_timestamp)?.creation_timestamp:null)||
     (isFacebook?facebookBackupTimestamp(row):null);
-  const createdAt=parseImportCreatedTime(rawDate)||extractImportCreatedAt(row);
+  const originalCreatedAt=parseImportCreatedTime(rawDate)||extractImportCreatedAt(row);
+  const editedAt=originalCreatedAt?null:extractImportUpdatedAt(row);
+  // A source edit timestamp is fallback evidence only; rows with neither
+  // source time are assigned a distinct database-safe time before insertion.
+  const createdAt=originalCreatedAt||editedAt||null;
+  const importTimeSource=originalCreatedAt?'creation':editedAt?'update':'missing';
   // Platform-owned IDs are resolved by the selected source ZModel, not by
   // another Meta-specific fallback order in the UI.
   const originalSiteId=value('site_id');
@@ -212,6 +217,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     title:(isThreads||!rawTitle)?Array.from(content).slice(0,10).join(''):resolveGalaxyTitle(rawTitle,content),
     content,
     createtime:createdAt,
+    __importTimeSource:importTimeSource,
     location:sourcePlace||null,
     ...(explicitCheckin?{__importCheckin:true}:{}),
     ...(importedCoordinates?{__importCoordinates:importedCoordinates,
