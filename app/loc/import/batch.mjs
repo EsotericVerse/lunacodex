@@ -282,7 +282,7 @@ export function importRowsFromJson(payload,recordPath='',source=''){
 }
 
 // Preserve the original timestamp when available. Unix seconds and milliseconds
-// must not be confused; a missing/unreadable source timestamp gets import time.
+// must not be confused; missing timestamps are resolved at the final import boundary.
 export function parseImportCreatedTime(value){
   if(value===undefined||value===null||value==='')return null;
   const raw=typeof value==='string'?value.trim():value;
@@ -349,10 +349,6 @@ export function extractImportCreatedAt(value,depth=0){
   }
   return null;
 }
-export function withImportCreatedTime(record,importedAt=new Date().toISOString()){
-  return {...record,createtime:parseImportCreatedTime(record?.createtime)||importedAt};
-}
-
 // Adjust import write size by observed throughput while keeping requests bounded.
 export function createImportBatchSizer({
   initial=256,minimum=128,maximum=1200
