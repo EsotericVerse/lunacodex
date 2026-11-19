@@ -571,14 +571,9 @@ function AppShellInner({children,runtime}){
         :'/settings/?scopeid='+encodeURIComponent(navScopeId)}
   ];
 
-  // A page renders only after its own selected-language JSON is available.
-  if(!localeReady){
-    const error=uiLocaleLoadError(activeLocale,pathname);
-    return error?<main className="scope-main"><section className="scope-page">
-      <p role="alert">Unable to load interface language files.</p>
-      <button type="button" onClick={()=>window.location.reload()}>Retry</button>
-    </section></main>:<div className="loc-loading" role="status">Loading interface…</div>;
-  }
+  // The fixed frame must never wait for a locale HTTP request or unrelated
+  // Bootstrap state. Page copy still updates when its JSON becomes available.
+  // A failed/hanging locale request leaves the bundled Chinese shell usable.
   return <UiLocaleProvider locale={activeLocale} pathname={pathname}>
     <ScopePageCopy scopeId={localNavigation?'local':scopeId}
       display_name={localNavigation?'本機銀河':configRow?.display_name||registryRow?.display_name}
