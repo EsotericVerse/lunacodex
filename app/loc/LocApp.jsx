@@ -14,34 +14,49 @@ import ManagementAccess from './management/ManagementAccess';
 import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';
-const loading=()=> <div className="loc-loading"><UiText id="uiExtra.feature.moduleLoading"/></div>;
+// A dynamic feature's code can load later, but its Hero and content-frame
+// placeholder render immediately. Only the body inside the frame is pending.
+function FeatureFrameLoading({featureId}){
+  return <FeaturePage featureId={featureId}>
+    <section className="loc-card loc-feature-pending" aria-busy="true" role="status">
+      <span className="scope-status">正在載入頁面內容…</span>
+    </section>
+  </FeaturePage>;
+}
+const featureLoading=featureId=>()=> <FeatureFrameLoading featureId={featureId}/>;
+function HomeFrameLoading(){
+  const {scope}=useScopeRuntime();
+  return <main className="scope-main"><section className="scope-page">
+    <header className="loc-card scope-hero" aria-busy="true">
+      <p className="loc-eyebrow">LOC</p>
+      <h1>{scope?.label||'月典'}</h1>
+    </header>
+    <section className="loc-card loc-feature-pending" aria-busy="true" role="status">
+      <span className="scope-status">正在載入首頁內容…</span>
+    </section>
+  </section></main>;
+}
+const loading=()=> <HomeFrameLoading/>;
 // Scope feature switches gate public access even for an admin; identity never overrides publication.
 // Heavy visualizations and editors should load only when their own page opens.
 // Each home and group capability is independently loaded for its actual route.
 const AboutView=dynamic(()=>import('./views/AboutView'),{loading});
 const AuthorHomeView=dynamic(()=>import('./views/AuthorHomeView'),{loading});
-const AdminHomeView=dynamic(()=>import('./views/AdminHomeView'),{loading});
+const AdminHomeView=dynamic(()=>import('./views/AdminHomeView'),{loading:featureLoading('admin')});
 const GenericScopeHomeView=dynamic(()=>import('./views/GenericScopeHomeView'),{loading});
 const ScopeGroupOverview=dynamic(()=>import('./scope/ScopeGroupOverview'),{loading});
-const Statistics=dynamic(()=>import('../modular/features/Statistics').catch(recoverChunkOnce),{
-  // The Statistics chunk can be delayed after leaving Edit Dock. Keep the
-  // public Hero visible during module loading instead of replacing it with
-  // a blank-page placeholder. Recover stale deployment chunks once.
-  loading:()=> <FeaturePage featureId="statics">
-    <div className="loc-loading" role="status"><UiText id="uiExtra.feature.moduleLoading"/></div>
-  </FeaturePage>
-});
-const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading});
-const Culture=dynamic(()=>import('../modular/features/Culture'),{loading});
-const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading});
-const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading});
-const SearchManagement=dynamic(()=>import('./search/SearchManagement'),{loading});
-const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
+const Statistics=dynamic(()=>import('../modular/features/Statistics').catch(recoverChunkOnce),{loading:featureLoading('statics')});
+const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading:featureLoading('statics')});
+const Culture=dynamic(()=>import('../modular/features/Culture'),{loading:featureLoading('culture')});
+const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading:featureLoading('culture')});
+const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading:featureLoading('search')});
+const SearchManagement=dynamic(()=>import('./search/SearchManagement'),{loading:featureLoading('search')});
+const Trace=dynamic(()=>import('../modular/features/Trace'),{loading:featureLoading('trace')});
 const RunesHomeView=dynamic(()=>import('./views/LrsPortalView'),{loading});
-const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading});
-const SourceManagementView=dynamic(()=>import('./source/LocSourceManagement'),{loading});
-const KeywordManagementView=dynamic(()=>import('./keywords/ui/LocKeywordManagementPage'),{loading});
-const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading});
+const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading:featureLoading('manage')});
+const SourceManagementView=dynamic(()=>import('./source/LocSourceManagement'),{loading:featureLoading('culture')});
+const KeywordManagementView=dynamic(()=>import('./keywords/ui/LocKeywordManagementPage'),{loading:featureLoading('statics')});
+const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading:featureLoading('setting')});
 const LocalScopeWorkspace=dynamic(()=>import('./local/Workspace'),{loading});
 
 const VIEWS={
