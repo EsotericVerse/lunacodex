@@ -174,7 +174,7 @@ const taipeiDate=new Intl.DateTimeFormat('sv-SE',{
   timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'
 });
 export async function matchExistingImportByCreatedAt(records,{
-  readSourceRows,onProgress
+  readSourceRows,onProgress,excludeSavedUids=new Set()
 }={}){
   if(typeof readSourceRows!=='function')
     throw new TypeError('Missing indexed source/date Galaxy reader');
@@ -211,7 +211,8 @@ export async function matchExistingImportByCreatedAt(records,{
     });
     for(const key of group.wanted){
       const incoming=requested.get(key)||[];
-      const candidates=[...(stored.get(key)?.values()||[])];
+      const candidates=[...(stored.get(key)?.values()||[])]
+        .filter(row=>!excludeSavedUids.has(String(row.uid)));
       // A single true timestamp maps to a single existing source post.
       // If historic data has duplicate timestamps, do not choose randomly.
       if(incoming.length===1&&candidates.length===1)
