@@ -3,8 +3,7 @@ import UiText from '../../../i18n/UiText';
 import FieldText from '../../../i18n/FieldText';
 import {normalizeUiLocale,UI_LOCALE_OPTIONS} from '../../../i18n/ui-copy';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useQueryClient} from '../../../../packages/zenstack/client-queries';
-import {invalidateAppBootstrapMetadata} from '../../runtime/app-bootstrap';
+import {invalidatePublicScopeMetadata} from '../../scope/scope-data';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 import dynamic from 'next/dynamic';
 import {duplicateDomainLabelError} from '../../../modular/routing/scope-registry';
@@ -47,7 +46,6 @@ async function readAdminScopeConfig(scopeId,{attempts=7}={}){
 }
 
 function useAdminScopeData(){
-  const queryClient=useQueryClient();
   const [registry,setRegistry]=useState([]);
   const [mappings,setMappings]=useState([]);
   const [originalMappings,setOriginalMappings]=useState([]);
@@ -110,8 +108,7 @@ function useAdminScopeData(){
   return {
     registry,setRegistry,mappings,setMappings,originalMappings,configs,setConfigs,status,setStatus,
     refresh:()=>{
-      invalidateAppBootstrapMetadata();
-      void queryClient.invalidateQueries({queryKey:['app-bootstrap']});
+      invalidatePublicScopeMetadata();
       setRevision(value=>value+1);
     }
   };
