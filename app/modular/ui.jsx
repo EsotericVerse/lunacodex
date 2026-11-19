@@ -58,12 +58,9 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const artworkId=managementMode?'manage':featureId;
   const heroClassName='loc-card scope-hero scope-feature-hero'+(HomeBlock.FEATURE_HERO_ORDER[artworkId]?' scope-feature-hero--artwork scope-feature-hero--'+artworkId:'');
   const hasFeatureHero=Boolean(HomeBlock.FEATURE_HERO_ORDER[featureId]);
-  // Management entries share a single editable image and independently saved
-  // text. The Admin and Personal Settings landing Heroes stay separate.
-  // Admin / Settings / protected management entry Heroes use live, persisted
-  // records. The four public browsing Heroes keep their published JS snapshots
-  // until the owner deliberately republishes; no ISR/deployment is triggered.
-  const adminHero=featureId==='admin'||featureId==='setting';
+  // Public Heroes (including Admin/Settings landing pages) read published
+  // presentation assets. Only an explicitly opened management workspace uses
+  // live authoring data; no Auth or SQL is needed to render a public Hero.
   const groupHeroPage=HomeBlock.featureHeroPageFor(featureId);
   const scopeHeroPage='scope_'+featureId;
   // Public Hero title, copy and image URL are already published. Read
@@ -72,26 +69,12 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const publicHeroQuery=useAsyncResource(['published-feature-hero',featureId],
     async()=>[...await loadPublishedBlocks('loc',groupHeroPage),
       ...await loadPublishedBlocks('loc',scopeHeroPage)],{
-      enabled:!managementMode&&!adminHero&&(sharedEnabled||hasFeatureHero),
+      enabled:!managementMode&&(sharedEnabled||hasFeatureHero||featureId==='admin'||featureId==='setting'),
       shareResult:true
     });
-  const adminHeroQuery=useAsyncResource(['scope-blocks-live','loc',groupHeroPage],
-    ()=>selectLiveScopeBlocks('loc',groupHeroPage),{
-      enabled:!managementMode&&adminHero
-    });
-  // Admin uses group_admin for its configured image. Personal Settings uses
-  // scope_setting for its separate image (group_setting stores its copy).
-  const settingImageQuery=useAsyncResource(['scope-blocks-live','loc',scopeHeroPage],
-    ()=>selectLiveScopeBlocks('loc',scopeHeroPage),{
-      enabled:!managementMode&&featureId==='setting'
-    });
   const publishedRows=publicHeroQuery.data||[];
-  const groupHeroRows=adminHero
-    ?adminHeroQuery.data||[]
-    :publishedRows.filter(row=>row.page_name===groupHeroPage);
-  const scopeHeroRows=adminHero
-    ?(featureId==='setting'?settingImageQuery.data||[]:[])
-    :publishedRows.filter(row=>row.page_name===scopeHeroPage);
+  const groupHeroRows=publishedRows.filter(row=>row.page_name===groupHeroPage);
+  const scopeHeroRows=publishedRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   const managementTextQuery=useAsyncResource(['scope-blocks-live','loc',managementTextPage],
