@@ -116,7 +116,7 @@ function rememberActiveTheme(themeId){
   if(!THEME_SLOTS.some(slot=>slot.id===themeId))return;
   try{window.sessionStorage.setItem(LAST_ACTIVE_THEME_KEY,themeId);}catch{}
 }
-function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride='',pageName='index'}){
+function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride='',pageName='index',routeKey=''}){
   const reduceMotion=useReducedMotion();
   const scope=scopeMeta||getScope(String(scopeId||'').trim());
   // Scope defaults are owned by the Scope config table; the game route alone
@@ -174,7 +174,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     // A manually selected Theme is a one-page preview, not a saved preference.
     setSelection({scopeId,themeId:SYSTEM_THEME_ID});
     setAccentPulse(0);
-  },[scopeId]);
+  },[scopeId,routeKey]);
 
   return <label className="scope-theme-control">
     <span>{copy.common.theme}</span>
@@ -643,7 +643,7 @@ function AppShellInner({children,runtime}){
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">
         <a href="mailto:sopa2306@gmail.com">{copy.nav.contact}</a>
-        {(!isSettings||runtime.locationMounted)?<ThemeSelect scopeId={themeScopeId} scopeMeta={themeScopeId===scopeId?currentScope:getScope(themeScopeId)} copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName}/>:null}
+        {(!isSettings||runtime.locationMounted)?<ThemeSelect scopeId={themeScopeId} scopeMeta={themeScopeId===scopeId?currentScope:getScope(themeScopeId)} copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName} routeKey={pathname}/>:null}
         <LanguageSelect
           locale={activeLocale}
           copy={copy}
