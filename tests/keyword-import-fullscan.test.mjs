@@ -254,3 +254,14 @@ test('missing createtime uses source update time; wholly undated rows reach fina
   });
   assert.equal(row.createtime,'2026-11-20T02:12:00.000000Z');
 });
+
+test('existing Galaxy UID already claimed by source ID is not matched twice by timestamp',async()=>{
+  const row={uid:'INPU0001',site:'Threads',createtime:'2026-11-20T02:12:00Z'};
+  const saved={uid:'SAVE0001',site:'Threads',createtime:row.createtime};
+  const matches=await matchExistingImportByCreatedAt([row],{
+    excludeSavedUids:new Set(['SAVE0001']),
+    readSourceRows:async({consumePage})=>consumePage([saved])
+  });
+  assert.equal(matches.size,0);
+  assert.deepEqual(matches.ambiguous,[]);
+});
