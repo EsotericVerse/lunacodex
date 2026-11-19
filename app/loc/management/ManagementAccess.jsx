@@ -3,10 +3,9 @@ import {useCallback,useEffect,useState} from 'react';
 import {useAccount,readVerifiedManagementEntry} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
-import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../auth/edit-session-ttl.mjs';
+import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {dbAuthEvents} from '../db/db-client.mjs';
 import {verifyManagementEntry} from '../auth/management-entry-verification.mjs';
-import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';
 
 const granted=(grants,id,level)=>level==='global'
   ?Boolean(grants?.canLocAccessSync('global'))
@@ -26,22 +25,13 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     :(readVerifiedManagementEntry()||account.refresh()),[account.refresh]);
 
   useEffect(()=>{
-    // Entry barrier: before any managed editor data mounts, retire the old
-    // page's pending query generation and everything except identity/grants.
-    releaseTransientPageResources();
-  },[scopeId,level,featureId]);
-
-  useEffect(()=>{
     let active=true;
     // Only entry or an explicit retry verifies the editing Session.
     setVerification(pending());
     void verifyManagementEntry(retryAttempt>0?account.refresh:check).then(result=>{
       if(!active)return;
-      if(retryAttempt>0&&result?.user&&granted(result.authorizer,scopeId,level)){
-        clearEditorSession(window.sessionStorage);
-        if(!touchEditorSession(window.sessionStorage))
-          throw Error('無法重新啟用編輯 Session');
-      }
+      // account.refresh() already records a verified management snapshot.
+      // Clearing the Session here would erase it before the next page opens.
       setVerification({loading:false,user:result?.user||null,
         authorizer:result?.authorizer||null,error:''});
     }).catch(cause=>{
