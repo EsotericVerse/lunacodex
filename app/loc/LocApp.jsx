@@ -14,11 +14,42 @@ import ManagementAccess from './management/ManagementAccess';
 import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';
+// Tiny, CSS-only marks live only inside the already-existing loading slot.
+// No assets, libraries, timers, layout shifts, or delayed navigation.
+function FeatureLoadingMark({featureId}){
+  if(featureId==='culture')return <svg className="loc-pending-mark loc-pending-culture"
+    viewBox="0 0 88 42" fill="none" aria-hidden="true">
+    <path d="M2 13C18 13 18 30 34 30S51 13 67 13H86"/>
+    <path d="M2 24C18 24 18 8 34 8S51 25 67 25H86"/>
+  </svg>;
+  if(featureId==='statics')return <span className="loc-pending-mark loc-pending-statics" aria-hidden="true">
+    <span>1 4 7</span><span>2 5 8</span><span>3 6 9</span>
+  </span>;
+  if(featureId==='trace')return <svg className="loc-pending-mark loc-pending-trace"
+    viewBox="0 0 88 42" fill="none" aria-hidden="true">
+    <path className="loc-pending-map" d="M8 9L30 5L54 11L80 6V33L56 37L32 31L8 36Z"/>
+    <path className="loc-pending-map-fold" d="M30 5L32 31M54 11L56 37"/>
+    <path className="loc-pending-pin" d="M45 11C38 11 38 20 45 28C52 20 52 11 45 11Z"/>
+    <circle className="loc-pending-pin" cx="45" cy="18" r="2.2"/>
+  </svg>;
+  if(featureId==='search')return <svg className="loc-pending-mark loc-pending-search"
+    viewBox="0 0 88 42" fill="none" aria-hidden="true">
+    <g className="loc-pending-bulb">
+      <path d="M20 17C20 9 33 9 33 17C33 22 29 23 29 27H24C24 23 20 22 20 17Z"/>
+      <path d="M24 30H29M25 33H28"/>
+    </g>
+    <g className="loc-pending-lens">
+      <circle cx="59" cy="18" r="10"/><path d="M66 25L77 36"/>
+    </g>
+  </svg>;
+  return null;
+}
 // A dynamic feature's code can load later, but its Hero and content-frame
 // placeholder render immediately. Only the body inside the frame is pending.
 function FeatureFrameLoading({featureId}){
   return <FeaturePage featureId={featureId}>
     <section className="loc-card loc-feature-pending" aria-busy="true" role="status">
+      <FeatureLoadingMark featureId={featureId}/>
       <span className="scope-status">正在載入頁面內容…</span>
     </section>
   </FeaturePage>;
