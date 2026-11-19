@@ -1,6 +1,8 @@
-// Pages Function public numeric acceleration, not Next.js ISR.
-// Auto-cache only repeated eligible numbers. Never cache Auth, private data,
-// management metadata, or SQL permissions. LOC_NUMERIC_EDGE_CACHE=0 disables it.
+// OPTIONAL Pages Function numeric accelerator, not Next.js ISR.
+// Default OFF: live numeric data cannot use an expiration timer as its source
+// of truth. Published data and save-invalidated client snapshots remain
+// the normal semi-dynamic path. Existing explicit opt-in stays compatible.
+// Never cache Auth, private data, management metadata or SQL permissions.
 // The existing ZenStack/Kysely reader is ALWAYS the authoritative fallback.
 // No SQL dialect hook, database revision table, polling, or new service.
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
@@ -13,22 +15,6 @@ const CACHED_KINDS=new Set(['daily_total','totals','loc']);
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 
-// Only primitive, validated PUBLIC keys are observed across warm isolate
-// requests. No HTTP response, Cookie, connection or request-owned object is
-// retained. Cold/one-off numbers bypass Cache API entirely.
-const HOT_WINDOW_MS=45000;
-const MAX_OBSERVED_KEYS=128;
-const observed=new Map();
-function repeatedPublicRead(key){
-  const timestamp=Date.now();
-  const last=observed.get(key);
-  const count=last&&timestamp-last.at<=HOT_WINDOW_MS?last.count+1:1;
-  observed.delete(key);
-  observed.set(key,{count,at:timestamp});
-  if(observed.size>MAX_OBSERVED_KEYS)
-    observed.delete(observed.keys().next().value);
-  return count>1;
-}
 
 // Validate the public route BEFORE any cache hit. The Pages runtime and
 // committed published feature index remain the authority for the response.
@@ -94,17 +80,15 @@ function clientResponse(cached){
  * advertise this as Next.js ISR. It is a bounded best-effort edge accelerator.
  */
 export async function withOptionalNumericEdgeCache(context,read){
-  const mode=String(context?.env?.LOC_NUMERIC_EDGE_CACHE||'auto').toLowerCase();
-  if(['0','off','false'].includes(mode))return read();
+  // Explicit legacy opt-in only. Without cross-isolate invalidation, an
+  // automatic TTL cache would cause stale numbers and periodic SQL misses.
+  if(context?.env?.LOC_NUMERIC_EDGE_CACHE!=='1')return read();
   // No waitUntil => no asynchronous fill; don't add an extra cache lookup.
   if(typeof context?.waitUntil!=='function'||typeof caches==='undefined'||
      !caches?.default?.match||!caches.default.put)
     return read();
   const key=publicNumericCacheKey(context.request,context.env);
   if(!key)return read();
-  // Explicit 1 preserves existing opt-in behavior. With default 'auto',
-  // avoid Cache API work for isolated/single-use numeric reads.
-  if(mode!=='1'&&!repeatedPublicRead(key))return read();
   const cache=caches.default;
   try{
     const hit=await cache.match(key);
