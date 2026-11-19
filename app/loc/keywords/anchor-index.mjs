@@ -199,10 +199,25 @@ export async function storeScopePatternMatches(trx,scope,incoming=[]){
   }
   if(seen.size!==patterns.length)
     throw Error('Incomplete full-scope Pattern posting batch');
-  for(let i=0;i<updates.length;i+=100)
-    await trx.insertInto(table).values(updates.slice(i,i+100))
+  // Large Pattern postings can be hundreds of kilobytes each. Bound each
+  // SQL parameter payload by bytes as well as rows, inside the same atomic
+  // transaction; one 100-row INSERT must never serialize tens of megabytes.
+  const maxBatchBytes=256*1024;
+  let batch=[],bytes=0;
+  const flush=async()=>{
+    if(!batch.length)return;
+    await trx.insertInto(table).values(batch)
       .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({
         attr:eb.ref('excluded.attr'),num:eb.ref('excluded.num')
       }))).execute();
+    batch=[];bytes=0;
+  };
+  for(const row of updates){
+    const size=row.attr.length*2+row.title.length*2+64;
+    if(batch.length&&(batch.length>=100||bytes+size>maxBatchBytes))
+      await flush();
+    batch.push(row);bytes+=size;
+  }
+  await flush();
   return {changed:updates.length,indexed:incoming.length};
 }
