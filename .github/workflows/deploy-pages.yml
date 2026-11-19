@@ -2,6 +2,8 @@
 name: Deploy Main Next to GitHub Pages
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -9,8 +11,8 @@ permissions:
   pages: write
   id-token: write
 
-# Manual GitHub Pages fallback only. Cloudflare Pages owns automatic preview/main deployment.
-# Do not re-enable push here: this would create a second build on every main merge.
+# LOC-owned GitHub Pages production publication from main, with manual retry.
+# GitHub is the release controller; no Cloudflare token, DNS change or Worker grant.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -33,6 +35,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+
+      - name: Verify LOC public service links
+        run: node --test scripts/test-loc-service-routes.mjs
 
       - name: Build static export
         shell: bash
