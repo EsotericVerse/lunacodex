@@ -1295,6 +1295,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // Rows using UpdateTime fallback skip this matcher.
       const matchesByTime=unresolved.length?
         await matchExistingImportByCreatedAt(unresolved,{
+          excludeSavedUids:new Set([
+            ...matchesById.values(),...byPrimaryUid.values()
+          ].map(row=>String(row.uid))),
           onProgress:p=>showProgress('依來源與建立時間比對',p.completed,p.total),
           readSourceRows:async({site,fromDate,toDate,consumePage})=>{
             const pageSize=250;
