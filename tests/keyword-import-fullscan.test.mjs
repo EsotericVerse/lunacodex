@@ -255,6 +255,52 @@ test('missing createtime uses source update time; wholly undated rows reach fina
   assert.equal(row.createtime,'2026-11-20T02:12:00.000000Z');
 });
 
+
+test('precise source microseconds remain separate even within one millisecond',()=>{
+  const make=(uid,createtime)=>({
+    uid,site:'Threads',createtime,title:'不同篇',content:'文字'
+  });
+  const result=dedupeIncomingImport([
+    make('SOURCE01','2026-11-20T02:12:00.123001Z'),
+    make('SOURCE02','2026-11-20T02:12:00.123002Z')
+  ]);
+  assert.equal(result.unique.length,2);
+});
+
+test('a bumped saved microsecond reimport matches only one original millisecond candidate',async()=>{
+  const incoming=[{
+    uid:'INPUT001',site:'Threads',createtime:'2026-11-20T02:12:00.123Z'
+  }];
+  const bumped=[{
+    uid:'SAVED001',site:'Threads',createtime:'2026-11-20T02:12:00.123002Z'
+  }];
+  const matches=await matchExistingImportByCreatedAt(incoming,{
+    readSourceRows:async({consumePage})=>consumePage(bumped)
+  });
+  assert.equal(matches.get('INPUT001')?.uid,'SAVED001');
+  const ambiguous=await matchExistingImportByCreatedAt(incoming,{
+    readSourceRows:async({consumePage})=>consumePage([
+      ...bumped,{uid:'SAVED002',site:'Threads',
+        createtime:'2026-11-20T02:12:00.123003Z'}
+    ])
+  });
+  assert.equal(ambiguous.has('INPUT001'),false);
+  assert.equal(ambiguous.ambiguous.length,1);
+});
+
+test('large same-UpdateTime batches allocate unique microseconds without repeated scans',()=>{
+  const original='2026-11-20T02:12:00.123Z';
+  const rows=Array.from({length:2000},(_,i)=>({
+    uid:String(i).padStart(8,'0'),createtime:original,
+    __importTimeSource:'update'
+  }));
+  const allocated=finalizeImportCreatedTimes(rows,{
+    fallbackTime:original,occupiedTimes:[original]
+  });
+  assert.equal(new Set(allocated.map(row=>row.createtime)).size,rows.length);
+  assert.ok(allocated.every(row=>row.date==='2026-11-20'));
+});
+
 test('existing Galaxy UID already claimed by source ID is not matched twice by timestamp',async()=>{
   const row={uid:'INPU0001',site:'Threads',createtime:'2026-11-20T02:12:00Z'};
   const saved={uid:'SAVE0001',site:'Threads',createtime:row.createtime};
