@@ -4,12 +4,11 @@ import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
-import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../auth/edit-session-ttl.mjs';
+import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
-import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';
 // Group member display-name editing lives in the Group People/Works page.
 // Admin keeps only privileged registry provisioning and system configuration.
 
@@ -30,9 +29,8 @@ export default function AdminHomeView({scopeGroup}){
   const UI_COPY=useUiCopy();
   const account=useAccount();
   const editDock=useEditDock();
-  // /admin/ has its own global-permission gate instead of ManagementAccess.
-  // Run the same old-page disposal before loading any admin editor.
-  useEffect(()=>{releaseTransientPageResources();},[]);
+  // /admin/ uses its existing global-permission gate; the shared route
+  // boundary already handles old-page resource disposal.
   const [entryVerified,setEntryVerified]=useState(false);
   const [loginDenied,setLoginDenied]=useState(false);
   const [retrying,setRetrying]=useState(false);
@@ -81,9 +79,8 @@ export default function AdminHomeView({scopeGroup}){
         setLoginDenied(true);setEntryVerified(false);
         return;
       }
-      clearEditorSession(window.sessionStorage);
-      if(!touchEditorSession(window.sessionStorage))
-        throw Error('無法重新啟用編輯 Session');
+      // account.refresh() has already created or retained the existing
+      // verified management Session. Never erase it after verification.
       setLoginDenied(false);
       setEntryVerified(true);
       editDock?.begin('loc',{globalManage:true});
