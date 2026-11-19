@@ -172,7 +172,10 @@ export function loadUiLocale(locale=UI_LOCALE,pathname='/'){
 }
 export function uiCopy(locale=UI_LOCALE,pathname='/'){
   const key=localeKey(locale,pathname);
-  return loadedPages.get(key)||UI_DICTIONARIES[normalizeUiLocale(locale)]||EMPTY_COPY;
+  // A previously visited route's dictionary must never become another route's
+  // temporary copy while its own JSON is loading. Reuse only the common,
+  // synchronously published base until the exact page key is ready.
+  return loadedPages.get(key)||EMPTY_COPY;
 }
 export function featureSection(locale,section,defaults={}){
   return uiCopy(locale).featureCopy?.[section]||defaults;
