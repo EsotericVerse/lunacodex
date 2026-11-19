@@ -81,5 +81,5 @@ console.log('[locale-field-audit] '+JSON.stringify({
   sourceFiles:sourceFiles.length,
   notFoundInSource:unmatched.length,
   // A static code scan does not prove these are safe to delete.
-  candidates:unmatched.slice(0,85)
+  candidates:unmatched
 }));
