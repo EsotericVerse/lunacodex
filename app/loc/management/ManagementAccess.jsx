@@ -12,12 +12,21 @@ const granted=(grants,id,level)=>level==='global'
   :level==='group'?Boolean(grants?.canLocAccessSync('group',id))
   :Boolean(grants?.canLocAccessSync('scope',id));
 const pending=()=>({loading:true,user:null,authorizer:null,error:''});
+const verifiedUiState=entry=>({
+  loading:false,user:entry?.user||null,
+  authorizer:entry?.authorizer||null,error:''
+});
 
 // Each protected management entry verifies Scope permission before rendering
 // editing controls. An OAuth session alone never grants LOC Scope access.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
-  const [verification,setVerification]=useState(pending);
+  // An already-verified Session is usable from the very first render.
+  // Do not flash a permission-loading page during ordinary navigation.
+  const [verification,setVerification]=useState(()=>{
+    const saved=readVerifiedManagementEntry();
+    return saved?verifiedUiState(saved):pending();
+  });
   const [locked,setLocked]=useState(false);
   const [retryAttempt,setRetryAttempt]=useState(0);
   const check=useCallback(()=>editorSessionStatus(window.sessionStorage).expired
@@ -26,14 +35,18 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
 
   useEffect(()=>{
     let active=true;
-    // Only entry or an explicit retry verifies the editing Session.
+    // A current verified UI Session has no permission request, state reset,
+    // or re-Grant on navigation. Explicit Retry always goes to the server.
+    const saved=retryAttempt===0?readVerifiedManagementEntry():null;
+    if(saved){
+      setVerification(current=>current.user?.id===saved.user?.id&&
+        current.authorizer===saved.authorizer?current:verifiedUiState(saved));
+      return()=>{active=false;};
+    }
     setVerification(pending());
     void verifyManagementEntry(retryAttempt>0?account.refresh:check).then(result=>{
       if(!active)return;
-      // account.refresh() already records a verified management snapshot.
-      // Clearing the Session here would erase it before the next page opens.
-      setVerification({loading:false,user:result?.user||null,
-        authorizer:result?.authorizer||null,error:''});
+      setVerification(verifiedUiState(result));
     }).catch(cause=>{
       if(!active)return;
       setVerification({loading:false,user:null,authorizer:null,
