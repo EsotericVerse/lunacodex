@@ -76,8 +76,8 @@ export function useScopeRuntime(){
     scopeId,scope,
     host:location.host,pathname,search:location.search,locationMounted:location.mounted,
     dynamic,registryRow:activeRegistryRow,
-    registryResolved:!dynamic||Boolean(activeRegistryRow),
-    registryError:dynamic&&!activeRegistryRow?'Scope Registry 未發布此 Scope。':'',
+    registryResolved:location.mounted||!dynamic,
+    registryError:dynamic&&location.mounted&&!activeRegistryRow?'Scope Registry 未發布此 Scope。':'',
     configRow:activeConfigRow
   };
 }
