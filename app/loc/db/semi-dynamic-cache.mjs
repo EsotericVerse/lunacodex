@@ -10,7 +10,12 @@
 // business going through this file at all — read it once as a plain
 // static value instead (see app/loc/scope/scope-data.js's own Maps, which
 // follow this same forever-until-invalidated shape for public reads).
-const entries=new Map(); // key -> promise
+const entries=new Map(); // small, explicit-save management snapshots
+const aggregateEntries=new Map(); // published/aggregate reads, LRU only
+// A memory safety bound, NOT a time-to-live or a resource percentage.
+// Entries outside the working set are reloaded on demand if visited again.
+const MAX_AGGREGATE_KEYS=96;
+const cacheFor=key=>key.startsWith('scope-aggregate:')?aggregateEntries:entries;
 
 /**
  * Read `key`, sharing one in-flight/resolved promise across every caller
@@ -19,28 +24,36 @@ const entries=new Map(); // key -> promise
  */
 export function cachedRead(key,fetcher){
   const cacheKey=String(key||'');
-  const existing=entries.get(cacheKey);
-  if(existing)return existing;
+  const cache=cacheFor(cacheKey);
+  const existing=cache.get(cacheKey);
+  if(existing){
+    if(cache===aggregateEntries){cache.delete(cacheKey);cache.set(cacheKey,existing);}
+    return existing;
+  }
   let promise;
   promise=Promise.resolve().then(fetcher).catch(error=>{
     // A failed old read must not remove a newer snapshot started after save.
-    if(entries.get(cacheKey)===promise)entries.delete(cacheKey);
+    if(cache.get(cacheKey)===promise)cache.delete(cacheKey);
     throw error;
   });
-  entries.set(cacheKey,promise);
+  cache.set(cacheKey,promise);
+  if(cache===aggregateEntries)while(cache.size>MAX_AGGREGATE_KEYS)
+    cache.delete(cache.keys().next().value);
   return promise;
 }
 
 /** Drop one cached key. Call this right after a save for that key succeeds. */
 export function invalidateCachedRead(key){
-  entries.delete(String(key||''));
+  const cacheKey=String(key||'');
+  cacheFor(cacheKey).delete(cacheKey);
 }
 
 /** Drop every cached key starting with `prefix` (e.g. a scope id). */
 export function invalidateCachedReadPrefix(prefix){
   const text=String(prefix||'');
-  for(const key of [...entries.keys()])
-    if(key.startsWith(text))entries.delete(key);
+  for(const cache of [entries,aggregateEntries])
+    for(const key of [...cache.keys()])
+      if(key.startsWith(text))cache.delete(key);
 }
 
 /**
