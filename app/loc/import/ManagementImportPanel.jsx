@@ -23,7 +23,7 @@ import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from
 import {archiveGalaxyRows} from '../archive/caption-rows.mjs';
 import {facebookPostPlace} from '../archive/geo-objects.mjs';
 
-import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCreatedAt,readImportCandidatesByTimeWindows,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
+import {dedupeIncomingImport,matchExistingImportBySiteId,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
 import {importTimeRangeWindow,filterImportAnalysisByTime} from './time-range.mjs';
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './place-anchors.mjs';
 import {prepareImportTimeAnchors} from './time-anchors.mjs';
@@ -1221,61 +1221,6 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const incoming=dedupeIncomingImport(analyzed.valid);
       let unique=incoming.unique;
       let duplicateCount=incoming.duplicates;
-      // The pool is this site's saved rows inside the incoming time span, which
-      // already sits inside the selected import range. Only uid + createtime are
-      // read for the span; full rows are read by UID for real timestamp matches.
-      const readSiteSpan=async(site,start,end)=>{
-        // Strict timestamp cursor: the extra boundary row detects a tied
-        // timestamp split across pages. Fetch that entire tie as one group,
-        // then advance to the next timestamp. UID is only an identity check.
-        // Read every matched timestamp window; only the transport page is sized.
-        const pageSize=999,rows=[],seenUids=new Set();
-        let after=null;
-        const append=page=>{
-          for(const row of page){
-            const uid=String(row.uid||'');
-            if(!uid||seenUids.has(uid))
-              throw Error('時間區間 SELECT 出現重複或無效文章 UID，已停止匯入以避免漏比對');
-            seenUids.add(uid);rows.push(row);
-          }
-        };
-        for(;;){
-          let query=dbAuthRelation(galaxy).select(GALAXY_IMPORT_TIME_COLUMNS)
-            .ieq('site',site).gte('createtime',start).lte('createtime',end);
-          if(after!==null)query=query.gt('createtime',after);
-          const {data,error}=await query.order('createtime',{ascending:true})
-            .range(0,pageSize); // pageSize rows plus one timestamp probe
-          if(error)throw Error('createtime 比對失敗：'+error.message);
-          const found=data||[];
-          if(!found.length)break;
-          const page=found.slice(0,pageSize);
-          const boundary=String(page[page.length-1]?.createtime||'');
-          if(!boundary)throw Error('比對資料缺少建立時間，已停止匯入');
-          const probe=found[pageSize];
-          if(probe&&String(probe.createtime||'')===boundary){
-            // Every tied row is consumed together, never split by OFFSET.
-            const beforeBoundary=page.filter(row=>String(row.createtime)!==boundary);
-            append(beforeBoundary);
-            // Even thousands of records sharing one timestamp must all be
-            // compared. The 1,000-record write batch is not a SELECT ceiling.
-            const tiePageSize=1000;
-            for(let tieOffset=0;;){
-              const {data:tied,error:tieError}=await dbAuthRelation(galaxy)
-                .select(GALAXY_IMPORT_TIME_COLUMNS)
-                .ieq('site',site).eq('createtime',boundary)
-                .order('uid',{ascending:true})
-                .range(tieOffset,tieOffset+tiePageSize-1);
-              if(tieError)throw Error('相同建立時間的文章比對失敗：'+tieError.message);
-              if(!(tied||[]).length)break;
-              append(tied);
-              tieOffset+=tied.length;
-            }
-          }else append(page);
-          after=boundary;
-          if(found.length<=pageSize)break;
-        }
-        return rows;
-      };
       const readRowsByUid=async uids=>{
         const rows=[];
         for(const batch of urlSafeInBatches(uids,'uid')){
@@ -1318,26 +1263,27 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const ambiguousById=matchesById.ambiguous||[];
       const ambiguousByIdUids=new Set(ambiguousById.map(row=>row.uid));
       const reservedSavedUids=new Set([...matchesById.values()].map(row=>String(row.uid)));
-      // Ambiguous site IDs must not fall through into timestamp matching,
-      // which could choose a different article and silently overwrite it.
-      const remaining=existingCandidates.filter(row=>
-        !matchesById.has(String(row.uid))&&!ambiguousByIdUids.has(String(row.uid)));
-      const existingByTime=remaining.length?await matchExistingImportByCreatedAt(remaining,{
-        onProgress:p=>showProgress('依網站與發文時間比對',p.completed,p.total),
-        readTimestamps:(times,consumePage,site,report)=>readImportCandidatesByTimeWindows(times,{
-          readWindow:(start,end)=>readSiteSpan(site,start,end),
-          readRowsByUid,consumePage,excludeUids:reservedSavedUids,
-          windowSize:1000,concurrency:times.length>=3000?3:1,onWindowDone:report
-        })
-      }):new Map();
-      const existingBySiteId=new Map([...existingByTime,...matchesById]);
-      // A same-site/same-createtime group that can't be matched to exactly one
-      // existing article is never inserted as new (that risks the duplicate
-      // this comparison exists to catch) and never allowed to abort the rest
-      // of the batch — it is excluded from this run and reported for manual
-      // review instead.
-      const ambiguousByTime=existingByTime.ambiguous||[];
-      const ambiguousGroups=[...ambiguousById,...ambiguousByTime];
+      // An imported UID can update only its own existing Galaxy row.
+      // Matching only by equal timestamps or normalized text could overwrite
+      // a different post, especially when punctuation or source IDs differ.
+      const remaining=existingCandidates.filter(record=>
+        !matchesById.has(String(record.uid))&&!ambiguousByIdUids.has(String(record.uid)));
+      const byPrimaryUid=new Map();
+      for(const batch of urlSafeInBatches(remaining.map(row=>String(row.uid)),'uid')){
+        const saved=await readRowsByUid(batch);
+        for(const stored of saved){
+          const incoming=remaining.find(row=>String(row.uid)===String(stored.uid));
+          if(!incoming)throw Error('UID 比對回傳不屬於本次匯入的文章');
+          if(String(stored.site||'').trim().toLowerCase()!==
+              String(incoming.site||'').trim().toLowerCase()||
+              stored.site_id&&incoming.site_id&&
+                String(stored.site_id)!==String(incoming.site_id))
+            throw Error('UID 主鍵已屬於其他來源文章：'+stored.uid);
+          byPrimaryUid.set(String(incoming.uid),stored);
+        }
+      }
+      const existingBySiteId=new Map([...byPrimaryUid,...matchesById]);
+      const ambiguousGroups=ambiguousById;
       if(ambiguousGroups.length){
         const ambiguousUids=new Set(ambiguousGroups.map(group=>group.uid));
         unique=unique.filter(record=>!ambiguousUids.has(String(record.uid)));
