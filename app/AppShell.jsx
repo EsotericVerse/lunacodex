@@ -24,7 +24,7 @@ import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.
 const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{loading:()=>null});
 import ScrollableScopeNav from './modular/ScrollableScopeNav';
-import ScopeLink,{isManagementHref} from './modular/ScopeLink';
+import ScopeLink from './modular/ScopeLink';
 
 const MOBILE_HOME_ID='myphone';
 const mobileHomeHref=native=>native?'/my-phone/index.html':'/';
@@ -353,19 +353,7 @@ function AppShellInner({children,runtime}){
     ?normalizeScopeId(new URLSearchParams(runtime.search||'').get('scopeid')):'';
   const themeScopeId=settingsScopeId&&settingsScopeId!=='admin'&&settingsScopeId!=='local'
     ?settingsScopeId:scopeId;
-  const protectedEditorRoute=isManagementHref(pathname)||/^\/admin(?:\/|$)/i.test(String(pathname||''));
   const editDock=useEditDock();
-  const [managementDenied,setManagementDenied]=useState(false);
-  useEffect(()=>{
-    setManagementDenied(false);
-    const denied=event=>{
-      if(event?.detail?.scopeId===scopeId||
-        (/^\/admin(?:\/|$)/i.test(String(pathname||''))&&event?.detail?.scopeId==='loc'))
-        setManagementDenied(true);
-    };
-    window.addEventListener('loc-management-entry-denied',denied);
-    return()=>window.removeEventListener('loc-management-entry-denied',denied);
-  },[pathname,scopeId]);
   useEffect(()=>{
     // Next can catch a failed lazy import before React reports the error.
     // Recover other failed chunk loads here, but never reload for SQL/RPC 404s.
@@ -500,7 +488,6 @@ function AppShellInner({children,runtime}){
       encodeURIComponent(key)+'='+encodeURIComponent(value);
   };
   const editingDockVisible=Boolean(editDock?.active&&editDock.scopeId===navScopeId);
-  const editDockPending=!editingDockVisible&&protectedEditorRoute&&!managementDenied;
   const locAdminEdit=navScopeId==='loc';
   const editSegments=String(pathname||'').split('/').filter(Boolean);
   const editSection=typeof window!=='undefined'
@@ -585,7 +572,7 @@ function AppShellInner({children,runtime}){
       {localCoreActive&&!localWorkspace?<main className="scope-main"><p className="scope-status" role="status">正在切換手機本機資料…</p></main>:children}
     </PageResourceBoundary>
     <motion.div layoutRoot className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
-      aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
+      aria-label={translateUiField(activeLocale,editingDockVisible?'編輯功能選單':'Scope 功能選單')}
       data-scope={localNavigation?'local':scopeId} data-local-core={localCoreActive?'active':undefined} data-action-count={editingDockVisible?editTabs.length:6}>
       {editingDockVisible?editTabs.map(tab=>tab.action
         ?<button type="button" key={tab.id} className="scope-edit-dock-action"
@@ -603,7 +590,6 @@ function AppShellInner({children,runtime}){
           :<button type="button" key={tab.id} disabled>
             <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
           </button>)
-      :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
       :<LayoutGroup id={'loc-six-key-dock-'+(localNavigation?'local':scopeId)}>
         {featureTabs.map(tab=>{
           const selected=tab.id==='settings'?isSettings:
