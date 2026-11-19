@@ -171,15 +171,16 @@ export async function selectLocSearchScopes(){
   // LOC Group membership is owned by api.manage, not by front-end routes.
   const members=await selectScopeGroupMemberIds('loc','search');
   const registry=await selectScopeRegistry({scopeKind:'scope'});
-  const scopes=await Promise.all(registry
+  // This is a public chooser, not an authoring read: flags and labels were
+  // already published with the site. Never fan out one SQL read per Scope.
+  return registry
     .filter(row=>row.active&&members.has(row.scope_id))
-    .map(async row=>{
-      const config=await selectScopeConfig(row.scope_id);
+    .map(row=>{
+      const config=publishedConfig(row.scope_id);
       if(!config||!scopeFeatureEnabled(config,'search'))return null;
       const scope=defaultScopeData(row.scope_id);
       return scope?{...scope,display_name:String(config.display_name||row.display_name||row.scope_id).trim()}:null;
-    }));
-  return scopes.filter(Boolean);
+    }).filter(Boolean);
 }
 
 // Group reads use explicitly published membership on ordinary pages; keep the
@@ -217,20 +218,18 @@ export async function selectScopeRegistryEntry(scopeId){
 
 export async function selectScopeGroupChildren(scopeId='loc'){
   const rows=await selectScopeRegistry({parentScopeId:scopeId});
-  return Promise.all(rows.map(async row=>{
+  // Group presentation uses the same published snapshot as the public route.
+  // Private Scope edits still use selectScopeConfig() on explicit entry.
+  return rows.map(row=>{
     if(row.scope_kind!=='scope')return row;
-    try{
-      const config=await selectScopeConfig(row.scope_id);
-      return {
-        ...row,
-        display_name:String(config?.display_name||row.display_name||row.scope_id).trim(),
-        search_intro:String(config?.search_intro||'').trim(),
-        search_aliases:Array.isArray(config?.search_aliases)?config.search_aliases:[]
-      };
-    }catch{
-      return row;
-    }
-  }));
+    const config=publishedConfig(row.scope_id);
+    return {
+      ...row,
+      display_name:String(config?.display_name||row.display_name||row.scope_id).trim(),
+      search_intro:String(config?.search_intro||'').trim(),
+      search_aliases:Array.isArray(config?.search_aliases)?config.search_aliases:[]
+    };
+  });
 }
 
 export async function selectManagedScope(scopeId){
