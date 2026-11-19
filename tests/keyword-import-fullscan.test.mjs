@@ -74,3 +74,41 @@ test('full scan emits one Pattern batch only after all Galaxy UIDs are read',asy
   assert.equal(result.reusedDocuments,0);
   assert.equal(result.parsedDocuments,2);
 });
+
+test('checkpoint resumes a full scan without publishing partial Pattern postings',async()=>{
+  const patterns=[{uid:'PTNR0001',pattern:'月光',uid_list:[],count:0}];
+  const articles=[
+    {uid:'GALA0001',title:'月光',content:'第一篇',keyword:true},
+    {uid:'GALA0002',title:'月光',content:'第二篇',keyword:true}
+  ];
+  const readMetadataPage=async({cursor})=>{
+    if(cursor===null)return {rows:[{uid:'GALA0001',keyword:true}],nextCursor:1};
+    if(cursor===1)return {rows:[{uid:'GALA0002',keyword:true}],nextCursor:2};
+    return {rows:[],nextCursor:3};
+  };
+  const readContent=async uids=>articles.filter(row=>uids.includes(row.uid));
+  let checkpoint=null,writes=0,finished=false,t=0;
+  const interrupted=await analyzeIncrementalKeywordPatterns({
+    scopeId:'loc',classUid:'CLASS001',existingPatterns:patterns,expectedCount:2,
+    readMetadataPage,readContent,timeBudgetMs:100,now:()=>t+=40,
+    onCheckpoint:async state=>{checkpoint=state;},
+    writePatterns:async()=>{writes++;},finalize:async()=>{finished=true;}
+  });
+  assert.equal(interrupted.incomplete,true);
+  assert.ok(checkpoint);
+  assert.equal(writes,0);
+  assert.equal(finished,false);
+  const completed=await analyzeIncrementalKeywordPatterns({
+    scopeId:'loc',classUid:'CLASS001',existingPatterns:patterns,expectedCount:2,
+    readMetadataPage,readContent,resume:checkpoint,
+    writePatterns:async({patterns:rows})=>{
+      writes++;
+      assert.deepEqual(rows[0].uid_list,['GALA0001','GALA0002']);
+      assert.equal(rows[0].count,2);
+    },
+    finalize:async()=>{finished=true;}
+  });
+  assert.equal(writes,1);
+  assert.equal(finished,true);
+  assert.equal(completed.analyzedDocuments,2);
+});
