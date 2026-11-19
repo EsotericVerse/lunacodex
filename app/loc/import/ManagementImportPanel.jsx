@@ -1297,34 +1297,61 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         await matchExistingImportByCreatedAt(unresolved,{
           onProgress:p=>showProgress('依來源與建立時間比對',p.completed,p.total),
           readSourceRows:async({site,fromDate,toDate,consumePage})=>{
-            let afterDate=null,afterUid=null;
             const pageSize=250;
-            for(;;){
-              let query=dbAuthRelation(galaxy)
-                .select('uid,site,site_id,createtime,date')
-                .ieq('site',site).gte('date',fromDate).lte('date',toDate)
-                .order('date',{ascending:true}).order('uid',{ascending:true})
-                .limit(pageSize);
-              if(afterDate!==null)
-                query=query.or('date.gt.'+afterDate+
-                  ',and(date.eq.'+afterDate+',uid.gt.'+afterUid+')');
-              const {data,error}=await query;
-              if(error)throw Error('來源時間查詢失敗：'+error.message);
-              const page=data||[];
-              if(!Array.isArray(page)||page.length>pageSize)
-                throw Error('來源原文查詢回傳格式錯誤');
-              if(!page.length)break;
-              consumePage(page);
-              const last=page.at(-1);
-              const date=String(last?.date||''),uid=String(last?.uid||'');
-              if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||
-                !/^[A-Za-z0-9]{8}$/.test(uid)||
-                afterDate!==null&&(date<afterDate||
-                  date===afterDate&&uid<=afterUid))
-                throw Error('來源時間日期游標未前進，停止匯入');
-              afterDate=date;afterUid=uid;
-              if(page.length<pageSize)break;
-            }
+            const dated=async()=>{
+              let afterDate=null,afterUid=null;
+              for(;;){
+                let query=dbAuthRelation(galaxy)
+                  .select('uid,site,site_id,createtime,date')
+                  .ieq('site',site).gte('date',fromDate).lte('date',toDate)
+                  .order('date',{ascending:true}).order('uid',{ascending:true})
+                  .limit(pageSize);
+                if(afterDate!==null)
+                  query=query.or('date.gt.'+afterDate+
+                    ',and(date.eq.'+afterDate+',uid.gt.'+afterUid+')');
+                const {data,error}=await query;
+                if(error)throw Error('來源時間查詢失敗：'+error.message);
+                const page=data||[];
+                if(!Array.isArray(page)||page.length>pageSize)
+                  throw Error('來源時間查詢回傳格式錯誤');
+                if(!page.length)break;
+                consumePage(page);
+                const last=page.at(-1);
+                const date=String(last?.date||''),uid=String(last?.uid||'');
+                if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||
+                  !/^[A-Za-z0-9]{8}$/.test(uid)||
+                  afterDate!==null&&(date<afterDate||
+                    date===afterDate&&uid<=afterUid))
+                  throw Error('來源時間日期游標未前進，停止匯入');
+                afterDate=date;afterUid=uid;
+                if(page.length<pageSize)break;
+              }
+            };
+            const undated=async()=>{
+              let afterUid=null;
+              for(;;){
+                let query=dbAuthRelation(galaxy)
+                  .select('uid,site,site_id,createtime,date')
+                  .ieq('site',site).is('date',null)
+                  .order('uid',{ascending:true}).limit(pageSize);
+                if(afterUid!==null)query=query.gt('uid',afterUid);
+                const {data,error}=await query;
+                if(error)throw Error('無日期文章來源時間查詢失敗：'+error.message);
+                const page=data||[];
+                if(!Array.isArray(page)||page.length>pageSize)
+                  throw Error('無日期文章來源時間查詢回傳格式錯誤');
+                if(!page.length)break;
+                consumePage(page);
+                const uid=String(page.at(-1)?.uid||'');
+                if(!/^[A-Za-z0-9]{8}$/.test(uid)||
+                  afterUid!==null&&uid<=afterUid)
+                  throw Error('無日期文章 UID 游標未前進');
+                afterUid=uid;
+                if(page.length<pageSize)break;
+              }
+            };
+            await dated();
+            await undated();
           }
         }):new Map();
       const existingBySiteId=new Map([
