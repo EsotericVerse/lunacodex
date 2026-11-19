@@ -286,8 +286,15 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
     a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
-async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId=''){
-  // Publish one full-scope Pattern index atomically with its completion receipt.
+async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',expectedCount=null){
+  // One Scope-wide index, one publication. Recheck the source row count inside
+  // the same transaction before touching the live Pattern postings.
+  if(expectedCount!==null){
+    const current=await trx.selectFrom(galaxyName(scope))
+      .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
+    if(Number(current?.n)!==expectedCount)
+      fail('Galaxy article count changed during Keyword scan; retry full analysis',409);
+  }
   await storeScopePatternMatches(trx,scope,patterns);
   const now=new Date().toISOString();
   const cfg=await configuration(trx,scope);
@@ -299,19 +306,23 @@ async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId=''){
     // stream cannot turn a successful SQL transaction into an unknown state.
     ...(attemptId?{attemptId}:{})};
   const oldMeta=attr({attr:cfg.keyword_meta});
-  const alreadyNative=oldMeta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION;
-  // Migration preserved legacy scan/class completion; invalidate on first cutover.
-  const baseMeta=alreadyNative?oldMeta:{
-    ...oldMeta,
-    by_class:Object.fromEntries(Object.entries(oldMeta.by_class||{})
-      .map(([uid,record])=>[uid,{...record,stale:true}])),
+  // This is a Scope Pattern scan, not one Class's private index. Every Class
+  // reads the same UID postings through its own Item projection. Certify all
+  // currently present Classes from this one completed scan; do not force each
+  // Class to rerun the same whole Scope.
+  const classes=await trx.selectFrom(anchorName(scope))
+    .select('uid').where('type','=','class').execute();
+  if(!classes.some(row=>row.uid===classUid))
+    fail('Keyword Class changed during full-scope analysis',409);
+  let completedMeta={
+    ...oldMeta,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
     pattern_scans:{}
   };
-  const merged=completeKeywordClass(baseMeta,classUid,record,now);
-  const completedMeta={...merged,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
-    pattern_scans:{
-    ...(merged.pattern_scans||{}),...stats.patternScans
-  }};
+  for(const row of classes)
+    completedMeta=completeKeywordClass(completedMeta,row.uid,{
+      ...record,class_uid:row.uid,
+      ...(row.uid===classUid?{}:{attemptId:null})
+    },now);
   // A finished scan's Pattern write and clearing its (now obsolete) resumable
   // checkpoint are the same atomic fact: this Class has no scan in progress
   // any more. Clearing it here, in the same transaction as the real write,
@@ -415,7 +426,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       if(!pending)fail('Keyword patterns were not produced');
       await db.transaction().execute(async trx=>{
         await authorizeTransaction(trx);
-        await persistPatterns(trx,scope,classUid,pending,stats,attemptId);
+        await persistPatterns(trx,scope,classUid,pending,stats,attemptId,expectedCount);
       });
     }
   });
