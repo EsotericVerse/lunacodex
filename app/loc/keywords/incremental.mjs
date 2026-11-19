@@ -14,10 +14,11 @@ const isoMillis=value=>{
 // per page, same spirit as discovery-queue.mjs's byte-based adaptation, just
 // measuring elapsed ms here instead of payload bytes (this reader never
 // leaves the server, so wire size is not the cost that matters).
-// No upper cap: page size is left to grow as far as measured performance
-// allows. Only the lower floor (MIN_PAGE_ROWS) and the per-step doubling
-// cap below protect against whiplash; there is no fixed ceiling above that.
-const MIN_PAGE_ROWS=1000,MAX_PAGE_ROWS=Infinity,TARGET_PAGE_MS=800;
+// Combine elapsed time with the actual body volume of this page. Fixed
+// per-request safety bounds prevent a single giant article from multiplying
+// into an unbounded SQL/JS allocation; they never cap the total scan.
+const MIN_PAGE_ROWS=1,MAX_PAGE_ROWS=20000,TARGET_PAGE_MS=800;
+const TARGET_PAGE_CONTENT_CHARS=1_000_000;
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 
 // Exactly one stored word row per Scope + normalized literal. The existing
@@ -235,6 +236,7 @@ export async function analyzeIncrementalKeywordPatterns({
       if(row.keyword!==false)contentUids.push(uid);
     }
     const bodies=new Map();
+    let pageContentChars=0;
     // Content-batch size follows the same dynamic page size as the metadata
     // page itself (no separate fixed ceiling): a hardcoded small batch here
     // would force extra DB round-trips per page regardless of how large
@@ -246,7 +248,10 @@ export async function analyzeIncrementalKeywordPatterns({
          rows.some(row=>!UID.test(String(row?.uid||''))||
            !batch.includes(row.uid)||bodies.has(row.uid)))
         throw new Error('Galaxy content read incomplete; no patterns committed');
-      for(const row of rows)bodies.set(row.uid,row);
+      for(const row of rows){
+        bodies.set(row.uid,row);
+        pageContentChars+=String(row.content??'').length;
+      }
     }
     // Word-specific cutoffs mean that an old document containing a newly
     // introduced word must NOT cause any old word to be reparsed.
@@ -309,8 +314,14 @@ export async function analyzeIncrementalKeywordPatterns({
     const wanted=Math.round(currentPageSize*TARGET_PAGE_MS/pageMs);
     const remainingMs=timeBudgetMs!==null
       ?Math.max(1,timeBudgetMs-(now()-invocationStart)):null;
+    // Time alone is misleading when one page contains short posts and the
+    // next contains long essays. Honor observed content volume without
+    // issuing an extra COUNT, length probe, or metadata SQL request.
+    const contentSafeRows=pageContentChars>0
+      ?Math.max(1,Math.floor(
+        currentPageSize*TARGET_PAGE_CONTENT_CHARS/pageContentChars)):Infinity;
     currentPageSize=clamp(
-      Math.min(wanted,budgetSafeRows(pageMs/currentPageSize,remainingMs)),
+      Math.min(wanted,budgetSafeRows(pageMs/currentPageSize,remainingMs),contentSafeRows),
       MIN_PAGE_ROWS,Math.min(MAX_PAGE_ROWS,currentPageSize*2));
     // Checked every page, not batched: Date.now() itself costs nothing, and
     // batching this by page count (as "check every N pages" once did) is
