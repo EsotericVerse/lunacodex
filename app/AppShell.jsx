@@ -14,7 +14,6 @@ import {activatePublishedTheme,THEME_SLOTS} from './modular/theme-registry';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {PUBLISHED_SITE_BOOTSTRAP} from './modular/published-site-bootstrap.js';
-import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-source-status.mjs';
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
 import {navigationHref} from './modular/routing/scope-registry.js';
