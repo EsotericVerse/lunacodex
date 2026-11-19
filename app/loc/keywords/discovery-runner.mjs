@@ -3,7 +3,6 @@
 import {dbAuthRelation} from '../db/db-client.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {KeywordDiscoveryQueue} from './discovery-queue.mjs';
-import {classSkipArticleWords} from './class-exceptions.mjs';
 import * as z from 'zod';
 
 // The owner's explicit action starts the only scan. Never run during render,
@@ -71,9 +70,7 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     worker.postMessage(data);
   });
   try{
-    const classRow=existingRows.find(row=>row.type==='class'&&row.uid===classUid);
-    const exceptionWords=classRow?classSkipArticleWords(classRow.attr||{}):[];
-    await send({type:'start',exceptionWords,existingRows:existingRows.map(row=>({
+    await send({type:'start',existingRows:existingRows.map(row=>({
       type:row.type,name:row.name,lists:row.type==='item'?row.lists:[]
     }))});
     let countQuery=dbAuthRelation(galaxy).select('uid',{count:'exact',head:true});
