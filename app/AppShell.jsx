@@ -140,7 +140,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     };
     window.addEventListener('loc-scope-theme-saved',onSaved);
     return()=>window.removeEventListener('loc-scope-theme-saved',onSaved);
-  },[scopeId]);
+  },[scopeId,routeKey]);
   const selectedThemeId=selection.scopeId===scopeId&&selection.routeKey===routeKey
     ?selection.themeId:SYSTEM_THEME_ID;
   const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||
@@ -170,7 +170,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
 
   useEffect(()=>{
     // A manually selected Theme is a one-page preview, not a saved preference.
-    setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+    setSelection({scopeId,routeKey,themeId:SYSTEM_THEME_ID});
     setAccentPulse(0);
   },[scopeId,routeKey]);
 
