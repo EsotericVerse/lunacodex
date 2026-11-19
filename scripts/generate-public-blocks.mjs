@@ -38,7 +38,8 @@ function cleanPublishedHtml(value,scope,page){
   let html=value.replaceAll(' classname="bn-inline-content-section"','')
     .replaceAll(' data-inline-content-type="link"','')
     .replaceAll(' data-level="2"','')
-    .replaceAll(' data-level="3"','');
+    .replaceAll(' data-level="3"','')
+    .replaceAll(' data-editable=""','');
   if(scope==='loc'&&page==='index'){
     html=html.replaceAll('https://loc.lo3rwang.cc/governance/','https://loc.lo3rwang.cc/trace/');
     html=html.replaceAll('>治理</a>','>痕跡</a>');
