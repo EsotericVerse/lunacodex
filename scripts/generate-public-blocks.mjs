@@ -42,6 +42,7 @@ function cleanPublishedHtml(value,scope,page){
   if(scope==='loc'&&page==='index'){
     html=html.replaceAll('https://loc.lo3rwang.cc/governance/','https://loc.lo3rwang.cc/trace/');
     html=html.replaceAll('>治理</a>','>痕跡</a>');
+    html=html.replaceAll("提供<u>管理頁面</u>的設定與功能選項，並說明<u>系統使用原則</u>與<strong><u>法律資訊</u></strong>。","透過地圖查看空間定錨點與相關紀錄。");
   }
   return html;
 }
