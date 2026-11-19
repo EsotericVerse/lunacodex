@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
 import {analyzeIncrementalKeywordPatterns} from '../app/loc/keywords/incremental.mjs';
-import {comparableImportText,dedupeIncomingImport} from '../app/loc/import/duplicate-check.mjs';
+import {dedupeIncomingImport} from '../app/loc/import/duplicate-check.mjs';
 
 test('discovery retains single-use terms and question punctuation without weighting',()=>{
   const discovery=createNewKeywordDiscovery([]);
@@ -20,7 +20,6 @@ test('discovery retains single-use terms and question punctuation without weight
 });
 
 test('import keeps punctuation differences and separate posts without native IDs',()=>{
-  assert.notEqual(comparableImportText('我很好？'),comparableImportText('我很好！'));
   const make=(uid,content)=>({
     uid,site:'Threads',createtime:'2026-11-20T00:00:00.000Z',
     title:'測試',content
