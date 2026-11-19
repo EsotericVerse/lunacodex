@@ -90,23 +90,10 @@ export default function AdminHomeView({scopeGroup}){
   };
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
-  if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin.checking}</div></section>;
-  if(loginDenied||!canManage)return <FeaturePage featureId="admin">
-    <section className="loc-card scope-feature-card">
-      <p role="alert">{signInError||account.error||(account.user
-        ?'目前沒有有效的編輯 Session，或此帳號沒有全域管理權限。'
-        :'目前沒有有效的 LOC Session，系統管理未啟用。')}</p>
-      {!account.user?<button type="button" onClick={()=>void beginAdminSignIn()} disabled={signingIn}>
-        {signingIn?'正在前往 LOC SSO…':'使用 Cloudflare SSO 登入管理員'}
-      </button>:null}
-      <button type="button" onClick={()=>void retrySession()} disabled={retrying}>
-        {retrying?'正在確認 Session…':'重新確認 Session'}
-      </button>
-    </section>
-  </FeaturePage>;
-  if(!canManage||!entryVerified)return <FeaturePage featureId="admin">
-    <section className="loc-card scope-feature-card"><p role="status">正在開啟 LOC 身分驗證…</p></section>
-  </FeaturePage>;
+  // The Admin Hero and existing navigation are public presentation.
+  // Only the actual panel content requires a verified global permission.
+  const checking=account.loading||account.permissionLoading;
+  const allowed=!checking&&!loginDenied&&canManage&&entryVerified;
 
   return <FeaturePage featureId="admin">
     <ManagementWorkspaceFrame level="admin" title="系統管理">
@@ -114,10 +101,24 @@ export default function AdminHomeView({scopeGroup}){
         items={ADMIN_OPTIONS} value={section} onChange={switchSection} mobileSelect/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
         aria-labelledby={'admin-sections-option-'+selectedOption.value}>
-        {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
-        {section==='io'?<RuntimeIoSettings/>:null}
-        {section==='featureHero'?<FeatureHeroImages/>:null}
-        {section==='themes'?<ThemeEditor/>:null}
+        {!allowed?<section className="loc-card scope-feature-card">
+          {checking||canManage&&!entryVerified&&!loginDenied
+            ?<p role="status">{UI_COPY.admin?.checking||'正在確認管理權限…'}</p>
+            :<><p role="alert">{signInError||account.error||(account.user
+              ?'目前沒有有效的編輯 Session，或此帳號沒有全域管理權限。'
+              :'目前沒有有效的 LOC Session，系統管理未啟用。')}</p>
+              {!account.user?<button type="button" onClick={()=>void beginAdminSignIn()} disabled={signingIn}>
+                {signingIn?'正在前往 LOC SSO…':'使用 Cloudflare SSO 登入管理員'}
+              </button>:null}
+              <button type="button" onClick={()=>void retrySession()} disabled={retrying}>
+                {retrying?'正在確認 Session…':'重新確認 Session'}
+              </button></>}
+        </section>:<>
+          {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
+          {section==='io'?<RuntimeIoSettings/>:null}
+          {section==='featureHero'?<FeatureHeroImages/>:null}
+          {section==='themes'?<ThemeEditor/>:null}
+        </>}
 
       </div>
     </ManagementWorkspaceFrame>
