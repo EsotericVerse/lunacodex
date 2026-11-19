@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
 import {analyzeIncrementalKeywordPatterns} from '../app/loc/keywords/incremental.mjs';
+import {createIndexedDateKeywordReader} from '../app/loc/keywords/article-reader.mjs';
 import {dedupeIncomingImport} from '../app/loc/import/duplicate-check.mjs';
 
 test('discovery retains single-use terms and question punctuation without weighting',()=>{
@@ -111,4 +112,67 @@ test('checkpoint resumes a full scan without publishing partial Pattern postings
   assert.equal(writes,1);
   assert.equal(finished,true);
   assert.equal(completed.analyzedDocuments,2);
+});
+
+test('date + UID scan streams same-day rows and undated rows without buffering/sorting',async()=>{
+  const dated=[
+    {uid:'GALA0001',date:'2026-11-18'},
+    {uid:'GALA0002',date:'2026-11-18'},
+    {uid:'GALA0003',date:'2026-11-18'},
+    {uid:'GALA0004',date:'2026-11-19'}
+  ];
+  const undated=[{uid:'GALA0005',date:null},{uid:'GALA0006',date:null}];
+  let dateCalls=0,undatedCalls=0;
+  const reader=createIndexedDateKeywordReader({
+    readDateBatch:async({afterDate,afterUid,limit})=>{
+      dateCalls++;
+      return dated.filter(row=>afterDate===null||row.date>afterDate||
+        row.date===afterDate&&row.uid>afterUid).slice(0,limit);
+    },
+    readUndatedBatch:async({afterUid,limit})=>{
+      undatedCalls++;
+      return undated.filter(row=>afterUid===null||row.uid>afterUid).slice(0,limit);
+    }
+  });
+  const found=[];
+  let cursor=null;
+  for(let n=0;n<20;n++){
+    const result=await reader({cursor,limit:2});
+    found.push(...result.rows.map(row=>row.uid));
+    cursor=result.nextCursor;
+    if(!result.rows.length)break;
+  }
+  assert.deepEqual(found,[
+    'GALA0001','GALA0002','GALA0003','GALA0004','GALA0005','GALA0006'
+  ]);
+  assert.ok(dateCalls>=3);
+  assert.ok(undatedCalls>=1);
+  assert.equal(Object.keys(cursor).includes('pending'),false);
+  assert.equal(Object.keys(cursor).includes('currentDay'),false);
+});
+
+test('re-reading a dated Galaxy UID never double-counts Pattern postings',async()=>{
+  const pages=[
+    {rows:[{uid:'GALA0001',keyword:true}],nextCursor:1},
+    {rows:[{uid:'GALA0001',keyword:true},
+      {uid:'GALA0002',keyword:true}],nextCursor:2},
+    {rows:[],nextCursor:3}
+  ];
+  let calls=0,writes=0;
+  const result=await analyzeIncrementalKeywordPatterns({
+    scopeId:'loc',classUid:'CLASS001',expectedCount:2,
+    existingPatterns:[{uid:'PTNR0001',pattern:'月光'}],
+    readMetadataPage:async()=>pages[calls++],
+    readContent:async uids=>uids.map(uid=>({
+      uid,title:'月光',content:'月光',keyword:true
+    })),
+    writePatterns:async({patterns})=>{
+      writes++;
+      assert.deepEqual(patterns[0].uid_list,['GALA0001','GALA0002']);
+      assert.equal(patterns[0].count,2);
+    },
+    finalize:async()=>{}
+  });
+  assert.equal(result.matchedDocuments,2);
+  assert.equal(writes,1);
 });
