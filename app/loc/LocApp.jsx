@@ -11,8 +11,7 @@ import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/routing/scope-registry';
 import ManagementAccess from './management/ManagementAccess';
-import {useAsyncResource} from '../../packages/zenstack/client-queries';
-import {selectScopeConfig} from './scope/scope-data';
+import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';
 const loading=()=> <div className="loc-loading"><UiText id="uiExtra.feature.moduleLoading"/></div>;
@@ -94,20 +93,12 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   const flag=FEATURE_FLAGS[view]||'';
   const scope=scopeMeta||getScope(scopeId);
   const enabled=Boolean(flag)&&!scope.aggregateChildren&&scope.id!=='admin';
-  // Public feature gating reads only the Scope's four switches.
-  // Do not fetch unrelated page Blocks or management permissions.
-  const query=useAsyncResource(['public-feature-flags',scopeId],
-    ()=>selectScopeConfig(scopeId),{enabled});
+  // Public feature gates read the already-published Scope flags; waiting
+  // for a config SQL request must not block the Hero or content.
   if(!enabled)return children;
-  if(query.isPending)return <FeaturePage featureId={view==='keywords'?'statics':view}>
-    <section className="loc-card scope-feature-card scope-feature-loading">
-      <div className="scope-feature-loading__controls" aria-hidden="true"><span/><span/><span/></div>
-      <div className="scope-feature-loading__body" aria-hidden="true"><span/><span/><span/><span/></div>
-      <p className="scope-status" role="status"><UiText id="uiExtra.feature.settingsLoading"/></p>
-    </section>
-  </FeaturePage>;
-  if(query.error||!query.data)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定無法讀取，暫時無法開啟功能。</p></section></section></main>;
-  if(!scopeFeatureEnabled(query.data,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
+  const config=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId&&row.active!==false)?.config;
+  if(!config)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定尚未發布。</p></section></section></main>;
+  if(!scopeFeatureEnabled(config,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
   return children;
 }
 
