@@ -423,14 +423,42 @@ function AppShellInner({children,runtime}){
     .filter(([,label])=>label));
   useEffect(()=>setNative(Capacitor.isNativePlatform()),[]);
   const currentScope=scope||getScope(scopeId);
-  // The canonical Scope locale is published with the routing configuration.
-  // A manual choice requests only this page's matching language file.
+  // Only an explicit language change causes a document reload. One temporary
+  // hand-off is removed immediately on the next document: there is no saved
+  // language preference, no multi-locale preload and no cross-page carryover.
+  const LANGUAGE_RELOAD_ONCE='loc-language-reload-once';
   const [manualLocale,setManualLocale]=useState(null);
+  const [localeEntryReady,setLocaleEntryReady]=useState(false);
+  useEffect(()=>{
+    let requested=null;
+    try{
+      const stored=window.sessionStorage.getItem(LANGUAGE_RELOAD_ONCE);
+      window.sessionStorage.removeItem(LANGUAGE_RELOAD_ONCE);
+      requested=stored?JSON.parse(stored):null;
+    }catch{}
+    const valid=requested?.scopeId===scopeId&&requested?.pathname===pathname&&
+      UI_LOCALE_OPTIONS.some(option=>option.value===requested?.locale);
+    setManualLocale(valid?requested:null);
+    setLocaleEntryReady(true);
+  },[scopeId,pathname]);
   const configLocaleEnabled=Boolean(scopeId)&&!currentScope.aggregateChildren&&scopeId!=='admin';
   const publishedLocale=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.locale;
   const configuredLocale=configLocaleEnabled?normalizeUiLocale(publishedLocale):'zh-Hant';
-  const activeLocale=manualLocale?.scopeId===scopeId?manualLocale.locale:configuredLocale;
-  const localeReady=useLoadedUiLocale(activeLocale,pathname);
+  const activeLocale=manualLocale?.scopeId===scopeId&&manualLocale?.pathname===pathname
+    ?manualLocale.locale:configuredLocale;
+  const localeReady=useLoadedUiLocale(activeLocale,pathname,localeEntryReady);
+  const changeLanguage=locale=>{
+    const next=normalizeUiLocale(locale);
+    if(next===activeLocale)return;
+    const handoff={scopeId,pathname,locale:next};
+    try{
+      window.sessionStorage.setItem(LANGUAGE_RELOAD_ONCE,JSON.stringify(handoff));
+      window.location.reload();
+    }catch{
+      // Storage-disabled environments still support a page-local selection.
+      setManualLocale(handoff);
+    }
+  };
   const copy=useMemo(()=>uiCopy(activeLocale,pathname),[activeLocale,pathname,localeReady]);
   useEffect(()=>{document.documentElement.lang=activeLocale;},[activeLocale]);
   const isMyPhone=native&&['/my-phone','/my-phone/index.html'].includes(normalizePath(pathname));
@@ -640,7 +668,7 @@ function AppShellInner({children,runtime}){
         <LanguageSelect
           locale={activeLocale}
           copy={copy}
-          onChange={locale=>setManualLocale({scopeId,locale:normalizeUiLocale(locale)})}
+          onChange={changeLanguage}
         />
         <small className="scope-footer-date-basis" aria-label={({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}>
           {({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}
