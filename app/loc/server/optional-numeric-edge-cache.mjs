@@ -12,6 +12,23 @@ const CACHED_KINDS=new Set(['daily_total','totals','loc']);
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 
+// Only primitive, validated PUBLIC keys are observed across warm isolate
+// requests. No HTTP response, Cookie, connection or request-owned object is
+// retained. Cold/one-off numbers bypass Cache API entirely.
+const HOT_WINDOW_MS=45000;
+const MAX_OBSERVED_KEYS=128;
+const observed=new Map();
+function repeatedPublicRead(key){
+  const timestamp=Date.now();
+  const last=observed.get(key);
+  const count=last&&timestamp-last.at<=HOT_WINDOW_MS?last.count+1:1;
+  observed.delete(key);
+  observed.set(key,{count,at:timestamp});
+  if(observed.size>MAX_OBSERVED_KEYS)
+    observed.delete(observed.keys().next().value);
+  return count>1;
+}
+
 // Validate the public route BEFORE any cache hit. The Pages runtime and
 // committed published feature index remain the authority for the response.
 // Bad inputs and unpublished scopes always use the ordinary handler (which
@@ -69,20 +86,24 @@ function clientResponse(cached){
 }
 
 /**
- * Optional Cloudflare Pages Function cache for three already-public numeric
+ * Cloudflare Pages Function cache for three already-public numeric
  * projections. A hit avoids the SQL query; a miss performs the SAME query.
  *
  * Cloudflare Cache API does not support stale-while-revalidate; do not
  * advertise this as Next.js ISR. It is a bounded best-effort edge accelerator.
  */
 export async function withOptionalNumericEdgeCache(context,read){
-  if(context?.env?.LOC_NUMERIC_EDGE_CACHE!=='1')return read();
+  const mode=String(context?.env?.LOC_NUMERIC_EDGE_CACHE||'auto').toLowerCase();
+  if(['0','off','false'].includes(mode))return read();
   // No waitUntil => no asynchronous fill; don't add an extra cache lookup.
   if(typeof context?.waitUntil!=='function'||typeof caches==='undefined'||
      !caches?.default?.match||!caches.default.put)
     return read();
   const key=publicNumericCacheKey(context.request,context.env);
   if(!key)return read();
+  // Explicit 1 preserves existing opt-in behavior. With default 'auto',
+  // avoid Cache API work for isolated/single-use numeric reads.
+  if(mode!=='1'&&!repeatedPublicRead(key))return read();
   const cache=caches.default;
   try{
     const hit=await cache.match(key);
