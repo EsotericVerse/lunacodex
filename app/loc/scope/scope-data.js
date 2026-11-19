@@ -10,9 +10,8 @@ import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
-// Public page copy (Title_TW/Desc_TW) now travels inside the shared
-// app-bootstrap request (see app/loc/runtime/app-bootstrap.js); there is no
-// standalone per-page RPC call for it any more.
+// Public page copy (Title_TW/Desc_TW) and routing are release-published JS.
+// They do not require a bootstrap request or per-page SQL lookup.
 // api.manage owns system authorization and routing; silver.loc is the
 // Group Scope List and owns display_name/title_tw/desc_tw/birthday.
 // Public birthday metadata is explicitly published, never read from manage.
