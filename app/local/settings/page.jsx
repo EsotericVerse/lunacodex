@@ -1,4 +1,5 @@
 import {Suspense} from 'react';
+import StaticContentLoading from '../../modular/StaticContentLoading';
 import GlobalSettings from '../../loc/preferences/GlobalSettings';
 import {locMetadata} from '../../seo/metadata';
 
@@ -10,7 +11,7 @@ export const metadata=locMetadata({
 });
 
 export default function LocalSettingsPage(){
-  return <Suspense fallback={<p role="status">正在載入設定…</p>}>
+  return <Suspense fallback={<StaticContentLoading label="正在載入設定…"/>}>
     <GlobalSettings/>
   </Suspense>;
 }
