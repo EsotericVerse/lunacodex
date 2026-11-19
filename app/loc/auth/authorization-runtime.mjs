@@ -43,8 +43,9 @@ export function readAuthorization(){
   return entries===null?null:{userId,email,entries};
 }
 
-// Exactly the same ZModel LocPrincipal hierarchy used by trusted loc_access.
-// The UI only consumes the server-issued result; all SQL writes reauthorize.
+// Browser management UI scope-switching rule, not a trusted SQL permission.
+// Global Admin remains the only system-wide role; Group navigates like Admin
+// for this one-Group release. Each protected API enforces its original grants.
 export function canAuthorizeLocAccess(level,scopeId=''){
   const kind=String(level||'').toLowerCase();
   const scope=normalizeScope(scopeId);
@@ -52,8 +53,12 @@ export function canAuthorizeLocAccess(level,scopeId=''){
   if(principal.roleLevel>=LOC_ROLE_LEVEL.admin)return true;
   if(kind==='global')return false;
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))return false;
+  // There is currently one Group. For browser management navigation only,
+  // Group and Admin retain their Session status on any Scope switch.
+  // The backend still enforces the unchanged business-grant policy on data.
+  if(principal.roleLevel>=LOC_ROLE_LEVEL.group)return true;
   return kind==='group'?principal.groupIds.includes(scope):
-    principal.groupIds.includes(scope)||principal.scopeIds.includes(scope);
+    principal.scopeIds.includes(scope);
 }
 
 export function createScopeAuthorizer(user){
