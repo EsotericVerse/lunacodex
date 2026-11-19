@@ -43,3 +43,33 @@ export function assertEditorSession(storage,now=Date.now()){
 export function clearEditorSession(storage){
   try{storage?.removeItem(KEY);}catch{}
 }
+
+// The existing editor Session also carries the last *server-verified*
+// management presentation snapshot. This is a browser UI hint ONLY:
+// private reads and writes still authorize against LOC Auth / database.
+// Never start another clock, overwrite the current Scope, or re-save on
+// page navigation. The snapshot is recorded only after verification.
+export function readEditorManagement(storage,now=Date.now()){
+  let raw;
+  try{raw=JSON.parse(storage?.getItem(KEY)||'null');}catch{return null;}
+  if(!raw||expired(raw,now))return null;
+  const data=raw.management;
+  if(!data||typeof data!=='object'||!data.user||
+    typeof data.user.id!=='string'||typeof data.user.email!=='string'||
+    !Array.isArray(data.roles)||!Array.isArray(data.grants))return null;
+  return data;
+}
+export function saveEditorManagement(storage,verified,now=Date.now()){
+  const data=verified&&{
+    user:{id:String(verified.user?.id||''),email:String(verified.user?.email||'')},
+    roles:verified.roles,grants:verified.grants
+  };
+  if(!data?.user.id||!data.user.email||
+     !Array.isArray(data.roles)||!Array.isArray(data.grants))return false;
+  const existing=read(storage,now);
+  // A newly verified identity may begin a new session after the previous
+  // one expired. Ordinary page changes never enter this function.
+  const current=expired(existing,now)?fresh(now):existing;
+  store(storage,{...current,management:data});
+  return true;
+}
