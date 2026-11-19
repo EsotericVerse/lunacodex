@@ -5,6 +5,7 @@ import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
 import {transientReadSignal} from '../../../packages/zenstack/transient-read-epoch.mjs';
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
+import {invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const PERSONAL=new Set(['silver.loc_user']);
@@ -50,6 +51,14 @@ export function createConfiguredAdapter({
     });
     const result=await response.json().catch(()=>null);
     if(!response.ok)throw errorFromResponse(result,response);
+    // Public Culture/Statistics aggregates are semi-dynamic snapshots, not
+    // timed caches. One successful mutation retires affected derived results;
+    // no extra COUNT, poll or cache-version SQL is ever triggered here.
+    // LOC group aggregates can depend on multiple Scopes, so invalidate the
+    // shared numeric family rather than guessing a single physical relation.
+    if(kind==='short-import'||kind==='managed-write'||
+       (kind==='managed-action'&&!READ_ACTIONS.has(String(fields.name||''))))
+      invalidateCachedReadPrefix('scope-aggregate:');
     return result;
   }
   const nativePersonal=async(kind,payload)=>{
