@@ -294,6 +294,24 @@ export function parseImportCreatedTime(value){
   const parsed=new Date(timestamp);
   return Number.isNaN(parsed.getTime())?null:parsed.toISOString();
 }
+// Only a missing authored creation timestamp may fall back to source update
+// metadata. Never replace a genuine creation time with a later edit time.
+const IMPORT_UPDATE_TIME_KEYS=Object.freeze([
+  'UpdateTime','update_time','updated_time','updated_at','updatedAt',
+  'modified_at','modifiedAt','post_modified_gmt','post_modified',
+  'last_edited_time','edited_at','editedAt','lastModified'
+]);
+export function extractImportUpdatedAt(row){
+  if(!row||typeof row!=='object')return null;
+  for(const key of IMPORT_UPDATE_TIME_KEYS){
+    const value=row[key];
+    if(value===null||value===undefined||value==='')continue;
+    const parsed=parseImportCreatedTime(value);
+    if(parsed)return parsed;
+  }
+  return null;
+}
+
 // An absent original timestamp is null, never the import clock.
 const IMPORT_TIME_KEYS=['createtime','createdAt','createAt','created_at','creation_timestamp','create_time',
   'created_time','timestamp_ms','timestamp','taken_at','published_at','publishedAt','date'];
