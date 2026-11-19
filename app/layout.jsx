@@ -24,15 +24,15 @@ export const viewport={width:'device-width',initialScale:1,viewportFit:'cover'};
 const AUTO_DAY_THEME_ID='theme-7';
 const AUTO_NIGHT_THEME_ID='theme-1';
 const GAME_BOOTSTRAP_THEME_ID='theme-4';
-// The exact canonical palette and per-Scope default are loaded on demand in AppShell.
+// Published Theme styles are fixed static assets; selecting one changes only the root Theme ID.
 const NATIVE_STATIC_ROUTE_SCRIPT=`(()=>{try{
   if(window.location.protocol!=='capacitor:')return;
   const {pathname,search,hash}=window.location;
   if(!/\\/index\\.html$/.test(pathname))return;
   window.history.replaceState(window.history.state,'',pathname.slice(0,-'index.html'.length)+search+hash);
 }catch{}})();`;
-// Static Scope -> Theme ID; bootstrap inserts ONE render-blocking CSS link
-// before first paint rather than bundling all eight palettes.
+// The URL and browser Session select the active palette before first paint.
+// All eight stylesheets are part of the static document; no runtime link swaps.
 const PUBLISHED_THEME_BY_SCOPE=Object.fromEntries(SCOPE_ROUTE_INDEX.map(row=>
   [row.scope_id,String(row.config?.theme||'')]));
 const PUBLISHED_THEME_SCHEMES=Object.fromEntries(PUBLISHED_THEME_META.map(row=>[row[0],row[2]]));
@@ -68,16 +68,8 @@ const INITIAL_THEME_SCRIPT=`(()=>{try{
   root.dataset.themeId=themeId;
   root.style.colorScheme=scheme;
   root.dataset.themeBootstrap='correct-id';
-  // Session stores only Theme ID, never CSS. Insert one stylesheet before
-  // first paint; client navigation reuses the existing linked resource.
-  const link=document.createElement('link');
-  link.id='loc-theme-stylesheet';
-  link.rel='stylesheet';
-  link.href='/themes/'+themeId+'.css';
-  link.dataset.themeId=themeId;
-  link.setAttribute('blocking','render');
-  link.addEventListener('load',()=>{link.dataset.loaded='true'},{once:true});
-  document.head.appendChild(link);
+  // Eight immutable Theme CSS files are already linked by RootLayout.
+  // CSS selectors are scoped to data-theme-id; no stylesheet is inserted here.
 }catch{}})();`;
 
 export default function RootLayout({ children }) {
@@ -86,6 +78,7 @@ export default function RootLayout({ children }) {
       <head>
         <script id="loc-native-static-route" dangerouslySetInnerHTML={{__html:NATIVE_STATIC_ROUTE_SCRIPT}} />
         <script id="loc-theme-bootstrap" dangerouslySetInnerHTML={{__html:INITIAL_THEME_SCRIPT}} />
+        {PUBLISHED_THEME_META.map(([id])=><link key={id} rel="stylesheet" href={'/themes/'+id+'.css'} />)}
       </head>
       <body className="loc-app-shell">
         <AppShell>{children}</AppShell>
