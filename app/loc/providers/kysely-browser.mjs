@@ -76,13 +76,11 @@ export function createKyselyPublicClient({
 }={}){
   if(typeof fetchImpl!=='function')throw Error('LOC Kysely fetch is unavailable');
   const transportId=++nextPublicTransportId;
-  // Analytics/Fixed Public Actions were bypassing the same three-request
-  // bounded spool used by SELECT. Keep a SINGLE shared queue for all
-  // anonymous public reads, including heavy culture/trace/stats aggregates.
-  // The signal also removes superseded requests while they wait in line.
-  const publicReadFetch=(url,options,signal)=>{
+  // Public reads share free capacity without fixed per-class allocations.
+  // Auth and protected writes never enter this anonymous browser queue.
+  const publicReadFetch=(url,options,signal,kind='normal')=>{
     const perform=()=>fetchImpl(url,{...options,signal});
-    return role==='anon'?withPublicReadBudget(perform,signal):perform();
+    return role==='anon'?withPublicReadBudget(perform,signal,{kind}):perform();
   };
   // Deduplicate only concurrent anonymous requests of exactly the same
   // shape and route epoch. No completed HTTP no-store body is retained.
@@ -159,7 +157,11 @@ export function createKyselyPublicClient({
       }})}),
       // No independent timer/queue. Admission and cancellation are handled
       // by the existing bounded public-read budget and requestSignal.
-    },requestSignal);
+    },requestSignal,[
+      'daily_total','daily','overview','earliest','totals','loc',
+      'culture_density','trace_daily','lane_daily','keyword_summary',
+      'search_summary','trace_territory'
+    ].includes(view)?'aggregate':'normal');
     const payload=await response.json().catch(()=>null);
     if(!response.ok){
       const error=new Error('LOC Kysely analytics '+String(payload?.stage||'read')+
@@ -233,7 +235,11 @@ export function createKyselyPublicClient({
         const callerSignal=q.signal;
         const perform=()=>{
           q.signal=transientReadSignal(callerSignal);
-          return role==='anon'?withPublicReadBudget(()=>read(q),q.signal):read(q);
+          return role==='anon'
+            ?withPublicReadBudget(()=>read(q),q.signal,{
+              kind:q.cardinality?'interactive':'normal'
+            })
+            :read(q);
         };
         return pendingPublic('select',{
           schema:q.schema,table:q.table,columns:q.columns,
