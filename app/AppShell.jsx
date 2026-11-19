@@ -198,8 +198,9 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
 }
 function ScopePageCopy({scopeId,display_name}){
   const enabled=Boolean(scopeId)&&scopeId!=='loc'&&scopeId!=='admin';
-  const pageCopy=enabled?(PUBLISHED_SITE_BOOTSTRAP.page_copy||[])
-    .find(row=>row.scope_id===scopeId)||null;
+  const pageCopy=enabled
+    ?(PUBLISHED_SITE_BOOTSTRAP.page_copy||[]).find(row=>row.scope_id===scopeId)||null
+    :null;
   useEffect(()=>{
     const title=String(pageCopy?.Title_TW||display_name||'').trim();
     if(title&&document.title!==title)document.title=title;
