@@ -60,59 +60,18 @@ export function applyTheme(slot){
   Object.entries(slot.tokens||{}).forEach(([key,value])=>{if(value)root.style.setProperty(key,value);});
 }
 
-// One published Theme stylesheet per browser document. Keep the current
-// palette visible until its replacement CSS has loaded successfully.
-const PUBLISHED_STYLE_ID='loc-theme-stylesheet';
-let pendingPublishedStyle=null;
+// All eight published Theme stylesheets are loaded once by app/layout.jsx.
+// They use :root[data-theme-id] selectors, so a theme switch changes only
+// root attributes and never inserts, replaces or fetches CSS again.
 export function publishedThemeCssHref(themeId){
   return THEME_SLOTS.some(slot=>slot.id===themeId)
     ?'/themes/'+themeId+'.css':null;
 }
 export function activatePublishedTheme(themeId){
-  const href=publishedThemeCssHref(themeId);
-  if(!href||typeof document==='undefined')return Promise.resolve(false);
-  const current=document.getElementById(PUBLISHED_STYLE_ID);
-  if(pendingPublishedStyle?.id===themeId)return pendingPublishedStyle.promise;
-  if(pendingPublishedStyle){
-    pendingPublishedStyle.cancel();
-    pendingPublishedStyle=null;
-  }
-  if(current?.dataset.themeId===themeId&&
-     (current.dataset.loaded==='true'||Boolean(current.sheet))){
-    if(document.documentElement.dataset.themeId!==themeId||
-       document.documentElement.dataset.themeBootstrap==='scheme-only')
-      applyTheme(getThemeSlot(themeId));
-    return Promise.resolve(true);
-  }
-  const initialLink=current?.dataset.themeId===themeId?current:null;
-  const link=initialLink||document.createElement('link');
-  if(!initialLink){
-    link.rel='stylesheet';
-    link.href=href;
-    link.dataset.themeId=themeId;
-  }
-  let resolveLoad,done=false;
-  const promise=new Promise(resolve=>{resolveLoad=resolve;});
-  function finish(success){
-    if(done)return;
-    done=true;
-    link.removeEventListener('load',onLoad);
-    link.removeEventListener('error',onError);
-    if(pendingPublishedStyle?.link===link)pendingPublishedStyle=null;
-    if(success){
-      link.dataset.loaded='true';
-      if(!initialLink)link.id=PUBLISHED_STYLE_ID;
-      applyTheme(getThemeSlot(themeId));
-      if(!initialLink)current?.remove();
-    }else if(!initialLink)link.remove();
-    resolveLoad(success);
-  }
-  function onLoad(){finish(true);}
-  function onError(){finish(false);}
-  link.addEventListener('load',onLoad);
-  link.addEventListener('error',onError);
-  pendingPublishedStyle={id:themeId,link,promise,cancel:()=>finish(false)};
-  if(!initialLink)document.head.appendChild(link);
-  else if(link.sheet)finish(true);
-  return promise;
+  if(!publishedThemeCssHref(themeId)||typeof document==='undefined')
+    return Promise.resolve(false);
+  if(document.documentElement.dataset.themeId!==themeId||
+     document.documentElement.dataset.themeBootstrap==='scheme-only')
+    applyTheme(getThemeSlot(themeId));
+  return Promise.resolve(true);
 }
