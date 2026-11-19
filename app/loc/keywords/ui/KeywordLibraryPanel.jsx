@@ -739,24 +739,13 @@ export default function KeywordLibraryPanel({scopeId,account}){
           {!discovery.cachedOnly?<span>已掃描 {Number(discovery.read||0).toLocaleString()} 篇文章</span>:null}
         </p>
         <details className="loc-work-subdetails">
-          <summary>掃描數據與 PELT 時間分段</summary>
+          <summary>掃描數據</summary>
           {discovery.cachedOnly?<p className="scope-status">
-            目前僅有先前儲存的候選列表，重新掃描後才會更新即時篇數與趨勢。
+            目前顯示先前保存的候選列表。
           </p>:<p className="scope-status">
             有內文 {Number(discovery.withContent||0).toLocaleString()} 篇，掃描總數 {Number(discovery.read||0).toLocaleString()} 篇。
           </p>}
-          {discovery.dense?<p className="scope-status">
-            新詞密集段：{discovery.dense.start} 至 {discovery.dense.end} · 每篇平均 {discovery.dense.novelPerArticle.toFixed(2)} 次候選命中
-            {discovery.dense.detectedByPelt?'（PELT 變點）':'（未偵測到明顯變點）'}
-          </p>:null}
-          {discovery.sparse?<p className="scope-status">
-            新詞稀疏段：{discovery.sparse.start} 至 {discovery.sparse.end} ·
-            既有詞涵蓋率 {(discovery.sparse.existingRatio*100).toFixed(1)}%
-          </p>:discovery.dense?<p className="scope-status">
-            全期既有詞涵蓋率 {(Number(discovery.overallExistingRatio||0)*100).toFixed(1)}%
-          </p>:null}
         </details>
-        {discovery.limited?<p className="scope-status scope-error">不重複候選詞過多，已達分析記憶體上限；列表可能不完整。</p>:null}
         {suggestedCandidates.length?<div>
           <ol className="scope-keyword-discovery-results" start={(currentSuggestionPage-1)*suggestionPageSize+1}>
             {visibleSuggestions.map(term=><li key={term.word}>
@@ -766,8 +755,6 @@ export default function KeywordLibraryPanel({scopeId,account}){
                 <summary>詳情</summary>
                 {!discovery.cachedOnly?<p className="scope-status">
                   {Number(term.occurrences||0).toLocaleString()} 次出現
-                  {term.denseDocuments>0?' · 密集段 '+Number(term.denseDocuments).toLocaleString()+' 篇':''}
-                  {term.trendChanges>0?' · PELT 趨勢變化':''}
                 </p>:null}
                 {term.sample?<p className="scope-status">{term.sample}</p>:null}
               </details>:null}
@@ -780,7 +767,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
             <button type="button" className="loc-button" disabled={currentSuggestionPage===suggestionPages}
               onClick={()=>setDiscoveryPage(page=>Math.min(suggestionPages,page+1))}>下一頁</button>
           </div>:null}
-        </div>:<p className="scope-status">沒有符合基本出現篇數門檻、且尚未收錄的新詞。</p>}
+        </div>:<p className="scope-status">沒有尚未收錄的新詞。</p>}
       </div>:null}
       {!discoveryBusy?<button type="button" className="loc-button" onClick={discoverNewTerms}>
         {discovery?'重新掃描內文':'開始掃描內文'}
