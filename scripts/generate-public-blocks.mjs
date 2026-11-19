@@ -32,6 +32,26 @@ const {data:globalList,error:globalError}=await db.from('loc')
   .select('ArticleTag').eq('id','loc').maybeSingle();
 if(globalError||!globalList||!Array.isArray(globalList.ArticleTag))throw Error('Cannot publish LOC ArticleTag');
 const systemNames=[...new Set([...globalList.ArticleTag,'Others'].map(x=>String(x).trim()).filter(Boolean))];
+
+function cleanPublishedHtml(value,scope,page){
+  if(typeof value!=='string')return value;
+  let html=value.replaceAll(' classname="bn-inline-content-section"','')
+    .replaceAll(' data-inline-content-type="link"','');
+  if(scope==='loc'&&page==='index'){
+    html=html.replaceAll('https://loc.lo3rwang.cc/governance/','https://loc.lo3rwang.cc/trace/');
+    html=html.replaceAll('>治理</a>','>痕跡</a>');
+  }
+  return html;
+}
+function cleanPublishedBlock(block,scope,page){
+  return {...block,
+    block_text:cleanPublishedHtml(block.block_text,scope,page),
+    block_subtitle:cleanPublishedHtml(block.block_subtitle,scope,page),
+    block_entity:Array.isArray(block.block_entity)
+      ?block.block_entity.map(item=>({...item,text:cleanPublishedHtml(item.text,scope,page)}))
+      :block.block_entity};
+}
+
 const allBlocks=new Map(),routeConfigs=[];
 const cols='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
 for(const row of routes){
@@ -65,7 +85,7 @@ for(const row of routes){
     if(id==='loc'&&page==='group_manage'&&Number(block.block_order)!==1)continue;
     const key=id+'/'+page;
     if(!allBlocks.has(key))allBlocks.set(key,[]);
-    allBlocks.get(key).push(block);
+    allBlocks.get(key).push(cleanPublishedBlock(block,id,page));
   }
 }
 const {data:locThemes,error:themesError}=await db.from('loc')
