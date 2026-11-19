@@ -106,7 +106,7 @@ export function createConfiguredAdapter({
     const result=await operation('managed-write','',{payload});
     // This is the common successful write boundary for ZModel Anchor/Blocks,
     // including keyword Anchor insert/update/delete and ordinary block writes.
-    // Do not trigger another SELECT or invalidate Galaxy cache (none exists).
+    // Operation() already invalidated derived public numbers, without a SELECT.
     invalidateScopedReadCache(payload?.p_table);
     return {data:result?.data,error:null};
   };
