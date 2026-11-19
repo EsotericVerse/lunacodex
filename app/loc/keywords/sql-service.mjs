@@ -49,7 +49,7 @@ const configName=scope=>'silver.'+checkScope(scope);
 // title, site or six unrelated feature flags across ~50k metadata records.
 const galaxyListMetadataColumns=Object.freeze([
   ...galaxyReadColumns('GalaxyList')
-    .filter(name=>['uid','date','createtime','keyword'].includes(name))
+    .filter(name=>['uid','date','keyword'].includes(name))
 ]);
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
   .filter(column=>['uid','title','content','keyword'].includes(column)));
@@ -335,43 +335,6 @@ async function persistScanProgress(trx,scope,classUid,progress){
     .where('id','=',scope).execute();
 }
 
-// Read the undated metadata group without an arbitrary cutoff. The dated
-// reader uses a single (date, UID) keyset scan instead of per-day SQL lookups.
-// The outer analysis verifies the full Galaxy count before writing Pattern
-// postings, so additions/deletions during this scan cannot silently succeed.
-async function readCompleteKeywordMetadataGroup(db,scope,columns,{
-  date=null,maximumRows
-}={}){
-  checkScope(scope);
-  if(date!==null&&!DATE.test(date)||
-     !Number.isSafeInteger(maximumRows)||maximumRows<1||
-     !Array.isArray(columns)||!columns.length)
-    fail('Invalid Keyword metadata group request');
-  const rows=[],seen=new Set();
-  const pageSize=750;
-  let afterUid=null;
-  for(;;){
-    let query=db.selectFrom(galaxyName(scope)).select(columns)
-      .where('date',date===null?'is':'=',date)
-      .orderBy('uid','asc').limit(pageSize+1);
-    if(afterUid!==null)query=query.where('uid','>',afterUid);
-    const page=await query.execute();
-    if(!Array.isArray(page)||page.length>pageSize+1)
-      fail('Keyword metadata cursor returned invalid page');
-    // The extra row is a bounded lookahead, not a discarded article.
-    for(const row of page.slice(0,pageSize)){
-      const uid=String(row?.uid||'');
-      if(!UID.test(uid)||seen.has(uid))
-        fail('Keyword metadata cursor returned duplicate or invalid UID');
-      seen.add(uid);rows.push(row);afterUid=uid;
-      if(rows.length>=maximumRows)
-        fail('Keyword metadata group grew beyond the Galaxy COUNT; retry analysis');
-    }
-    if(page.length<=pageSize)break;
-  }
-  return {rows,count:rows.length};
-}
-
 export async function analyzeKeywordScope(db,scope,classUid,{
   authorizeTransaction=()=>{},startedAt=new Date().toISOString(),onProgress=()=>{},
   attemptId=''
@@ -399,25 +362,26 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   if(!Number.isSafeInteger(expectedCount)||expectedCount<0)
     fail('Galaxy count out of range');
   const cols=galaxyListMetadataColumns;
-  // COUNT is checked before and after scanning; the reader buffers complete
-  // same-day groups and rejects incomplete or inconsistent metadata.
-  const maximumRows=Math.max(10000,expectedCount+1);
+  // The indexed date/UID cursor streams directly; no complete-day sorting,
+  // publication-time index or full undated-group materialization is needed.
   const reader=createIndexedDateKeywordReader({
-    maximumRows,
     readDateBatch:async({afterDate,afterUid,limit})=>{
-      // One (date,UID) keyset scan replaces an extra query for every date.
-      // The reader buffers complete days before time-ordering.
-      let q=db.selectFrom(galaxyName(scope)).select(cols)
+      let query=db.selectFrom(galaxyName(scope)).select(cols)
         .where('date','is not',null)
         .orderBy('date','asc').orderBy('uid','asc').limit(limit);
-      if(afterDate!==null)q=q.where(eb=>eb.or([
+      if(afterDate!==null)query=query.where(eb=>eb.or([
         eb('date','>',afterDate),
         eb.and([eb('date','=',afterDate),eb('uid','>',afterUid)])
       ]));
-      return q.execute();
+      return query.execute();
     },
-    readUndated:({maximumRows})=>readCompleteKeywordMetadataGroup(
-      db,scope,cols,{maximumRows})
+    readUndatedBatch:async({afterUid,limit})=>{
+      let query=db.selectFrom(galaxyName(scope)).select(cols)
+        .where('date','is',null)
+        .orderBy('uid','asc').limit(limit);
+      if(afterUid!==null)query=query.where('uid','>',afterUid);
+      return query.execute();
+    }
   });
   let pending=null;
   const result=await analyzeIncrementalKeywordPatterns({
