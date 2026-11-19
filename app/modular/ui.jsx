@@ -12,7 +12,31 @@ import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
 import {selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
-import {loadPublishedBlocks} from './published-blocks/index.js';
+import groupHero_culture from './published-blocks/loc/group_culture.js';
+import scopeHero_culture from './published-blocks/loc/scope_culture.js';
+import groupHero_statics from './published-blocks/loc/group_statics.js';
+import scopeHero_statics from './published-blocks/loc/scope_statics.js';
+import groupHero_trace from './published-blocks/loc/group_trace.js';
+import scopeHero_trace from './published-blocks/loc/scope_trace.js';
+import groupHero_search from './published-blocks/loc/group_search.js';
+import scopeHero_search from './published-blocks/loc/scope_search.js';
+import groupHero_admin from './published-blocks/loc/group_admin.js';
+import scopeHero_admin from './published-blocks/loc/scope_admin.js';
+import groupHero_manage from './published-blocks/loc/group_manage.js';
+import scopeHero_manage from './published-blocks/loc/scope_manage.js';
+import groupHero_setting from './published-blocks/loc/group_setting.js';
+import scopeHero_setting from './published-blocks/loc/scope_setting.js';
+// Public feature Heroes are already published build-time data, not a second
+// runtime request. Both server HTML and client hydration render the same copy.
+const PUBLISHED_HERO_ROWS=Object.freeze({
+  culture:[...groupHero_culture,...scopeHero_culture],
+  statics:[...groupHero_statics,...scopeHero_statics],
+  trace:[...groupHero_trace,...scopeHero_trace],
+  search:[...groupHero_search,...scopeHero_search],
+  admin:[...groupHero_admin,...scopeHero_admin],
+  manage:[...groupHero_manage,...scopeHero_manage],
+  setting:[...groupHero_setting,...scopeHero_setting]
+});
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
@@ -63,16 +87,10 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   // live authoring data; no Auth or SQL is needed to render a public Hero.
   const groupHeroPage=HomeBlock.featureHeroPageFor(featureId);
   const scopeHeroPage='scope_'+featureId;
-  // Public Hero title, copy and image URL are already published. Read
-  // their per-page JS assets; never wait on hero_block SQL to show a Hero.
-  // The image URL remains a normal browser URL, not a generated image.
-  const publicHeroQuery=useAsyncResource(['published-feature-hero',featureId],
-    async()=>[...await loadPublishedBlocks('loc',groupHeroPage),
-      ...await loadPublishedBlocks('loc',scopeHeroPage)],{
-      enabled:!managementMode&&(sharedEnabled||hasFeatureHero||featureId==='admin'||featureId==='setting'),
-      shareResult:true
-    });
-  const publishedRows=publicHeroQuery.data||[];
+  // Static release snapshot renders immediately, on the server and on the
+  // client. Do not first paint fallback legacy copy and then re-read the Hero.
+  // Management mode keeps its independent authoritative editing reads below.
+  const publishedRows=PUBLISHED_HERO_ROWS[featureId]||[];
   const groupHeroRows=publishedRows.filter(row=>row.page_name===groupHeroPage);
   const scopeHeroRows=publishedRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
