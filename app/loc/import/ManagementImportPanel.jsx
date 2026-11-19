@@ -23,7 +23,7 @@ import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from
 import {archiveGalaxyRows} from '../archive/caption-rows.mjs';
 import {facebookPostPlace} from '../archive/geo-objects.mjs';
 
-import {dedupeIncomingImport,matchExistingImportBySiteId,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
+import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByExactSourceEvidence,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
 import {importTimeRangeWindow,filterImportAnalysisByTime} from './time-range.mjs';
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './place-anchors.mjs';
 import {prepareImportTimeAnchors} from './time-anchors.mjs';
@@ -1262,10 +1262,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }):new Map();
       const ambiguousById=matchesById.ambiguous||[];
       const ambiguousByIdUids=new Set(ambiguousById.map(row=>row.uid));
-      const reservedSavedUids=new Set([...matchesById.values()].map(row=>String(row.uid)));
-      // An imported UID can update only its own existing Galaxy row.
-      // Matching only by equal timestamps or normalized text could overwrite
-      // a different post, especially when punctuation or source IDs differ.
+      // A verified native source ID or an existing Galaxy primary key wins
+      // before any evidence fallback; equal timestamps alone prove nothing.
       const remaining=existingCandidates.filter(record=>
         !matchesById.has(String(record.uid))&&!ambiguousByIdUids.has(String(record.uid)));
       const byPrimaryUid=new Map();
@@ -1283,8 +1281,52 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           byPrimaryUid.set(String(incoming.uid),stored);
         }
       }
-      const existingBySiteId=new Map([...byPrimaryUid,...matchesById]);
-      const ambiguousGroups=ambiguousById;
+      const unresolved=remaining.filter(row=>
+        !byPrimaryUid.has(String(row.uid))&&!String(row.site_id||'').trim());
+      // The importer's locally generated UID can change between identical
+      // exports. Reconcile only exact, uniquely matched source evidence.
+      // Read existing Galaxy rows through the DATE index, never create or
+      // require a createtime index and never load a complete source corpus.
+      const matchesByEvidence=unresolved.length?
+        await matchExistingImportByExactSourceEvidence(unresolved,{
+          onProgress:p=>showProgress('依來源原文核對',p.completed,p.total),
+          readSourceRows:async({site,fromDate,toDate,consumePage})=>{
+            let afterDate=null,afterUid=null;
+            const pageSize=250;
+            for(;;){
+              let query=dbAuthRelation(galaxy)
+                .select(GALAXY_IMPORT_UID_COLUMNS)
+                .ieq('site',site).gte('date',fromDate).lte('date',toDate)
+                .order('date',{ascending:true}).order('uid',{ascending:true})
+                .limit(pageSize);
+              if(afterDate!==null)
+                query=query.or('date.gt.'+afterDate+
+                  ',and(date.eq.'+afterDate+',uid.gt.'+afterUid+')');
+              const {data,error}=await query;
+              if(error)throw Error('來源原文查詢失敗：'+error.message);
+              const page=data||[];
+              if(!Array.isArray(page)||page.length>pageSize)
+                throw Error('來源原文查詢回傳格式錯誤');
+              if(!page.length)break;
+              consumePage(page);
+              const last=page.at(-1);
+              const date=String(last?.date||''),uid=String(last?.uid||'');
+              if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||
+                !/^[A-Za-z0-9]{8}$/.test(uid)||
+                afterDate!==null&&(date<afterDate||
+                  date===afterDate&&uid<=afterUid))
+                throw Error('來源原文日期游標未前進，停止匯入');
+              afterDate=date;afterUid=uid;
+              if(page.length<pageSize)break;
+            }
+          }
+        }):new Map();
+      const existingBySiteId=new Map([
+        ...matchesByEvidence,...byPrimaryUid,...matchesById
+      ]);
+      const ambiguousGroups=[
+        ...ambiguousById,...(matchesByEvidence.ambiguous||[])
+      ];
       if(ambiguousGroups.length){
         const ambiguousUids=new Set(ambiguousGroups.map(group=>group.uid));
         unique=unique.filter(record=>!ambiguousUids.has(String(record.uid)));
