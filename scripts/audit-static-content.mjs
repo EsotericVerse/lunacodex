@@ -49,3 +49,37 @@ const byType=Object.fromEntries(['.html','.txt','.json','.js','.css'].map(ext=>{
 console.log('[content-audit] '+JSON.stringify({total:records.length,byType,emptyJson:emptyJson.map(x=>x.rel).slice(0,30),
   duplicateGroups:same.length,topDuplicateGroups:same.slice(0,12).map(g=>({count:g.length,examples:g.slice(0,4)})),
   largest:largest.map(x=>({path:x.rel,bytes:x.bytes})),repeatedText:repeated},null,2));
+
+// Translation keys are interface copy, not an archive of development notes.
+// This is deliberately diagnostic: runtime database-driven labels may not be
+// statically visible and must not be deleted just because they aren't literals.
+const shared=JSON.parse(fs.readFileSync(path.resolve('app/i18n/shared/en.json'),'utf8'));
+const sourceFiles=[];
+for(const folder of ['app','packages']){
+  const base=path.resolve(folder);
+  if(!fs.existsSync(base))continue;
+  const scan=dir=>{
+    for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
+      const full=path.join(dir,entry.name);
+      if(entry.isDirectory()){
+        if(['node_modules','.next','published-blocks','i18n'].includes(entry.name))continue;
+        scan(full);
+      }else if(entry.isFile()&&/\.(?:js|jsx|mjs|ts|tsx)$/.test(entry.name)){
+        sourceFiles.push({path:path.relative('.',full).replaceAll(path.sep,'/'),text:fs.readFileSync(full,'utf8')});
+      }
+    }
+  };
+  scan(base);
+}
+const unmatched=[];
+for(const label of Object.keys(shared.fields||{})){
+  const refs=sourceFiles.filter(file=>file.text.includes(label)).map(file=>file.path);
+  if(refs.length===0)unmatched.push(label);
+}
+console.log('[locale-field-audit] '+JSON.stringify({
+  total:Object.keys(shared.fields||{}).length,
+  sourceFiles:sourceFiles.length,
+  notFoundInSource:unmatched.length,
+  // A static code scan does not prove these are safe to delete.
+  candidates:unmatched.slice(0,85)
+}));
