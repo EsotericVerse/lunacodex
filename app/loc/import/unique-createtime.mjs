@@ -42,17 +42,25 @@ export function finalizeImportCreatedTimes(records,{
   }
   const fallback=importTimeMicroseconds(fallbackTime);
   if(fallback===null)throw new TypeError('Invalid import fallback timestamp');
+  // Repeated original seconds are common in social exports. Remember the
+  // next candidate per original instant instead of re-testing all previous
+  // microseconds on every row (quadratic work on a large import).
+  const nextFreeBySource=new Map();
   return records.map(row=>{
     const original=importTimeMicroseconds(row?.createtime);
     const source=original===null?fallback:original;
     const second=source-(source%SECOND_US);
     const offset=source-second;
+    const origin=source.toString();
     let chosen=null;
-    for(let i=0n;i<SECOND_US;i++){
+    let i=nextFreeBySource.get(origin)||0n;
+    for(;i<SECOND_US;i++){
       const micros=second+(offset+i)%SECOND_US;
       const key=micros.toString();
       if(occupied.has(key))continue;
-      occupied.add(key);chosen=micros;break;
+      occupied.add(key);chosen=micros;
+      nextFreeBySource.set(origin,i+1n);
+      break;
     }
     if(chosen===null)throw new Error('單秒內沒有剩餘微秒時間位址，無法完成唯一匯入');
     const createtime=formatImportMicroseconds(chosen);
