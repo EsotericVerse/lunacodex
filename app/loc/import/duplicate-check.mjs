@@ -1,7 +1,8 @@
 import {importGeoKey} from './geocoordinates.mjs';
 
-// Import identity requires an exact Galaxy UID or verified native site + site_id.
-// Timestamps, punctuation-normalized text and appearance are not post identity.
+// A native source ID is definitive. For original dated posts, source site +
+// creation timestamp identifies a post. Fallback update times are not used
+// to merge posts because multiple missing dates can share one edit time.
 const importSourceKey=record=>{
   const site=String(record?.site??'').trim().toLocaleLowerCase('und');
   const id=String(record?.site_id??'').trim();
@@ -19,7 +20,7 @@ const importTimeKey=record=>{
 // Keep separate source rows even when they share a timestamp; an exact UID
 // repeated in the same file is the only safe input-level duplicate.
 export function dedupeIncomingImport(records=[]){
-  const unique=[],aliases=new Map(),byUid=new Map(),byNativeId=new Map();
+  const unique=[],aliases=new Map(),byUid=new Map(),byNativeId=new Map(),byTime=new Map();
   const indexByUid=new Map();
   const inheritLocation=(uid,row)=>{
     const index=indexByUid.get(uid);
@@ -79,8 +80,21 @@ export function dedupeIncomingImport(records=[]){
     const sourceUid=source?byNativeId.get(source):null;
     if(sourceUid){duplicates++;aliases.set(uid,sourceUid);inheritLocation(sourceUid,row);continue;}
     if(source)byNativeId.set(source,uid);
-    // A different UID without a verified native source ID remains a separate
-    // article, even if its timestamp and text happen to match.
+    // Only an authentic creation timestamp can deduplicate same-site posts.
+    // Multiple rows with missing time may share the same UpdateTime fallback.
+    const time=row.__importTimeSource==='update'||
+      row.__importTimeSource==='missing'?null:importTimeKey(row);
+    const timeUid=time?byTime.get(time):null;
+    if(timeUid){
+      const saved=byUid.get(timeUid);
+      const savedSource=importSourceKey(saved);
+      // Two different real platform IDs cannot be overwritten by one another.
+      if(!source||!savedSource||source===savedSource){
+        duplicates++;aliases.set(uid,timeUid);inheritLocation(timeUid,row);
+        continue;
+      }
+    }
+    if(time&&!byTime.has(time))byTime.set(time,uid);
     indexByUid.set(uid,unique.length);
     unique.push(row);aliases.set(uid,uid);
   }
@@ -153,69 +167,63 @@ export async function matchExistingImportBySiteId(records,{readSiteIds,onProgres
 }
 
 
-// A file without a native post ID gets a new local Galaxy UID on each import.
-// Reimport is safe only when source evidence matches exactly and uniquely.
-// This is NOT fuzzy text comparison or a same-timestamp identity guess.
+// The importer generates its own Galaxy UID on each import. Match original
+// dated articles by source site + actual creation timestamp, not that UID or
+// body/title/URL comparison. Missing creation times are handled separately.
 const taipeiDate=new Intl.DateTimeFormat('sv-SE',{
   timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'
 });
-const sourceEvidence=row=>{
-  if(String(row?.site_id||'').trim())return null;
-  const site=String(row?.site||'').trim().toLocaleLowerCase('und');
-  const stamp=Date.parse(String(row?.createtime||''));
-  const content=String(row?.content??''),title=String(row?.title??'');
-  if(!site||!Number.isFinite(stamp)||!content)return null;
-  return {
-    site,day:taipeiDate.format(new Date(stamp)),
-    key:JSON.stringify([site,new Date(stamp).toISOString(),title,content,
-      String(row?.url??''),importRowRole(row)])
-  };
-};
-export async function matchExistingImportByExactSourceEvidence(records,{
+export async function matchExistingImportByCreatedAt(records,{
   readSourceRows,onProgress
 }={}){
   if(typeof readSourceRows!=='function')
-    throw new TypeError('Missing indexed source/day Galaxy reader');
+    throw new TypeError('Missing indexed source/date Galaxy reader');
   const groups=new Map(),requested=new Map();
   for(const row of records||[]){
-    const evidence=sourceEvidence(row);
-    if(!evidence)continue;
-    const existing=requested.get(evidence.key)||[];
-    existing.push(row);requested.set(evidence.key,existing);
-    const group=groups.get(evidence.site)||{days:new Set(),wanted:new Set()};
-    group.days.add(evidence.day);group.wanted.add(evidence.key);
-    groups.set(evidence.site,group);
+    if(row.__importTimeSource==='update'||row.__importTimeSource==='missing')
+      continue;
+    const key=importTimeKey(row);
+    if(!key)continue;
+    const input=requested.get(key)||[];
+    input.push(row);requested.set(key,input);
+    const site=String(row.site||'').trim();
+    const stamp=Date.parse(String(row.createtime||''));
+    const day=taipeiDate.format(new Date(stamp));
+    const group=groups.get(site)||{days:new Set(),wanted:new Set()};
+    group.days.add(day);group.wanted.add(key);groups.set(site,group);
   }
   const matches=new Map(),ambiguous=[];
   for(const [site,group] of groups){
     const days=[...group.days].sort();
-    const saved=new Map();
+    const stored=new Map();
     await readSourceRows({
       site,fromDate:days[0],toDate:days.at(-1),
       consumePage:rows=>{
-        if(!Array.isArray(rows))throw new TypeError('Invalid source evidence page');
+        if(!Array.isArray(rows))throw new TypeError('Invalid source/time page');
         for(const row of rows){
-          const key=sourceEvidence(row)?.key;
+          const key=importTimeKey(row);
           if(!key||!group.wanted.has(key))continue;
-          const found=saved.get(key)||new Map();
-          found.set(String(row.uid),row);
-          saved.set(key,found);
+          const candidates=stored.get(key)||new Map();
+          candidates.set(String(row.uid),row);
+          stored.set(key,candidates);
         }
       }
     });
     for(const key of group.wanted){
       const incoming=requested.get(key)||[];
-      const candidates=[...(saved.get(key)?.values()||[])];
-      if(candidates.length===1&&incoming.length===1){
+      const candidates=[...(stored.get(key)?.values()||[])];
+      // A single true timestamp maps to a single existing source post.
+      // If historic data has duplicate timestamps, do not choose randomly.
+      if(incoming.length===1&&candidates.length===1)
         matches.set(String(incoming[0].uid),candidates[0]);
-      }else if(candidates.length>0){
+      else if(candidates.length)
         for(const row of incoming)ambiguous.push({
           uid:String(row.uid),site:String(row.site),createtime:row.createtime,
           saved_uids:candidates.map(candidate=>String(candidate.uid))
         });
-      }
     }
-    onProgress?.({completed:matches.size,total:records.length,ambiguous:ambiguous.length});
+    onProgress?.({completed:matches.size,total:records.length,
+      ambiguous:ambiguous.length});
   }
   matches.ambiguous=ambiguous;
   return matches;
