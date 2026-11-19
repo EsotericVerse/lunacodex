@@ -1,7 +1,7 @@
 'use client';
 
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {invalidatePublicScopeMetadata,selectScopeConfig,selectScopeRegistry} from '../scope/scope-data';
+import {invalidatePublicScopeMetadata,selectScopeRegistry} from '../scope/scope-data';
 import {selectThemeRegistry,themeUiId} from '../preferences/theme-data';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 
@@ -34,9 +34,7 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
     id==='local'?Promise.resolve([]):selectScopeRegistry(),
     id==='local'?Promise.resolve([]):selectThemeRegistry(),
     id&&id!=='admin'
-      ?(configHint?Promise.resolve(configHint):page==='index'
-        ?Promise.resolve(SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id)?.config||null)
-        :selectScopeConfig(id))
+      ?Promise.resolve(configHint||SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id)?.config||null)
       :Promise.resolve(null)
   ]);
   return {
