@@ -83,3 +83,21 @@ console.log('[locale-field-audit] '+JSON.stringify({
   // A static code scan does not prove these are safe to delete.
   candidates:unmatched
 }));
+
+const sharedZh=JSON.parse(fs.readFileSync(path.resolve('app/i18n/shared/zh_tw.json'),'utf8'));
+const unusedUiExtra=[];
+const checkedUiExtra=[];
+function inspectCopy(node,prefix){
+  if(!node||typeof node!=='object'||Array.isArray(node))return;
+  for(const [key,value] of Object.entries(node)){
+    const trail=[...prefix,key];
+    if(value&&typeof value==='object'&&!Array.isArray(value)){inspectCopy(value,trail);continue;}
+    const referenced=sourceFiles.some(file=>file.text.includes(key));
+    checkedUiExtra.push(trail.join('.'));
+    if(!referenced)unusedUiExtra.push(trail.join('.'));
+  }
+}
+inspectCopy(sharedZh.uiExtra,['uiExtra']);
+console.log('[locale-extra-audit] '+JSON.stringify({
+  total:checkedUiExtra.length,unreferenced:unusedUiExtra.length,keys:unusedUiExtra
+}));
