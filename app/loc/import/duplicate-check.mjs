@@ -1,4 +1,5 @@
 import {importGeoKey} from './geocoordinates.mjs';
+import {importTimeMicroseconds} from './unique-createtime.mjs';
 
 // A native source ID is definitive. For original dated posts, source site +
 // creation timestamp identifies a post. Fallback update times are not used
@@ -13,9 +14,19 @@ export const importRowRole=record=>
   String(record?.site_id??'').startsWith('album:')?'album':'article';
 const importTimeKey=record=>{
   const site=String(record?.site??'').trim().toLocaleLowerCase('und');
-  const date=Date.parse(String(record?.createtime??''));
-  return site&&Number.isFinite(date)?
-    JSON.stringify([site,new Date(date).toISOString(),importRowRole(record)]):null;
+  const micros=importTimeMicroseconds(record?.createtime);
+  return site&&micros!==null?
+    JSON.stringify([site,micros.toString(),importRowRole(record)]):null;
+};
+// Source exports may specify milliseconds while an existing Galaxy row was
+// advanced by a few microseconds to keep timestamps globally unique. This
+// fallback is used only when no exact match exists AND only one candidate
+// exists in that original millisecond; it never outranks an exact match.
+const importMillisKey=record=>{
+  const site=String(record?.site??'').trim().toLocaleLowerCase('und');
+  const micros=importTimeMicroseconds(record?.createtime);
+  return site&&micros!==null?
+    JSON.stringify([site,(micros/1000n).toString(),importRowRole(record)]):null;
 };
 // Keep separate source rows even when they share a timestamp; an exact UID
 // repeated in the same file is the only safe input-level duplicate.
@@ -146,9 +157,9 @@ export async function matchExistingImportBySiteId(records,{readSiteIds,onProgres
     // A reused platform ID must never select an arbitrary existing article.
     // Exact timestamps can distinguish duplicate stored IDs; a matching body
     // alone cannot, because distinct posts may carry the same text.
-    const incomingTime=Date.parse(String(record.createtime??''));
-    const sameInstant=Number.isFinite(incomingTime)?
-      saved.filter(row=>Date.parse(String(row.createtime??''))===incomingTime):[];
+    const incomingTime=importTimeMicroseconds(record.createtime);
+    const sameInstant=incomingTime!==null?
+      saved.filter(row=>importTimeMicroseconds(row.createtime)===incomingTime):[];
     if(sameInstant.length===1){
       matches.set(String(record.uid),sameInstant[0]);
       continue;
@@ -194,34 +205,62 @@ export async function matchExistingImportByCreatedAt(records,{
   }
   const matches=new Map(),ambiguous=[];
   for(const [site,group] of groups){
-    const days=[...group.days].sort();
-    const stored=new Map();
+    const days=[...group.days].sort(),stored=new Map(),millis=new Map();
     await readSourceRows({
       site,fromDate:days[0],toDate:days.at(-1),
       consumePage:rows=>{
         if(!Array.isArray(rows))throw new TypeError('Invalid source/time page');
         for(const row of rows){
-          const key=importTimeKey(row);
-          if(!key||!group.wanted.has(key))continue;
+          const key=importTimeKey(row),milli=importMillisKey(row);
+          if(!key||!milli)continue;
+          // A microsecond-adjusted saved timestamp can be a reimport target
+          // even if the original source only supplied millisecond precision.
           const candidates=stored.get(key)||new Map();
           candidates.set(String(row.uid),row);
           stored.set(key,candidates);
+          const neighbors=millis.get(milli)||new Map();
+          neighbors.set(String(row.uid),row);
+          millis.set(milli,neighbors);
         }
       }
     });
+    const selected=new Set(excludeSavedUids);
+    const pending=[];
+    // Exact microsecond matches have priority over any fallback.
     for(const key of group.wanted){
       const incoming=requested.get(key)||[];
       const candidates=[...(stored.get(key)?.values()||[])]
-        .filter(row=>!excludeSavedUids.has(String(row.uid)));
-      // A single true timestamp maps to a single existing source post.
-      // If historic data has duplicate timestamps, do not choose randomly.
-      if(incoming.length===1&&candidates.length===1)
+        .filter(row=>!selected.has(String(row.uid)));
+      if(incoming.length===1&&candidates.length===1){
         matches.set(String(incoming[0].uid),candidates[0]);
-      else if(candidates.length)
-        for(const row of incoming)ambiguous.push({
+        selected.add(String(candidates[0].uid));
+      }else if(candidates.length||incoming.length>1){
+        if(candidates.length)for(const row of incoming)ambiguous.push({
           uid:String(row.uid),site:String(row.site),createtime:row.createtime,
           saved_uids:candidates.map(candidate=>String(candidate.uid))
         });
+      }else pending.push(incoming[0]);
+    }
+    const pendingByMillis=new Map();
+    for(const row of pending){
+      const key=importMillisKey(row);
+      const arr=pendingByMillis.get(key)||[];
+      arr.push(row);pendingByMillis.set(key,arr);
+    }
+    for(const [key,rows] of pendingByMillis){
+      const candidates=[...(millis.get(key)?.values()||[])]
+        .filter(row=>!selected.has(String(row.uid)));
+      // Ambiguous timestamp buckets are held for review rather than
+      // overwriting one of several same-millisecond legacy articles.
+      if(rows.length===1&&candidates.length===1){
+        matches.set(String(rows[0].uid),candidates[0]);
+        selected.add(String(candidates[0].uid));
+      }else if(candidates.length){
+        for(const row of rows)ambiguous.push({
+          uid:String(row.uid),site:String(row.site),createtime:row.createtime,
+          saved_uids:candidates.map(candidate=>String(candidate.uid))
+        });
+      }
     }
     onProgress?.({completed:matches.size,total:records.length,
       ambiguous:ambiguous.length});
