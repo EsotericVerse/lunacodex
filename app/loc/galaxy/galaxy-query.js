@@ -705,13 +705,11 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
     {column:'invisible',operator:'eq',value:false}];
   const orders=[{column:'type',ascending:true},{column:'uid',ascending:true}];
   const aggregates=new Map();
-  let offset=0,total=null,source='auto';
-  while(total===null||offset<total){
+  let offset=0,source='auto';
+  while(true){
     const page=await selectRows(current.anchor,{
-      columns:MEDIA_ANCHOR_COLUMNS,filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,
-      count:offset===0?'exact':null,source
+      columns:MEDIA_ANCHOR_COLUMNS,filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,source
     });
-    if(offset===0)total=Number.isFinite(Number(page.count))?Number(page.count):page.rows.length;
     source=page.dataSource||source;
     for(const row of StatisticsFacets.base.mediaFacetDaily(page.rows.map(mediaAnchorProjection),dimension)){
       const key=row.day+'\u0000'+row.category.normalize('NFKC').toLocaleLowerCase();
@@ -719,8 +717,8 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
       if(existing)existing.item_count+=row.item_count;
       else aggregates.set(key,{...row});
     }
-    if(!page.rows.length)break;
     offset+=page.rows.length;
+    if(page.rows.length<DB_QUERY_BATCH_SIZE)break;
   }
   return [...aggregates.values()].sort((a,b)=>
     a.day.localeCompare(b.day)||a.category.localeCompare(b.category)
@@ -736,18 +734,16 @@ export async function selectMediaCrossTagRows(scope,{startDate='',endDate=''}={}
     {column:'invisible',operator:'eq',value:false}];
   const orders=[{column:'type',ascending:true},{column:'uid',ascending:true}];
   const rows=[];
-  let offset=0,total=null,source='auto';
-  while(total===null||offset<total){
+  let offset=0,source='auto';
+  while(true){
     const page=await selectRows(current.anchor,{
       columns:MEDIA_ANCHOR_COLUMNS,
-      filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,
-      count:offset===0?'exact':null,source
+      filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,source
     });
-    if(offset===0)total=Number.isFinite(Number(page.count))?Number(page.count):page.rows.length;
     source=page.dataSource||source;
     rows.push(...page.rows.map(mediaAnchorProjection));
-    if(!page.rows.length)break;
     offset+=page.rows.length;
+    if(page.rows.length<DB_QUERY_BATCH_SIZE)break;
   }
   return rows;
 }
