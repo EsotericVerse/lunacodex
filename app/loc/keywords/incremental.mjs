@@ -36,10 +36,10 @@ export async function analyzeIncrementalKeywordPatterns({
   const matcher=compileKeywordLiteralMatcher([...literals.keys()]);
   // Checkpoints from the former per-article incremental algorithm are not
   // compatible with an exact full-scan result and must not be resumed.
-  const continuing=resume?.scanMode==='literal_full_v1';
+  const continuing=resume?.scanMode==='literal_full_v2';
   if(continuing&&(!resume.patternSets||typeof resume.patternSets!=='object'||
-    !Array.isArray(resume.checked)||!Number.isSafeInteger(resume.scanned)||
-    resume.scanned<0||resume.checked.length!==resume.scanned))
+    !Number.isSafeInteger(resume.scanned)||!Number.isSafeInteger(resume.parsed)||
+    resume.scanned<0||resume.parsed<0))
     throw new Error('Invalid Keyword full-scan checkpoint');
   const sets=new Map();
   for(const key of literals.keys()){
@@ -51,9 +51,10 @@ export async function analyzeIncrementalKeywordPatterns({
   }
   if(continuing&&Object.keys(resume.patternSets).length!==sets.size)
     throw new Error('Keyword Pattern catalog changed during scan; restart analysis');
-  const checked=new Set(continuing?resume.checked:[]);
-  if(continuing&&checked.size!==resume.checked.length)
-    throw new Error('Duplicate Galaxy UID in Keyword scan checkpoint');
+  // The keyset reader carries the exact cursor between invocations. Repeating
+  // every scanned Galaxy UID in keyword_meta adds a large redundant array.
+  // A per-invocation Set still detects duplicate rows inside one request.
+  const checked=new Set();
 
   let scanned=continuing?resume.scanned:0,parsed=continuing?resume.parsed:0;
   let cursor=continuing?resume.cursor:null;
@@ -61,18 +62,25 @@ export async function analyzeIncrementalKeywordPatterns({
   // A small first page is a calibration sample, not a processing ceiling.
   // Subsequent sizes follow measured per-row cost and the upper quartile
   // of recent pages, not an owner-supplied fixed Regex/Immer percentage.
-  let currentPageSize=continuing&&Number.isSafeInteger(resume.currentPageSize)&&
+  const carriedSize=continuing&&Number.isSafeInteger(resume.currentPageSize)&&
     resume.currentPageSize>0?resume.currentPageSize:Math.min(pageSize,128);
+  const previousRowMs=continuing&&resume.lastPageMs>0&&resume.lastPageSize>0
+    ?resume.lastPageMs/resume.lastPageSize:null;
+  // Keep the calibrated read size, but derate it if its actual measured
+  // latency would consume too much of a new request's time budget.
+  let currentPageSize=previousRowMs!==null&&timeBudgetMs!==null
+    ?Math.max(1,Math.min(carriedSize,Math.floor(timeBudgetMs*0.4/previousRowMs)))
+    :carriedSize;
   const rowMs=[];
-  if(continuing&&resume.lastPageMs>0&&resume.currentPageSize>0)
-    rowMs.push(resume.lastPageMs/resume.currentPageSize);
+  if(previousRowMs!==null)rowMs.push(previousRowMs);
   let lastPageMs=continuing?resume.lastPageMs||null:null;
+  let lastPageSize=continuing?resume.lastPageSize||null:null;
   async function checkpoint(){
     if(!onCheckpoint)return;
     const patternSets=Object.fromEntries([...sets].map(([key,ids])=>[key,[...ids]]));
     await onCheckpoint({
-      scanMode:'literal_full_v1',cursor,scanned,parsed,reused:0,
-      patternSets,checked:[...checked],currentPageSize,lastPageMs
+      scanMode:'literal_full_v2',cursor,scanned,parsed,reused:0,
+      patternSets,currentPageSize,lastPageMs,lastPageSize
     });
   }
 
@@ -117,6 +125,7 @@ export async function analyzeIncrementalKeywordPatterns({
 
     const elapsed=Math.max(1,now()-started);
     lastPageMs=elapsed;
+    lastPageSize=read.rows.length;
     rowMs.push(elapsed/read.rows.length);
     if(rowMs.length>11)rowMs.shift();
     const sorted=[...rowMs].sort((a,b)=>a-b);
