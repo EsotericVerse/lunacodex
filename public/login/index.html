@@ -26,7 +26,7 @@
     <section class="auth-surface" aria-label="LOC 登入與身分核驗">
       <div class="auth-top"><span class="eyebrow">YOUR ACCOUNT</span><p>安全登入，繼續原本的工作。</p></div>
       <div id="login-root">
-        <p class="native-note">透過 LOC Auth SSO 登入；需要外部身分驗證時由 LOC Auth 處理。</p>
+        <p class="native-note">可直接使用 Google OAuth 登入，或核驗既有的 LOC Auth Session。</p>
       </div>
       <div id="signed-in" hidden>
         <h2>身分核驗</h2>
@@ -67,9 +67,27 @@ function login(){location.assign(AUTH+'/login?return_to='+encodeURIComponent(ret
 const panel=byId('login-root');
 const sso=document.createElement('button');
 sso.type='button';sso.id='loc-sso-login';sso.className='loc-login-choice';
-sso.textContent='使用 LOC Auth SSO';
-sso.onclick=async()=>{if(!await refresh())login();else returnToLoc()};
+// Starting OAuth is independent of session health. A failed cross-origin
+// get-session check must never leave the user unable to sign in.
+sso.textContent='使用 Google OAuth 登入';
+sso.onclick=login;
 panel.appendChild(sso);
+const existing=document.createElement('button');
+existing.type='button';
+existing.id='loc-existing-session';
+existing.className='loc-login-choice';
+existing.textContent='使用現有 LOC Auth Session';
+existing.onclick=async()=>{
+ existing.disabled=true;
+ try{
+  if(await refresh())returnToLoc();
+  else byId('status').textContent='目前沒有有效 Session，請選擇 Google OAuth 登入。';
+ }catch{
+  byId('status').textContent='暫時無法核驗 Session；Google OAuth 登入仍可使用。';
+  panel.hidden=false;
+ }finally{existing.disabled=false}
+};
+panel.appendChild(existing);
 byId('return').onclick=returnToLoc;
 byId('copy-loc-subject').onclick=async()=>{
  if(!verifiedUser)return;

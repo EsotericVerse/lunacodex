@@ -1,12 +1,9 @@
 import {importGeoKey} from './geocoordinates.mjs';
+import {importTimeMicroseconds} from './unique-createtime.mjs';
 
-// Import identity is source site + normalized creation timestamp.
-// Native site_id is optional source metadata, not a matching requirement.
-export function comparableImportText(value){
-  return String(value??'').normalize('NFKC')
-    .replace(/[\p{P}\p{S}\p{Z}\s\u200B-\u200D\uFEFF\u2060]/gu,'')
-    .toLocaleLowerCase('und');
-}
+// A native source ID is definitive. For original dated posts, source site +
+// creation timestamp identifies a post. Fallback update times are not used
+// to merge posts because multiple missing dates can share one edit time.
 const importSourceKey=record=>{
   const site=String(record?.site??'').trim().toLocaleLowerCase('und');
   const id=String(record?.site_id??'').trim();
@@ -17,14 +14,24 @@ export const importRowRole=record=>
   String(record?.site_id??'').startsWith('album:')?'album':'article';
 const importTimeKey=record=>{
   const site=String(record?.site??'').trim().toLocaleLowerCase('und');
-  const date=Date.parse(String(record?.createtime??''));
-  return site&&Number.isFinite(date)?
-    JSON.stringify([site,new Date(date).toISOString(),importRowRole(record)]):null;
+  const micros=importTimeMicroseconds(record?.createtime);
+  return site&&micros!==null?
+    JSON.stringify([site,micros.toString(),importRowRole(record)]):null;
+};
+// Source exports may specify milliseconds while an existing Galaxy row was
+// advanced by a few microseconds to keep timestamps globally unique. This
+// fallback is used only when no exact match exists AND only one candidate
+// exists in that original millisecond; it never outranks an exact match.
+const importMillisKey=record=>{
+  const site=String(record?.site??'').trim().toLocaleLowerCase('und');
+  const micros=importTimeMicroseconds(record?.createtime);
+  return site&&micros!==null?
+    JSON.stringify([site,(micros/1000n).toString(),importRowRole(record)]):null;
 };
 // Keep separate source rows even when they share a timestamp; an exact UID
 // repeated in the same file is the only safe input-level duplicate.
 export function dedupeIncomingImport(records=[]){
-  const unique=[],aliases=new Map(),byUid=new Map(),byContentTime=new Map(),byNativeId=new Map();
+  const unique=[],aliases=new Map(),byUid=new Map(),byNativeId=new Map(),byTime=new Map();
   const indexByUid=new Map();
   const inheritLocation=(uid,row)=>{
     const index=indexByUid.get(uid);
@@ -84,18 +91,21 @@ export function dedupeIncomingImport(records=[]){
     const sourceUid=source?byNativeId.get(source):null;
     if(sourceUid){duplicates++;aliases.set(uid,sourceUid);inheritLocation(sourceUid,row);continue;}
     if(source)byNativeId.set(source,uid);
-    // For posts without a native ID, compare exact time and normalized text.
-    let semantic=null;
-    if(!source){
-      const time=importTimeKey(row);
-      if(time){
-        const text=comparableImportText(row.content);
-        if(text)semantic=JSON.stringify([time,text]);
+    // Only an authentic creation timestamp can deduplicate same-site posts.
+    // Multiple rows with missing time may share the same UpdateTime fallback.
+    const time=row.__importTimeSource==='update'||
+      row.__importTimeSource==='missing'?null:importTimeKey(row);
+    const timeUid=time?byTime.get(time):null;
+    if(timeUid){
+      const saved=byUid.get(timeUid);
+      const savedSource=importSourceKey(saved);
+      // Two different real platform IDs cannot be overwritten by one another.
+      if(!source||!savedSource||source===savedSource){
+        duplicates++;aliases.set(uid,timeUid);inheritLocation(timeUid,row);
+        continue;
       }
     }
-    const seen=semantic?byContentTime.get(semantic):null;
-    if(seen){duplicates++;aliases.set(uid,seen);inheritLocation(seen,row);continue;}
-    if(semantic)byContentTime.set(semantic,uid);
+    if(time&&!byTime.has(time))byTime.set(time,uid);
     indexByUid.set(uid,unique.length);
     unique.push(row);aliases.set(uid,uid);
   }
@@ -147,9 +157,9 @@ export async function matchExistingImportBySiteId(records,{readSiteIds,onProgres
     // A reused platform ID must never select an arbitrary existing article.
     // Exact timestamps can distinguish duplicate stored IDs; a matching body
     // alone cannot, because distinct posts may carry the same text.
-    const incomingTime=Date.parse(String(record.createtime??''));
-    const sameInstant=Number.isFinite(incomingTime)?
-      saved.filter(row=>Date.parse(String(row.createtime??''))===incomingTime):[];
+    const incomingTime=importTimeMicroseconds(record.createtime);
+    const sameInstant=incomingTime!==null?
+      saved.filter(row=>importTimeMicroseconds(row.createtime)===incomingTime):[];
     if(sameInstant.length===1){
       matches.set(String(record.uid),sameInstant[0]);
       continue;
@@ -167,174 +177,96 @@ export async function matchExistingImportBySiteId(records,{readSiteIds,onProgres
   return matches;
 }
 
-// Scope to the exact source site before querying timestamps. Neither content
-// nor optional site_id participates in duplicate detection.
-export async function matchExistingImportByCreatedAt(records,{readTimestamps,onProgress}={}){
-  if(typeof readTimestamps!=='function')throw Error('缺少 createtime 查詢');
-  const requested=new Map(),groups=new Map();
-  for(const record of records||[]){
-    const key=importTimeKey(record);
+
+// The importer generates its own Galaxy UID on each import. Match original
+// dated articles by source site + actual creation timestamp, not that UID or
+// body/title/URL comparison. Missing creation times are handled separately.
+const taipeiDate=new Intl.DateTimeFormat('sv-SE',{
+  timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'
+});
+export async function matchExistingImportByCreatedAt(records,{
+  readSourceRows,onProgress,excludeSavedUids=new Set()
+}={}){
+  if(typeof readSourceRows!=='function')
+    throw new TypeError('Missing indexed source/date Galaxy reader');
+  const groups=new Map(),requested=new Map();
+  for(const row of records||[]){
+    if(row.__importTimeSource==='update'||row.__importTimeSource==='missing')
+      continue;
+    const key=importTimeKey(row);
     if(!key)continue;
-    if(!requested.has(key))requested.set(key,[]);
-    requested.get(key).push(record);
-    const site=String(record.site).trim();
-    if(!groups.has(site))groups.set(site,new Set());
-    groups.get(site).add(new Date(Date.parse(record.createtime)).toISOString());
+    const input=requested.get(key)||[];
+    input.push(row);requested.set(key,input);
+    const site=String(row.site||'').trim();
+    const stamp=Date.parse(String(row.createtime||''));
+    const day=taipeiDate.format(new Date(stamp));
+    const group=groups.get(site)||{days:new Set(),wanted:new Set()};
+    group.days.add(day);group.wanted.add(key);groups.set(site,group);
   }
-  const total=[...groups.values()].reduce((sum,times)=>sum+times.size,0);
-  const matches=new Map(),candidates=new Map(),ambiguous=[];
-  onProgress?.({completed:0,total,matched:0});
-  if(!total)return matches;
-  const consumePage=page=>{
-    if(!Array.isArray(page))throw Error('createtime 查詢結果無效');
-    for(const row of page){
-      const key=importTimeKey(row);
-      if(!key||!requested.has(key))continue;
-      if(!candidates.has(key))candidates.set(key,new Map());
-      candidates.get(key).set(String(row.uid),row);
-    }
-  };
-  let base=0;
-  for(const [site,times] of groups){
-    const report=done=>onProgress?.({completed:Math.min(total,base+done),
-      total,matched:candidates.size});
-    const returned=await readTimestamps([...times],consumePage,site,report);
-    base+=times.size;
-    if(Array.isArray(returned))consumePage(returned);
-    else if(returned!==undefined&&returned!==null)
-      throw Error('createtime 查詢沒有回傳有效文章');
-  }
-  for(const [key,recordsAtTime] of requested){
-    const saved=[...(candidates.get(key)?.values()||[])];
-    if(!saved.length)continue;
-    const used=new Set(),unresolved=[];
-    // Index one same-second group once. Native IDs and normalized bodies
-    // should not trigger a full scan for each imported post.
-    const bySiteId=new Map();
-    for(const row of saved){
-      const id=String(row.site_id||'').trim();
-      if(!id)continue;
-      if(!bySiteId.has(id))bySiteId.set(id,[]);
-      bySiteId.get(id).push(row);
-    }
-    const eligible=(record,rows)=>rows.filter(row=>{
-      if(used.has(String(row.uid)))return false;
-      const incomingId=String(record.site_id||'').trim();
-      const storedId=String(row.site_id||'').trim();
-      // Two different genuine platform IDs are different posts.
-      return !incomingId||!storedId||incomingId===storedId;
-    });
-    const assign=(record,row)=>{
-      matches.set(String(record.uid),row);used.add(String(row.uid));
-    };
-    // A source identifier is definitive even when multiple posts share time.
-    for(const record of recordsAtTime){
-      const id=String(record.site_id||'').trim();
-      const equal=id?(bySiteId.get(id)||[]).filter(row=>!used.has(String(row.uid))):[];
-      if(equal.length===1)assign(record,equal[0]);
-      else if(equal.length>1)ambiguous.push({
-        uid:String(record.uid),site:record.site,createtime:record.createtime,
-        saved_uids:equal.map(row=>String(row.uid))
-      });
-      else unresolved.push(record);
-    }
-    // Build text groups only when native-ID matching left work to do.
-    const byContent=new Map();
-    if(unresolved.length)for(const row of saved){
-      const text=comparableImportText(row.content);
-      if(!byContent.has(text))byContent.set(text,[]);
-      byContent.get(text).push(row);
-    }
-    for(const record of unresolved){
-      const incomingText=comparableImportText(record.content);
-      const sameContent=eligible(record,byContent.get(incomingText)||[]);
-      if(sameContent.length===1){assign(record,sameContent[0]);continue;}
-      if(sameContent.length>1){
-        ambiguous.push({
-          uid:String(record.uid),site:record.site,createtime:record.createtime,
-          saved_uids:sameContent.map(row=>String(row.uid))
-        });
-        continue;
+  const matches=new Map(),ambiguous=[];
+  for(const [site,group] of groups){
+    const days=[...group.days].sort(),stored=new Map(),millis=new Map();
+    await readSourceRows({
+      site,fromDate:days[0],toDate:days.at(-1),
+      consumePage:rows=>{
+        if(!Array.isArray(rows))throw new TypeError('Invalid source/time page');
+        for(const row of rows){
+          const key=importTimeKey(row),milli=importMillisKey(row);
+          if(!key||!milli)continue;
+          // A microsecond-adjusted saved timestamp can be a reimport target
+          // even if the original source only supplied millisecond precision.
+          const candidates=stored.get(key)||new Map();
+          candidates.set(String(row.uid),row);
+          stored.set(key,candidates);
+          const neighbors=millis.get(milli)||new Map();
+          neighbors.set(String(row.uid),row);
+          millis.set(milli,neighbors);
+        }
       }
-      // A single timestamp on each side also supports an edited article.
-      // Never guess when several different posts share the timestamp.
-      const options=eligible(record,saved);
-      if(recordsAtTime.length===1&&saved.length===1&&options.length===1)
-        assign(record,options[0]);
-      // No matching saved content: this is a distinct post, not a reason
-      // to silently drop it from a bulk import.
+    });
+    const selected=new Set(excludeSavedUids);
+    const pending=[];
+    // Exact microsecond matches have priority over any fallback.
+    for(const key of group.wanted){
+      const incoming=requested.get(key)||[];
+      const candidates=[...(stored.get(key)?.values()||[])]
+        .filter(row=>!selected.has(String(row.uid)));
+      if(incoming.length===1&&candidates.length===1){
+        matches.set(String(incoming[0].uid),candidates[0]);
+        selected.add(String(candidates[0].uid));
+      }else if(candidates.length||incoming.length>1){
+        if(candidates.length)for(const row of incoming)ambiguous.push({
+          uid:String(row.uid),site:String(row.site),createtime:row.createtime,
+          saved_uids:candidates.map(candidate=>String(candidate.uid))
+        });
+      }else pending.push(incoming[0]);
     }
+    const pendingByMillis=new Map();
+    for(const row of pending){
+      const key=importMillisKey(row);
+      const arr=pendingByMillis.get(key)||[];
+      arr.push(row);pendingByMillis.set(key,arr);
+    }
+    for(const [key,rows] of pendingByMillis){
+      const candidates=[...(millis.get(key)?.values()||[])]
+        .filter(row=>!selected.has(String(row.uid)));
+      // Ambiguous timestamp buckets are held for review rather than
+      // overwriting one of several same-millisecond legacy articles.
+      if(rows.length===1&&candidates.length===1){
+        matches.set(String(rows[0].uid),candidates[0]);
+        selected.add(String(candidates[0].uid));
+      }else if(candidates.length){
+        for(const row of rows)ambiguous.push({
+          uid:String(row.uid),site:String(row.site),createtime:row.createtime,
+          saved_uids:candidates.map(candidate=>String(candidate.uid))
+        });
+      }
+    }
+    onProgress?.({completed:matches.size,total:records.length,
+      ambiguous:ambiguous.length});
   }
-  onProgress?.({completed:total,total,matched:matches.size});
   matches.ambiguous=ambiguous;
   return matches;
-}
-
-const importIsoTime=value=>{
-  const date=Date.parse(String(value??''));
-  return Number.isFinite(date)?new Date(date).toISOString():null;
-};
-// The comparison pool is one site's saved rows inside the incoming time span.
-// Requested timestamps are sorted and cut into disjoint windows, so a saved row
-// is scanned at most once. A window reads only uid + createtime; full rows are
-// read by UID for the timestamps that really matched.
-// Process disjoint source-time windows in exactly three bounded SELECT lanes.
-// A timestamp belongs to only one lane. Each lane filters and fetches its own
-// candidate UIDs; the shared comparison spool receives the completed results.
-export async function readImportCandidatesByTimeWindows(times,
-    {readWindow,readRowsByUid,consumePage,windowSize=5000,concurrency=3,onWindowDone,
-      excludeUids=new Set()}={}){
-  if(typeof readWindow!=='function'||typeof readRowsByUid!=='function'||
-      typeof consumePage!=='function')throw Error('缺少時間區間查詢');
-  if(!(excludeUids instanceof Set))throw Error('無效的既有 UID 排除索引');
-  if(!Number.isSafeInteger(windowSize)||windowSize<1||windowSize>10000)
-    throw Error('無效的比對區間大小');
-  if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>3)
-    throw Error('比對 SELECT 最多只能同時執行三路');
-  const sorted=[...new Set((times||[]).map(importIsoTime).filter(Boolean))].sort();
-  if(!sorted.length)return;
-  // Even a file with fewer than windowSize unique timestamps can use three
-  // workers. Never split equal timestamps across two windows.
-  const chunkSize=Math.max(1,Math.min(windowSize,Math.ceil(sorted.length/concurrency)));
-  const windows=[];
-  for(let index=0;index<sorted.length;index+=chunkSize)
-    windows.push(sorted.slice(index,index+chunkSize));
-  let next=0,completed=0;
-  const work=async()=>{
-    for(;;){
-      const index=next++;
-      if(index>=windows.length)return;
-      const part=windows[index],wanted=new Set(part);
-      // The SQL where-range and the local timestamp filter must agree.
-      // This keeps each lane from consuming records belonging to other lanes.
-      const saved=await readWindow(part[0],part[part.length-1]);
-      if(!Array.isArray(saved))throw Error('時間區間查詢結果無效');
-      const uids=new Set();
-      // The source-ID stage already resolved these rows. Exclude them before
-      // the expensive full-content UID SELECT, not after fetching the body.
-      for(const row of saved){
-        const uid=String(row?.uid||'');
-        if(!excludeUids.has(uid)&&wanted.has(importIsoTime(row?.createtime)))
-          uids.add(uid);
-      }
-      if(uids.size){
-        const full=await readRowsByUid([...uids]);
-        if(!Array.isArray(full))throw Error('UID 查詢結果無效');
-        // A lane can only deposit records matched inside its own window.
-        const requested=new Set(uids);
-        consumePage(full.filter(row=>requested.has(String(row.uid))&&
-          wanted.has(importIsoTime(row.createtime))));
-      }
-      completed+=part.length;
-      onWindowDone?.(completed);
-    }
-  };
-  // Settle all in-flight reads even if one fails, so a failed compare never
-  // leaves detached read tasks racing the next import attempt.
-  const workers=await Promise.allSettled(Array.from(
-    {length:Math.min(concurrency,windows.length)},()=>work()));
-  const failure=workers.find(worker=>worker.status==='rejected');
-  if(failure)throw failure.reason;
 }
 
 export function isUnchangedImportBeforeWrite(records,matches,{hasMedia=false}={}){

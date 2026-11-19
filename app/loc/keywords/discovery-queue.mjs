@@ -12,7 +12,8 @@ const MIN_PAGE_ROWS=1;
 const MAX_PAGE_ROWS=20000;
 // A modest first probe, then immediately grow for short articles; no
 // additional SQL or content-length probe is needed.
-const INITIAL_PAGE_ROWS=512;
+// Main uses a smaller calibration read; keep the one-row floor for huge articles.
+const INITIAL_PAGE_ROWS=256;
 const TARGET_QUEUE_BYTES=2*1024*1024;
 const WORKER_BATCH_ROWS=768;
 const WORKER_BATCH_BYTES=256*1024;

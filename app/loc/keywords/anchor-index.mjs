@@ -7,6 +7,7 @@
 // Only Pattern.num is the article posting count; Class/Group/Item are navigation hierarchy.
 // No database mapping registry is required for the current database.
 import {allocateAnchorUid} from '../model/uid.js';
+import {produce} from 'immer';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {KEYWORD_PATTERN_POSTINGS_KEY,keywordPatternRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
@@ -15,7 +16,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 // Legacy scan clocks cannot certify newly backfilled empty Scope postings.
 // The visible-text projection now includes titles and excludes markup/date headers.
 // Old scan clocks cannot certify this changed matching contract.
-export const SCOPE_PATTERN_INDEX_VERSION='scope_anchor_v2';
+export const SCOPE_PATTERN_INDEX_VERSION='scope_anchor_v3';
 // Existing Pattern.attr key. No registry lookup or database identity query.
 export const SCOPE_PATTERN_POSTING_KEY=KEYWORD_PATTERN_POSTINGS_KEY;
 export function scopePatternScanClocks(metadata={}){
@@ -172,7 +173,9 @@ export async function ensureScopePatternLibrary(trx,scope){
 export async function storeScopePatternMatches(trx,scope,incoming=[]){
   if(!Array.isArray(incoming))throw Error('Invalid Pattern results');
   const table=scopeAnchor(scope);
-  const {patterns}=await ensureScopePatternLibrary(trx,scope);
+  // The editor reconciles Item links. Index publication never re-walks the
+  // Class/Group/Item graph or removes unlinked Pattern rows.
+  const patterns=await readScopePatternRows(trx,scope);
   const byUid=patternRowsToUidIndex(patterns),updates=[],seen=new Set();
   for(const row of incoming){
     const uid=String(row?.uid||''),old=byUid.get(uid),list=row?.uid_list;
@@ -187,15 +190,34 @@ export async function storeScopePatternMatches(trx,scope,incoming=[]){
     const next=[...list].sort();
     const before=[...old.uid_list].sort();
     if(JSON.stringify(next)===JSON.stringify(before))continue;
-    const posting={...old.attr,[SCOPE_PATTERN_POSTING_KEY]:next};
+    const posting=produce(old.attr,draft=>{
+      draft[SCOPE_PATTERN_POSTING_KEY]=next;
+    });
     const count=next.length;
     updates.push({uid:old.uid,type:'pattern',title:old.pattern,
       attr:JSON.stringify(posting),num:count});
   }
-  for(let i=0;i<updates.length;i+=100)
-    await trx.insertInto(table).values(updates.slice(i,i+100))
+  if(seen.size!==patterns.length)
+    throw Error('Incomplete full-scope Pattern posting batch');
+  // Large Pattern postings can be hundreds of kilobytes each. Bound each
+  // SQL parameter payload by bytes as well as rows, inside the same atomic
+  // transaction; one 100-row INSERT must never serialize tens of megabytes.
+  const maxBatchBytes=256*1024;
+  let batch=[],bytes=0;
+  const flush=async()=>{
+    if(!batch.length)return;
+    await trx.insertInto(table).values(batch)
       .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({
         attr:eb.ref('excluded.attr'),num:eb.ref('excluded.num')
       }))).execute();
+    batch=[];bytes=0;
+  };
+  for(const row of updates){
+    const size=row.attr.length*2+row.title.length*2+64;
+    if(batch.length&&(batch.length>=100||bytes+size>maxBatchBytes))
+      await flush();
+    batch.push(row);bytes+=size;
+  }
+  await flush();
   return {changed:updates.length,indexed:incoming.length};
 }
