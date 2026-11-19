@@ -73,9 +73,9 @@ function reply(payload,status=200){
 // The Auth service only verifies identity/credentials. This business service
 // independently looks up permissions in api.manage after connecting to Neon.
 // No home-made JWT, PKCE, refresh, signing or session implementation.
-async function signedClaims(request,fetchImpl){
+async function signedClaims(request,fetchImpl,{trustedMcpBridge=false}={}){
   const host=new URL(request.url).hostname;
-  if(host===WEB_HOST){
+  if(host===WEB_HOST&&!trustedMcpBridge){
     // One shared website Session verifier; it respects the signed cookie
     // cache rather than disabling it on every Save or management action.
     const identity=await verifiedLocWebsiteSession(request,{fetchImpl});
@@ -121,10 +121,15 @@ async function signedClaims(request,fetchImpl){
     delegatedScopes:String(claims.scope||'').split(/\s+/).filter(Boolean)};
 }
 export async function handleNativeLocOperation(request,env={},{
-  fetchImpl=globalThis.fetch,database=directMcpKysely,waitUntil
+  fetchImpl=globalThis.fetch,database=directMcpKysely,waitUntil,
+  trustedMcpBridge=false
 }={}){
   if(request.method!=='POST')return reply({error:{message:'Method not allowed'}},405);
-  const host=new URL(request.url).hostname;
+  const requestHost=new URL(request.url).hostname;
+  // Only functions/api/las-native.js may set this server-side option.
+  // The real URL stays on LOC Pages, avoiding Cloudflare Request re-wrapping
+  // and any network round trip. OAuth still needs the canonical MCP audience.
+  const host=trustedMcpBridge&&requestHost===WEB_HOST?MCP_HOST:requestHost;
   if(host!==MCP_HOST&&host!==WEB_HOST)
     return reply({error:{message:'Not found'}},404);
   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')||''))
@@ -156,7 +161,7 @@ export async function handleNativeLocOperation(request,env={},{
          'search_galaxy_private'].includes(body.name)&&host!==WEB_HOST)
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
-    const claims=await signedClaims(request,fetchImpl);
+    const claims=await signedClaims(request,fetchImpl,{trustedMcpBridge:host===MCP_HOST});
     // LOC Auth verifies the identity; only active api.manage grants may
     // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
