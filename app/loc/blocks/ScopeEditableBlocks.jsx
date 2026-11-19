@@ -100,7 +100,9 @@ export default function ScopeEditableBlocks({
   // a draft or appear as a duplicate editor dataset.
   const bootstrap=useAppBootstrap(scopeId,pageName,{enabled:!isScopeHomepageBlock});
   const published=useAsyncResource(['published-home-page',scopeId,pageName],
-    ()=>loadPublishedBlocks(scopeId,pageName),{enabled:isScopeHomepageBlock});
+    ()=>loadPublishedBlocks(scopeId,pageName),{
+      enabled:isScopeHomepageBlock&&!editingContent
+    });
   const editorRows=useAsyncResource(['scope-blocks',scopeId,pageName],
     ()=>selectLiveScopeBlocks(scopeId,pageName),{
       enabled:isScopeHomepageBlock&&editingContent
