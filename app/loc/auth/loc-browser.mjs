@@ -1,7 +1,8 @@
 // This is a Better Auth browser SDK adapter, not an Auth implementation.
 // LOC public pages never contact Auth. Only explicit sign-in, edit and
 // personal-profile actions ask the Better Auth SDK for a verified session.
-const ISSUER='https://auth.lo3rwang.cc';
+import {LOC_SERVICE_ORIGINS} from '../../modular/routing/service-route-index.mjs';
+const ISSUER=LOC_SERVICE_ORIGINS.auth;
 const DEFAULT_RETURN='/local/settings/';
 function safeReturn(path){
   let parsed;

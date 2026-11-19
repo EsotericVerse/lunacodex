@@ -1,9 +1,10 @@
 import {SITE_IMAGES} from '../site-images';
 import {faviconForScope} from '../site-favicons';
+import {LOC_SERVICE_ORIGINS} from '../modular/routing/service-route-index.mjs';
 
 export const LOC_ORIGIN='https://loc.lo3rwang.cc';
 export const LUNARUNES_ORIGIN='https://lrunes.lo3rwang.cc';
-export const LRS_ORIGIN='https://lrs.lo3rwang.cc';
+export const LRS_ORIGIN=LOC_SERVICE_ORIGINS.lrs;
 
 const LOC_IMAGE=LOC_ORIGIN+SITE_IMAGES.locHero.src;
 const LUNARUNES_IMAGE=LUNARUNES_ORIGIN+SITE_IMAGES.lunarunes.src;
