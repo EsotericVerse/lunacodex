@@ -23,8 +23,9 @@ import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from
 import {archiveGalaxyRows} from '../archive/caption-rows.mjs';
 import {facebookPostPlace} from '../archive/geo-objects.mjs';
 
-import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByExactSourceEvidence,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
+import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCreatedAt,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
 import {importTimeRangeWindow,filterImportAnalysisByTime} from './time-range.mjs';
+import {finalizeImportCreatedTimes,importCalendarDay} from './unique-createtime.mjs';
 import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './place-anchors.mjs';
 import {prepareImportTimeAnchors} from './time-anchors.mjs';
 import {readImportPointDateAnchors} from './anchor-read.mjs';
@@ -1289,19 +1290,18 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }
       const unresolved=remaining.filter(row=>
         !byPrimaryUid.has(String(row.uid))&&!String(row.site_id||'').trim());
-      // The importer's locally generated UID can change between identical
-      // exports. Reconcile only exact, uniquely matched source evidence.
-      // Read existing Galaxy rows through the DATE index, never create or
-      // require a createtime index and never load a complete source corpus.
-      const matchesByEvidence=unresolved.length?
-        await matchExistingImportByExactSourceEvidence(unresolved,{
-          onProgress:p=>showProgress('依來源原文核對',p.completed,p.total),
+      // Original source creation time is the identity key; locally generated
+      // Galaxy UIDs and article content are never used for this comparison.
+      // Rows using UpdateTime fallback skip this matcher.
+      const matchesByTime=unresolved.length?
+        await matchExistingImportByCreatedAt(unresolved,{
+          onProgress:p=>showProgress('依來源與建立時間比對',p.completed,p.total),
           readSourceRows:async({site,fromDate,toDate,consumePage})=>{
             let afterDate=null,afterUid=null;
             const pageSize=250;
             for(;;){
               let query=dbAuthRelation(galaxy)
-                .select(GALAXY_IMPORT_UID_COLUMNS)
+                .select('uid,site,site_id,createtime,date')
                 .ieq('site',site).gte('date',fromDate).lte('date',toDate)
                 .order('date',{ascending:true}).order('uid',{ascending:true})
                 .limit(pageSize);
@@ -1309,7 +1309,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
                 query=query.or('date.gt.'+afterDate+
                   ',and(date.eq.'+afterDate+',uid.gt.'+afterUid+')');
               const {data,error}=await query;
-              if(error)throw Error('來源原文查詢失敗：'+error.message);
+              if(error)throw Error('來源時間查詢失敗：'+error.message);
               const page=data||[];
               if(!Array.isArray(page)||page.length>pageSize)
                 throw Error('來源原文查詢回傳格式錯誤');
@@ -1321,21 +1321,61 @@ function UniversalImport({scopeId,format,onFormatChange}) {
                 !/^[A-Za-z0-9]{8}$/.test(uid)||
                 afterDate!==null&&(date<afterDate||
                   date===afterDate&&uid<=afterUid))
-                throw Error('來源原文日期游標未前進，停止匯入');
+                throw Error('來源時間日期游標未前進，停止匯入');
               afterDate=date;afterUid=uid;
               if(page.length<pageSize)break;
             }
           }
         }):new Map();
       const existingBySiteId=new Map([
-        ...matchesByEvidence,...byPrimaryUid,...matchesById
+        ...matchesByTime,...byPrimaryUid,...matchesById
       ]);
       const ambiguousGroups=[
-        ...ambiguousById,...(matchesByEvidence.ambiguous||[])
+        ...ambiguousById,...(matchesByTime.ambiguous||[])
       ];
       if(ambiguousGroups.length){
         const ambiguousUids=new Set(ambiguousGroups.map(group=>group.uid));
         unique=unique.filter(record=>!ambiguousUids.has(String(record.uid)));
+      }
+
+      // Final Galaxy INSERT preparation: honor original creation timestamps
+      // for matching first, then allocate non-colliding timestamptz(6) values
+      // only for new articles. This does not modify an existing post's date.
+      const incomingNew=unique.filter(record=>!existingBySiteId.has(String(record.uid)));
+      if(incomingNew.length){
+        const fallbackTime=new Date().toISOString();
+        const targetDays=[...new Set(incomingNew.map(row=>
+          importCalendarDay(row.createtime||fallbackTime)))].filter(Boolean).sort();
+        const occupiedTimes=[];
+        const readOccupiedDay=async day=>{
+          let afterUid=null;
+          const size=500;
+          for(;;){
+            let query=dbAuthRelation(galaxy).select('uid,createtime')
+              .order('uid',{ascending:true}).limit(size);
+            query=day===null?query.is('date',null):query.eq('date',day);
+            if(afterUid!==null)query=query.gt('uid',afterUid);
+            const {data,error}=await query;
+            if(error)throw Error('匯入時間唯一性查詢失敗：'+error.message);
+            const page=data||[];
+            if(!Array.isArray(page)||page.length>size)
+              throw Error('匯入時間唯一性查詢回傳格式錯誤');
+            for(const row of page)if(row.createtime)occupiedTimes.push(row.createtime);
+            if(page.length<size)break;
+            const uid=String(page.at(-1)?.uid||'');
+            if(!/^[A-Za-z0-9]{8}$/.test(uid)||afterUid!==null&&uid<=afterUid)
+              throw Error('匯入時間唯一性游標未前進');
+            afterUid=uid;
+          }
+        };
+        for(const day of targetDays)await readOccupiedDay(day);
+        // Legacy rows can have createtime but no derived indexed date.
+        await readOccupiedDay(null);
+        const finalized=finalizeImportCreatedTimes(incomingNew,{
+          occupiedTimes,fallbackTime
+        });
+        const finalByUid=new Map(finalized.map(row=>[String(row.uid),row]));
+        unique=unique.map(row=>finalByUid.get(String(row.uid))||row);
       }
 
       // Only imported article UIDs and verified persisted PKs participate.
@@ -1548,6 +1588,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const {__importCoordinates:unusedCoordinates,
           __importPlaceName:unusedPlaceName,__importPlaceAddress:unusedPlaceAddress,
           __importPlaceUrl:unusedPlaceUrl,__importCheckin:unusedCheckin,
+          __importTimeSource:unusedTimeSource,
           ...article}=record;
         if(placeUid)newArticleVisits.push({articleUid:String(record.uid),uid:placeUid,time:record.createtime});
         payload.push(placeUid?{...article,place_id:placeUid}:article);
@@ -1579,7 +1620,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         if(savedUid)knownArticleIds.set(record.uid,savedUid);
       }
       showProgress('整理媒體資料');
-      const articleTimes=new Map(analyzed.valid.map(row=>[String(row.uid),row.createtime]));
+      const finalizedTimes=new Map(unique.map(row=>[String(row.uid),row.createtime]));
+      const articleTimes=new Map(analyzed.valid.map(row=>[
+        String(row.uid),
+        finalizedTimes.get(String(incoming.aliases.get(row.uid)||row.uid))||row.createtime
+      ]));
       const articleTitles=new Map(analyzed.valid.map(row=>[String(row.uid),row.title]));
       const articleContents=new Map(analyzed.valid.map(row=>[String(row.uid),row.content]));
       const archivePlan=prepareArchiveMedia(
