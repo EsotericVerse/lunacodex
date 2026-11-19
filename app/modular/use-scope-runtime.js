@@ -2,11 +2,16 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import {usePathname} from 'next/navigation';
-import {featureIdForPath,getScope,isKnownScope,normalizeScopeId,resolveScope,rememberCurrentBrowserRoute} from './routing/scope-registry';
-import {selectScopeRegistryEntry} from '../loc/scope/scope-data';
-import {useAppBootstrap} from '../loc/runtime/app-bootstrap';
+import {getScope,isKnownScope,normalizeScopeId,resolveScope,rememberCurrentBrowserRoute} from './routing/scope-registry';
+import {PUBLISHED_SITE_BOOTSTRAP} from './published-site-bootstrap.js';
+import {SCOPE_ROUTE_INDEX} from './routing/scope-route-index.js';
 
-const registryCache=new Map();
+// Routing and the public Scope configuration are immutable release metadata.
+// They never require a page Bootstrap, SQL lookup, React fetch effect or TTL.
+const registryByScope=new Map((PUBLISHED_SITE_BOOTSTRAP.registry||[])
+  .filter(row=>row.active!==false).map(row=>[row.scope_id,row]));
+const configByScope=new Map(SCOPE_ROUTE_INDEX
+  .filter(row=>row.active!==false).map(row=>[row.scope_id,row.config||null]));
 
 function genericRouteScope(pathname,search){
   const path=String(pathname||'/');
@@ -31,75 +36,25 @@ export function useScopeRuntime(){
     return()=>window.removeEventListener('popstate',sync);
   },[]);
 
-  const genericId=useMemo(()=>genericRouteScope(pathname,location.search),[pathname,location.search]);
+  const genericId=useMemo(()=>genericRouteScope(pathname,location.search),
+    [pathname,location.search]);
   const scopeId=genericId||(genericShell?'':resolveScope(location.host,pathname));
   const dynamic=Boolean(genericShell&&(!genericId||!isKnownScope(genericId)));
-  // Keep the browser's current Scope, pathname and directory in its existing
-  // tab Session, using routing as the authority. No fetch, permission check,
-  // second storage model or duplication of the existing edit clock.
   useEffect(()=>{
     if(!location.mounted||!scopeId)return;
     rememberCurrentBrowserRoute(window.sessionStorage,scopeId,pathname);
   },[location.mounted,scopeId,pathname]);
-  const cached=scopeId?registryCache.get(scopeId):null;
-  const [registryRow,setRegistryRow]=useState(cached||null);
-  const [registryResolved,setRegistryResolved]=useState(!dynamic||(Boolean(scopeId)&&registryCache.has(scopeId)));
-  const [registryError,setRegistryError]=useState('');
-  const [metadataRevision,setMetadataRevision]=useState(0);
-  useEffect(()=>{
-    const refresh=()=>{
-      registryCache.clear();
-      setMetadataRevision(current=>current+1);
-    };
-    window.addEventListener('loc-public-scope-metadata-changed',refresh);
-    return()=>window.removeEventListener('loc-public-scope-metadata-changed',refresh);
-  },[]);
 
-  useEffect(()=>{
-    let active=true;
-    // Every Scope, including built-ins, reads the canonical Registry display_name.
-    if(!location.mounted){
-      if(dynamic)setRegistryResolved(false);
-      return()=>{active=false};
-    }
-    if(!scopeId){
-      setRegistryRow(null);setRegistryResolved(true);setRegistryError('缺少 Scope ID。');
-      return()=>{active=false};
-    }
-    if(scopeId==='local'){
-      // Device-local Scope is not registered or authorized through the cloud.
-      setRegistryRow(null);setRegistryResolved(true);setRegistryError('');
-      return()=>{active=false};
-    }
-    if(registryCache.has(scopeId)){
-      setRegistryRow(registryCache.get(scopeId));setRegistryResolved(true);setRegistryError('');
-      return()=>{active=false};
-    }
-    setRegistryRow(null);
-    setRegistryResolved(!dynamic);
-    setRegistryError('');
-    selectScopeRegistryEntry(scopeId).then(row=>{
-      if(!active)return;
-      registryCache.set(scopeId,row||null);
-      setRegistryRow(row||null);setRegistryResolved(true);
-    }).catch(error=>{
-      if(!active)return;
-      setRegistryRow(null);setRegistryResolved(true);setRegistryError(String(error?.message||error||'Scope Registry 讀取失敗'));
-    });
-    return()=>{active=false};
-  },[dynamic,scopeId,location.mounted,metadataRevision]);
-
-  const activeRegistryRow=registryRow?.scope_id===scopeId?registryRow:null;
+  // The route's display data is selected synchronously from the published file.
+  // No component can accidentally trigger an HTTP / SQL read merely to
+  // determine which Scope it is rendering.
+  const activeRegistryRow=registryByScope.get(scopeId)||null;
   const base=getScope(scopeId);
-  const configEnabled=Boolean(
-    scopeId&&scopeId!=='admin'&&!base.aggregateChildren&&(!dynamic||activeRegistryRow?.scope_kind==='scope')
-  );
-  // Scope config already belongs to the page's shared bootstrap. Consume the
-  // same ZenStack query key as AppShell, ThemeSelect and ScopeEditableBlocks;
-  // do not maintain a second cache/effect or a second config SELECT.
-  const bootstrap=useAppBootstrap(scopeId,featureIdForPath(pathname)||'index');
-  const activeConfigRow=configEnabled&&bootstrap.data?.config?.id===scopeId
-    ?bootstrap.data.config:null;
+  const configEnabled=Boolean(scopeId&&scopeId!=='admin'&&
+    !base.aggregateChildren&&(!dynamic||activeRegistryRow?.scope_kind==='scope'));
+  const publishedConfig=configByScope.get(scopeId);
+  const activeConfigRow=configEnabled&&publishedConfig?.id===scopeId
+    ?publishedConfig:null;
   const structural=activeRegistryRow?{
     ...base,
     label:activeRegistryRow.display_name||scopeId,
@@ -111,7 +66,8 @@ export function useScopeRuntime(){
     ...structural,
     label:String(activeConfigRow.display_name||structural.label||scopeId).trim(),
     searchTitle:String(activeConfigRow.display_name||structural.searchTitle||structural.label||scopeId).trim(),
-    searchAliases:Array.isArray(activeConfigRow.search_aliases)?activeConfigRow.search_aliases:structural.searchAliases,
+    searchAliases:Array.isArray(activeConfigRow.search_aliases)
+      ?activeConfigRow.search_aliases:structural.searchAliases,
     searchIntro:String(activeConfigRow.search_intro||'').trim(),
     config:activeConfigRow
   }:structural;
@@ -119,7 +75,9 @@ export function useScopeRuntime(){
   return {
     scopeId,scope,
     host:location.host,pathname,search:location.search,locationMounted:location.mounted,
-    dynamic,registryRow:activeRegistryRow,registryResolved,registryError,
+    dynamic,registryRow:activeRegistryRow,
+    registryResolved:!dynamic||Boolean(activeRegistryRow),
+    registryError:dynamic&&!activeRegistryRow?'Scope Registry 未發布此 Scope。':'',
     configRow:activeConfigRow
   };
 }
