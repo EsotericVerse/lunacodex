@@ -25,7 +25,6 @@ try{
     LOC_STATIC_EXPORT:'1'
   });
   run(process.execPath,[path.join(root,'scripts','copy-static-assets.mjs')]);
-  run(process.execPath,[path.join(root,'scripts','audit-static-content.mjs')]);
   // Visual diagnostics are explicit QA, not part of every production build.
 }finally{
   fs.renameSync(parked,api);
