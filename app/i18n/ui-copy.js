@@ -15,25 +15,28 @@ const FILE_FOR_LOCALE=Object.freeze({
 // A tiny neutral, synchronous bootstrap contract for module-level UI_COPY
 // references. It is not a Traditional Chinese dictionary or a fetched fallback.
 const SEED={
-  common:{save:'Save',saving:'Saving…',cancel:'Cancel',title:'Title',body:'Body',
-    language:'Language',theme:'Theme',systemTheme:'System',settings:'Settings',
-    management:'Manage',loading:'Loading…',hiddenFromSearch:'Hidden from search'},
-  nav:{aria:'Site navigation',home:'Home',lunarunes:'LunaRunes',author:'Author',
-    search:'Search',searchAria:'Search text',contact:'Contact'},
+  common:{save:'儲存',saving:'儲存中…',cancel:'取消',title:'標題',body:'內容',
+    language:'語系',theme:'主題',systemTheme:'系統預設',settings:'設定',
+    management:'管理',loading:'載入中…',hiddenFromSearch:'不列入搜尋'},
+  nav:{aria:'網站導覽',home:'首頁',lunarunes:'月之符文',author:'作者',
+    search:'搜尋',searchAria:'搜尋文字',contact:'聯絡'},
   features:{
-    statics:{title:'Statistics'},culture:{title:'Culture'},trace:{title:'Trace'},
-    search:{title:'Search'},admin:{title:'Admin'},manage:{title:'Manage'},
-    setting:{title:'Settings'}
+    statics:{title:'統計'},culture:{title:'文化'},trace:{title:'痕跡'},
+    search:{title:'搜尋'},admin:{title:'系統管理'},manage:{title:'管理'},
+    setting:{title:'設定'}
   },
-  scope:{loc:{statics:'Statistics',culture:'Culture',trace:'Trace',search:'Search'},
-    author:{search:'Search'}},
-  culture:{allTime:'All time'},
-  search:{externalLink:'External link',mediaLink:'Media link'},
-  statistics:{item:'Item',chart:'Chart'},
-  formatMessages:{searchScope:'Searching {label}',result:'{label}: {query}',
-    more:'',end:'',relatedText:'Related',link:'Link',songLink:'Song',
-    period:'Period',selected:'Selected: '},
-  fields:{},uiExtra:{dataSourceStatus:{}},featureCopy:{}
+  scope:{loc:{statics:'統計',culture:'文化',trace:'痕跡',search:'搜尋'},
+    author:{search:'搜尋'}},
+  culture:{allTime:'全部時間'},
+  search:{externalLink:'外部連結',mediaLink:'媒體連結'},
+  statistics:{item:'項目',chart:'圖表'},
+  formatMessages:{searchScope:'搜尋 {label}',result:'{label}：{query}',
+    more:'',end:'',relatedText:'相關文字',link:'連結',songLink:'歌曲連結',
+    period:'期間',selected:'已選取：'},
+  fields:{},uiExtra:{dataSourceStatus:{
+    detailsTitle:'資料來源',localTitle:'本機資料',localActive:'本機資料庫',
+    unavailable:'資料來源無法使用',backup:'備援',primary:'主要'
+  }},featureCopy:{}
 };
 function interpolate(template,values={}){
   return String(template||'').replace(/\{(label|query)\}/g,(_,key)=>String(values[key]??''));
