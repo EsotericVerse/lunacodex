@@ -138,7 +138,8 @@ const models=[
       'bulleted_list_item.rich_text.*.plain_text','numbered_list_item.rich_text.*.plain_text',
       'quote.rich_text.*.plain_text','code.rich_text.*.plain_text',
       'properties.Content.rich_text.*.plain_text','content'],
-    createtime:['created_time','createdAt','last_edited_time'],
+    // Edited time is fallback only when original creation time is absent.
+    createtime:['created_time','createdAt'],
     url:['url','image.external.url','image.file.url',
       'file.external.url','file.file.url'],
     media:['image','file','media','attachments'],
