@@ -4,7 +4,7 @@ import {MAX_MULTIPARA} from '../query/bounded-parallel.mjs';
 // for Auth, protected writes, another tab, or the database provider's pool.
 // All public work borrows the same free slots; no work class owns a percentage.
 export const MAX_PUBLIC_READS=3; // Existing warm start, not a reserved lane.
-const TRANSIENT_STATUS=new Set([408,425,429,500,502,503,504]);
+const TRANSIENT_STATUS=new Set([408,425,429,502,503,504]);
 const PRIORITY=Object.freeze({aggregate:0,normal:1,interactive:2});
 const cancelled=()=>Object.assign(new Error('Request cancelled'),{name:'AbortError'});
 
@@ -68,8 +68,12 @@ export function createPublicReadBudget(max=MAX_MULTIPARA,{
     const previous=latencyMs;
     latencyMs=previous?previous*0.8+elapsed*0.2:elapsed;
     const status=Number(response?.status??error?.status??0);
-    const congestion=TRANSIENT_STATUS.has(status)||error?.name==='TimeoutError';
-    const slowdown=Boolean(previous)&&waiting.length>0&&
+    // One failed endpoint is not proof of global pressure. Never throttle
+    // unrelated healthy reads just because an isolated request returned 5xx.
+    const demand=waiting.length>0&&active>=capacity;
+    const congestion=demand&&(TRANSIENT_STATUS.has(status)||
+      error?.name==='TimeoutError');
+    const slowdown=demand&&Boolean(previous)&&
       elapsed>Math.max(2500,previous*2);
     if(congestion||slowdown){
       // Give back ONE slot, not an invented share of CPU / Auth / SQL.
