@@ -323,11 +323,9 @@ async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',ex
       ...record,class_uid:row.uid,
       ...(row.uid===classUid?{}:{attemptId:null})
     },now);
-  // A finished scan's Pattern write and clearing its (now obsolete) resumable
-  // checkpoint are the same atomic fact: this Class has no scan in progress
-  // any more. Clearing it here, in the same transaction as the real write,
-  // means a checkpoint can never outlive the completed result it led to.
-  const metadata=writeKeywordScanProgress(completedMeta,classUid,null);
+  // The Pattern index is Scope-wide. Clear stale scan cursors for every
+  // Class atomically with the completed publication, not just the initiator.
+  const metadata={...completedMeta,scan_progress:{}};
   await trx.updateTable(configName(scope))
     .set({keyword_meta:JSON.stringify(metadata),staticstime:null,updated_at:now})
     .where('id','=',scope).execute();
