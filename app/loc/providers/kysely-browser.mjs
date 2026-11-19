@@ -79,7 +79,14 @@ export function createKyselyPublicClient({
   // Public reads share free capacity without fixed per-class allocations.
   // Auth and protected writes never enter this anonymous browser queue.
   const publicReadFetch=(url,options,signal,kind='normal')=>{
-    const perform=()=>fetchImpl(url,{...options,signal});
+    // Keep the slot until its JSON body has been consumed. A fetch() promise
+    // resolves on headers; freeing at that point can let large responses
+    // accumulate in memory outside the scheduler's actual ownership.
+    const perform=async()=>{
+      const response=await fetchImpl(url,{...options,signal});
+      const payload=await response.json().catch(()=>null);
+      return {response,payload,status:response.status};
+    };
     return role==='anon'?withPublicReadBudget(perform,signal,{kind}):perform();
   };
   // Deduplicate only concurrent anonymous requests of exactly the same
@@ -145,7 +152,7 @@ export function createKyselyPublicClient({
     const requestSignal=AbortSignal.any([
       transientReadSignal(args.signal||null),AbortSignal.timeout(9000)
     ]);
-    const response=await publicReadFetch(useContent?'/api/loc-public-content?'+params:
+    const {response,payload}=await publicReadFetch(useContent?'/api/loc-public-content?'+params:
       '/api/loc-public-query',{
       method:useContent?'GET':'POST',credentials:'omit',cache:'no-store',
       redirect:'error',
@@ -157,12 +164,7 @@ export function createKyselyPublicClient({
       }})}),
       // No independent timer/queue. Admission and cancellation are handled
       // by the existing bounded public-read budget and requestSignal.
-    },requestSignal,[
-      'daily_total','daily','overview','earliest','totals','loc',
-      'culture_density','trace_daily','lane_daily','keyword_summary',
-      'search_summary','trace_territory'
-    ].includes(view)?'aggregate':'normal');
-    const payload=await response.json().catch(()=>null);
+    },requestSignal,args.signal?'interactive':'normal');
     if(!response.ok){
       const error=new Error('LOC Kysely analytics '+String(payload?.stage||'read')+
         ' failed (HTTP '+response.status+
@@ -182,12 +184,11 @@ export function createKyselyPublicClient({
   async function publicAction(name,args={}){
     const work=async()=>{
     const requestSignal=AbortSignal.any([transientReadSignal(),AbortSignal.timeout(9000)]);
-    const response=await publicReadFetch('/api/loc-public-query',{
+    const {response,payload}=await publicReadFetch('/api/loc-public-query',{
       method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
       headers:{accept:'application/json','content-type':'application/json'},
       body:JSON.stringify({kind:'public-action',name,args})
     },requestSignal);
-    const payload=await response.json().catch(()=>null);
     if(!response.ok){
       const error=new Error('LOC public action failed (HTTP '+response.status+
         (payload?.code?', SQLSTATE '+payload.code:'')+')');
