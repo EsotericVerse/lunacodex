@@ -93,7 +93,7 @@ export default function AdminHomeView({scopeGroup}){
   };
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
-  if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin.checking}</div></section>;
+  if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin?.checking||'正在確認管理權限…'}</div></section>;
   if(loginDenied||!canManage)return <FeaturePage featureId="admin">
     <section className="loc-card scope-feature-card">
       <p role="alert">{signInError||account.error||(account.user
