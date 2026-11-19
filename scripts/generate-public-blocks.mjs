@@ -105,6 +105,9 @@ for(const [key,blocks] of [...allBlocks].sort(([a],[b])=>a.localeCompare(b))){
 }
 entries.push(['app/modular/published-blocks/index.js',
   '// Page-level lazy-load manifest; no runtime database reads.\nconst LOADERS={\n'+manifest.join(',\n')+'\n};\n'+
+  'export function hasPublishedBlocks(scopeId,pageName=\'index\'){\n'+
+  '  const key=String(scopeId||\'\')+\':\'+String(pageName||\'index\');\n'+
+  '  return Object.prototype.hasOwnProperty.call(LOADERS,key);\n}\n'+
   'export async function loadPublishedBlocks(scopeId,pageName=\'index\'){\n'+
   '  const key=String(scopeId||\'\')+\':\'+String(pageName||\'index\');\n'+
   '  const load=Object.prototype.hasOwnProperty.call(LOADERS,key)?LOADERS[key]:null;\n'+
