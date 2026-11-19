@@ -59,6 +59,10 @@ for(const row of routes){
   for(const block of blocks){
     const page=String(block.page_name||'').trim().toLowerCase();
     if(!validPage.test(page))throw Error('Invalid published page '+id+': '+page);
+    // Public group_manage is the first Hero row only. Orders 2+ are legacy
+    // management-entry placeholders; the current management panes use their
+    // own authoritative page names and never consume these published rows.
+    if(id==='loc'&&page==='group_manage'&&Number(block.block_order)!==1)continue;
     const key=id+'/'+page;
     if(!allBlocks.has(key))allBlocks.set(key,[]);
     allBlocks.get(key).push(block);
