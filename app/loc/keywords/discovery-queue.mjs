@@ -4,12 +4,15 @@ import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.m
 
 // Single bounded FIFO between Galaxy's ZModel read projection and the Worker.
 // Only page metadata goes through Immer: NEVER put article bodies in a draft.
-const MIN_PAGE_ROWS=256;
+// One very large article must be allowed to occupy a page by itself.
+const MIN_PAGE_ROWS=1;
 // Only a ceiling on one SQL page fetch; the Worker still consumes it in its
 // own WORKER_BATCH_ROWS/BYTES slices below, so raising this does not change
 // how much a single Worker batch has to process at once.
 const MAX_PAGE_ROWS=20000;
-const INITIAL_PAGE_ROWS=2000;
+// A modest first probe, then immediately grow for short articles; no
+// additional SQL or content-length probe is needed.
+const INITIAL_PAGE_ROWS=512;
 const TARGET_QUEUE_BYTES=2*1024*1024;
 const WORKER_BATCH_ROWS=768;
 const WORKER_BATCH_BYTES=256*1024;
@@ -52,14 +55,16 @@ export class KeywordDiscoveryQueue{
     this.cursor=0;
     this.size=rows.length;
     if(!rows.length)return;
-    // Adaptive page length follows observed payload size, not a fixed row
-    // count. Changes are capped to 2x per page to prevent sudden spikes.
+    // Maximize throughput per measured payload byte: one huge article may
+    // require a 1-row page, while short articles can fill thousands of rows.
+    // Grow by at most 2x; shrink immediately when article size spikes.
     const measured=bytes/rows.length;
     this.meta=produce(this.meta,draft=>{
-      draft.averageRowBytes=draft.acceptedPages===0?measured:
-        draft.averageRowBytes*0.65+measured*0.35;
+      draft.averageRowBytes=draft.acceptedPages===0||measured>draft.averageRowBytes
+        ?measured:draft.averageRowBytes*0.65+measured*0.35;
       draft.acceptedPages++;
-      const wanted=Math.round(TARGET_QUEUE_BYTES/Math.max(192,draft.averageRowBytes));
+      const wanted=Math.max(1,Math.floor(
+        TARGET_QUEUE_BYTES/Math.max(192,draft.averageRowBytes)));
       draft.pageRows=clamp(wanted,MIN_PAGE_ROWS,
         Math.min(MAX_PAGE_ROWS,draft.pageRows*2));
     });
