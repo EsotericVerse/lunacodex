@@ -77,9 +77,12 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const scopeHeroRows=publishedRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
-  const managementTextQuery=useAsyncResource(['scope-blocks-live','loc',managementTextPage],
+  // Management Hero and the editor use the same mounted query key when
+  // referring to the same page. One authoritative read serves both, and an
+  // explicit Save can update the current result without another preflight.
+  const managementTextQuery=useAsyncResource(['scope-blocks','loc',managementTextPage],
     ()=>selectLiveScopeBlocks('loc',managementTextPage),{enabled:managementMode});
-  const managementImageQuery=useAsyncResource(['scope-blocks-live','loc',managementImagePage],
+  const managementImageQuery=useAsyncResource(['scope-blocks','loc',managementImagePage],
     ()=>selectLiveScopeBlocks('loc',managementImagePage),{enabled:managementMode});
   const heroImageRow=managementMode
     ?managementImageQuery.data?.find(row=>Number(row.block_order)===1)
