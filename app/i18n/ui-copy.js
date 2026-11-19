@@ -1,3 +1,4 @@
+import DEFAULT_TRADITIONAL_CHINESE from './shared/zh_tw.json';
 // Route-local interface copy. Each page.jsx owns four sibling i18n JSON files.
 // Web fetches exactly one selected page JSON; Capacitor serves the same copied
 // assets from its bundled filesystem. Never prefetch a different language.
@@ -55,9 +56,18 @@ function withFormat(core,page){
   });
   return content;
 }
-export const UI_COPY=withFormat(SEED,{});
-const EMPTY_COPY=withFormat(SEED,{});
-export const UI_DICTIONARIES={};
+// The public shell must always have its base language synchronously.
+ // This immutable released JSON is bundled with the app rather than fetched
+ // before painting the frame. Dynamic page JSON remains independently loaded.
+const BASE_COPY=withFormat({
+  ...SEED,...DEFAULT_TRADITIONAL_CHINESE,
+  common:{...SEED.common,...DEFAULT_TRADITIONAL_CHINESE.common},
+  nav:{...SEED.nav,...DEFAULT_TRADITIONAL_CHINESE.nav},
+  features:{...SEED.features,...DEFAULT_TRADITIONAL_CHINESE.features}
+},{});
+export const UI_COPY={...BASE_COPY};
+const EMPTY_COPY=BASE_COPY;
+export const UI_DICTIONARIES={[UI_LOCALE]:BASE_COPY};
 const sharedCache=new Map();
 const loadedPages=new Map();
 const inFlight=new Map();
@@ -96,6 +106,8 @@ async function readJson(url){
 }
 function sharedFor(locale){
   const key=normalizeUiLocale(locale);
+  // A request for the default language is never a prerequisite for the frame.
+  if(key===UI_LOCALE)return Promise.resolve(DEFAULT_TRADITIONAL_CHINESE);
   if(!sharedCache.has(key)){
     sharedCache.set(key,readJson('/i18n/shared/'+FILE_FOR_LOCALE[key]+'.json')
       .catch(error=>{sharedCache.delete(key);throw error;}));
