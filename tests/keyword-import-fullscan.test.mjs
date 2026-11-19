@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
 import {analyzeIncrementalKeywordPatterns} from '../app/loc/keywords/incremental.mjs';
 import {createIndexedDateKeywordReader} from '../app/loc/keywords/article-reader.mjs';
-import {dedupeIncomingImport} from '../app/loc/import/duplicate-check.mjs';
+import {dedupeIncomingImport,matchExistingImportByExactSourceEvidence} from '../app/loc/import/duplicate-check.mjs';
 
 test('discovery retains single-use terms and question punctuation without weighting',()=>{
   const discovery=createNewKeywordDiscovery([]);
@@ -175,4 +175,46 @@ test('re-reading a dated Galaxy UID never double-counts Pattern postings',async(
   });
   assert.equal(result.matchedDocuments,2);
   assert.equal(writes,1);
+});
+
+
+test('same-source reimport without native ID needs unique exact text/time/title/url',async()=>{
+  const stamp='2026-11-20T02:12:00.000Z';
+  const make=(uid,content,extra={})=>({
+    uid,site:'Threads',site_id:null,createtime:stamp,
+    title:'今日紀錄',content,url:'https://example.com/post',...extra
+  });
+  const input=[
+    make('INPUT001','A？'),
+    make('INPUT002','A！'),
+    make('INPUT003','兩篇同文'),
+    make('INPUT004','另一個日期',{createtime:'2026-11-19T02:12:00Z'})
+  ];
+  const stored=[
+    make('SAVED001','A？'),
+    make('SAVED002','兩篇同文'),
+    make('SAVED003','兩篇同文'),
+    make('SAVED004','A！',{title:'別的標題'})
+  ];
+  const calls=[];
+  const matches=await matchExistingImportByExactSourceEvidence(input,{
+    readSourceRows:async({site,fromDate,toDate,consumePage})=>{
+      calls.push({site,fromDate,toDate});
+      consumePage(stored);
+    }
+  });
+  assert.equal(matches.get('INPUT001')?.uid,'SAVED001');
+  assert.equal(matches.has('INPUT002'),false);
+  assert.equal(matches.has('INPUT003'),false);
+  assert.equal(matches.has('INPUT004'),false);
+  assert.deepEqual(matches.ambiguous.map(row=>row.uid),['INPUT003']);
+  assert.equal(calls.length,1);
+});
+
+test('native source identifiers are never merged through exact-text fallback',async()=>{
+  const matches=await matchExistingImportByExactSourceEvidence([
+    {uid:'INPUT001',site:'Threads',site_id:'real-platform-post-id',
+      createtime:'2026-11-20T02:12:00Z',content:'同樣內容',title:'文章'}
+  ],{readSourceRows:async()=>{throw Error('unexpected date fallback')}});
+  assert.equal(matches.size,0);
 });
