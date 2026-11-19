@@ -292,7 +292,13 @@ export function parseImportCreatedTime(value){
   const timestamp=numeric===null?raw:
     Math.abs(numeric)<1e11?numeric*1000:numeric;
   const parsed=new Date(timestamp);
-  return Number.isNaN(parsed.getTime())?null:parsed.toISOString();
+  if(Number.isNaN(parsed.getTime()))return null;
+  const iso=parsed.toISOString();
+  // Source exports may already carry true microsecond precision. The JS
+  // Date object loses digits 4–6, but timestamptz(6) can retain them.
+  const fraction=typeof raw==='string'?
+    raw.match(/T\d{2}:\d{2}:\d{2}\.(\d{4,6})(?:Z|[+-]\d{2}:?\d{2})$/i)?.[1]:null;
+  return fraction?iso.slice(0,19)+'.'+fraction.padEnd(6,'0')+'Z':iso;
 }
 // Only a missing authored creation timestamp may fall back to source update
 // metadata. Never replace a genuine creation time with a later edit time.
