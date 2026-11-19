@@ -11,7 +11,8 @@ import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
-import {selectScopeBlocks,selectLiveScopeBlocks,hero_block} from '../loc/scope/scope-data';
+import {selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
+import {loadPublishedBlocks} from './published-blocks/index.js';
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
@@ -65,11 +66,14 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const adminHero=featureId==='admin'||featureId==='setting';
   const groupHeroPage=HomeBlock.featureHeroPageFor(featureId);
   const scopeHeroPage='scope_'+featureId;
-  // One direct Hero SELECT for the public feature (both group and scope
-  // artwork slots). Public page rendering never looks up Manage permissions.
-  const publicHeroQuery=useAsyncResource(['feature-hero-blocks',scopeId,featureId],
-    ()=>hero_block([groupHeroPage,scopeHeroPage]),{
-      enabled:!managementMode&&!adminHero&&(sharedEnabled||hasFeatureHero)
+  // Public Hero title, copy and image URL are already published. Read
+  // their per-page JS assets; never wait on hero_block SQL to show a Hero.
+  // The image URL remains a normal browser URL, not a generated image.
+  const publicHeroQuery=useAsyncResource(['published-feature-hero',featureId],
+    async()=>[...await loadPublishedBlocks('loc',groupHeroPage),
+      ...await loadPublishedBlocks('loc',scopeHeroPage)],{
+      enabled:!managementMode&&!adminHero&&(sharedEnabled||hasFeatureHero),
+      shareResult:true
     });
   const adminHeroQuery=useAsyncResource(['scope-blocks-live','loc',groupHeroPage],
     ()=>selectLiveScopeBlocks('loc',groupHeroPage),{
@@ -81,12 +85,13 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     ()=>selectLiveScopeBlocks('loc',scopeHeroPage),{
       enabled:!managementMode&&featureId==='setting'
     });
+  const publishedRows=publicHeroQuery.data||[];
   const groupHeroRows=adminHero
     ?adminHeroQuery.data||[]
-    :(publicHeroQuery.data||[]).filter(row=>row.page_name===groupHeroPage);
+    :publishedRows.filter(row=>row.page_name===groupHeroPage);
   const scopeHeroRows=adminHero
     ?(featureId==='setting'?settingImageQuery.data||[]:[])
-    :(publicHeroQuery.data||[]).filter(row=>row.page_name===scopeHeroPage);
+    :publishedRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   const managementTextQuery=useAsyncResource(['scope-blocks-live','loc',managementTextPage],
