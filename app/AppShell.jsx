@@ -553,14 +553,9 @@ function AppShellInner({children,runtime}){
         :'/settings/?scopeid='+encodeURIComponent(navScopeId)}
   ];
 
-  // A page renders only after its own selected-language JSON is available.
-  if(!localeReady){
-    const error=uiLocaleLoadError(activeLocale,pathname);
-    return error?<main className="scope-main"><section className="scope-page">
-      <p role="alert">Unable to load interface language files.</p>
-      <button type="button" onClick={()=>window.location.reload()}>Retry</button>
-    </section></main>:<div className="loc-loading" role="status">Loading interface…</div>;
-  }
+  // Never hide the permanent navigation/footer/dock while one page's
+  // language JSON loads. Only that page's own content waits for its text.
+  const localeError=localeReady?null:uiLocaleLoadError(activeLocale,pathname);
   return <UiLocaleProvider locale={activeLocale} pathname={pathname}>
     <ScopePageCopy scopeId={localNavigation?'local':scopeId}
       display_name={localNavigation?'本機銀河':configRow?.display_name||registryRow?.display_name}
@@ -585,7 +580,13 @@ function AppShellInner({children,runtime}){
       </nav>
     </header>
     <PageResourceBoundary routeKey={scopeId+'|'+normalizePath(pathname)}>
-      {localCoreActive&&!localWorkspace?<main className="scope-main"><p className="scope-status" role="status">正在切換手機本機資料…</p></main>:children}
+      {!localeReady?<main className="scope-main"><section className="scope-page">
+        {localeError?<><p role="alert">無法載入這一頁的語系文字。</p>
+          <button type="button" onClick={()=>window.location.reload()}>重新載入</button></>
+          :<p className="scope-status" role="status">正在載入頁面文字…</p>}
+      </section></main>:localCoreActive&&!localWorkspace
+        ?<main className="scope-main"><p className="scope-status" role="status">正在切換手機本機資料…</p></main>
+        :children}
     </PageResourceBoundary>
     <motion.div layoutRoot className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
