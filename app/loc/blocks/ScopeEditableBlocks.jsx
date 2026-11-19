@@ -9,7 +9,8 @@ import {useEditDock} from '../../modular/edit-dock';
 import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import dynamic from 'next/dynamic';
-import {useAppBootstrap} from '../runtime/app-bootstrap';
+import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import {selectScopeBlocks} from '../scope/scope-data';
 import {useAccount} from '../auth/use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
 const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
@@ -82,10 +83,11 @@ export default function ScopeEditableBlocks({
   const account=useAccount({enabled:false});
   const editDock=useEditDock();
   const native=useNativeNavigation();
-  // Shares AppShell's (scopeId, pageName) query, which reuses the global
-  // Registry/Theme snapshot and loads only this Scope's page blocks.
-  const bootstrap=useAppBootstrap(scopeId,pageName);
-  const blocks=bootstrap.data?.blocks;
+  // The page content is read only when this page actually displays Blocks.
+  // AppShell / Theme / Routing never start its query.
+  const blocksQuery=useAsyncResource(['scope-blocks',scopeId,pageName],
+    ()=>selectScopeBlocks(scopeId,pageName));
+  const blocks=blocksQuery.data;
   // The Scope-specific homepage entry has already verified access.
   // Database authorization remains mandatory on every write.
   const homeEditActive=isScopeHomepageBlock&&editDock?.active&&editDock.scopeId===scopeId;
@@ -211,10 +213,10 @@ export default function ScopeEditableBlocks({
     const heroSlotOrder=Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0?placeholderFirstOrder:null;
     const contents=<>
       {!editing&&!heroSlotOrder?toggleButton:null}
-      {editing&&!bootstrap.isSuccess?<p className="scope-status" role="status">
-        {bootstrap.isError?'搜尋建議載入失敗。':'正在載入搜尋建議…'}
+      {editing&&!blocksQuery.isSuccess?<p className="scope-status" role="status">
+        {blocksQuery.isError?'搜尋建議載入失敗。':'正在載入搜尋建議…'}
       </p>:null}
-      {editing&&bootstrap.isSuccess?<ScopeBlockDraftList
+      {editing&&blocksQuery.isSuccess?<ScopeBlockDraftList
         slots={slots}
         scopeId={scopeId}
         pageName={pageName}
