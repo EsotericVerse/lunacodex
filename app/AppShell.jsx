@@ -130,7 +130,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   const publishedTheme=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.theme;
   const configuredTheme=configEnabled?String(publishedTheme||'').trim():'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
-  const [selection,setSelection]=useState(()=>({scopeId,themeId:SYSTEM_THEME_ID}));
+  const [selection,setSelection]=useState(()=>({scopeId,routeKey,themeId:SYSTEM_THEME_ID}));
   // Decorative local feedback only when a person selects a different option.
   // Theme persistence and actual palette application remain untouched.
   const [accentPulse,setAccentPulse]=useState(0);
@@ -139,12 +139,13 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // Otherwise the local preview can mask a successful database update.
   useEffect(()=>{
     const onSaved=event=>{
-      if(event?.detail?.scopeId===scopeId)setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+      if(event?.detail?.scopeId===scopeId)setSelection({scopeId,routeKey,themeId:SYSTEM_THEME_ID});
     };
     window.addEventListener('loc-scope-theme-saved',onSaved);
     return()=>window.removeEventListener('loc-scope-theme-saved',onSaved);
   },[scopeId]);
-  const selectedThemeId=selection.scopeId===scopeId?selection.themeId:SYSTEM_THEME_ID;
+  const selectedThemeId=selection.scopeId===scopeId&&selection.routeKey===routeKey
+    ?selection.themeId:SYSTEM_THEME_ID;
   const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||
     (scopeId==='admin'?readLastActiveTheme():'')||automaticThemeId(now);
   const effectiveThemeId=selectedThemeId===SYSTEM_THEME_ID?systemDefaultThemeId:selectedThemeId;
@@ -190,7 +191,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     <select value={selectedThemeId} onChange={event=>{
       const next=event.target.value;
       if(next===selectedThemeId)return;
-      setSelection({scopeId,themeId:next});
+      setSelection({scopeId,routeKey,themeId:next});
       if(!reduceMotion)setAccentPulse(count=>count+1);
     }} aria-label={copy.common.theme}>
       <option value={SYSTEM_THEME_ID}>{copy.common.systemTheme}</option>
