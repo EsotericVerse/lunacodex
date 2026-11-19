@@ -36,7 +36,9 @@ const systemNames=[...new Set([...globalList.ArticleTag,'Others'].map(x=>String(
 function cleanPublishedHtml(value,scope,page){
   if(typeof value!=='string')return value;
   let html=value.replaceAll(' classname="bn-inline-content-section"','')
-    .replaceAll(' data-inline-content-type="link"','');
+    .replaceAll(' data-inline-content-type="link"','')
+    .replaceAll(' data-level="2"','')
+    .replaceAll(' data-level="3"','');
   if(scope==='loc'&&page==='index'){
     html=html.replaceAll('https://loc.lo3rwang.cc/governance/','https://loc.lo3rwang.cc/trace/');
     html=html.replaceAll('>治理</a>','>痕跡</a>');
@@ -45,9 +47,12 @@ function cleanPublishedHtml(value,scope,page){
 }
 function cleanPublishedBlock(block,scope,page){
   return {...block,
+    // Never ship hard-coded dependency version listings from the historical
+    // public homepage. The installed versions live in package.json.
     block_text:cleanPublishedHtml(block.block_text,scope,page),
     block_subtitle:cleanPublishedHtml(block.block_subtitle,scope,page),
-    block_entity:Array.isArray(block.block_entity)
+    block_entity:scope==='loc'&&page==='index'&&block.uid==='787D2355'?[]
+      :Array.isArray(block.block_entity)
       ?block.block_entity.map(item=>({...item,text:cleanPublishedHtml(item.text,scope,page)}))
       :block.block_entity};
 }
