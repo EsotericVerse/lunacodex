@@ -1269,10 +1269,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const remaining=existingCandidates.filter(record=>
         !matchesById.has(String(record.uid))&&!ambiguousByIdUids.has(String(record.uid)));
       const byPrimaryUid=new Map();
-      for(const batch of urlSafeInBatches(remaining.map(row=>String(row.uid)),'uid')){
+      const incomingByPrimaryUid=new Map(remaining.map(row=>[String(row.uid),row]));
+      for(const batch of urlSafeInBatches([...incomingByPrimaryUid.keys()],'uid')){
         const saved=await readRowsByUid(batch);
         for(const stored of saved){
-          const incoming=remaining.find(row=>String(row.uid)===String(stored.uid));
+          const incoming=incomingByPrimaryUid.get(String(stored.uid));
           if(!incoming)throw Error('UID 比對回傳不屬於本次匯入的文章');
           if(String(stored.site||'').trim().toLowerCase()!==
               String(incoming.site||'').trim().toLowerCase()||
