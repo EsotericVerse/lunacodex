@@ -1,4 +1,5 @@
 import DEFAULT_TRADITIONAL_CHINESE from './shared/zh_tw.json';
+import {EMPTY_PAGE_LOCALES} from './empty-page-locales.js';
 // Route-local interface copy. Each page.jsx owns four sibling i18n JSON files.
 // Web fetches exactly one selected page JSON; Capacitor serves the same copied
 // assets from its bundled filesystem. Never prefetch a different language.
@@ -158,7 +159,10 @@ export function loadUiLocale(locale=UI_LOCALE,pathname='/'){
   }
   if(!inFlight.has(key)){
     loadErrors.delete(key);
-    const pending=Promise.all([sharedFor(normalized),readJson(assetUrl(normalized,pathname))])
+    const pageAsset=pageLocaleRoute(pathname)+'/'+FILE_FOR_LOCALE[normalized];
+    const pageRequest=EMPTY_PAGE_LOCALES.has(pageAsset)
+      ?Promise.resolve({}):readJson(assetUrl(normalized,pathname));
+    const pending=Promise.all([sharedFor(normalized),pageRequest])
       .then(([shared,page])=>{
         const copy=withFormat(shared,page);
         retain(key,copy);
