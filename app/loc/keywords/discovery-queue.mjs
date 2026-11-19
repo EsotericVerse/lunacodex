@@ -9,7 +9,9 @@ const MIN_PAGE_ROWS=256;
 // own WORKER_BATCH_ROWS/BYTES slices below, so raising this does not change
 // how much a single Worker batch has to process at once.
 const MAX_PAGE_ROWS=20000;
-const INITIAL_PAGE_ROWS=2000;
+// Start with the bounded calibration page; after measuring actual article
+// bytes the existing adaptive queue can grow toward its normal working set.
+const INITIAL_PAGE_ROWS=MIN_PAGE_ROWS;
 const TARGET_QUEUE_BYTES=2*1024*1024;
 const WORKER_BATCH_ROWS=768;
 const WORKER_BATCH_BYTES=256*1024;

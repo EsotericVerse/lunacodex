@@ -3,7 +3,6 @@
 import {dbAuthRelation} from '../db/db-client.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {KeywordDiscoveryQueue} from './discovery-queue.mjs';
-import {classSkipArticleWords} from './class-exceptions.mjs';
 import * as z from 'zod';
 
 // The owner's explicit action starts the only scan. Never run during render,
@@ -71,9 +70,7 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     worker.postMessage(data);
   });
   try{
-    const classRow=existingRows.find(row=>row.type==='class'&&row.uid===classUid);
-    const exceptionWords=classRow?classSkipArticleWords(classRow.attr||{}):[];
-    await send({type:'start',exceptionWords,existingRows:existingRows.map(row=>({
+    await send({type:'start',existingRows:existingRows.map(row=>({
       type:row.type,name:row.name,lists:row.type==='item'?row.lists:[]
     }))});
     let countQuery=dbAuthRelation(galaxy).select('uid',{count:'exact',head:true});
@@ -103,20 +100,25 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
       let lookahead=null;
       while(queue.remaining){
         if(signal?.aborted)throw aborted();
-        const batch=queue.take();
+        const batch=queue.take(),fresh=[];
         for(const row of batch){
-          if(typeof row.uid!=='string'||seen.has(row.uid))
-            throw new Error('文章掃描出現重複或無效 UID，未覆寫先前暫存');
-          seen.add(row.uid);
+          const uid=String(row?.uid||'');
+          if(!/^[A-Za-z0-9]{8}$/.test(uid))
+            throw new Error('文章掃描 UID 無效，未覆寫先前暫存');
+          // Re-reading the same day is harmless: a Galaxy UID is counted
+          // once, and repeated pages never inflate discovery statistics.
+          if(seen.has(uid))continue;
+          seen.add(uid);fresh.push(row);
         }
         // Refill the SINGLE queue when it is almost drained, never when
         // already full. At most one network lookahead runs during Worker CPU.
         if(!lookahead&&queue.nearEmpty&&typeof nextPage==='function')
           lookahead=settled(nextPage(queue.readLimit));
-        const reply=await send({type:'batch',rows:batch});
+        if(!fresh.length)continue;
+        const reply=await send({type:'batch',rows:fresh});
         if(!WORKER_PROGRESS.safeParse(reply).success)
           throw new Error('關鍵詞背景分析回應異常');
-        completed+=batch.length;
+        completed+=fresh.length;
         onProgress({completed,total,withContent:reply.withContent,
           lanes:1,batchSize:requested,nextPageSize:queue.readLimit});
       }

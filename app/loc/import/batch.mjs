@@ -282,7 +282,7 @@ export function importRowsFromJson(payload,recordPath='',source=''){
 }
 
 // Preserve the original timestamp when available. Unix seconds and milliseconds
-// must not be confused; a missing/unreadable source timestamp gets import time.
+// must not be confused; missing timestamps are resolved at the final import boundary.
 export function parseImportCreatedTime(value){
   if(value===undefined||value===null||value==='')return null;
   const raw=typeof value==='string'?value.trim():value;
@@ -292,8 +292,32 @@ export function parseImportCreatedTime(value){
   const timestamp=numeric===null?raw:
     Math.abs(numeric)<1e11?numeric*1000:numeric;
   const parsed=new Date(timestamp);
-  return Number.isNaN(parsed.getTime())?null:parsed.toISOString();
+  if(Number.isNaN(parsed.getTime()))return null;
+  const iso=parsed.toISOString();
+  // Source exports may already carry true microsecond precision. The JS
+  // Date object loses digits 4–6, but timestamptz(6) can retain them.
+  const fraction=typeof raw==='string'?
+    raw.match(/T\d{2}:\d{2}:\d{2}\.(\d{4,6})(?:Z|[+-]\d{2}:?\d{2})$/i)?.[1]:null;
+  return fraction?iso.slice(0,19)+'.'+fraction.padEnd(6,'0')+'Z':iso;
 }
+// Only a missing authored creation timestamp may fall back to source update
+// metadata. Never replace a genuine creation time with a later edit time.
+const IMPORT_UPDATE_TIME_KEYS=Object.freeze([
+  'UpdateTime','update_time','updated_time','updated_at','updatedAt',
+  'modified_at','modifiedAt','post_modified_gmt','post_modified',
+  'last_edited_time','edited_at','editedAt','lastModified'
+]);
+export function extractImportUpdatedAt(row){
+  if(!row||typeof row!=='object')return null;
+  for(const key of IMPORT_UPDATE_TIME_KEYS){
+    const value=row[key];
+    if(value===null||value===undefined||value==='')continue;
+    const parsed=parseImportCreatedTime(value);
+    if(parsed)return parsed;
+  }
+  return null;
+}
+
 // An absent original timestamp is null, never the import clock.
 const IMPORT_TIME_KEYS=['createtime','createdAt','createAt','created_at','creation_timestamp','create_time',
   'created_time','timestamp_ms','timestamp','taken_at','published_at','publishedAt','date'];
@@ -325,10 +349,6 @@ export function extractImportCreatedAt(value,depth=0){
   }
   return null;
 }
-export function withImportCreatedTime(record,importedAt=new Date().toISOString()){
-  return {...record,createtime:parseImportCreatedTime(record?.createtime)||importedAt};
-}
-
 // Adjust import write size by observed throughput while keeping requests bounded.
 export function createImportBatchSizer({
   initial=256,minimum=128,maximum=1200

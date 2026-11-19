@@ -9,12 +9,10 @@
 // Keyword-derived day density deduplicates actual postings by Galaxy.date; never estimate by a ratio.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {buildKeywordSearchPatterns,keywordPatternItemMetrics,keywordPatternDailySummary} from './search-pattern.mjs';
-import {keywordClassCatalog} from './tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './incremental.mjs';
 import {createIndexedDateKeywordReader} from './article-reader.mjs';
-import {classSkipArticleWords} from './class-exceptions.mjs';
 import {completeKeywordClass,invalidateKeywordClass,readKeywordScanProgress,writeKeywordScanProgress} from './class-state.mjs';
-import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './anchor-index.mjs';
+import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION} from './anchor-index.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -51,8 +49,7 @@ const configName=scope=>'silver.'+checkScope(scope);
 // title, site or six unrelated feature flags across ~50k metadata records.
 const galaxyListMetadataColumns=Object.freeze([
   ...galaxyReadColumns('GalaxyList')
-    .filter(name=>['uid','date','createtime','keyword'].includes(name)),
-  'UpdateTime'
+    .filter(name=>['uid','date','keyword'].includes(name))
 ]);
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
   .filter(column=>['uid','title','content','keyword'].includes(column)));
@@ -289,43 +286,46 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
     a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
-async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',expectedMinChars=null){
-  // The Pattern rows and their Item UID edges are committed in the same
-  // transaction as class completion. Article bodies are never duplicated.
+async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',expectedCount=null){
+  // One Scope-wide index, one publication. Recheck the source row count inside
+  // the same transaction before touching the live Pattern postings.
+  if(expectedCount!==null){
+    const current=await trx.selectFrom(galaxyName(scope))
+      .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
+    if(Number(current?.n)!==expectedCount)
+      fail('Galaxy article count changed during Keyword scan; retry full analysis',409);
+  }
   await storeScopePatternMatches(trx,scope,patterns);
   const now=new Date().toISOString();
   const cfg=await configuration(trx,scope);
-  // Never commit postings computed using an obsolete minimum-content rule.
-  // An ordinary settings save must not silently turn old analysis into a
-  // current Full-Text Pattern index.
-  if(expectedMinChars!==null&&Number(cfg.keyword_min_chars)!==expectedMinChars)
-    fail('Keyword analysis rule changed during scan; no postings committed',409);
   const record={class_uid:classUid,matchedDocuments:stats.matchedDocuments,
     analyzedDocuments:stats.analyzedDocuments,parsedDocuments:stats.parsedDocuments,
-    reusedDocuments:stats.reusedDocuments,itemMatches:stats.itemMatches,
+    reusedDocuments:stats.reusedDocuments,itemMatches:stats.itemMatches??0,
     occurrences:stats.occurrences,
     // Commit receipt is atomic with Pattern postings. A disconnected HTTP
     // stream cannot turn a successful SQL transaction into an unknown state.
     ...(attemptId?{attemptId}:{})};
   const oldMeta=attr({attr:cfg.keyword_meta});
-  const alreadyNative=oldMeta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION;
-  // Migration preserved legacy scan/class completion; invalidate on first cutover.
-  const baseMeta=alreadyNative?oldMeta:{
-    ...oldMeta,
-    by_class:Object.fromEntries(Object.entries(oldMeta.by_class||{})
-      .map(([uid,record])=>[uid,{...record,stale:true}])),
+  // This is a Scope Pattern scan, not one Class's private index. Every Class
+  // reads the same UID postings through its own Item projection. Certify all
+  // currently present Classes from this one completed scan; do not force each
+  // Class to rerun the same whole Scope.
+  const classes=await trx.selectFrom(anchorName(scope))
+    .select('uid').where('type','=','class').execute();
+  if(!classes.some(row=>row.uid===classUid))
+    fail('Keyword Class changed during full-scope analysis',409);
+  let completedMeta={
+    ...oldMeta,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
     pattern_scans:{}
   };
-  const merged=completeKeywordClass(baseMeta,classUid,record,now);
-  const completedMeta={...merged,pattern_index_version:SCOPE_PATTERN_INDEX_VERSION,
-    pattern_scans:{
-    ...(merged.pattern_scans||{}),...stats.patternScans
-  }};
-  // A finished scan's Pattern write and clearing its (now obsolete) resumable
-  // checkpoint are the same atomic fact: this Class has no scan in progress
-  // any more. Clearing it here, in the same transaction as the real write,
-  // means a checkpoint can never outlive the completed result it led to.
-  const metadata=writeKeywordScanProgress(completedMeta,classUid,null);
+  for(const row of classes)
+    completedMeta=completeKeywordClass(completedMeta,row.uid,{
+      ...record,class_uid:row.uid,
+      ...(row.uid===classUid?{}:{attemptId:null})
+    },now);
+  // The Pattern index is Scope-wide. Clear stale scan cursors for every
+  // Class atomically with the completed publication, not just the initiator.
+  const metadata={...completedMeta,scan_progress:{}};
   await trx.updateTable(configName(scope))
     .set({keyword_meta:JSON.stringify(metadata),staticstime:null,updated_at:now})
     .where('id','=',scope).execute();
@@ -344,43 +344,6 @@ async function persistScanProgress(trx,scope,classUid,progress){
     .where('id','=',scope).execute();
 }
 
-// Read the undated metadata group without an arbitrary cutoff. The dated
-// reader uses a single (date, UID) keyset scan instead of per-day SQL lookups.
-// The outer analysis verifies the full Galaxy count before writing Pattern
-// postings, so additions/deletions during this scan cannot silently succeed.
-async function readCompleteKeywordMetadataGroup(db,scope,columns,{
-  date=null,maximumRows
-}={}){
-  checkScope(scope);
-  if(date!==null&&!DATE.test(date)||
-     !Number.isSafeInteger(maximumRows)||maximumRows<1||
-     !Array.isArray(columns)||!columns.length)
-    fail('Invalid Keyword metadata group request');
-  const rows=[],seen=new Set();
-  const pageSize=750;
-  let afterUid=null;
-  for(;;){
-    let query=db.selectFrom(galaxyName(scope)).select(columns)
-      .where('date',date===null?'is':'=',date)
-      .orderBy('uid','asc').limit(pageSize+1);
-    if(afterUid!==null)query=query.where('uid','>',afterUid);
-    const page=await query.execute();
-    if(!Array.isArray(page)||page.length>pageSize+1)
-      fail('Keyword metadata cursor returned invalid page');
-    // The extra row is a bounded lookahead, not a discarded article.
-    for(const row of page.slice(0,pageSize)){
-      const uid=String(row?.uid||'');
-      if(!UID.test(uid)||seen.has(uid))
-        fail('Keyword metadata cursor returned duplicate or invalid UID');
-      seen.add(uid);rows.push(row);afterUid=uid;
-      if(rows.length>=maximumRows)
-        fail('Keyword metadata group grew beyond the Galaxy COUNT; retry analysis');
-    }
-    if(page.length<=pageSize)break;
-  }
-  return {rows,count:rows.length};
-}
-
 export async function analyzeKeywordScope(db,scope,classUid,{
   authorizeTransaction=()=>{},startedAt=new Date().toISOString(),onProgress=()=>{},
   attemptId=''
@@ -392,70 +355,46 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   // is tracked separately from the completed-scan receipt in by_class; it is
   // never read as if it were a finished result (see class-state.mjs).
   const resume=readKeywordScanProgress(meta,classUid);
-  const anchor=anchorName(scope);
-  const [directory,nativeRows]=await Promise.all([
-    readScopePatternDirectory(db,scope),
-    db.selectFrom(anchor).select(['uid','type','title','description','attr'])
-      .where('type','in',['category','class','group','item']).execute()
-  ]);
-  const treeRows=nativeRows.map(row=>({
-    uid:row.uid,type:row.type,name:String(row.title||''),
-    desc:String(row.description||''),
-    lists:row.type==='item'
-      ?(Array.isArray(attr(row).keyword)?attr(row).keyword:[]):children(row),
-    uid_lists:[]
-  }));
-  const {catalog}=keywordClassCatalog(treeRows,classUid);
-  const classRow=nativeRows.find(row=>row.type==='class'&&row.uid===classUid);
+  // The chosen Class is only the existing UI authorization/completion key.
+  // Scanning is global per Scope and reads Pattern literals by physical UID.
+  const classRow=await db.selectFrom(anchorName(scope))
+    .select('uid').where('uid','=',classUid)
+    .where('type','=','class').executeTakeFirst();
   if(!classRow)fail('Unknown Keyword Class',404);
-  const exceptionWords=classSkipArticleWords(attr(classRow));
-  const selectedItemIds=new Set(catalog.map(item=>item.uid));
-  const linkedItems=nativeRows.filter(row=>row.type==='item'&&
-    selectedItemIds.has(row.uid));
-  if(exceptionWords.length){
-    // Pattern is ONE global word index per Scope, not a Class-specific table.
-    // Never let exclusions on one Class erase valid postings for a different
-    // Class that references the same Pattern Anchor.
-    const owned=new Set(linkedItems.flatMap(row=>
-      Array.isArray(attr(row).uid)?attr(row).uid:[]));
-    const conflicting=nativeRows.some(row=>row.type==='item'&&
-      !selectedItemIds.has(row.uid)&&
-      Array.isArray(attr(row).uid)&&attr(row).uid.some(uid=>owned.has(uid)));
-    if(conflicting)fail('Class exclusions cannot rewrite a Pattern shared with another Class',409);
-  }
-  const existingPatterns=await classPatternRows(db,scope,catalog,directory,linkedItems);
+  // A full scan never consults old article postings. Load only the small
+  // Pattern UID/literal directory; the writer reads old postings once at commit.
+  const directory=await readScopePatternDirectory(db,scope);
+  const existingPatterns=[...directory.values()];
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
   const expectedCount=Number(total?.n??0);
   if(!Number.isSafeInteger(expectedCount)||expectedCount<0)
     fail('Galaxy count out of range');
   const cols=galaxyListMetadataColumns;
-  // COUNT is checked before and after scanning; the reader buffers complete
-  // same-day groups and rejects incomplete or inconsistent metadata.
-  const maximumRows=Math.max(10000,expectedCount+1);
+  // The indexed date/UID cursor streams directly; no complete-day sorting,
+  // publication-time index or full undated-group materialization is needed.
   const reader=createIndexedDateKeywordReader({
-    maximumRows,
     readDateBatch:async({afterDate,afterUid,limit})=>{
-      // One (date,UID) keyset scan replaces an extra query for every date.
-      // The reader buffers complete days before time-ordering.
-      let q=db.selectFrom(galaxyName(scope)).select(cols)
+      let query=db.selectFrom(galaxyName(scope)).select(cols)
         .where('date','is not',null)
         .orderBy('date','asc').orderBy('uid','asc').limit(limit);
-      if(afterDate!==null)q=q.where(eb=>eb.or([
+      if(afterDate!==null)query=query.where(eb=>eb.or([
         eb('date','>',afterDate),
         eb.and([eb('date','=',afterDate),eb('uid','>',afterUid)])
       ]));
-      return q.execute();
+      return query.execute();
     },
-    readUndated:({maximumRows})=>readCompleteKeywordMetadataGroup(
-      db,scope,cols,{maximumRows})
+    readUndatedBatch:async({afterUid,limit})=>{
+      let query=db.selectFrom(galaxyName(scope)).select(cols)
+        .where('date','is',null)
+        .orderBy('uid','asc').limit(limit);
+      if(afterUid!==null)query=query.where('uid','>',afterUid);
+      return query.execute();
+    }
   });
   let pending=null;
   const result=await analyzeIncrementalKeywordPatterns({
-    scopeId:scope,classUid,treeRows,items:catalog,
-    existingPatterns,patternScans:scopePatternScanClocks(cfg.keyword_meta),
-    expectedCount,minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
-    exceptionWords,
+    scopeId:scope,classUid,existingPatterns,expectedCount,
     startedAt,pageSize:1000,readMetadataPage:reader,
     resume,timeBudgetMs:KEYWORD_ANALYSIS_TIME_BUDGET_MS,
     onCheckpoint:async progress=>{
@@ -477,24 +416,15 @@ export async function analyzeKeywordScope(db,scope,classUid,{
         .where('uid','in',uids).execute();
     },
     writePatterns:async ({patterns})=>{
+      // Keep results in memory until the completed scan; no live partial
+      // Pattern writes, repeated counting, or repeated Item reconciliation.
       pending=patterns;
-      // Written into the live Anchor table on every call, not just the final
-      // one: each dynamically-sized page is routinely millions of
-      // characters, so a single all-at-once write at completion would be
-      // the risky operation. storeScopePatternMatches only issues SQL for
-      // uid_list values that actually changed, so repeating it per-page
-      // costs nothing extra once a uid's set has stopped growing.
-      await db.transaction().execute(async trx=>{
-        await authorizeTransaction(trx);
-        await storeScopePatternMatches(trx,scope,patterns);
-      });
     },
     finalize:async stats=>{
       if(!pending)fail('Keyword patterns were not produced');
       await db.transaction().execute(async trx=>{
         await authorizeTransaction(trx);
-        await persistPatterns(trx,scope,classUid,pending,stats,attemptId,
-          Number(cfg.keyword_min_chars)||0);
+        await persistPatterns(trx,scope,classUid,pending,stats,attemptId,expectedCount);
       });
     }
   });
