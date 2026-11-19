@@ -2,8 +2,6 @@
 name: Deploy Main Next to GitHub Pages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,8 +9,9 @@ permissions:
   pages: write
   id-token: write
 
-# LOC-owned GitHub Pages production publication from main, with manual retry.
-# GitHub is the release controller; no Cloudflare token, DNS change or Worker grant.
+# Manual LOC GitHub Pages fallback only. The normal LOC publisher already
+# handles main; auto-publishing both would duplicate full Next.js builds.
+# No Cloudflare token, DNS change or Worker grant.
 concurrency:
   group: pages
   cancel-in-progress: false
