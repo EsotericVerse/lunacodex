@@ -89,18 +89,20 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     :(publicHeroQuery.data||[]).filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
-  const managementTextQuery=useAsyncResource(['scope-blocks-live','loc',managementTextPage],
-    ()=>selectLiveScopeBlocks('loc',managementTextPage),{enabled:managementMode});
-  const managementImageQuery=useAsyncResource(['scope-blocks-live','loc',managementImagePage],
-    ()=>selectLiveScopeBlocks('loc',managementImagePage),{enabled:managementMode});
+  // One exact-type request provides the management Hero text and image slots.
+  // The fixed Hero frame/label is already visible before this data arrives.
+  const managementHeroQuery=useAsyncResource(['management-hero',managementTextPage,managementImagePage],
+    ()=>hero_block([...new Set([managementTextPage,managementImagePage])]),
+    {enabled:managementMode});
   const heroImageRow=managementMode
-    ?managementImageQuery.data?.find(row=>Number(row.block_order)===1)
+    ?managementHeroQuery.data?.find(row=>row.page_name===managementImagePage&&Number(row.block_order)===1)
     :(featureId==='admin'?groupHeroRows:
       (scopeId==='loc'&&!HomeBlock.shouldUseSingleFeatureHeroImage(featureId))
         ?groupHeroRows:scopeHeroRows).find(row=>Number(row.block_order)===1);
   const heroImageOverride=heroImageUrlOf(heroImageRow)||(managementMode?HomeBlock.managementHeroDefaultImage(managementSlot):'');
   const heroStyle=heroImageOverride?{'--scope-feature-hero-image':`url("${heroImageOverride}")`}:undefined;
-  const shared=managementMode?HomeBlock.managementHeroCopy(managementTextQuery.data,managementSlot)
+  const shared=managementMode?HomeBlock.managementHeroCopy(
+    managementHeroQuery.data?.filter(row=>row.page_name===managementTextPage),managementSlot)
     :sharedEnabled?HomeBlock.featureHeroFor(groupHeroRows):null;
   const fallbackCopy={
     title:profile.title,

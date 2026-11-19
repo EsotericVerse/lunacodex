@@ -1,5 +1,5 @@
 'use client';
-import {useCallback,useEffect,useState} from 'react';
+import {createContext,useCallback,useContext,useEffect,useState} from 'react';
 import {useAccount,readVerifiedManagementEntry} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
@@ -13,10 +13,31 @@ const granted=(grants,id,level)=>level==='global'
   :level==='group'?Boolean(grants?.canLocAccessSync('group',id))
   :Boolean(grants?.canLocAccessSync('scope',id));
 const pending=()=>({loading:true,user:null,authorizer:null,error:''});
+const ManagementEntryContext=createContext(null);
+
+// Visible template belongs to the page. This gate owns only the protected
+// editor/data slot; no fixed CSS, NAV, Hero or section label depends on Auth.
+export function ProtectedManagementSlot({children}){
+  const entry=useContext(ManagementEntryContext);
+  if(!entry)return null; // Fail closed outside the verified management route.
+  const {ready,allowed,entered,locked,verification,retry}=entry;
+  if(ready&&allowed&&entered&&!locked)return children;
+  const denied=ready&&(!allowed||locked);
+  return <section className="loc-card scope-feature-card" role={denied?'alert':'status'}>
+    {denied?<><p>{verification.error||(locked
+      ?'編輯 Session 已過期，請手動重新確認。'
+      :verification.user
+        ?'LOC 身分已驗證，但沒有此範圍的管理權限。'
+        :'目前沒有有效的 LOC Session，編輯模式未啟用。')}</p>
+      <button type="button" onClick={retry}>重新確認 Session</button>{' '}
+      <a href="/local/settings/">前往設定頁</a></>
+      :<p>正在確認管理操作權限…</p>}
+  </section>;
+}
 
 // Each protected management entry verifies Scope permission before rendering
 // editing controls. An OAuth session alone never grants LOC Scope access.
-export default function ManagementAccess({scopeId,level='scope',featureId='manage',children}){
+export default function ManagementAccess({scopeId,level='scope',featureId='manage',staticFrame=false,children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
   const [verification,setVerification]=useState(pending);
   const [locked,setLocked]=useState(false);
@@ -93,6 +114,11 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
         error:'LOC 編輯 Session 無法啟用，請重新確認目前 Scope 與 Session。'}));
     }
   },[allowed,entered,scopeId,dock?.begin,verification.authorizer]);
+
+  if(staticFrame)return <ManagementEntryContext.Provider value={{
+    ready,allowed,entered,locked,verification,
+    retry:()=>{setLocked(false);setRetryAttempt(value=>value+1);}
+  }}>{children}</ManagementEntryContext.Provider>;
 
   if(ready&&(!allowed||locked))return <FeaturePage featureId={featureId}>
     <section className="loc-card scope-feature-card">

@@ -9,6 +9,7 @@ import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
 import {useAccount} from '../auth/use-account';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
+import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
 const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks'),{loading:()=>null});
 const ManagementArticlePublisher=dynamic(()=>import('../management/ManagementArticlePublisher'),{loading:()=>null});
@@ -43,7 +44,7 @@ const OLD_SCOPE_SECTION_ALIASES=Object.freeze({
 export default function SearchManagement(){
   const {scopeId}=useScopeRuntime();
   const editDock=useEditDock();
-  const account=useAccount();
+  const account=useAccount({enabled:false});
   const searchParams=useSearchParams();
   const isLocAdmin=scopeId==='loc';
   // Personal preferences belong to the last Settings tab, not Article Control.
@@ -62,7 +63,7 @@ export default function SearchManagement(){
   },[isLocAdmin,searchParams]);
   const groupAuthorized=isLocAdmin||account.canLocAccessSync('group',scopeId);
   const authorPage=scopeId==='lo3rwang';
-  const canShowGroupAccess=isLocAdmin||groupAuthorized&&!authorPage;
+  const canShowGroupAccess=isLocAdmin||!authorPage;
   const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
     :canShowGroupAccess?[...ARTICLE_CONTROL_SECTIONS,GROUP_OPTION]:ARTICLE_CONTROL_SECTIONS;
   const [activeSection,setSection]=useManagementSection(options,'publish',
@@ -85,6 +86,7 @@ export default function SearchManagement(){
         }}/>
       <div id="management-search-panel" className="management-workspace-panel" role="region"
         aria-labelledby={'management-search-sections-option-'+currentSection.value}>
+        <ProtectedManagementSlot>
         {!isLocAdmin&&activeSection==='publish'?<div className="article-control-stacked">
           <section aria-labelledby="article-control-article-heading">
             <h3 id="article-control-article-heading">發表／編輯文章</h3>
@@ -128,6 +130,9 @@ export default function SearchManagement(){
           scopeId={scopeId} page="trace"
           className="loc-grid two trace-grid trace-grid-loc"
           headingLevel={2} allowDelete authorizedByParent startInEditMode explicitEditButton/>:null}
+        {activeSection==='groupAccess'&&!groupAuthorized
+          ?<p className="scope-status">目前沒有此群組的管理權限。</p>:null}
+        </ProtectedManagementSlot>
       </div>
     </ManagementWorkspaceFrame>
   </FeaturePage>;
