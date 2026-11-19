@@ -406,6 +406,9 @@ function AppShellInner({children,runtime}){
   const [manualLocale,setManualLocale]=useState(null);
   const [localeEntryReady,setLocaleEntryReady]=useState(false);
   useEffect(()=>{
+    // Host-based Scope resolution finishes after hydration; do not consume
+    // the one-shot language for a transient, incorrect default Scope.
+    if(!runtime.locationMounted)return;
     let requested=null;
     try{
       const stored=window.sessionStorage.getItem(LANGUAGE_RELOAD_ONCE);
@@ -416,7 +419,7 @@ function AppShellInner({children,runtime}){
       UI_LOCALE_OPTIONS.some(option=>option.value===requested?.locale);
     setManualLocale(valid?requested:null);
     setLocaleEntryReady(true);
-  },[scopeId,pathname]);
+  },[scopeId,pathname,runtime.locationMounted]);
   const configLocaleEnabled=Boolean(scopeId)&&!currentScope.aggregateChildren&&scopeId!=='admin';
   const publishedLocale=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.locale;
   const configuredLocale=configLocaleEnabled?normalizeUiLocale(publishedLocale):'zh-Hant';
