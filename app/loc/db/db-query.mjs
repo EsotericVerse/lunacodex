@@ -253,22 +253,25 @@ export async function selectAllRows(table,{
   // explicitly supplied AbortSignal keeps independent cancellation behavior.
   const requestSignal=signal?pageSignal:null;
   const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
-  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',signal:requestSignal});
+  // A full-result reader must fetch every row, but it does not need to
+  // execute a separate exact COUNT before reading them. A short page proves
+  // completion; an exact page only requires one more bounded transport read.
+  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,signal:requestSignal});
   const rows=[...first.rows];
-  const total=first.count==null||!Number.isSafeInteger(Number(first.count))?null:Number(first.count);
   const source=first.dataSource||'auto';
   let offset=rows.length;
-  onProgress?.({completed:offset,total});
-  // Missing COUNT never means the first transport page is the whole table.
-  while(total===null||offset<total){
+  onProgress?.({completed:offset,total:null});
+  let pageLength=first.rows.length;
+  while(pageLength===size){
     if(pageSignal.aborted)throw abortError();
     const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,source,signal:requestSignal});
-    if(!page.rows.length)break;
+    pageLength=page.rows.length;
+    if(!pageLength)break;
     rows.push(...page.rows);
-    offset+=page.rows.length;
-    onProgress?.({completed:offset,total});
+    offset+=pageLength;
+    onProgress?.({completed:offset,total:null});
   }
-  return {rows,count:total??rows.length,dataSource:source};
+  return {rows,count:rows.length,dataSource:source};
 }
 
 // Like selectAllRows, but once the table is bigger than a couple of pages,
