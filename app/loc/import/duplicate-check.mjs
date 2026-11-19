@@ -3,9 +3,9 @@ import {importGeoKey} from './geocoordinates.mjs';
 // Import identity is source site + normalized creation timestamp.
 // Native site_id is optional source metadata, not a matching requirement.
 export function comparableImportText(value){
-  return String(value??'').normalize('NFKC')
-    .replace(/[\p{P}\p{S}\p{Z}\s\u200B-\u200D\uFEFF\u2060]/gu,'')
-    .toLocaleLowerCase('und');
+  // Exact source text matters: punctuation, spaces, symbols and case can
+  // distinguish different posts. Only line-ending encodings are reconciled.
+  return String(value??'').replace(/\r\n?/gu,'\n');
 }
 const importSourceKey=record=>{
   const site=String(record?.site??'').trim().toLocaleLowerCase('und');
@@ -24,7 +24,7 @@ const importTimeKey=record=>{
 // Keep separate source rows even when they share a timestamp; an exact UID
 // repeated in the same file is the only safe input-level duplicate.
 export function dedupeIncomingImport(records=[]){
-  const unique=[],aliases=new Map(),byUid=new Map(),byContentTime=new Map(),byNativeId=new Map();
+  const unique=[],aliases=new Map(),byUid=new Map(),byNativeId=new Map();
   const indexByUid=new Map();
   const inheritLocation=(uid,row)=>{
     const index=indexByUid.get(uid);
@@ -84,18 +84,8 @@ export function dedupeIncomingImport(records=[]){
     const sourceUid=source?byNativeId.get(source):null;
     if(sourceUid){duplicates++;aliases.set(uid,sourceUid);inheritLocation(sourceUid,row);continue;}
     if(source)byNativeId.set(source,uid);
-    // For posts without a native ID, compare exact time and normalized text.
-    let semantic=null;
-    if(!source){
-      const time=importTimeKey(row);
-      if(time){
-        const text=comparableImportText(row.content);
-        if(text)semantic=JSON.stringify([time,text]);
-      }
-    }
-    const seen=semantic?byContentTime.get(semantic):null;
-    if(seen){duplicates++;aliases.set(uid,seen);inheritLocation(seen,row);continue;}
-    if(semantic)byContentTime.set(semantic,uid);
+    // A different UID without a verified native source ID remains a separate
+    // article, even if its timestamp and text happen to match.
     indexByUid.set(uid,unique.length);
     unique.push(row);aliases.set(uid,uid);
   }
