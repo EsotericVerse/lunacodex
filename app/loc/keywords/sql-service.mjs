@@ -49,8 +49,7 @@ const configName=scope=>'silver.'+checkScope(scope);
 // title, site or six unrelated feature flags across ~50k metadata records.
 const galaxyListMetadataColumns=Object.freeze([
   ...galaxyReadColumns('GalaxyList')
-    .filter(name=>['uid','date','createtime','keyword'].includes(name)),
-  'UpdateTime'
+    .filter(name=>['uid','date','createtime','keyword'].includes(name))
 ]);
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
   .filter(column=>['uid','title','content','keyword'].includes(column)));
@@ -287,20 +286,14 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
     a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
-async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId='',expectedMinChars=null){
-  // The Pattern rows and their Item UID edges are committed in the same
-  // transaction as class completion. Article bodies are never duplicated.
+async function persistPatterns(trx,scope,classUid,patterns,stats,attemptId=''){
+  // Publish one full-scope Pattern index atomically with its completion receipt.
   await storeScopePatternMatches(trx,scope,patterns);
   const now=new Date().toISOString();
   const cfg=await configuration(trx,scope);
-  // Never commit postings computed using an obsolete minimum-content rule.
-  // An ordinary settings save must not silently turn old analysis into a
-  // current Full-Text Pattern index.
-  if(expectedMinChars!==null&&Number(cfg.keyword_min_chars)!==expectedMinChars)
-    fail('Keyword analysis rule changed during scan; no postings committed',409);
   const record={class_uid:classUid,matchedDocuments:stats.matchedDocuments,
     analyzedDocuments:stats.analyzedDocuments,parsedDocuments:stats.parsedDocuments,
-    reusedDocuments:stats.reusedDocuments,itemMatches:stats.itemMatches,
+    reusedDocuments:stats.reusedDocuments,itemMatches:stats.itemMatches??0,
     occurrences:stats.occurrences,
     // Commit receipt is atomic with Pattern postings. A disconnected HTTP
     // stream cannot turn a successful SQL transaction into an unknown state.
@@ -396,7 +389,10 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     .select('uid').where('uid','=',classUid)
     .where('type','=','class').executeTakeFirst();
   if(!classRow)fail('Unknown Keyword Class',404);
-  const existingPatterns=await readScopePatternRows(db,scope);
+  // A full scan never consults old article postings. Load only the small
+  // Pattern UID/literal directory; the writer reads old postings once at commit.
+  const directory=await readScopePatternDirectory(db,scope);
+  const existingPatterns=[...directory.values()];
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
   const expectedCount=Number(total?.n??0);
@@ -455,8 +451,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       if(!pending)fail('Keyword patterns were not produced');
       await db.transaction().execute(async trx=>{
         await authorizeTransaction(trx);
-        await persistPatterns(trx,scope,classUid,pending,stats,attemptId,
-          Number(cfg.keyword_min_chars)||0);
+        await persistPatterns(trx,scope,classUid,pending,stats,attemptId);
       });
     }
   });
