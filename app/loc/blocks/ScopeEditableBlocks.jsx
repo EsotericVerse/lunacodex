@@ -94,24 +94,25 @@ export default function ScopeEditableBlocks({
   const [recentlySavedBlocks,setRecentlySavedBlocks]=useState(null);
   const editingContent=Boolean(homeEditActive||editMode||authorizedByParent);
 
-  // Browsing uses release-published Blocks and their existing image URLs.
-  // Entering edit mode reads ONE authoritative dataset and mounts its
-  // drafts only after that read succeeds. The public rows can never replace
-  // a draft or appear as a duplicate editor dataset.
-  const bootstrap=useAppBootstrap(scopeId,pageName,{enabled:!isScopeHomepageBlock});
+  // Published presentation and the authoritative editor are mutually
+  // exclusive on EVERY page, not only on Scope homepages. A management editor
+  // must never draft from a release snapshot that another browser already
+  // changed, nor run both readers at the same time.
+  const bootstrap=useAppBootstrap(scopeId,pageName,{
+    enabled:!isScopeHomepageBlock&&!editingContent
+  });
   const published=useAsyncResource(['published-home-page',scopeId,pageName],
     ()=>loadPublishedBlocks(scopeId,pageName),{
       enabled:isScopeHomepageBlock&&!editingContent
     });
   const editorRows=useAsyncResource(['scope-blocks',scopeId,pageName],
     ()=>selectLiveScopeBlocks(scopeId,pageName),{
-      enabled:isScopeHomepageBlock&&editingContent
+      enabled:editingContent
     });
-  const blocks=isScopeHomepageBlock
-    ?(editingContent?editorRows.data:(recentlySavedBlocks??published.data))
-    :bootstrap.data?.blocks;
-  const editingReady=isScopeHomepageBlock?editorRows.isSuccess:bootstrap.isSuccess;
-  const editingError=isScopeHomepageBlock?editorRows.isError:bootstrap.isError;
+  const blocks=editingContent?editorRows.data
+    :(recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks));
+  const editingReady=editorRows.isSuccess;
+  const editingError=editorRows.isError;
   const rememberSavedRows=()=>{
     if(isScopeHomepageBlock){
       const saved=queryClient.getQueryData(['scope-blocks',scopeId,pageName]);
