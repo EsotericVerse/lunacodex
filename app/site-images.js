@@ -1,6 +1,6 @@
 const locHeroAsset={src:'/pics/LOC-PicAll.webp'};
 const locHeroSmallAsset={src:'/pics/LOC-PicAll_s.webp'};
-const lunarunesAsset={src:'/pics/LunaRunes.webp'};
+const lunarunesAsset={src:'/pics/LunaRunes-hero.jpg'};
 const locArchitectureAsset={src:'/pics/LOC-culture.jpg'};
 const authorAsset={src:'/pics/aboutme.webp'};
 

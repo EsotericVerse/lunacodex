@@ -5,6 +5,8 @@ data/private/
 node_modules/
 .next/
 out/
+# Generated image mirror for direct /pics/ URLs; source stays in assets/pics/
+/public/pics/
 
 # Local transient artifacts
 .wrangler/

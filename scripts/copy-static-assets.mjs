@@ -23,8 +23,11 @@ const picsSource=path.join(assetsSource,'pics');
 const picsTarget=path.join(output,'pics');
 const EXCLUDED_PICS_DIRS=native?[path.join(picsSource,'64Card_org')]:[];
 if(!fs.existsSync(picsSource))throw new Error('Static asset source missing: pics');
-fs.rmSync(picsTarget,{recursive:true,force:true});
-fs.cpSync(picsSource,picsTarget,{recursive:true,
+// Next's static export normally includes staged public/pics automatically.
+// Copy only as a fallback, not a second full image pass on every build.
+if(!fs.existsSync(picsTarget))fs.cpSync(picsSource,picsTarget,{recursive:true,
   filter:source=>!EXCLUDED_PICS_DIRS.some(excluded=>source===excluded||source.startsWith(excluded+path.sep))});
+if(!fs.existsSync(picsTarget)||fs.readdirSync(picsTarget).length===0)
+  throw new Error('LOC /pics/ publication is empty');
 
 console.log(`[static-assets] LOC ${native?'native':'Web'} assets published from LOC repository only.`);
