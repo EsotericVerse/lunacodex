@@ -9,12 +9,10 @@
 // Keyword-derived day density deduplicates actual postings by Galaxy.date; never estimate by a ratio.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {buildKeywordSearchPatterns,keywordPatternItemMetrics,keywordPatternDailySummary} from './search-pattern.mjs';
-import {keywordClassCatalog} from './tree.mjs';
 import {analyzeIncrementalKeywordPatterns} from './incremental.mjs';
 import {createIndexedDateKeywordReader} from './article-reader.mjs';
-import {classSkipArticleWords} from './class-exceptions.mjs';
 import {completeKeywordClass,invalidateKeywordClass,readKeywordScanProgress,writeKeywordScanProgress} from './class-state.mjs';
-import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION,scopePatternScanClocks} from './anchor-index.mjs';
+import {readScopePatternRows,readScopePatternDirectory,storeScopePatternMatches,ensureScopePatternLibrary,SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION} from './anchor-index.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -392,38 +390,13 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   // is tracked separately from the completed-scan receipt in by_class; it is
   // never read as if it were a finished result (see class-state.mjs).
   const resume=readKeywordScanProgress(meta,classUid);
-  const anchor=anchorName(scope);
-  const [directory,nativeRows]=await Promise.all([
-    readScopePatternDirectory(db,scope),
-    db.selectFrom(anchor).select(['uid','type','title','description','attr'])
-      .where('type','in',['category','class','group','item']).execute()
-  ]);
-  const treeRows=nativeRows.map(row=>({
-    uid:row.uid,type:row.type,name:String(row.title||''),
-    desc:String(row.description||''),
-    lists:row.type==='item'
-      ?(Array.isArray(attr(row).keyword)?attr(row).keyword:[]):children(row),
-    uid_lists:[]
-  }));
-  const {catalog}=keywordClassCatalog(treeRows,classUid);
-  const classRow=nativeRows.find(row=>row.type==='class'&&row.uid===classUid);
+  // The chosen Class is only the existing UI authorization/completion key.
+  // Scanning is global per Scope and reads Pattern literals by physical UID.
+  const classRow=await db.selectFrom(anchorName(scope))
+    .select('uid').where('uid','=',classUid)
+    .where('type','=','class').executeTakeFirst();
   if(!classRow)fail('Unknown Keyword Class',404);
-  const exceptionWords=classSkipArticleWords(attr(classRow));
-  const selectedItemIds=new Set(catalog.map(item=>item.uid));
-  const linkedItems=nativeRows.filter(row=>row.type==='item'&&
-    selectedItemIds.has(row.uid));
-  if(exceptionWords.length){
-    // Pattern is ONE global word index per Scope, not a Class-specific table.
-    // Never let exclusions on one Class erase valid postings for a different
-    // Class that references the same Pattern Anchor.
-    const owned=new Set(linkedItems.flatMap(row=>
-      Array.isArray(attr(row).uid)?attr(row).uid:[]));
-    const conflicting=nativeRows.some(row=>row.type==='item'&&
-      !selectedItemIds.has(row.uid)&&
-      Array.isArray(attr(row).uid)&&attr(row).uid.some(uid=>owned.has(uid)));
-    if(conflicting)fail('Class exclusions cannot rewrite a Pattern shared with another Class',409);
-  }
-  const existingPatterns=await classPatternRows(db,scope,catalog,directory,linkedItems);
+  const existingPatterns=await readScopePatternRows(db,scope);
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
   const expectedCount=Number(total?.n??0);
@@ -452,10 +425,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   });
   let pending=null;
   const result=await analyzeIncrementalKeywordPatterns({
-    scopeId:scope,classUid,treeRows,items:catalog,
-    existingPatterns,patternScans:scopePatternScanClocks(cfg.keyword_meta),
-    expectedCount,minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
-    exceptionWords,
+    scopeId:scope,classUid,existingPatterns,expectedCount,
     startedAt,pageSize:1000,readMetadataPage:reader,
     resume,timeBudgetMs:KEYWORD_ANALYSIS_TIME_BUDGET_MS,
     onCheckpoint:async progress=>{
@@ -477,17 +447,9 @@ export async function analyzeKeywordScope(db,scope,classUid,{
         .where('uid','in',uids).execute();
     },
     writePatterns:async ({patterns})=>{
+      // Keep results in memory until the completed scan; no live partial
+      // Pattern writes, repeated counting, or repeated Item reconciliation.
       pending=patterns;
-      // Written into the live Anchor table on every call, not just the final
-      // one: each dynamically-sized page is routinely millions of
-      // characters, so a single all-at-once write at completion would be
-      // the risky operation. storeScopePatternMatches only issues SQL for
-      // uid_list values that actually changed, so repeating it per-page
-      // costs nothing extra once a uid's set has stopped growing.
-      await db.transaction().execute(async trx=>{
-        await authorizeTransaction(trx);
-        await storeScopePatternMatches(trx,scope,patterns);
-      });
     },
     finalize:async stats=>{
       if(!pending)fail('Keyword patterns were not produced');
