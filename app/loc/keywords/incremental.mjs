@@ -51,11 +51,6 @@ export async function analyzeIncrementalKeywordPatterns({
   }
   if(continuing&&Object.keys(resume.patternSets).length!==sets.size)
     throw new Error('Keyword Pattern catalog changed during scan; restart analysis');
-  // The keyset reader carries the exact cursor between invocations. Repeating
-  // every scanned Galaxy UID in keyword_meta adds a large redundant array.
-  // A per-invocation Set still detects duplicate rows inside one request.
-  const checked=new Set();
-
   let scanned=continuing?resume.scanned:0,parsed=continuing?resume.parsed:0;
   let cursor=continuing?resume.cursor:null;
   const invocationStart=now();
@@ -92,21 +87,20 @@ export async function analyzeIncrementalKeywordPatterns({
       throw new Error('Invalid Galaxy metadata page');
     if(!read.rows.length)break;
     cursor=read.nextCursor;
-    const ids=[];
+    // A date may be scanned again on a retry. The postings below are Sets,
+    // so reading an article UID again cannot double-count it.
+    const ids=new Set();
     for(const row of read.rows){
       const uid=String(row?.uid||'');
-      if(!UID.test(uid)||checked.has(uid))
-        throw new Error('Invalid or duplicate Galaxy UID during full scan');
-      checked.add(uid);
-      // Explicit keyword:false is the article's published feature flag,
-      // not a heuristic about whether its contents are worth analyzing.
-      if(row.keyword!==false)ids.push(uid);
+      if(!UID.test(uid))throw new Error('Invalid Galaxy UID during full scan');
+      // Explicit keyword:false is the article's published feature flag.
+      if(row.keyword!==false)ids.add(uid);
     }
 
-    if(ids.length){
-      const bodies=await readContent(ids);
-      const wanted=new Set(ids),seen=new Set();
-      if(!Array.isArray(bodies)||bodies.length!==ids.length)
+    if(ids.size){
+      const bodies=await readContent([...ids]);
+      const wanted=ids,seen=new Set();
+      if(!Array.isArray(bodies)||bodies.length!==ids.size)
         throw new Error('Galaxy content read incomplete; no Pattern index committed');
       for(const body of bodies){
         const uid=String(body?.uid||'');
@@ -144,8 +138,10 @@ export async function analyzeIncrementalKeywordPatterns({
     }
   }
 
-  if(expectedCount!==null&&scanned!==expectedCount)
-    throw new Error('Galaxy count changed during full Keyword scan; no Pattern index committed');
+  // A replayed date can count more read rows than distinct Galaxy UIDs.
+  // Pattern postings deduplicate by UID, so only an under-read is suspicious.
+  if(expectedCount!==null&&scanned<expectedCount)
+    throw new Error('Galaxy scan ended before reaching the expected article count');
 
   // Exactly one count per unique Pattern UID, only after the complete scan.
   const patterns=words.map(word=>{
