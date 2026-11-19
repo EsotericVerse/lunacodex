@@ -52,15 +52,12 @@ const INITIAL_THEME_SCRIPT=`(()=>{try{
   const auto=hour>=6&&hour<18?'${AUTO_DAY_THEME_ID}':'${AUTO_NIGHT_THEME_ID}';
   const defaults=${JSON.stringify(PUBLISHED_THEME_BY_SCOPE)};
   const schemes=${JSON.stringify(PUBLISHED_THEME_SCHEMES)};
-  let selected='';
-  try{
-    const prefs=JSON.parse(window.sessionStorage.getItem('loc-user-theme-selection-v1')||'{}');
-    const stored=prefs?.[scope];
-    selected=/^[1-8]$/.test(String(stored??''))?'theme-'+stored:
-      String(stored||(admin?window.sessionStorage.getItem('loc-active-theme-id-v1'):null)||'');
-  }catch{}
-  if(!Object.hasOwn(schemes,selected))selected='';
-  const requested=selected||(game?'${GAME_BOOTSTRAP_THEME_ID}':defaults[scope]||auto);
+  // Temporary manual picks never survive a document reload.
+  // Admin can retain the previously selected system/default Theme ID.
+  let adminDefault='';
+  try{if(admin)adminDefault=window.sessionStorage.getItem('loc-active-theme-id-v1')||'';}catch{}
+  const requested=game?'${GAME_BOOTSTRAP_THEME_ID}':admin&&Object.hasOwn(schemes,adminDefault)
+    ?adminDefault:defaults[scope]||auto;
   const themeId=Object.hasOwn(schemes,requested)?requested:auto;
   const scheme=schemes[themeId]||'light';
   const root=document.documentElement;
