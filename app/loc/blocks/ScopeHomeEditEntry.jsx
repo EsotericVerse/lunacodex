@@ -46,8 +46,9 @@ export default function ScopeHomeEditEntry(){
       }
       // Reverification already refreshes an expired management Session.
       // Do not erase the verified role snapshot after its successful lookup.
-      // The route owns Scope ID. Entering edit mode only toggles the Dock;
-      // nothing is copied to sessionStorage or saved for later restoration.
+      // The route owns the current Scope ID; entering edit mode toggles the
+      // existing Dock. Only the verified account UI projection is retained
+      // by the existing editor Session for full-document navigation.
       if(!editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canLocAccessSync('global'))}))
         throw new Error('目前頁面的 Scope ID 不一致，無法啟動編輯。');
     }catch(error){
