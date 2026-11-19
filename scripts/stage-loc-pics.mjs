@@ -17,7 +17,7 @@ fs.cpSync(source,target,{recursive:true,filter:entry=>
   !excluded||(entry!==excluded&&!entry.startsWith(excluded+path.sep))});
 // Fail during build instead of deploying a homepage with broken default images.
 const references=fs.readFileSync(path.join(root,'app','site-images.js'),'utf8');
-const imagePaths=[...references.matchAll(/\\/pics\\/([A-Za-z0-9_.-]+)/g)]
+const imagePaths=[...references.matchAll(new RegExp('/pics/([A-Za-z0-9_.-]+)','g'))]
   .map(match=>match[1]);
 for(const filename of imagePaths){
   if(!fs.existsSync(path.join(target,filename)))
