@@ -36,21 +36,25 @@ export async function analyzeIncrementalKeywordPatterns({
   const matcher=compileKeywordLiteralMatcher([...literals.keys()]);
   // Checkpoints from the former per-article incremental algorithm are not
   // compatible with an exact full-scan result and must not be resumed.
-  const continuing=resume?.scanMode==='literal_full_v2';
-  if(continuing&&(!resume.patternSets||typeof resume.patternSets!=='object'||
-    !Number.isSafeInteger(resume.scanned)||!Number.isSafeInteger(resume.parsed)||
-    resume.scanned<0||resume.parsed<0))
-    throw new Error('Invalid Keyword full-scan checkpoint');
-  const sets=new Map();
-  for(const key of literals.keys()){
-    const prior=continuing?resume.patternSets[key]:[];
-    if(!Array.isArray(prior)||prior.some(uid=>typeof uid!=='string'||!UID.test(uid))||
-      new Set(prior).size!==prior.length)
-      throw new Error('Invalid Keyword full-scan postings checkpoint');
-    sets.set(key,new Set(prior));
-  }
-  if(continuing&&Object.keys(resume.patternSets).length!==sets.size)
-    throw new Error('Keyword Pattern catalog changed during scan; restart analysis');
+  // A concurrent Keyword editor save may legitimately change the Pattern
+  // catalog while a checkpoint is parked. Discard only the obsolete partial
+  // scan, then restart from the beginning with the current catalog. No stale
+  // partial postings ever enter the live Pattern index.
+  const resumeSets=resume?.patternSets;
+  const continuing=resume?.scanMode==='literal_full_v2'&&
+    resumeSets&&typeof resumeSets==='object'&&!Array.isArray(resumeSets)&&
+    Number.isSafeInteger(resume.scanned)&&resume.scanned>=0&&
+    Number.isSafeInteger(resume.parsed)&&resume.parsed>=0&&
+    Object.keys(resumeSets).length===literals.size&&
+    [...literals.keys()].every(key=>{
+      const list=resumeSets[key];
+      return Array.isArray(list)&&
+        list.every(uid=>typeof uid==='string'&&UID.test(uid))&&
+        new Set(list).size===list.length;
+    });
+  const sets=new Map([...literals.keys()].map(key=>[
+    key,new Set(continuing?resumeSets[key]:[])
+  ]));
   let scanned=continuing?resume.scanned:0,parsed=continuing?resume.parsed:0;
   let cursor=continuing?resume.cursor:null;
   const invocationStart=now();
