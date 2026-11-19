@@ -350,7 +350,9 @@ export async function selectScopeBlocks(scopeId,page='index'){
           const all=await block_list(id);
           live=id==='loc'?all.filter(row=>row.page_name===name):all;
         }
-        return live.length?live:published;
+        // An empty authoritative page is still a successful result.
+        // Never resurrect deleted Blocks from the release snapshot.
+        return live;
       }catch{
         offlineFallback=true;
         return published;
