@@ -123,6 +123,27 @@ test('checkpoint resumes a full scan without publishing partial Pattern postings
   assert.equal(completed.analyzedDocuments,2);
 });
 
+test('obsolete Keyword checkpoint restarts when Pattern catalog changes',async()=>{
+  let calls=0,result=null;
+  await analyzeIncrementalKeywordPatterns({
+    scopeId:'loc',classUid:'CLASS001',
+    existingPatterns:[{uid:'PATN0001',pattern:'新詞'}],expectedCount:1,
+    resume:{
+      scanMode:'literal_full_v2',scanned:1,parsed:1,
+      cursor:{phase:'done'},patternSets:{'舊詞':['GALA0001']}
+    },
+    readMetadataPage:async()=>calls++===0?
+      {rows:[{uid:'GALA0001',keyword:true}],nextCursor:1}:
+      {rows:[],nextCursor:2},
+    readContent:async()=>[{uid:'GALA0001',title:'新詞',content:'正文',keyword:true}],
+    writePatterns:async({patterns})=>{result=patterns;},
+    finalize:async()=>{}
+  });
+  assert.equal(calls,2);
+  assert.equal(result[0].count,1);
+  assert.deepEqual(result[0].uid_list,['GALA0001']);
+});
+
 test('date + UID scan streams same-day rows and undated rows without buffering/sorting',async()=>{
   const dated=[
     {uid:'GALA0001',date:'2026-11-18'},
