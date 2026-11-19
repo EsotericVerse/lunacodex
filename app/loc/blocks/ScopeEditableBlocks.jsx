@@ -10,6 +10,8 @@ import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import dynamic from 'next/dynamic';
 import {useAppBootstrap} from '../runtime/app-bootstrap';
+import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {useAccount} from '../auth/use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
 const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
@@ -82,13 +84,25 @@ export default function ScopeEditableBlocks({
   const account=useAccount({enabled:false});
   const editDock=useEditDock();
   const native=useNativeNavigation();
-  // Shares AppShell's (scopeId, pageName) query, which reuses the global
-  // Registry/Theme snapshot and loads only this Scope's page blocks.
-  const bootstrap=useAppBootstrap(scopeId,pageName);
-  const blocks=bootstrap.data?.blocks;
-  // The Scope-specific homepage entry has already verified access.
-  // Database authorization remains mandatory on every write.
+  // Home Hero and public blocks are release-published, including original
+  // image URLs. Do not issue a content SQL read just to display them.
+  // Entering a real editor activates the existing authoritative live query.
   const homeEditActive=isScopeHomepageBlock&&editDock?.active&&editDock.scopeId===scopeId;
+  const [editingSlot,setEditingSlot]=useState(null);
+  const [message,setMessage]=useState('');
+  const [editMode,setEditMode]=useState(Boolean(startInEditMode));
+  const editingContent=Boolean(homeEditActive||editMode||authorizedByParent);
+  const bootstrap=useAppBootstrap(scopeId,pageName,{
+    enabled:!isScopeHomepageBlock||editingContent
+  });
+  const published=useAsyncResource(['published-home-page',scopeId,pageName],
+    ()=>loadPublishedBlocks(scopeId,pageName),{
+      enabled:isScopeHomepageBlock,shareResult:true
+    });
+  const blocks=isScopeHomepageBlock&&!editingContent
+    ?published.data
+    :bootstrap.data?.blocks??published.data;
+  // Editing and writes still require LOC's existing verified authorization.
   // A cached management role must not enable homepage editing until the
   // user explicitly enters this Scope's edit mode.
   const canEdit=allowEditing&&(authorizedByParent||
@@ -98,10 +112,6 @@ export default function ScopeEditableBlocks({
     ()=>Array.isArray(orders)?orders.map(Number).filter(value=>Number.isInteger(value)&&value>0):[],
     [orders]
   );
-  const [editingSlot,setEditingSlot]=useState(null);
-  const [message,setMessage]=useState('');
-  const [editMode,setEditMode]=useState(Boolean(startInEditMode));
-
   const slots=useMemo(()=>{
     const rows=Array.isArray(blocks)?blocks:[];
     if(normalizedOrders.length){
