@@ -376,7 +376,6 @@ function AppShellInner({children,runtime}){
     window.addEventListener('loc-owner-rainbow-preview',onPreview);
     return()=>window.removeEventListener('loc-owner-rainbow-preview',onPreview);
   },[]);
-  const pageName=currentFeature||'index';
   const isSettings=['/settings','/settings/index.html','/local/setting','/local/setting/index.html','/local/settings','/local/settings/index.html'].includes(normalizePath(pathname));
   const showRainbowPreview=rainbowPreview&&isSettings;
   const [native,setNative]=useState(false);
