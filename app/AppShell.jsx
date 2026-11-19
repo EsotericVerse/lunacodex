@@ -116,7 +116,7 @@ function rememberActiveTheme(themeId){
   if(!THEME_SLOTS.some(slot=>slot.id===themeId))return;
   try{window.sessionStorage.setItem(LAST_ACTIVE_THEME_KEY,themeId);}catch{}
 }
-function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride='',pageName='index',routeKey=''}){
+function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride='',routeKey=''}){
   const reduceMotion=useReducedMotion();
   const scope=scopeMeta||getScope(String(scopeId||'').trim());
   // Scope defaults are owned by the Scope config table; the game route alone
@@ -124,15 +124,12 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   const fixedDefaultThemeId=String(defaultThemeIdOverride||'').trim();
   // Published Theme metadata is immutable CSS and JS; this is a display-only control.
   const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&!scope.aggregateChildren&&scope.id!=='admin';
-  // A management entry retires its obsolete SQL readers before rendering.
-  // Published route metadata is already available synchronously and prevents
-  // the palette from falling back to day/night while Bootstrap is re-reading.
+  // Published route metadata supplies this Scope's default Theme number.
   const publishedTheme=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.theme;
   const configuredTheme=configEnabled?String(publishedTheme||'').trim():'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
   const [selection,setSelection]=useState(()=>({scopeId,routeKey,themeId:SYSTEM_THEME_ID}));
-  // Decorative local feedback only when a person selects a different option.
-  // Theme persistence and actual palette application remain untouched.
+  // Decorative local feedback. Manual selection is never stored.
   const [accentPulse,setAccentPulse]=useState(0);
   const [now,setNow]=useState(()=>new Date());
   // Applying a saved Scope default must also clear any temporary footer choice.
@@ -199,7 +196,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     </select>
   </label>;
 }
-function ScopePageCopy({scopeId,display_name,pageName='index'}){
+function ScopePageCopy({scopeId,display_name}){
   const enabled=Boolean(scopeId)&&scopeId!=='loc'&&scopeId!=='admin';
   const pageCopy=enabled?(PUBLISHED_SITE_BOOTSTRAP.page_copy||[])
     .find(row=>row.scope_id===scopeId)||null;
@@ -567,7 +564,7 @@ function AppShellInner({children,runtime}){
   return <UiLocaleProvider locale={activeLocale} pathname={pathname}>
     <ScopePageCopy scopeId={localNavigation?'local':scopeId}
       display_name={localNavigation?'本機銀河':configRow?.display_name||registryRow?.display_name}
-      pageName={pageName}/>
+/>
     <ScrollProgress/>
     <header className="scope-global" data-native={native?'ios':'web'}>
       <nav className="scope-nav" aria-label={copy.nav.aria}>
@@ -644,7 +641,7 @@ function AppShellInner({children,runtime}){
     <footer className="scope-footer" data-scope={scopeId}>
       <div className="scope-footer-row">
         <a href="mailto:sopa2306@gmail.com">{copy.nav.contact}</a>
-        {(!isSettings||runtime.locationMounted)?<ThemeSelect scopeId={themeScopeId} scopeMeta={themeScopeId===scopeId?currentScope:getScope(themeScopeId)} copy={copy} defaultThemeIdOverride={gameThemeDefault} pageName={pageName} routeKey={pathname}/>:null}
+        {(!isSettings||runtime.locationMounted)?<ThemeSelect scopeId={themeScopeId} scopeMeta={themeScopeId===scopeId?currentScope:getScope(themeScopeId)} copy={copy} defaultThemeIdOverride={gameThemeDefault} routeKey={pathname}/>:null}
         <LanguageSelect
           locale={activeLocale}
           copy={copy}
