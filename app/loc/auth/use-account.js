@@ -8,7 +8,7 @@ import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthori
 import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {shouldInvalidateManagementForAuthEvent} from './account-event-guard.mjs';
-import {editorSessionStatus} from './edit-session-ttl.mjs';
+import {editorSessionStatus,readEditorManagement,saveEditorManagement,clearEditorSession} from './edit-session-ttl.mjs';
 import {invalidateAccountPrivateReads} from '../db/semi-dynamic-cache.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();
@@ -75,6 +75,10 @@ async function fetchManagementAccount(queryClient){
     scopeMetadata=metadata;
     authUserId=String(user.id);
     authEmail=normalizeAuthEmail(user.email);
+    // Persist UI-only role presentation once after a successful trusted
+    // authorization read. Route changes do not re-save or refresh it.
+    if(typeof window!=='undefined')
+      saveEditorManagement(window.sessionStorage,permissions);
     const authorizer=createScopeAuthorizer(user);
     return authorizer?{...signedOutState,...verifiedIdentity,
       role:authorizer.role,authorizer,scopes:metadata}:signedOutState;
@@ -92,6 +96,7 @@ async function fetchManagementAccount(queryClient){
     // verifier. Only a genuine missing Session clears passive identity;
     // transient 503/429 must not be presented as a successful sign-out.
     if(error?.status===401){
+      if(typeof window!=='undefined')clearEditorSession(window.sessionStorage);
       queryClient.setQueryData(SESSION_KEY,signedOutState);
       queryClient.setQueryData(VERIFIED_SESSION_KEY,signedOutState);
     }
@@ -133,7 +138,23 @@ export function readVerifiedManagementEntry(){
     try{if(editorSessionStatus(window.sessionStorage).expired)return null}
     catch{return null}
   }
-  const grant=readAuthorization();
+  let grant=readAuthorization();
+  if(!grant){
+    // Full navigation of a static management HTML document clears JS memory,
+    // not sessionStorage. Restore only its UI projection, with no HTTP request.
+    // This browser data is NEVER passed as authorization for a private API.
+    if(typeof window==='undefined')return null;
+    const snapshot=readEditorManagement(window.sessionStorage);
+    if(!snapshot)return null;
+    try{
+      setAuthorization(snapshot.user,snapshot);
+      grant=readAuthorization();
+      authUserId=String(snapshot.user.id);
+      authEmail=normalizeAuthEmail(snapshot.user.email);
+      scopeMetadata=scopeDataFromManageRows((grant?.entries||[])
+        .map(({scopeid,role})=>({id:scopeid,manage_role:role})));
+    }catch{return null;}
+  }
   if(!grant||!authUserId||grant.userId!==authUserId||grant.email!==authEmail)return null;
   const user={id:grant.userId,email:grant.email};
   const authorizer=createScopeAuthorizer(user);
@@ -186,6 +207,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
     clearAuthorization();
     scopeMetadata=[];
     pendingManagementVerification=null;
+    if(typeof window!=='undefined')clearEditorSession(window.sessionStorage);
     await queryClient.cancelQueries({queryKey:['loc-account']});
     queryClient.setQueryData(SESSION_KEY,signedOutState);
     queryClient.setQueryData(VERIFIED_SESSION_KEY,signedOutState);
@@ -239,6 +261,7 @@ export function usePassiveSessionAccount(){
         clearAuthorization();
         invalidateAccountPrivateReads();
         scopeMetadata=[];
+        if(typeof window!=='undefined')clearEditorSession(window.sessionStorage);
       }
       authUserId=nextUserId;
       authEmail=nextEmail;
