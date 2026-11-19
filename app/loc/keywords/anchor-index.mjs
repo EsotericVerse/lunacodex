@@ -161,8 +161,6 @@ export async function ensureScopePatternLibrary(trx,scope){
       .where('type','=','pattern').execute();
   for(let i=0;i<created.length;i+=100)
     await trx.insertInto(table).values(created.slice(i,i+100)).execute();
-  if(seen.size!==patterns.length)
-    throw Error('Incomplete full-scope Pattern posting batch');
   for(let i=0;i<updates.length;i+=100)
     await trx.insertInto(table).values(updates.slice(i,i+100).map(row=>
       ({uid:row.uid,type:'item',attr:row.attr})))
@@ -199,6 +197,8 @@ export async function storeScopePatternMatches(trx,scope,incoming=[]){
     updates.push({uid:old.uid,type:'pattern',title:old.pattern,
       attr:JSON.stringify(posting),num:count});
   }
+  if(seen.size!==patterns.length)
+    throw Error('Incomplete full-scope Pattern posting batch');
   for(let i=0;i<updates.length;i+=100)
     await trx.insertInto(table).values(updates.slice(i,i+100))
       .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({
