@@ -22,5 +22,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Check JavaScript and JSX syntax
         run: npm run check:syntax
+      - name: Verify LOC existing service routes
+        run: node --test scripts/test-loc-service-routes.mjs
+      - name: Verify existing bulk deletion guard
+        run: npm run check:bulk-delete
       - name: Build LOC static export (no deployment)
         run: npm run build:static
