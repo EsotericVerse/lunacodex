@@ -152,6 +152,75 @@ export async function matchExistingImportBySiteId(records,{readSiteIds,onProgres
   return matches;
 }
 
+
+// A file without a native post ID gets a new local Galaxy UID on each import.
+// Reimport is safe only when source evidence matches exactly and uniquely.
+// This is NOT fuzzy text comparison or a same-timestamp identity guess.
+const taipeiDate=new Intl.DateTimeFormat('sv-SE',{
+  timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'
+});
+const sourceEvidence=row=>{
+  if(String(row?.site_id||'').trim())return null;
+  const site=String(row?.site||'').trim().toLocaleLowerCase('und');
+  const stamp=Date.parse(String(row?.createtime||''));
+  const content=String(row?.content??''),title=String(row?.title??'');
+  if(!site||!Number.isFinite(stamp)||!content)return null;
+  return {
+    site,day:taipeiDate.format(new Date(stamp)),
+    key:JSON.stringify([site,new Date(stamp).toISOString(),title,content,
+      String(row?.url??''),importRowRole(row)])
+  };
+};
+export async function matchExistingImportByExactSourceEvidence(records,{
+  readSourceRows,onProgress
+}={}){
+  if(typeof readSourceRows!=='function')
+    throw new TypeError('Missing indexed source/day Galaxy reader');
+  const groups=new Map(),requested=new Map();
+  for(const row of records||[]){
+    const evidence=sourceEvidence(row);
+    if(!evidence)continue;
+    const existing=requested.get(evidence.key)||[];
+    existing.push(row);requested.set(evidence.key,existing);
+    const group=groups.get(evidence.site)||{days:new Set(),wanted:new Set()};
+    group.days.add(evidence.day);group.wanted.add(evidence.key);
+    groups.set(evidence.site,group);
+  }
+  const matches=new Map(),ambiguous=[];
+  for(const [site,group] of groups){
+    const days=[...group.days].sort();
+    const saved=new Map();
+    await readSourceRows({
+      site,fromDate:days[0],toDate:days.at(-1),
+      consumePage:rows=>{
+        if(!Array.isArray(rows))throw new TypeError('Invalid source evidence page');
+        for(const row of rows){
+          const key=sourceEvidence(row)?.key;
+          if(!key||!group.wanted.has(key))continue;
+          const found=saved.get(key)||new Map();
+          found.set(String(row.uid),row);
+          saved.set(key,found);
+        }
+      }
+    });
+    for(const key of group.wanted){
+      const incoming=requested.get(key)||[];
+      const candidates=[...(saved.get(key)?.values()||[])];
+      if(candidates.length===1&&incoming.length===1){
+        matches.set(String(incoming[0].uid),candidates[0]);
+      }else if(candidates.length>0){
+        for(const row of incoming)ambiguous.push({
+          uid:String(row.uid),site:String(row.site),createtime:row.createtime,
+          saved_uids:candidates.map(candidate=>String(candidate.uid))
+        });
+      }
+    }
+    onProgress?.({completed:matches.size,total:records.length,ambiguous:ambiguous.length});
+  }
+  matches.ambiguous=ambiguous;
+  return matches;
+}
+
 export function isUnchangedImportBeforeWrite(records,matches,{hasMedia=false}={}){
   if(hasMedia||!Array.isArray(records)||!records.length||!(matches instanceof Map))return false;
   return records.every(record=>{
