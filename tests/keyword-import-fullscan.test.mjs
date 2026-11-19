@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
 import {analyzeIncrementalKeywordPatterns} from '../app/loc/keywords/incremental.mjs';
 import {createIndexedDateKeywordReader} from '../app/loc/keywords/article-reader.mjs';
-import {dedupeIncomingImport,matchExistingImportByExactSourceEvidence} from '../app/loc/import/duplicate-check.mjs';
+import {dedupeIncomingImport,matchExistingImportByCreatedAt} from '../app/loc/import/duplicate-check.mjs';
+import {finalizeImportCreatedTimes,importTimeMicroseconds} from '../app/loc/import/unique-createtime.mjs';
+import {extractImportUpdatedAt} from '../app/loc/import/batch.mjs';
+import {importWithinTimeRange} from '../app/loc/import/time-range.mjs';
 
 test('discovery retains single-use terms and question punctuation without weighting',()=>{
   const discovery=createNewKeywordDiscovery([]);
@@ -20,18 +23,24 @@ test('discovery retains single-use terms and question punctuation without weight
   assert.ok(results.candidates.every(row=>!Object.hasOwn(row,'score')));
 });
 
-test('import keeps punctuation differences and separate posts without native IDs',()=>{
-  const make=(uid,content)=>({
-    uid,site:'Threads',createtime:'2026-11-20T00:00:00.000Z',
-    title:'測試',content
+test('source creation time, not new Galaxy UID or different text, identifies same article',()=>{
+  const make=(uid,content,createtime='2026-11-20T00:00:00.000Z',more={})=>({
+    uid,site:'Threads',createtime,title:'測試',content,...more
   });
-  const {unique,duplicates}=dedupeIncomingImport([
-    make('GALA0001','我很好？'),
-    make('GALA0002','我很好！'),
-    make('GALA0003','我很好？')
+  const {unique,duplicates,aliases}=dedupeIncomingImport([
+    make('GALA0001','先前內容'),
+    make('GALA0002','後來修改的內容'),
+    make('GALA0003','另一天', '2026-11-21T00:00:00Z')
   ]);
-  assert.equal(duplicates,0);
-  assert.deepEqual(unique.map(row=>row.uid),['GALA0001','GALA0002','GALA0003']);
+  assert.equal(duplicates,1);
+  assert.deepEqual(unique.map(row=>row.uid),['GALA0001','GALA0003']);
+  assert.equal(aliases.get('GALA0002'),'GALA0001');
+  // UpdateTime is a fallback, not evidence that unrelated posts are equal.
+  const fallback=dedupeIncomingImport([
+    make('GALA0004','甲', '2026-11-20T00:00:00Z',{__importTimeSource:'update'}),
+    make('GALA0005','乙', '2026-11-20T00:00:00Z',{__importTimeSource:'update'})
+  ]);
+  assert.equal(fallback.unique.length,2);
 });
 
 test('full scan emits one Pattern batch only after all Galaxy UIDs are read',async()=>{
@@ -178,43 +187,70 @@ test('re-reading a dated Galaxy UID never double-counts Pattern postings',async(
 });
 
 
-test('same-source reimport without native ID needs unique exact text/time/title/url',async()=>{
+test('site plus genuine createtime matches existing article without comparing text',async()=>{
   const stamp='2026-11-20T02:12:00.000Z';
-  const make=(uid,content,extra={})=>({
-    uid,site:'Threads',site_id:null,createtime:stamp,
-    title:'今日紀錄',content,url:'https://example.com/post',...extra
+  const make=(uid,content,createtime=stamp,more={})=>({
+    uid,site:'Threads',site_id:null,createtime,
+    title:'今日紀錄',content,url:'https://example.com/post',...more
   });
-  const input=[
-    make('INPUT001','A？'),
-    make('INPUT002','A！'),
-    make('INPUT003','兩篇同文'),
-    make('INPUT004','另一個日期',{createtime:'2026-11-19T02:12:00Z'})
+  const incoming=[
+    make('INPUT001','重新修改過的文字'),
+    make('INPUT002','新篇','2026-11-20T02:12:01.000Z'),
+    make('INPUT003','沒有原始日期',stamp,{__importTimeSource:'update'})
   ];
-  const stored=[
-    make('SAVED001','A？'),
-    make('SAVED002','兩篇同文'),
-    make('SAVED003','兩篇同文'),
-    make('SAVED004','A！',{title:'別的標題'})
+  const saved=[
+    make('SAVED001','舊內容',stamp,{title:'舊標題'}),
+    make('SAVED002','另一篇','2026-11-20T02:12:03.000Z')
   ];
-  const calls=[];
-  const matches=await matchExistingImportByExactSourceEvidence(input,{
-    readSourceRows:async({site,fromDate,toDate,consumePage})=>{
-      calls.push({site,fromDate,toDate});
-      consumePage(stored);
-    }
+  const matches=await matchExistingImportByCreatedAt(incoming,{
+    readSourceRows:async({consumePage})=>consumePage(saved)
   });
   assert.equal(matches.get('INPUT001')?.uid,'SAVED001');
   assert.equal(matches.has('INPUT002'),false);
   assert.equal(matches.has('INPUT003'),false);
-  assert.equal(matches.has('INPUT004'),false);
-  assert.deepEqual(matches.ambiguous.map(row=>row.uid),['INPUT003']);
-  assert.equal(calls.length,1);
 });
 
-test('native source identifiers are never merged through exact-text fallback',async()=>{
-  const matches=await matchExistingImportByExactSourceEvidence([
-    {uid:'INPUT001',site:'Threads',site_id:'real-platform-post-id',
-      createtime:'2026-11-20T02:12:00Z',content:'同樣內容',title:'文章'}
-  ],{readSourceRows:async()=>{throw Error('unexpected date fallback')}});
-  assert.equal(matches.size,0);
+test('same site and time with two legacy saved rows remains ambiguous',async()=>{
+  const imported=[{uid:'INPUT001',site:'Threads',createtime:'2026-11-20T02:12:00Z'}];
+  const stored=[
+    {uid:'SAVED001',site:'Threads',createtime:'2026-11-20T02:12:00Z'},
+    {uid:'SAVED002',site:'Threads',createtime:'2026-11-20T02:12:00Z'}
+  ];
+  const matches=await matchExistingImportByCreatedAt(imported,{
+    readSourceRows:async({consumePage})=>consumePage(stored)
+  });
+  assert.equal(matches.has('INPUT001'),false);
+  assert.deepEqual(matches.ambiguous.map(row=>row.uid),['INPUT001']);
+});
+
+test('final import timestamps use unique PostgreSQL microseconds, not same UpdateTime',()=>{
+  const original='2026-11-20T02:12:00.123Z';
+  const records=[
+    {uid:'INPUT001',createtime:original,__importTimeSource:'creation'},
+    {uid:'INPUT002',createtime:original,__importTimeSource:'update'},
+    {uid:'INPUT003',createtime:original,__importTimeSource:'update'},
+    {uid:'INPUT004',createtime:null,__importTimeSource:'missing'}
+  ];
+  const rows=finalizeImportCreatedTimes(records,{
+    occupiedTimes:[original,'2026-11-20T02:12:00.123001Z'],
+    fallbackTime:original
+  });
+  const times=rows.map(row=>row.createtime);
+  assert.equal(new Set(times).size,4);
+  assert.ok(times.every(time=>/\.123\d{3}Z$/.test(time)));
+  assert.ok(rows.every(row=>row.date==='2026-11-20'));
+  assert.ok(rows.every(row=>!Object.hasOwn(row,'__importTimeSource')));
+  assert.equal(importTimeMicroseconds(times[0])!==importTimeMicroseconds(times[1]),true);
+});
+
+test('missing createtime uses source update time; wholly undated rows reach finalization',()=>{
+  const source={UpdateTime:'2026-11-18T03:02:01Z'};
+  assert.equal(extractImportUpdatedAt(source),'2026-11-18T03:02:01.000Z');
+  const missing={createtime:null,__importTimeSource:'missing'};
+  const window={start:'2026-11-01T00:00:00Z',end:'2026-11-21T00:00:00Z'};
+  assert.equal(importWithinTimeRange(missing,window),true);
+  const [row]=finalizeImportCreatedTimes([{uid:'INPUT001',...missing}],{
+    fallbackTime:'2026-11-20T02:12:00Z'
+  });
+  assert.equal(row.createtime,'2026-11-20T02:12:00.000000Z');
 });
