@@ -9,7 +9,6 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
-import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';
 // Group member display-name editing lives in the Group People/Works page.
 // Admin keeps only privileged registry provisioning and system configuration.
 
@@ -30,9 +29,9 @@ export default function AdminHomeView({scopeGroup}){
   const UI_COPY=useUiCopy();
   const account=useAccount();
   const editDock=useEditDock();
-  // /admin/ has its own global-permission gate instead of ManagementAccess.
-  // Run the same old-page disposal before loading any admin editor.
-  useEffect(()=>{releaseTransientPageResources();},[]);
+  // /admin/ uses its own global-permission gate. The route boundary already
+  // releases the previous page's transient readers; this view does not
+  // purge the newly mounted frame a second time.
   const [entryVerified,setEntryVerified]=useState(false);
   const [loginDenied,setLoginDenied]=useState(false);
   const [retrying,setRetrying]=useState(false);
@@ -93,7 +92,11 @@ export default function AdminHomeView({scopeGroup}){
   };
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
-  if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin?.checking||'正在確認管理權限…'}</div></section>;
+  if(account.loading||account.permissionLoading)return <FeaturePage featureId="admin">
+    <section className="loc-card scope-feature-card" aria-busy="true" role="status">
+      {UI_COPY.admin?.checking||'正在確認管理權限…'}
+    </section>
+  </FeaturePage>;
   if(loginDenied||!canManage)return <FeaturePage featureId="admin">
     <section className="loc-card scope-feature-card">
       <p role="alert">{signInError||account.error||(account.user
