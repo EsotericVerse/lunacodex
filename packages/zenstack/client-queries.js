@@ -312,7 +312,9 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
         status:active?'pending':'idle',error:null});
       setIsFetching(false);
     }
-    const unregister=register({
+    // Disabled readers are not owners. Otherwise hidden panels still keep
+    // a completed result alive and prevent the last active reader's cleanup.
+    const unregister=active?register({
       key:queryKey,
       refetch:()=>{void load().catch(()=>{});},
       setData:value=>{
@@ -325,7 +327,7 @@ export function useAsyncResource(keyOrOptions,fetcherArg,optionsArg={}){
         forgetStored(serializedKey);
         if(isCurrent())setState({data:undefined,status:'idle',error:null});
       }
-    });
+    }):()=>{};
     if(active){
       const existing=sharing?bootstrapSnapshots.getSnapshot(serializedKey):null;
       if(existing?.hasData){
@@ -442,14 +444,15 @@ export function useAsyncInfiniteResource({
     setError(null);setStatus(active?'pending':'idle');
     setIsFetching(false);setIsFetchingNextPage(false);
     if(active)void loadFirst();
-    const unregister=register({
+    // Infinite readers release their registration when disabled as well.
+    const unregister=active?register({
       key:keyOf(queryKey),
       refetch:()=>{void loadFirst();},
       setData:()=>{},remove:()=>{
         nextParamRef.current=undefined;
         setPages([]);setPageParams([]);setNextParam(undefined);
       }
-    });
+    }):()=>{};
     return()=>{mountedRef.current=false;requestEpoch.current++;
       nextPageInProgressRef.current=false;unregister();};
   },[serializedKey,active,loadFirst]); // eslint-disable-line react-hooks/exhaustive-deps

@@ -11,38 +11,83 @@ import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/routing/scope-registry';
 import ManagementAccess from './management/ManagementAccess';
-import {useAsyncResource} from '../../packages/zenstack/client-queries';
-import {selectScopeConfig} from './scope/scope-data';
+import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
 import {FeaturePage} from '../modular/ui';
-const loading=()=> <div className="loc-loading"><UiText id="uiExtra.feature.moduleLoading"/></div>;
+// Tiny, CSS-only marks live only inside the already-existing loading slot.
+// No assets, libraries, timers, layout shifts, or delayed navigation.
+function FeatureLoadingMark({featureId}){
+  if(featureId==='culture')return <svg className="loc-pending-mark loc-pending-culture"
+    viewBox="0 0 88 42" fill="none" aria-hidden="true">
+    <path d="M2 13C18 13 18 30 34 30S51 13 67 13H86"/>
+    <path d="M2 24C18 24 18 8 34 8S51 25 67 25H86"/>
+  </svg>;
+  if(featureId==='statics')return <span className="loc-pending-mark loc-pending-statics" aria-hidden="true">
+    <span>1 4 7</span><span>2 5 8</span><span>3 6 9</span>
+  </span>;
+  if(featureId==='trace')return <svg className="loc-pending-mark loc-pending-trace"
+    viewBox="0 0 88 42" fill="none" aria-hidden="true">
+    <path className="loc-pending-map" d="M8 9L30 5L54 11L80 6V33L56 37L32 31L8 36Z"/>
+    <path className="loc-pending-map-fold" d="M30 5L32 31M54 11L56 37"/>
+    <path className="loc-pending-pin" d="M45 11C38 11 38 20 45 28C52 20 52 11 45 11Z"/>
+    <circle className="loc-pending-pin" cx="45" cy="18" r="2.2"/>
+  </svg>;
+  if(featureId==='search')return <svg className="loc-pending-mark loc-pending-search"
+    viewBox="0 0 88 42" fill="none" aria-hidden="true">
+    <g className="loc-pending-bulb">
+      <path d="M20 17C20 9 33 9 33 17C33 22 29 23 29 27H24C24 23 20 22 20 17Z"/>
+      <path d="M24 30H29M25 33H28"/>
+    </g>
+    <g className="loc-pending-lens">
+      <circle cx="59" cy="18" r="10"/><path d="M66 25L77 36"/>
+    </g>
+  </svg>;
+  return null;
+}
+// A dynamic feature's code can load later, but its Hero and content-frame
+// placeholder render immediately. Only the body inside the frame is pending.
+function FeatureFrameLoading({featureId}){
+  return <FeaturePage featureId={featureId}>
+    <section className="loc-card loc-feature-pending" aria-busy="true" role="status">
+      <FeatureLoadingMark featureId={featureId}/>
+      <span className="scope-status">正在載入頁面內容…</span>
+    </section>
+  </FeaturePage>;
+}
+const featureLoading=featureId=>()=> <FeatureFrameLoading featureId={featureId}/>;
+function HomeFrameLoading(){
+  const {scope}=useScopeRuntime();
+  return <main className="scope-main"><section className="scope-page">
+    <header className="loc-card scope-hero" aria-busy="true">
+      <p className="loc-eyebrow">LOC</p>
+      <h1>{scope?.label||'月典'}</h1>
+    </header>
+    <section className="loc-card loc-feature-pending" aria-busy="true" role="status">
+      <span className="scope-status">正在載入首頁內容…</span>
+    </section>
+  </section></main>;
+}
+const loading=()=> <HomeFrameLoading/>;
 // Scope feature switches gate public access even for an admin; identity never overrides publication.
 // Heavy visualizations and editors should load only when their own page opens.
 // Each home and group capability is independently loaded for its actual route.
 const AboutView=dynamic(()=>import('./views/AboutView'),{loading});
 const AuthorHomeView=dynamic(()=>import('./views/AuthorHomeView'),{loading});
-const AdminHomeView=dynamic(()=>import('./views/AdminHomeView'),{loading});
+const AdminHomeView=dynamic(()=>import('./views/AdminHomeView'),{loading:featureLoading('admin')});
 const GenericScopeHomeView=dynamic(()=>import('./views/GenericScopeHomeView'),{loading});
 const ScopeGroupOverview=dynamic(()=>import('./scope/ScopeGroupOverview'),{loading});
-const Statistics=dynamic(()=>import('../modular/features/Statistics').catch(recoverChunkOnce),{
-  // The Statistics chunk can be delayed after leaving Edit Dock. Keep the
-  // public Hero visible during module loading instead of replacing it with
-  // a blank-page placeholder. Recover stale deployment chunks once.
-  loading:()=> <FeaturePage featureId="statics">
-    <div className="loc-loading" role="status"><UiText id="uiExtra.feature.moduleLoading"/></div>
-  </FeaturePage>
-});
-const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading});
-const Culture=dynamic(()=>import('../modular/features/Culture'),{loading});
-const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading});
-const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading});
-const SearchManagement=dynamic(()=>import('./search/SearchManagement'),{loading});
-const Trace=dynamic(()=>import('../modular/features/Trace'),{loading});
+const Statistics=dynamic(()=>import('../modular/features/Statistics').catch(recoverChunkOnce),{loading:featureLoading('statics')});
+const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading:featureLoading('statics')});
+const Culture=dynamic(()=>import('../modular/features/Culture'),{loading:featureLoading('culture')});
+const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading:featureLoading('culture')});
+const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading:featureLoading('search')});
+const SearchManagement=dynamic(()=>import('./search/SearchManagement'),{loading:featureLoading('search')});
+const Trace=dynamic(()=>import('../modular/features/Trace'),{loading:featureLoading('trace')});
 const RunesHomeView=dynamic(()=>import('./views/LrsPortalView'),{loading});
-const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading});
-const SourceManagementView=dynamic(()=>import('./source/LocSourceManagement'),{loading});
-const KeywordManagementView=dynamic(()=>import('./keywords/ui/LocKeywordManagementPage'),{loading});
-const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading});
+const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading:featureLoading('manage')});
+const SourceManagementView=dynamic(()=>import('./source/LocSourceManagement'),{loading:featureLoading('culture')});
+const KeywordManagementView=dynamic(()=>import('./keywords/ui/LocKeywordManagementPage'),{loading:featureLoading('statics')});
+const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading:featureLoading('setting')});
 const LocalScopeWorkspace=dynamic(()=>import('./local/Workspace'),{loading});
 
 const VIEWS={
@@ -59,29 +104,6 @@ const VIEWS={
   setting:LocalSettingView
 };
 const HOME_VIEWS={loc:AboutView,lrunes:RunesHomeView,lo3rwang:AuthorHomeView,admin:AdminHomeView};
-// Same modules as the dynamic() declarations above, so the bundler reuses the same
-// chunks. Only the view that is about to render is requested, and it is requested
-// immediately, in parallel with the registry and FeatureGate config queries,
-// instead of after they finish.
-const VIEW_PRELOADERS={
-  admin:()=>import('./views/AdminHomeView'),
-  statics:()=>import('../modular/features/Statistics'),
-  keywords:()=>import('../modular/features/KeywordSettings'),
-  culture:()=>import('../modular/features/Culture'),
-  search:()=>import('../modular/features/Search'),
-  searchManage:()=>import('./search/SearchManagement'),
-  trace:()=>import('../modular/features/Trace'),
-  manage:()=>import('./scope/ScopeManagement'),
-  sourceManage:()=>import('./source/LocSourceManagement'),
-  keywordManage:()=>import('./keywords/ui/LocKeywordManagementPage'),
-  setting:()=>import('./views/LocalSettingView')
-};
-const HOME_PRELOADERS={
-  loc:()=>import('./views/AboutView'),
-  lrunes:()=>import('./views/LrsPortalView'),
-  lo3rwang:()=>import('./views/AuthorHomeView'),
-  admin:()=>import('./views/AdminHomeView')
-};
 const FEATURE_FLAGS=Object.freeze({
   statics:'statistics_able',
   keywords:'statistics_able',
@@ -94,20 +116,12 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   const flag=FEATURE_FLAGS[view]||'';
   const scope=scopeMeta||getScope(scopeId);
   const enabled=Boolean(flag)&&!scope.aggregateChildren&&scope.id!=='admin';
-  // Public feature gating reads only the Scope's four switches.
-  // Do not fetch unrelated page Blocks or management permissions.
-  const query=useAsyncResource(['public-feature-flags',scopeId],
-    ()=>selectScopeConfig(scopeId),{enabled});
+  // Public feature gates read the already-published Scope flags; waiting
+  // for a config SQL request must not block the Hero or content.
   if(!enabled)return children;
-  if(query.isPending)return <FeaturePage featureId={view==='keywords'?'statics':view}>
-    <section className="loc-card scope-feature-card scope-feature-loading">
-      <div className="scope-feature-loading__controls" aria-hidden="true"><span/><span/><span/></div>
-      <div className="scope-feature-loading__body" aria-hidden="true"><span/><span/><span/><span/></div>
-      <p className="scope-status" role="status"><UiText id="uiExtra.feature.settingsLoading"/></p>
-    </section>
-  </FeaturePage>;
-  if(query.error||!query.data)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定無法讀取，暫時無法開啟功能。</p></section></section></main>;
-  if(!scopeFeatureEnabled(query.data,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
+  const config=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId&&row.active!==false)?.config;
+  if(!config)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定尚未發布。</p></section></section></main>;
+  if(!scopeFeatureEnabled(config,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
   return children;
 }
 
@@ -138,20 +152,6 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   // an overview/guide only: never query another Scope's Galaxy or Time here.
   const groupOverviewView=Boolean(scopeMeta?.aggregateChildren&&scopeId!=='loc'&&
     ['statics','culture'].includes(forcedView));
-
-  useEffect(()=>{
-    if(scopeMeta?.nativeOnly&&!nativeOnlyReady)return;
-    if(scopeId==='local'&&forcedView!=='setting'){
-      import('./local/Workspace').catch(()=>{});
-      return;
-    }
-    const preload=publicCulture?()=>import('./views/CulturePublicReader'):
-      forcedView==='home'
-        ?HOME_PRELOADERS[scopeId]||(()=>import('./views/GenericScopeHomeView'))
-        :VIEW_PRELOADERS[forcedView]||HOME_PRELOADERS.loc;
-    preload().catch(()=>{});
-    if(groupOverviewView)import('./scope/ScopeGroupOverview').catch(()=>{});
-  },[forcedView,scopeId,groupOverviewView,scopeMeta?.nativeOnly,nativeOnlyReady,publicCulture]);
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){
     return <main className="scope-main"><section className="scope-page">
@@ -194,7 +194,8 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
       (scopeMeta?.aggregateChildren?scopeId:null)}/>;
   return <div className="loc-next-main" data-loc-scope={scopeId} data-loc-view={forcedView}
     role={forcedView==='home'&&['loc','lo3rwang','lrunes'].includes(scopeId)?'main':undefined}>
-    <Suspense fallback={<div className="loc-loading"><UiText id="uiExtra.feature.pageLoading"/></div>}>
+    <Suspense fallback={forcedView==='home'?<HomeFrameLoading/>:
+      <FeatureFrameLoading featureId={managementRoute?managementFeature:forcedView}/>}>
       <FeatureGate scopeId={scopeId} scopeMeta={scopeMeta} view={forcedView}>
         {groupOverviewView?<FeaturePage featureId={forcedView}>
           <ScopeGroupOverview
@@ -204,7 +205,9 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
             description={t('uiExtra.feature.groupGuide')}
           />
         </FeaturePage>:managementRoute?<ManagementAccess key={scopeId+':'+forcedView+':'+runtime.pathname}
-          scopeId={scopeId} level={managementLevel} featureId={managementFeature}>{managementPage}</ManagementAccess>:managementPage}
+          scopeId={scopeId} level={managementLevel} featureId={managementFeature}
+          staticFrame={['manage','searchManage','sourceManage','keywordManage'].includes(forcedView)}
+        >{managementPage}</ManagementAccess>:managementPage}
       </FeatureGate>
     </Suspense>
   </div>;

@@ -32,6 +32,33 @@ const {data:globalList,error:globalError}=await db.from('loc')
   .select('ArticleTag').eq('id','loc').maybeSingle();
 if(globalError||!globalList||!Array.isArray(globalList.ArticleTag))throw Error('Cannot publish LOC ArticleTag');
 const systemNames=[...new Set([...globalList.ArticleTag,'Others'].map(x=>String(x).trim()).filter(Boolean))];
+
+function cleanPublishedHtml(value,scope,page){
+  if(typeof value!=='string')return value;
+  let html=value.replaceAll(' classname="bn-inline-content-section"','')
+    .replaceAll(' data-inline-content-type="link"','')
+    .replaceAll(' data-level="2"','')
+    .replaceAll(' data-level="3"','')
+    .replaceAll(' data-editable=""','');
+  if(scope==='loc'&&page==='index'){
+    html=html.replaceAll('https://loc.lo3rwang.cc/governance/','https://loc.lo3rwang.cc/trace/');
+    html=html.replaceAll('>治理</a>','>痕跡</a>');
+    html=html.replaceAll("提供<u>管理頁面</u>的設定與功能選項，並說明<u>系統使用原則</u>與<strong><u>法律資訊</u></strong>。","透過地圖查看空間定錨點與相關紀錄。");
+  }
+  return html;
+}
+function cleanPublishedBlock(block,scope,page){
+  return {...block,
+    // Never ship hard-coded dependency version listings from the historical
+    // public homepage. The installed versions live in package.json.
+    block_text:cleanPublishedHtml(block.block_text,scope,page),
+    block_subtitle:cleanPublishedHtml(block.block_subtitle,scope,page),
+    block_entity:scope==='loc'&&page==='index'&&block.uid==='787D2355'?[]
+      :Array.isArray(block.block_entity)
+      ?block.block_entity.map(item=>({...item,text:cleanPublishedHtml(item.text,scope,page)}))
+      :block.block_entity};
+}
+
 const allBlocks=new Map(),routeConfigs=[];
 const cols='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
 for(const row of routes){
@@ -59,9 +86,13 @@ for(const row of routes){
   for(const block of blocks){
     const page=String(block.page_name||'').trim().toLowerCase();
     if(!validPage.test(page))throw Error('Invalid published page '+id+': '+page);
+    // Public group_manage is the first Hero row only. Orders 2+ are legacy
+    // management-entry placeholders; the current management panes use their
+    // own authoritative page names and never consume these published rows.
+    if(id==='loc'&&page==='group_manage'&&Number(block.block_order)!==1)continue;
     const key=id+'/'+page;
     if(!allBlocks.has(key))allBlocks.set(key,[]);
-    allBlocks.get(key).push(block);
+    allBlocks.get(key).push(cleanPublishedBlock(block,id,page));
   }
 }
 const {data:locThemes,error:themesError}=await db.from('loc')
@@ -105,6 +136,9 @@ for(const [key,blocks] of [...allBlocks].sort(([a],[b])=>a.localeCompare(b))){
 }
 entries.push(['app/modular/published-blocks/index.js',
   '// Page-level lazy-load manifest; no runtime database reads.\nconst LOADERS={\n'+manifest.join(',\n')+'\n};\n'+
+  'export function hasPublishedBlocks(scopeId,pageName=\'index\'){\n'+
+  '  const key=String(scopeId||\'\')+\':\'+String(pageName||\'index\');\n'+
+  '  return Object.prototype.hasOwnProperty.call(LOADERS,key);\n}\n'+
   'export async function loadPublishedBlocks(scopeId,pageName=\'index\'){\n'+
   '  const key=String(scopeId||\'\')+\':\'+String(pageName||\'index\');\n'+
   '  const load=Object.prototype.hasOwnProperty.call(LOADERS,key)?LOADERS[key]:null;\n'+

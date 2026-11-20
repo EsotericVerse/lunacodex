@@ -134,6 +134,9 @@ export function canonicalBlockNoteHtml(html){
 export function normalizeImageSource(value=''){
   const input=String(value??'').trim();
   if(!input||/[\u0000-\u001f\u007f]/u.test(input))return '';
+  // Published site assets may have a root-relative /pics/ URL. Preserve it
+  // verbatim instead of resolving it against an LRS domain or dropping it.
+  if(/^\/(?!\/)/.test(input))return input;
   try{
     const url=new URL(input);
     if(!['http:','https:'].includes(url.protocol)||!url.hostname||url.username||url.password)return '';

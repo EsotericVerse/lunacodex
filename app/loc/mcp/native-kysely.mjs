@@ -4,9 +4,8 @@ import {Kysely} from 'kysely';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {createKyselyDialect,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
 
-// Cloudflare request env wrappers can have different identities. Keep one
-// trusted business connection per isolate, not a new pool per HTTP request.
-let cachedConnection=null;
+// The trusted Kysely dialect and its request-owned pg.Client share the
+// current request lifetime. Never share its waitUntil closure across requests.
 const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
 function unavailable(message){
   return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE',httpStatus:503});
@@ -37,14 +36,6 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket='',wait
     throw unavailable('Additional database connection not configured');
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
   const uri=mainUri(env);
-  if(cachedConnection?.uri===uri){
-    // The pool object is reused across requests on a warm isolate, but
-    // `waitUntil` is a per-request handle. Always point release() at the
-    // caller requesting it now, never at whichever request first built
-    // this pool (see requestScopedPool's comment on why this matters).
-    cachedConnection.connection.pool.setWaitUntil?.(waitUntil);
-    return cachedConnection.connection;
-  }
   // Cloudflare forbids using a socket or waiting on a promise that was created
   // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
   // when several requests run queries at once. Open a short-lived client per
@@ -61,7 +52,6 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket='',wait
   const dialect=createKyselyDialect(primary?.engine||'postgres',{pool});
   const connection={db:new Kysely({dialect}),dialect,pool,
     engine:'postgres',namespace:'silver',tableName:'',fieldMap:{}};
-  cachedConnection={uri,connection};
   return connection;
 }
 export {db_connection as directMcpKysely};

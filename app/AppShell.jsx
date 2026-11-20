@@ -13,7 +13,7 @@ import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
 import {activatePublishedTheme,THEME_SLOTS} from './modular/theme-registry';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
-import {appBootstrapPageCopy,useAppBootstrap} from './loc/runtime/app-bootstrap';
+import {PUBLISHED_SITE_BOOTSTRAP} from './modular/published-site-bootstrap.js';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-source-status.mjs';
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
 import {navigationHref} from './modular/routing/scope-registry.js';
@@ -24,7 +24,7 @@ import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.
 const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{loading:()=>null});
 import ScrollableScopeNav from './modular/ScrollableScopeNav';
-import ScopeLink,{isManagementHref} from './modular/ScopeLink';
+import ScopeLink from './modular/ScopeLink';
 
 const MOBILE_HOME_ID='myphone';
 const mobileHomeHref=native=>native?'/my-phone/index.html':'/';
@@ -142,16 +142,13 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // Scope defaults are owned by the Scope config table; the game route alone
   // has its own purpose-built temporary default, never persisted to the DB.
   const fixedDefaultThemeId=String(defaultThemeIdOverride||'').trim();
-  // Shares the ONE bootstrap request other shell parts already make for this
-  // page: nothing here issues a second round trip for config or Themes.
-  const bootstrap=useAppBootstrap(scopeId,pageName);
+  // Theme options and defaults are bundled with the published site.
   const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&!scope.aggregateChildren&&scope.id!=='admin';
   // A management entry retires its obsolete SQL readers before rendering.
   // Published route metadata is already available synchronously and prevents
   // the palette from falling back to day/night while Bootstrap is re-reading.
   const publishedTheme=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.theme;
-  const configuredTheme=configEnabled?String(bootstrap.data?.config?.theme||
-    publishedTheme||'').trim():'';
+  const configuredTheme=configEnabled?String(publishedTheme||'').trim():'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
   const [selection,setSelection]=useState(()=>({scopeId,themeId:readUserTheme(scopeId)}));
   // Decorative local feedback only when a person selects a different option.
@@ -173,11 +170,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   const effectiveThemeId=selectedThemeId===SYSTEM_THEME_ID?systemDefaultThemeId:selectedThemeId;
   // Published CSS owns the complete public palette. No Theme JSON import is
   // needed on ordinary Scope navigation.
-  const themeChoices=(bootstrap.data?.theme_list||[]).length
-    ?bootstrap.data.theme_list.map(row=>({
-      id:row.theme_id,label:row.theme_name||row.theme_id
-    }))
-    :THEME_SLOTS.map(item=>({id:item.id,label:item.label}));
+  const themeChoices=THEME_SLOTS.map(item=>({id:item.id,label:item.label}));
   useEffect(()=>{
     rememberActiveTheme(effectiveThemeId);
     // Preserve the current theme until its replacement CSS is loaded.
@@ -231,8 +224,9 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
 }
 function ScopePageCopy({scopeId,display_name,pageName='index'}){
   const enabled=Boolean(scopeId)&&scopeId!=='loc'&&scopeId!=='admin';
-  const bootstrap=useAppBootstrap(scopeId,pageName);
-  const pageCopy=enabled?appBootstrapPageCopy(bootstrap.data,scopeId):null;
+  const pageCopy=enabled
+    ?(PUBLISHED_SITE_BOOTSTRAP.page_copy||[]).find(row=>row.scope_id===scopeId)||null
+    :null;
   useEffect(()=>{
     const title=String(pageCopy?.Title_TW||display_name||'').trim();
     if(title&&document.title!==title)document.title=title;
@@ -359,19 +353,7 @@ function AppShellInner({children,runtime}){
     ?normalizeScopeId(new URLSearchParams(runtime.search||'').get('scopeid')):'';
   const themeScopeId=settingsScopeId&&settingsScopeId!=='admin'&&settingsScopeId!=='local'
     ?settingsScopeId:scopeId;
-  const protectedEditorRoute=isManagementHref(pathname)||/^\/admin(?:\/|$)/i.test(String(pathname||''));
   const editDock=useEditDock();
-  const [managementDenied,setManagementDenied]=useState(false);
-  useEffect(()=>{
-    setManagementDenied(false);
-    const denied=event=>{
-      if(event?.detail?.scopeId===scopeId||
-        (/^\/admin(?:\/|$)/i.test(String(pathname||''))&&event?.detail?.scopeId==='loc'))
-        setManagementDenied(true);
-    };
-    window.addEventListener('loc-management-entry-denied',denied);
-    return()=>window.removeEventListener('loc-management-entry-denied',denied);
-  },[pathname,scopeId]);
   useEffect(()=>{
     // Next can catch a failed lazy import before React reports the error.
     // Recover other failed chunk loads here, but never reload for SQL/RPC 404s.
@@ -426,29 +408,19 @@ function AppShellInner({children,runtime}){
     document.addEventListener('visibilitychange',onVisible);check();
     return()=>{window.removeEventListener('focus',check);window.removeEventListener('pageshow',check);document.removeEventListener('visibilitychange',onVisible);};
   },[]);
-  // Registry, NAV titles and Themes share one site snapshot across pages.
-  // Scope config and page blocks load separately when first needed.
-  // Components using the same (scopeId, pageName) ZenStack query key share one read.
-  // Main online bootstrap is not replaced; device-local routes own the local core.
-  const bootstrap=useAppBootstrap(scopeId,pageName);
-  const registryScopes=bootstrap.data?.registry||[];
-  const navDisplayNames=useMemo(()=>{
-    const entries=(bootstrap.data?.page_copy||[])
-      .map(row=>[String(row.scope_id||''),String(row.Title_TW||'').trim()])
-      .filter(([,label])=>label);
-    return Object.fromEntries(entries);
-  },[bootstrap.data]);
+  // NAV, Footer and page names are immutable published metadata, not SQL.
+  const registryScopes=PUBLISHED_SITE_BOOTSTRAP.registry||[];
+  const navDisplayNames=Object.fromEntries((PUBLISHED_SITE_BOOTSTRAP.page_copy||[])
+    .map(row=>[String(row.scope_id||''),String(row.Title_TW||'').trim()])
+    .filter(([,label])=>label));
   useEffect(()=>setNative(Capacitor.isNativePlatform()),[]);
   const currentScope=scope||getScope(scopeId);
-  // The Scope's locale travels inside the same bootstrap request as its config;
-  // no separate fetch. A manual pick stands until the Scope changes.
+  // Traditional Chinese is the default on every page. Manual selection is
+  // transient React state: no Cookie, Session or cross-page persistence.
   const [manualLocale,setManualLocale]=useState(null);
-  const configLocaleEnabled=Boolean(scopeId)&&!currentScope.aggregateChildren&&scopeId!=='admin';
-  const configuredLocale=configLocaleEnabled?normalizeUiLocale(bootstrap.data?.config?.locale):'zh-Hant';
-  const activeLocale=manualLocale?.scopeId===scopeId?manualLocale.locale:configuredLocale;
-  // Do not fetch the fallback language while the published Scope locale is unresolved.
-  const localeConfigured=!configLocaleEnabled||manualLocale?.scopeId===scopeId||!bootstrap.isPending;
-  const localeReady=useLoadedUiLocale(activeLocale,pathname,localeConfigured);
+  const activeLocale=manualLocale?.scopeId===scopeId&&manualLocale?.pathname===pathname
+    ?manualLocale.locale:'zh-Hant';
+  const localeReady=useLoadedUiLocale(activeLocale,pathname);
   const copy=useMemo(()=>uiCopy(activeLocale,pathname),[activeLocale,pathname,localeReady]);
   useEffect(()=>{document.documentElement.lang=activeLocale;},[activeLocale]);
   const isMyPhone=native&&['/my-phone','/my-phone/index.html'].includes(normalizePath(pathname));
@@ -516,7 +488,6 @@ function AppShellInner({children,runtime}){
       encodeURIComponent(key)+'='+encodeURIComponent(value);
   };
   const editingDockVisible=Boolean(editDock?.active&&editDock.scopeId===navScopeId);
-  const editDockPending=!editingDockVisible&&protectedEditorRoute&&!managementDenied;
   const locAdminEdit=navScopeId==='loc';
   const editSegments=String(pathname||'').split('/').filter(Boolean);
   const editSection=typeof window!=='undefined'
@@ -571,14 +542,9 @@ function AppShellInner({children,runtime}){
         :'/settings/?scopeid='+encodeURIComponent(navScopeId)}
   ];
 
-  // A page renders only after its own selected-language JSON is available.
-  if(!localeReady){
-    const error=uiLocaleLoadError(activeLocale,pathname);
-    return error?<main className="scope-main"><section className="scope-page">
-      <p role="alert">Unable to load interface language files.</p>
-      <button type="button" onClick={()=>window.location.reload()}>Retry</button>
-    </section></main>:<div className="loc-loading" role="status">Loading interface…</div>;
-  }
+  // The fixed frame must never wait for a locale HTTP request or unrelated
+  // Bootstrap state. Page copy still updates when its JSON becomes available.
+  // A failed/hanging locale request leaves the bundled Chinese shell usable.
   return <UiLocaleProvider locale={activeLocale} pathname={pathname}>
     <ScopePageCopy scopeId={localNavigation?'local':scopeId}
       display_name={localNavigation?'本機銀河':configRow?.display_name||registryRow?.display_name}
@@ -606,7 +572,7 @@ function AppShellInner({children,runtime}){
       {localCoreActive&&!localWorkspace?<main className="scope-main"><p className="scope-status" role="status">正在切換手機本機資料…</p></main>:children}
     </PageResourceBoundary>
     <motion.div layoutRoot className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
-      aria-label={translateUiField(activeLocale,editingDockVisible||editDockPending?'編輯功能選單':'Scope 功能選單')}
+      aria-label={translateUiField(activeLocale,editingDockVisible?'編輯功能選單':'Scope 功能選單')}
       data-scope={localNavigation?'local':scopeId} data-local-core={localCoreActive?'active':undefined} data-action-count={editingDockVisible?editTabs.length:6}>
       {editingDockVisible?editTabs.map(tab=>tab.action
         ?<button type="button" key={tab.id} className="scope-edit-dock-action"
@@ -624,7 +590,6 @@ function AppShellInner({children,runtime}){
           :<button type="button" key={tab.id} disabled>
             <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
           </button>)
-      :editDockPending?<span role="status" className="scope-edit-dock-pending">正在確認編輯介面…</span>
       :<LayoutGroup id={'loc-six-key-dock-'+(localNavigation?'local':scopeId)}>
         {featureTabs.map(tab=>{
           const selected=tab.id==='settings'?isSettings:
@@ -657,7 +622,7 @@ function AppShellInner({children,runtime}){
         <LanguageSelect
           locale={activeLocale}
           copy={copy}
-          onChange={locale=>setManualLocale({scopeId,locale:normalizeUiLocale(locale)})}
+          onChange={locale=>setManualLocale({scopeId,pathname,locale:normalizeUiLocale(locale)})}
         />
         <small className="scope-footer-date-basis" aria-label={({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}>
           {({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}

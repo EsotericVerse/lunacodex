@@ -4,7 +4,16 @@
 export function parseBlockImage(value){
   if(value&&typeof value==='object')return value;
   if(typeof value!=='string'||!value.trim())return null;
-  try{const parsed=JSON.parse(value);return parsed&&typeof parsed==='object'?parsed:null;}catch{return null;}
+  try{
+    const parsed=JSON.parse(value);
+    return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:null;
+  }catch{
+    // Historical published Blocks stored only the URL in block_image.
+    // Preserve the exact URL and never replace it with a generated asset.
+    const raw=value.trim();
+    return (/^\/(?!\/)[^\s]*$/u.test(raw)||/^https?:\/\/[^\s]+$/iu.test(raw))
+      ?{source:'custom',url:raw}:null;
+  }
 }
 
 export function heroImageUrl(row){

@@ -44,26 +44,38 @@ function relation(scope,suffix){return sql.ref('silver.'+scope+'_'+suffix);}
 async function owns(trx,scope,role){
   return role==='authenticated'&&await canLocAccess(trx,'scope',scope);
 }
-async function dailyStats(trx,scope,start,end,includeUndated=false){
+async function dailyStats(trx,scope,start,end,includeUndated=false,
+  {withEarliest=false,totalsOnly=false}={}){
   const galaxy=relation(scope,'galaxy');
-  const rows=await sql`with s as (
-    select coalesce(date::text,'') as d,btrim(coalesce(site,'')) as c
+  // LOC landing needs only daily totals; do not group by Galaxy.site.
+  const grouped=sql`with s as (
+    select coalesce(date::text,'') as d,
+      ${totalsOnly?sql`null::text`:sql`btrim(coalesce(site,''))`} as c
     from ${galaxy}
     where statics is true
       and (${includeUndated} or date is not null)
       and (${start}::date is null or date>=${start}::date)
       and (${end}::date is null or date<=${end}::date)
   )
-  -- One aggregation pass returns both source lanes and per-day totals.
-  -- GROUPING(s.c) distinguishes the total row from an empty source name.
   select s.d as day,
-    case when grouping(s.c)=1 then 'total'::text else 'source'::text end as kind,
-    case when grouping(s.c)=1 then '文字作品'::text else s.c end as category,
+    ${totalsOnly?sql`'total'::text`:sql`case when grouping(s.c)=1 then 'total'::text else 'source'::text end`} as kind,
+    ${totalsOnly?sql`'文字作品'::text`:sql`case when grouping(s.c)=1 then '文字作品'::text else s.c end`} as category,
     count(*)::integer as item_count
   from s
-  group by grouping sets ((s.d,s.c),(s.d))
-  order by 1,2,3`.execute(trx);
-  return rows.rows;
+  ${totalsOnly?sql`group by s.d`:sql`group by grouping sets ((s.d,s.c),(s.d))`}`;
+  if(!withEarliest){
+    const result=await sql`${grouped} order by 1,2,3`.execute(trx);
+    return result.rows;
+  }
+  // The date filter applies only to daily buckets, never to historical MIN.
+  // The single history row also survives when the interval has no buckets.
+  const result=await sql`with daily as (${grouped}),
+    history as (select min(date) as earliest from ${galaxy} where statics is true)
+    select history.earliest,daily.day,daily.kind,daily.category,daily.item_count
+    from history left join daily on true
+    order by daily.day,daily.kind,daily.category`.execute(trx);
+  return {earliest:result.rows[0]?.earliest??null,
+    rows:result.rows.filter(row=>row.kind!==null).map(({earliest,...row})=>row)};
 }
 async function earliest(trx,scope){
   const galaxy=relation(scope,'galaxy');
@@ -82,9 +94,8 @@ async function sourceTotals(trx,scope,start,end){
   return response.rows;
 }
 async function scopeOverview(trx,scope,start,end){
-  const [rows,first,sourceAnchors]=await Promise.all([
-    dailyStats(trx,scope,start,end),
-    earliest(trx,scope),
+  const [summary,sourceAnchors]=await Promise.all([
+    dailyStats(trx,scope,start,end,false,{withEarliest:true}),
     trx.selectFrom('silver.loc_anchor')
       .select(['uid','type','title','invisible','attr'])
       .where('type','in',ANCHOR_TYPE_GROUPS.source)
@@ -93,7 +104,7 @@ async function scopeOverview(trx,scope,start,end){
   // Statistics and Culture use the same UID-linked SiteAnchor hierarchy.
   // ArticleTag must not be reinterpreted as a second source taxonomy.
   const {categories,aliases}=sourceTaxonomyFromAnchors(sourceAnchors);
-  return {earliest:first,rows,categories,aliases};
+  return {earliest:summary.earliest,rows:summary.rows,categories,aliases};
 }
 async function searchSummary(trx,options,{publishedScopeIds=null}={}){
   const scopes=options.scopeIds;
@@ -102,21 +113,27 @@ async function searchSummary(trx,options,{publishedScopeIds=null}={}){
     reject('Invalid Scope Search summary request');
   const requested=[...new Set(scopes)].sort();
   if(!requested.length)return {rows:[]};
-  // One Kysely membership read, rather than one SQL round trip per Scope.
-  // Keep per-Scope configuration queries bounded and sequential.
-  // The published Scope index is already verified by the public HTTP boundary.
-  // Do not introduce an api.manage GRANT dependency to anonymous Search.
+  // The published Scope index is already verified at the public boundary.
+  // Keep its membership contract and never require api.manage for anonymous
+  // Search. PG-only UNION ALL batches independent Scope configuration tables,
+  // avoiding one SQL round trip per Scope without merging their permissions.
   const allowed=publishedScopeIds===null
     ?new Set((await trx.selectFrom('api.manage').select('id')
       .where('id','in',requested).where('manage_role','=','scope')
       .where('active','=',true).execute()).map(row=>row.id))
     :new Set(publishedScopeIds);
+  const scopeIds=requested.filter(scope=>allowed.has(scope));
+  const statusByScope=new Map();
+  for(let i=0;i<scopeIds.length;i+=20){
+    const selected=scopeIds.slice(i,i+20);
+    const queries=selected.map(scope=>sql`select ${scope}::text as scope_id,status
+      from ${sql.ref('silver.'+scope)} where id=${scope}`);
+    const response=await sql`${sql.join(queries,sql` union all `)}`.execute(trx);
+    for(const row of response.rows)statusByScope.set(row.scope_id,row.status);
+  }
   const result=[];
-  for(const scope of requested){
-    if(!allowed.has(scope))continue;
-    const config=await trx.selectFrom('silver.'+scope)
-      .select('status').where('id','=',scope).executeTakeFirst();
-    const item=config?.status?.search;
+  for(const scope of scopeIds){
+    const item=statusByScope.get(scope)?.search;
     if(item&&typeof item==='object'&&!Array.isArray(item)){
       result.push({scope_id:scope,article_count:item.article_count??null,
         word_count:item.word_count??null,first_date:item.first_date??null,
@@ -483,10 +500,11 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
       const relation=await sql`select to_regclass(${'silver.'+group.id+'_'+galaxy}) is not null as galaxy_exists`.execute(trx);
       if(!relation.rows[0]?.galaxy_exists)continue;
       scopes.push({scope_id:group.id,display_name:group.display_name});
-      const day=await dailyStats(trx,group.id,start,end);
-      rows.push(...day.filter(r=>r.kind==='total').map(r=>({scope_id:group.id,
+      const summary=await dailyStats(trx,group.id,start,end,false,
+        {withEarliest:true,totalsOnly:true});
+      rows.push(...summary.rows.map(r=>({scope_id:group.id,
         day:r.day,item_count:r.item_count})));
-      const early=await earliest(trx,group.id);
+      const early=summary.earliest;
       if(early&&(!first||String(early)<String(first)))first=early;
     }
     return {data:{earliest:first,scopes,rows},count:null};
@@ -535,6 +553,24 @@ function portableStatBase(db,table,start,end,flag='statics',includeUndated=false
   if(start)query=query.where('date','>=',start);
   if(end)query=query.where('date','<=',end);
   return query;
+}
+// Portable SQL: return grouped counts and absolute earliest in a single
+// statement. The history row stays present for empty filtered periods.
+async function portableStatsWithEarliest(db,table,start,end,fields,includeUndated=false){
+  let counts=portableStatBase(db,table,start,end,'statics',includeUndated);
+  for(const field of fields){
+    if(field==='date'&&includeUndated)continue;
+    counts=counts.where(field,'is not',null);
+  }
+  const daily=counts.select(fields)
+    .select(eb=>eb.fn.countAll().as('n')).groupBy(fields).as('daily');
+  const history=db.selectFrom(table)
+    .select(eb=>eb.fn.min('date').as('earliest'))
+    .where('statics','=',true).as('history');
+  return db.selectFrom(history).leftJoin(daily,join=>join.onTrue())
+    .select(['history.earliest','daily.date','daily.n',
+      ...(fields.includes('site')?['daily.site']:[])])
+    .orderBy('daily.date','asc').execute();
 }
 // Common LOC statistics, implemented with dialect-native Kysely builders.
 export async function executePortableKyselyAnalytics(db,body,{engine,namespace='',role='anon'}={}){
@@ -591,17 +627,11 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     const scopes=[],rows=[];let earliest=null;
     for(const id of ids){
       const relation=portableRelation(id+'_galaxy',engine,namespace);
-      let q=portableStatBase(db,relation,start,end,'statics');
-      q=q.select('date').select(eb=>eb.fn.countAll().as('n'))
-        .groupBy('date').orderBy('date','asc');
-      const counts=await q.execute();
-      // The requested window limits displayed counts, not the Scope's
-      // absolute earliest qualifying date (same contract as PostgreSQL).
-      const oldest=await db.selectFrom(relation)
-        .select(eb=>eb.fn.min('date').as('day'))
-        .where('statics','=',true)
-        .executeTakeFirst();
-      const firstDay=portableDay(oldest?.day);
+      // No Source grouping for the LOC landing; one SQL also returns
+      // the full-history earliest, regardless of the selected window.
+      const counted=await portableStatsWithEarliest(db,relation,start,end,['date']);
+      const counts=counted.filter(row=>row.n!=null);
+      const firstDay=portableDay(counted[0]?.earliest);
       if(firstDay&&(!earliest||firstDay<earliest))earliest=firstDay;
       scopes.push({scope_id:id,display_name:id});
       for(const row of counts){
@@ -676,8 +706,12 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   let data;
   if(mode==='earliest')data=await first();
   else if(mode==='daily'||mode==='overview'||mode==='loc'){
-    const rows=await grouped('statics',['date','site'],
-      {includeUndated:options.includeUndated===true});
+    const withHistory=mode==='overview'||mode==='loc'
+      ?await portableStatsWithEarliest(db,galaxy,start,end,['date','site'],
+        options.includeUndated===true):null;
+    const rows=withHistory?withHistory.filter(row=>row.n!=null)
+      :await grouped('statics',['date','site'],
+        {includeUndated:options.includeUndated===true});
     const source=rows.map(row=>({day:portableDay(row.date),kind:'source',
       category:String(row.site||'').trim(),item_count:Number(row.n)}));
     const totals=new Map();
@@ -689,8 +723,9 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     else if(mode==='overview'){
       // Overview only summarizes visible Galaxy source/date rows.
       // Retired multimedia counts must not touch Anchor or media_link.
-      data={earliest:await first(),rows:summary,categories:[],aliases:[]};
-    }else data={earliest:await first(),scopes:[{
+      data={earliest:withHistory[0]?.earliest??null,
+        rows:summary,categories:[],aliases:[]};
+    }else data={earliest:withHistory[0]?.earliest??null,scopes:[{
       scope_id:scope,display_name:scope
     }],rows:summary.filter(x=>x.kind==='total').map(x=>({
       scope_id:scope,day:x.day,item_count:x.item_count

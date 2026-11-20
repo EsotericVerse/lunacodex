@@ -29,12 +29,13 @@ export const isRetryableReadError=error=>{
   if(Number.isFinite(status))return RETRYABLE_STATUS.has(status);
   return true; // No HTTP status: a network-level or timeout failure.
 };
-export async function readPageWithRetry(run,signal,{attempts=4,baseDelayMs=500}={}){
+export async function readPageWithRetry(run,signal,{attempts=4,baseDelayMs=500,onRetry}={}){
   for(let attempt=0;;attempt++){
     try{return await run();}
     catch(error){
       if(signal?.aborted)throw aborted();
       if(!isRetryableReadError(error)||attempt>=attempts-1)throw error;
+      onRetry?.(error,attempt+1);
       await new Promise(resolve=>setTimeout(resolve,baseDelayMs*2**attempt));
       if(signal?.aborted)throw aborted();
     }
@@ -87,14 +88,21 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     const queue=new KeywordDiscoveryQueue();
     // Promise rejections must be observed immediately, including cancellation.
     const settled=promise=>promise.then(value=>({value}),error=>({error}));
-    const readPage=(build,requested)=>readPageWithRetry(async()=>{
-      let query=build(dbAuthRelation(galaxy));
-      if(typeof query.abortSignal==='function')query=query.abortSignal(readSignal);
-      const reply=await query;
-      if(signal?.aborted)throw aborted();
-      if(reply.error)throw reply.error;
-      return {...reply,requested};
-    },signal);
+    const readPage=(build,requested)=>{
+      // A retry may reduce the physical page without advancing the cursor.
+      // Only the bytes returned by the successful query enter the queue.
+      let effective=requested;
+      return readPageWithRetry(async()=>{
+        let query=build(dbAuthRelation(galaxy),effective);
+        if(typeof query.abortSignal==='function')query=query.abortSignal(readSignal);
+        const reply=await query;
+        if(readSignal.aborted)throw aborted();
+        if(reply.error)throw reply.error;
+        return {...reply,requested:effective};
+      },readSignal,{onRetry:()=>{
+        effective=Math.max(1,Math.floor(effective*0.65));
+      }});
+    };
     const consumePage=async (page,requested,nextPage)=>{
       queue.accept(page,requested);
       let lookahead=null;
@@ -152,10 +160,10 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     // increasing database concurrency, storing all rows, or skipping pages.
     // Settle rejections immediately so Worker failures cannot leave an
     // unhandled pending request; finally aborts the active read.
-    const datedPage=(afterDate,afterUid,limit)=>readPage(relation=>{
+    const datedPage=(afterDate,afterUid,limit)=>readPage((relation,pageRows)=>{
       let query=relation.select(ARTICLE_COLUMNS).not('date','is',null)
         .order('date',{ascending:true}).order('uid',{ascending:true})
-        .limit(limit);
+        .limit(pageRows);
       if(afterDate!==null){
         // The OR cursor alone caused Postgres to scan/filter all earlier dates
         // (43k rows on a late 2026 page). This redundant AND lower bound is
@@ -189,9 +197,9 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     }
     // Undated rows also use a bounded UID keyset instead of deep OFFSET.
     // Both scans are complete even when the transport returns a short page.
-    const undatedPage=(afterUid,limit)=>readPage(relation=>{
+    const undatedPage=(afterUid,limit)=>readPage((relation,pageRows)=>{
       let query=relation.select(ARTICLE_COLUMNS)
-        .is('date',null).order('uid',{ascending:true}).limit(limit);
+        .is('date',null).order('uid',{ascending:true}).limit(pageRows);
       if(afterUid!==null)query=query.gt('uid',afterUid);
       return query;
     },limit);

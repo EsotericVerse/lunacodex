@@ -27,6 +27,12 @@ const LOADERS={
   "lrunes:index":()=>import('./lrunes/index.js'),
   "lrunes:search":()=>import('./lrunes/search.js')
 };
+// A missing published page still needs the existing live fallback. An
+// intentionally empty published page must NOT become a reason to query SQL.
+export function hasPublishedBlocks(scopeId,pageName='index'){
+  const key=String(scopeId||'')+':'+String(pageName||'index');
+  return Object.prototype.hasOwnProperty.call(LOADERS,key);
+}
 export async function loadPublishedBlocks(scopeId,pageName='index'){
   const key=String(scopeId||'')+':'+String(pageName||'index');
   const loader=Object.prototype.hasOwnProperty.call(LOADERS,key)?LOADERS[key]:null;

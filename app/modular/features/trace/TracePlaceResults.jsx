@@ -126,11 +126,14 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
           columns:galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','),
           filters,orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
             {column:'uid',ascending:true}],
-          limit:PAGE_SIZE,offset,count:offset===0?'exact':null,signal
+          // Look ahead one row: the article list needs only 'has next',
+          // not a costly exact filtered COUNT on its first page.
+          limit:PAGE_SIZE+1,offset,signal
         });
-        const rows=result.rows||[];
-        const total=offset===0?Number(result.count??rows.length):null;
-        const moreInPlace=rows.length===PAGE_SIZE&&(total==null||offset+rows.length<total);
+        const page=result.rows||[];
+        const rows=page.slice(0,PAGE_SIZE);
+        const moreInPlace=page.length>PAGE_SIZE;
+        const total=null;
         const nextOffset=nearest
           ?moreInPlace?{placeIndex,offset:offset+rows.length}
             :placeIndex+1<nearestPlaceIds.length?{placeIndex:placeIndex+1,offset:0}:null
@@ -329,7 +332,8 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     group_order:0,start_date:visit.when,
     title:visit.title+' · '+visit.label
   })),[visibleVisits]);
-  const listTotal=selectedMediaType?(mediaFiltered.data?mediaRows.length:null):list.data?.pages?.[0]?.total;
+  const listTotal=selectedMediaType?(mediaFiltered.data?mediaRows.length:null):
+    (list.data?.pages?.length?rows.length:null);
   // Only client-side aggregation changes. Original article and visit dates stay exact.
   const riverRows=useMemo(()=>{
     const peak=Math.max(1,...verified.periods.map(row=>row.count));
@@ -361,7 +365,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       <div><p className="loc-eyebrow">文章報表</p><h2>文章列表／時間長河／統計圖</h2></div>
       <span className="scope-status">{isMap?(place.trace_type==='trace'?'痕跡線段 '+place.anchor_list.length+' 段 · ':'路線 '+place.anchor_list.length+' 站 · '):''}
         {!enabled?'沒有可對應的打卡地點'
-          :tab==='articles'?(listTotal==null?'按需載入中…':selectedMediaType?'已載入 '+listTotal+' 篇符合條件的文章':listTotal+' 篇文章')
+          :tab==='articles'?(listTotal==null?'按需載入中…':'已載入 '+listTotal+' 篇符合條件的文章')
           :(summary.data?verified.total+' 篇符合條件的打卡文章':'數值圖表')}
       </span>
     </header>

@@ -1,4 +1,5 @@
 import {Suspense} from 'react';
+import StaticContentLoading from '../../../modular/StaticContentLoading';
 import FeatureSettingsPage from '../../../loc/preferences/FeatureSettingsPage';
 import {locMetadata} from '../../../seo/metadata';
 
@@ -10,7 +11,7 @@ export const metadata=locMetadata({
 });
 
 export default function SettingsFeaturesPage(){
-  return <Suspense fallback={<p role="status">正在載入功能設定…</p>}>
+  return <Suspense fallback={<StaticContentLoading label="正在載入功能設定…"/>}>
     <FeatureSettingsPage/>
   </Suspense>;
 }

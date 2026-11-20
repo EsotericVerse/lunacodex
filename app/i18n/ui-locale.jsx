@@ -31,11 +31,13 @@ function useSectionTick(){
 }
 export function UiLocaleProvider({locale=UI_LOCALE,pathname='/',children}){
   const language=normalizeUiLocale(locale);
-  const ready=useLoadedUiLocale(language,pathname);
+  // AppShell owns the page-specific language request; the provider only
+  // projects its data. Neither the permanent frame nor its children wait
+  // for a network request before rendering.
   const tick=useSectionTick();
-  const copy=useMemo(()=>uiCopy(language,pathname),[language,pathname,ready,tick]);
+  const copy=useMemo(()=>uiCopy(language,pathname),[language,pathname,tick]);
   return <UiLocaleContext.Provider value={{locale:language,copy}}>
-    {ready?children:<div className="loc-loading" role="status">Loading interface…</div>}
+    {children}
   </UiLocaleContext.Provider>;
 }
 export function useUiLocale(){return useContext(UiLocaleContext);}

@@ -5,7 +5,7 @@ import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer
 import {allocateAnchorUid} from '../../../loc/model/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../routing/scope-route-index.js';
-import {selectScopeGroupMemberIds,selectScopeConfig} from '../../../loc/scope/scope-data';
+import {selectScopeGroupMemberIds} from '../../../loc/scope/scope-data';
 import {scopeFeatureEnabled} from '../../../loc/scope/scope-config-fields.mjs';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
 
@@ -13,14 +13,13 @@ const TRACE_SOURCE_SCOPES=Object.freeze(SCOPE_ROUTE_INDEX.map(row=>row.scope_id)
 async function groupTraceSources(){
   const members=await selectScopeGroupMemberIds('loc','trace');
   const candidates=TRACE_SOURCE_SCOPES.filter(id=>members.has(id));
-  // Each contributor must explicitly publish its Scope trace flag.
-  // Config requests are already shared across public feature readers.
-  // Keep multi-Scope public Config reads below the shared SQL Gateway QoS ceiling.
-  const allowed=await mapBounded(candidates,3,async id=>{
-    const config=await selectScopeConfig(id);
-    return config&&scopeFeatureEnabled(config,'trace')?id:null;
+  // Public trace flags are already published with the route index.
+  // An individual Scope's private editor still reads its authoritative SQL
+  // settings when opened; public source enumeration makes no DB requests.
+  return candidates.filter(id=>{
+    const row=SCOPE_ROUTE_INDEX.find(entry=>entry.scope_id===id&&entry.active!==false);
+    return row?.config&&scopeFeatureEnabled(row.config,'trace');
   });
-  return allowed.filter(Boolean);
 }
 export const TRACE_SCOPES=Object.freeze(['loc',...TRACE_SOURCE_SCOPES]);
 export const readPublishedTraceSourceScopes=groupTraceSources;

@@ -1,3 +1,5 @@
+import DEFAULT_TRADITIONAL_CHINESE from './shared/zh_tw.json';
+import {EMPTY_PAGE_LOCALES,PAGE_LOCALE_ALIASES} from './page-locale-manifest.js';
 // Route-local interface copy. Each page.jsx owns four sibling i18n JSON files.
 // Web fetches exactly one selected page JSON; Capacitor serves the same copied
 // assets from its bundled filesystem. Never prefetch a different language.
@@ -55,9 +57,18 @@ function withFormat(core,page){
   });
   return content;
 }
-export const UI_COPY=withFormat(SEED,{});
-const EMPTY_COPY=withFormat(SEED,{});
-export const UI_DICTIONARIES={};
+// The public shell must always have its base language synchronously.
+ // This immutable released JSON is bundled with the app rather than fetched
+ // before painting the frame. Dynamic page JSON remains independently loaded.
+const BASE_COPY=withFormat({
+  ...SEED,...DEFAULT_TRADITIONAL_CHINESE,
+  common:{...SEED.common,...DEFAULT_TRADITIONAL_CHINESE.common},
+  nav:{...SEED.nav,...DEFAULT_TRADITIONAL_CHINESE.nav},
+  features:{...SEED.features,...DEFAULT_TRADITIONAL_CHINESE.features}
+},{});
+export const UI_COPY={...BASE_COPY};
+const EMPTY_COPY=BASE_COPY;
+export const UI_DICTIONARIES={[UI_LOCALE]:BASE_COPY};
 const sharedCache=new Map();
 const loadedPages=new Map();
 const inFlight=new Map();
@@ -84,7 +95,8 @@ function localeKey(locale,pathname){
   return normalizeUiLocale(locale)+'|'+pageLocaleRoute(pathname);
 }
 function assetUrl(locale,pathname){
-  return '/i18n/pages/'+pageLocaleRoute(pathname)+'/'+FILE_FOR_LOCALE[normalizeUiLocale(locale)]+'.json';
+  const key=pageLocaleRoute(pathname)+'/'+FILE_FOR_LOCALE[normalizeUiLocale(locale)];
+  return '/i18n/pages/'+(PAGE_LOCALE_ALIASES[key]||key)+'.json';
 }
 async function readJson(url){
   const response=await fetch(url,{credentials:'same-origin',cache:'default'});
@@ -96,6 +108,8 @@ async function readJson(url){
 }
 function sharedFor(locale){
   const key=normalizeUiLocale(locale);
+  // A request for the default language is never a prerequisite for the frame.
+  if(key===UI_LOCALE)return Promise.resolve(DEFAULT_TRADITIONAL_CHINESE);
   if(!sharedCache.has(key)){
     sharedCache.set(key,readJson('/i18n/shared/'+FILE_FOR_LOCALE[key]+'.json')
       .catch(error=>{sharedCache.delete(key);throw error;}));
@@ -146,7 +160,10 @@ export function loadUiLocale(locale=UI_LOCALE,pathname='/'){
   }
   if(!inFlight.has(key)){
     loadErrors.delete(key);
-    const pending=Promise.all([sharedFor(normalized),readJson(assetUrl(normalized,pathname))])
+    const pageAsset=pageLocaleRoute(pathname)+'/'+FILE_FOR_LOCALE[normalized];
+    const pageRequest=EMPTY_PAGE_LOCALES.has(pageAsset)
+      ?Promise.resolve({}):readJson(assetUrl(normalized,pathname));
+    const pending=Promise.all([sharedFor(normalized),pageRequest])
       .then(([shared,page])=>{
         const copy=withFormat(shared,page);
         retain(key,copy);
@@ -160,7 +177,10 @@ export function loadUiLocale(locale=UI_LOCALE,pathname='/'){
 }
 export function uiCopy(locale=UI_LOCALE,pathname='/'){
   const key=localeKey(locale,pathname);
-  return loadedPages.get(key)||UI_DICTIONARIES[normalizeUiLocale(locale)]||EMPTY_COPY;
+  // A previously visited route's dictionary must never become another route's
+  // temporary copy while its own JSON is loading. Reuse only the common,
+  // synchronously published base until the exact page key is ready.
+  return loadedPages.get(key)||EMPTY_COPY;
 }
 export function featureSection(locale,section,defaults={}){
   return uiCopy(locale).featureCopy?.[section]||defaults;

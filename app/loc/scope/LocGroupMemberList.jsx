@@ -1,12 +1,11 @@
 'use client';
 
 import {useState} from 'react';
-import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import {useAccount} from '../auth/use-account';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
-import {invalidateAppBootstrapMetadata} from '../runtime/app-bootstrap';
+import {invalidatePublicScopeMetadata} from './scope-data';
 import {cachedRead,invalidateCachedRead} from '../db/semi-dynamic-cache.mjs';
 
 // Group administration only: enumerate existing members, rename display titles.
@@ -16,7 +15,6 @@ export default function LocGroupMemberList({groupId='loc'}){
   const account=useAccount();
   const dock=useEditDock();
   const inDock=Boolean(dock?.active&&dock.scopeId===groupId);
-  const queryClient=useQueryClient();
   const allowed=Boolean(account.user&&!account.loading&&!account.permissionLoading&&
     account.canLocAccessSync('group',groupId));
   const [draft,setDraft]=useState({});
@@ -50,8 +48,8 @@ export default function LocGroupMemberList({groupId='loc'}){
       }
       setDraft({});
       invalidateCachedRead(groupMemberCacheKey);
-      invalidateAppBootstrapMetadata();
-      await Promise.all([query.refetch(),queryClient.invalidateQueries({queryKey:['app-bootstrap']})]);
+      invalidatePublicScopeMetadata();
+      await query.refetch();
       setNotice('群組人員資料已更新。');
       return true;
     }catch(error){setNotice(String(error?.message||error));return false;}

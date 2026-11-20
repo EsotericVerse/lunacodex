@@ -6,6 +6,7 @@ import {useSearchParams} from 'next/navigation';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
+import {ProtectedManagementSlot} from '../management/ManagementAccess';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
 import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
@@ -60,8 +61,10 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
           }}/>
         <div className="management-workspace-panel" id="scope-management-panel" role="region"
           aria-labelledby={'scope-sections-option-'+selectedOption.value}>
-          {PLACE_KEYS.has(section)?<PlaceManagement scopeId={routeScopeId} section={section}/>:null}
-          {section==='path'||section==='trace'?<TraceManagementPanel key={section} scopeId={routeScopeId} mode="map" routeMode={section}/>:null}
+          <ProtectedManagementSlot>
+            {PLACE_KEYS.has(section)?<PlaceManagement scopeId={routeScopeId} section={section}/>:null}
+            {section==='path'||section==='trace'?<TraceManagementPanel key={section} scopeId={routeScopeId} mode="map" routeMode={section}/>:null}
+          </ProtectedManagementSlot>
         </div>
       </ManagementWorkspaceFrame>
     </div>

@@ -50,6 +50,46 @@ function normalizeDraft(row){
   return {...blank(row.type),...row,address:day(row.address),
     anchor_ids:Array.isArray(row.anchor_ids)?row.anchor_ids:[]};
 }
+// A single keyset reader for initial editor state and explicit bulk actions.
+// Adapt each transport page to actual payload size, not the total article count.
+// The memory guard fails explicitly instead of silently hiding later records.
+const MAX_TIME_EDITOR_BYTES=32*1024*1024;
+const TARGET_TIME_PAGE_BYTES=2*1024*1024;
+async function readCompleteTimeRecords(timeTable){
+  const gathered=[],seen=new Set();
+  let afterUid='',pageRows=Math.min(2000,DB_QUERY_BATCH_SIZE);
+  let averageRowBytes=0,usedBytes=0;
+  for(;;){
+    const filters=[{column:'type',operator:'in',value:PERSISTED_TIME_TYPES}];
+    if(afterUid)filters.push({column:'uid',operator:'gt',value:afterUid});
+    const {rows=[]}=await selectRows(timeTable,{
+      columns:TIME_COLUMNS,filters,orders:[{column:'uid',ascending:true}],
+      limit:pageRows,authenticated:true
+    });
+    if(!Array.isArray(rows)||rows.length>pageRows)
+      throw Error('時間紀錄分頁回傳不完整，已停止編輯');
+    let pageBytes=0;
+    for(const row of rows){
+      const uid=String(row?.uid||'');
+      if(!uid||seen.has(uid))throw Error('時間紀錄 UID 重複或無效，已停止編輯');
+      seen.add(uid);
+      const bytes=JSON.stringify(row).length*2+128;
+      pageBytes+=bytes;usedBytes+=bytes;
+      if(usedBytes>MAX_TIME_EDITOR_BYTES)
+        throw Error('時間紀錄超出編輯器記憶體預算，未載入不完整清單');
+      gathered.push(projectTimeAnchorRow(row));
+    }
+    if(rows.length<pageRows)return gathered;
+    afterUid=String(rows.at(-1).uid);
+    const measured=pageBytes/Math.max(1,rows.length);
+    averageRowBytes=averageRowBytes===0||measured>averageRowBytes
+      ?measured:averageRowBytes*0.7+measured*0.3;
+    pageRows=Math.max(1,Math.min(
+      DB_QUERY_BATCH_SIZE*4,pageRows*2,
+      Math.floor(TARGET_TIME_PAGE_BYTES/Math.max(128,averageRowBytes))));
+  }
+}
+
 export default function CultureTimelineEditor({
   scopeId='',timeTable:providedTimeTable='',birthday='',selectedRecordId='',suggestedAnchorDate='',
   suggestedRecordType='anchor',suggestedRequestNonce=0,defaultRecordType='anchor',onClose=null,onDataChanged=null
@@ -90,13 +130,7 @@ export default function CultureTimelineEditor({
   const query=useAsyncResource({
     queryKey:['culture-period-settings',dataScope,timeTable],
     enabled:editable,
-    queryFn:async()=>{
-      const {rows}=await selectRows(timeTable,{
-        columns:TIME_COLUMNS,filters:[{column:'type',operator:'in',value:PERSISTED_TIME_TYPES}],
-        limit:DB_QUERY_BATCH_SIZE,offset:0,authenticated:true
-      });
-      return rows.map(projectTimeAnchorRow);
-    }
+    queryFn:()=>readCompleteTimeRecords(timeTable)
   });
   const all=query.data||[];
   const anchors=useMemo(()=>new Map(all.filter(row=>row.type==='anchor').map(row=>[String(row.uid),row])),[all]);
@@ -234,19 +268,9 @@ export default function CultureTimelineEditor({
     setTracePairs(items=>[...items,[from,to]]);setPairFrom(null);setPairTo(null);
   };
   const removePair=index=>setTracePairs(items=>items.filter((_,i)=>i!==index));
-  // A complete scoped read is only issued after pressing an explicit bulk tool.
-  const loadTimeRecords=async()=>{
-    const gathered=[];
-    for(let offset=0;offset<100000;offset+=DB_QUERY_BATCH_SIZE){
-      const {rows=[]}=await selectRows(timeTable,{
-        columns:TIME_COLUMNS,filters:[{column:'type',operator:'in',value:PERSISTED_TIME_TYPES}],
-        limit:DB_QUERY_BATCH_SIZE,offset,authenticated:true
-      });
-      gathered.push(...rows.map(projectTimeAnchorRow));
-      if(rows.length<DB_QUERY_BATCH_SIZE)return gathered;
-    }
-    throw Error('時間紀錄過多，無法確認完整性；已停止寫入。');
-  };
+  // Reuse the same complete reader for bulk edits instead of issuing
+  // a separate OFFSET-based full scan with another row-count ceiling.
+  const loadTimeRecords=()=>readCompleteTimeRecords(timeTable);
   const autoOrganize=async()=>{
     if(busy||!['period','era'].includes(draft.type))return;
     setBusy(true);setMessage('');setOrganizedDates([]);

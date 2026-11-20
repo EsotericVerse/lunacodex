@@ -10,6 +10,10 @@ import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import dynamic from 'next/dynamic';
 import {useAppBootstrap} from '../runtime/app-bootstrap';
+import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
+import {selectLiveScopeBlocks} from '../scope/scope-data';
+import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import {useAccount} from '../auth/use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
 const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
@@ -82,13 +86,40 @@ export default function ScopeEditableBlocks({
   const account=useAccount({enabled:false});
   const editDock=useEditDock();
   const native=useNativeNavigation();
-  // Shares AppShell's (scopeId, pageName) query, which reuses the global
-  // Registry/Theme snapshot and loads only this Scope's page blocks.
-  const bootstrap=useAppBootstrap(scopeId,pageName);
-  const blocks=bootstrap.data?.blocks;
-  // The Scope-specific homepage entry has already verified access.
-  // Database authorization remains mandatory on every write.
+  const queryClient=useQueryClient();
   const homeEditActive=isScopeHomepageBlock&&editDock?.active&&editDock.scopeId===scopeId;
+  const [editingSlot,setEditingSlot]=useState(null);
+  const [message,setMessage]=useState('');
+  const [editMode,setEditMode]=useState(Boolean(startInEditMode));
+  const [recentlySavedBlocks,setRecentlySavedBlocks]=useState(null);
+  const editingContent=Boolean(homeEditActive||editMode||authorizedByParent);
+
+  // Published presentation and the authoritative editor are mutually
+  // exclusive on EVERY page, not only on Scope homepages. A management editor
+  // must never draft from a release snapshot that another browser already
+  // changed, nor run both readers at the same time.
+  const bootstrap=useAppBootstrap(scopeId,pageName,{
+    enabled:!isScopeHomepageBlock&&!editingContent
+  });
+  const published=useAsyncResource(['published-home-page',scopeId,pageName],
+    ()=>loadPublishedBlocks(scopeId,pageName),{
+      enabled:isScopeHomepageBlock&&!editingContent
+    });
+  const editorRows=useAsyncResource(['scope-blocks',scopeId,pageName],
+    ()=>selectLiveScopeBlocks(scopeId,pageName),{
+      enabled:editingContent
+    });
+  const blocks=editingContent?editorRows.data
+    :(recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks));
+  const editingReady=editorRows.isSuccess;
+  const editingError=editorRows.isError;
+  const rememberSavedRows=()=>{
+    if(isScopeHomepageBlock){
+      const saved=queryClient.getQueryData(['scope-blocks',scopeId,pageName]);
+      if(Array.isArray(saved))setRecentlySavedBlocks(saved);
+    }
+  };
+  // Editing and writes still require LOC's existing verified authorization.
   // A cached management role must not enable homepage editing until the
   // user explicitly enters this Scope's edit mode.
   const canEdit=allowEditing&&(authorizedByParent||
@@ -98,10 +129,6 @@ export default function ScopeEditableBlocks({
     ()=>Array.isArray(orders)?orders.map(Number).filter(value=>Number.isInteger(value)&&value>0):[],
     [orders]
   );
-  const [editingSlot,setEditingSlot]=useState(null);
-  const [message,setMessage]=useState('');
-  const [editMode,setEditMode]=useState(Boolean(startInEditMode));
-
   const slots=useMemo(()=>{
     const rows=Array.isArray(blocks)?blocks:[];
     if(normalizedOrders.length){
@@ -211,10 +238,10 @@ export default function ScopeEditableBlocks({
     const heroSlotOrder=Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0?placeholderFirstOrder:null;
     const contents=<>
       {!editing&&!heroSlotOrder?toggleButton:null}
-      {editing&&!bootstrap.isSuccess?<p className="scope-status" role="status">
-        {bootstrap.isError?'搜尋建議載入失敗。':'正在載入搜尋建議…'}
+      {editing&&!editingReady?<p className="scope-status" role="status">
+        {editingError?'編輯資料讀取失敗，請重新進入編輯。':'正在讀取最新編輯資料…'}
       </p>:null}
-      {editing&&bootstrap.isSuccess?<ScopeBlockDraftList
+      {editing&&editingReady?<ScopeBlockDraftList
         slots={slots}
         scopeId={scopeId}
         pageName={pageName}
@@ -237,6 +264,7 @@ export default function ScopeEditableBlocks({
           }else onEditorExit?.();
         }}
         onDone={(notice,{switching=false}={})=>{
+          rememberSavedRows();
           setMessage(notice);
           // Real Save never tears down an active Edit Dock on a management page,
           // and page switching/canceling remains the Dock's explicit responsibility.
@@ -336,7 +364,7 @@ export default function ScopeEditableBlocks({
           allowImages={allowImages}
           editEyebrow={editEyebrow}
           onClose={cancel}
-          onDone={notice=>{setEditingSlot(null);setMessage(notice)}}
+          onDone={notice=>{rememberSavedRows();setEditingSlot(null);setMessage(notice)}}
         />:<>
           {typeof renderDisplay==='function'
             ?renderDisplay(slot)

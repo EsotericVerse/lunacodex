@@ -1,7 +1,8 @@
 'use client';
 
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {invalidatePublicScopeMetadata,selectScopeBlocks,selectScopeConfig,selectScopeRegistry} from '../scope/scope-data';
+import {invalidatePublicScopeMetadata,selectScopeRegistry,selectScopeBlocks} from '../scope/scope-data';
+import {hasPublishedBlocks,loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {selectThemeRegistry,themeUiId} from '../preferences/theme-data';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 
@@ -20,9 +21,9 @@ export function appBootstrapKey(scopeId,pageName='index'){
   return ['app-bootstrap',SCOPE_ID.test(id)?id:'',PAGE_NAME.test(page)?page:'index'];
 }
 
-// No bootstrap RPC and no ISR dependency. A public entry reads the Scope
-// configuration and the requested Blocks once; registry and themes are
-// non-authorizing presentation metadata.
+// Published pages need no Bootstrap SQL, ISR or Auth. Unpublished pages
+// retain their original on-demand public read instead of showing nothing.
+// Editors use selectLiveScopeBlocks directly after explicit authorization.
 export async function selectAppBootstrap(scopeId,pageName='index',{configHint=null}={}){
   const [,id,page]=appBootstrapKey(scopeId,pageName);
   // Local Scope is a native IndexedDB workspace, not a cloud Registry or
@@ -35,11 +36,12 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
     id==='local'?Promise.resolve([]):selectScopeRegistry(),
     id==='local'?Promise.resolve([]):selectThemeRegistry(),
     id&&id!=='admin'
-      ?(configHint?Promise.resolve(configHint):page==='index'
-        ?Promise.resolve(SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id)?.config||null)
-        :selectScopeConfig(id))
+      ?Promise.resolve(configHint||SCOPE_ROUTE_INDEX.find(row=>
+        row.scope_id===id&&row.active!==false)?.config||null)
       :Promise.resolve(null),
-    id&&id!=='admin'?selectScopeBlocks(id,page):Promise.resolve([])
+    id&&id!=='admin'
+      ?(hasPublishedBlocks(id,page)?loadPublishedBlocks(id,page):selectScopeBlocks(id,page))
+      :Promise.resolve([])
   ]);
   return {
     scope_id:id,page_name:page,config,blocks,registry,page_copy:[],

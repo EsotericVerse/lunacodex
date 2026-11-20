@@ -1,5 +1,8 @@
-// Optional Pages Function numeric acceleration, not Next.js ISR.
-// Default OFF. Never cache Auth, private data, metadata, or SQL permissions.
+// OPTIONAL Pages Function numeric accelerator, not Next.js ISR.
+// Default OFF: live numeric data cannot use an expiration timer as its source
+// of truth. Published data and save-invalidated client snapshots remain
+// the normal semi-dynamic path. Existing explicit opt-in stays compatible.
+// Never cache Auth, private data, management metadata or SQL permissions.
 // The existing ZenStack/Kysely reader is ALWAYS the authoritative fallback.
 // No SQL dialect hook, database revision table, polling, or new service.
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
@@ -11,6 +14,7 @@ const CACHE_FORMAT='loc-public-numeric-v1';
 const CACHED_KINDS=new Set(['daily_total','totals','loc']);
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
+
 
 // Validate the public route BEFORE any cache hit. The Pages runtime and
 // committed published feature index remain the authority for the response.
@@ -69,13 +73,15 @@ function clientResponse(cached){
 }
 
 /**
- * Optional Cloudflare Pages Function cache for three already-public numeric
+ * Cloudflare Pages Function cache for three already-public numeric
  * projections. A hit avoids the SQL query; a miss performs the SAME query.
  *
  * Cloudflare Cache API does not support stale-while-revalidate; do not
  * advertise this as Next.js ISR. It is a bounded best-effort edge accelerator.
  */
 export async function withOptionalNumericEdgeCache(context,read){
+  // Explicit legacy opt-in only. Without cross-isolate invalidation, an
+  // automatic TTL cache would cause stale numbers and periodic SQL misses.
   if(context?.env?.LOC_NUMERIC_EDGE_CACHE!=='1')return read();
   // No waitUntil => no asynchronous fill; don't add an extra cache lookup.
   if(typeof context?.waitUntil!=='function'||typeof caches==='undefined'||

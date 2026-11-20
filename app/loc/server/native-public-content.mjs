@@ -48,6 +48,27 @@ async function readLocGroupNumeric(db,start,end,port){
   }
   return {earliest,scopes,rows};
 }
+// Aggregate requested dates and the full-history earliest in one portable
+// SQL statement. The one-row history side preserves earliest even when the
+// selected date window has no articles. The database can still use separate
+// index-friendly plans for MIN(date) and the bounded GROUP BY.
+async function groupedWithEarliest(db,table,start,end,withSite=false){
+  const fields=withSite?['date','site']:['date'];
+  const daily=db.selectFrom(table).select(fields)
+    .select(eb=>eb.fn.countAll().as('item_count'))
+    .where('statics','=',true).where('date','is not',null)
+    .where('date','>=',start).where('date','<=',end)
+    .groupBy(fields).as('daily');
+  const history=db.selectFrom(table)
+    .select(eb=>eb.fn.min('date').as('earliest'))
+    .where('statics','=',true).as('history');
+  return db.selectFrom(history)
+    .leftJoin(daily,join=>join.onTrue())
+    .select(['history.earliest','daily.date','daily.item_count',
+      ...(withSite?['daily.site']:[])])
+    .orderBy('daily.date','asc').execute();
+}
+
 // A fixed, bounded Galaxy aggregation performed where the native connection
 // already lives. Never download per-article rows to aggregate in a browser;
 // never infer Galaxy.site from a Source Anchor display label.
@@ -63,18 +84,11 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
   if(kind==='daily_total'){
     // Statistics landing is TOTAL-ONLY: no Source/Galaxy.site GROUP BY,
     // no Anchor join, no article list and no additional taxonomy SELECT.
-    const [counts,first]=await Promise.all([
-      db.selectFrom(table).select('date')
-        .select(eb=>eb.fn.countAll().as('item_count'))
-        .where('statics','=',true).where('date','>=',start)
-        .where('date','<=',end).where('date','is not',null)
-        .groupBy('date').orderBy('date','asc').execute(),
-      db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
-        .where('statics','=',true).where('date','is not',null)
-        .executeTakeFirst()
-    ]);
-    return {earliest:day(first?.earliest)||'',
-      rows:counts.map(row=>({day:day(row.date),item_count:total(row.item_count)}))};
+    const grouped=await groupedWithEarliest(db,table,start,end);
+    return {earliest:day(grouped[0]?.earliest)||'',
+      rows:grouped.filter(row=>row.date!=null).map(row=>({
+        day:day(row.date),item_count:total(row.item_count)
+      }))};
   }
   if(kind==='totals'){
     let query=db.selectFrom(table).select('site')
@@ -91,13 +105,9 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
     .where('date','>=',start).where('date','<=',end)
     .where('date','is not',null)
     .groupBy(['date','site']).orderBy('date','asc');
-  const [raw,first]=await Promise.all([
-    q.execute(),
-    kind==='overview'?db.selectFrom(table)
-      .select(eb=>eb.fn.min('date').as('earliest'))
-      .where('statics','=',true).where('date','is not',null)
-      .executeTakeFirst():Promise.resolve(null)
-  ]);
+  const withHistory=kind==='overview'
+    ?await groupedWithEarliest(db,table,start,end,true):null;
+  const raw=withHistory?withHistory.filter(row=>row.date!=null):await q.execute();
   if(isCulture)return raw.map(row=>({day:day(row.date),
     site:String(row.site||''),item_count:total(row.item_count)}));
   // One grouped SQL query supplies both the Source and Total rows. It is not
@@ -112,7 +122,7 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
     day:date,kind:'total',category:'文字作品',item_count:count
   })));
   rows.sort((a,b)=>a.day.localeCompare(b.day)||a.kind.localeCompare(b.kind));
-  return kind==='overview'?{earliest:day(first?.earliest)||'',rows,categories:[],aliases:[]}:rows;
+  return kind==='overview'?{earliest:day(withHistory[0]?.earliest)||'',rows,categories:[],aliases:[]}:rows;
 }
 
 export async function handleNativePublicContent(request,env={},{

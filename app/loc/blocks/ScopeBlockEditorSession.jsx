@@ -13,7 +13,6 @@ import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
-import {appBootstrapKey} from '../runtime/app-bootstrap';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../scope/scope-data';
 
 const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
@@ -37,11 +36,7 @@ export default function ScopeBlockEditorSession({
 
   async function updateBlockCaches(rows){
     invalidateScopeBlockPage(scopeId,pageName);
-    await Promise.all([
-      queryClient.setQueryData(appBootstrapKey(scopeId,pageName),
-        current=>current?{...current,blocks:rows}:current),
-      queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows)
-    ]);
+    await queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows);
   }
   async function refreshBlockQueries(){
     // Reordering changes another row's order; read one committed page, not two.
@@ -185,25 +180,14 @@ export default function ScopeBlockEditorSession({
         p_scope_id:scopeId,p_type:pageName,p_rows:snapshot
       });
       if(error)throw new Error(error.message||'Blocks 儲存失敗');
-      // A successful SQL write is final. Update the two client views from the
-      // committed values instead of issuing parallel post-save SELECTs.
+      // The authoritative before-snapshot and the committed new row already
+      // form the complete page; never issue a second SELECT after Save.
       let displayWarning='';
       try{
-        const key=appBootstrapKey(scopeId,pageName);
-        const existing=queryClient.getQueryData(key)||{};
-        if(!Array.isArray(existing.blocks)){
-          // A concurrent metadata invalidation may have cleared this page.
-          // Only then read once; never replace sibling blocks with one row.
-          await refreshBlockQueries();
-        }else{
-          const previous=existing.blocks.find(row=>row.uid===draft.uid)||{};
-          const committed={...previous,uid:draft.uid,...values};
-          const rows=existing.blocks.filter(row=>row.uid!==draft.uid);
-          rows.push(committed);
-          rows.sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
-          await updateBlockCaches(rows);
-        }
-      }catch{displayWarning='（顯示快取尚未更新，重新載入頁面即可）';}
+        const rows=[...snapshot].sort((a,b)=>
+          (Number(a.block_order)||0)-(Number(b.block_order)||0));
+        await updateBlockCaches(rows);
+      }catch{displayWarning='（顯示資料尚未更新，重新載入頁面即可）';}
       initialSnapshot.current=JSON.stringify(draft);
       onDone(t('uiExtra.editBlocks.saved')+displayWarning);
       return true;
@@ -225,11 +209,12 @@ export default function ScopeBlockEditorSession({
     try{
       const {dbAuthClient}=await import('../db/db-client.mjs');
       const current=await selectLiveScopeBlocks(scopeId,pageName);
+      const remaining=current.filter(row=>row.uid!==draft.uid);
       const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
-        p_scope_id:scopeId,p_type:pageName,p_rows:current.filter(row=>row.uid!==draft.uid)
+        p_scope_id:scopeId,p_type:pageName,p_rows:remaining
       });
       if(error)throw new Error(error.message||'Blocks 刪除失敗');
-      await refreshBlockQueries();
+      await updateBlockCaches(remaining);
       onDone(t('uiExtra.editBlocks.deleted'));
     }catch(error){
       setMessage(error?.message||t('uiExtra.editBlocks.deleteFailed'));

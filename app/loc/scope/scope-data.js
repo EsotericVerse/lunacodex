@@ -6,7 +6,7 @@ import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs'
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
-import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
+import {hasPublishedBlocks,loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
@@ -118,8 +118,8 @@ function normalizeRegistryRow(row){
   };
 }
 
-// silver.scope_registry is retired; the published site registry is part of
-// the static release snapshot. Public Scope config and Blocks are live reads.
+// silver.scope_registry is retired; public routing/config is release-published.
+// A public Blocks page uses its published snapshot when one exists.
 // One public site snapshot per client runtime (including concurrent mounts).
 // Registry, theme catalogue and page-copy are shared by all Scope pages.
 let publicSiteBootstrapRequest=null;
@@ -139,10 +139,9 @@ export function invalidatePublicScopeMetadata(){
 export async function revalidateServerMetadata(){return false;}
 export function selectPublicSiteBootstrap(){
   if(publicSiteBootstrapRequest)return publicSiteBootstrapRequest;
-  // Registry publication is static; Scope config and Blocks remain live reads.
-  // The static site publishes its registry and presentation metadata at build
-  // time. Editing invalidates the snapshot, while live Scope config and Blocks
-  // are queried independently by selectAppBootstrap. Never call a retired
+  // Registry, visitor Scope config and ordinary presentation are static.
+  // Explicit editing reads are separately authorized and stay live.
+  // Never call a retired
   // public-action endpoint here: the temporary public Data API cannot run it.
   publicSiteBootstrapRequest=Promise.resolve({...PUBLISHED_SITE_BOOTSTRAP,
     config:SCOPE_ROUTE_INDEX.find(row=>row.scope_id==='loc')?.config||null
@@ -171,15 +170,16 @@ export async function selectLocSearchScopes(){
   // LOC Group membership is owned by api.manage, not by front-end routes.
   const members=await selectScopeGroupMemberIds('loc','search');
   const registry=await selectScopeRegistry({scopeKind:'scope'});
-  const scopes=await Promise.all(registry
+  // This is a public chooser, not an authoring read: flags and labels were
+  // already published with the site. Never fan out one SQL read per Scope.
+  return registry
     .filter(row=>row.active&&members.has(row.scope_id))
-    .map(async row=>{
-      const config=await selectScopeConfig(row.scope_id);
+    .map(row=>{
+      const config=publishedConfig(row.scope_id);
       if(!config||!scopeFeatureEnabled(config,'search'))return null;
       const scope=defaultScopeData(row.scope_id);
       return scope?{...scope,display_name:String(config.display_name||row.display_name||row.scope_id).trim()}:null;
-    }));
-  return scopes.filter(Boolean);
+    }).filter(Boolean);
 }
 
 // Group reads use explicitly published membership on ordinary pages; keep the
@@ -217,20 +217,18 @@ export async function selectScopeRegistryEntry(scopeId){
 
 export async function selectScopeGroupChildren(scopeId='loc'){
   const rows=await selectScopeRegistry({parentScopeId:scopeId});
-  return Promise.all(rows.map(async row=>{
+  // Group presentation uses the same published snapshot as the public route.
+  // Private Scope edits still use selectScopeConfig() on explicit entry.
+  return rows.map(row=>{
     if(row.scope_kind!=='scope')return row;
-    try{
-      const config=await selectScopeConfig(row.scope_id);
-      return {
-        ...row,
-        display_name:String(config?.display_name||row.display_name||row.scope_id).trim(),
-        search_intro:String(config?.search_intro||'').trim(),
-        search_aliases:Array.isArray(config?.search_aliases)?config.search_aliases:[]
-      };
-    }catch{
-      return row;
-    }
-  }));
+    const config=publishedConfig(row.scope_id);
+    return {
+      ...row,
+      display_name:String(config?.display_name||row.display_name||row.scope_id).trim(),
+      search_intro:String(config?.search_intro||'').trim(),
+      search_aliases:Array.isArray(config?.search_aliases)?config.search_aliases:[]
+    };
+  });
 }
 
 export async function selectManagedScope(scopeId){
@@ -339,24 +337,11 @@ export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[a-z0-9_-]+$/.test(name))return [];
-  let offlineFallback=false;
-  return getOrLoadScopedRead(blockRelation(id),['page','blocks',name],async()=>{
-    const published=await loadPublishedBlocks(id,name);
-    if(name==='index'||id==='loc'){
-      try{
-        let live;
-        if(id==='loc'&&name!=='index'&&name!=='governance'){
-          live=await hero_block(name);
-        }else{
-          const all=await block_list(id);
-          live=id==='loc'?all.filter(row=>row.page_name===name):all;
-        }
-        return live.length?live:published;
-      }catch{
-        offlineFallback=true;
-        return published;
-      }
-    }
-    return published.length?published:selectLiveScopeBlocks(id,name);
-  },{cacheable:()=>!offlineFallback});
+  // Even an intentionally EMPTY published page is complete presentation
+  // data. Don't probe SQL for freshness on ordinary navigation. The editor
+  // uses selectLiveScopeBlocks() and never consumes this release snapshot.
+  if(hasPublishedBlocks(id,name))return loadPublishedBlocks(id,name);
+  // An as-yet-unpublished page retains its existing on-demand SQL fallback.
+  return getOrLoadScopedRead(blockRelation(id),['page','blocks',name],
+    ()=>selectLiveScopeBlocks(id,name));
 }

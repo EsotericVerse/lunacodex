@@ -6,7 +6,7 @@ import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
-import {releaseTransientPageResources,useQueryClient} from '../../packages/zenstack/client-queries';
+import {useQueryClient} from '../../packages/zenstack/client-queries';
 
 // UI only: a Scope's permission is checked before entering edit mode,
 // and every write still passes through its existing database authorization.
@@ -105,16 +105,6 @@ export function EditDockProvider({children,scopeId}){
     window.addEventListener('loc-editor-session-expired',expire);
     return ()=>window.removeEventListener('loc-editor-session-expired',expire);
   },[end]);
-  useEffect(()=>{
-    if(!editing||!scopeId||scopeId==='local')return undefined;
-    const activity=()=>{try{touchEditorSession(window.sessionStorage);}catch{}};
-    window.addEventListener('pointerdown',activity,{passive:true});
-    window.addEventListener('keydown',activity,{passive:true});
-    return ()=>{
-      window.removeEventListener('pointerdown',activity);
-      window.removeEventListener('keydown',activity);
-    };
-  },[editing,scopeId]);
 
   // A Cloudflare SSO account change invalidates all editor UI permissions.
   // The backend still authorizes each write using the active JWT/RLS.
@@ -252,7 +242,6 @@ export function EditDockProvider({children,scopeId}){
     if(!target)return;
     const destination=new URL(String(target),window.location.href);
     end();
-    releaseTransientPageResources();
     // Static management entrypoints use real HTML navigation.
     window.location.assign(destination.href);
   },[end]);
@@ -262,7 +251,6 @@ export function EditDockProvider({children,scopeId}){
     switchScroll.current=scroll!==false;
     releaseOperation();
     clearEditor();setNotice('');
-    releaseTransientPageResources();
     navigate(target,switchHistory.current,switchScroll.current);
   },[releaseOperation,clearEditor,navigate]);
   const switchSection=useCallback((next,commit)=>{

@@ -510,3 +510,88 @@
   [data-public-feature="statics"] .statistics-dashboard__kpis{grid-template-columns:minmax(0,1fr)}
   [data-public-feature="statics"] .statistics-dashboard__kpis>.statistics-dashboard__kpi:first-child{grid-column:auto}
 }
+
+
+/* Feature identity during an existing dynamic-page loading slot. This never
+   owns navigation timing, causes a new request, or moves the fixed shell. */
+.loc-feature-pending{
+  min-height:7.5rem;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:.3rem;
+}
+.loc-feature-pending .scope-status{margin:0;text-align:center;}
+.loc-pending-mark{
+  display:block;
+  flex:none;
+  width:88px;
+  height:42px;
+  color:var(--loc-accent);
+}
+.loc-pending-mark:is(svg){stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.loc-pending-culture path{
+  stroke-dasharray:19 12;
+  animation:loc-pending-flow 1.3s linear infinite;
+}
+.loc-pending-culture path:nth-child(2){animation-direction:reverse;opacity:.55;}
+@keyframes loc-pending-flow{to{stroke-dashoffset:-62;}}
+.loc-pending-statics{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:.55rem;
+  overflow:hidden;
+  font-size:13px;
+  font-weight:650;
+  line-height:1.2;
+  font-variant-numeric:tabular-nums;
+}
+.loc-pending-statics span{
+  display:block;
+  writing-mode:vertical-rl;
+  white-space:nowrap;
+  animation:loc-pending-fall 1.15s ease-in-out infinite;
+}
+.loc-pending-statics span:nth-child(2){animation-delay:-.4s;}
+.loc-pending-statics span:nth-child(3){animation-delay:-.8s;}
+@keyframes loc-pending-fall{
+  0%,100%{transform:translateY(-3px);opacity:.4;}
+  50%{transform:translateY(4px);opacity:1;}
+}
+.loc-pending-trace .loc-pending-map,
+.loc-pending-trace .loc-pending-map-fold{
+  transform-origin:44px 21px;
+  animation:loc-pending-unfold 1.5s ease-in-out infinite;
+}
+.loc-pending-trace .loc-pending-pin{
+  animation:loc-pending-pin 1.5s ease-in-out infinite;
+}
+@keyframes loc-pending-unfold{
+  0%,100%{transform:scaleX(.78);opacity:.6;}
+  45%,75%{transform:scaleX(1);opacity:1;}
+}
+@keyframes loc-pending-pin{
+  0%,20%,100%{opacity:.15;}
+  55%,80%{opacity:1;}
+}
+.loc-pending-search .loc-pending-lens{
+  animation:loc-pending-inspect 1.35s ease-in-out infinite;
+  transform-origin:59px 18px;
+}
+.loc-pending-search .loc-pending-bulb{
+  animation:loc-pending-idea 1.35s ease-in-out infinite;
+}
+@keyframes loc-pending-inspect{
+  0%,100%{transform:translate(-2px,1px);}
+  50%{transform:translate(2px,-1px);}
+}
+@keyframes loc-pending-idea{
+  0%,30%,100%{opacity:.35;}
+  58%,75%{opacity:1;}
+}
+@media(prefers-reduced-motion:reduce){
+  .loc-pending-mark :is(path,circle,g,span),
+  .loc-pending-statics span{animation:none!important;transform:none!important;opacity:1!important;}
+}

@@ -6,7 +6,6 @@ import {useUiSection} from '../../i18n/ui-locale';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
 import {useAccount,readVerifiedManagementEntry} from '../auth/use-account';
-import {editorSessionStatus,clearEditorSession} from '../auth/edit-session-ttl.mjs';
 
 // This control is shown only at the bottom of an individual Scope homepage.
 // No identity or management query runs until the visitor selects it.
@@ -45,12 +44,11 @@ export default function ScopeHomeEditEntry(){
         setMessage({key:'uiExtra.editBlocks.editPermissionDenied'});
         return;
       }
-      // Never reset an active browser Session when entering another editor.
-      // A verified expired entry can start a new LOC edit Session instead.
-      if(editorSessionStatus(window.sessionStorage).expired)
-        clearEditorSession(window.sessionStorage);
-      // The route owns Scope ID. Entering edit mode only toggles the Dock;
-      // nothing is copied to sessionStorage or saved for later restoration.
+      // Reverification already refreshes an expired management Session.
+      // Do not erase the verified role snapshot after its successful lookup.
+      // The route owns the current Scope ID; entering edit mode toggles the
+      // existing Dock. Only the verified account UI projection is retained
+      // by the existing editor Session for full-document navigation.
       if(!editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canLocAccessSync('global'))}))
         throw new Error('目前頁面的 Scope ID 不一致，無法啟動編輯。');
     }catch(error){

@@ -12,6 +12,7 @@ import {timePeriodContainsDate} from '../culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../culture/anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from '../db/db-query.mjs';
 import {dbAuthClient,readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
+import {cachedRead} from '../db/semi-dynamic-cache.mjs';
 import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import {portableContainsTerm} from '../providers/portable-search.mjs';
@@ -85,29 +86,18 @@ function dailyRowsFromCounts(counts){
   }).sort((a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category));
 }
 
-// A Statistics/Culture page view commonly renders more than one chart for the
-// same Scope + date range in one render pass. Coalesce the concurrent identical
-// Kysely aggregate requests into one instead of duplicating SQL — but keep NO
-// cache: the entry is released the moment the request settles, so a later read
-// always hits the database fresh. LOC holds no client-side data cache.
-function dedupeInflight(pending,key,factory){
-  const existing=pending.get(key);
-  if(existing)return existing;
-  const promise=factory();
-  pending.set(key,promise);
-  const release=()=>{if(pending.get(key)===promise)pending.delete(key);};
-  promise.then(release,release);
-  return promise;
-}
-const scopeStatisticsInflight=new Map();
-const scopeCategoryTotalsInflight=new Map();
+// Culture and Statistics share identical bounded SQL aggregates. Retain one
+// successful snapshot per Scope and filter, instead of repeating COUNT/GROUP BY
+// whenever a chart or route mounts. The existing public semi-dynamic cache
+// invalidates on successful managed writes/imports; failures are not cached.
+// No TTL, polling, extra SQL, indexed table or new cache implementation.
 function cachedReadScopeStatistics(id,args){
-  const key=String(id)+'|'+JSON.stringify(args);
-  return dedupeInflight(scopeStatisticsInflight,key,()=>readScopeStatistics(id,args));
+  return cachedRead('scope-aggregate:'+id+':statistics:'+JSON.stringify(args),
+    ()=>readScopeStatistics(id,args));
 }
 function cachedReadScopeCategoryTotals(id,args){
-  const key=String(id)+'|'+JSON.stringify(args);
-  return dedupeInflight(scopeCategoryTotalsInflight,key,()=>readScopeCategoryTotals(id,args));
+  return cachedRead('scope-aggregate:'+id+':categories:'+JSON.stringify(args),
+    ()=>readScopeCategoryTotals(id,args));
 }
 
 // Native Kysely aggregation only. No RPC-existence probe or article-level
@@ -705,13 +695,11 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
     {column:'invisible',operator:'eq',value:false}];
   const orders=[{column:'type',ascending:true},{column:'uid',ascending:true}];
   const aggregates=new Map();
-  let offset=0,total=null,source='auto';
-  while(total===null||offset<total){
+  let offset=0,source='auto';
+  while(true){
     const page=await selectRows(current.anchor,{
-      columns:MEDIA_ANCHOR_COLUMNS,filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,
-      count:offset===0?'exact':null,source
+      columns:MEDIA_ANCHOR_COLUMNS,filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,source
     });
-    if(offset===0)total=Number.isFinite(Number(page.count))?Number(page.count):page.rows.length;
     source=page.dataSource||source;
     for(const row of StatisticsFacets.base.mediaFacetDaily(page.rows.map(mediaAnchorProjection),dimension)){
       const key=row.day+'\u0000'+row.category.normalize('NFKC').toLocaleLowerCase();
@@ -719,8 +707,8 @@ async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',e
       if(existing)existing.item_count+=row.item_count;
       else aggregates.set(key,{...row});
     }
-    if(!page.rows.length)break;
     offset+=page.rows.length;
+    if(page.rows.length<DB_QUERY_BATCH_SIZE)break;
   }
   return [...aggregates.values()].sort((a,b)=>
     a.day.localeCompare(b.day)||a.category.localeCompare(b.category)
@@ -736,18 +724,16 @@ export async function selectMediaCrossTagRows(scope,{startDate='',endDate=''}={}
     {column:'invisible',operator:'eq',value:false}];
   const orders=[{column:'type',ascending:true},{column:'uid',ascending:true}];
   const rows=[];
-  let offset=0,total=null,source='auto';
-  while(total===null||offset<total){
+  let offset=0,source='auto';
+  while(true){
     const page=await selectRows(current.anchor,{
       columns:MEDIA_ANCHOR_COLUMNS,
-      filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,
-      count:offset===0?'exact':null,source
+      filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,source
     });
-    if(offset===0)total=Number.isFinite(Number(page.count))?Number(page.count):page.rows.length;
     source=page.dataSource||source;
     rows.push(...page.rows.map(mediaAnchorProjection));
-    if(!page.rows.length)break;
     offset+=page.rows.length;
+    if(page.rows.length<DB_QUERY_BATCH_SIZE)break;
   }
   return rows;
 }

@@ -4,12 +4,11 @@ import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
-import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../auth/edit-session-ttl.mjs';
+import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
-import {releaseTransientPageResources} from '../../../packages/zenstack/client-queries';
 // Group member display-name editing lives in the Group People/Works page.
 // Admin keeps only privileged registry provisioning and system configuration.
 
@@ -30,9 +29,9 @@ export default function AdminHomeView({scopeGroup}){
   const UI_COPY=useUiCopy();
   const account=useAccount();
   const editDock=useEditDock();
-  // /admin/ has its own global-permission gate instead of ManagementAccess.
-  // Run the same old-page disposal before loading any admin editor.
-  useEffect(()=>{releaseTransientPageResources();},[]);
+  // /admin/ uses its own global-permission gate. The route boundary already
+  // releases the previous page's transient readers; this view does not
+  // purge the newly mounted frame a second time.
   const [entryVerified,setEntryVerified]=useState(false);
   const [loginDenied,setLoginDenied]=useState(false);
   const [retrying,setRetrying]=useState(false);
@@ -81,8 +80,9 @@ export default function AdminHomeView({scopeGroup}){
         setLoginDenied(true);setEntryVerified(false);
         return;
       }
-      clearEditorSession(window.sessionStorage);
-      if(!touchEditorSession(window.sessionStorage))
+      // Refresh has already persisted the verified UI snapshot and renewed
+      // an expired editor Session; do not erase it after a successful read.
+      if(editorSessionStatus(window.sessionStorage).expired)
         throw Error('無法重新啟用編輯 Session');
       setLoginDenied(false);
       setEntryVerified(true);
@@ -93,34 +93,33 @@ export default function AdminHomeView({scopeGroup}){
   };
   const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
 
-  if(account.loading||account.permissionLoading)return <section className="loc-view"><div className="loc-card">{UI_COPY.admin.checking}</div></section>;
-  if(loginDenied||!canManage)return <FeaturePage featureId="admin">
-    <section className="loc-card scope-feature-card">
-      <p role="alert">{signInError||account.error||(account.user
-        ?'目前沒有有效的編輯 Session，或此帳號沒有全域管理權限。'
-        :'目前沒有有效的 LOC Session，系統管理未啟用。')}</p>
-      {!account.user?<button type="button" onClick={()=>void beginAdminSignIn()} disabled={signingIn}>
-        {signingIn?'正在前往 LOC SSO…':'使用 Cloudflare SSO 登入管理員'}
-      </button>:null}
-      <button type="button" onClick={()=>void retrySession()} disabled={retrying}>
-        {retrying?'正在確認 Session…':'重新確認 Session'}
-      </button>
-    </section>
-  </FeaturePage>;
-  if(!canManage||!entryVerified)return <FeaturePage featureId="admin">
-    <section className="loc-card scope-feature-card"><p role="status">正在開啟 LOC 身分驗證…</p></section>
-  </FeaturePage>;
-
+  // Admin controls render their fixed frame before privilege verification.
+  const authPending=account.loading||account.permissionLoading;
   return <FeaturePage featureId="admin">
     <ManagementWorkspaceFrame level="admin" title="系統管理">
       <ManagementSectionNav id="admin-sections" title="系統管理" panelId="admin-management-panel"
         items={ADMIN_OPTIONS} value={section} onChange={switchSection} mobileSelect/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
         aria-labelledby={'admin-sections-option-'+selectedOption.value}>
-        {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
-        {section==='io'?<RuntimeIoSettings/>:null}
-        {section==='featureHero'?<FeatureHeroImages/>:null}
-        {section==='themes'?<ThemeEditor/>:null}
+        {authPending?<p className="scope-status" role="status">{UI_COPY.admin?.checking||'正在確認管理權限…'}</p>
+          :loginDenied||!canManage?<section className="loc-card scope-feature-card">
+            <p role="alert">{signInError||account.error||(account.user
+              ?'目前沒有有效的編輯 Session，或此帳號沒有全域管理權限。'
+              :'目前沒有有效的 LOC Session，系統管理未啟用。')}</p>
+            {!account.user?<button type="button" onClick={()=>void beginAdminSignIn()} disabled={signingIn}>
+              {signingIn?'正在前往 LOC SSO…':'使用 Cloudflare SSO 登入管理員'}
+            </button>:null}
+            <button type="button" onClick={()=>void retrySession()} disabled={retrying}>
+              {retrying?'正在確認 Session…':'重新確認 Session'}
+            </button>
+          </section>
+          :!entryVerified?<p className="scope-status" role="status">正在開啟管理操作…</p>
+          :<>
+            {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
+            {section==='io'?<RuntimeIoSettings/>:null}
+            {section==='featureHero'?<FeatureHeroImages/>:null}
+            {section==='themes'?<ThemeEditor/>:null}
+          </>}
 
       </div>
     </ManagementWorkspaceFrame>
