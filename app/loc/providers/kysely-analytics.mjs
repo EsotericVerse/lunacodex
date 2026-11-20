@@ -44,26 +44,38 @@ function relation(scope,suffix){return sql.ref('silver.'+scope+'_'+suffix);}
 async function owns(trx,scope,role){
   return role==='authenticated'&&await canLocAccess(trx,'scope',scope);
 }
-async function dailyStats(trx,scope,start,end,includeUndated=false){
+async function dailyStats(trx,scope,start,end,includeUndated=false,
+  {withEarliest=false,totalsOnly=false}={}){
   const galaxy=relation(scope,'galaxy');
-  const rows=await sql`with s as (
-    select coalesce(date::text,'') as d,btrim(coalesce(site,'')) as c
+  // LOC landing needs only daily totals; do not group by Galaxy.site.
+  const grouped=sql`with s as (
+    select coalesce(date::text,'') as d,
+      ${totalsOnly?sql`null::text`:sql`btrim(coalesce(site,''))`} as c
     from ${galaxy}
     where statics is true
       and (${includeUndated} or date is not null)
       and (${start}::date is null or date>=${start}::date)
       and (${end}::date is null or date<=${end}::date)
   )
-  -- One aggregation pass returns both source lanes and per-day totals.
-  -- GROUPING(s.c) distinguishes the total row from an empty source name.
   select s.d as day,
-    case when grouping(s.c)=1 then 'total'::text else 'source'::text end as kind,
-    case when grouping(s.c)=1 then '文字作品'::text else s.c end as category,
+    ${totalsOnly?sql`'total'::text`:sql`case when grouping(s.c)=1 then 'total'::text else 'source'::text end`} as kind,
+    ${totalsOnly?sql`'文字作品'::text`:sql`case when grouping(s.c)=1 then '文字作品'::text else s.c end`} as category,
     count(*)::integer as item_count
   from s
-  group by grouping sets ((s.d,s.c),(s.d))
-  order by 1,2,3`.execute(trx);
-  return rows.rows;
+  ${totalsOnly?sql`group by s.d`:sql`group by grouping sets ((s.d,s.c),(s.d))`}`;
+  if(!withEarliest){
+    const result=await sql`${grouped} order by 1,2,3`.execute(trx);
+    return result.rows;
+  }
+  // The date filter applies only to daily buckets, never to historical MIN.
+  // The single history row also survives when the interval has no buckets.
+  const result=await sql`with daily as (${grouped}),
+    history as (select min(date) as earliest from ${galaxy} where statics is true)
+    select history.earliest,daily.day,daily.kind,daily.category,daily.item_count
+    from history left join daily on true
+    order by daily.day,daily.kind,daily.category`.execute(trx);
+  return {earliest:result.rows[0]?.earliest??null,
+    rows:result.rows.filter(row=>row.kind!==null).map(({earliest,...row})=>row)};
 }
 async function earliest(trx,scope){
   const galaxy=relation(scope,'galaxy');
@@ -82,9 +94,8 @@ async function sourceTotals(trx,scope,start,end){
   return response.rows;
 }
 async function scopeOverview(trx,scope,start,end){
-  const [rows,first,sourceAnchors]=await Promise.all([
-    dailyStats(trx,scope,start,end),
-    earliest(trx,scope),
+  const [summary,sourceAnchors]=await Promise.all([
+    dailyStats(trx,scope,start,end,false,{withEarliest:true}),
     trx.selectFrom('silver.loc_anchor')
       .select(['uid','type','title','invisible','attr'])
       .where('type','in',ANCHOR_TYPE_GROUPS.source)
@@ -93,7 +104,7 @@ async function scopeOverview(trx,scope,start,end){
   // Statistics and Culture use the same UID-linked SiteAnchor hierarchy.
   // ArticleTag must not be reinterpreted as a second source taxonomy.
   const {categories,aliases}=sourceTaxonomyFromAnchors(sourceAnchors);
-  return {earliest:first,rows,categories,aliases};
+  return {earliest:summary.earliest,rows:summary.rows,categories,aliases};
 }
 async function searchSummary(trx,options,{publishedScopeIds=null}={}){
   const scopes=options.scopeIds;
@@ -483,10 +494,11 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
       const relation=await sql`select to_regclass(${'silver.'+group.id+'_'+galaxy}) is not null as galaxy_exists`.execute(trx);
       if(!relation.rows[0]?.galaxy_exists)continue;
       scopes.push({scope_id:group.id,display_name:group.display_name});
-      const day=await dailyStats(trx,group.id,start,end);
-      rows.push(...day.filter(r=>r.kind==='total').map(r=>({scope_id:group.id,
+      const summary=await dailyStats(trx,group.id,start,end,false,
+        {withEarliest:true,totalsOnly:true});
+      rows.push(...summary.rows.map(r=>({scope_id:group.id,
         day:r.day,item_count:r.item_count})));
-      const early=await earliest(trx,group.id);
+      const early=summary.earliest;
       if(early&&(!first||String(early)<String(first)))first=early;
     }
     return {data:{earliest:first,scopes,rows},count:null};
