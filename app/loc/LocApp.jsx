@@ -242,7 +242,9 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
             description={t('uiExtra.feature.groupGuide')}
           />
         </FeaturePage>:managementRoute?<ManagementAccess key={scopeId+':'+forcedView+':'+runtime.pathname}
-          scopeId={scopeId} level={managementLevel} featureId={managementFeature}>{managementPage}</ManagementAccess>:managementPage}
+          scopeId={scopeId} level={managementLevel} featureId={managementFeature}
+          staticFrame={['manage','searchManage','sourceManage','keywordManage'].includes(forcedView)}
+        >{managementPage}</ManagementAccess>:managementPage}
       </FeatureGate>
     </Suspense>
   </div>;
