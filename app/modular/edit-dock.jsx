@@ -105,16 +105,6 @@ export function EditDockProvider({children,scopeId}){
     window.addEventListener('loc-editor-session-expired',expire);
     return ()=>window.removeEventListener('loc-editor-session-expired',expire);
   },[end]);
-  useEffect(()=>{
-    if(!editing||!scopeId||scopeId==='local')return undefined;
-    const activity=()=>{try{touchEditorSession(window.sessionStorage);}catch{}};
-    window.addEventListener('pointerdown',activity,{passive:true});
-    window.addEventListener('keydown',activity,{passive:true});
-    return ()=>{
-      window.removeEventListener('pointerdown',activity);
-      window.removeEventListener('keydown',activity);
-    };
-  },[editing,scopeId]);
 
   // A Cloudflare SSO account change invalidates all editor UI permissions.
   // The backend still authorizes each write using the active JWT/RLS.
