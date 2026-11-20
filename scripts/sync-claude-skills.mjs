@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// LOC keeps 13 curated skills only in .agents/skills.
+// LOC keeps 15 curated skills only in .agents/skills.
 // .claude/skills contains per-skill directory links, not copied skill contents.
 // Narrow, version-pinned HTTP references remain in .agents/SKILL-LINKS.md.
 // Runs on npm prepare, NOT on each Agent request. Never installs more skills.
@@ -13,7 +13,7 @@ const source = join(root, '.agents', 'skills');
 const dest = join(root, '.claude', 'skills');
 const curated = new Set([
   'auth', 'deployment', 'mcp-builder', 'media', 'security-audit', 'skill-creator',
-  'sql', 'superpowers', 'ui-ux-pro-max', 'impeccable', 'visualization', 'web', 'writing-guidelines',
+  'sql', 'superpowers', 'ui-ux-pro-max', 'impeccable', 'visualization', 'web', 'writing-guidelines', 'zh-tw-writing', 'caveman',
 ]);
 
 function stat(path) {
