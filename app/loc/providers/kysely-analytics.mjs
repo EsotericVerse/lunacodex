@@ -113,21 +113,27 @@ async function searchSummary(trx,options,{publishedScopeIds=null}={}){
     reject('Invalid Scope Search summary request');
   const requested=[...new Set(scopes)].sort();
   if(!requested.length)return {rows:[]};
-  // One Kysely membership read, rather than one SQL round trip per Scope.
-  // Keep per-Scope configuration queries bounded and sequential.
-  // The published Scope index is already verified by the public HTTP boundary.
-  // Do not introduce an api.manage GRANT dependency to anonymous Search.
+  // The published Scope index is already verified at the public boundary.
+  // Keep its membership contract and never require api.manage for anonymous
+  // Search. PG-only UNION ALL batches independent Scope configuration tables,
+  // avoiding one SQL round trip per Scope without merging their permissions.
   const allowed=publishedScopeIds===null
     ?new Set((await trx.selectFrom('api.manage').select('id')
       .where('id','in',requested).where('manage_role','=','scope')
       .where('active','=',true).execute()).map(row=>row.id))
     :new Set(publishedScopeIds);
+  const scopeIds=requested.filter(scope=>allowed.has(scope));
+  const statusByScope=new Map();
+  for(let i=0;i<scopeIds.length;i+=20){
+    const selected=scopeIds.slice(i,i+20);
+    const queries=selected.map(scope=>sql`select ${scope}::text as scope_id,status
+      from ${sql.ref('silver.'+scope)} where id=${scope}`);
+    const response=await sql`${sql.join(queries,sql` union all `)}`.execute(trx);
+    for(const row of response.rows)statusByScope.set(row.scope_id,row.status);
+  }
   const result=[];
-  for(const scope of requested){
-    if(!allowed.has(scope))continue;
-    const config=await trx.selectFrom('silver.'+scope)
-      .select('status').where('id','=',scope).executeTakeFirst();
-    const item=config?.status?.search;
+  for(const scope of scopeIds){
+    const item=statusByScope.get(scope)?.search;
     if(item&&typeof item==='object'&&!Array.isArray(item)){
       result.push({scope_id:scope,article_count:item.article_count??null,
         word_count:item.word_count??null,first_date:item.first_date??null,
