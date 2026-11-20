@@ -104,29 +104,6 @@ const VIEWS={
   setting:LocalSettingView
 };
 const HOME_VIEWS={loc:AboutView,lrunes:RunesHomeView,lo3rwang:AuthorHomeView,admin:AdminHomeView};
-// Same modules as the dynamic() declarations above, so the bundler reuses the same
-// chunks. Only the view that is about to render is requested, and it is requested
-// immediately, in parallel with the registry and FeatureGate config queries,
-// instead of after they finish.
-const VIEW_PRELOADERS={
-  admin:()=>import('./views/AdminHomeView'),
-  statics:()=>import('../modular/features/Statistics'),
-  keywords:()=>import('../modular/features/KeywordSettings'),
-  culture:()=>import('../modular/features/Culture'),
-  search:()=>import('../modular/features/Search'),
-  searchManage:()=>import('./search/SearchManagement'),
-  trace:()=>import('../modular/features/Trace'),
-  manage:()=>import('./scope/ScopeManagement'),
-  sourceManage:()=>import('./source/LocSourceManagement'),
-  keywordManage:()=>import('./keywords/ui/LocKeywordManagementPage'),
-  setting:()=>import('./views/LocalSettingView')
-};
-const HOME_PRELOADERS={
-  loc:()=>import('./views/AboutView'),
-  lrunes:()=>import('./views/LrsPortalView'),
-  lo3rwang:()=>import('./views/AuthorHomeView'),
-  admin:()=>import('./views/AdminHomeView')
-};
 const FEATURE_FLAGS=Object.freeze({
   statics:'statistics_able',
   keywords:'statistics_able',
@@ -175,20 +152,6 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   // an overview/guide only: never query another Scope's Galaxy or Time here.
   const groupOverviewView=Boolean(scopeMeta?.aggregateChildren&&scopeId!=='loc'&&
     ['statics','culture'].includes(forcedView));
-
-  useEffect(()=>{
-    if(scopeMeta?.nativeOnly&&!nativeOnlyReady)return;
-    if(scopeId==='local'&&forcedView!=='setting'){
-      import('./local/Workspace').catch(()=>{});
-      return;
-    }
-    const preload=publicCulture?()=>import('./views/CulturePublicReader'):
-      forcedView==='home'
-        ?HOME_PRELOADERS[scopeId]||(()=>import('./views/GenericScopeHomeView'))
-        :VIEW_PRELOADERS[forcedView]||HOME_PRELOADERS.loc;
-    preload().catch(()=>{});
-    if(groupOverviewView)import('./scope/ScopeGroupOverview').catch(()=>{});
-  },[forcedView,scopeId,groupOverviewView,scopeMeta?.nativeOnly,nativeOnlyReady,publicCulture]);
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){
     return <main className="scope-main"><section className="scope-page">
