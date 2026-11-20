@@ -3,7 +3,7 @@ import {createContext,useCallback,useContext,useEffect,useState} from 'react';
 import {useAccount,readVerifiedManagementEntry} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
-import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../auth/edit-session-ttl.mjs';
+import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {dbAuthEvents} from '../db/db-client.mjs';
 import {verifyManagementEntry} from '../auth/management-entry-verification.mjs';
 
@@ -12,6 +12,10 @@ const granted=(grants,id,level)=>level==='global'
   :level==='group'?Boolean(grants?.canLocAccessSync('group',id))
   :Boolean(grants?.canLocAccessSync('scope',id));
 const pending=()=>({loading:true,user:null,authorizer:null,error:''});
+const verifiedUiState=entry=>({
+  loading:false,user:entry?.user||null,
+  authorizer:entry?.authorizer||null,error:''
+});
 const ManagementEntryContext=createContext(null);
 
 // The published management frame renders even while permission is pending.
@@ -45,7 +49,10 @@ export function useVerifiedManagementGrants(){
 // editing controls. An OAuth session alone never grants LOC Scope access.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',staticFrame=false,children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
-  const [verification,setVerification]=useState(pending);
+  const [verification,setVerification]=useState(()=>{
+    const saved=readVerifiedManagementEntry();
+    return saved?verifiedUiState(saved):pending();
+  });
   const [locked,setLocked]=useState(false);
   const [retryAttempt,setRetryAttempt]=useState(0);
   const check=useCallback(()=>editorSessionStatus(window.sessionStorage).expired
@@ -54,17 +61,18 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
 
   useEffect(()=>{
     let active=true;
-    // Only entry or an explicit retry verifies the editing Session.
+    // A verified, unexpired UI snapshot avoids a needless permission request
+    // during ordinary navigation. Explicit Retry always verifies on server.
+    const saved=retryAttempt===0?readVerifiedManagementEntry():null;
+    if(saved){
+      setVerification(current=>current.user?.id===saved.user?.id&&
+        current.authorizer===saved.authorizer?current:verifiedUiState(saved));
+      return()=>{active=false;};
+    }
     setVerification(pending());
     void verifyManagementEntry(retryAttempt>0?account.refresh:check).then(result=>{
       if(!active)return;
-      if(retryAttempt>0&&result?.user&&granted(result.authorizer,scopeId,level)){
-        clearEditorSession(window.sessionStorage);
-        if(!touchEditorSession(window.sessionStorage))
-          throw Error('無法重新啟用編輯 Session');
-      }
-      setVerification({loading:false,user:result?.user||null,
-        authorizer:result?.authorizer||null,error:''});
+      setVerification(verifiedUiState(result));
     }).catch(cause=>{
       if(!active)return;
       setVerification({loading:false,user:null,authorizer:null,
