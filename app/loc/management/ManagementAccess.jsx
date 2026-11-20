@@ -49,10 +49,9 @@ export function useVerifiedManagementGrants(){
 // editing controls. An OAuth session alone never grants LOC Scope access.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',staticFrame=false,children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
-  const [verification,setVerification]=useState(()=>{
-    const saved=readVerifiedManagementEntry();
-    return saved?verifiedUiState(saved):pending();
-  });
+  // SSR and initial hydration must render the same fixed, unprivileged frame.
+  // The effect below can restore a valid browser Session after hydration.
+  const [verification,setVerification]=useState(pending);
   const [locked,setLocked]=useState(false);
   const [retryAttempt,setRetryAttempt]=useState(0);
   const check=useCallback(()=>editorSessionStatus(window.sessionStorage).expired
