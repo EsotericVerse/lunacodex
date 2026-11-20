@@ -554,6 +554,24 @@ function portableStatBase(db,table,start,end,flag='statics',includeUndated=false
   if(end)query=query.where('date','<=',end);
   return query;
 }
+// Portable SQL: return grouped counts and absolute earliest in a single
+// statement. The history row stays present for empty filtered periods.
+async function portableStatsWithEarliest(db,table,start,end,fields,includeUndated=false){
+  let counts=portableStatBase(db,table,start,end,'statics',includeUndated);
+  for(const field of fields){
+    if(field==='date'&&includeUndated)continue;
+    counts=counts.where(field,'is not',null);
+  }
+  const daily=counts.select(fields)
+    .select(eb=>eb.fn.countAll().as('n')).groupBy(fields).as('daily');
+  const history=db.selectFrom(table)
+    .select(eb=>eb.fn.min('date').as('earliest'))
+    .where('statics','=',true).as('history');
+  return db.selectFrom(history).leftJoin(daily,join=>join.onTrue())
+    .select(['history.earliest','daily.date','daily.n',
+      ...(fields.includes('site')?['daily.site']:[])])
+    .orderBy('daily.date','asc').execute();
+}
 // Common LOC statistics, implemented with dialect-native Kysely builders.
 export async function executePortableKyselyAnalytics(db,body,{engine,namespace='',role='anon'}={}){
   const args=body?.args??body;
@@ -609,17 +627,11 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     const scopes=[],rows=[];let earliest=null;
     for(const id of ids){
       const relation=portableRelation(id+'_galaxy',engine,namespace);
-      let q=portableStatBase(db,relation,start,end,'statics');
-      q=q.select('date').select(eb=>eb.fn.countAll().as('n'))
-        .groupBy('date').orderBy('date','asc');
-      const counts=await q.execute();
-      // The requested window limits displayed counts, not the Scope's
-      // absolute earliest qualifying date (same contract as PostgreSQL).
-      const oldest=await db.selectFrom(relation)
-        .select(eb=>eb.fn.min('date').as('day'))
-        .where('statics','=',true)
-        .executeTakeFirst();
-      const firstDay=portableDay(oldest?.day);
+      // No Source grouping for the LOC landing; one SQL also returns
+      // the full-history earliest, regardless of the selected window.
+      const counted=await portableStatsWithEarliest(db,relation,start,end,['date']);
+      const counts=counted.filter(row=>row.n!=null);
+      const firstDay=portableDay(counted[0]?.earliest);
       if(firstDay&&(!earliest||firstDay<earliest))earliest=firstDay;
       scopes.push({scope_id:id,display_name:id});
       for(const row of counts){
@@ -694,8 +706,12 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   let data;
   if(mode==='earliest')data=await first();
   else if(mode==='daily'||mode==='overview'||mode==='loc'){
-    const rows=await grouped('statics',['date','site'],
-      {includeUndated:options.includeUndated===true});
+    const withHistory=mode==='overview'||mode==='loc'
+      ?await portableStatsWithEarliest(db,galaxy,start,end,['date','site'],
+        options.includeUndated===true):null;
+    const rows=withHistory?withHistory.filter(row=>row.n!=null)
+      :await grouped('statics',['date','site'],
+        {includeUndated:options.includeUndated===true});
     const source=rows.map(row=>({day:portableDay(row.date),kind:'source',
       category:String(row.site||'').trim(),item_count:Number(row.n)}));
     const totals=new Map();
@@ -707,8 +723,9 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     else if(mode==='overview'){
       // Overview only summarizes visible Galaxy source/date rows.
       // Retired multimedia counts must not touch Anchor or media_link.
-      data={earliest:await first(),rows:summary,categories:[],aliases:[]};
-    }else data={earliest:await first(),scopes:[{
+      data={earliest:withHistory[0]?.earliest??null,
+        rows:summary,categories:[],aliases:[]};
+    }else data={earliest:withHistory[0]?.earliest??null,scopes:[{
       scope_id:scope,display_name:scope
     }],rows:summary.filter(x=>x.kind==='total').map(x=>({
       scope_id:scope,day:x.day,item_count:x.item_count
