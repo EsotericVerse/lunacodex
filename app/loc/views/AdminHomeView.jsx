@@ -4,7 +4,7 @@ import {useEffect,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
-import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../auth/edit-session-ttl.mjs';
+import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
@@ -80,8 +80,9 @@ export default function AdminHomeView({scopeGroup}){
         setLoginDenied(true);setEntryVerified(false);
         return;
       }
-      clearEditorSession(window.sessionStorage);
-      if(!touchEditorSession(window.sessionStorage))
+      // Refresh has already persisted the verified UI snapshot and renewed
+      // an expired editor Session; do not erase it after a successful read.
+      if(editorSessionStatus(window.sessionStorage).expired)
         throw Error('無法重新啟用編輯 Session');
       setLoginDenied(false);
       setEntryVerified(true);
