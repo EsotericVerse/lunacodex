@@ -329,14 +329,22 @@ export async function handleNativePublicQuery(request,env={},{
     query=normalized.columns[0]==='*'?query.selectAll():query.select(normalized.columns);
     for(const order of normalized.orders)
       query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
-    // Count=exact is the filtered relation count, NOT the current page size.
-    // Preserve the existing query-builder contract across all SQL dialects.
-    const fullCount=normalized.count==='exact'
-      ?Number((await withFilters(selected.db.selectFrom(table),normalized)
-        .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst())?.count||0)
-      :null;
     const rawRows=await (normalized.limit===null?query:query.limit(normalized.limit))
       .offset(normalized.offset).execute();
+    // The last, nonempty page proves the exact count without another SQL.
+    // Empty pages after a nonzero OFFSET do not: retain the filtered COUNT.
+    // Avoid a blanket COUNT(*) OVER() on indexed, bounded article lists;
+    // forcing the database to visit all matching rows can cost more than
+    // a separate index-only COUNT plus the small LIMIT query.
+    let fullCount=null;
+    if(normalized.count==='exact'){
+      const exhausted=normalized.limit===null||
+        normalized.limit>0&&rawRows.length<normalized.limit;
+      fullCount=exhausted&&(normalized.offset===0||rawRows.length>0)
+        ?normalized.offset+rawRows.length
+        :Number((await withFilters(selected.db.selectFrom(table),normalized)
+          .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst())?.count||0);
+    }
     const rows=normalizeModeledSelectRows({
       schema:'silver',table:normalized.table,rows:rawRows
     });
