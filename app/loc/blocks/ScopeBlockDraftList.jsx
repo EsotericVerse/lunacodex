@@ -11,7 +11,6 @@ import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
-import {appBootstrapKey} from '../runtime/app-bootstrap';
 import {invalidateScopeBlockPage} from '../scope/scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
 
@@ -58,11 +57,7 @@ export default function ScopeBlockDraftList({
     // saved values: do not start two independent SELECTs on every Dock Save.
     // Future visits to this edited page read the live provider, not published JS.
     invalidateScopeBlockPage(scopeId,pageName);
-    await Promise.all([
-      queryClient.setQueryData(appBootstrapKey(scopeId,pageName),
-        current=>current?{...current,blocks:rows}:current),
-      queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows)
-    ]);
+    await queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows);
   }
 
   function patchDraft(uid,patch){
