@@ -89,6 +89,10 @@ async function fetchManagementAccount(queryClient){
     // Preserve the verified identity for retry but deny editor access.
     clearAuthorization();
     invalidateAccountPrivateReads();
+    // An explicit verification failure invalidates the stored UI projection,
+    // including transient 502/503. Do not rehydrate stale grants on the next
+    // page after the live authorization endpoint has failed.
+    if(typeof window!=='undefined')clearEditorSession(window.sessionStorage);
     scopeMetadata=[];
     authUserId='';
     authEmail='';
