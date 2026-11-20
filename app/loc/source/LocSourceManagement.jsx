@@ -5,8 +5,9 @@ import LocManagementWorkspace from '../management/LocManagementWorkspace';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import {useEditDock} from '../../modular/edit-dock';
-import {useAccount} from '../auth/use-account';
+import {useVerifiedManagementGrants} from '../management/ManagementAccess';
 import PanelLoading from '../ui/PanelLoading';
+import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
 // Group managers edit work classifications and member names here.
 // Global Admin reuses its existing vis-network personnel editor here.
@@ -23,10 +24,12 @@ const SOURCE_OPTION=Object.freeze({value:'sources',label:'文章來源',shortLab
 const ITEM=Object.freeze({value:'members',label:'人員作品管理'});
 
 export default function LocSourceManagement(){
-  const account=useAccount();
-  const isSystemAdmin=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canLocAccessSync('global'));
-  const sections=isSystemAdmin?[SYSTEM_PERSONNEL_OPTION,...OPTIONS,SOURCE_OPTION]:OPTIONS;
-  const [section,setSection]=useManagementSection(sections,isSystemAdmin?'systemPersonnel':'members');
+  const account=useVerifiedManagementGrants();
+  const isSystemAdmin=account.canLocAccessSync('global');
+  // The three published section labels are static. Permissions decide
+  // whether privileged editors mount, not whether the menu exists.
+  const sections=[SYSTEM_PERSONNEL_OPTION,...OPTIONS,SOURCE_OPTION];
+  const [section,setSection]=useManagementSection(sections,'members');
   const editDock=useEditDock();
   const selected=sections.find(option=>option.value===section)||OPTIONS[0];
   return <LocManagementWorkspace featureId="culture" navId="loc-source-sections" item={ITEM} standalone>
@@ -39,9 +42,13 @@ export default function LocSourceManagement(){
         }}/>
       <div id="loc-source-panel" className="management-workspace-panel" role="region"
         aria-labelledby={'loc-source-sections-option-'+selected.value}>
-        {section==='members'?<LocGroupMemberList groupId="loc"/>:null}
-        {section==='systemPersonnel'&&isSystemAdmin?<AdminRegistry/>:null}
-        {section==='sources'&&isSystemAdmin?<AdminSourceCategories/>:null}
+        <ProtectedManagementSlot>
+          {section==='members'?<LocGroupMemberList groupId="loc"/>:null}
+          {section==='systemPersonnel'&&isSystemAdmin?<AdminRegistry/>:null}
+          {section==='sources'&&isSystemAdmin?<AdminSourceCategories/>:null}
+          {['systemPersonnel','sources'].includes(section)&&!isSystemAdmin
+            ?<p className="scope-status">這項功能需要系統管理權限。</p>:null}
+        </ProtectedManagementSlot>
       </div>
     </ManagementWorkspaceFrame>
   </LocManagementWorkspace>;
