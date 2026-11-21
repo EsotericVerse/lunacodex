@@ -2,7 +2,7 @@
 import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {insertRows,updateRows,deleteRows,dbAuthClient} from '../db/db-client.mjs';
+import {transactionWrites,dbAuthClient} from '../db/db-client.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -96,29 +96,25 @@ export function AdminSourceCategories(){
     setBusy(true);setError('');setNotice('');
     try{
       const exists=byUid.has(draft.uid);
+      const operations=[];
       if(exists){
-        await updateRows(TABLE,{title,description:draft.description||null},{filters:[
-          {column:'uid',operator:'eq',value:draft.uid}]});
+        operations.push({p_table:TABLE,p_operation:'update',
+          p_values:{title,description:draft.description||null},
+          p_filters:[{column:'uid',operator:'eq',value:draft.uid}]});
       }else{
         const parent=byUid.get(pendingParent);
         if(draft.type!=='universe'&&(!parent||nextZModelAnchorType('source',parent.type)!==draft.type))
           throw Error('請先選擇正確的上一層來源節點');
-        // The new node has its own UID and zeroed Scope counts. No title-based relation.
-        await insertRows(TABLE,[{uid:draft.uid,type:draft.type,title,
-          description:draft.description||null,
-          attr:{uid:[],counts:{...EMPTY_COUNTS}}}]);
-        if(parent){
-          try{
-            await updateRows(TABLE,{attr:{...parent.attr,
-              uid:[...parent.attr.uid,draft.uid]}},{filters:[
-              {column:'uid',operator:'eq',value:parent.uid}]});
-          }catch(e){
-            await deleteRows(TABLE,{filters:[{column:'uid',operator:'eq',value:draft.uid}]})
-              .catch(()=>{});
-            throw e;
-          }
-        }
+        operations.push({p_table:TABLE,p_operation:'insert',
+          p_rows:[{uid:draft.uid,type:draft.type,title,
+            description:draft.description||null,
+            attr:{uid:[],counts:{...EMPTY_COUNTS}}}]});
+        if(parent)operations.push({p_table:TABLE,p_operation:'update',
+          p_values:{attr:{...parent.attr,uid:[...parent.attr.uid,draft.uid]}},
+          p_filters:[{column:'uid',operator:'eq',value:parent.uid}]});
       }
+      // The child and its parent's UID list are never partially committed.
+      await transactionWrites(operations);
       await load();setSelected(draft.uid);setDraft(null);
       setNotice(exists?'來源名稱已更新。':'已新增來源並建立 UID 關聯。');
       return true;
@@ -135,10 +131,14 @@ export function AdminSourceCategories(){
     setBusy(true);setError('');setNotice('');
     try{
       const parent=nodes.find(row=>row.attr.uid.includes(current.uid));
-      if(parent)await updateRows(TABLE,{attr:{...parent.attr,
-        uid:parent.attr.uid.filter(uid=>uid!==current.uid)}},{filters:[
-          {column:'uid',operator:'eq',value:parent.uid}]});
-      await deleteRows(TABLE,{filters:[{column:'uid',operator:'eq',value:current.uid}]});
+      const operations=[];
+      if(parent)operations.push({p_table:TABLE,p_operation:'update',
+        p_values:{attr:{...parent.attr,
+          uid:parent.attr.uid.filter(uid=>uid!==current.uid)}},
+        p_filters:[{column:'uid',operator:'eq',value:parent.uid}]});
+      operations.push({p_table:TABLE,p_operation:'delete',
+        p_filters:[{column:'uid',operator:'eq',value:current.uid}]});
+      await transactionWrites(operations);
       await load();setSelected(parent?.uid||'');setDraft(null);
       setNotice('來源已刪除，原始文章未修改。');
     }catch(e){setError(String(e.message||e));}
