@@ -160,7 +160,8 @@ test('one LOC Web shell covers authored features, while home and native remain d
     {route:'/culture/',component:'loc',scope:'loc',view:'culture',title:'文化'},
     {route:'/admin/',component:'loc',scope:'loc',view:'admin',
       title:'系統管理',noIndex:true},
-    {route:'/lrunes/card/',component:'outbound',scope:'lrunes',view:'home'},
+    {route:'/lrunes/card/',component:'outbound',scope:'lrunes',view:'home',
+      relative:'card'},
     {route:'/lo3rwang/',component:'loc',scope:'lo3rwang',view:'home'}
   ];
   assert.deepEqual(sharedWebRoutes(pages).map(page=>page.route),
@@ -177,6 +178,6 @@ test('one LOC Web shell covers authored features, while home and native remain d
   const redirects=sharedWebRedirects(pages);
   assert.match(redirects,/\/culture\/ \/_loc\/shell\.html 200/);
   assert.match(redirects,/\/culture \/_loc\/shell\.html 200/);
-  assert.doesNotMatch(redirects,/\/lrunes\/card/);
+  assert.match(redirects,/\/lrunes\/card\/ https:\/\/lrs\.lo3rwang\.cc\/card\/ 302/);
   assert.match(sharedWebRobotsHeaders(pages),/\/admin\/\n  X-Robots-Tag: noindex, nofollow/);
 });
