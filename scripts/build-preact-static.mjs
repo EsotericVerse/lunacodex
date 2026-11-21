@@ -73,13 +73,38 @@ try{
     alias,logLevel:'warning',minify:true,metafile:true,
     entryNames:'[name]',chunkNames:'_loc/chunks/[name]-[hash]',
     assetNames:'_loc/assets/[name]-[hash]',
-    loader:{'.woff':'file','.woff2':'file','.ttf':'file','.png':'file','.svg':'file','.webp':'file','.gif':'file'},
+    loader:{'.woff':'file','.woff2':'file','.ttf':'file','.png':'file','.svg':'file','.webp':'file','.gif':'file','.jpg':'file','.jpeg':'file','.avif':'file'},
     define:{'process.env.NODE_ENV':'"production"'},
     plugins:[{name:'loc-next-removal',setup(ctx){
       ctx.onResolve({filter:/^next\/(?:navigation|dynamic|link)$/},args=>({path:map[args.path]}));
       ctx.onResolve({filter:/^next\//},args=>({errors:[{text:'Unsupported legacy Next import: '+args.path}]}));
-      ctx.onResolve({filter:/^@blocknote\/react\/style\.css$/},()=>({path:'blocknote-react-css',namespace:'loc-style'}));
-      ctx.onLoad({filter:/.*/,namespace:'loc-style'},()=>({contents:'',loader:'css'}));
+      ctx.onResolve({filter:/^@blocknote\/(?:core\/fonts\/inter|mantine\/style|react\/style)\.css$/},args=>{
+        // The CSS "style" export condition is not selected by esbuild for some
+        // BlockNote packages. Resolve their actual published stylesheet instead.
+        const found=args.path.match(/^(@blocknote\/[^/]+)\/(.+)$/);
+        if(!found)return null;
+        const pkgDir=abs('node_modules/'+found[1]);
+        const pkg=JSON.parse(fs.readFileSync(path.join(pkgDir,'package.json'),'utf8'));
+        const definition=pkg.exports?.['./'+found[2]];
+        const findCss=entry=>{
+          if(typeof entry==='string')return entry;
+          if(!entry||typeof entry!=='object')return '';
+          for(const key of ['style','import','default','require','browser']){
+            const found=findCss(entry[key]);
+            if(found)return found;
+          }
+          return '';
+        };
+        const spec=findCss(definition);
+        const candidates=[
+          ...(spec?[path.resolve(pkgDir,spec)]:[]),
+          path.join(pkgDir,found[2]),
+          path.join(pkgDir,'dist',found[2]),
+          path.join(pkgDir,'dist',path.basename(found[2]))
+        ];
+        const resolved=candidates.find(p=>fs.existsSync(p)&&fs.statSync(p).isFile());
+        return resolved?{path:resolved}:{errors:[{text:'Required LOC editor CSS missing: '+args.path}]};
+      });
     }}]
   });
   for(const page of records){
