@@ -1,6 +1,6 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import {useMemo,useRef,useState} from 'react';
-import dynamic from '../../runtime/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {dbPublicClient} from '../../../loc/db/db-client.mjs';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
@@ -8,8 +8,10 @@ import {readCurrentTraceAnchors,readPublishedTraceSourceScopes} from './trace-da
 import {territoryYearWindow,territoryRegions,territoryPointReadPlan,territoryWithAnchors} from './trace-territory.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';
 
-const TraceMap=dynamic(()=>import('./TraceMap'),{ssr:false});
-const TracePlaceResults=dynamic(()=>import('./TracePlaceResults'),{ssr:false});
+const LazyTraceMap=lazy(()=>import('./TraceMap'));
+function TraceMap(props){return <Suspense fallback={null}><LazyTraceMap {...props}/></Suspense>;}
+const LazyTracePlaceResults=lazy(()=>import('./TracePlaceResults'));
+function TracePlaceResults(props){return <Suspense fallback={null}><LazyTracePlaceResults {...props}/></Suspense>;}
 const currentYear=Number(DEFAULT_YEAR_WINDOW.startDate.slice(0,4));
 const years=[0,1,2,3].map(offset=>currentYear-offset);
 const dateFromStep=(year,step)=>{

@@ -1,8 +1,8 @@
+import {lazy,Suspense} from 'react';
 import {useMemo} from 'react';
 'use client';
 
 import {useEffect} from 'react';
-import dynamic from '../../modular/runtime/dynamic';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
@@ -12,8 +12,12 @@ import PanelLoading from '../ui/PanelLoading';
 import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {PLACE_OPTIONS} from '../trace/PlaceManagement';
 
-const TraceManagementPanel=dynamic(()=>import('../trace/TraceManagement'),{loading:PanelLoading});
-const PlaceManagement=dynamic(()=>import('../trace/PlaceManagement').catch(recoverChunkOnce),{loading:PanelLoading});
+const LazyTraceManagementPanel=lazy(()=>import('../trace/TraceManagement'));
+const TraceManagementPanelLoading=PanelLoading;
+function TraceManagementPanel(props){return <Suspense fallback={<TraceManagementPanelLoading/>}><LazyTraceManagementPanel {...props}/></Suspense>;}
+const LazyPlaceManagement=lazy(()=>import('../trace/PlaceManagement').catch(recoverChunkOnce));
+const PlaceManagementLoading=PanelLoading;
+function PlaceManagement(props){return <Suspense fallback={<PlaceManagementLoading/>}><LazyPlaceManagement {...props}/></Suspense>;}
 
 const SPATIAL_OPTIONS=[
   {value:'path',label:'路線',description:'依序連接空間定錨點'},

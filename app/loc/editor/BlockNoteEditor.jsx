@@ -1,6 +1,6 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
-import dynamic from '../../modular/runtime/dynamic';
 import {Fragment} from 'react';
 import {UI_COPY} from '../../i18n/ui-copy';
 import {useUiSection} from '../../i18n/ui-locale';
@@ -9,10 +9,8 @@ import {blocksToPlainText,looksLikeMarkdown,normalizeBlocks,plainTextToBlocks} f
 import ScopeLink from '../../modular/ScopeLink';
 
 // BlockNote itself is browser-only; keep this as the single public editor entrypoint.
-const BlockNoteCanvas=dynamic(()=>import('./BlockNoteEditorClient'),{
-  ssr:false,
-  loading:()=>null
-});
+const LazyBlockNoteCanvas=lazy(()=>import('./BlockNoteEditorClient'));
+function BlockNoteCanvas(props){return <Suspense fallback={null}><LazyBlockNoteCanvas {...props}/></Suspense>;}
 
 export default function BlockNoteEditor({
   editorKey,

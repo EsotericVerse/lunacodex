@@ -1,7 +1,7 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import dynamic from '../../../modular/runtime/dynamic';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
 import {useEditDock} from '../../../modular/edit-dock';
 import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db/db-client.mjs';
@@ -14,8 +14,10 @@ import {keywordClassState,invalidateKeywordClass} from '../class-state.mjs';
 import {SCOPE_PATTERN_INDEX_VERSION} from '../anchor-index.mjs';
 import {classSkipArticleWords} from '../class-exceptions.mjs';
 
-const KeywordNetworkEditor=dynamic(()=>import('./KeywordNetworkEditor'),{ssr:false});
-const BlockNoteEditor=dynamic(()=>import('../../editor/BlockNoteEditor'),{loading:()=>null});
+const LazyKeywordNetworkEditor=lazy(()=>import('./KeywordNetworkEditor'));
+function KeywordNetworkEditor(props){return <Suspense fallback={null}><LazyKeywordNetworkEditor {...props}/></Suspense>;}
+const LazyBlockNoteEditor=lazy(()=>import('../../editor/BlockNoteEditor'));
+function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
 const TYPES=['class','group','item'];
 const LABEL={category:'關鍵字目錄',class:'關鍵字群組科目',group:'關鍵字分類群組',item:'關鍵詞分類'};
 const onlyWords=value=>[...new Set(String(value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];

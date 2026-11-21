@@ -1,7 +1,7 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 import {useMemo,useState} from 'react';
-import dynamic from '../runtime/dynamic';
 import {FeaturePage} from '../ui';
 import ScopeLink from '../ScopeLink';
 import {featureNavigationHref} from '../routing/feature-navigation';
@@ -13,9 +13,9 @@ import {
 // LOC is a lightweight cross-Scope route/trace PREVIEW, not a second
 // annual article map or an all-places database browser. Keep MapLibre out
 // of the initial JS chunk until actual published routes are available.
-const TraceMap=dynamic(()=>import('./trace/TraceMap'),{
-  ssr:false,loading:()=> <p className="scope-status" role="status">正在載入痕跡地圖…</p>
-});
+const LazyTraceMap=lazy(()=>import('./trace/TraceMap'));
+const TraceMapLoading=()=> <p className="scope-status" role="status">正在載入痕跡地圖…</p>;
+function TraceMap(props){return <Suspense fallback={<TraceMapLoading/>}><LazyTraceMap {...props}/></Suspense>;}
 const routeKey=row=>String(row.source_scope||'')+':'+String(row.uid||'');
 const routeLabel=row=>row.trace_type==='trace'?'痕跡圖':'路線圖';
 

@@ -1,7 +1,7 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
-import dynamic from './modular/runtime/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
 import {useQueryClient} from '../packages/zenstack/client-queries';
@@ -22,7 +22,8 @@ import {recoverChunkOnce} from './loc/ui/chunk-recovery.mjs';
 import BottomNavIcon,{DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.
-const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{loading:()=>null});
+const LazyScopeHomeEditEntry=lazy(()=>import('./loc/blocks/ScopeHomeEditEntry'));
+function ScopeHomeEditEntry(props){return <Suspense fallback={null}><LazyScopeHomeEditEntry {...props}/></Suspense>;}
 import ScrollableScopeNav from './modular/ScrollableScopeNav';
 import ScopeLink from './modular/ScopeLink';
 

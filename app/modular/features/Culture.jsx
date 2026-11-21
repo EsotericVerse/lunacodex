@@ -1,4 +1,5 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import UiText from '../../i18n/UiText';
 import FieldText from '../../i18n/FieldText';
 
@@ -8,13 +9,13 @@ import {useUiCopy,useUiLocale,useUiSection} from '../../i18n/ui-locale';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import {cultureDensityByUnit,simpleTimeRiver} from '../../loc/preferences/loc-feature-preferences.mjs';
-import dynamic from '../runtime/dynamic';
 import {useAsyncResource,useAsyncInfiniteResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeatureNavigation} from '../routing/feature-navigation';
 import ScopeLink from '../ScopeLink';
 import {useEditDock} from '../edit-dock';
 import {featureDataErrorMessage} from '../feature-data-state';
-const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTimeline'),{loading:()=>null});
+const LazyCultureTimeline=lazy(()=>import('../modules/culture-timeline/CultureTimeline'));
+function CultureTimeline(props){return <Suspense fallback={null}><LazyCultureTimeline {...props}/></Suspense>;}
 import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
@@ -38,14 +39,19 @@ import {useScopeRuntime} from '../use-scope-runtime';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ManagementWorkspaceFrame from '../../loc/management/ManagementWorkspaceFrame';
 // Article cards/editing are requested only when results actually render.
-const Article=dynamic(()=>import('../Article'),{loading:()=>null});
-const CultureTimelineEditor=dynamic(()=>import('./CultureTimelineEditor'),{loading:()=>null});
-const CulturePlaceRiver=dynamic(()=>import('./trace/CulturePlaceRiver'),{loading:()=>null});
-const CultureMediaRiver=dynamic(()=>import('./media/CultureMediaRiver'),{loading:()=>null});
+const LazyArticle=lazy(()=>import('../Article'));
+function Article(props){return <Suspense fallback={null}><LazyArticle {...props}/></Suspense>;}
+const LazyCultureTimelineEditor=lazy(()=>import('./CultureTimelineEditor'));
+function CultureTimelineEditor(props){return <Suspense fallback={null}><LazyCultureTimelineEditor {...props}/></Suspense>;}
+const LazyCulturePlaceRiver=lazy(()=>import('./trace/CulturePlaceRiver'));
+function CulturePlaceRiver(props){return <Suspense fallback={null}><LazyCulturePlaceRiver {...props}/></Suspense>;}
+const LazyCultureMediaRiver=lazy(()=>import('./media/CultureMediaRiver'));
+function CultureMediaRiver(props){return <Suspense fallback={null}><LazyCultureMediaRiver {...props}/></Suspense>;}
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
-const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
+const LazyLocItemConfluence=lazy(()=>import('./LocItemConfluence'));
+function LocItemConfluence(props){return <Suspense fallback={null}><LazyLocItemConfluence {...props}/></Suspense>;}
 
 function editorRiverYearWindow(){
   // The timeline starts at the configured default year. Do not silently

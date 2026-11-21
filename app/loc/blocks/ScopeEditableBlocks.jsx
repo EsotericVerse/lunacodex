@@ -1,4 +1,5 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import UiText from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 
@@ -7,7 +8,6 @@ import {motion,useReducedMotion} from 'motion/react';
 import {useEditDock} from '../../modular/edit-dock';
 import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
-import dynamic from '../../modular/runtime/dynamic';
 import {useAppBootstrap} from '../runtime/app-bootstrap';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
@@ -15,8 +15,10 @@ import {selectLiveScopeBlocks} from '../scope/scope-data';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import {useAccount} from '../auth/use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
-const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
-const ScopeBlockDraftList=dynamic(()=>import('./ScopeBlockDraftList'),{loading:()=>null});
+const LazyScopeBlockEditorSession=lazy(()=>import('./ScopeBlockEditorSession'));
+function ScopeBlockEditorSession(props){return <Suspense fallback={null}><LazyScopeBlockEditorSession {...props}/></Suspense>;}
+const LazyScopeBlockDraftList=lazy(()=>import('./ScopeBlockDraftList'));
+function ScopeBlockDraftList(props){return <Suspense fallback={null}><LazyScopeBlockDraftList {...props}/></Suspense>;}
 import {isInteractiveContentTarget} from '../content/content-policy.js';
 
 import {HomeBlock} from './home-block-model';

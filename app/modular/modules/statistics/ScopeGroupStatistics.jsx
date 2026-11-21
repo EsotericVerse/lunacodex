@@ -1,6 +1,6 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import {useEffect,useMemo,useState} from 'react';
-import dynamic from '../../runtime/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
 import {useUiCopy,useUiSection} from '../../../i18n/ui-locale';
@@ -14,9 +14,12 @@ import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
 
-const StatisticsMultiChart=dynamic(()=>import('./StatisticsMultiChart'),{loading:()=>null});
-const StatisticsInsightsPanel=dynamic(()=>import('./StatisticsInsightsPanel'),{loading:()=>null});
-const LocMemberIntersection=dynamic(()=>import('./LocMemberIntersection'),{loading:()=>null});
+const LazyStatisticsMultiChart=lazy(()=>import('./StatisticsMultiChart'));
+function StatisticsMultiChart(props){return <Suspense fallback={null}><LazyStatisticsMultiChart {...props}/></Suspense>;}
+const LazyStatisticsInsightsPanel=lazy(()=>import('./StatisticsInsightsPanel'));
+function StatisticsInsightsPanel(props){return <Suspense fallback={null}><LazyStatisticsInsightsPanel {...props}/></Suspense>;}
+const LazyLocMemberIntersection=lazy(()=>import('./LocMemberIntersection'));
+function LocMemberIntersection(props){return <Suspense fallback={null}><LazyLocMemberIntersection {...props}/></Suspense>;}
 
 export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGalaxyStatistics}){
   useUiSection('statistics');

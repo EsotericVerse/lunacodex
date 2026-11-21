@@ -1,11 +1,13 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
-import dynamic from '../../../modular/runtime/dynamic';
 import LocManagementWorkspace from '../../management/LocManagementWorkspace';
 import {ProtectedManagementSlot} from '../../management/ManagementAccess';
 import PanelLoading from '../../ui/PanelLoading';
 
-const LocKeywordManagement=dynamic(()=>import('./LocKeywordManagement'),{loading:PanelLoading});
+const LazyLocKeywordManagement=lazy(()=>import('./LocKeywordManagement'));
+const LocKeywordManagementLoading=PanelLoading;
+function LocKeywordManagement(props){return <Suspense fallback={<LocKeywordManagementLoading/>}><LazyLocKeywordManagement {...props}/></Suspense>;}
 const KEYWORD_ITEM=Object.freeze({
   value:'keywords',label:'關鍵詞管理',description:'LOC 大群組名稱與 Hash'
 });

@@ -1,4 +1,5 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import FieldText from '../../i18n/FieldText';
 
 import {UI_COPY} from '../../i18n/ui-copy';
@@ -6,7 +7,6 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
-import dynamic from '../runtime/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
 import {publicPatternSuggestions} from '../../loc/search/public-pattern-suggestions.mjs';
@@ -19,9 +19,11 @@ import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui'
 import ScopeLink from '../ScopeLink';
 import SearchSummary from '../../loc/search/Summary';
 // Article cards/editing are requested only when results actually render.
-const Article=dynamic(()=>import('../Article'),{loading:()=>null});
+const LazyArticle=lazy(()=>import('../Article'));
+function Article(props){return <Suspense fallback={null}><LazyArticle {...props}/></Suspense>;}
 // Mount the Inter-Net only for an explicitly opened Galaxy detail.
-const GalaxyInterNetBranches=dynamic(()=>import('../GalaxyInterNetBranches'),{loading:()=>null});
+const LazyGalaxyInterNetBranches=lazy(()=>import('../GalaxyInterNetBranches'));
+function GalaxyInterNetBranches(props){return <Suspense fallback={null}><LazyGalaxyInterNetBranches {...props}/></Suspense>;}
 import {useScopeRuntime} from '../use-scope-runtime';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import {useSearchManagerSwitch} from '../../loc/preferences/use-search-manager-switch';
@@ -45,10 +47,13 @@ import {MEDIA_FALLBACK_TITLE,WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayT
 import {requireGalaxyContent,resolveGalaxyTitle,assertPlainGalaxyAttributes} from '../../loc/content/content-policy';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {applyFilters,isAbortError,selectRows} from '../../loc/db/db-query.mjs';
-const ScopeGroupOverview=dynamic(()=>import('../../loc/scope/ScopeGroupOverview'),{loading:()=>null});
-const ScopeEditableBlocks=dynamic(()=>import('../../loc/blocks/ScopeEditableBlocks'),{loading:()=>null});
+const LazyScopeGroupOverview=lazy(()=>import('../../loc/scope/ScopeGroupOverview'));
+function ScopeGroupOverview(props){return <Suspense fallback={null}><LazyScopeGroupOverview {...props}/></Suspense>;}
+const LazyScopeEditableBlocks=lazy(()=>import('../../loc/blocks/ScopeEditableBlocks'));
+function ScopeEditableBlocks(props){return <Suspense fallback={null}><LazyScopeEditableBlocks {...props}/></Suspense>;}
 // Explanatory Scope blocks are fetched only when their Search tab opens.
-const TraceBlocks=dynamic(()=>import('./TraceBlocks'),{loading:()=>null});
+const LazyTraceBlocks=lazy(()=>import('./TraceBlocks'));
+function TraceBlocks(props){return <Suspense fallback={null}><LazyTraceBlocks {...props}/></Suspense>;}
 
 
 const MEDIA_EDITOR_COLUMNS=MEDIA_ANCHOR_COLUMNS;

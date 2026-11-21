@@ -1,10 +1,10 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 // One autonomous editing session for every Scope home, feature hero and
 // search suggestion block. Mounted only after an authorized edit action.
 import {useRef,useState} from 'react';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
-import dynamic from '../../modular/runtime/dynamic';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
@@ -15,8 +15,10 @@ import {isHomeFrameFor} from './hero-image.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../scope/scope-data';
 
-const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
-const ObjectEditor=dynamic(()=>import('../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
+const LazyBlockNoteEditor=lazy(()=>import('../editor/BlockNoteEditor'));
+function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
+const LazyObjectEditor=lazy(()=>import('../editor/BlockNoteEditor').then(mod=>({default:mod.ObjectEditor})));
+function ObjectEditor(props){return <Suspense fallback={null}><LazyObjectEditor {...props}/></Suspense>;}
 
 export default function ScopeBlockEditorSession({
   initial,scopeId,pageName,slot,movableSlots=[],movableIndex=-1,

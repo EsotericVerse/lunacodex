@@ -1,6 +1,6 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import dynamic from '../../modular/runtime/dynamic';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {insertRows,updateRows,deleteRows,dbAuthClient} from '../db/db-client.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
@@ -9,8 +9,10 @@ import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.
 import {useEditDockForm} from '../../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
-const KeywordNetworkEditor=dynamic(()=>import('../keywords/ui/KeywordNetworkEditor'),{ssr:false});
-const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
+const LazyKeywordNetworkEditor=lazy(()=>import('../keywords/ui/KeywordNetworkEditor'));
+function KeywordNetworkEditor(props){return <Suspense fallback={null}><LazyKeywordNetworkEditor {...props}/></Suspense>;}
+const LazyBlockNoteEditor=lazy(()=>import('../editor/BlockNoteEditor'));
+function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
 const TABLE='silver.loc_anchor';
 const TYPES=['universe','galaxy','domain','from'];
 const EMPTY_COUNTS={lo3rwang:0,lrunes:0};

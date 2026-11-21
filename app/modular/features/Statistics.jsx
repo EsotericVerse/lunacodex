@@ -1,11 +1,11 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 
 import {useEffect,useMemo,useState} from 'react';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
-import dynamic from '../runtime/dynamic';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 
 // Defer Galaxy's data/query engine until the selected statistics mode needs it.
@@ -23,13 +23,20 @@ import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
 import {usePassiveSessionAccount} from '../../loc/auth/use-account';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
-const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
-const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>m.Rune66Summary),{loading:()=>null});
-const KeywordPatternSummary=dynamic(()=>import('../modules/statistics/KeywordPatternSummary'),{loading:()=>null});
-const ScopeSelfIntersection=dynamic(()=>import('../modules/statistics/ScopeSelfIntersection'),{loading:()=>null});
-const ScopeGroupStatistics=dynamic(()=>import('../modules/statistics/ScopeGroupStatistics'),{loading:()=>null});
-const ScopeGroupOverview=dynamic(()=>import('../../loc/scope/ScopeGroupOverview'),{loading:()=>null});
-const StatisticsInsightsPanel=dynamic(()=>import('../modules/statistics/StatisticsInsightsPanel'),{loading:()=>null});
+const LazyStatisticsMultiChart=lazy(()=>import('../modules/statistics/StatisticsMultiChart'));
+function StatisticsMultiChart(props){return <Suspense fallback={null}><LazyStatisticsMultiChart {...props}/></Suspense>;}
+const LazyRune66Summary=lazy(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>({default:m.Rune66Summary})));
+function Rune66Summary(props){return <Suspense fallback={null}><LazyRune66Summary {...props}/></Suspense>;}
+const LazyKeywordPatternSummary=lazy(()=>import('../modules/statistics/KeywordPatternSummary'));
+function KeywordPatternSummary(props){return <Suspense fallback={null}><LazyKeywordPatternSummary {...props}/></Suspense>;}
+const LazyScopeSelfIntersection=lazy(()=>import('../modules/statistics/ScopeSelfIntersection'));
+function ScopeSelfIntersection(props){return <Suspense fallback={null}><LazyScopeSelfIntersection {...props}/></Suspense>;}
+const LazyScopeGroupStatistics=lazy(()=>import('../modules/statistics/ScopeGroupStatistics'));
+function ScopeGroupStatistics(props){return <Suspense fallback={null}><LazyScopeGroupStatistics {...props}/></Suspense>;}
+const LazyScopeGroupOverview=lazy(()=>import('../../loc/scope/ScopeGroupOverview'));
+function ScopeGroupOverview(props){return <Suspense fallback={null}><LazyScopeGroupOverview {...props}/></Suspense>;}
+const LazyStatisticsInsightsPanel=lazy(()=>import('../modules/statistics/StatisticsInsightsPanel'));
+function StatisticsInsightsPanel(props){return <Suspense fallback={null}><LazyStatisticsInsightsPanel {...props}/></Suspense>;}
 import StatisticsChartFrame from '../modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
