@@ -206,12 +206,19 @@ export function EditDockProvider({children,scopeId}){
       }
       if(editors.every(editor=>typeof editor.prepareTransaction==='function')){
         const prepared=[];
-        for(const editor of editors){
-          const plan=await editor.prepareTransaction();
-          if(epoch!==operationEpoch.current)return;
-          if(!plan||!Array.isArray(plan.operations))
-            throw new Error('管理編輯器未提供完整的交易操作');
-          prepared.push(plan);
+        try{
+          for(const editor of editors){
+            const plan=await editor.prepareTransaction();
+            if(epoch!==operationEpoch.current)return;
+            if(!plan||!Array.isArray(plan.operations))
+              throw new Error('管理編輯器未提供完整的交易操作');
+            prepared.push(plan);
+          }
+        }catch(error){
+          for(const plan of prepared){
+            try{await plan.onFailure?.(error);}catch{}
+          }
+          throw error;
         }
         try{
           const operations=prepared.flatMap(plan=>plan.operations);
