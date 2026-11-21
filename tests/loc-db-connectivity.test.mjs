@@ -5,6 +5,7 @@ import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
 import {closeLocDatabase,bindLocRequestAbort} from '../app/loc/mcp/native-kysely.mjs';
 import {readFileSync} from 'node:fs';
 import {articleDistribution} from '../app/loc/mcp/article-distribution.mjs';
+import {readMemory} from '../app/loc/mcp/galaxy-read.mjs';
 import {setKeywordClassShare} from '../app/loc/keywords/sql-service.mjs';
 
 const body=async response=>JSON.parse(await response.text());
@@ -139,7 +140,7 @@ test('standalone article distribution owns SQL, borrowed analytics do not',async
   const calls=[];
   const port={
     db:{
-      transaction:()=>({execute:async fn=>fn({})}),
+      transaction:()=>({setIsolationLevel(){return this;},execute:async fn=>fn({})}),
       async destroy(){calls.push('destroy');}
     },
     pool:{async end(){calls.push('pool-end');}}
@@ -252,4 +253,45 @@ test('non-batch writes resolve api.manage inside the same owned SQL transaction'
   assert.match(native,/readLocAccess\(trx,claims.email,\{/);
   assert.match(native,/bindLocAuthorization\(trx,\{role:claims.role,claims,engine:selected.engine\}\)/);
   assert.doesNotMatch(native,/withFixedPolicyWrite\(/);
+});
+
+test('MCP public Galaxy reads reuse the borrowed Kysely transaction',async()=>{
+  const calls=[];
+  const chain={
+    select(columns){calls.push(['select',columns.length]);return this;},
+    where(){return this;},
+    limit(){return this;},
+    async execute(){return [{
+      uid:'ABCD1234',title:'published',content:'text',site:'public',
+      list:true,search:true
+    }];}
+  };
+  const port={engine:'postgres',namespace:'silver',dialect:null,
+    db:{selectFrom(table){calls.push(['table',table]);return chain;}}};
+  const result=await readMemory({scopeid:'lo3rwang',uid:'ABCD1234'},{},{
+    databasePort:port
+  });
+  assert.equal(result.found,true);
+  assert.equal(result.content,'text');
+  assert.ok(calls.some(([kind,value])=>kind==='table'&&
+    value==='silver.lo3rwang_galaxy'));
+});
+test('borrowed article analytics reuse transaction without nested BEGIN',async()=>{
+  const result=await articleDistribution({period:'calendar_year',year:2026},{},{
+    database:async()=>({db:{
+      transaction(){throw Error('Nested SQL transaction refused');}
+    }}),
+    analytics:async()=>({data:{rows:[{day:'2026-11-01',item_count:3}]}}),
+    now:new Date('2026-11-22T00:00:00+08:00'),
+    borrowed:true,inTransaction:true
+  });
+  assert.equal(result.total,3);
+});
+test('every multi-statement MCP public read verifies grants in its own transaction',()=>{
+  const source=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  for(const kind of ['mcp-public-read','mcp-article-stat','mcp-read','mcp-search'])
+    assert.ok(source.includes("'"+kind+"'"),kind+' must be grant-bound');
+  assert.match(source,/databasePort:\{\.\.\.selected,db:trx,dialect:null\}/);
+  assert.match(source,/borrowed:true,inTransaction:true/);
+  assert.match(source,/return runMcp\(trx\)/);
 });

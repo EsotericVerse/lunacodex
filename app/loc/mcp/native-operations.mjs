@@ -218,7 +218,8 @@ export async function handleNativeLocOperation(request,env={},{
     // Managed batches resolve their one authorization snapshot inside the
     // SAME transaction as all of their writes, not in a preceding query.
     const isManagedBatch=['managed-transaction','managed-write','managed-action',
-      'mcp-conversation','mcp-scope-status','mcp-sync','mcp-append']
+      'mcp-conversation','mcp-scope-status','mcp-sync','mcp-append',
+      'mcp-public-read','mcp-article-stat','mcp-read','mcp-search']
       .includes(body.kind);
     let permission=null;
     if(!isManagedBatch){
@@ -246,14 +247,33 @@ export async function handleNativeLocOperation(request,env={},{
       const args=body.args||{};
       if(args.scopeid!==undefined&&args.scopeid!==body.scopeid)
         throw refusal('MCP Scope mismatch',400);
-      return reply({data:await readPublicGalaxy({...args,scopeid:body.scopeid},env,{waitUntil,databasePort:selected})});
+      const data=await selected.db.transaction()
+        .setIsolationLevel('repeatable read').execute(async trx=>{
+          const rights=await loadMcpLocAccess(trx,claims.email,{
+            dialect:selected.dialect,engine:selected.engine,transactional:true});
+          claims.me=rights.canWrite;claims.grants=rights.grants;
+          // Public Galaxy predicates and columns remain fixed by the ZModel
+          // reader. Bind its Kysely query to this already-open transaction.
+          return readPublicGalaxy({...args,scopeid:body.scopeid},env,{
+            waitUntil,databasePort:{...selected,db:trx,dialect:null}
+          });
+        });
+      return reply({data});
     }
     if(body.kind==='mcp-article-stat'){
       if(host!==MCP_HOST||body.scopeid!=='loc')
         throw refusal('Invalid MCP article statistics scope',400);
-      return reply({data:await articleDistribution(body.args||{},env,{
-        database:async()=>selected,borrowed:true
-      })});
+      const data=await selected.db.transaction()
+        .setIsolationLevel('repeatable read').execute(async trx=>{
+          const rights=await loadMcpLocAccess(trx,claims.email,{
+            dialect:selected.dialect,engine:selected.engine,transactional:true});
+          claims.me=rights.canWrite;claims.grants=rights.grants;
+          return articleDistribution(body.args||{},env,{
+            database:async()=>({...selected,db:trx}),
+            borrowed:true,inTransaction:true
+          });
+        });
+      return reply({data});
     }
     if(body.kind==='mcp-conversation'){
       if(host!==MCP_HOST)throw refusal('MCP conversation endpoint only',404);
@@ -463,7 +483,15 @@ export async function handleNativeLocOperation(request,env={},{
       });
       return reply({data:result.data});
     }
-    const result=await runMcp(selected.db);
+    // A generic MCP read is also one logical operation: verify its active
+    // Manage projection and run the scoped SELECT in the same read snapshot.
+    const result=await selected.db.transaction()
+      .setIsolationLevel('repeatable read').execute(async trx=>{
+        const rights=await loadMcpLocAccess(trx,claims.email,{
+          dialect:selected.dialect,engine:selected.engine,transactional:true});
+        claims.me=rights.canWrite;claims.grants=rights.grants;
+        return runMcp(trx);
+      });
     return reply({data:result.data});
   }catch(error){
     // A trusted Authority Profile failure has a stable, non-secret code.
