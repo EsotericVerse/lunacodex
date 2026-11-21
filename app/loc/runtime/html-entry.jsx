@@ -1,10 +1,9 @@
-import React,{lazy,Suspense,useEffect,useState,useSyncExternalStore} from 'react';
+import React,{lazy,Suspense,useEffect,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createPortal} from 'react-dom';
 import {UiLocaleProvider,useLoadedUiLocale} from '../../i18n/ui-locale.jsx';
 import {EditDockProvider,useEditDock} from '../../modular/edit-dock.jsx';
 import FlashMessage from '../notifications/FlashMessage.jsx';
-import {getDbSourceStatus,subscribeDbSourceStatus} from '../providers/db-source-status.mjs';
 import {getLocalDeadline,hasExpiredLocalDeadline,stopLocalDeadline}
   from '../local/session.mjs';
 
@@ -102,19 +101,6 @@ function EditorControls(){
     {dock.notice?<p role="status" className="scope-edit-dock-notice">{dock.notice}</p>:null}
   </div>,surface);
 }
-function DataSourceStatus(){
-  const current=useSyncExternalStore(subscribeDbSourceStatus,getDbSourceStatus,getDbSourceStatus);
-  const slot=document.querySelector('[data-loc-data-source]');
-  if(!slot)return null;
-  const local=scopeId==='local';
-  const text=local?'本機資料庫':current.unavailable?'資料來源目前無法讀取':
-    current.degraded?'備用資料庫（'+current.backupLabel+'）':
-      '主要資料庫（'+current.primaryLabel+'）';
-  return createPortal(<details className="scope-data-source-details">
-    <summary>資料來源狀態</summary>
-    <div className="scope-data-source-values"><span role="status">{text}</span></div>
-  </details>,slot);
-}
 function Interactive(){
   const [locale,setLocale]=useState(()=>window.__locHtmlLocale||'zh-Hant');
   useEffect(()=>{
@@ -130,7 +116,6 @@ function Interactive(){
       </Suspense>
       <EditorControls/>
       <FlashMessage/>
-      <DataSourceStatus/>
     </EditDockProvider>
   </UiLocaleProvider>;
 }
@@ -153,6 +138,5 @@ if(node&&component!=='outbound'&&!enforceDeviceLocalLease()){
     window.addEventListener('focus',enforceDeviceLocalLease);
     window.addEventListener('pageshow',enforceDeviceLocalLease);
   }
-  document.querySelector('[data-loc-data-source]')?.replaceChildren();
   createRoot(node).render(<Interactive/>);
 }
