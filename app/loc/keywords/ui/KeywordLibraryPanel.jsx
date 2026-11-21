@@ -300,7 +300,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
       }else{
         const plan=await prepareKeywordNodeTransaction();
         await transactionWrites(plan.operations);
-        await plan.afterCommit();
+        try{await plan.afterCommit();}
+        catch{setError('資料已提交，但關鍵詞畫面更新失敗；請重新讀取。');}
+
       }
       return true;
     }catch(error){setError(String(error?.message||error));return false;}
