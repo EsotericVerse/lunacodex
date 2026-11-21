@@ -1,4 +1,4 @@
-// Verify the Next static export instead of deleting and recopying its public assets.
+// Verify the Preact static export instead of deleting and recopying its public assets.
 // public/ is the published Web/native source; assets/ remains the authored master.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const output=path.join(root,'out');
-const native=process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1';
+const native=process.env.LOC_NATIVE_BUNDLE==='1';
 
 function requiredFile(base,relative){
   const file=path.join(base,relative);
@@ -42,7 +42,7 @@ for(const relative of [
   if(sourceBytes!==outputBytes)throw new Error('Published asset size differs from public/: '+relative);
 }
 
-// prebuild stages LOC-owned /pics/ in public/pics. Next copies those once.
+// prebuild stages LOC-owned /pics/ in public/pics. Preact copies those once.
 // A fallback copy here would conceal a broken export or revive old images.
 const published='pics';
 const sourceDir=path.join(root,'public',published);

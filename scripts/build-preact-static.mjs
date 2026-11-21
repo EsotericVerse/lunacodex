@@ -11,7 +11,7 @@ const scratch=path.join(root,'.loc-preact-build');
 const abs=p=>path.join(root,p);
 const require=createRequire(import.meta.url);
 const command=process.platform==='win32'?'npm.cmd':'npm';
-const native=process.env.LOC_NATIVE_BUNDLE==='1'||process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1';
+const native=process.env.LOC_NATIVE_BUNDLE==='1';
 function run(args){
   const r=spawnSync(command,args,{cwd:root,stdio:'inherit',shell:process.platform==='win32'});
   if(r.status!==0)throw new Error('npm '+args.join(' ')+' failed: '+r.status);
@@ -63,11 +63,6 @@ try{
     'react/jsx-runtime':path.join(preact,'jsx-runtime'),
     'react/jsx-dev-runtime':path.join(preact,'jsx-dev-runtime')
   };
-  const map={
-    'next/navigation':abs('app/modular/runtime/navigation.js'),
-    'next/dynamic':abs('app/modular/runtime/dynamic.jsx'),
-    'next/link':abs('app/modular/runtime/link.jsx')
-  };
   const compiled=await build({
     entryPoints,outdir:out,bundle:true,splitting:true,format:'esm',
     platform:'browser',target:'es2022',jsx:'automatic',jsxImportSource:'react',
@@ -77,7 +72,6 @@ try{
     loader:{'.woff':'file','.woff2':'file','.ttf':'file','.png':'file','.svg':'file','.webp':'file','.gif':'file','.jpg':'file','.jpeg':'file','.avif':'file'},
     define:{'process.env.NODE_ENV':'"production"'},
     plugins:[{name:'loc-next-removal',setup(ctx){
-      ctx.onResolve({filter:/^next\/(?:navigation|dynamic|link)$/},args=>({path:map[args.path]}));
       ctx.onResolve({filter:/^next\//},args=>({errors:[{text:'Unsupported legacy Next import: '+args.path}]}));
       ctx.onResolve({filter:/^@blocknote\/(?:core\/fonts\/inter|mantine\/style|react\/style)\.css$/},args=>{
         // The CSS "style" export condition is not selected by esbuild for some

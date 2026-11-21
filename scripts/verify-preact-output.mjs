@@ -26,6 +26,14 @@ if(!/^\/_loc\/[^?#]+\.css$/.test(report.sharedCss)||!exists(path.join(out,report
 if(report.runtime!=='Preact'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
   throw Error('LOC Preact route manifest mismatch');
 if(fs.existsSync(path.join(out,'_next')))throw Error('Next.js assets left in LOC export');
+const css=read(path.join(out,report.sharedCss.slice(1)));
+if(/assets\/pics\//.test(css))throw Error('LOC CSS still bundles raw source image paths');
+for(const name of ['LOC-culture','LOC-statics','LOC-search','LOC-admin','scope-culture','scope-statics']){
+  const old=path.join(out,'_loc','assets');
+  if(fs.existsSync(old)&&fs.readdirSync(old).some(file=>file.startsWith(name+'-')&&/\.(?:jpg|jpeg|png|webp)$/.test(file)))
+    throw Error('LOC duplicated Web image in JS/CSS assets: '+name);
+}
+
 if(!fs.existsSync(path.join(out,'pics')))throw Error('LOC image URL path /pics not staged');
 if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))throw Error('IPA contains originals');
 for(const route of pageRoutes){

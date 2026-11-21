@@ -7,14 +7,15 @@
     "prebuild": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs && node scripts/check-js-syntax.mjs",
     "dev": "npm run build:static && node scripts/serve-preact-static.mjs",
     "build": "npm run build:static",
-    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/verify-preact-native-preview.mjs && node scripts/build-preact-static.mjs && node scripts/verify-preact-output.mjs",
+    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/verify-preact-native-preview.mjs && node scripts/build-preact-static.mjs && node scripts/verify-preact-output.mjs && node scripts/audit-loc-packages.mjs",
     "audit:static": "node scripts/audit-static-content.mjs",
     "test:static-assets": "node --test tests/static-export-assets.test.mjs",
     "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
-    "predev": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs"
+    "predev": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs",
+    "audit:packages": "node scripts/audit-loc-packages.mjs"
   },
   "dependencies": {
     "@better-auth/sso": "1.7.18",
