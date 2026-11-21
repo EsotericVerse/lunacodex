@@ -5,7 +5,6 @@ import {useEditDock} from '../../modular/edit-dock';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {transactionWrites} from '../db/db-client.mjs';
-import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {useAccount} from '../auth/use-account';
 import {createUid8} from '../model/uid';
 import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from '../content/content-policy';
@@ -60,18 +59,23 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
       const createtime=draft.createdDate?new Date(draft.createdDate+'T00:00:00+08:00').toISOString():new Date().toISOString();
       const lyricsUid=hasBlockNoteContent(lyrics)?createUid8():null;
       const styleUid=lyricsUid&&hasBlockNoteContent(stylePrompt)?createUid8():null;
-      const mediaUid=createUid8();
+      const metaUid=description?createUid8():null;
+      const externalUrl=String(draft.url||'').trim();
+      if(externalUrl&&!/^https?:\/\/[^\s]+$/i.test(externalUrl))
+        throw new Error('Suno 網址必須為有效 HTTP(S) URL');
       const sourceId=draft.source_id.trim()||(styleUid?draft.ref_id.trim():'')||null;
       const scopeData=account.scopeDataFor(scopeId);
       if(!scopeData)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
-      const {galaxy,anchor}=scopeData;
+      const {galaxy}=scopeData;
       const operations=[];
       if(lyricsUid){
         operations.push({p_table:galaxy,p_operation:'insert',p_rows:[{
           uid:lyricsUid,
           title,content:lyrics,createtime,
-          source_id:sourceId,target_id:normalizeRelationIds(draft.target_id),ref_id:styleUid||draft.ref_id.trim()||null,
-          url:draft.url.trim()||null,site:'suno',media_link:[mediaUid],
+          source_id:sourceId,
+          target_id:[...new Set([...(normalizeRelationIds(draft.target_id)||[]),...(metaUid?[metaUid]:[])])],
+          ref_id:styleUid||draft.ref_id.trim()||null,
+          url:externalUrl||null,site:'suno',media_link:externalUrl?[externalUrl]:null,
           statics:true,culture:true,search:true,trace:true,list:true,keyword:true,others:true,extract:true
         }]});
       }
@@ -83,10 +87,11 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:true,extract:true
         }]});
       }
-      operations.push({p_table:anchor,p_operation:'insert',p_rows:[mediaAnchorRecord({
-        uid:mediaUid,type:'suno',title,url:draft.url.trim()||null,
-        description:description||null,createtime
-      })]});
+      if(metaUid)operations.push({p_table:galaxy,p_operation:'insert',p_rows:[{
+        uid:metaUid,title:title+'｜Suno Meta Tags',content:description,
+        createtime,site:'suno',statics:false,culture:false,search:false,
+        trace:false,list:false,keyword:false,others:true,extract:true
+      }]});
       return {operations,
         afterCommit:()=>{setStatus(t('uiExtra.importUI.sunoSaved'));setDraft(freshSunoDraft());},
         onFailure:error=>setStatus(error?.message||t('uiExtra.importUI.sunoSaveFailed'))};
