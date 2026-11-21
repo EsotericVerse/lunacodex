@@ -107,7 +107,7 @@ function StaticSite({scopeId,native=false}){
 // floating six-key frame, outer main, and Hero frame never remount.
 export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link='',feature='home',
   work=false,native=false,component='loc',view=feature}={}){
- const featureCanvas=['loc','settings','features'].includes(component)&&!work;
+ const featureCanvas=['loc','settings','features','phone'].includes(component)&&!work;
  return renderToStaticMarkup(<>
    <PublicNavigation scopeId={scopeId} native={native}/>
    {featureCanvas?<div className="loc-next-main" data-loc-view={view} data-loc-scope={scopeId}>
