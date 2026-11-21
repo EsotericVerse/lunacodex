@@ -357,15 +357,13 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(busy||sharingBusy||!classUid)return;
     setSharingBusy(true);setError('');
     try{
-      const {data,error:readError}=await dbAuthRelation(configTable)
-        .select('keyword_meta').eq('id',scopeId).limit(1);
-      if(readError||data?.length!==1)throw new Error(readError?.message||'讀取共享設定失敗');
-      const currentMeta=data[0].keyword_meta||{};
-      const keyword_meta={...currentMeta,
-        class_shares:{...(currentMeta.class_shares||{}),[classUid]:Boolean(enabled)}};
-      const {data:saved,error:saveError}=await dbAuthRelation(configTable)
-        .update({keyword_meta}).eq('id',scopeId).select('id');
-      if(saveError||saved?.length!==1)throw new Error(saveError?.message||'共享設定儲存失敗');
+      const {keywordService}=await import('../service-client.mjs');
+      const saved=await keywordService('setClassShare',{
+        scopeId,classUid,enabled:Boolean(enabled)
+      });
+      const keyword_meta=saved?.keyword_meta;
+      if(!keyword_meta||typeof keyword_meta!=='object')
+        throw Error('共享設定回執無效，請重新讀取資料。');
       setConfig(current=>({...current,keyword_meta}));
       setSavedConfig(current=>({...current,keyword_meta}));
       await invalidate();
