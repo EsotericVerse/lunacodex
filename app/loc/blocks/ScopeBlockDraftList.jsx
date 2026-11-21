@@ -1,5 +1,5 @@
 'use client';
-import {lazy,Suspense} from 'react';
+import {Fragment,lazy,Suspense} from 'react';
 
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
@@ -30,6 +30,7 @@ function stripInlineImage(value){
 export default function ScopeBlockDraftList({
   slots,scopeId,pageName,allowDelete=true,allowEntities=true,allowImages=true,
   editEyebrow=true,canAddBlock=false,slotClassName='loc-card',editSlotClassName='',
+  renderDisplay=null,resolveSlotClassName=null,resolveSlotStyle=null,
   preserveOrder=false,toolbar=null,onDone,onCancel,onDirtyChange=null
 }){
   useUiSection('uiExtra.editBlocks');
@@ -288,8 +289,7 @@ export default function ScopeBlockDraftList({
     const image=isHomeFrame?resolveHomeImage(draft,scopeId):null;
     const pinnedHero=HomeBlock.isPinnedHomeHero(pageName,draft);
     const expanded=activeDraftUid===draft.uid;
-    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'} key={draft.uid}>
-      <div className="scope-inline-editbar">
+    const controls=<div className="scope-inline-editbar">
         <button type="button" className="loc-button" aria-expanded={expanded}
           onClick={()=>{
             setActiveDraftUid(current=>current===draft.uid?null:draft.uid);
@@ -298,8 +298,8 @@ export default function ScopeBlockDraftList({
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index-1)} onClick={()=>moveBlock(draft.uid,-1)}><UiText id="uiExtra.editBlocks.moveUp"/></button>:null}
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index+1)} onClick={()=>moveBlock(draft.uid,1)}><UiText id="uiExtra.editBlocks.moveDown"/></button>:null}
         {allowDelete?<button type="button" className="loc-button scope-danger-button" disabled={busy} onClick={()=>toggleDelete(draft.uid)}><UiText id="uiExtra.editBlocks.remove"/></button>:null}
-      </div>
-      {expanded?<>
+      </div>;
+    const content=expanded?<>
       <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3><p className="scope-editor-stage__help">依序設定標題、副標題與正文；下方另行設定圖片及附屬內容。</p>
       <ObjectEditor mode="scope" fields={[
         ...(editEyebrow?[{
@@ -339,7 +339,26 @@ export default function ScopeBlockDraftList({
           {draft.subtitle||'點選「編輯區塊」開啟文字編輯器'}
           {allowEntities&&draft.entities.length?' · '+draft.entities.length+' 筆附屬內容':''}
         </p>
-      </div>}
+      </div>;
+    // Editing a Scope homepage never replaces its approved frame renderer.
+    // Controls sit on the same frame; only the active form expands below it.
+    const homePreview=pageName==='index'&&typeof renderDisplay==='function'&&
+      typeof resolveSlotClassName==='function';
+    if(homePreview){
+      return <Fragment key={draft.uid}>
+        <section className={resolveSlotClassName(draft)+' scope-editable-block scope-home-edit-preview'}
+          style={typeof resolveSlotStyle==='function'?resolveSlotStyle(draft):undefined}
+          data-page-name={pageName} data-block-order={draft.order}>
+          {renderDisplay(draft)}
+          {controls}
+        </section>
+        {expanded?<div className="scope-home-edit-fields">{content}</div>:null}
+      </Fragment>;
+    }
+    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'}
+      key={draft.uid}>
+      {controls}
+      {content}
     </section>;
   }
 
