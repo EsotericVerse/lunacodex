@@ -97,7 +97,7 @@ try{
       '<p><a href="'+target+'">前往月之符文</a></p></main></body></html>','utf8');
     redirectRules.push(pathname+' '+target+' 302');
   }
-  fs.writeFileSync(path.join(temp,'_redirects'),redirectRules.join('\\n')+'\\n');
+  fs.writeFileSync(path.join(temp,'_redirects'),redirectRules.join('\n')+'\n');
   const workDir=path.join(temp,'work');
   fs.mkdirSync(workDir,{recursive:true});
   fs.writeFileSync(path.join(workDir,'index.html'),
