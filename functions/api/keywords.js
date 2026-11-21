@@ -105,7 +105,6 @@ export async function onRequestPost(context){
             const encoder=new TextEncoder();
             // The running stream, not the already-returned handler, owns SQL
             // until its analysis finishes or the client disconnects.
-            streamOwnsConnection=true;
             const stream=new ReadableStream({
               start(controller){
                 const emit=(kind,data)=>{
@@ -144,6 +143,7 @@ export async function onRequestPost(context){
                 })();
               }
             });
+            streamOwnsConnection=true;
             return new Response(stream,{headers:{
               'content-type':'application/x-ndjson; charset=utf-8',
               'cache-control':'no-store','x-content-type-options':'nosniff'
