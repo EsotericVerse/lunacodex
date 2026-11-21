@@ -3,7 +3,7 @@ import {lazy,Suspense} from 'react';
 import UiText from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useEditDock} from '../../modular/edit-dock';
 import {navigationHref} from '../../modular/routing/scope-registry';
@@ -27,6 +27,27 @@ import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 function pageNameOf(value='index'){
   const page=String(value||'index').trim().toLowerCase();
   return page==='home'?'index':page;
+}
+
+// The root LOC homepage deliberately never uses build-time published Blocks,
+// scoped display caches or editor query snapshots. Each mode starts exactly one
+// fresh SQL-backed public read; stale responses from an old mode are discarded.
+function useFreshLocHome(scopeId,pageName,enabled,editing){
+  const mode=editing?'edit':'view';
+  const key=enabled?scopeId+':'+pageName+':'+mode:'';
+  const [state,setState]=useState({key:'',status:'pending',rows:[],error:null});
+  useEffect(()=>{
+    if(!enabled)return undefined;
+    let active=true;
+    setState({key,status:'pending',rows:[],error:null});
+    selectLiveScopeBlocks(scopeId,pageName).then(rows=>{
+      if(active)setState({key,status:'success',rows:Array.isArray(rows)?rows:[],error:null});
+    }).catch(error=>{
+      if(active)setState({key,status:'error',rows:[],error});
+    });
+    return ()=>{active=false;};
+  },[scopeId,pageName,key,enabled]);
+  return state.key===key?state:{key,status:'pending',rows:[],error:null};
 }
 
 export default function ScopeEditableBlocks({
@@ -79,6 +100,8 @@ export default function ScopeEditableBlocks({
   const [editMode,setEditMode]=useState(Boolean(startInEditMode));
   const [recentlySavedBlocks,setRecentlySavedBlocks]=useState(null);
   const editingContent=Boolean(homeEditActive||editMode||authorizedByParent);
+  const liveLocHome=scopeId==='loc'&&pageName==='index';
+  const freshHome=useFreshLocHome(scopeId,pageName,liveLocHome,editingContent);
 
   // Published presentation and the authoritative editor are mutually
   // exclusive on EVERY page, not only on Scope homepages. A management editor
@@ -89,18 +112,17 @@ export default function ScopeEditableBlocks({
   });
   const published=useAsyncResource(['published-home-page',scopeId,pageName],
     ()=>loadPublishedBlocks(scopeId,pageName),{
-      enabled:isScopeHomepageBlock&&!editingContent
+      enabled:isScopeHomepageBlock&&!editingContent&&!liveLocHome
     });
   const editorRows=useAsyncResource(['scope-blocks',scopeId,pageName],
     ()=>selectLiveScopeBlocks(scopeId,pageName),{
-      enabled:editingContent
+      enabled:editingContent&&!liveLocHome
     });
-  // Keep the approved published home visible while the authoritative edit
-  // snapshot loads. Only the ready live rows become writable drafts.
   const displayRows=recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks);
-  const blocks=editingContent?(editorRows.isSuccess?editorRows.data:displayRows):displayRows;
-  const editingReady=editorRows.isSuccess;
-  const editingError=editorRows.isError;
+  const blocks=liveLocHome?freshHome.rows:editingContent
+    ?(editorRows.isSuccess?editorRows.data:displayRows):displayRows;
+  const editingReady=liveLocHome?freshHome.status==='success':editorRows.isSuccess;
+  const editingError=liveLocHome?freshHome.status==='error':editorRows.isError;
   const rememberSavedRows=()=>{
     if(isScopeHomepageBlock){
       const saved=queryClient.getQueryData(['scope-blocks',scopeId,pageName]);
@@ -211,6 +233,18 @@ export default function ScopeEditableBlocks({
       delay:reduceMotion?0:slot.order===1?.04:Math.min(Math.max(slot.order-2,0)*.045,.18),
       ease:[.22,.8,.22,1]}
   };
+
+  // The static LOC root has no published Hero or Blocks to fall through to.
+  // Wait for its one live SELECT before rendering any display frame.
+  if(liveLocHome&&!editingContent&&freshHome.status!=='success'){
+    return <section className="loc-home-loading" role="status" aria-busy={freshHome.status==='pending'}>
+      <p className={'scope-status'+(freshHome.status==='error'?' scope-error':'')}>
+        {freshHome.status==='error'
+          ?'首頁資料讀取失敗：'+String(freshHome.error?.message||'SQL 服務暫時無法使用')
+          :'正在讀取首頁資料…'}
+      </p>
+    </section>;
+  }
 
   // explicitEditButton: one page-level toggle swaps the whole list for the
   // unified draft screen -- no per-block click target, no per-block button.
