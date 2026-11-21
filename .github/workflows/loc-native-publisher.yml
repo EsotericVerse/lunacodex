@@ -1,0 +1,64 @@
+name: LOC Native Publisher (Opt-in)
+on:
+  pull_request:
+    paths:
+      - 'modules/loc/site/**'
+      - 'modules/loc/core/**'
+      - 'scripts/build-loc-native.mjs'
+      - 'public/loc-native-*'
+      - '.github/workflows/loc-native-publisher.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'modules/loc/site/**'
+      - 'scripts/build-loc-native.mjs'
+      - 'public/loc-native-*'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  publisher:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+      - name: Test native DOM and SQL core
+        run: node --test tests/loc-native-framework.test.mjs
+      - name: Validate publisher source
+        run: |
+          node --check scripts/build-loc-native.mjs
+          node --check public/loc-native-client.mjs
+          node --check modules/loc/site/index.mjs
+      - name: Build opt-in LOC HTML without npm install
+        run: node scripts/build-loc-native.mjs
+      - name: Verify native routes, original assets, and LRS redirects
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const report=JSON.parse(fs.readFileSync('out/_loc/native-report.json','utf8'));
+          assert.equal(report.framework,'LOC');
+          assert.equal(report.routes,22);
+          assert.deepEqual(report.clientFrameworks,[]);
+          for(const file of ['out/index.html','out/lo3rwang/index.html',
+            'out/lrunes/index.html','out/work/index.html','out/loc-native-client.mjs',
+            'out/_loc/core/index.mjs','out/pics/LOC-2.png']){
+            assert.ok(fs.statSync(file).size>0,file);
+          }
+          const rules=fs.readFileSync('out/_redirects','utf8').trim().split(/\r?\n/);
+          const routes=['/card/','/card/daily/','/card/duel/','/card/list/',
+            '/daily/','/daily/log/','/daily/trend/','/game/','/game/room/'];
+          assert.equal(rules.length,routes.length);
+          for(const route of routes){
+            const target='https://lrs.lo3rwang.cc'+route;
+            assert.ok(rules.includes(route+' '+target+' 302'),route);
+            const html=fs.readFileSync('out/'+route.slice(1)+'index.html','utf8');
+            assert.ok(html.includes(target),route);
+            assert.ok(html.includes('http-equiv="refresh"'),route);
+          }
+          assert.equal(fs.existsSync('out/_loc/routes'),false);
+          assert.equal(fs.existsSync('out/sw.js'),false);
+          NODE
