@@ -225,13 +225,19 @@ export async function handleNativeLocOperation(request,env={},{
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
     if(operationKind==='short-import')importPhase='permission';
-    const permission=host===MCP_HOST
-      ?await loadMcpLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine})
-      :await readLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine,website:true});
-    claims.me=permission.canWrite;
-    claims.grants=permission.grants;
-    if(writeKinds.has(body.kind)&&!permission.canWrite)
-      throw refusal('LOC write permission denied',403);
+    // Managed batches resolve their one authorization snapshot inside the
+    // SAME transaction as all of their writes, not in a preceding query.
+    const isManagedBatch=body.kind==='managed-transaction';
+    let permission=null;
+    if(!isManagedBatch){
+      permission=host===MCP_HOST
+        ?await loadMcpLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine})
+        :await readLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine,website:true});
+      claims.me=permission.canWrite;
+      claims.grants=permission.grants;
+      if(writeKinds.has(body.kind)&&!permission.canWrite)
+        throw refusal('LOC write permission denied',403);
+    }
     // These fixed MCP operations are business data; no Authority-owned
     // custom Scope grants, token service, or SQL profile endpoint is involved.
     // LAS asks LOC to resolve its existing active api.manage eligibility. 
@@ -296,8 +302,6 @@ export async function handleNativeLocOperation(request,env={},{
       // transaction. The request-size boundary limits the total workload;
       // there is no arbitrary operation-count cap or separate auth channel.
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      if(!claims.grants?.some(grant=>grant==='global:manage'||grant.endsWith(':manage')))
-        throw refusal('LOC management delegation required',403);
       const operations=body.operations;
       if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
         operations.some(entry=>!entry||typeof entry!=='object'||
@@ -305,6 +309,16 @@ export async function handleNativeLocOperation(request,env={},{
           typeof entry.p_table!=='string'))
         throw refusal('Invalid LOC management transaction',400);
       const results=await selected.db.transaction().execute(async trx=>{
+        const verifiedRights=host===MCP_HOST
+          ?await loadMcpLocAccess(trx,claims.email,{
+            dialect:selected.dialect,engine:selected.engine,transactional:true})
+          :await readLocAccess(trx,claims.email,{
+            dialect:selected.dialect,engine:selected.engine,website:true,transactional:true});
+        claims.me=verifiedRights.canWrite;
+        claims.grants=verifiedRights.grants;
+        if(!verifiedRights.canWrite||!claims.grants.some(grant=>
+          grant==='global:manage'||grant.endsWith(':manage')))
+          throw refusal('LOC management delegation required',403);
         bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
         const outcomes=[];
         for(const payload of operations){
