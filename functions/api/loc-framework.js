@@ -23,22 +23,25 @@ function requestParams(request){
   const url=new URL(request.url);
   const scope=url.searchParams.get('scope')||'loc';
   const kind=url.searchParams.get('kind')||'culture';
+  const uid=url.searchParams.get('uid')||'';
   const search=(url.searchParams.get('q')||'').trim();
   const offset=Number(url.searchParams.get('offset')||0);
   const limit=Number(url.searchParams.get('limit')||40);
   if(!['loc',...SCOPES].includes(scope))throw error('Unknown LOC Scope');
-  if(!['culture','statics','search','trace','overview'].includes(kind))
+  if(!['culture','statics','search','trace','overview','article'].includes(kind))
     throw error('Unknown LOC capability');
   if(!Number.isSafeInteger(limit)||limit<1||limit>100||
     !Number.isSafeInteger(offset)||offset<0||offset>10000)
     throw error('Invalid LOC pagination');
   if(search.length>120)throw error('LOC search input too long');
-  return {scope,kind,search,limit,offset};
+  if(kind==='article'&&(!SCOPES.includes(scope)||!/^[A-Za-z0-9]{8}$/.test(uid)))
+    throw error('Invalid LOC article identity');
+  return {scope,kind,search,uid,limit,offset};
 }
 function active(flag){
   return {column:flag,value:true};
 }
-async function readScope(db,scope,{kind,search,limit,offset}){
+async function readScope(db,scope,{kind,search,uid,limit,offset}){
   const model=galaxy(scope);
   const execute=async statement=>{
     const result=await db.query(statement.text,[...statement.params]);
@@ -55,13 +58,20 @@ async function readScope(db,scope,{kind,search,limit,offset}){
     const rows=await execute(compileGroupCount(model,{
       column:'date',where:{all:[active('culture'),{column:'date',operator:'ne',value:null}]}
     }));
-    return rows.map(row=>({date:String(row.value).slice(0,10),total:Number(row.total||0)}));
+    return rows.map(row=>({date:row.value instanceof Date?row.value.toISOString().slice(0,10):String(row.value||'').slice(0,10),total:Number(row.total||0)}));
   }
   if(kind==='statics'){
     const rows=await execute(compileGroupCount(model,{
       column:'site',where:active('statics')
     }));
     return rows.map(row=>({site:String(row.value||'未分類'),total:Number(row.total||0)}));
+  }
+  if(kind==='article'){
+    const rows=await execute(compileSelect(model,{
+      columns:['uid','title','content','date','createtime','site'],
+      where:{all:[active('search'),{column:'uid',value:uid}]},limit:1
+    }));
+    return rows.map(row=>({...row,scope}));
   }
   if(kind==='search'){
     if(!search)return [];
@@ -70,7 +80,7 @@ async function readScope(db,scope,{kind,search,limit,offset}){
       {column:'content',operator:'like',value:'%'+search+'%'}
     ]}]};
     const rows=await execute(compileSelect(model,{
-      columns:['uid','title','date','site'],
+      columns:['uid','title','date','createtime','site'],
       where,orderBy:[{column:'createtime',descending:true}],limit,offset
     }));
     return rows.map(row=>({...row,scope}));
