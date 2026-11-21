@@ -22,7 +22,7 @@ import {directMcpKysely} from './native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
-import {withFixedPolicyWrite} from '../../../packages/zenstack/policy-runtime.mjs';
+import {withFixedPolicyWrite,fixedPolicyWriteModel} from '../../../packages/zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -282,45 +282,70 @@ export async function handleNativeLocOperation(request,env={},{
           engine:selected.engine,namespace:selected.namespace,
           onPhase:phase=>{importPhase=phase;}})
       });
-      return reply(receipt);
-    }
-    if(body.kind==='managed-transaction'){
-      // One logical Save, one verified identity, one api.manage role read, one
-      // database transaction. All operations retain their original per-Scope
-      // relation and modeled-field checks inside that same transaction.
+      return     if(body.kind==='managed-transaction'){
+      // One HTTP request, one established LOC business principal, one SQL
+      // transaction. The request-size boundary limits the total workload;
+      // there is no arbitrary operation-count cap or separate auth channel.
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
       if(!claims.grants?.some(grant=>grant==='global:manage'||grant.endsWith(':manage')))
         throw refusal('LOC management delegation required',403);
       const operations=body.operations;
       if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
-        operations.length>24||operations.some(entry=>!entry||typeof entry!=='object'||
+        operations.some(entry=>!entry||typeof entry!=='object'||
           Array.isArray(entry)||!['insert','update','delete','upsert'].includes(entry.p_operation)||
-          typeof entry.p_table!=='string'||
-          ['api.manage','silver.loc'].includes(entry.p_table)))
+          typeof entry.p_table!=='string'))
         throw refusal('Invalid LOC management transaction',400);
-      // Fixed global Registry models stay on their existing PolicyPlugin
-      // route; never bypass its authorization by slipping them into a batch.
       const results=await selected.db.transaction().execute(async trx=>{
         bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
         const outcomes=[];
         for(const payload of operations){
-          const output=selected.engine==='postgres'
-            ?await executeManagedKyselyWrite(trx,{kind:'managed-write',payload})
-            :await executeCrossEngineManagedWrite(trx,
-              {kind:'managed-write',payload},{
+          const fixed=['api.manage','silver.loc'].includes(payload.p_table);
+          const action={kind:'managed-write',payload};
+          let output;
+          if(fixed){
+            // The existing fixed ZModel management models are global-only.
+            // Resolve their established policy mapping against the signed
+            // principal, but execute inside this SAME Kysely transaction.
+            const modelName=selected.engine==='postgres'
+              ?fixedPolicyWriteModel({engine:selected.engine},action,claims.role,claims)
+              :null;
+            if(!claims.grants.includes('global:manage')||
+              !await canLocAccess(trx,'global')||
+              !['update','delete'].includes(payload.p_operation)||
+              (selected.engine==='postgres'&&!modelName))
+              throw refusal('LOC fixed management policy denied',403);
+            if(selected.engine==='postgres'){
+              output=await executeManagedKyselyWrite(trx,action,{modelName});
+            }else if(payload.p_table==='api.manage'){
+              output={data:await applyManagedWrite(trx,
+                registryRelationForEngine(selected.engine),payload)};
+            }else{
+              output=await executeCrossEngineManagedWrite(trx,action,{
                 engine:selected.engine,namespace:selected.namespace,
                 role:claims.role,claims
               });
+            }
+          }else{
+            output=selected.engine==='postgres'
+              ?await executeManagedKyselyWrite(trx,action)
+              :await executeCrossEngineManagedWrite(trx,action,{
+                engine:selected.engine,namespace:selected.namespace,
+                role:claims.role,claims
+              });
+          }
           const affected=Number(output?.data?.count??0);
           if(!Number.isSafeInteger(affected)||affected<0||
             (['update','delete'].includes(payload.p_operation)&&affected===0)||
-            (payload.p_operation==='insert'&&affected!==payload.p_rows?.length))
+            (['insert','upsert'].includes(payload.p_operation)&&
+              affected!==payload.p_rows?.length))
             throw refusal('LOC transaction operation did not complete',409);
           outcomes.push({count:affected});
         }
         return outcomes;
       });
       return reply({data:{results,count:results.reduce((total,item)=>total+item.count,0)}});
+    }
+em.count,0)}});
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
