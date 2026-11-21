@@ -6,6 +6,7 @@ on:
       - 'modules/loc/core/**'
       - 'scripts/build-loc-native.mjs'
       - 'public/loc-native-*'
+      - 'tests/loc-native-*.test.mjs'
       - '.github/workflows/loc-native-publisher.yml'
   push:
     branches: [main]
@@ -26,7 +27,7 @@ jobs:
         with:
           node-version: '22.23.5'
       - name: Test native DOM and SQL core
-        run: node --test tests/loc-native-framework.test.mjs
+        run: node --test tests/loc-native-framework.test.mjs tests/loc-native-public-api.test.mjs
       - name: Validate publisher source
         run: |
           node --check scripts/build-loc-native.mjs

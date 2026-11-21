@@ -10,15 +10,41 @@ const section=(route.find(value=>['culture','statics','trace','search','manage',
 
 function render(view){mountHTML(panel,view);}
 function status(message){LOC.components.mount(panel,'status',{message});}
-async function read(kind,params={}){
-  const query=new URLSearchParams({kind,scope,...params});
-  const response=await fetch('/api/loc-framework?'+query,{credentials:'omit',cache:'no-store',
-    signal:AbortSignal.timeout(15000)});
-  const result=await response.json().catch(()=>null);
-  if(!response.ok||!Array.isArray(result?.data)&&kind!=='overview')
-    throw new Error(result?.error||'LOC 資料讀取失敗');
-  return result.data;
+const PUBLIC_SCOPES=['lo3rwang','lrunes'];
+const firstDay='0001-01-01',lastDay='9999-12-31';
+async function publicRequest(url,{method='GET',body}={}){
+  const response=await fetch(url,{
+    method,credentials:'omit',cache:'no-store',redirect:'error',
+    headers:{accept:'application/json',...(body?{'content-type':'application/json'}:{})},
+    ...(body?{body:JSON.stringify(body)}:{}),
+    signal:AbortSignal.timeout(15000)
+  });
+  const payload=await response.json().catch(()=>null);
+  if(!response.ok)throw new Error(payload?.error||'LOC 公開資料讀取失敗（HTTP '+response.status+'）');
+  if(payload==null||!Object.hasOwn(payload,'data'))
+    throw new Error('LOC 公開資料回傳格式錯誤');
+  return payload.data;
 }
+async function publicContent(kind,target,dates=false){
+  const params=new URLSearchParams({kind,scope:target});
+  if(dates){params.set('start',firstDay);params.set('end',lastDay);}
+  return publicRequest('/api/loc-public-content?'+params);
+}
+async function publicQuery(body){
+  return publicRequest('/api/loc-public-query',{method:'POST',body});
+}
+async function publicAnalytics(view,target){
+  return publicQuery({kind:'analytics',args:{
+    p_scope_id:target,p_view:view,p_start:null,p_end:null,p_options:{}
+  }});
+}
+async function publicSelect(target,kind,columns,filters=[],{limit=40,offset=0,orFilters=[],orders=[]}={}){
+  if(!PUBLIC_SCOPES.includes(target)||!['galaxy','anchor'].includes(kind))
+    throw new TypeError('Unknown LOC public Scope/relation');
+  return publicQuery({schema:'silver',table:target+'_'+kind,columns,filters,
+    orFilters,orders,limit,offset,head:false,count:null,cardinality:null});
+}
+
 function cleanDate(value){
   const date=new Date(value);
   return Number.isFinite(date.getTime())?date.toLocaleDateString('zh-TW',{timeZone:'Asia/Taipei'}):'';
@@ -57,14 +83,14 @@ async function article(){
   const query=new URLSearchParams(location.search);
   const owner=query.get('scope')||'';
   const uid=query.get('uid')||'';
-  if(!['lo3rwang','lrunes'].includes(owner)||!/^[A-Za-z0-9]{8}$/.test(uid))
+  if(!PUBLIC_SCOPES.includes(owner)||!/^[A-Za-z0-9]{8}$/.test(uid))
     return status('找不到指定作品');
   status('正在讀取作品…');
-  const target='/api/loc-framework?'+new URLSearchParams({scope:owner,kind:'article',uid});
-  const response=await fetch(target,{cache:'no-store',credentials:'omit'});
-  const result=await response.json().catch(()=>null);
-  if(!response.ok)throw Error(result?.error||'作品讀取失敗');
-  const work=result?.data?.[0];
+  const rows=await publicSelect(owner,'galaxy',
+    ['uid','title','content','createtime','date','site'],
+    [{column:'uid',op:'eq',value:uid},{column:'search',op:'eq',value:true}],
+    {limit:1});
+  const work=Array.isArray(rows)?rows[0]:null;
   if(!work)return status('找不到指定作品');
   render(html('article',{'class':'loc-work'},
     html('h2',{},work.title||'未命名作品'),
@@ -75,20 +101,37 @@ async function article(){
 }
 async function culture(){
   status('正在讀取時間資料…');
-  const rows=await read('culture');
+  const rows=scope==='loc'
+    ?(await Promise.all(PUBLIC_SCOPES.map(id=>publicContent('culture_density',id,true)))).flat()
+    :await publicContent('culture_density',scope,true);
+  if(!Array.isArray(rows))throw new Error('文化資料格式不符合 LOC 契約');
   const grouped=new Map();
   for(const row of rows){
-    const year=String(row.date||'').slice(0,4);
+    const year=String(row.day||'').slice(0,4);
     if(!/^\d{4}$/.test(year))continue;
-    grouped.set(year,(grouped.get(year)||0)+Number(row.total||0));
+    grouped.set(year,(grouped.get(year)||0)+Number(row.item_count||0));
   }
-  renderBars([...grouped].map(([year,total])=>({year,total})),{category:'year',value:'total',max:200});
+  renderBars([...grouped].map(([year,total])=>({year,total})),
+    {category:'year',value:'total',max:200});
 }
 async function statics(){
   status('正在讀取統計資料…');
-  const rows=await read('statics');
-  renderBars(rows,{category:'site',value:'total'});
+  if(scope==='loc'){
+    const aggregate=await publicContent('loc','loc');
+    if(!Array.isArray(aggregate?.rows))throw new Error('統計資料格式錯誤');
+    const counters=new Map();
+    for(const row of aggregate.rows)
+      counters.set(row.scope_id,(counters.get(row.scope_id)||0)+Number(row.item_count||0));
+    const labels=new Map((aggregate.scopes||[]).map(row=>[row.scope_id,row.display_name]));
+    return renderBars([...counters].map(([id,total])=>({site:labels.get(id)||id,total})),
+      {category:'site',value:'total'});
+  }
+  const rows=await publicContent('totals',scope);
+  if(!Array.isArray(rows))throw new Error('統計資料格式錯誤');
+  renderBars(rows.map(row=>({site:row.category||'未分類',total:Number(row.item_count||0)})),
+    {category:'site',value:'total'});
 }
+
 function searchResult(row){
   return html('li',{},
     html('h3',{},html('a',{href:'/work/?scope='+encodeURIComponent(row.scope)+
@@ -97,19 +140,47 @@ function searchResult(row){
       .filter(Boolean).join(' · '))
   );
 }
+let searchState={query:'',scope:'',pages:new Map()};
 async function search(page=0){
   const form=document.getElementById('loc-search-form');
   const input=form?.querySelector('input[name=q]');
   const query=input?.value.trim()||'';
   if(!query){status('請輸入搜尋關鍵詞');return;}
+  if(query.length>120)throw new Error('搜尋文字超過長度限制');
+  const scopes=scope==='loc'?PUBLIC_SCOPES:[scope];
+  if(searchState.query!==query||searchState.scope!==scope){
+    searchState={query,scope,pages:new Map([[0,Object.fromEntries(scopes.map(id=>[id,0]))]])};
+  }
+  const cursors=searchState.pages.get(page);
+  if(!cursors)throw new Error('搜尋頁碼無效');
   status('正在搜尋…');
-  const rows=await read('search',{q:query,limit:40,offset:page*40});
-  const heading=html('p',{'class':'loc-status'},'搜尋結果：'+rows.length+' 筆');
-  const list=html('ul',{'class':'loc-list'},...rows.map(searchResult));
+  const term=query.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[\r\n\t]/g,' ');
+  const results=await Promise.all(scopes.map(async target=>{
+    const records=await publicSelect(target,'galaxy',
+      ['uid','title','date','createtime','site'],
+      [{column:'search',op:'eq',value:true}],
+      {orFilters:['title.contains."'+term+'",content.contains."'+term+'"'],
+        orders:[{column:'createtime',ascending:false},{column:'uid',ascending:false}],
+        limit:40,offset:cursors[target]});
+    if(!Array.isArray(records))throw new Error('搜尋資料格式錯誤');
+    return records.map(row=>({...row,scope:target}));
+  }));
+  const all=results.flat().sort((a,b)=>
+    String(b.createtime||b.date||'').localeCompare(String(a.createtime||a.date||''))||
+    String(b.uid||'').localeCompare(String(a.uid||''))).slice(0,40);
+  const consumed=Object.fromEntries(scopes.map(target=>[target,
+    all.filter(row=>row.scope===target).length]));
+  const more=results.some(rows=>rows.length===40)||results.flat().length>40;
+  if(more)searchState.pages.set(page+1,Object.fromEntries(scopes.map(
+    target=>[target,cursors[target]+consumed[target]])));
+  const heading=html('p',{'class':'loc-status'},'搜尋結果：'+all.length+' 筆');
+  const list=html('ul',{},...all.map(searchResult));
   render(html('div',{},heading,list,
-    ...(page>0?[html('button',{onClick:()=>search(page-1)},'上一頁')]:[]),
-    ...(rows.length===40?[html('button',{onClick:()=>search(page+1)},'下一頁')]:[])));
+    ...(page>0?[html('button',{onClick:()=>void search(page-1).catch(showError)},'上一頁')]:[]),
+    ...(more?[html('button',{onClick:()=>void search(page+1).catch(showError)},'下一頁')]:[])
+  ));
 }
+
 let mapLoader=null;
 function loadMaplibre(){
   // MapLibre 6 is ESM. Only the Trace page fetches this optional provider.
@@ -152,7 +223,22 @@ LOC.extensions.register('map',async()=>({
 }));
 async function trace(){
   status('正在讀取空間定錨資料…');
-  const rows=await read('trace');
+  const scopes=scope==='loc'?PUBLIC_SCOPES:[scope];
+  const all=await Promise.all(scopes.map(async target=>{
+    const items=await publicSelect(target,'anchor',['uid','title','attr'],
+      [{column:'type',op:'eq',value:'point'},{column:'invisible',op:'eq',value:false}],
+      {limit:500});
+    if(!Array.isArray(items))throw new Error('空間定錨資料格式錯誤');
+    return items.flatMap(item=>{
+      let attr=item.attr||{};
+      if(typeof attr==='string'){try{attr=JSON.parse(attr)}catch{return [];}}
+      const longitude=Number(attr?.longitude),latitude=Number(attr?.latitude);
+      if(!Number.isFinite(longitude)||!Number.isFinite(latitude)||
+        Math.abs(longitude)>180||Math.abs(latitude)>90)return [];
+      return [{longitude,latitude,place:item.title||attr.location||'LOC 空間定錨'}];
+    });
+  }));
+  const rows=all.flat();
   if(!rows.length)return status('目前沒有具備座標的公開空間定錨點');
   const viewport=document.createElement('div');
   viewport.style.height='min(70vh,580px)';
@@ -161,6 +247,7 @@ async function trace(){
   const dispose=await LOC.extensions.mount('map',viewport,{rows});
   window.addEventListener('pagehide',dispose,{once:true});
 }
+
 function settings(){
   const saved=(()=>{try{return sessionStorage.getItem('loc-native-color-mode')||'auto'}catch{return 'auto'}})();
   render(html('div',{},
