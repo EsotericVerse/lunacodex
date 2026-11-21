@@ -48,9 +48,12 @@ try{
         (entry!==exclude&&!entry.startsWith(exclude+path.sep))});
   }
   const vendor=path.join(root,'node_modules/maplibre-gl/dist');
-  for(const name of ['maplibre-gl.js','maplibre-gl.css']){
+  if(!fs.existsSync(path.join(vendor,'maplibre-gl.mjs')))
+    throw new Error('LOC ESM map provider missing');
+  for(const name of fs.readdirSync(vendor)){
+    if(!name.endsWith('.mjs')&&!name.endsWith('.css'))continue;
     const source=path.join(vendor,name);
-    if(!fs.existsSync(source))throw new Error('LOC map extension missing: '+source);
+    if(!fs.statSync(source).isFile())continue;
     const dest=path.join(temp,'_loc','vendor',name);
     fs.mkdirSync(path.dirname(dest),{recursive:true});
     fs.copyFileSync(source,dest);
