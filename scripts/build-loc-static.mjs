@@ -46,7 +46,24 @@ try{
     const title=source.match(/title:\s*['"]([^'"]+)['"]/)?.[1]||'LOC 月典';
     const description=source.match(/description:\s*['"]([^'"]+)['"]/)?.[1]||'';
     const noIndex=/noIndex:\s*true|index:\s*false/.test(source);
-    records.push({route,name,title,description,noIndex});
+    // Page data is baked into the HTML itself. No runtime URL routing table.
+    const part=route.split('/').filter(Boolean);
+    const group=['lo3rwang','lrunes','local','scope-shell'].includes(part[0])?part.shift():'';
+    const relative=part.join('/');
+    const scope=source.match(/forcedScope="([^"]+)"/)?.[1]||
+      (group&&group!=='scope-shell'?group:'loc');
+    const view=source.match(/forcedView="([^"]+)"/)?.[1]||'home';
+    const section=source.match(/forcedSection="([^"]+)"/)?.[1]||'';
+    const component=/GalaxyLinkBridge/.test(source)?'bridge':
+      /GlobalSettings/.test(source)?'settings':
+      /FeatureSettingsPage/.test(source)?'features':
+      /LocalScopeWorkspace/.test(source)?'phone':
+      /AuthorHomeView/.test(source)?'work':
+      /LegacyManagementRedirect/.test(source)?'legacy':
+      ['card','daily','game'].includes(part[0])?'outbound':'loc';
+    const redirectTarget=source.match(/target="([^"]+)"/)?.[1]||'';
+    records.push({route,name,title,description,noIndex,scope,view,section,component,
+      relative,group,redirectTarget});
   }
   const compiled=await build({
     entryPoints,outdir:out,bundle:true,splitting:true,format:'esm',
@@ -107,13 +124,29 @@ try{
     packages:'external',jsx:'automatic',jsxImportSource:'react',
     target:'node22',logLevel:'warning'
   });
-  const {renderPublicScopeHome}=await import(pathToFileURL(staticRenderer).href);
+  const {renderPublicScopeHome,renderPublicFeatureFrame}=await import(pathToFileURL(staticRenderer).href);
   for(const page of records){
     const staticHome=!native?renderPublicScopeHome({route:page.route,entry:page.name}):null;
     const dest=path.join(out,page.route.slice(1));
     fs.mkdirSync(dest,{recursive:true});
-    const scope=page.route.startsWith('/lrunes/')?'theme-4':'theme-7';
-    const css=fs.existsSync(path.join(out,page.name+'.css'))?'<link rel="stylesheet" href="/'+page.name+'.css">':'';
+    const outbound=page.component==='outbound';
+    const target=outbound?'https://lrs.lo3rwang.cc/'+page.relative+'/':'';
+    const frame=staticHome?staticHome.html:
+      renderPublicFeatureFrame({scopeId:page.scope,title:page.title});
+    const attrs=' data-loc-component="'+escape(page.component)+'" data-loc-view="'+
+      escape(page.view)+'" data-loc-scope="'+escape(page.scope)+'"'+
+      (page.section?' data-loc-section="'+escape(page.section)+'"':'')+
+      (page.redirectTarget?' data-loc-redirect="'+escape(page.redirectTarget)+'"':'');
+    const load=staticHome?staticHome.loader:
+      outbound?'<script>location.replace('+JSON.stringify(target)+')</script>':
+      page.component==='legacy'
+        ?'<script>if(location.protocol!=="capacitor:"){const next=new URL('+
+          JSON.stringify(page.redirectTarget)+',location.href);'+
+          'const old=new URL(location.href);for(const [k,v] of old.searchParams)'+
+          'if(!next.searchParams.has(k))next.searchParams.append(k,v);'+
+          'next.hash=old.hash;location.replace(next.href);}</script>'+
+          '<script type="module" src="/'+page.name+'.js"></script>'
+        :'<script type="module" src="/'+page.name+'.js"></script>';
     const html=[
       '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">',
       '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">',
@@ -122,13 +155,11 @@ try{
       page.noIndex?'<meta name="robots" content="noindex,nofollow">':'',
       '<link rel="canonical" href="https://loc.lo3rwang.cc'+page.route+'">',
       '<link rel="icon" href="/assets/site/icons/loc-favicon.png">',
-      '<link rel="stylesheet" href="'+cssHref+'">',css,
+      '<link rel="stylesheet" href="'+cssHref+'">',
       '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
       '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
-      '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"><div id="loc-root">',
-      staticHome?staticHome.html:'<main class="scope-main"><section class="scope-page"><header class="loc-card scope-hero"><h1>'+escape(page.title)+'</h1></header></section></main>',
-      '</div>',
-      staticHome?staticHome.loader:'<script type="module" src="/'+page.name+'.js"></script>',
+      '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"'+attrs+'>',
+      '<div id="loc-root">'+frame+'</div>',load,
       '</body></html>'
     ].join('');
     fs.writeFileSync(path.join(dest,'index.html'),html);

@@ -69,15 +69,15 @@ function PublicDock({scopeId}){
    </a>)}
  </div>;
 }
-function SiteFooter({scopeId}){
+function SiteFooter({scopeId,home=true}){
  return <>
-   <div className="scope-home-edit-entry">
+   {home?<div className="scope-home-edit-entry">
      <button type="button" className="loc-button" data-loc-upgrade="edit">進入編輯模式</button>
-   </div>
+   </div>:null}
    <footer className="scope-footer" data-scope={scopeId}>
      <div className="scope-footer-row">
        <a href="mailto:sopa2306@gmail.com">聯絡方式</a>
-       <button className="loc-button" type="button" data-loc-upgrade="interface">語系與主題設定</button>
+       {home?<button className="loc-button" type="button" data-loc-upgrade="interface">語系與主題設定</button>:<a href="/settings/">語系與主題設定</a>}
        <small className="scope-footer-date-basis">日期基準：Asia/Taipei (UTC+08:00)</small>
      </div>
    </footer>
@@ -92,6 +92,20 @@ function StaticSite({scopeId,rows}){
    <PublicDock scopeId={scopeId}/>
    <SiteFooter scopeId={scopeId}/>
  </>;
+}
+// Static HTML already owns navigation and the six feature links.
+// An interactive component mounts only inside the following content slot.
+export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典'}={}){
+ return renderToStaticMarkup(<>
+   <PublicNavigation scopeId={scopeId}/>
+   <div id="loc-interactive-root" data-feature-content="true">
+     <main className="scope-main"><section className="scope-page">
+       <header className="loc-card scope-hero"><h1>{title}</h1></header>
+     </section></main>
+   </div>
+   <PublicDock scopeId={scopeId}/>
+   <SiteFooter scopeId={scopeId} home={false}/>
+ </>);
 }
 function activateOnDemand(entry,scopeId){
  // A single event bridge, not another app or router. In particular there is
@@ -110,16 +124,16 @@ function activateOnDemand(entry,scopeId){
   'target.dataset.locUpgrade="interface";},onClosed:()=>{panel.remove();target.hidden=false;}});',
   '}catch(error){console.error("LOC Preact preferences failed",error);}',
   'busy=false;return;}',
-  'const fallback=root.innerHTML;target.disabled=true;',
-  'target.textContent="正在載入功能…";',
+  'const main=root.querySelector(".loc-next-main");if(!main){busy=false;return;}',
+  'const replacement=document.createElement("div");replacement.id="loc-interactive-root";',
+  'main.replaceWith(replacement);target.disabled=true;target.hidden=true;',
   'const observer=new MutationObserver(()=>{if(!edit)return;',
-  'const next=root.querySelector(".scope-home-edit-entry button:not([disabled])");',
+  'const next=replacement.querySelector(".scope-home-edit-entry button:not([disabled])");',
   'if(next){observer.disconnect();next.click();}});',
-  'try{root.replaceChildren();if(edit)observer.observe(root,{childList:true,subtree:true});',
+  'try{if(edit)observer.observe(replacement,{childList:true,subtree:true});',
   'await import('+JSON.stringify('/'+entry+'.js')+');',
   'setTimeout(()=>observer.disconnect(),12000);',
-  '}catch(error){observer.disconnect();root.innerHTML=fallback;busy=false;',
-  'console.error("LOC load-on-demand failed",error);}',
+  '}catch(error){observer.disconnect();console.error("LOC feature load failed",error);busy=false;}',
   '});})();'
  ].join('')+'</script>';
 }
