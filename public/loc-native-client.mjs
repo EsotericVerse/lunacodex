@@ -1,4 +1,6 @@
-import {html,mountHTML} from '/_loc/core/index.mjs';
+import {html,mountHTML,createLOC} from '/_loc/core/index.mjs';
+const LOC=createLOC();
+LOC.components.register('status',({message})=>html('p',{role:'status','class':'loc-status'},message));
 import {parseRichText} from '/_loc/core/rich-text.mjs';
 
 const panel=document.getElementById('loc-feature-panel');
@@ -7,7 +9,7 @@ const route=location.pathname.split('/').filter(Boolean);
 const section=(route.find(value=>['culture','statics','trace','search','manage','settings','work'].includes(value))||'home').replace('work','article');
 
 function render(view){mountHTML(panel,view);}
-function status(message){render(html('p',{role:'status','class':'loc-status'},message));}
+function status(message){LOC.components.mount(panel,'status',{message});}
 async function read(kind,params={}){
   const query=new URLSearchParams({kind,scope,...params});
   const response=await fetch('/api/loc-framework?'+query,{credentials:'omit',cache:'no-store',
@@ -115,41 +117,49 @@ function loadMaplibre(){
     .catch(error=>{mapLoader=null;throw error;});
   return mapLoader;
 }
+// A capability is a provider selected by LOC, not an application framework.
+LOC.extensions.register('map',async()=>({
+  async mount(viewport,{rows}){
+    const maplibregl=await loadMaplibre();
+    if(!document.getElementById('loc-native-map-style')){
+      const css=document.createElement('link');
+      css.id='loc-native-map-style';css.rel='stylesheet';
+      css.href='/_loc/vendor/maplibre-gl.css';
+      document.head.append(css);
+    }
+    const first=rows[0];
+    const map=new maplibregl.Map({
+      container:viewport,
+      center:[first.longitude,first.latitude],zoom:6,pitch:45,
+      style:{version:8,sources:{osm:{type:'raster',
+        tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tileSize:256,attribution:'© OpenStreetMap contributors'}},
+        layers:[{id:'osm',type:'raster',source:'osm'}]}
+    });
+    const bounds=new maplibregl.LngLatBounds();
+    for(const row of rows){
+      const coords=[row.longitude,row.latitude];
+      bounds.extend(coords);
+      const popup=new maplibregl.Popup({offset:20})
+        .setText(row.place||row.title||'LOC 空間定錨');
+      new maplibregl.Marker().setLngLat(coords).setPopup(popup).addTo(map);
+    }
+    map.on('load',()=>{
+      if(rows.length>1)map.fitBounds(bounds,{padding:45,maxZoom:12,duration:0});
+    });
+    return ()=>map.remove();
+  }
+}));
 async function trace(){
   status('正在讀取空間定錨資料…');
   const rows=await read('trace');
   if(!rows.length)return status('目前沒有具備座標的公開空間定錨點');
-  if(!document.getElementById('loc-native-map-style')){
-    const css=document.createElement('link');
-    css.id='loc-native-map-style';css.rel='stylesheet';
-    css.href='/_loc/vendor/maplibre-gl.css';
-    document.head.append(css);
-  }
-  const maplibregl=await loadMaplibre();
   const viewport=document.createElement('div');
   viewport.style.height='min(70vh,580px)';
   viewport.style.width='100%';
   panel.replaceChildren(viewport);
-  const first=rows[0];
-  const map=new maplibregl.Map({
-    container:viewport,
-    center:[first.longitude,first.latitude],zoom:6,pitch:45,
-    style:{version:8,sources:{osm:{type:'raster',
-      tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,
-      attribution:'© OpenStreetMap contributors'}},
-      layers:[{id:'osm',type:'raster',source:'osm'}]}
-  });
-  const bounds=new maplibregl.LngLatBounds();
-  for(const row of rows){
-    const coords=[row.longitude,row.latitude];
-    bounds.extend(coords);
-    const popup=new maplibregl.Popup({offset:20}).setText(row.place||row.title||'LOC 空間定錨');
-    new maplibregl.Marker().setLngLat(coords).setPopup(popup).addTo(map);
-  }
-  map.on('load',()=>{
-    if(rows.length>1)map.fitBounds(bounds,{padding:45,maxZoom:12,duration:0});
-  });
-  window.addEventListener('pagehide',()=>map.remove(),{once:true});
+  const dispose=await LOC.extensions.mount('map',viewport,{rows});
+  window.addEventListener('pagehide',dispose,{once:true});
 }
 function settings(){
   const saved=(()=>{try{return sessionStorage.getItem('loc-native-color-mode')||'auto'}catch{return 'auto'}})();
