@@ -70,7 +70,7 @@ function PublicNavigation({scopeId,native=false}){
          </div>
        </div>
      </div>
-     <a className="scope-nav-loc-home" data-loc-home-link href="/" aria-current={scopeId==='loc'?'page':undefined}>首頁</a>
+     <a className="scope-nav-loc-home" data-loc-home-link href={navigationHref('loc','',native)} aria-current={scopeId==='loc'?'page':undefined}>首頁</a>
    </nav>
  </header>;
 }
@@ -81,7 +81,7 @@ function PublicDock({scopeId,current='home',native=false}){
      data-loc-feature-link={item.id}
      href={item.id==='settings'?(native?'/local/settings/index.html?scopeid='+scopeId:'/settings/?scopeid='+scopeId):navigationHref(scopeId,item.route,native)}
      aria-current={item.id===current?'page':undefined}>
-     {item.id==='home'?<span className="scope-dock-active-pill" aria-hidden="true"/>:null}
+     {item.id===current?<span className="scope-dock-active-pill" aria-hidden="true"/>:null}
      <span className="scope-dock-motion-icon"><BottomNavIcon name={item.name}/></span>
      <span data-loc-feature-label>{item.label}</span>
    </a>)}

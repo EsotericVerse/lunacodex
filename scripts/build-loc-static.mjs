@@ -127,6 +127,7 @@ try{
     const target=outbound?'https://lrs.lo3rwang.cc/'+page.relative+'/':'';
     const current=page.component==='settings'||page.component==='features'?'settings':
       page.view==='searchManage'?'search':
+      page.view==='sourceManage'?'culture':
       ['keywords','keywordManage'].includes(page.view)?'statics':
       page.view==='manage'&&page.relative.includes('trace')?'trace':page.view;
     const frame=staticHome?staticHome.html:
