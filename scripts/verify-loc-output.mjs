@@ -66,6 +66,13 @@ if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))throw Error('IPA co
 const routeManifestPath=path.join(out,'_loc','shared-routes.json');
 const manifest=native?{}:JSON.parse(read(routeManifestPath));
 const rewritten=Object.keys(manifest);
+const outboundRoutes=native?[]:pageSources.filter(file=>
+  read(path.join(app,file)).includes('data-loc-component="outbound"'))
+  .map(file=>{
+    const dir=path.posix.dirname(file);
+    return '/'+(dir==='.'?'':dir+'/');
+  });
+
 if(native){
   if(report.sharedWebRoutes!==0||report.emittedHtmlRoutes!==pageRoutes.length)
     throw Error('IPA must retain all existing native deep-link HTML files');
@@ -81,7 +88,8 @@ if(native){
   if(!shell.includes('src="/_loc/routes/interactive.js"'))
     throw Error('LOC shared Web shell must use the one interactive entrypoint');
   if(report.sharedWebRoutes!==rewritten.length||rewritten.length<40||
-    report.emittedHtmlRoutes!==pageRoutes.length-rewritten.length+1)
+    report.outboundRedirectRoutes!==outboundRoutes.length||
+    report.emittedHtmlRoutes!==pageRoutes.length-rewritten.length-outboundRoutes.length+1)
     throw Error('LOC Web shell route consolidation incomplete');
   for(const route of rewritten){
     if(!pageRoutes.includes(route)||route.startsWith('/api/')||
@@ -89,6 +97,13 @@ if(native){
   }
   const redirects=read(path.join(out,'_redirects')).split('\n');
   const headers=read(path.join(out,'_headers'));
+  for(const route of outboundRoutes){
+    const relative=route.replace(/^\\/lrunes\\//,'/').slice(1);
+    const target='https://lrs.lo3rwang.cc/'+relative;
+    if(!redirects.includes(route+' '+target+' 302'))
+      throw Error('Direct LRS outbound redirect missing '+route);
+  }
+
   for(const route of rewritten){
     if(!redirects.includes(route+' /_loc/shell.html 200'))
       throw Error('Cloudflare Pages rewrite missing '+route);
@@ -101,8 +116,8 @@ if(native){
 
 for(const route of pageRoutes){
   const entry=path.join(out,route.slice(1),'index.html');
-  if(!native&&Object.hasOwn(manifest,route)){
-    if(exists(entry))throw Error('Duplicate authored Web page instead of shared shell: '+route);
+  if(!native&&(Object.hasOwn(manifest,route)||outboundRoutes.includes(route))){
+    if(exists(entry))throw Error('Duplicate Web HTML instead of shared shell or redirect: '+route);
     continue;
   }
   if(!exists(entry))throw Error('Missing route: '+route);
