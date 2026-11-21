@@ -229,10 +229,12 @@ export default function Culture(){
   const resourceCache=useResourceCache();
   const navigation=useMemo(()=>readFeatureNavigation(searchParams),[searchParams]);
   const query=useAsyncResource({
-    queryKey:['culture-timeline',scopeId],
-    queryFn:async()=>{
-      const {selectScopeCultureData}=await import('../../loc/culture/query');
-      return selectScopeCultureData(scopeId);
+    queryKey:['culture-timeline',scopeId,isTimeEditingView?'management':'public'],
+    queryFn:async({signal})=>{
+      const {selectScopeCultureData,selectScopeCultureManagementData}=await import('../../loc/culture/query');
+      return isTimeEditingView
+        ?selectScopeCultureManagementData(scopeId,{signal})
+        :selectScopeCultureData(scopeId);
     },
     enabled:!isLocItemView,
   });
@@ -1380,6 +1382,9 @@ export default function Culture(){
               <CultureTimelineEditor key={scopeId+':unified:'+timelineEditorRevision}
                 scopeId={scopeId}
                 timeTable={scopeData?.time||''}
+                timeRecords={query.data?.editorRows||null}
+                timeLoading={query.isPending}
+                timeError={query.error}
                 birthday={scopeData?.birthday||''}
                 selectedRecordId={selectedTimelineRecordId}
                 suggestedAnchorDate={selectedTimelineDate}
