@@ -22,7 +22,6 @@ function pages(folder,relative=''){
     return item.isFile()&&/^page\.(jsx|js|tsx)$/.test(item.name)?[sub]:[];
   });
 }
-const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
 fs.rmSync(out,{recursive:true,force:true});
 fs.rmSync(scratch,{recursive:true,force:true});
 fs.mkdirSync(out,{recursive:true});
@@ -116,31 +115,25 @@ try{
     target:'node22',logLevel:'warning'
   });
   const {renderPublicScopeHome}=await import(pathToFileURL(staticRenderer).href);
+  // Python owns the HTML document protocol; React/JS own unchanged content
+  // and interactive bundles. Publish one batch without a per-page Python launch.
+  const htmlPages=[];
   for(const page of records){
     const staticHome=!native?renderPublicScopeHome({route:page.route,entry:page.name}):null;
-    const dest=path.join(out,page.route.slice(1));
-    fs.mkdirSync(dest,{recursive:true});
-    const scope=page.route.startsWith('/lrunes/')?'theme-4':'theme-7';
     const css=fs.existsSync(path.join(out,page.name+'.css'))?'<link rel="stylesheet" href="/'+page.name+'.css">':'';
-    const html=[
-      '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">',
-      '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">',
-      '<title>'+escape(page.title)+'</title>',
-      '<meta name="description" content="'+escape(page.description)+'">',
-      page.noIndex?'<meta name="robots" content="noindex,nofollow">':'',
-      '<link rel="canonical" href="https://loc.lo3rwang.cc'+page.route+'">',
-      '<link rel="icon" href="/assets/site/icons/loc-favicon.png">',
-      '<link rel="stylesheet" href="'+cssHref+'">',css,
-      '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
-      '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
-      '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"><div id="loc-root">',
-      staticHome?staticHome.html:'<main class="scope-main"><section class="scope-page"><header class="loc-card scope-hero"><h1>'+escape(page.title)+'</h1></header></section></main>',
-      '</div>',
-      staticHome?staticHome.loader:'<script type="module" src="/'+page.name+'.js"></script>',
-      '</body></html>'
-    ].join('');
-    fs.writeFileSync(path.join(dest,'index.html'),html);
+    htmlPages.push({...page,cssHref,css,staticHome,
+      nativeStaticScript:NATIVE_STATIC_ROUTE_SCRIPT,themeScript:INITIAL_THEME_SCRIPT});
   }
+  const htmlManifest=path.join(scratch,'loc-static-pages.json');
+  fs.writeFileSync(htmlManifest,JSON.stringify(htmlPages));
+  const pythonScript=abs('modules/loc/python/html_protocol.py');
+  const pythonArgs=process.platform==='win32'?
+    ['-3',pythonScript,htmlManifest,out]:[pythonScript,htmlManifest,out];
+  const published=spawnSync(process.platform==='win32'?'py':'python3',pythonArgs,
+    {cwd:root,stdio:'inherit'});
+  if(published.error||published.status!==0)
+    throw new Error('LOC Python HTML protocol build failed: '+
+      (published.error?.message||published.status));
   fs.cpSync(abs('public'),out,{recursive:true,force:true});
   if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))
     throw new Error('Native export contains raw card originals');
