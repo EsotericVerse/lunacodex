@@ -349,6 +349,21 @@ export async function deleteTraceMap({scopeId,uid,type='path'}){
  * in the primary point's attr.location, and delete source points atomically.
  * No client-side multi-step deletion or fallback to obsolete _trace.
  */
+// The Trace editor's six-key Save has one SQL owner. Titles, Point
+// updates, route/article UID merges and visibility must never be published
+// independently while the other pending actions can still fail.
+export async function saveTraceEditorBatch({scopeId,renames=[],point=null,
+  mergeUids=[],visibility=null}){
+  const id=writableScope(scopeId);
+  const result=checked(await dbAuthClient.schema('silver').managedAction(
+    'save_trace_editor_batch',{
+      p_scope_id:id,p_renames:renames,p_point:point,
+      p_merge_uids:mergeUids,p_visibility:visibility
+    }),'空間定錨整體儲存');
+  if(result?.committed!==true)
+    throw Error('空間定錨資料交易回執不完整，請重新讀取後核對');
+  return result;
+}
 export async function mergeTraceAnchorPoints({scopeId,keepUid,removeUids=[]}){
   const id=writableScope(scopeId),primary=textValue(keepUid);
   const sources=[...new Set(removeUids.map(textValue).filter(Boolean))];
