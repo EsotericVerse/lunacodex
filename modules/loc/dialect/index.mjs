@@ -51,30 +51,72 @@ export function createKyselyDialect(engine,config){
 export function requestScopedPool(options,ClientClass=pg.Client,
     {attempts=4,baseDelayMs=300}={}){
   let currentWaitUntil=null;
+  let ended=false;
+  const acquired=new Set();
+  const connecting=new Set();
+  const closing=new Map();
+  const closed=new WeakSet();
+  function close(client){
+    if(closing.has(client))return closing.get(client);
+    if(closed.has(client))return Promise.resolve();
+    closed.add(client);
+    acquired.delete(client);
+    connecting.delete(client);
+    const task=Promise.resolve().then(()=>client.end?.()).catch(()=>{})
+      .finally(()=>closing.delete(client));
+    closing.set(client,task);
+    return task;
+  }
+  function release(client){
+    const task=close(client);
+    // A response must not freeze a Cloudflare isolate while the PostgreSQL
+    // socket remains open. The owning request also explicitly awaits end().
+    if(currentWaitUntil)currentWaitUntil(task);
+  }
   return {
     setWaitUntil(fn){currentWaitUntil=typeof fn==='function'?fn:null;},
     async connect(){
+      if(ended)throw new Error('LOC request database connection already closed');
       let lastError;
       for(let attempt=1;attempt<=attempts;attempt++){
+        if(ended)throw new Error('LOC request database connection already closed');
         const client=new ClientClass(options);
         client.on?.('error',()=>{});
+        connecting.add(client);
         try{
           await client.connect();
-          client.release=()=>{
-            const closing=Promise.resolve(client.end()).catch(()=>{});
-            if(currentWaitUntil)currentWaitUntil(closing);
-          };
+          connecting.delete(client);
+          if(ended){
+            await close(client);
+            throw new Error('LOC request database connection already closed');
+          }
+          acquired.add(client);
+          client.release=()=>release(client);
           return client;
         }catch(error){
+          connecting.delete(client);
           lastError=error;
-          void Promise.resolve(client.end?.()).catch(()=>{});
+          // A failed connection attempt still owns a partially opened socket.
+          // Wait for its close before retrying or returning an error.
+          await close(client);
+          if(ended)throw error;
           if(attempt<attempts)
             await new Promise(resolve=>setTimeout(resolve,baseDelayMs*2**(attempt-1)));
         }
       }
       throw lastError;
     },
-    async end(){}
+    async end(){
+      ended=true;
+      await Promise.all([
+        ...[...acquired,...connecting].map(close),
+        ...closing.values()
+      ]);
+      currentWaitUntil=null;
+    },
+    // A cancelled request must release its socket even when its page cannot
+    // finish drawing or its SQL callback never reached a normal COMMIT.
+    async abort(){await this.end();}
   };
 }
 
