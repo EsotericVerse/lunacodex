@@ -51,8 +51,8 @@ function Preferences({scopeId,onOpenFull,onClose}){
     <button class="loc-button" type="button" onClick={onClose} aria-label="關閉設定">關閉</button>
   </section>;
 }
-export function mountPublicPreferences(container,{scopeId,onOpenFull}){
-  const close=()=>render(null,container);
+export function mountPublicPreferences(container,{scopeId,onOpenFull,onClosed}){
+  const close=()=>{render(null,container);onClosed?.();};
   render(<Preferences scopeId={scopeId} onOpenFull={onOpenFull} onClose={close}/>,container);
   return close;
 }
