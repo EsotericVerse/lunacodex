@@ -102,6 +102,15 @@ export function createConfiguredAdapter({
     }
     return {data:result?.data,error:null};
   };
+  const managedTransaction=async operations=>{
+    const result=await operation('managed-transaction','',{operations});
+    // A successful COMMIT invalidates exactly the affected physical relations.
+    // A rejected batch changes no public cache or page canvas.
+    for(const item of operations){
+      invalidateScopedReadCache(item?.p_table);
+    }
+    return {data:result?.data,error:null};
+  };
   const managedWrite=async payload=>{
     const result=await operation('managed-write','',{payload});
     // This is the common successful write boundary for ZModel Anchor/Blocks,
@@ -127,7 +136,7 @@ export function createConfiguredAdapter({
   };
   const authClient={...authenticatedClient,shortImport,
     schema(name){return {...authenticatedClient.schema(name),
-      managedWrite,managedAction};}
+      managedWrite,managedTransaction,managedAction};}
   };
   return {publicClient,authClient,auth:identity.auth,
     configuredPublicClient:publicClient,backupPublicClient:null,
