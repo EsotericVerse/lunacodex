@@ -31,7 +31,7 @@ const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','mcp-authorize','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-action','personal-read','personal-write']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','mcp-authorize','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
@@ -152,7 +152,7 @@ export async function handleNativeLocOperation(request,env={},{
     // The website exposes only short-import and the fixed-model managed
     // write. MCP business operations remain restricted to the dedicated
     // MCP hostname and their own audience.
-    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-action'&&body.kind!=='personal-read'&&body.kind!=='personal-write')
+    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-transaction'&&body.kind!=='managed-action'&&body.kind!=='personal-read'&&body.kind!=='personal-write')
       throw refusal('Not found',404);
     // The media importer is a website-only read for existing behavior, NOT an
     // additional MCP/Gateway operation or delegated authorization scope.
@@ -165,7 +165,7 @@ export async function handleNativeLocOperation(request,env={},{
     // LOC Auth verifies the identity; only active api.manage grants may
     // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
-      'managed-write','managed-action',
+      'managed-write','managed-transaction','managed-action',
       ...(body.kind==='mcp-conversation'&&['record','record_ordered'].includes(body.action)?['mcp-conversation']:[])]);
     // MCP write requires both an OAuth delegation for importing and the
     // independently checked LOC business permission. OAuth alone never grants
@@ -185,7 +185,7 @@ export async function handleNativeLocOperation(request,env={},{
     // Personal preferences and Admin settings always use LOC's control
     // database. A user's selected external database is for their Scope data,
     // never for silver.loc_user / api.manage.
-    const control=['personal-read','personal-write','managed-write','managed-action']
+    const control=['personal-read','personal-write','managed-write','managed-transaction','managed-action']
       .includes(body.kind);
     const externalTarget=claims.db_target&&claims.db_target!==primaryId
       ?claims.db_target:'';
@@ -283,6 +283,44 @@ export async function handleNativeLocOperation(request,env={},{
           onPhase:phase=>{importPhase=phase;}})
       });
       return reply(receipt);
+    }
+    if(body.kind==='managed-transaction'){
+      // One logical Save, one verified identity, one api.manage role read, one
+      // database transaction. All operations retain their original per-Scope
+      // relation and modeled-field checks inside that same transaction.
+      if(selected.tableName)throw refusal('External mapped tables are read only',403);
+      if(!claims.grants?.some(grant=>grant==='global:manage'||grant.endsWith(':manage')))
+        throw refusal('LOC management delegation required',403);
+      const operations=body.operations;
+      if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
+        operations.length>24||operations.some(entry=>!entry||typeof entry!=='object'||
+          Array.isArray(entry)||!['insert','update','delete','upsert'].includes(entry.p_operation)||
+          typeof entry.p_table!=='string'||
+          ['api.manage','silver.loc'].includes(entry.p_table)))
+        throw refusal('Invalid LOC management transaction',400);
+      // Fixed global Registry models stay on their existing PolicyPlugin
+      // route; never bypass its authorization by slipping them into a batch.
+      const results=await selected.db.transaction().execute(async trx=>{
+        bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
+        const outcomes=[];
+        for(const payload of operations){
+          const output=selected.engine==='postgres'
+            ?await executeManagedKyselyWrite(trx,{kind:'managed-write',payload})
+            :await executeCrossEngineManagedWrite(trx,
+              {kind:'managed-write',payload},{
+                engine:selected.engine,namespace:selected.namespace,
+                role:claims.role,claims
+              });
+          const affected=Number(output?.data?.count??0);
+          if(!Number.isSafeInteger(affected)||affected<0||
+            (['update','delete'].includes(payload.p_operation)&&affected===0)||
+            (payload.p_operation==='insert'&&affected!==payload.p_rows?.length))
+            throw refusal('LOC transaction operation did not complete',409);
+          outcomes.push({count:affected});
+        }
+        return outcomes;
+      });
+      return reply({data:{results,count:results.reduce((total,item)=>total+item.count,0)}});
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
