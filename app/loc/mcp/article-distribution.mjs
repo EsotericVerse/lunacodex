@@ -2,7 +2,7 @@
 // Reuses LOC Web's existing public Galaxy numeric aggregation. No SQL input,
 // SQL execution, article content, ScopeID registration, or new grant registry.
 import {executeKyselyAnalytics} from '../providers/kysely-analytics.mjs';
-import {directMcpKysely} from './native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase} from './native-kysely.mjs';
 
 function invalid(message,status=400){
   return Object.assign(new Error(message),{httpStatus:status});
@@ -59,10 +59,13 @@ export function aggregateArticleMonths(months,rows){
   return [...totals].map(([month,count])=>({month,count}));
 }
 export async function articleDistribution(args={},env={},{
-  database=directMcpKysely,analytics=executeKyselyAnalytics,now=new Date()
+  database=directMcpKysely,analytics=executeKyselyAnalytics,now=new Date(),
+  borrowed=false
 }={}){
   const {period,start,end,months}=articleWindow(args,now);
-  const {db}=await database(env);
+  const port=await database(env);
+  try{
+    const db=port.db;
   // "loc" uses the website's published, aggregate-only Galaxy statistics.
   // The active api.manage email eligibility is verified once by the caller.
   // No user supplied ScopeID; no private article text or arbitrary SQL.
@@ -75,4 +78,7 @@ export async function articleDistribution(args={},env={},{
     visibility:'published_aggregate',rows,
     total:rows.reduce((sum,row)=>sum+row.count,0),
     source:'LOC Galaxy statistics'};
+  }finally{
+    if(!borrowed)await closeLocDatabase(port);
+  }
 }
