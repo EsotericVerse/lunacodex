@@ -286,9 +286,13 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
     p_table:'silver.'+id+'_anchor',p_operation:'insert',p_rows:rows
   }]);
   const count=rows.length;
-  const review=organizeAnchorCandidates(await readAllTraceAnchors(id));
+  // A successful SQL COMMIT cannot be reclassified as a failed import
+  // because the subsequent UI-only duplicate review did not load.
+  let review=[],auditError='';
+  try{review=organizeAnchorCandidates(await readAllTraceAnchors(id));}
+  catch{auditError='地點已提交，但後續整理清單讀取失敗；請重新整理，勿重複匯入。';}
   return {count,skipped,consolidated:0,duplicatesInBatch:skipped,reviewCount:review.length,
-    reviewPreview:review.slice(0,8),auditError:''};
+    reviewPreview:review.slice(0,8),auditError};
 }
 function validatedConnections({scopeId,type,anchorUids=[],anchors=[],hasRoutes=false}){
   const id=idScope(scopeId),list=Array.isArray(anchorUids)?anchorUids:[];
