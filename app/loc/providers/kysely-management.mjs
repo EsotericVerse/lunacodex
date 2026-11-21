@@ -642,14 +642,14 @@ async function manageScopeRegistryKysely(trx,args){
   if(!root)reject('LOC Registry root is missing',409);
   const registry=await trx.selectFrom('api.manage')
     .select(['id','manage_role','parent_scope_id','active',
-      'display_name','domain','directory','sort_order']).execute();
+      'note','domain','directory','sort_order']).execute();
   const index=new Map(registry.map(row=>[row.id,row]));
   const before=index.get(id);
   if(operation==='create_group'&&before)reject('Scope Registry ID already exists',409);
   if(operation==='update'&&(!before||!['group','scope'].includes(before.manage_role)))
     reject('Scope Registry entry cannot be updated',403);
   const title=values.display_name===undefined
-    ?String(before?.display_name||'').trim()
+    ?String(before?.note||before?.id||'').trim()
     :String(values.display_name||'').trim();
   const domain=values.domain===undefined
     ?String(before?.domain||'').trim().toLowerCase()
@@ -701,19 +701,28 @@ async function manageScopeRegistryKysely(trx,args){
   if(!Number.isSafeInteger(order)||Math.abs(order)>2147483647)
     reject('Invalid Scope Registry order');
   const record={
-    display_name:title,domain:domain||null,directory:directory||null,
+    domain:domain||null,directory:directory||null,
     parent_scope_id:parent||null,active,sort_order:order
   };
   const query=operation==='create_group'
-    ?trx.insertInto('api.manage').values({id,manage_role:'group',...record})
-    :trx.updateTable('api.manage').set(record).where('id','=',id);
+    ?trx.insertInto('api.manage').values({id,manage_role:'group',note:title,...record})
+    :trx.updateTable('api.manage').set(before.manage_role==='group'?{...record,note:title}:record).where('id','=',id);
   const saved=await query.returning([
-    'id','display_name','manage_role','domain','directory',
+    'id','note','manage_role','domain','directory',
     'parent_scope_id','active','sort_order'
   ]).executeTakeFirst();
   if(saved?.id!==id)reject('Scope Registry transaction did not persist',409);
+  // Scope display names live in each Scope's existing configuration, not in
+  // api.manage. Persist the same user-visible label inside this transaction.
+  if(operation==='update'&&before.manage_role==='scope'&&
+    values.display_name!==undefined){
+    const changed=await trx.updateTable('silver.'+id).set({display_name:title})
+      .where('id','=',id).executeTakeFirst();
+    if(Number(changed?.numUpdatedRows||0)!==1)
+      reject('Scope display name was not updated',409);
+  }
   return {
-    scope_id:saved.id,display_name:saved.display_name,
+    scope_id:saved.id,display_name:title,
     scope_kind:saved.manage_role==='group'?'group':'scope',
     domain:saved.domain,directory:saved.directory,
     parent_scope_id:saved.parent_scope_id,
