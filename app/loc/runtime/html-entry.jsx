@@ -61,7 +61,7 @@ function EditorControls(){
   const native=window.location.protocol==='capacitor:';
   const base=generic?'/scope-shell/':scopeId==='loc'?'/':'/'+scopeId+'/';
   const destination=(segment='',params={})=>{
-    const route=base+(segment?segment.replace(/^\\/+|\\/+$/g,'')+'/':'')+(native?'index.html':'');
+    const route=base+(segment?segment.split('/').filter(Boolean).join('/')+'/':'')+(native?'index.html':'');
     const url=new URL(route,window.location.origin);
     if(generic)url.searchParams.set('scopeid',scopeId);
     for(const [key,value] of Object.entries(params))url.searchParams.set(key,value);
