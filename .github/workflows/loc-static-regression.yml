@@ -66,6 +66,30 @@ jobs:
           assert.match(fs.readFileSync('out/index.html','utf8'),/loc-static-reading/);
           NODE
 
+      - name: Browser smoke — real HTML feature mount without extra dependencies
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          "$chrome" --version
+          node scripts/serve-loc-static.mjs >/tmp/loc-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          for feature in culture statics search trace; do
+            "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+              --virtual-time-budget=4000 --dump-dom "http://127.0.0.1:8000/$feature/" \
+              >"/tmp/loc-$feature.html" 2>"/tmp/loc-$feature-chrome.log"
+            if ! grep -q 'class="loc-next-main"' "/tmp/loc-$feature.html"; then
+              echo "Interactive LOC feature failed to mount: $feature"
+              tail -n 30 "/tmp/loc-$feature-chrome.log"
+              exit 1
+            fi
+          done
       - name: Build IPA HTML with the same published page contracts
         env:
           LOC_NATIVE_BUNDLE: '1'
