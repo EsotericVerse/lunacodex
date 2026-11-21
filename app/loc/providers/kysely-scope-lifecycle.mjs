@@ -307,7 +307,7 @@ export async function deleteScopeNative(trx,args){
     .where('id','=',scope).where('manage_role','=','scope')
     .returning('id').execute();
   if(registryDeleted.length!==1)reject('Scope Registry deletion incomplete',409);
-  const summary=await trx.deleteFrom('silver.loc').where('id','=',scope')
+  const summary=await trx.deleteFrom('silver.loc').where('id','=',scope)
     .returning('id').execute();
   if(summary.length>1)reject('Scope summary deletion incomplete',409);
   return {scope_id:scope,deleted:true,tables_removed:present.size};
