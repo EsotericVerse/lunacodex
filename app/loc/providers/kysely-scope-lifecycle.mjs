@@ -87,14 +87,22 @@ function receipt(scope,name,routeInfo,extra={}){
     route_mode:routeInfo.domain?'domain':'directory',
     route_value:routeInfo.domain||routeInfo.directory,...extra};
 }
-async function updateSummary(trx,scope,name){
+async function updateSummary(trx,scope,name,role){
   const rows=await trx.updateTable('silver.loc')
     .set({display_name:name})
     .where('id','=',scope).returning('id').execute();
   if(rows.length>1)reject('Duplicate LOC Scope summary',409);
   if(!rows.length){
-    // Legacy Registry Groups may have no silver.loc projection.
+    // Registry Groups may not have a display projection yet.
     await trx.insertInto('silver.loc').values({id:scope,display_name:name}).execute();
+  }
+  if(role==='scope'){
+    // Each Scope also owns its public config display_name. Changing only the
+    // global navigation summary would leave its own pages with the old name.
+    const updated=await trx.updateTable('silver.'+scope)
+      .set({display_name:name,updated_at:new Date().toISOString()})
+      .where('id','=',scope).returning('id').execute();
+    if(updated.length!==1)reject('Scope display name update incomplete',409);
   }
 }
 function assertAllowedUpdate(values){
@@ -160,7 +168,7 @@ export async function manageScopeRegistryNative(trx,args){
     const saved=await trx.updateTable('api.manage').set(fields)
       .where('id','=',id).returning('id').execute();
     if(saved.length!==1)reject('Scope Registry UPDATE incomplete',409);
-    await updateSummary(trx,id,name);
+    await updateSummary(trx,id,name,current.manage_role);
   }
   return receipt(id,name,target,{parent_scope_id:id==='loc'?null:parent,
     scope_kind:operation==='create_group'?'group':current.manage_role,
