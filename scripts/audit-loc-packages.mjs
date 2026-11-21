@@ -31,7 +31,8 @@ for(const file of files){
 const generated=new Map([
   ['react-dom',['scripts/build-preact-static.mjs: generated React-compatible entry']],
   ['@capacitor/ios',['.github/workflows/ios-device-build.yml: native toolchain']],
-  ['typescript',['TypeScript source / tsconfig toolchain']]
+  ['typescript',['TypeScript source / tsconfig toolchain']],
+  ['@types/node',['Node 22 build scripts and TypeScript ambient definitions']]
 ]);
 for(const [name,uses] of generated){
   if(imported.has(name))for(const use of uses)imported.get(name).add(use);
