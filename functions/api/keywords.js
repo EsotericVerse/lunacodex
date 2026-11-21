@@ -141,13 +141,17 @@ export async function onRequestPost(context){
                     try{controller.close();}catch{}
                   }
                 })();
-              }
+              },
+              // Closing the page's stream interrupts the unfinished SQL job.
+              // Its async finally closes the resource even when no result emits.
+              cancel(){void entry?.pool?.abort?.();}
             });
-            streamOwnsConnection=true;
-            return new Response(stream,{headers:{
+            const response=new Response(stream,{headers:{
               'content-type':'application/x-ndjson; charset=utf-8',
               'cache-control':'no-store','x-content-type-options':'nosniff'
             }});
+            streamOwnsConnection=true;
+            return response;
           }
           result=await analyzeKeywordScope(db,scope,args.classUid,{
             authorizeTransaction,attemptId:String(args.attemptId||'')
