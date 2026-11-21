@@ -115,12 +115,14 @@ export async function manageScopeRegistryNative(trx,args){
   const target=route(values.domain!==undefined?values.domain:current?.domain,
     values.directory!==undefined?values.directory:current?.directory);
   checkRouteUnique(rows,target,operation==='update'?id:'');
-  const parent=scopeId(values.parent_scope_id??current?.parent_scope_id??'loc');
+  const parent=id==='loc'?null:
+    scopeId(values.parent_scope_id??current?.parent_scope_id??'loc');
   const active=values.active===undefined
     ?current?.active!==false:values.active;
   if(typeof active!=='boolean')reject('Invalid Scope active status');
   if(id==='loc'){
-    if(operation!=='update'||values.parent_scope_id!==undefined||
+    if(operation!=='update'||
+      (values.parent_scope_id!=null&&text(values.parent_scope_id)!=='')||
       !active)reject('Root LOC Group cannot be moved or disabled',403);
   }else parentGroup(rows,parent);
   if(current?.manage_role==='group'){
@@ -222,7 +224,7 @@ export async function provisionScopeNative(trx,args){
   if(theme!=='system-default'&&!/^theme-[1-8]$/.test(theme))
     reject('Invalid LOC Scope theme');
   const locale=text(args.p_locale||'zh-Hant');
-  if(!['zh-Hant','zh-Hans','en','ja','ko'].includes(locale))
+  if(!['zh-Hant','zh-Hans','en','ja'].includes(locale))
     reject('Invalid LOC Scope locale');
   const birthday=args.p_birthday;
   if(birthday!=null&&!/^\d{4}-\d{2}-\d{2}$/.test(String(birthday)))
