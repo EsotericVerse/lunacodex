@@ -72,6 +72,8 @@ try{
     loader:{'.woff':'file','.woff2':'file','.ttf':'file','.png':'file','.svg':'file','.webp':'file','.gif':'file','.jpg':'file','.jpeg':'file','.avif':'file'},
     define:{'process.env.NODE_ENV':'"production"'},
     plugins:[{name:'loc-next-removal',setup(ctx){
+      // Web and IPA both resolve staged /pics URLs; never rebundle images into CSS.
+      ctx.onResolve({filter:/^\/pics\//},args=>({path:args.path,external:true}));
       ctx.onResolve({filter:/^next\//},args=>({errors:[{text:'Unsupported legacy Next import: '+args.path}]}));
       ctx.onResolve({filter:/^@blocknote\/(?:core\/fonts\/inter|mantine\/style|react\/style)\.css$/},args=>{
         // The CSS "style" export condition is not selected by esbuild for some
