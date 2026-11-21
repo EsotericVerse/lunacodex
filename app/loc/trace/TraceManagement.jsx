@@ -8,7 +8,7 @@ import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/clie
 import {revalidateServerMetadata} from '../scope/scope-data';
 import {
   TRACE_SCOPES,traceKey,traceAllAnchorsKey,
-  readTraceData,addTraceAnchor,updateTraceAnchor,renameTraceAnchorTitles,updateTraceVisibilityBulk,mergeTraceAnchorPoints
+  readTraceData,saveTracePage
 } from '../../modular/features/trace/trace-data';
 import {reviewReorderedCoordinateNames} from '../../modular/features/trace/trace-place-names.mjs';
 import {selectPointMergeSources} from './point-merge-selection.mjs';
@@ -126,39 +126,30 @@ function AnchorEditor({scopeId,spatial,reload}){
     setBusy(true);setIsError(false);setNotice('');
     let savedUid='';
     try{
-      // Apply queued title updates before the main editor so the explicitly
-      // chosen primary title always wins when both touch the same anchor.
-      let renamed=0,visibilityCount=0,mergedCount=0;
-      for(const [key,task] of Object.entries(pendingRenames)){
-        renamed+=await renameTraceAnchorTitles({
-          scopeId,uids:task.uids,title:task.title
-        });
-        setPendingRenames(current=>{
-          const next={...current};delete next[key];return next;
-        });
-      }
-      if(formDirty){
-        if(!title.trim())throw Error('請填入空間定錨點標題');
-        const input={scopeId,title,description,address:postalAddress,longitude,latitude,invisible};
-        const saved=editingUid
-          ?await updateTraceAnchor({...input,uid:editingUid})
-          :await addTraceAnchor(input);
-        savedUid=saved.uid;
-      }
-      // The server owns the entire UID rewrite/deletion transaction. Never
-      // delete selected rows in the browser or assume a title rename is a merge.
-      if(sources.length){
-        mergedCount=await mergeTraceAnchorPoints({
-          scopeId,keepUid:editingUid,removeUids:sources
-        });
-        setBulkUids(ids=>ids.filter(uid=>!sources.includes(uid)));
-      }
-      if(visibility){
-        visibilityCount=await updateTraceVisibilityBulk({
-          scopeId,uids:visibility.uids,invisible:visibility.invisible
-        });
-        setPendingVisibility(null);setBulkUids([]);
-      }
+      // The page owns one logical Save. The backend validates every UID
+      // and commits renames, Point edit, merge and visibility together.
+      // UI pending state changes only AFTER the confirmed COMMIT.
+      if(formDirty&&!title.trim())throw Error('請填入空間定錨點標題');
+      const result=await saveTracePage({
+        scopeId,
+        renames:Object.values(pendingRenames).map(task=>({
+          uids:task.uids,title:task.title
+        })),
+        point:formDirty?{
+          uid:editingUid||null,title,description,
+          address:postalAddress,longitude,latitude,invisible
+        }:null,
+        keepUid:editingUid||'',
+        mergeUids:sources,
+        visibility
+      });
+      const renamed=result.renamed_count;
+      const mergedCount=result.merged_count;
+      const visibilityCount=result.visibility_count;
+      savedUid=formDirty?String(result.uid||''):'';
+      setPendingRenames({});
+      if(sources.length)setBulkUids(ids=>ids.filter(uid=>!sources.includes(uid)));
+      if(visibility){setPendingVisibility(null);setBulkUids([]);}
       // reload() already revalidates the mounted, authenticated Trace query.
       // Invalidating that very key again would erase the fresh result and
       // expose an empty anchor list on the next edit without another fetch.
