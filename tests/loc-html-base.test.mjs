@@ -63,3 +63,11 @@ test('native static pages enforce local lease before mounting a feature',()=>{
   assert.match(theme,/window\.location\.replace\('\/local\/index\.html'\)/);
   assert.match(theme,/window\.localStorage\.removeItem\(key\)/);
 });
+
+test('LOC default theme uses Taipei time unless manually selected',()=>{
+  const theme=readFileSync(new URL('../app/modular/runtime/theme-bootstrap.mjs',import.meta.url),'utf8');
+  const images=readFileSync(new URL('../app/site-images.js',import.meta.url),'utf8');
+  assert.match(theme,/scope==='loc'\?auto:defaults\[scope\]\|\|auto/);
+  assert.match(theme,/timeZone:'Asia\/Taipei'/);
+  assert.match(images,/locArchitectureAsset=\{src:'\/pics\/ChaosGalaxy\.webp'\}/);
+});

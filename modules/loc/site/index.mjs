@@ -14,15 +14,20 @@ export const SECTIONS=Object.freeze({
 export function href(scope,section='home'){
   return section==='article'?'/work/':SCOPES[scope].path+(section==='home'?'':section+'/');
 }
-function sourceImage(value){
-  if(!value)return '';
+const LOC_HOME_DEFAULT_IMAGES=Object.freeze({3:'/pics/ChaosGalaxy.webp'});
+function sourceImage(value,scope,order){
+  const fallback=scope==='loc'?(LOC_HOME_DEFAULT_IMAGES[Number(order)]||''):'';
+  if(!value)return fallback;
   try{
     const parsed=typeof value==='string'?JSON.parse(value):value;
-    return typeof parsed?.url==='string'?parsed.url:'';
-  }catch{return '';}
+    if(parsed?.source==='none')return '';
+    if(parsed?.source==='default')return fallback;
+    const url=typeof parsed?.url==='string'?parsed.url.trim():'';
+    return url||(parsed?.source==='custom'?'':fallback);
+  }catch{return fallback;}
 }
-function block(row,index){
-  const image=sourceImage(row.block_image);
+function block(row,index,scope){
+  const image=sourceImage(row.block_image,scope,row.block_order);
   const entities=Array.isArray(row.block_entity)?row.block_entity.filter(Boolean):[];
   return html('section',{'class':'loc-block'+(index===0?' loc-hero':'')},
     html('div',{'class':'loc-block-body'},
@@ -69,7 +74,7 @@ export function pageView({scope='loc',section='home',rows=[]}={}){
     ?html('article',{'class':'loc-home'},...rows
       .filter(row=>row.page_name==='index')
       .sort((a,b)=>Number(a.block_order)-Number(b.block_order))
-      .map(block))
+      .map((row,index)=>block(row,index,scope)))
     :html('section',{'class':'loc-feature'},
       html('header',{'class':'loc-feature-header'},
         html('p',{'class':'loc-eyebrow'},SCOPES[scope].label),
@@ -88,6 +93,18 @@ export function pageView({scope='loc',section='home',rows=[]}={}){
 }
 const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;')
   .replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;");
+const NATIVE_TIME_THEME_BOOTSTRAP=`(()=>{try{
+  const preference=window.sessionStorage.getItem('loc-native-color-mode')||'auto';
+  let hour=new Date().getHours();
+  try{
+    const part=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',hour:'2-digit',hourCycle:'h23'})
+      .formatToParts(new Date()).find(part=>part.type==='hour');
+    if(part)hour=Number(part.value);
+  }catch{}
+  document.documentElement.dataset.colorMode=preference==='light'||preference==='dark'
+    ?preference:(hour>=6&&hour<18?'light':'dark');
+}catch{}})();`;
+
 export function documentHTML({scope,section='home',rows=[],description=''}={}){
   const title=section==='home'?SCOPES[scope].label:
     SECTIONS[section]+' · '+SCOPES[scope].label;
@@ -97,6 +114,7 @@ export function documentHTML({scope,section='home',rows=[],description=''}={}){
     '<meta name="description" content="'+escape(description)+'">'+
     '<title>'+escape(title)+'</title>'+
     '<link rel="icon" href="/assets/site/icons/loc-favicon.png">'+
+    '<script id="loc-native-time-theme">'+NATIVE_TIME_THEME_BOOTSTRAP+'</script>'+ 
     '<link rel="stylesheet" href="/loc-native.css">'+
     '</head><body>'+renderHTML(pageView({scope,section,rows}))+
     (section==='home'?'':'<script type="module" src="/loc-native-client.mjs"></script>')+

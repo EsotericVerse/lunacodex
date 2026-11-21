@@ -167,7 +167,7 @@ function settings(){
     html('h2',{},'介面設定'),
     html('p',{},'設定僅儲存在目前瀏覽器分頁，不涉及帳號或資料庫。'),
     html('div',{'class':'loc-toolbar'},
-      ...[['auto','跟隨系統'],['light','明亮'],['dark','深色']].map(([value,label])=>
+      ...[['auto','依時間自動'],['light','明亮'],['dark','深色']].map(([value,label])=>
         html('button',{type:'button','aria-pressed':String(saved===value),
           onClick:()=>{
             try{sessionStorage.setItem('loc-native-color-mode',value)}catch{}
@@ -177,7 +177,14 @@ function settings(){
     )));
 }
 function applyColorMode(mode){
-  document.documentElement.dataset.colorMode=mode;
+  let hour=new Date().getHours();
+  try{
+    const part=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',hour:'2-digit',hourCycle:'h23'})
+      .formatToParts(new Date()).find(part=>part.type==='hour');
+    if(part)hour=Number(part.value);
+  }catch{}
+  document.documentElement.dataset.colorMode=mode==='auto'
+    ?hour>=6&&hour<18?'light':'dark':mode;
 }
 function management(){
   render(html('section',{},

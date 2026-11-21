@@ -95,3 +95,22 @@ test('optional LOC site renders native HTML without the legacy runtime',async()=
   assert.match(homepage,/<title>政德<\/title>/);
   assert.doesNotMatch(homepage,/src="\/loc-native-client\.mjs"/);
 });
+
+test('native LOC home keeps its original third picture and first-paint clock theme',async()=>{
+  const {documentHTML}=await import('../modules/loc/site/index.mjs');
+  const third={page_name:'index',block_order:3,block_title:'LOC架構',
+    block_image:JSON.stringify({width:540,position:'left'})};
+  const homepage=documentHTML({scope:'loc',section:'home',rows:[third]});
+  assert.match(homepage,/src="\/pics\/ChaosGalaxy\.webp"/);
+  assert.doesNotMatch(homepage,/src="\/pics\/LOC-culture\.jpg"/);
+  assert.match(homepage,/id="loc-native-time-theme"/);
+  assert.ok(homepage.indexOf('loc-native-time-theme')<homepage.indexOf('/loc-native.css'));
+  const custom=documentHTML({scope:'loc',section:'home',rows:[
+    {...third,block_image:JSON.stringify({source:'custom',url:'/pics/my-home.jpg'})}
+  ]});
+  assert.match(custom,/src="\/pics\/my-home\.jpg"/);
+  const hidden=documentHTML({scope:'loc',section:'home',rows:[
+    {...third,block_image:JSON.stringify({source:'none'})}
+  ]});
+  assert.doesNotMatch(hidden,/class="loc-block-image"/);
+});

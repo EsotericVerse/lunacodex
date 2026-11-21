@@ -57,7 +57,7 @@ export const INITIAL_THEME_SCRIPT=`(()=>{try{
       String(stored||(admin?window.sessionStorage.getItem('loc-active-theme-id-v1'):null)||'');
   }catch{}
   if(!Object.hasOwn(schemes,selected))selected='';
-  const requested=selected||(game?'${GAME_BOOTSTRAP_THEME_ID}':defaults[scope]||auto);
+  const requested=selected||(game?'${GAME_BOOTSTRAP_THEME_ID}':scope==='loc'?auto:defaults[scope]||auto);
   const themeId=Object.hasOwn(schemes,requested)?requested:auto;
   const scheme=schemes[themeId]||'light';
   const root=document.documentElement;
