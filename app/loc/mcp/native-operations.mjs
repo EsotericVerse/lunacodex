@@ -355,6 +355,12 @@ export async function handleNativeLocOperation(request,env={},{
               });
           }
           const affected=Number(output?.data?.count??0);
+          // A caller may require an exact cardinality for a selected UID
+          // batch. A partial match is a failed logical operation, not COMMIT.
+          const expected=payload.p_expected_count;
+          if(expected!==undefined&&
+            (!Number.isSafeInteger(expected)||expected<0||expected!==affected))
+            throw refusal('LOC transaction affected-row count mismatch',409);
           if(!Number.isSafeInteger(affected)||affected<0||
             (['update','delete'].includes(payload.p_operation)&&affected===0)||
             (['insert','upsert'].includes(payload.p_operation)&&
