@@ -109,7 +109,7 @@ async function culture(){
   const grouped=new Map();
   for(const row of rows){
     const year=String(row.day||'').slice(0,4);
-    if(!/^\\d{4}$/.test(year))continue;
+    if(!/^\d{4}$/.test(year))continue;
     grouped.set(year,(grouped.get(year)||0)+Number(row.item_count||0));
   }
   renderBars([...grouped].map(([year,total])=>({year,total})),
@@ -148,7 +148,7 @@ async function search(page=0){
   if(!query){status('請輸入搜尋關鍵詞');return;}
   if(query.length>120)throw new Error('搜尋文字超過長度限制');
   status('正在搜尋…');
-  const term=query.replace(/\\\\/g,'\\\\\\\\').replace(/"/g,'\\\\"').replace(/[\\r\\n\\t]/g,' ');
+  const term=query.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[\r\n\t]/g,' ');
   const scopes=scope==='loc'?PUBLIC_SCOPES:[scope];
   const results=await Promise.all(scopes.map(async target=>{
     const records=await publicSelect(target,'galaxy',
