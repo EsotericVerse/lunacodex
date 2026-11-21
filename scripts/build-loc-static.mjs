@@ -158,7 +158,7 @@ try{
       '<link rel="stylesheet" href="'+cssHref+'">',
       '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
       '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
-      '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"'+attrs+'>',
+      '</head><body class="loc-app-shell'+(staticHome&&!staticHome.live?' loc-static-reading':'')+'"'+attrs+'>',
       '<div id="loc-root">'+frame+'</div>',
       "<script id=\"loc-html-controls\">(()=>{try{\n  const theme=document.querySelector('[data-loc-control=\"theme\"]');\n  if(theme){\n    const scope=(location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc');\n    const value=JSON.parse(sessionStorage.getItem('loc-user-theme-selection-v1')||'{}')[scope];\n    const selected=/^[1-8]$/.test(String(value??''))?'theme-'+value:String(value||'');\n    if([...theme.options].some(option=>option.value===selected))theme.value=selected;\n  }\n}catch{}\ndocument.addEventListener('change',async event=>{\n  const input=event.target.closest?.('[data-loc-control]');\n  if(!input)return;\n  try{\n    const module=await import('/_loc/routes/controls.js');\n    await module.applyHtmlPreference(input.dataset.locControl,input.value,\n      (location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc'));\n  }catch(error){console.error('LOC preference failed',error);}\n});})();</script>",load,
       '</body></html>'
