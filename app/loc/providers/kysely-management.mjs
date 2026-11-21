@@ -16,6 +16,7 @@ import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
+import {saveTracePageInTransaction} from './kysely-trace-page.mjs';
 import {decodeRuntimeIo,encodeRuntimeIo} from '../query/query-batch-size.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
@@ -363,7 +364,8 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
   'media_anchor_candidates','anchor_import_page','import_site_presence',
-  'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope']);
+  'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope',
+  'save_scope_trace_edit']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
 // A Search-only, read-only action behind the verified LOC Web Session.
@@ -645,6 +647,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       'p_domain','p_directory','p_parent_scope_id','p_theme','p_locale','p_copy_keywords'],
     manage_scope_registry:['p_operation','p_scope_id','p_values'],
     delete_scope:['p_scope_id'],
+    save_scope_trace_edit:['p_scope_id','p_renames','p_point','p_keep_uid','p_merge_uids','p_visibility'],
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
     suggest_search_patterns:['p_scope_ids','p_query'],
     keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
@@ -662,6 +665,11 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     return {data:await manageScopeRegistryNative(trx,args),count:null};
   if(name==='delete_scope')
     return {data:await deleteScopeNative(trx,args),count:null};
+  if(name==='save_scope_trace_edit'){
+    const scope=await scopedWrite(trx,args.p_scope_id);
+    return {data:await saveTracePageInTransaction(trx,scope,args,
+      mergeArgs=>mergeScopePoints(trx,mergeArgs,{authorizedScope:scope})),count:null};
+  }
   if(name==='search_galaxy_private')return searchPrivateGalaxy(trx,args,claims);
   if(name==='import_site_presence'){
     // Verified Better Auth LOC Web Session + active api.manage Scope grants.
@@ -1103,12 +1111,12 @@ async function refreshScopeSearchSummary(trx,args){
   return {scope_id:scope,...snapshot};
 }
 
-async function mergeScopePoints(trx,args){
+async function mergeScopePoints(trx,args,{authorizedScope=''}={}){
   const keep=validUid(args.p_keep_uid),removed=args.p_remove_uids;
   if(!Array.isArray(removed)||removed.length<1||removed.length>100||
      removed.some(id=>!UID.test(String(id))||id===keep)||
      new Set(removed).size!==removed.length)reject('Invalid Point merge UIDs');
-  const scope=await scopedWrite(trx,args.p_scope_id);
+  const scope=authorizedScope||await scopedWrite(trx,args.p_scope_id);
   const anchor='silver.'+scope+'_anchor',galaxy='silver.'+scope+'_galaxy';
   const points=await trx.selectFrom(anchor).select(['uid','title','attr'])
     .where('type','=','point').where('uid','in',[keep,...removed]).forUpdate().execute();
