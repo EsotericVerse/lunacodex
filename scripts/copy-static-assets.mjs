@@ -1,33 +1,68 @@
+// Verify the Next static export instead of deleting and recopying its public assets.
+// public/ is the published Web/native source; assets/ remains the authored master.
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const output=path.join(root,'out');
-
-const assetsSource=path.join(root,'assets');
-const assetsTarget=path.join(output,'assets');
 const native=process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1';
-if(!fs.existsSync(assetsSource))throw new Error('Static asset source missing: assets');
-fs.rmSync(assetsTarget,{recursive:true,force:true});
-// Master artwork and original pics are selectively published below, never twice.
-const unpublishedSource=path.join(assetsSource,'lunarunes','source');
-const pictureOriginals=path.join(assetsSource,'pics');
-fs.cpSync(assetsSource,assetsTarget,{recursive:true,
-  filter:source=>![unpublishedSource,pictureOriginals].some(
-    folder=>source===folder||source.startsWith(folder+path.sep))});
 
-// LOC pics/ is independent from LRS and is published on LOC Web.
-// Native packaging continues to exclude non-ASCII raw card filenames.
-const picsSource=path.join(assetsSource,'pics');
-const picsTarget=path.join(output,'pics');
-const EXCLUDED_PICS_DIRS=native?[path.join(picsSource,'64Card_org')]:[];
-if(!fs.existsSync(picsSource))throw new Error('Static asset source missing: pics');
-// Next's static export normally includes staged public/pics automatically.
-// Copy only as a fallback, not a second full image pass on every build.
-if(!fs.existsSync(picsTarget))fs.cpSync(picsSource,picsTarget,{recursive:true,
-  filter:source=>!EXCLUDED_PICS_DIRS.some(excluded=>source===excluded||source.startsWith(excluded+path.sep))});
-if(!fs.existsSync(picsTarget)||fs.readdirSync(picsTarget).length===0)
-  throw new Error('LOC /pics/ publication is empty');
+function requiredFile(base,relative){
+  const file=path.join(base,relative);
+  if(!fs.existsSync(file)||!fs.statSync(file).isFile())
+    throw new Error('Static export missing: '+path.relative(root,file));
+  const bytes=fs.statSync(file).size;
+  if(!bytes)throw new Error('Static export has empty file: '+path.relative(root,file));
+  return bytes;
+}
+function relativeFiles(directory){
+  if(!fs.existsSync(directory))throw new Error('Static asset directory missing: '+path.relative(root,directory));
+  const found=[];
+  function walk(folder,prefix=''){
+    for(const entry of fs.readdirSync(folder,{withFileTypes:true})){
+      const relative=path.join(prefix,entry.name);
+      if(entry.isDirectory())walk(path.join(folder,entry.name),relative);
+      else if(entry.isFile())found.push(relative);
+    }
+  }
+  walk(directory);
+  return found.sort();
+}
 
-console.log(`[static-assets] LOC ${native?'native':'Web'} assets published from LOC repository only.`);
+requiredFile(output,'index.html');
+// Both assets are already part of tracked public/. Do not delete out/assets
+// or mirror the entire authored assets/site tree into the deployed site.
+for(const relative of [
+  'assets/site/icons/loc-favicon.png',
+  'assets/site/local/lunarcus-rainbow-hero.avif'
+]){
+  const sourceBytes=requiredFile(path.join(root,'public'),relative);
+  const outputBytes=requiredFile(output,relative);
+  if(sourceBytes!==outputBytes)throw new Error('Published asset size differs from public/: '+relative);
+}
+
+// prebuild stages LOC-owned /pics/ in public/pics. Next copies those once.
+// A fallback copy here would conceal a broken export or revive old images.
+const published='pics';
+const sourceDir=path.join(root,'public',published);
+const outputDir=path.join(output,published);
+const expected=relativeFiles(sourceDir);
+const actual=relativeFiles(outputDir);
+if(!expected.length)throw new Error('LOC /pics/ publication is empty');
+if(expected.length!==actual.length||expected.some((name,i)=>name!==actual[i]))
+  throw new Error('LOC /pics/ differs from staged public/pics; rebuild rather than copying a second set');
+let bytes=0;
+for(const relative of expected){
+  const sourceBytes=requiredFile(sourceDir,relative);
+  const exportedBytes=requiredFile(outputDir,relative);
+  if(sourceBytes!==exportedBytes)throw new Error('LOC /pics/ asset size mismatch: '+relative);
+  bytes+=exportedBytes;
+}
+if(native&&fs.existsSync(path.join(outputDir,'64Card_org')))
+  throw new Error('Native export must not include raw card originals');
+if(fs.existsSync(path.join(output,'assets','pics')))
+  throw new Error('Authored /assets/pics/ was mirrored; only /pics/ is published');
+
+console.log('[static-assets] LOC '+(native?'native':'Web')+' export verified: '+
+  expected.length+' /pics/ files ('+bytes+' bytes); 2 public site assets; no second asset copy.');
