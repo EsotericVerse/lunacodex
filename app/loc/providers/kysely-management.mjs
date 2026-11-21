@@ -657,7 +657,7 @@ async function manageScopeRegistryKysely(trx,args){
   const rawDirectory=values.directory===undefined
     ?String(before?.directory||'').trim().toLowerCase()
     :String(values.directory||'').trim().toLowerCase();
-  const directory=rawDirectory?'/'+rawDirectory.replace(/^\\/+|\\/+$/g,''):'';
+  const directory=rawDirectory?'/'+rawDirectory.split('/').filter(Boolean).join('/'):'';
   const parent=values.parent_scope_id===undefined
     ?String(before?.parent_scope_id||'').trim().toLowerCase()
     :String(values.parent_scope_id||'').trim().toLowerCase();
@@ -668,7 +668,7 @@ async function manageScopeRegistryKysely(trx,args){
     reject('Exactly one Domain or Directory is required');
   if(domain&&!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(domain))
     reject('Invalid Scope Registry Domain');
-  if(directory&&!/^\\/[a-z0-9][a-z0-9/_-]*$/.test(directory))
+  if(directory&&!/^[a-z0-9][a-z0-9/_-]*$/.test(directory.slice(1)))
     reject('Invalid Scope Registry Directory');
   for(const row of registry){
     if(row.id===id)continue;
