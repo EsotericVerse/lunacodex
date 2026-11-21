@@ -24,14 +24,15 @@ test('homepage view and editor use the exact same frame contract',()=>{
 
 test('Hero is omitted throughout edit mode; its fields open on first entry',()=>{
   assert.match(draft,/slots\.find\(slot=>HomeBlock\.isPinnedHomeHero\(pageName,slot\)\)/);
-  assert.match(draft,/if\(homePreview&&pinnedHero\)\{/);
+  assert.match(draft,/if\(homePreview&&pinnedHero&&scopeId==='loc'\)\{/);
   assert.match(draft,/className="scope-home-hero-editor scope-editable-block scope-block-draft"/);
-  const hero=draft.indexOf('if(homePreview&&pinnedHero)');
+  const hero=draft.indexOf("if(homePreview&&pinnedHero&&scopeId==='loc')");
   const preview=draft.indexOf('if(homePreview)',hero);
   const rendered=draft.indexOf('{renderDisplay(draft)}',hero);
   assert.ok(hero>=0&&preview>hero&&rendered>preview,
     'the pinned Hero must bypass published rendering entirely');
   assert.match(switcher,/\{editing\?\(editingReady\?<ScopeBlockDraftList/);
+  assert.match(switcher,/className=\{scopeId==='loc'&&pageName==='index'\?'scope-home-hero-editor'/);
   assert.match(switcher,/\/>:null\):slots\.flatMap/);
   assert.match(css,/\.loc-home>\.scope-home-hero-editor\{[\s\S]*?min-height:clamp/);
 });
