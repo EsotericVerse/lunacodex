@@ -56,7 +56,12 @@ export default function ScopeBlockDraftList({
   const [message,setMessage]=useState('');
   // Never mount every BlockNote on edit entry. One expanded frame and, at
   // most, one of its child editors are enough to modify the complete draft.
-  const [activeDraftUid,setActiveDraftUid]=useState(null);
+  // The homepage enters its editor directly, without rendering the Hero.
+  // Block 1 is the pinned Hero configuration, not a second preview frame.
+  const [activeDraftUid,setActiveDraftUid]=useState(()=>
+    pageName==='index'
+      ?slots.find(slot=>HomeBlock.isPinnedHomeHero(pageName,slot))?.uid||null
+      :null);
   const [activeEntityKey,setActiveEntityKey]=useState('');
 
   async function publishSavedBlocks(rows){
@@ -340,10 +345,18 @@ export default function ScopeBlockDraftList({
           {allowEntities&&draft.entities.length?' · '+draft.entities.length+' 筆附屬內容':''}
         </p>
       </div>;
-    // Editing a Scope homepage never replaces its approved frame renderer.
-    // Controls sit on the same frame; only the active form expands below it.
+    // Home edit mode omits the public Hero entirely. The first row is an
+    // editing workspace, opened immediately; its image URL remains editable.
+    // Other frames retain their published markup and open a form on demand.
     const homePreview=pageName==='index'&&typeof renderDisplay==='function'&&
       typeof resolveSlotClassName==='function';
+    if(homePreview&&pinnedHero){
+      return <section className="scope-home-hero-editor scope-editable-block scope-block-draft"
+        key={draft.uid} data-page-name={pageName} data-block-order={draft.order}>
+        {controls}
+        {content}
+      </section>;
+    }
     if(homePreview){
       return <Fragment key={draft.uid}>
         <section className={resolveSlotClassName(draft)+' scope-editable-block scope-home-edit-preview'}
