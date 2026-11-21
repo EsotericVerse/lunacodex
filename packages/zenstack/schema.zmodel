@@ -657,7 +657,7 @@ model Lo3rwangGalaxy {
     ref_id                       String?     @db.Char(8)
     site                         String?     @db.Text
     place_id                     String?     @db.Char(8)
-    media_link                   String[]    @db.VarChar
+    media_link                   String[]    @db.Text
     meta_tags                    String[]    @db.Text
     date                         DateTime?   @db.Date
     site_id                      String?     @db.Text
@@ -784,7 +784,7 @@ model LrunesGalaxy {
     ref_id                       String?     @db.Char(8)
     site                         String?     @db.Text
     place_id                     String?     @db.Char(8)
-    media_link                   String[]    @db.VarChar
+    media_link                   String[]    @db.Text
     meta_tags                    String[]    @db.Text
     date                         DateTime?   @db.Date
     site_id                      String?     @db.Text
