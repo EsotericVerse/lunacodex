@@ -55,6 +55,26 @@ test('every LOC feature renders into its fixed header and content DIVs',()=>{
   assert.match(loc,/document\.getElementById\('loc-feature-hero-canvas'\)/);
   assert.match(check,/Missing fixed LOC DIV canvas/);
 });
+test('fixed DIV canvas is reused by custom Scope and device-local pages',()=>{
+  const generic=readFileSync(new URL('../app/loc/views/GenericScopeHomeView.jsx',import.meta.url),'utf8');
+  const local=readFileSync(new URL('../app/loc/local/Workspace.jsx',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../app/loc/runtime/fixed-canvas.jsx',import.meta.url),'utf8');
+  assert.match(generic,/<FeaturePage featureId="home"/);
+  assert.doesNotMatch(generic,/return <main className="scope-main"/);
+  assert.match(local,/useFixedPageCanvas/);
+  assert.match(local,/<ExistingHero canvas=\{heroCanvas\}>/);
+  assert.match(shared,/document\.getElementById\('loc-feature-main'\)/);
+  assert.match(shared,/document\.getElementById\('loc-interactive-root'\)/);
+});
+test('public data is queried after the frame, never from bundled Block snapshots',()=>{
+  const scope=readFileSync(new URL('../app/loc/scope/scope-data.js',import.meta.url),'utf8');
+  const bootstrap=readFileSync(new URL('../app/loc/runtime/app-bootstrap.js',import.meta.url),'utf8');
+  const blocks=readFileSync(new URL('../app/loc/blocks/ScopeEditableBlocks.jsx',import.meta.url),'utf8');
+  assert.doesNotMatch(scope,/hasPublishedBlocks\(id,name\)/);
+  assert.doesNotMatch(bootstrap,/loadPublishedBlocks/);
+  assert.doesNotMatch(blocks,/loadPublishedBlocks/);
+  assert.match(blocks,/selectScopeBlocks\(scopeId,pageName\)/);
+});
 test('LRS links are published HTML instead of React redirects',()=>{
   assert.match(build,/outbound\?'<script>/);
   assert.match(check,/LRS outbound HTML must link directly/);
