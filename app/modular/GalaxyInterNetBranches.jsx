@@ -27,6 +27,7 @@ const fieldName=Object.freeze({
 });
 function destination(scope,edge,{federated=false,managementMode=false}={}){
   // An external Galaxy UID is not the same identity as the primary Scope UID.
+  if(edge.kind==='url')return /^https?:\/\/[^\s]+$/i.test(edge.value)?edge.value:'';
   if(federated)return '';
   if((edge.kind==='media'||edge.kind==='point')&&edge.resolved!==true)return '';
   if(edge.kind==='galaxy')return galaxyIdentityHref(scope,edge.value);
