@@ -327,3 +327,31 @@ test('Trace editor batches are one authenticated business SQL transaction',async
       p_point:{title:'Title',invisible:false}}
   }),/Scope write permission required/);
 });
+
+test('article TimeAnchor read-or-create uses physical date attr in one authorized SQL transaction',async()=>{
+  const business=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const app=readFileSync(new URL('../app/modular/ArticleTimeAnchorAction.jsx',import.meta.url),'utf8');
+  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  const start=business.indexOf('async function ensureDateAnchor(');
+  const end=business.indexOf('async function saveTraceEditorBatch(',start);
+  assert.ok(start>0&&end>start,'DateAnchor handler must exist');
+  const body=business.slice(start,end);
+  assert.match(body,/const scope=await scopedWrite\(trx,p_scope_id\)/);
+  assert.match(body,/where\('type','=','date'\)/);
+  assert.match(body,/attr->>'date'/);
+  assert.match(body,/JSON\.stringify\(\{date:p_date\}\)/);
+  assert.match(body,/if\(row\)\{/);
+  assert.match(body,/existing:true/);
+  assert.match(body,/existing:false/);
+  assert.match(native,/'ensure_date_anchor'\]\.includes\(body\.name\)/);
+  assert.match(app,/managedAction\('ensure_date_anchor'/);
+  assert.match(app,/p_date:date/);
+  assert.doesNotMatch(app,/await findDateAnchor\(table,date\)/);
+  assert.doesNotMatch(app,/await insertRows\(table/);
+  assert.match(app,/columns:'uid,type,title,attr'/);
+  await assert.rejects(executeManagedKyselyAction({
+    selectFrom(){assert.fail('unauthorized DateAnchor SQL executed');}
+  },{name:'ensure_date_anchor',
+    args:{p_scope_id:'lo3rwang',p_date:'2026-11-22',
+      p_title:'日期',p_description:'詳細敘述'}}),/Scope write permission required/);
+});
