@@ -94,7 +94,6 @@ function SiteFooter({scopeId,home=true,native=false}){
    <footer className="scope-footer" data-scope={scopeId}>
      <div className="scope-footer-row">
        <a href="mailto:sopa2306@gmail.com">聯絡方式</a>
-       {home?<button className="loc-button" type="button" data-loc-upgrade="interface">語系與主題設定</button>:<a href={native?"/local/settings/index.html?scopeid="+scopeId:"/settings/?scopeid="+scopeId}>語系與主題設定</a>}
        <label className="scope-theme-control"><span data-loc-label="theme">主題</span>
          <select aria-label="主題" data-loc-control="theme" defaultValue="system-default">
            <option value="system-default">系統預設</option>
@@ -107,12 +106,6 @@ function SiteFooter({scopeId,home=true,native=false}){
          </select>
        </label>
        <small className="scope-footer-date-basis">日期基準：Asia/Taipei (UTC+08:00)</small>
-     </div>
-     <div data-loc-data-source className="scope-data-source-global">
-       <details className="scope-data-source-details">
-         <summary>資料來源狀態</summary>
-         <div className="scope-data-source-values"><span>{scopeId==='local'?'本機資料庫':'主要資料庫連線'}</span></div>
-       </details>
      </div>
    </footer>
  </>;
@@ -158,14 +151,6 @@ function activateOnDemand(entry,scopeId){
   'const target=event.target.closest("[data-loc-upgrade]");',
   'if(!target||busy)return;event.preventDefault();busy=true;',
   'const edit=target.dataset.locUpgrade==="edit";',
-  'if(target.dataset.locUpgrade==="interface"){try{const mod=await import("/_loc/routes/public-preferences.js");',
-  'const panel=document.createElement("div");panel.className="loc-static-preferences-mount";',
-  'target.after(panel);target.hidden=true;',
-  'mod.mountPublicPreferences(panel,{scopeId:'+JSON.stringify(scopeId)+',onOpenFull:()=>{',
-  'panel.remove();target.hidden=false;target.dataset.locUpgrade="full";target.click();',
-  'target.dataset.locUpgrade="interface";},onClosed:()=>{panel.remove();target.hidden=false;}});',
-  '}catch(error){console.error("LOC Preact preferences failed",error);}',
-  'busy=false;return;}',
   'const main=root.querySelector(".loc-next-main");if(!main){busy=false;return;}',
   'const replacement=document.createElement("div");replacement.id="loc-interactive-root";',
   'main.replaceWith(replacement);target.disabled=true;target.hidden=true;',
