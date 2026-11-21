@@ -1,9 +1,13 @@
-name: LOC Native Framework Core
+name: LOC Native Framework
 
 on:
   pull_request:
     paths:
-      - 'modules/loc/core/**'
+      - 'modules/loc/**'
+      - 'scripts/build-loc-native.mjs'
+      - 'public/loc-native-*'
+      - 'functions/api/loc-framework.js'
+      - 'package.json'
       - 'tests/loc-native-framework.test.mjs'
       - '.github/workflows/loc-native-core.yml'
   workflow_dispatch:
@@ -12,13 +16,36 @@ permissions:
   contents: read
 
 jobs:
-  core:
+  native:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.5'
-      - name: Test LOC native framework without npm install
+          cache: npm
+      - name: Test LOC native core without installing UI frameworks
         run: node --test tests/loc-native-framework.test.mjs
+      - name: Validate native client and publisher syntax
+        run: |
+          node --check public/loc-native-client.mjs
+          node --check scripts/build-loc-native.mjs
+          node --check functions/api/loc-framework.js
+      - name: Install current extension and server drivers
+        run: npm ci --no-audit --no-fund
+      - name: Build LOC native HTML website
+        run: npm run build
+      - name: Verify clean-slate HTML export
+        run: |
+          test -s out/index.html
+          test -s out/lo3rwang/index.html
+          test -s out/lrunes/index.html
+          test -s out/work/index.html
+          test -s out/loc-native-client.mjs
+          test -s out/_loc/core/index.mjs
+          test -s out/_loc/vendor/maplibre-gl.js
+          test ! -e out/_loc/routes
+          test ! -e out/sw.js
+          grep -q 'LOC Framework' out/index.html
+          node -e 'const x=require("./out/_loc/native-report.json");if(x.routes!==22||x.clientFrameworks.length)process.exit(1);console.log(x)'
