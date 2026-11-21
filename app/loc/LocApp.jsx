@@ -3,10 +3,10 @@ import FieldText from '../i18n/FieldText';
 import UiText,{useUiText} from '../i18n/UiText';
 import {useUiSection} from '../i18n/ui-locale';
 
-import dynamic from 'next/dynamic';
+import dynamic from '../modular/runtime/dynamic';
 import {recoverChunkOnce} from './ui/chunk-recovery.mjs';
 import {Suspense,useEffect,useState} from 'react';
-import {useRouter} from 'next/navigation';
+import {useRouter} from '../modular/runtime/navigation';
 import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/routing/scope-registry';

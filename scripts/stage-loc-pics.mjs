@@ -1,4 +1,4 @@
-// Publish only LOC-owned images at /pics/ for Next dev, standard Next builds
+// Publish only LOC-owned images at /pics/ for Preact dev, static esbuild outputs
 // and static exports. The authoritative files remain at assets/pics/.
 // This is a build-time copy, not a browser cache or an image import into JS.
 import fs from 'node:fs';
@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const source=path.join(root,'assets','pics');
 const target=path.join(root,'public','pics');
-const native=process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1';
+const native=process.env.LOC_NATIVE_BUNDLE==='1';
 const excluded=native?path.join(source,'64Card_org'):null;
 if(!fs.existsSync(source))throw new Error('LOC images missing: '+source);
 fs.rmSync(target,{recursive:true,force:true});

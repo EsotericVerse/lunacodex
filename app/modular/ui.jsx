@@ -3,8 +3,8 @@ import UiText,{useUiText} from '../i18n/UiText';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
-import dynamic from 'next/dynamic';
-import {usePathname} from 'next/navigation';
+import dynamic from './runtime/dynamic';
+import {usePathname} from './runtime/navigation';
 import {useEditDock} from './edit-dock';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {UI_COPY} from '../i18n/ui-copy';

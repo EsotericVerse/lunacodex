@@ -1,7 +1,7 @@
 'use client';
 
 import {useMemo,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
 import {useEditDockForm} from '../../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';

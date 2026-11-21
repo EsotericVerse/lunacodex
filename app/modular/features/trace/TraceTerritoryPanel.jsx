@@ -1,6 +1,6 @@
 'use client';
 import {useMemo,useRef,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../../runtime/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {dbPublicClient} from '../../../loc/db/db-client.mjs';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';

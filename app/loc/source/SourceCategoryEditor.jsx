@@ -1,6 +1,6 @@
 'use client';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {insertRows,updateRows,deleteRows,dbAuthClient} from '../db/db-client.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';

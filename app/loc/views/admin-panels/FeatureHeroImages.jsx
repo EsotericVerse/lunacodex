@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
-import dynamic from 'next/dynamic';
+import dynamic from '../../../modular/runtime/dynamic';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../../scope/scope-data';
 import {HomeBlock} from '../../blocks/home-block-model';
 import {heroImageUrl as imageUrlOf} from '../../blocks/hero-image.mjs';

@@ -1,7 +1,7 @@
 'use client';
 
 import {useMemo,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../runtime/dynamic';
 import {FeaturePage} from '../ui';
 import ScopeLink from '../ScopeLink';
 import {featureNavigationHref} from '../routing/feature-navigation';

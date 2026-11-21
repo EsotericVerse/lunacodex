@@ -1,7 +1,7 @@
 'use client';
 
 import {useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from './runtime/dynamic';
 import {galaxyInterNetEdges} from '../../packages/zenstack/galaxy-inter-net.mjs';
 
 // Second-level Anchor resolver is loaded only when a user opens its branch.

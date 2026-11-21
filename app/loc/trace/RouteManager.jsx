@@ -1,11 +1,11 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
 import {planTraceVisibilityUids} from './visibility-plan.mjs';
 import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {useSearchParams} from 'next/navigation';
+import {useSearchParams} from '../../modular/runtime/navigation';
 import {useAccount} from '../auth/use-account';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';

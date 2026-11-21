@@ -5,7 +5,7 @@ import {normalizeUiLocale,UI_LOCALE_OPTIONS} from '../../../i18n/ui-copy';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {invalidatePublicScopeMetadata} from '../../scope/scope-data';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
-import dynamic from 'next/dynamic';
+import dynamic from '../../../modular/runtime/dynamic';
 import {duplicateDomainLabelError} from '../../../modular/routing/scope-registry';
 import {THEME_SLOTS} from '../../../modular/theme-registry';
 const ObjectEditor=dynamic(()=>import('../../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});

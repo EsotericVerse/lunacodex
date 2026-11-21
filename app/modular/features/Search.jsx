@@ -6,13 +6,13 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../runtime/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
 import {publicPatternSuggestions} from '../../loc/search/public-pattern-suggestions.mjs';
 import {blockNoteSuggestionItems} from '../../loc/editor/blocknote-suggestions.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
-import {useRouter,useSearchParams} from 'next/navigation';
+import {useRouter,useSearchParams} from '../runtime/navigation';
 
 import {dbAuthClient,dbPublicClient,deleteRows,updateRows,getAccountSession} from '../../loc/db/db-client.mjs';
 import {useAccount,readVerifiedManagementEntry} from '../../loc/auth/use-account';

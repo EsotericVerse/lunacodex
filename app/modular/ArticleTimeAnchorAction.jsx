@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useId,useRef,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from './runtime/dynamic';
 import {useAccount} from '../loc/auth/use-account';
 import {selectManagedScope} from '../loc/scope/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../loc/db/db-query.mjs';

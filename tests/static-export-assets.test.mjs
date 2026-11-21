@@ -30,7 +30,7 @@ function fixture(t){
   const run=(native=false)=>spawnSync(process.execPath,
     [path.join(root,'scripts','copy-static-assets.mjs')],{
       cwd:root,encoding:'utf8',
-      env:{...process.env,NEXT_PUBLIC_LOC_NATIVE_BUNDLE:native?'1':'0'}
+      env:{...process.env,LOC_NATIVE_BUNDLE:native?'1':'0'}
     });
   return {root,write,run};
 }

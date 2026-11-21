@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {usePathname} from 'next/navigation';
+import {usePathname} from './runtime/navigation';
 import {getScope,isKnownScope,normalizeScopeId,resolveScope,rememberCurrentBrowserRoute} from './routing/scope-registry';
 import {PUBLISHED_SITE_BOOTSTRAP} from './published-site-bootstrap.js';
 import {SCOPE_ROUTE_INDEX} from './routing/scope-route-index.js';

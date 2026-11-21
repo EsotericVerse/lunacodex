@@ -6,7 +6,7 @@ const require=createRequire(import.meta.url);
 const {parse}=require('@babel/parser');
 const root=process.cwd();
 const included=new Set(['.js','.jsx','.mjs','.cjs','.ts','.tsx','.mts','.cts']);
-const sourcePaths=['app','scripts','next.config.mjs','public/sw.js'];
+const sourcePaths=['app','scripts','app/modular/runtime/navigation.js','public/sw.js'];
 const files=[];
 function collect(path){
   const entries=readdirSync(path,{withFileTypes:true});

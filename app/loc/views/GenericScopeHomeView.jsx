@@ -6,7 +6,7 @@ import {navigationHref} from '../../modular/routing/scope-registry.js';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import ScopeLink from '../../modular/ScopeLink';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {useUiSection} from '../../i18n/ui-locale';
 // Only one of these mutually exclusive home capabilities is needed per Scope.
 // Scope Groups must not load the editing implementation.

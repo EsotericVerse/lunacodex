@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from './modular/runtime/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
 import {useQueryClient} from '../packages/zenstack/client-queries';

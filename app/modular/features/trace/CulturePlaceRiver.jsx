@@ -1,7 +1,7 @@
 'use client';
 
 import {useMemo,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../../runtime/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {readPlaceSummary} from '../../../loc/trace/place-summary-client';
 import {placeRiverModel} from '../../../loc/trace/place-statistics.mjs';

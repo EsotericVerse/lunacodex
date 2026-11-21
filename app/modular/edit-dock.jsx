@@ -1,7 +1,7 @@
 'use client';
 
 import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState} from 'react';
-import {usePathname,useRouter} from 'next/navigation';
+import {usePathname,useRouter} from './runtime/navigation';
 import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';

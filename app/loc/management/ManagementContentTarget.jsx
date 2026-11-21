@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {useAccount} from '../auth/use-account';
 import {defaultScopeData} from '../scope/scope-data';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';

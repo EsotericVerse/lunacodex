@@ -1,5 +1,5 @@
 'use client';
-import dynamic from 'next/dynamic';
+import dynamic from '../runtime/dynamic';
 // Previously authored Scope Blocks retain their exact content. They now use
 // the canonical trace page_name, never an alias or a second query.
 const ScopeEditableBlocks=dynamic(()=>import('../../loc/blocks/ScopeEditableBlocks'),{loading:()=>null});

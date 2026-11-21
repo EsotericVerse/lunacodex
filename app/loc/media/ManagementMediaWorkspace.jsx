@@ -1,7 +1,7 @@
 'use client';
 
 import {useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {useEditDock} from '../../modular/edit-dock';
 
 const ManagementMediaPublisher=dynamic(()=>import('./ManagementMediaPublisher'),{loading:()=>null});

@@ -1,8 +1,8 @@
 'use client';
 
 import {useEffect} from 'react';
-import dynamic from 'next/dynamic';
-import {useSearchParams} from 'next/navigation';
+import dynamic from '../../modular/runtime/dynamic';
+import {useSearchParams} from '../../modular/runtime/navigation';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';

@@ -1,8 +1,8 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {useSearchParams} from 'next/navigation';
-import dynamic from 'next/dynamic';
+import {useSearchParams} from '../runtime/navigation';
+import dynamic from '../runtime/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import {FeaturePage} from '../ui';
 import LocTracePreview from './LocTracePreview';
