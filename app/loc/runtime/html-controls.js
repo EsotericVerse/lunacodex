@@ -2,20 +2,19 @@ import {loadUiLocale,normalizeUiLocale} from '../../i18n/ui-copy.js';
 import {PUBLISHED_THEME_META} from '../../modular/published-theme-meta.js';
 import {activatePublishedTheme} from '../../modular/theme-registry.js';
 
-const localeLabels={home:'首頁',culture:'文化',statics:'統計',trace:'痕跡',search:'搜尋',settings:'設定'};
-async function changeTheme(id,scope){
-  const allowed=new Set(PUBLISHED_THEME_META.map(item=>item[0]));
-  if(id!=='system-default'&&!allowed.has(id))return;
+// Theme CSS is already loaded with the fixed static page.
+function systemThemeId(){
+  let hour=new Date().getHours();
   try{
-    const key='loc-user-theme-selection-v1';
-    const values=JSON.parse(sessionStorage.getItem(key)||'{}');
-    if(id==='system-default')delete values[scope];
-    else values[scope]=Number(id.slice(6));
-    sessionStorage.setItem(key,JSON.stringify(values));
+    const part=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',
+      hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).find(x=>x.type==='hour');
+    if(part)hour=Number(part.value);
   }catch{}
-  if(id==='system-default'){window.location.reload();return;}
-  sessionStorage.setItem('loc-active-theme-id-v1',id);
-  await activatePublishedTheme(id);
+  return hour>=6&&hour<18?'theme-7':'theme-1';
+}
+async function changeTheme(id){
+  if(id!=='system-default'&&!PUBLISHED_THEME_META.some(item=>item[0]===id))return;
+  return activatePublishedTheme(id==='system-default'?systemThemeId():id);
 }
 async function changeLocale(requested){
   const locale=normalizeUiLocale(requested);

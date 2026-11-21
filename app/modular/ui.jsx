@@ -1,8 +1,9 @@
 'use client';
 import {lazy,Suspense} from 'react';
+import {createPortal} from 'react-dom';
 import UiText,{useUiText} from '../i18n/UiText';
 
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
 import {useEditDock} from './edit-dock';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
@@ -10,32 +11,7 @@ import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
-import {selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
-import groupHero_culture from './published-blocks/loc/group_culture.js';
-import scopeHero_culture from './published-blocks/loc/scope_culture.js';
-import groupHero_statics from './published-blocks/loc/group_statics.js';
-import scopeHero_statics from './published-blocks/loc/scope_statics.js';
-import groupHero_trace from './published-blocks/loc/group_trace.js';
-import scopeHero_trace from './published-blocks/loc/scope_trace.js';
-import groupHero_search from './published-blocks/loc/group_search.js';
-import scopeHero_search from './published-blocks/loc/scope_search.js';
-import groupHero_admin from './published-blocks/loc/group_admin.js';
-import scopeHero_admin from './published-blocks/loc/scope_admin.js';
-import groupHero_manage from './published-blocks/loc/group_manage.js';
-import scopeHero_manage from './published-blocks/loc/scope_manage.js';
-import groupHero_setting from './published-blocks/loc/group_setting.js';
-import scopeHero_setting from './published-blocks/loc/scope_setting.js';
-// Public feature Heroes are already published build-time data, not a second
-// runtime request. Both server HTML and client hydration render the same copy.
-const PUBLISHED_HERO_ROWS=Object.freeze({
-  culture:[...groupHero_culture,...scopeHero_culture],
-  statics:[...groupHero_statics,...scopeHero_statics],
-  trace:[...groupHero_trace,...scopeHero_trace],
-  search:[...groupHero_search,...scopeHero_search],
-  admin:[...groupHero_admin,...scopeHero_admin],
-  manage:[...groupHero_manage,...scopeHero_manage],
-  setting:[...groupHero_setting,...scopeHero_setting]
-});
+import {hero_block,selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
@@ -83,17 +59,17 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const artworkId=managementMode?'manage':featureId;
   const heroClassName='loc-card scope-hero scope-feature-hero'+(HomeBlock.FEATURE_HERO_ORDER[artworkId]?' scope-feature-hero--artwork scope-feature-hero--'+artworkId:'');
   const hasFeatureHero=Boolean(HomeBlock.FEATURE_HERO_ORDER[featureId]);
-  // Public Heroes (including Admin/Settings landing pages) read published
-  // presentation assets. Only an explicitly opened management workspace uses
-  // live authoring data; no Auth or SQL is needed to render a public Hero.
+  // The authored Chinese Hero canvas exists before this function mounts.
+  // One fixed public SQL read obtains only this feature's two Hero slots;
+  // no other page's published Hero bundle is preloaded.
   const groupHeroPage=HomeBlock.featureHeroPageFor(featureId);
   const scopeHeroPage='scope_'+featureId;
-  // Static release snapshot renders immediately, on the server and on the
-  // client. Do not first paint fallback legacy copy and then re-read the Hero.
-  // Management mode keeps its independent authoritative editing reads below.
-  const publishedRows=PUBLISHED_HERO_ROWS[featureId]||[];
-  const groupHeroRows=publishedRows.filter(row=>row.page_name===groupHeroPage);
-  const scopeHeroRows=publishedRows.filter(row=>row.page_name===scopeHeroPage);
+  const publicHeroQuery=useAsyncResource(['loc-feature-hero',featureId],
+    ()=>hero_block([groupHeroPage,scopeHeroPage]),
+    {enabled:hasFeatureHero&&!managementMode});
+  const heroRows=publicHeroQuery.data||[];
+  const groupHeroRows=heroRows.filter(row=>row.page_name===groupHeroPage);
+  const scopeHeroRows=heroRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   // Management Hero and the editor use the same mounted query key when
@@ -119,17 +95,47 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   };
 
   const publicFeature=!managementMode&&['culture','statics','search','trace'].includes(featureId)?featureId:'';
+  const hero=<FeatureHeroContent
+    scopeId={scopeId}
+    eyebrow={shared?.eyebrow||''}
+    title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
+    subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
+    description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
+    rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
+  />;
+  // Every LOC feature works inside the same authored HTML frame. Hero and
+  // content are independent canvases: no second main, header, or page shell.
+  const heroCanvas=typeof document==='undefined'?null:document.getElementById('loc-feature-hero-canvas');
+  const heroSource=managementMode?managementTextPage:shared?'loc':'default';
+  useLayoutEffect(()=>{
+    if(!heroCanvas)return;
+    const header=heroCanvas;
+    const main=document.getElementById('loc-feature-main');
+    const content=document.getElementById('loc-interactive-root');
+    const title=document.getElementById('loc-static-feature-title');
+    if(!header||!main||!content)return;
+    title?.setAttribute('hidden','');
+    header.className=heroClassName;
+    header.dataset.featureHeroSource=heroSource;
+    if(heroImageOverride)header.style.setProperty('--scope-feature-hero-image','url("'+heroImageOverride+'")');
+    else header.style.removeProperty('--scope-feature-hero-image');
+    main.classList.toggle('scope-main--edit-workspace',managementMode);
+    if(publicFeature)main.dataset.publicFeature=publicFeature;
+    else delete main.dataset.publicFeature;
+    content.classList.toggle('loc-public-content',Boolean(publicFeature));
+    return ()=>{
+      title?.removeAttribute('hidden');
+      header.style.removeProperty('--scope-feature-hero-image');
+    };
+  },[heroCanvas,heroClassName,heroImageOverride,managementMode,heroSource,publicFeature]);
+  if(heroCanvas)return <>
+    {createPortal(hero,heroCanvas)}
+    {children}
+  </>;
   return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
     <section className="scope-page">
       <header className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
-        <FeatureHeroContent
-          scopeId={scopeId}
-          eyebrow={shared?.eyebrow||''}
-          title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
-          subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
-          description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
-          rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
-        />
+        {hero}
       </header>
       <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
         {children}

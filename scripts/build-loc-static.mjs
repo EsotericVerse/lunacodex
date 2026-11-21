@@ -36,6 +36,7 @@ try{
     '_loc/editor':abs('app/styles/editor.css'),
     'public-preferences':abs('app/loc/public-home-preferences.jsx'),
     interactive:abs('app/loc/runtime/html-entry.jsx'),
+    home:abs('app/loc/runtime/public-home-entry.jsx'),
     controls:abs('app/loc/runtime/html-controls.js')
   };
   const decode=s=>String(s||'').replace(/&(amp|quot|lt|gt|#39);/g,(_,key)=>
@@ -132,7 +133,8 @@ try{
       page.view==='manage'&&page.relative.includes('trace')?'trace':page.view;
     const frame=staticHome?staticHome.html:
       renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target,
-        feature:current,work:page.component==='work',native});
+        feature:current,view:page.view,component:page.component,
+        work:page.component==='work',native});
     const attrs=' data-loc-component="'+escape(page.component)+'" data-loc-view="'+
       escape(page.view)+'" data-loc-scope="'+escape(page.scope)+'"'+
       (page.section?' data-loc-section="'+escape(page.section)+'"':'')+
@@ -155,12 +157,16 @@ try{
       page.noIndex?'<meta name="robots" content="noindex,nofollow">':'',
       '<link rel="canonical" href="https://loc.lo3rwang.cc'+page.route+'">',
       '<link rel="icon" href="/assets/site/icons/loc-favicon.png">',
-      '<link rel="stylesheet" href="'+cssHref+'">',
       '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
       '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
+      '<link rel="stylesheet" href="'+cssHref+'">',
+      ...Array.from({length:8},(_,i)=>{
+        const themeId='theme-'+(i+1);
+        return '<link rel="stylesheet" id="loc-theme-palette-'+themeId+'" href="/themes/'+themeId+'.css">';
+      }),
       '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"'+attrs+'>',
-      '<div id="loc-root">'+frame+'</div>',
-      "<script id=\"loc-html-controls\">(()=>{try{\n  const theme=document.querySelector('[data-loc-control=\"theme\"]');\n  if(theme){\n    const scope=(location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc');\n    const value=JSON.parse(sessionStorage.getItem('loc-user-theme-selection-v1')||'{}')[scope];\n    const selected=/^[1-8]$/.test(String(value??''))?'theme-'+value:String(value||'');\n    if([...theme.options].some(option=>option.value===selected))theme.value=selected;\n  }\n}catch{}\ndocument.addEventListener('change',async event=>{\n  const input=event.target.closest?.('[data-loc-control]');\n  if(!input)return;\n  try{\n    const module=await import('/_loc/routes/controls.js');\n    await module.applyHtmlPreference(input.dataset.locControl,input.value,\n      (location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc'));\n  }catch(error){console.error('LOC preference failed',error);}\n});})();</script>",load,
+      '<div id="loc-root" data-page-language="zh-Hant">'+frame+'</div>',
+      "<script id=\"loc-html-controls\">(()=>{try{\n  const theme=document.querySelector('[data-loc-control=\"theme\"]');\n  if(theme)theme.value='system-default';\n}catch{}\ndocument.addEventListener('change',async event=>{\n  const input=event.target.closest?.('[data-loc-control]');\n  if(!input)return;\n  try{\n    const module=await import('/_loc/routes/controls.js');\n    await module.applyHtmlPreference(input.dataset.locControl,input.value,\n      (location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc'));\n  }catch(error){console.error('LOC preference failed',error);}\n});})();</script>",load,
       '</body></html>'
     ].join('');
     fs.writeFileSync(path.join(dest,'index.html'),html);

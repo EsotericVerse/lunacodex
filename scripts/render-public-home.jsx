@@ -9,20 +9,10 @@ import AuthorHomeView from '../app/loc/views/AuthorHomeView.jsx';
 import {locWebSiteJsonLd,lunarunesWebSiteJsonLd,authorProfileJsonLd}
   from '../app/seo/metadata.js';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {HomeBlock} from '../app/loc/blocks/home-block-model.js';
-import LocHomeBlockDisplay,{
-  AuthorHomeBlockDisplay,RunesHomeBlockDisplay,
-  locHomeBlockClass,authorHomeBlockClass,homeBlockMediaStyle
-} from '../app/loc/blocks/LocHomeBlockDisplay.jsx';
 import BottomNavIcon from '../app/modular/BottomNavIcon.jsx';
 import {SCOPES,FEATURES,navigationHref} from '../app/modular/routing/scope-registry.js';
-import locRows from '../app/modular/published-blocks/loc/index.js';
-import authorRows from '../app/modular/published-blocks/lo3rwang/index.js';
-import runesRows from '../app/modular/published-blocks/lrunes/index.js';
 
 const routes={loc:'/',lo3rwang:'/lo3rwang/',lrunes:'/lrunes/'};
-const collections={loc:locRows,lo3rwang:authorRows,lrunes:runesRows};
-const displays={loc:LocHomeBlockDisplay,lo3rwang:AuthorHomeBlockDisplay,lrunes:RunesHomeBlockDisplay};
 const structuredHome={loc:locWebSiteJsonLd,lo3rwang:authorProfileJsonLd,
   lrunes:lunarunesWebSiteJsonLd};
 const features=[{id:'home',label:'首頁',name:'home',route:''},
@@ -40,22 +30,6 @@ const extraNav=(PUBLISHED_SITE_BOOTSTRAP.registry||[])
     (PUBLISHED_SITE_BOOTSTRAP.page_copy||[]).find(copy=>copy.scope_id===row.scope_id)?.Title_TW||
     row.display_name||row.scope_id}}));
 
-function PublicHome({scopeId,rows}){
- const View=displays[scopeId];
- return <section className="loc-view loc-home">
-   {rows.map(row=>{
-     const slot=HomeBlock.normalizeRow(row,row.block_order,'index');
-     const className=scopeId==='lo3rwang'?authorHomeBlockClass(slot)
-       :locHomeBlockClass(slot,scopeId);
-     const style=homeBlockMediaStyle(slot,scopeId);
-     return <section className={className+' scope-editable-block'}
-       data-page-name="index" data-block-order={slot.order}
-       key={slot.uid||slot.order} style={style}>
-       <View {...slot}/>
-     </section>;
-   })}
- </section>;
-}
 function PublicNavigation({scopeId,native=false}){
  return <header className="scope-global" data-native={native?"ios":"web"}>
    <nav className="scope-nav" aria-label="Scope 導覽">
@@ -109,20 +83,18 @@ function SiteFooter({scopeId,home=true,native=false}){
        </label>
        <small className="scope-footer-date-basis">日期基準：Asia/Taipei (UTC+08:00)</small>
      </div>
-     <div data-loc-data-source className="scope-data-source-global">
-       <details className="scope-data-source-details">
-         <summary>資料來源狀態</summary>
-         <div className="scope-data-source-values"><span>{scopeId==='local'?'本機資料庫':'主要資料庫連線'}</span></div>
-       </details>
-     </div>
    </footer>
  </>;
 }
-function StaticSite({scopeId,rows,native=false}){
+function StaticSite({scopeId,native=false}){
  return <>
    <PublicNavigation scopeId={scopeId} native={native}/>
-   <main className="loc-next-main" data-loc-view="home" data-loc-scope={scopeId}>
-     <PublicHome scopeId={scopeId} rows={rows}/>
+   <main id="loc-home-sql-slot" className="loc-next-main" data-loc-view="home" data-loc-scope={scopeId} role="status" aria-live="polite">
+       <section className="loc-view loc-home">
+         <header className="loc-home-hero loc-hero loc-home-block" aria-busy="true">
+           <p className="scope-status">正在讀取首頁內容…</p>
+         </header>
+       </section>
    </main>
    <PublicDock scopeId={scopeId} native={native}/>
    <SiteFooter scopeId={scopeId} native={native}/>
@@ -131,15 +103,33 @@ function StaticSite({scopeId,rows,native=false}){
 }
 // Static HTML already owns navigation and the six feature links.
 // An interactive component mounts only inside the following content slot.
-export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link='',feature='home',work=false,native=false}={}){
+// One authored HTML canvas for each LOC feature page. Nav, Footer,
+// floating six-key frame, outer main, and Hero frame never remount.
+export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link='',feature='home',
+  work=false,native=false,component='loc',view=feature}={}){
+ const featureCanvas=['loc','settings','features'].includes(component)&&!work;
  return renderToStaticMarkup(<>
    <PublicNavigation scopeId={scopeId} native={native}/>
-   <div id="loc-interactive-root" data-feature-content="true">
+   {featureCanvas?<div className="loc-next-main" data-loc-view={view} data-loc-scope={scopeId}>
+     <main className="scope-main" id="loc-feature-main">
+       <section className="scope-page">
+         <header id="loc-feature-hero-canvas" className="loc-card scope-hero scope-feature-hero" data-loc-canvas="hero">
+           <h1 id="loc-static-feature-title" data-loc-frame-heading>{title}</h1>
+         </header>
+         <div id="loc-interactive-root" className="scope-content"
+           data-feature-content="true" data-loc-canvas="content">
+           <section className="loc-card loc-feature-pending" role="status" aria-busy="true">
+             <span className="scope-status">正在載入頁面內容…</span>
+           </section>
+         </div>
+       </section>
+     </main>
+   </div>:<div id="loc-interactive-root" data-feature-content="true">
      {work?<AuthorHomeView section="work"/>:<main className="scope-main"><section className="scope-page">
-       <header className="loc-card scope-hero"><h1>{title}</h1></header>
+       <header className="loc-card scope-hero"><h1 data-loc-frame-heading>{title}</h1></header>
        {link?<p><a href={link}>前往 LunaRunes</a></p>:null}
      </section></main>}
-   </div>
+   </div>}
    <PublicDock scopeId={scopeId} current={feature} native={native}/>
    <SiteFooter scopeId={scopeId} home={false} native={native}/>
  </>);
@@ -162,8 +152,9 @@ function activateOnDemand(entry,scopeId){
   '}catch(error){console.error("LOC Preact preferences failed",error);}',
   'busy=false;return;}',
   'const main=root.querySelector(".loc-next-main");if(!main){busy=false;return;}',
-  'const replacement=document.createElement("div");replacement.id="loc-interactive-root";',
-  'main.replaceWith(replacement);target.disabled=true;target.hidden=true;',
+  'window.__locHomeUnmount?.();main.replaceChildren();',
+  'main.id="loc-interactive-root";main.removeAttribute("role");main.removeAttribute("aria-live");',
+  'const replacement=main;target.disabled=true;target.hidden=true;',
   'const observer=new MutationObserver(()=>{if(!edit)return;',
   'const next=replacement.querySelector(".scope-home-edit-entry button:not([disabled])");',
   'if(next){observer.disconnect();next.click();}});',
@@ -177,12 +168,10 @@ function activateOnDemand(entry,scopeId){
 export function renderPublicScopeHome({route,entry,native=false}){
  const scopeId=Object.keys(routes).find(key=>routes[key]===route);
  if(!scopeId)return null;
- const rows=HomeBlock.rows(collections[scopeId],'index',HomeBlock.limit);
- if(!rows.length||Number(rows[0].block_order)!==1)
-   throw new Error('LOC published homepage has no Hero: '+scopeId);
  return {
-   scopeId,blockCount:rows.length,
-   html:renderToStaticMarkup(<StaticSite scopeId={scopeId} rows={rows} native={native}/>),
-   loader:activateOnDemand(entry,scopeId)
+   scopeId,
+   html:renderToStaticMarkup(<StaticSite scopeId={scopeId} native={native}/>),
+   loader:'<script type="module" src="/_loc/routes/home.js"></script>'+
+     activateOnDemand(entry,scopeId)
  };
 }

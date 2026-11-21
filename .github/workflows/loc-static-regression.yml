@@ -102,6 +102,21 @@ jobs:
               exit 1
             fi
           done
+          # The static page owns its main/Hero; feature code may update their
+          # DIV contents but must never create another page shell.
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          for(const feature of ['culture','statics','search','trace']){
+            const page=fs.readFileSync('/tmp/loc-'+feature+'.html','utf8');
+            for(const id of ['loc-feature-main','loc-feature-hero-canvas','loc-interactive-root']){
+              assert.equal((page.match(new RegExp('id="'+id+'"','g'))||[]).length,1,
+                feature+': the '+id+' canvas must exist exactly once');
+            }
+            assert.equal((page.match(/<main\b/g)||[]).length,1,
+              feature+': feature must reuse the authored main instead of remounting it');
+          }
+          NODE
       - name: Build IPA HTML with the same published page contracts
         env:
           LOC_NATIVE_BUNDLE: '1'

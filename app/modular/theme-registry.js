@@ -71,6 +71,11 @@ export function publishedThemeCssHref(themeId){
 export function activatePublishedTheme(themeId){
   const href=publishedThemeCssHref(themeId);
   if(!href||typeof document==='undefined')return Promise.resolve(false);
+  // Eight route-linked palettes use mutually exclusive [data-theme-id] selectors.
+  if(document.getElementById('loc-theme-palette-'+themeId)){
+    applyTheme(getThemeSlot(themeId));
+    return Promise.resolve(true);
+  }
   const current=document.getElementById(PUBLISHED_STYLE_ID);
   if(pendingPublishedStyle?.id===themeId)return pendingPublishedStyle.promise;
   if(pendingPublishedStyle){
