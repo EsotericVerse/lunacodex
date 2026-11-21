@@ -140,7 +140,7 @@ test('standalone article distribution owns SQL, borrowed analytics do not',async
   const calls=[];
   const port={
     db:{
-      transaction:()=>({execute:async fn=>fn({})}),
+      transaction:()=>({setIsolationLevel(){return this;},execute:async fn=>fn({})}),
       async destroy(){calls.push('destroy');}
     },
     pool:{async end(){calls.push('pool-end');}}
