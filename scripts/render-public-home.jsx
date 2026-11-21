@@ -2,6 +2,7 @@
 // by the interactive editor. No copied block renderer, no browser hydration.
 import React from 'react';
 import JsonLd from '../app/seo/JsonLd.jsx';
+import AuthorHomeView from '../app/loc/views/AuthorHomeView.jsx';
 import {locWebSiteJsonLd,lunarunesWebSiteJsonLd,authorProfileJsonLd}
   from '../app/seo/metadata.js';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -101,14 +102,14 @@ function StaticSite({scopeId,rows}){
 }
 // Static HTML already owns navigation and the six feature links.
 // An interactive component mounts only inside the following content slot.
-export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link='',feature='home'}={}){
+export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link='',feature='home',work=false}={}){
  return renderToStaticMarkup(<>
    <PublicNavigation scopeId={scopeId}/>
    <div id="loc-interactive-root" data-feature-content="true">
-     <main className="scope-main"><section className="scope-page">
+     {work?<AuthorHomeView section="work"/>:<main className="scope-main"><section className="scope-page">
        <header className="loc-card scope-hero"><h1>{title}</h1></header>
        {link?<p><a href={link}>前往 LunaRunes</a></p>:null}
-     </section></main>
+     </section></main>}
    </div>
    <PublicDock scopeId={scopeId} current={feature}/>
    <SiteFooter scopeId={scopeId} home={false}/>

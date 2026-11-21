@@ -138,13 +138,14 @@ try{
       ['keywords','keywordManage'].includes(page.view)?'statics':
       page.view==='manage'&&page.relative.includes('trace')?'trace':page.view;
     const frame=staticHome?staticHome.html:
-      renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target,feature:current});
+      renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target,
+        feature:current,work:page.component==='work'});
     const attrs=' data-loc-component="'+escape(page.component)+'" data-loc-view="'+
       escape(page.view)+'" data-loc-scope="'+escape(page.scope)+'"'+
       (page.section?' data-loc-section="'+escape(page.section)+'"':'')+
       (page.redirectTarget?' data-loc-redirect="'+escape(page.redirectTarget)+'"':'');
     const load=staticHome?staticHome.loader:
-      outbound?'<script>location.replace('+JSON.stringify(target)+')</script>':
+      page.component==='work'?'':outbound?'<script>location.replace('+JSON.stringify(target)+')</script>':
       page.component==='legacy'
         ?'<script>if(location.protocol!=="capacitor:"){const next=new URL('+
           JSON.stringify(page.redirectTarget)+',location.href);'+

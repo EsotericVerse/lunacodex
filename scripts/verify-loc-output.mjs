@@ -68,6 +68,9 @@ for(const route of pageRoutes){
       throw Error('LOC public home published content missing: '+route);
     if(!html.includes('type="application/ld+json"'))
       throw Error('LOC public home structured data missing: '+route);
+  }else if(html.includes('data-loc-component="work"')){
+    if(src||!html.includes('author-role-grid')||!html.includes('scope-home-composition'))
+      throw Error('Author Work must be fully published HTML: '+route);
   }else if(html.includes('data-loc-component="outbound"')){
     if(src||!html.includes('https://lrs.lo3rwang.cc/'))
       throw Error('LRS outbound HTML must link directly without React: '+route);
