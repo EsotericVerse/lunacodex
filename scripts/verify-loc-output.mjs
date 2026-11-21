@@ -66,8 +66,13 @@ for(const route of pageRoutes){
       throw Error('LOC public home must not automatically start Preact: '+route);
     if(!html.includes('class="loc-view loc-home"')||!html.includes('loc-home-block__header'))
       throw Error('LOC public home published content missing: '+route);
+  }else if(html.includes('data-loc-component="outbound"')){
+    if(src||!html.includes('https://lrs.lo3rwang.cc/'))
+      throw Error('LRS outbound HTML must link directly without React: '+route);
   }else if(!src||!exists(path.join(out,src.slice(1))))
     throw Error('Missing executable LOC interaction bundle for '+route);
+  if(!publicHome&&!html.includes('data-loc-component='))
+    throw Error('HTML feature metadata missing: '+route);
   if(!html.includes('id="loc-theme-bootstrap"')||!html.includes('id="loc-native-static-route"'))
     throw Error('Lost native/theme bootstraps at '+route);
   if(/_next\/|__next|next\/navigation/i.test(html))throw Error('Next.js leaked into route '+route);

@@ -95,12 +95,13 @@ function StaticSite({scopeId,rows}){
 }
 // Static HTML already owns navigation and the six feature links.
 // An interactive component mounts only inside the following content slot.
-export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典'}={}){
+export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link=''}={}){
  return renderToStaticMarkup(<>
    <PublicNavigation scopeId={scopeId}/>
    <div id="loc-interactive-root" data-feature-content="true">
      <main className="scope-main"><section className="scope-page">
        <header className="loc-card scope-hero"><h1>{title}</h1></header>
+       {link?<p><a href={link}>前往 LunaRunes</a></p>:null}
      </section></main>
    </div>
    <PublicDock scopeId={scopeId}/>

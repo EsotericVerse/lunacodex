@@ -52,7 +52,8 @@ try{
     const relative=part.join('/');
     const scope=source.match(/forcedScope="([^"]+)"/)?.[1]||
       (group&&group!=='scope-shell'?group:'loc');
-    const view=source.match(/forcedView="([^"]+)"/)?.[1]||'home';
+    const view=source.match(/forcedView="([^"]+)"/)?.[1]||
+      source.match(/view="([^"]+)"/)?.[1]||'home';
     const section=source.match(/forcedSection="([^"]+)"/)?.[1]||'';
     const component=/GalaxyLinkBridge/.test(source)?'bridge':
       /GlobalSettings/.test(source)?'settings':
@@ -132,7 +133,7 @@ try{
     const outbound=page.component==='outbound';
     const target=outbound?'https://lrs.lo3rwang.cc/'+page.relative+'/':'';
     const frame=staticHome?staticHome.html:
-      renderPublicFeatureFrame({scopeId:page.scope,title:page.title});
+      renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target});
     const attrs=' data-loc-component="'+escape(page.component)+'" data-loc-view="'+
       escape(page.view)+'" data-loc-scope="'+escape(page.scope)+'"'+
       (page.section?' data-loc-section="'+escape(page.section)+'"':'')+
