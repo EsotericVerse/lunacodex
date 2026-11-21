@@ -191,26 +191,23 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   }
   await authorizeRelation(trx,table,operation,values,filters,rows);
   if(operation==='append_media_link'){
-    // A purpose-only Galaxy/MediaAnchor link, not arbitrary SQL mutation.
-    // The Anchor INSERT and this row-locked append belong to the same
-    // existing Kysely transaction and cannot overwrite concurrent links.
+    // A media link is a public URL on the existing Galaxy article, never an Anchor UID.
     if(!/^[a-z][a-z0-9]{0,14}_galaxy$/.test(table)||
       !values||typeof values!=='object'||Array.isArray(values)||
-      Object.keys(values).sort().join(',')!=='article_uid,media_uid'||
-      !UID.test(values.article_uid)||!UID.test(values.media_uid)||
+      Object.keys(values).sort().join(',')!=='article_uid,media_url'||
+      !UID.test(values.article_uid)||
       payload.p_filters!==undefined&&payload.p_filters?.length)
-      reject('Invalid LOC MediaAnchor link operation');
-    const scope=table.slice(0,-7),galaxy='silver.'+table;
-    const linked=await trx.selectFrom('silver.'+scope+'_anchor')
-      .select('uid').where('uid','=',values.media_uid)
-      .where('type','in',ANCHOR_TYPE_GROUPS.media).executeTakeFirst();
-    if(!linked)reject('MediaAnchor was not inserted in this Scope',409);
+      reject('Invalid Galaxy media URL link operation');
+    const href=String(values.media_url||'').trim();
+    if(!/^https?:\/\/[^\s]+$/i.test(href)||href.length>4096)
+      reject('Galaxy media_link only accepts HTTP(S) URLs');
+    const galaxy='silver.'+table;
     const article=await trx.selectFrom(galaxy).select('media_link')
       .where('uid','=',values.article_uid).forUpdate().executeTakeFirst();
     if(!article)reject('Linked Galaxy article does not exist',409);
     const prior=Array.isArray(article.media_link)?article.media_link:[];
-    const next=[...new Set([...prior.map(String),values.media_uid])];
-    // Same row lock and transaction: no stale browser-side replacement.
+    const next=[...new Set([...prior.filter(v=>typeof v==='string'&&/^https?:\/\/[^\s]+$/i.test(v)),href])];
+    if(JSON.stringify(next)===JSON.stringify(prior))return {data:{count:0}};
     const updated=await trx.updateTable(galaxy)
       .set({media_link:next}).where('uid','=',values.article_uid)
       .executeTakeFirst();
