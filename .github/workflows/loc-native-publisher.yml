@@ -48,7 +48,7 @@ jobs:
             'out/_loc/core/index.mjs','out/pics/LOC-2.png']){
             assert.ok(fs.statSync(file).size>0,file);
           }
-          const rules=fs.readFileSync('out/_redirects','utf8').trim().split(/\\r?\\n/);
+          const rules=fs.readFileSync('out/_redirects','utf8').trim().split(/\r?\n/);
           const routes=['/card/','/card/daily/','/card/duel/','/card/list/',
             '/daily/','/daily/log/','/daily/trend/','/game/','/game/room/'];
           assert.equal(rules.length,routes.length);
