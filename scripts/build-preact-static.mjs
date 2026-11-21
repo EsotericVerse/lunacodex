@@ -3,6 +3,7 @@ import path from 'node:path';
 import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
+import {NATIVE_STATIC_ROUTE_SCRIPT,INITIAL_THEME_SCRIPT} from '../app/modular/runtime/theme-bootstrap.mjs';
 
 const root=process.cwd();
 const out=path.join(root,'out');
@@ -121,8 +122,8 @@ try{
       '<link rel="canonical" href="https://loc.lo3rwang.cc'+page.route+'">',
       '<link rel="icon" href="/assets/site/icons/loc-favicon.png">',
       '<link rel="stylesheet" href="/_loc/site.css">',css,
-      '<script>document.documentElement.dataset.theme="light";document.documentElement.dataset.themeId="'+scope+'";</script>',
-      '<link id="loc-theme-stylesheet" rel="stylesheet" href="/themes/'+scope+'.css">',
+      '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
+      '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
       '</head><body class="loc-app-shell"><div id="loc-root">',
       '<main class="scope-main"><section class="scope-page"><header class="loc-card scope-hero"><h1>'+escape(page.title)+'</h1></header></section></main>',
       '</div><script type="module" src="/'+page.name+'.js"></script></body></html>'
