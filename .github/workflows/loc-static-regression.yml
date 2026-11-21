@@ -5,6 +5,8 @@ on:
     paths:
       - 'scripts/build-loc-static.mjs'
       - 'scripts/verify-loc-output.mjs'
+      - 'scripts/loc-shared-route-shell.mjs'
+      - 'scripts/serve-loc-static.mjs'
       - 'scripts/sync-page-locale-assets.mjs'
       - 'app/modular/routing/scope-registry.js'
       - 'app/**/page.html'
@@ -26,6 +28,8 @@ on:
     paths:
       - 'scripts/build-loc-static.mjs'
       - 'scripts/verify-loc-output.mjs'
+      - 'scripts/loc-shared-route-shell.mjs'
+      - 'scripts/serve-loc-static.mjs'
       - 'app/**/page.html'
       - 'app/page.html'
       - 'app/**/page.jsx'
@@ -68,13 +72,20 @@ jobs:
           import assert from 'node:assert/strict';
           const report=JSON.parse(fs.readFileSync('out/_loc/build-report.json','utf8'));
           assert.ok(report.routes>=60,'LOC route regression');
-          for(const path of ['out/index.html','out/culture/index.html',
-            'out/statics/index.html','out/trace/index.html',
-            'out/search/index.html','out/lo3rwang/index.html','out/lrunes/index.html']){
+          for(const path of ['out/index.html','out/_loc/shell.html',
+            'out/lo3rwang/index.html','out/lrunes/index.html']){
             const html=fs.readFileSync(path,'utf8');
             assert.match(html,/<html lang="zh-Hant">/);
             assert.match(html,/<link rel="stylesheet" href="/);
           }
+          const routes=JSON.parse(fs.readFileSync('out/_loc/shared-routes.json','utf8'));
+          assert.ok(Object.keys(routes).length>=40);
+          assert.equal(report.sharedWebRoutes,Object.keys(routes).length);
+          for(const name of ['culture','statics','trace','search']){
+            assert.equal(fs.existsSync('out/'+name+'/index.html'),false);
+            assert.ok(Object.hasOwn(routes,'/'+name+'/'));
+          }
+          assert.match(fs.readFileSync('out/_loc/shell.html','utf8'),/loc-shared-route-bootstrap/);
           assert.match(fs.readFileSync('out/index.html','utf8'),/loc-static-reading/);
           NODE
 
