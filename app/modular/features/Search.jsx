@@ -851,7 +851,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     try{
       const plan=await prepareSearchEditTransaction(result);
       if(plan.operations.length)await transactionWrites(plan.operations);
-      await plan.afterCommit?.();
+      try{await plan.afterCommit?.();}
+      catch{setEditError('資料已提交，但搜尋畫面更新失敗；請重新讀取。');}
+
       return true;
     }catch(exception){
       const message=String(exception?.message||exception||UI_COPY.search.saveFailed);
