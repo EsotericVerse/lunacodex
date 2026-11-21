@@ -330,12 +330,15 @@ export async function handleNativePublicQuery(request,env={},{
         :await executeNativeRead(modeled.client,modeled.body,modeled.modelName);
       return respond({data:output.data,count:output.count??null});
     }
+    // A list plus its exact total is one logical read result. Use a single
+    // transaction instead of reacquiring the physical connection for COUNT.
+    return selected.db.transaction().execute(async trx=>{
     if(normalized.head){
-      const result=await withFilters(selected.db.selectFrom(table),normalized)
+      const result=await withFilters(trx.selectFrom(table),normalized)
         .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst();
       return respond({data:null,count:Number(result?.count||0)});
     }
-    let query=withFilters(selected.db.selectFrom(table),normalized);
+    let query=withFilters(trx.selectFrom(table),normalized);
     query=normalized.columns[0]==='*'?query.selectAll():query.select(normalized.columns);
     for(const order of normalized.orders)
       query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
@@ -352,7 +355,7 @@ export async function handleNativePublicQuery(request,env={},{
         normalized.limit>0&&rawRows.length<normalized.limit;
       fullCount=exhausted&&(normalized.offset===0||rawRows.length>0)
         ?normalized.offset+rawRows.length
-        :Number((await withFilters(selected.db.selectFrom(table),normalized)
+        :Number((await withFilters(trx.selectFrom(table),normalized)
           .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst())?.count||0);
     }
     const rows=normalizeModeledSelectRows({
@@ -364,6 +367,7 @@ export async function handleNativePublicQuery(request,env={},{
       return respond({error:'Expected one LOC record',stage:'cardinality'},406);
     return respond({data:normalized.cardinality?rows[0]||null:rows,
       count:fullCount});
+    });
   }catch(error){
     // Public diagnostics expose only fixed transport categories, never
     // connection hosts, credentials, SQL statements, or query parameters.

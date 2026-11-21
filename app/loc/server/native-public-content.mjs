@@ -181,9 +181,12 @@ export async function handleNativePublicContent(request,env={},{
       ?createScopedLocClient({dialect:port.dialect,scopeId:id,
         engine:port.engine,namespace:port.namespace||'silver'}):null;
     if(numeric){
-      const data=kind==='loc'
-        ?await readLocGroupNumeric(query,start,end,port)
-        :await readGalaxyNumeric(query,scope,kind,start,end,port);
+      // LOC combined scope totals may run several related SELECTs. Pin one
+      // request-owned connection and transaction for the complete result;
+      // finish SQL before returning the chart payload to the browser.
+      const data=await query.transaction().execute(trx=>kind==='loc'
+        ?readLocGroupNumeric(trx,start,end,port)
+        :readGalaxyNumeric(trx,scope,kind,start,end,port));
       return respond({data});
     }
     if(kind==='culture_anchors'){
