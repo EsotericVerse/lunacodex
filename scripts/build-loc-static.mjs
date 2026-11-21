@@ -19,7 +19,7 @@ function pages(folder,relative=''){
   return fs.readdirSync(folder,{withFileTypes:true}).flatMap(item=>{
     const sub=path.posix.join(relative,item.name);
     if(item.isDirectory())return pages(path.join(folder,item.name),sub);
-    return item.isFile()&&/^page\.(jsx|js|tsx)$/.test(item.name)?[sub]:[];
+    return item.isFile()&&item.name==='page.html'?[sub]:[];
   });
 }
 const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
@@ -30,32 +30,35 @@ fs.mkdirSync(scratch,{recursive:true});
 try{
   run(['run','prebuild']);
   const allPages=pages(abs('app')).sort();
-  if(allPages.length<60)throw new Error('LOC route loss: '+allPages.length);
+  if(allPages.length<60)throw new Error('LOC HTML document loss: '+allPages.length);
   const entryPoints={
     '_loc/site':abs('app/globals.css'),
     '_loc/editor':abs('app/styles/editor.css'),
-    'public-preferences':abs('app/loc/public-home-preferences.jsx')
+    'public-preferences':abs('app/loc/public-home-preferences.jsx'),
+    interactive:abs('app/loc/runtime/html-entry.jsx'),
+    controls:abs('app/loc/runtime/html-controls.js')
   };
-  const records=[];
-  for(let i=0;i<allPages.length;i++){
-    const name='_loc/routes/p'+i;
-    const file=allPages[i];
+  const decode=s=>String(s||'').replace(/&(amp|quot|lt|gt|#39);/g,(_,key)=>
+    ({amp:'&',quot:'"',lt:'<',gt:'>', '#39':"'"})[key]);
+  const records=allPages.map(file=>{
     const route='/'+(path.posix.dirname(file)==='.'?'':path.posix.dirname(file)+'/');
-    const entry=path.join(scratch,'entry-'+i+'.jsx');
-    fs.writeFileSync(entry,[
-      "import {createRoot} from 'react-dom/client';",
-      "import {createElement} from 'react';",
-      'import Shell from '+JSON.stringify(abs('app/AppShell.jsx'))+';',
-      'import Page from '+JSON.stringify(abs('app/'+file))+';',
-      "createRoot(document.getElementById('loc-root')).render(createElement(Shell,null,createElement(Page)));"
-    ].join('\n'));
-    entryPoints[name]=entry;
-    const source=fs.readFileSync(abs('app/'+file),'utf8');
-    const title=source.match(/title:\s*['"]([^'"]+)['"]/)?.[1]||'LOC 月典';
-    const description=source.match(/description:\s*['"]([^'"]+)['"]/)?.[1]||'';
-    const noIndex=/noIndex:\s*true|index:\s*false/.test(source);
-    records.push({route,name,title,description,noIndex});
-  }
+    const markup=fs.readFileSync(abs('app/'+file),'utf8');
+    const text=(pattern)=>decode(markup.match(pattern)?.[1]||'');
+    const title=text(/<title>([^<]*)<\/title>/i)||'LOC 月典';
+    const description=text(/<meta name="description" content="([^"]*)">/i);
+    const noIndex=/<meta name="robots" content="noindex,nofollow">/i.test(markup);
+    const attr=name=>text(new RegExp('\\bdata-loc-'+name+'="([^"]*)"','i'));
+    const component=attr('component'),view=attr('view'),scope=attr('scope');
+    const section=attr('section'),redirectTarget=attr('redirect');
+    if(!['loc','outbound','legacy','phone','settings','features','work','bridge'].includes(component)||
+      !view||!scope||!/^[a-z][a-z0-9]{0,14}$/.test(scope))
+      throw Error('Invalid LOC HTML page attributes: '+file);
+    if(component==='legacy'&&!redirectTarget)
+      throw Error('Legacy URL must declare its destination: '+file);
+    const relative=route.replace(/^\/lrunes\//,'/').slice(1).replace(/\/$/,'');
+    return {route,name:'_loc/routes/interactive',title,description,noIndex,
+      component,view,scope,section,redirectTarget,relative};
+  });
   const compiled=await build({
     entryPoints,outdir:out,bundle:true,splitting:true,format:'esm',
     platform:'browser',target:'es2022',jsx:'automatic',jsxImportSource:'react',
@@ -115,13 +118,35 @@ try{
     packages:'external',jsx:'automatic',jsxImportSource:'react',
     target:'node22',logLevel:'warning'
   });
-  const {renderPublicScopeHome}=await import(pathToFileURL(staticRenderer).href);
+  const {renderPublicScopeHome,renderPublicFeatureFrame}=await import(pathToFileURL(staticRenderer).href);
   for(const page of records){
-    const staticHome=!native?renderPublicScopeHome({route:page.route,entry:page.name}):null;
+    const staticHome=renderPublicScopeHome({route:page.route,entry:page.name,native});
     const dest=path.join(out,page.route.slice(1));
     fs.mkdirSync(dest,{recursive:true});
-    const scope=page.route.startsWith('/lrunes/')?'theme-4':'theme-7';
-    const css=fs.existsSync(path.join(out,page.name+'.css'))?'<link rel="stylesheet" href="/'+page.name+'.css">':'';
+    const outbound=page.component==='outbound';
+    const target=outbound?'https://lrs.lo3rwang.cc/'+page.relative+'/':'';
+    const current=page.component==='settings'||page.component==='features'?'settings':
+      page.view==='searchManage'?'search':
+      page.view==='sourceManage'?'culture':
+      ['keywords','keywordManage'].includes(page.view)?'statics':
+      page.view==='manage'&&page.relative.includes('trace')?'trace':page.view;
+    const frame=staticHome?staticHome.html:
+      renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target,
+        feature:current,work:page.component==='work',native});
+    const attrs=' data-loc-component="'+escape(page.component)+'" data-loc-view="'+
+      escape(page.view)+'" data-loc-scope="'+escape(page.scope)+'"'+
+      (page.section?' data-loc-section="'+escape(page.section)+'"':'')+
+      (page.redirectTarget?' data-loc-redirect="'+escape(page.redirectTarget)+'"':'');
+    const load=staticHome?staticHome.loader:
+      page.component==='work'?'':outbound?'<script>location.replace('+JSON.stringify(target)+')</script>':
+      page.component==='legacy'
+        ?'<script>if(location.protocol!=="capacitor:"){const next=new URL('+
+          JSON.stringify(page.redirectTarget)+',location.href);'+
+          'const old=new URL(location.href);for(const [k,v] of old.searchParams)'+
+          'if(!next.searchParams.has(k))next.searchParams.append(k,v);'+
+          'next.hash=old.hash;location.replace(next.href);}</script>'+
+          '<script type="module" src="/'+page.name+'.js"></script>'
+        :'<script type="module" src="/'+page.name+'.js"></script>';
     const html=[
       '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">',
       '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">',
@@ -130,13 +155,12 @@ try{
       page.noIndex?'<meta name="robots" content="noindex,nofollow">':'',
       '<link rel="canonical" href="https://loc.lo3rwang.cc'+page.route+'">',
       '<link rel="icon" href="/assets/site/icons/loc-favicon.png">',
-      '<link rel="stylesheet" href="'+cssHref+'">',css,
+      '<link rel="stylesheet" href="'+cssHref+'">',
       '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
       '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
-      '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"><div id="loc-root">',
-      staticHome?staticHome.html:'<main class="scope-main"><section class="scope-page"><header class="loc-card scope-hero"><h1>'+escape(page.title)+'</h1></header></section></main>',
-      '</div>',
-      staticHome?staticHome.loader:'<script type="module" src="/'+page.name+'.js"></script>',
+      '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"'+attrs+'>',
+      '<div id="loc-root">'+frame+'</div>',
+      "<script id=\"loc-html-controls\">(()=>{try{\n  const theme=document.querySelector('[data-loc-control=\"theme\"]');\n  if(theme){\n    const scope=(location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc');\n    const value=JSON.parse(sessionStorage.getItem('loc-user-theme-selection-v1')||'{}')[scope];\n    const selected=/^[1-8]$/.test(String(value??''))?'theme-'+value:String(value||'');\n    if([...theme.options].some(option=>option.value===selected))theme.value=selected;\n  }\n}catch{}\ndocument.addEventListener('change',async event=>{\n  const input=event.target.closest?.('[data-loc-control]');\n  if(!input)return;\n  try{\n    const module=await import('/_loc/routes/controls.js');\n    await module.applyHtmlPreference(input.dataset.locControl,input.value,\n      (location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc'));\n  }catch(error){console.error('LOC preference failed',error);}\n});})();</script>",load,
       '</body></html>'
     ].join('');
     fs.writeFileSync(path.join(dest,'index.html'),html);
@@ -145,10 +169,10 @@ try{
   if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))
     throw new Error('Native export contains raw card originals');
   fs.writeFileSync(path.join(out,'_loc','build-report.json'),JSON.stringify({
-    runtime:'Native React + optional Preact island',bundler:'esbuild',routes:records.length,sharedCss:cssHref,editorCss:editorCssHref,
+    runtime:'HTML documents + on-demand React',bundler:'esbuild',routes:records.length,sharedCss:cssHref,editorCss:editorCssHref,
     jsBytes:Object.entries(compiled.metafile.outputs).filter(([p])=>p.endsWith('.js')).reduce((sum,[,v])=>sum+v.bytes,0)
   }));
-  console.log('[LOC] esbuild native React features + optional Preact islands: '+records.length+' HTML routes; '+(native?'IPA':'Web')+' target.');
+  console.log('[LOC] HTML documents + on-demand features: '+records.length+' HTML routes; '+(native?'IPA':'Web')+' target.');
 }catch(error){
   fs.rmSync(out,{recursive:true,force:true});
   throw error;

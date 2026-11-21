@@ -4,11 +4,33 @@ on:
   pull_request:
     paths:
       - 'scripts/build-loc-static.mjs'
+      - 'scripts/verify-loc-output.mjs'
+      - 'scripts/sync-page-locale-assets.mjs'
+      - 'app/modular/routing/scope-registry.js'
+      - 'app/**/page.html'
+      - 'app/page.html'
+      - 'app/**/page.jsx'
+      - 'app/page.jsx'
+      - 'app/loc/runtime/html-entry.jsx'
+      - 'app/loc/runtime/html-controls.js'
+      - 'tests/loc-html-base.test.mjs'
+      - 'tests/loc-db-connectivity.test.mjs'
+      - 'functions/api/loc-auth-connectivity.js'
       - '.github/workflows/loc-static-regression.yml'
   push:
     branches: [main]
     paths:
       - 'scripts/build-loc-static.mjs'
+      - 'scripts/verify-loc-output.mjs'
+      - 'app/**/page.html'
+      - 'app/page.html'
+      - 'app/**/page.jsx'
+      - 'app/page.jsx'
+      - 'app/loc/runtime/html-entry.jsx'
+      - 'app/loc/runtime/html-controls.js'
+      - 'tests/loc-html-base.test.mjs'
+      - 'tests/loc-db-connectivity.test.mjs'
+      - 'functions/api/loc-auth-connectivity.js'
       - '.github/workflows/loc-static-regression.yml'
   workflow_dispatch:
 
@@ -27,6 +49,8 @@ jobs:
           cache: npm
       - name: Install existing build packages
         run: npm ci --no-audit --no-fund
+      - name: Run all LOC regression tests
+        run: node --test tests/*.test.mjs
       - name: Build existing static HTML routes
         run: npm run build:static
       - name: Verify static content and browser bundles
@@ -44,4 +68,58 @@ jobs:
             assert.match(html,/<link rel="stylesheet" href="/);
           }
           assert.match(fs.readFileSync('out/index.html','utf8'),/loc-static-reading/);
+          NODE
+
+      - name: Browser smoke — real HTML feature mount without extra dependencies
+        run: |
+          set -euo pipefail
+          chrome="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          "$chrome" --version
+          node scripts/serve-loc-static.mjs >/tmp/loc-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          for feature in culture statics search trace; do
+            "$chrome" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage \
+              --virtual-time-budget=4000 --dump-dom "http://127.0.0.1:8000/$feature/" \
+              >"/tmp/loc-$feature.html" 2>"/tmp/loc-$feature-chrome.log"
+            if ! grep -q 'class="loc-next-main"' "/tmp/loc-$feature.html"; then
+              echo "Interactive LOC feature failed to mount: $feature"
+              tail -n 30 "/tmp/loc-$feature-chrome.log"
+              exit 1
+            fi
+          done
+      - name: Build IPA HTML with the same published page contracts
+        env:
+          LOC_NATIVE_BUNDLE: '1'
+        run: npm run build:static
+      - name: Verify device-only HTML and local Scope
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const html=fs.readFileSync('out/my-phone/index.html','utf8');
+          assert.match(html,/data-loc-scope="local"/);
+          assert.match(html,/data-loc-component="phone"/);
+          assert.match(html,/data-native="ios"/);
+          assert.match(html,/href="\/lo3rwang\/index.html"/);
+          assert.doesNotMatch(html,/href="https:\/\/loc\.lo3rwang\.cc\/lo3rwang\//);
+          const local=fs.readFileSync('out/local/statics/index.html','utf8');
+          assert.match(local,/href="\/local\/culture\/index.html"/);
+          assert.match(local,/href="\/local\/settings\/index.html\?scopeid=local"/);
+          const report=JSON.parse(fs.readFileSync('out/_loc/build-report.json','utf8'));
+          assert.ok(report.routes>=60);
+          assert.equal(fs.existsSync('out/_next'),false);
+          for(const page of ['out/index.html','out/lo3rwang/index.html','out/lrunes/index.html']){
+            const homepage=fs.readFileSync(page,'utf8');
+            assert.match(homepage,/loc-static-reading/);
+            assert.match(homepage,/href="\/my-phone\/index.html"/);
+            assert.match(homepage,/data-native="ios"/);
+            assert.doesNotMatch(homepage,/<script type="module" src="\/_loc\/routes\/interactive.js"/);
+          }
           NODE

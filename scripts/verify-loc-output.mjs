@@ -9,13 +9,20 @@ function pageFiles(folder,relative=''){
   return fs.readdirSync(folder,{withFileTypes:true}).flatMap(item=>{
     const sub=path.posix.join(relative,item.name),full=path.join(folder,item.name);
     if(item.isDirectory())return pageFiles(full,sub);
-    return item.isFile()&&/^page\.(jsx|js|tsx)$/.test(item.name)?[sub]:[];
+    return item.isFile()&&item.name==='page.html'?[sub]:[];
   });
 }
-const pageRoutes=pageFiles(app).map(file=>{
+const pageSources=pageFiles(app);
+const pageRoutes=pageSources.map(file=>{
   const dir=path.posix.dirname(file);
   return '/'+(dir==='.'?'':dir+'/');
 });
+if(pageSources.length!==80)throw Error('LOC authored HTML document count changed: '+pageSources.length);
+for(const file of pageSources){
+  if(!exists(path.join(app,file)))throw Error('Missing authored HTML: '+file);
+  if(exists(path.join(app,path.posix.dirname(file),'page.jsx')))
+    throw Error('Old JSX page wrapper remains: '+file);
+}
 const required=['/','/culture/','/search/','/statics/','/trace/','/settings/','/admin/','/my-phone/','/lo3rwang/','/lrunes/'];
 for(const route of required)if(!pageRoutes.includes(route))throw Error('Required LOC route absent: '+route);
 // Validate the actual esbuild CSS entry output, not an assumed filename.
@@ -23,7 +30,7 @@ if(!exists(path.join(out,'_loc','build-report.json')))throw Error('LOC build-rep
 const report=JSON.parse(read(path.join(out,'_loc','build-report.json')));
 if(!/^\/_loc\/[^?#]+\.css$/.test(report.sharedCss)||!exists(path.join(out,report.sharedCss.slice(1))))
   throw Error('LOC shared CSS missing or invalid: '+report.sharedCss);
-if(report.runtime!=='Native React + optional Preact island'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
+if(report.runtime!=='HTML documents + on-demand React'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
   throw Error('LOC static route manifest mismatch');
 if(report.editorCss!=='/_loc/routes/editor.css'||!exists(path.join(out,report.editorCss.slice(1))))
   throw Error('LOC editor-on-demand stylesheet missing: '+report.editorCss);
@@ -46,6 +53,12 @@ for(const name of ['LOC-culture','LOC-statics','LOC-search','LOC-admin','scope-c
     throw Error('LOC duplicated Web image in JS/CSS assets: '+name);
 }
 
+if(fs.readdirSync(path.join(out,'_loc','routes')).some(file=>/^p\\d+\\.js$/.test(file)))
+  throw Error('Per-page React entrypoint emitted by HTML builder');
+if(!exists(path.join(out,'_loc','routes','controls.js')))
+  throw Error('On-demand HTML preference controls bundle missing');
+if(!exists(path.join(out,'_loc','routes','interactive.js')))
+  throw Error('Shared interactive HTML entrypoint missing');
 if(!fs.existsSync(path.join(out,'pics')))throw Error('LOC image URL path /pics not staged');
 if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))throw Error('IPA contains originals');
 for(const route of pageRoutes){
@@ -53,8 +66,8 @@ for(const route of pageRoutes){
   if(!exists(entry))throw Error('Missing route: '+route);
   const html=read(entry);
   if(!html.includes('href="'+report.sharedCss+'"'))throw Error('LOC shared CSS not linked from '+route);
-  const publicHome=!native&&['/','/lo3rwang/','/lrunes/'].includes(route);
-  const src=html.match(/<script type="module" src="(\/_loc\/routes\/p\d+\.js)"><\/script>/)?.[1];
+  const publicHome=['/','/lo3rwang/','/lrunes/'].includes(route);
+  const src=html.match(/<script type="module" src="(\/_loc\/routes\/interactive\.js)"><\/script>/)?.[1];
   if(publicHome){
     if(html.includes('href="'+report.editorCss+'"'))
       throw Error('LOC public homepage should not download editor CSS: '+route);
@@ -62,8 +75,23 @@ for(const route of pageRoutes){
       throw Error('LOC public home must not automatically start Preact: '+route);
     if(!html.includes('class="loc-view loc-home"')||!html.includes('loc-home-block__header'))
       throw Error('LOC public home published content missing: '+route);
+    if(!html.includes('type="application/ld+json"'))
+      throw Error('LOC public home structured data missing: '+route);
+  }else if(html.includes('data-loc-component="work"')){
+    if(src||!html.includes('author-role-grid')||!html.includes('scope-home-composition'))
+      throw Error('Author Work must be fully published HTML: '+route);
+  }else if(html.includes('data-loc-component="outbound"')){
+    if(src||!html.includes('https://lrs.lo3rwang.cc/'))
+      throw Error('LRS outbound HTML must link directly without React: '+route);
   }else if(!src||!exists(path.join(out,src.slice(1))))
     throw Error('Missing executable LOC interaction bundle for '+route);
+  if(!html.includes('data-loc-control="theme"')||!html.includes('data-loc-control="locale"')||
+      !html.includes('id="loc-html-controls"'))
+    throw Error('Static HTML footer controls missing: '+route);
+  if(!publicHome&&!html.includes('data-loc-component='))
+    throw Error('HTML feature metadata missing: '+route);
+  if(native&&!html.includes('loc-device-local-core-until-v1'))
+    throw Error('Device local-lease bootstrap missing: '+route);
   if(!html.includes('id="loc-theme-bootstrap"')||!html.includes('id="loc-native-static-route"'))
     throw Error('Lost native/theme bootstraps at '+route);
   if(/_next\/|__next|next\/navigation/i.test(html))throw Error('Next.js leaked into route '+route);
