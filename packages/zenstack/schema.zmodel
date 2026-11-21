@@ -658,6 +658,7 @@ model Lo3rwangGalaxy {
     site                         String?     @db.Text
     place_id                     String?     @db.Char(8)
     media_link                   String[]    @db.VarChar
+    meta_tags                    String[]    @db.Text
     date                         DateTime?   @db.Date
     site_id                      String?     @db.Text
     culture                      Boolean?     @default(false)
@@ -784,6 +785,7 @@ model LrunesGalaxy {
     site                         String?     @db.Text
     place_id                     String?     @db.Char(8)
     media_link                   String[]    @db.VarChar
+    meta_tags                    String[]    @db.Text
     date                         DateTime?   @db.Date
     site_id                      String?     @db.Text
     statics                      Boolean?     @default(false)
