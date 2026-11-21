@@ -63,8 +63,48 @@ if(!exists(path.join(out,'_loc','routes','home.js')))
   throw Error('LOC one-request home content entry missing');
 if(!fs.existsSync(path.join(out,'pics')))throw Error('LOC image URL path /pics not staged');
 if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))throw Error('IPA contains originals');
+const routeManifestPath=path.join(out,'_loc','shared-routes.json');
+const manifest=native?{}:JSON.parse(read(routeManifestPath));
+const rewritten=Object.keys(manifest);
+if(native){
+  if(report.sharedWebRoutes!==0||report.emittedHtmlRoutes!==pageRoutes.length)
+    throw Error('IPA must retain all existing native deep-link HTML files');
+}else{
+  if(!exists(path.join(out,'_loc','shell.html')))
+    throw Error('LOC common Web feature shell missing');
+  const shell=read(path.join(out,'_loc','shell.html'));
+  for(const token of ['id="loc-feature-main"','id="loc-feature-hero-canvas"',
+    'id="loc-interactive-root"','id="loc-shared-route-bootstrap"',
+    'id="loc-html-controls"','data-loc-feature-link="culture"']){
+    if(!shell.includes(token))throw Error('LOC common shell missing '+token);
+  }
+  if(!shell.includes('src="/_loc/routes/interactive.js"'))
+    throw Error('LOC shared Web shell must use the one interactive entrypoint');
+  if(report.sharedWebRoutes!==rewritten.length||rewritten.length<40||
+    report.emittedHtmlRoutes!==pageRoutes.length-rewritten.length+1)
+    throw Error('LOC Web shell route consolidation incomplete');
+  for(const route of rewritten){
+    if(!pageRoutes.includes(route)||route.startsWith('/api/')||
+      route.startsWith('/_loc/'))throw Error('Unexpected generated shared Web route '+route);
+  }
+  const redirects=read(path.join(out,'_redirects')).split('\n');
+  const headers=read(path.join(out,'_headers'));
+  for(const route of rewritten){
+    if(!redirects.includes(route+' /_loc/shell.html 200'))
+      throw Error('Cloudflare Pages rewrite missing '+route);
+    const src=pageSources.find(file=>'/'+(path.posix.dirname(file)==='.'?'':path.posix.dirname(file)+'/')===route);
+    const noIndex=read(path.join(app,src)).includes('name="robots" content="noindex,nofollow"');
+    if(noIndex&&!headers.includes(route+'\n  X-Robots-Tag: noindex, nofollow'))
+      throw Error('Noindex Web route lost its HTTP search-indexing protection: '+route);
+  }
+}
+
 for(const route of pageRoutes){
   const entry=path.join(out,route.slice(1),'index.html');
+  if(!native&&Object.hasOwn(manifest,route)){
+    if(exists(entry))throw Error('Duplicate authored Web page instead of shared shell: '+route);
+    continue;
+  }
   if(!exists(entry))throw Error('Missing route: '+route);
   const html=read(entry);
   if(!html.includes('href="'+report.sharedCss+'"'))throw Error('LOC shared CSS not linked from '+route);
@@ -124,4 +164,4 @@ if(!api.include?.includes('/api/loc-public-query')||!api.include?.includes('/api
   throw Error('Cloudflare SQL/permissions route contract missing');
 const pkg=JSON.parse(read(path.join(root,'package.json')));
 if('next' in pkg.dependencies)throw Error('Next remains a LOC runtime dependency');
-console.log('[LOC QA] '+pageRoutes.length+' static/interactive HTML routes and entrypoint files valid; static CSS, themes, native bootstrap, SQL Functions routing, images: OK. JS bytes='+report.jsBytes+'; target='+(native?'IPA':'Web'));
+console.log('[LOC QA] '+pageRoutes.length+' authored routes; '+report.emittedHtmlRoutes+' physical HTML files valid; static CSS, themes, native bootstrap, SQL Functions routing, images: OK. JS bytes='+report.jsBytes+'; target='+(native?'IPA':'Web'));
