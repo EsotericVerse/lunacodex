@@ -52,7 +52,7 @@ export function loc_access(email,rows=[],{website=false}={}){
 // PolicyPlugin over the existing Kysely dialect. Dialects without a supported
 // ZenStack provider retain the bounded portable Kysely SELECT; no new pool,
 // SQL migration, polling or duplicate role read is created.
-export async function readLocAccess(db,email,{dialect,engine='postgres',website=false}={}){
+export async function readLocAccess(db,email,{dialect,engine='postgres',website=false,transactional=false}={}){
   if(!db||typeof db.selectFrom!=='function')
     throw new Error('LOC permission database unavailable');
   const verified=normalizedEmail(email);
@@ -62,7 +62,11 @@ export async function readLocAccess(db,email,{dialect,engine='postgres',website=
   if(website&&engine==='postgres'&&!dialect)
     throw new Error('LOC website ZModel policy dialect unavailable');
   const columns=['id','email','manage_role','active'];
-  const rows=engine==='postgres'&&dialect
+  // A managed Save reads the SAME Registry projection inside the owning
+  // Kysely transaction so its permission snapshot and all writes share one
+  // connection. This is server-only; loc_access still derives grants strictly
+  // from the verified email and modeled Manage row projection.
+  const rows=engine==='postgres'&&dialect&&!transactional
     ?await fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin})
       .manage.findMany({
         where:{email:verified,...(website?{}:{active:true})},
