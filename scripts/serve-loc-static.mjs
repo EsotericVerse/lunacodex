@@ -1,9 +1,9 @@
-// Minimal local server for LOC/esbuild static output. Cloudflare handles /api/* in Preview.
+// Minimal local HTTP server for native LOC Framework HTML output. Cloudflare handles /api/* in Preview.
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 const root=path.resolve('out');
-const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.avif':'image/avif','.woff2':'font/woff2','.woff':'font/woff','.wasm':'application/wasm','.ico':'image/x-icon'};
+const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.avif':'image/avif','.woff2':'font/woff2','.woff':'font/woff','.wasm':'application/wasm','.ico':'image/x-icon'};
 const server=http.createServer((request,response)=>{
   const url=new URL(request.url||'/', 'http://127.0.0.1');
   if(url.pathname.startsWith('/api/')){
