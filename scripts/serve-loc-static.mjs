@@ -16,13 +16,13 @@ const server=http.createServer((request,response)=>{
     return;
   }
   const pathname=decodeURIComponent(url.pathname);
-  const virtual=pathname.replace(/\\/index\\.html$/,'/');
+  const virtual=pathname.endsWith('/index.html')?pathname.slice(0,-'index.html'.length):pathname;
   const normalized=virtual.endsWith('/')?virtual:virtual+'/';
   // Browser smoke and local Web preview honor the same authored route map
   // as Cloudflare Pages' generated 200 rewrites. IPA still owns index.html.
   const file=Object.hasOwn(sharedRoutes,normalized)
     ?path.join(root,'_loc','shell.html')
-    :path.resolve(root,'.'+pathname.replace(/\\/$/,'/index.html'));
+    :path.resolve(root,'.'+(pathname.endsWith('/')?pathname+'index.html':pathname));
   if(!file.startsWith(root+path.sep)&&file!==path.join(root,'index.html')){
     response.writeHead(403);response.end();return;
   }
