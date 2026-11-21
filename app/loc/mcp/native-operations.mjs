@@ -342,7 +342,7 @@ export async function handleNativeLocOperation(request,env={},{
         throw refusal('Keyword reconciliation Scope mismatch',400);
       if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
         operations.some(entry=>!entry||typeof entry!=='object'||
-          Array.isArray(entry)||!['insert','update','delete','upsert'].includes(entry.p_operation)||
+          Array.isArray(entry)||!['insert','update','delete','upsert','append_media_link'].includes(entry.p_operation)||
           typeof entry.p_table!=='string'))
         throw refusal('Invalid LOC management transaction',400);
       const results=await selected.db.transaction().execute(async trx=>{
@@ -359,6 +359,9 @@ export async function handleNativeLocOperation(request,env={},{
         bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
         const outcomes=[];
         for(const payload of operations){
+          if(payload.p_operation==='append_media_link'&&(
+            selected.engine!=='postgres'||host!==WEB_HOST))
+            throw refusal('MediaAnchor link is LOC Web PostgreSQL-only',403);
           const fixed=['api.manage','silver.loc'].includes(payload.p_table);
           const action={kind:'managed-write',payload};
           let output;
