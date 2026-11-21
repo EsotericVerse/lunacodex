@@ -42,6 +42,8 @@ try{
     LOC_STATIC_EXPORT:'1'
   });
   run(process.execPath,[path.join(root,'scripts','copy-static-assets.mjs')]);
+  // Generate verified npm lock delta before the isolated bundle smoke.
+  run(process.execPath,[path.join(root,'scripts','emit-lock-delta.mjs')]);
   // Experiment branch only: bundle Preact against the LOC editor in isolation.
   run(process.execPath,[path.join(root,'scripts','verify-preact-compat-preview.mjs')]);
   // Visual diagnostics are explicit QA, not part of every production build.
