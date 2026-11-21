@@ -4,7 +4,7 @@ import {UI_COPY} from '../../i18n/ui-copy';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
-import {insertRows,updateRows} from '../db/db-client.mjs';
+import {transactionWrites} from '../db/db-client.mjs';
 import {selectRows} from '../db/db-query.mjs';
 import {createUid8} from '../model/uid';
 import {useAccount} from '../auth/use-account';
@@ -84,12 +84,15 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
         createtime:article?.createtime?new Date(article.createtime).toISOString():
           mediaIso(draft.createtime)||new Date().toISOString()
       });
-      await insertRows(anchor,[record]);
+      const operations=[{p_table:anchor,p_operation:'insert',p_rows:[record]}];
       if(article){
         const prior=Array.isArray(article.media_link)?article.media_link:[];
-        await updateRows(scope.galaxy,{media_link:[...new Set([...prior,mediaUid])]},
-          {filters:[{column:'uid',operator:'eq',value:article.uid}]});
+        operations.push({p_table:scope.galaxy,p_operation:'update',
+          p_values:{media_link:[...new Set([...prior,mediaUid])]},
+          p_filters:[{column:'uid',operator:'eq',value:article.uid}]});
       }
+      // The new media Anchor must never survive a failed Galaxy link update.
+      await transactionWrites(operations);
       setStatus(t('uiExtra.importUI.mediaSaved'));
       setDraft(blankMedia());
       return true;
