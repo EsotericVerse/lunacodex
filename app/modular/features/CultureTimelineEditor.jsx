@@ -6,7 +6,7 @@ import ScopeOptionPicker from '../ScopeOptionPicker';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useEditDock} from '../edit-dock';
-import {dbAuthClient,deleteRows,insertRows,updateRows} from '../../loc/db/db-client.mjs';
+import {transactionWrites} from '../../loc/db/db-client.mjs';
 import {revalidateServerMetadata} from '../../loc/scope/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/culture/time-anchor-ranges.mjs';
@@ -219,6 +219,7 @@ export default function CultureTimelineEditor({
     if(!editDock?.active||editDock.scopeId!==scopeId)return undefined;
     return editDock.register({
       save:options=>dockActions.current.save(options),
+      prepareTransaction:()=>dockActions.current.prepareTransaction(),
       isDirty:()=>dockActions.current.isDirty(),
       isBusy:()=>dockActions.current.isBusy()
     });
@@ -327,8 +328,10 @@ export default function CultureTimelineEditor({
       if(additions.length&&!window.confirm('將新增 '+additions.length+' 個日期定錨，另有 '+
         (plans.length-additions.length)+' 個日期已存在而跳過。確定建立？'))return;
       // Keep the same managed Scope write path and never touch Galaxy.
-      for(let i=0;i<additions.length;i+=100)
-        await insertRows(timeTable,additions.slice(i,i+100).map(row=>writeTimeAnchorRow(row)));
+      if(additions.length)await transactionWrites([{
+        p_table:timeTable,p_operation:'insert',
+        p_rows:additions.map(row=>writeTimeAnchorRow(row))
+      }]);
       refresh();
       await onDataChanged?.();
       setAnnualOpen(false);startNew('anchor');
@@ -349,11 +352,8 @@ export default function CultureTimelineEditor({
       resourceCache.revalidate({queryKey:['culture-period-source-snapshot','v6',scopeId]})
     ]);
   };
-  const save=async(event)=>{
-    event.preventDefault?.();
-    if(busy||query.isPending)return false;
-    setBusy(true);setMessage('');
-    try{
+  const prepareTimeTransaction=()=>{
+    if(busy||query.isPending)throw Error('時間紀錄尚未就緒');
       const title=String(draft.title||'').trim();
       if(!title)throw new Error('請輸入名稱');
       const type=String(draft.type||'');
@@ -408,25 +408,51 @@ export default function CultureTimelineEditor({
           ?[...segments.map(segment=>segment.start),...pairPeriodUids]
           :encodeTimeSegment(segments[0].start,segments[0].end);
       }
-      if(extraPeriodRows.length)await insertRows(timeTable,extraPeriodRows.map(row=>writeTimeAnchorRow(row)));
+      const operations=[];
+      if(extraPeriodRows.length)operations.push({
+        p_table:timeTable,p_operation:'insert',
+        p_rows:extraPeriodRows.map(row=>writeTimeAnchorRow(row))
+      });
       if(selectedId){
-        await updateRows(timeTable,writeTimeAnchorRow(payload,all.find(row=>row.uid===selectedId)),
-          {filters:[{column:'uid',operator:'eq',value:selectedId}]});
+        operations.push({p_table:timeTable,p_operation:'update',
+          p_values:writeTimeAnchorRow(payload,all.find(row=>row.uid===selectedId)),
+          p_filters:[{column:'uid',operator:'eq',value:selectedId}]});
       }else{
-        await insertRows(timeTable,[writeTimeAnchorRow({uid:allocateTimeUid([...all,...extraPeriodRows]),...payload})]);
+        operations.push({p_table:timeTable,p_operation:'insert',
+          p_rows:[writeTimeAnchorRow({
+            uid:allocateTimeUid([...all,...extraPeriodRows]),...payload
+          })]});
       }
-      refresh();reset();
-      await onDataChanged?.();
-      setMessage('已儲存，時間長河已更新。');return true;
-    }catch(error){setMessage(error?.message||'儲存失敗');editDock?.setNotice?.(error?.message||'儲存失敗');return false;}
-    finally{setBusy(false);}
+      return {operations,
+        afterCommit:async()=>{
+          refresh();reset();
+          await onDataChanged?.();
+          setMessage('已儲存，時間長河已更新。');
+        },
+        onFailure:error=>setMessage(error?.message||'儲存失敗')};
+  };
+  const save=async(event={})=>{
+    event.preventDefault?.();
+    if(busy||query.isPending)return false;
+    setBusy(true);setMessage('');
+    try{
+      const plan=prepareTimeTransaction();
+      await transactionWrites(plan.operations);
+      await plan.afterCommit();
+      return true;
+    }catch(error){
+      setMessage(error?.message||'儲存失敗');
+      editDock?.setNotice?.(error?.message||'儲存失敗');
+      return false;
+    }finally{setBusy(false);}
   };
   const remove=async()=>{
     if(!selectedId||busy)return;
     setBusy(true);setMessage('');
     try{
       // Periods survive anchor deletion; only their affected UID links become invalid.
-      await deleteRows(timeTable,{filters:[{column:'uid',operator:'eq',value:selectedId}]});
+      await transactionWrites([{p_table:timeTable,p_operation:'delete',
+        p_filters:[{column:'uid',operator:'eq',value:selectedId}]}]);
       refresh();reset();
       await onDataChanged?.();
       setMessage('已刪除，時間長河已更新。');
@@ -438,22 +464,26 @@ export default function CultureTimelineEditor({
     if(!window.confirm('確定批次設定 '+visibilitySelection.length+' 筆時間紀錄的顯示或隱藏？'))return;
     setVisibilityBusy(true);setMessage('');
     try{
-      let count=0;
+      const plans=[];
       for(let i=0;i<visibilitySelection.length;i+=150){
         const ids=visibilitySelection.slice(i,i+150);
-        const {data,error}=await dbAuthClient.schema('silver').from(dataScope+'_anchor')
-          .update({invisible}).in('uid',ids)
-          .in('type',PERSISTED_TIME_TYPES).select('uid');
-        if(error)throw error;
-        if(data.length!==ids.length)throw Error('部分時間紀錄未成功寫入');
-        count+=data.length;
+        plans.push({p_table:timeTable,p_operation:'update',
+          p_values:{invisible},
+          p_filters:[
+            {column:'uid',operator:'in',value:ids},
+            {column:'type',operator:'in',value:PERSISTED_TIME_TYPES}
+          ],
+          p_expected_count:ids.length});
       }
+      await transactionWrites(plans);
+      const count=visibilitySelection.length;
       void query.mutate();refresh();
       await onDataChanged?.();
       setVisibilitySelection([]);setMessage('已更新 '+count+' 筆時間隱藏設定。');
     }catch(e){setMessage(String(e.message||e));}finally{setVisibilityBusy(false);}
   };
   dockActions.current={save:()=>save({preventDefault(){}}),
+    prepareTransaction:()=>prepareTimeTransaction(),
     isDirty:()=>JSON.stringify(draft)!==JSON.stringify(original.current),
     isBusy:()=>busy};
   return <section ref={editorRef} className="scope-culture-inline-editor" role="region" aria-label="時間定錨、期間與時代編輯">
