@@ -5,21 +5,14 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
 import {transactionWrites} from '../db/db-client.mjs';
-import {createUid8} from '../model/uid';
 import {useAccount} from '../auth/use-account';
 import {hasIrrecoverableEncoding,repairMojibakeText} from '../content/content-policy';
-import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 const blankMedia=()=>({
   galaxy_link:'',type:'image',title:'',
   url:'',description:'',createtime:''
 });
 
-function mediaIso(value){
-  if(!value)return null;
-  const date=new Date(value);
-  return Number.isNaN(date.getTime())?null:date.toISOString();
-}
 
 // 新增多媒體 belongs with publishing content (it creates a MediaAnchor
 // record the same way publishing an article creates a Galaxy record), not
@@ -62,25 +55,13 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
     const mediaTitle=repairMojibakeText(draft.title).trim();
     if([mediaType,mediaDescription,mediaTitle].some(hasIrrecoverableEncoding))
       throw new Error(t('uiExtra.importUI.mediaEncoding'));
+    const href=String(draft.url||'').trim();
+    if(!/^https?:\/\/[^\s]+$/i.test(href))throw Error('請提供有效的 HTTP(S) 媒體網址');
+    if(!galaxyLink)throw Error('請選擇要連結的 Galaxy 文章 UID；獨立文字請建立 Galaxy 文章');
     const scope=account.scopeDataFor(scopeId);
-    // Article identity and its current media_link are verified/locked by
-    // the SAME backend SQL transaction that inserts the new MediaAnchor.
-    // No pre-transaction SELECT or overwrite from a stale JS snapshot.
-    const mediaUid=createUid8();
-    const anchor=scope?.anchor;
-    if(!anchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
-    const record=mediaAnchorRecord({
-      uid:mediaUid,type:mediaType,title:mediaTitle||null,
-      url:String(draft.url||'').trim()||null,
-      description:mediaDescription,
-      createtime:mediaIso(draft.createtime)||new Date().toISOString()
-    });
-    const operations=[{p_table:anchor,p_operation:'insert',p_rows:[record]}];
-    if(galaxyLink){
-      if(!scope.galaxy)throw Error('文章 Scope 資料表尚未就緒');
-      operations.push({p_table:scope.galaxy,p_operation:'append_media_link',
-        p_values:{article_uid:galaxyLink,media_uid:mediaUid}});
-    }
+    if(!scope?.galaxy)throw Error(t('uiExtra.importUI.scopeUnresolved'));
+    const operations=[{p_table:scope.galaxy,p_operation:'append_media_link',
+      p_values:{article_uid:galaxyLink,media_url:href}}];
     return {operations,
       afterCommit:()=>{
         setStatus(t('uiExtra.importUI.mediaSaved'));
