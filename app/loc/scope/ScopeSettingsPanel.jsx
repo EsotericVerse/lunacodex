@@ -77,7 +77,9 @@ export default function ScopeSettingsPanel({scopeId}){
     try{
       const plan=prepareThemeTransaction();
       await transactionWrites(plan.operations);
-      await plan.afterCommit();
+      try{await plan.afterCommit();}
+      catch{setMessage('主題已提交，但畫面未能更新，請重新讀取。');}
+
       return true;
     }catch(error){
       setMessage(error?.message||uiT('uiExtra.scopeSettings.saveFailed'));
