@@ -56,3 +56,10 @@ test('iOS local lease stays bounded without a global application shell',()=>{
   assert.match(entry,/stopLocalDeadline\(\)/);
   assert.match(entry,/window\.location\.replace\('\/local\/index\.html'\)/);
 });
+
+test('native static pages enforce local lease before mounting a feature',()=>{
+  const theme=readFileSync(new URL('../app/modular/runtime/theme-bootstrap.mjs',import.meta.url),'utf8');
+  assert.match(theme,/loc-device-local-core-until-v1/);
+  assert.match(theme,/window\.location\.replace\('\/local\/index\.html'\)/);
+  assert.match(theme,/window\.localStorage\.removeItem\(key\)/);
+});

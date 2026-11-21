@@ -90,6 +90,8 @@ for(const route of pageRoutes){
     throw Error('Static HTML footer controls missing: '+route);
   if(!publicHome&&!html.includes('data-loc-component='))
     throw Error('HTML feature metadata missing: '+route);
+  if(native&&!html.includes('loc-device-local-core-until-v1'))
+    throw Error('Device local-lease bootstrap missing: '+route);
   if(!html.includes('id="loc-theme-bootstrap"')||!html.includes('id="loc-native-static-route"'))
     throw Error('Lost native/theme bootstraps at '+route);
   if(/_next\/|__next|next\/navigation/i.test(html))throw Error('Next.js leaked into route '+route);
