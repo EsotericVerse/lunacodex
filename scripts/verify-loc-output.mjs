@@ -77,7 +77,7 @@ for(const route of pageRoutes){
     throw Error('LOC public frame exposes obsolete database connection status: '+route);
   const publicHome=['/','/lo3rwang/','/lrunes/'].includes(route);
   const staticCanvas=!publicHome&&
-    /data-loc-component="(?:loc|settings|features)"/.test(html);
+    /data-loc-component="(?:loc|settings|features|phone)"/.test(html);
   if(staticCanvas){
     for(const id of ['loc-feature-main','loc-feature-hero-canvas','loc-interactive-root']){
       if(!html.includes('id="'+id+'"'))throw Error('Missing fixed LOC DIV canvas '+id+': '+route);
