@@ -192,27 +192,28 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     ['statics','culture'].includes(forcedView));
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){
-    return <main className="scope-main"><section className="scope-page">
+    return <FeaturePage featureId={forcedView}>
       <p className="scope-status" role="status">此本機資料工作區僅在 iOS App 提供。網頁版正在返回設定。</p>
-    </section></main>;
+    </FeaturePage>;
   }
-  // A local native page reads only the device Galaxy. Reuse the existing
-  // website six-feature routes, but never mount cloud FeatureGate or SQL.
+  // Device-local data uses the same authored DIVs but never cloud SQL.
   if(scopeId==='local'&&forcedView!=='setting'){
-    return <div className="loc-next-main" data-loc-scope="local" data-loc-view={forcedView}>
-      <Suspense fallback={<div className="loc-loading">正在讀取本機 Galaxy…</div>}>
-        <LocalScopeWorkspace view={forcedView}/>
-      </Suspense>
-    </div>;
+    const workspace=<Suspense fallback={<div className="loc-loading">正在讀取本機 Galaxy…</div>}>
+      <LocalScopeWorkspace view={forcedView}/>
+    </Suspense>;
+    return typeof document!=='undefined'&&document.getElementById('loc-feature-hero-canvas')
+      ?workspace:<div className="loc-next-main" data-loc-scope="local" data-loc-view={forcedView}>{workspace}</div>;
   }
   if(!forcedScope&&runtime.dynamic&&!runtime.registryResolved){
-    return <div className="loc-next-main" data-loc-scope={scopeId}><div className="loc-loading"><UiText id="uiExtra.feature.registryLoading"/></div></div>;
+    return <FeaturePage featureId={forcedView}>
+      <div className="loc-loading"><UiText id="uiExtra.feature.registryLoading"/></div>
+    </FeaturePage>;
   }
   if(!forcedScope&&runtime.dynamic&&(runtime.registryError||!runtime.registryRow)){
-    return <main className="scope-main"><section className="scope-page"><section className="loc-card">
+    return <FeaturePage featureId={forcedView}><section className="loc-card">
       <h1><UiText id="uiExtra.feature.registryUnavailable"/></h1>
       <p className="scope-status scope-error">{runtime.registryError||t('uiExtra.feature.registryNotFound')}</p>
-    </section></section></main>;
+    </section></FeaturePage>;
   }
 
   const managementRoute=['manage','searchManage','sourceManage','keywordManage','keywords'].includes(forcedView)||
