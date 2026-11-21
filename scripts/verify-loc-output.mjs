@@ -23,7 +23,7 @@ if(!exists(path.join(out,'_loc','build-report.json')))throw Error('LOC build-rep
 const report=JSON.parse(read(path.join(out,'_loc','build-report.json')));
 if(!/^\/_loc\/[^?#]+\.css$/.test(report.sharedCss)||!exists(path.join(out,report.sharedCss.slice(1))))
   throw Error('LOC shared CSS missing or invalid: '+report.sharedCss);
-if(report.runtime!=='Native React + optional Preact island'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
+if(report.runtime!=='HTML documents + on-demand React'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
   throw Error('LOC static route manifest mismatch');
 if(report.editorCss!=='/_loc/routes/editor.css'||!exists(path.join(out,report.editorCss.slice(1))))
   throw Error('LOC editor-on-demand stylesheet missing: '+report.editorCss);
@@ -46,6 +46,10 @@ for(const name of ['LOC-culture','LOC-statics','LOC-search','LOC-admin','scope-c
     throw Error('LOC duplicated Web image in JS/CSS assets: '+name);
 }
 
+if(fs.readdirSync(path.join(out,'_loc','routes')).some(file=>/^p\\d+\\.js$/.test(file)))
+  throw Error('Per-page React entrypoint emitted by HTML builder');
+if(!exists(path.join(out,'_loc','routes','interactive.js')))
+  throw Error('Shared interactive HTML entrypoint missing');
 if(!fs.existsSync(path.join(out,'pics')))throw Error('LOC image URL path /pics not staged');
 if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))throw Error('IPA contains originals');
 for(const route of pageRoutes){
@@ -54,7 +58,7 @@ for(const route of pageRoutes){
   const html=read(entry);
   if(!html.includes('href="'+report.sharedCss+'"'))throw Error('LOC shared CSS not linked from '+route);
   const publicHome=!native&&['/','/lo3rwang/','/lrunes/'].includes(route);
-  const src=html.match(/<script type="module" src="(\/_loc\/routes\/p\d+\.js)"><\/script>/)?.[1];
+  const src=html.match(/<script type="module" src="(\/_loc\/routes\/interactive\.js)"><\/script>/)?.[1];
   if(publicHome){
     if(html.includes('href="'+report.editorCss+'"'))
       throw Error('LOC public homepage should not download editor CSS: '+route);

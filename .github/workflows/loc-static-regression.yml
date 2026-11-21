@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'scripts/build-loc-static.mjs'
+      - 'scripts/verify-loc-output.mjs'
+      - 'app/loc/runtime/html-entry.jsx'
+      - 'tests/loc-html-base.test.mjs'
+      - 'scripts/verify-loc-output.mjs'
+      - 'app/loc/runtime/html-entry.jsx'
+      - 'tests/loc-html-base.test.mjs'
       - '.github/workflows/loc-static-regression.yml'
   push:
     branches: [main]
@@ -27,6 +33,8 @@ jobs:
           cache: npm
       - name: Install existing build packages
         run: npm ci --no-audit --no-fund
+      - name: Verify minimal HTML entry contract
+        run: node --test tests/loc-html-base.test.mjs
       - name: Build existing static HTML routes
         run: npm run build:static
       - name: Verify static content and browser bundles

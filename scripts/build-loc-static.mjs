@@ -34,22 +34,14 @@ try{
   const entryPoints={
     '_loc/site':abs('app/globals.css'),
     '_loc/editor':abs('app/styles/editor.css'),
-    'public-preferences':abs('app/loc/public-home-preferences.jsx')
+    'public-preferences':abs('app/loc/public-home-preferences.jsx'),
+    interactive:abs('app/loc/runtime/html-entry.jsx')
   };
   const records=[];
   for(let i=0;i<allPages.length;i++){
-    const name='_loc/routes/p'+i;
+    const name='_loc/routes/interactive';
     const file=allPages[i];
     const route='/'+(path.posix.dirname(file)==='.'?'':path.posix.dirname(file)+'/');
-    const entry=path.join(scratch,'entry-'+i+'.jsx');
-    fs.writeFileSync(entry,[
-      "import {createRoot} from 'react-dom/client';",
-      "import {createElement} from 'react';",
-      'import Shell from '+JSON.stringify(abs('app/AppShell.jsx'))+';',
-      'import Page from '+JSON.stringify(abs('app/'+file))+';',
-      "createRoot(document.getElementById('loc-root')).render(createElement(Shell,null,createElement(Page)));"
-    ].join('\n'));
-    entryPoints[name]=entry;
     const source=fs.readFileSync(abs('app/'+file),'utf8');
     const title=source.match(/title:\s*['"]([^'"]+)['"]/)?.[1]||'LOC 月典';
     const description=source.match(/description:\s*['"]([^'"]+)['"]/)?.[1]||'';
@@ -145,10 +137,10 @@ try{
   if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))
     throw new Error('Native export contains raw card originals');
   fs.writeFileSync(path.join(out,'_loc','build-report.json'),JSON.stringify({
-    runtime:'Native React + optional Preact island',bundler:'esbuild',routes:records.length,sharedCss:cssHref,editorCss:editorCssHref,
+    runtime:'HTML documents + on-demand React',bundler:'esbuild',routes:records.length,sharedCss:cssHref,editorCss:editorCssHref,
     jsBytes:Object.entries(compiled.metafile.outputs).filter(([p])=>p.endsWith('.js')).reduce((sum,[,v])=>sum+v.bytes,0)
   }));
-  console.log('[LOC] esbuild native React features + optional Preact islands: '+records.length+' HTML routes; '+(native?'IPA':'Web')+' target.');
+  console.log('[LOC] HTML documents + on-demand features: '+records.length+' HTML routes; '+(native?'IPA':'Web')+' target.');
 }catch(error){
   fs.rmSync(out,{recursive:true,force:true});
   throw error;
