@@ -28,7 +28,7 @@ export default function FeatureSettingsPage({embedded=false,dashboard=false,acco
   </div>;
   const content=<>
     {!embedded?<nav aria-label="返回設定">
-      <Link href={settingsHref} className="loc-button">返回設定</Link>
+      <Link href={settingsHref} prefetch={false} className="loc-button">返回設定</Link>
     </nav>:null}
     {controls}
   </>;
