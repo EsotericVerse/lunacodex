@@ -228,9 +228,16 @@ function ScopePageCopy({scopeId,display_name,pageName='index'}){
     ?(PUBLISHED_SITE_BOOTSTRAP.page_copy||[]).find(row=>row.scope_id===scopeId)||null
     :null;
   useEffect(()=>{
-    const title=String(pageCopy?.Title_TW||display_name||'').trim();
+    // Only Scope homepages use a published display name as the document title.
+    // Feature pages already have route-specific titles in esbuild's static HTML.
+    // Do not overwrite them with the generic Scope name during client startup.
+    const title=pageName==='index'&&enabled
+      ?String(pageCopy?.Title_TW||display_name||'').trim()
+      :'';
     if(title&&document.title!==title)document.title=title;
-    const description=String(pageCopy?.Desc_TW||'').trim();
+    const description=pageName==='index'&&enabled
+      ?String(pageCopy?.Desc_TW||'').trim()
+      :'';
     if(description){
       let meta=document.head.querySelector('meta[name="description"]');
       if(!meta){
@@ -240,7 +247,7 @@ function ScopePageCopy({scopeId,display_name,pageName='index'}){
       }
       if(meta.getAttribute('content')!==description)meta.setAttribute('content',description);
     }
-  },[scopeId,display_name,pageCopy?.Title_TW,pageCopy?.Desc_TW]);
+  },[scopeId,display_name,pageName,enabled,pageCopy?.Title_TW,pageCopy?.Desc_TW]);
   return null;
 }
 function LanguageSelect({locale,onChange,copy=UI_COPY}){
