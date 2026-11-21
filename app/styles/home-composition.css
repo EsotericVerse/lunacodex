@@ -362,9 +362,9 @@
   }
 }
 
-/* In-place homepage editing reuses the published Hero/frame markup.
-   Controls are out of CSS Grid flow; the expanded form is a separate row,
-   never a replacement for the image/text/children frame. */
+/* Edit mode omits the public Hero. Its editor occupies the first layout
+   position, so returning to the homepage can load the Hero in that slot.
+   Other frames keep their published display markup while editing. */
 .loc-next-main[data-loc-view="home"] .loc-home>.scope-home-edit-preview>.scope-inline-editbar{
   position:absolute;
   top:.5rem;
@@ -385,4 +385,28 @@
   background:var(--loc-panel);
   border:1px solid var(--loc-line);
   border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+}
+
+.loc-next-main[data-loc-view="home"] .loc-home>.scope-home-hero-editor{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-content:start;
+  gap:.85rem;
+  min-width:0;
+  min-height:clamp(360px,48vw,620px);
+  padding:clamp(.9rem,2.2vw,1.6rem);
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+  background:var(--loc-panel);
+}
+.loc-next-main[data-loc-view="home"] .loc-home>.scope-home-hero-editor>.scope-inline-editbar{
+  position:relative;
+  inset:auto;
+  margin:0;
+  justify-self:end;
+}
+@media(max-width:760px){
+  .loc-next-main[data-loc-view="home"] .loc-home>.scope-home-hero-editor{
+    min-height:clamp(340px,47svh,445px);
+  }
 }
