@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {NATIVE_STATIC_ROUTE_SCRIPT,INITIAL_THEME_SCRIPT} from '../app/modular/runtime/theme-bootstrap.mjs';
-import {renderPublicScopeHome} from './render-loc-static-home.mjs';
+import {pathToFileURL} from 'node:url';
 
 const root=process.cwd();
 const out=path.join(root,'out');
@@ -111,6 +111,16 @@ try{
   const cssHref='/'+path.relative(out,path.resolve(root,sharedCss[0])).replaceAll('\\','/');
   if(!fs.existsSync(path.join(out,cssHref.slice(1))))throw new Error('LOC global CSS file not found at '+cssHref);
   console.log('[LOC styles] '+cssHref+'; CSS assets='+cssOutputs.length);
+  // Server-side rendering uses the canonical LOC Block components and the
+  // already-installed ReactDOMServer at BUILD time only.
+  const staticRenderer=path.join(scratch,'public-home-ssr.mjs');
+  await build({
+    entryPoints:[abs('scripts/render-public-home.jsx')],
+    outfile:staticRenderer,bundle:true,platform:'node',format:'esm',
+    packages:'external',jsx:'automatic',jsxImportSource:'react',
+    target:'node22',logLevel:'warning'
+  });
+  const {renderPublicScopeHome}=await import(pathToFileURL(staticRenderer).href);
   for(const page of records){
     const staticHome=!native?renderPublicScopeHome({route:page.route,entry:page.name}):null;
     const dest=path.join(out,page.route.slice(1));
