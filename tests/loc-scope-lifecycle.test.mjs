@@ -141,6 +141,8 @@ test('Scope lifecycle uses serializable website Session and no legacy RPC',()=>{
   }
   assert.doesNotMatch(lifecycle,/silver\.manage\(|api\.(?:provision_scope|delete_scope|manage_scope_registry)\(/);
   assert.doesNotMatch(lifecycle,/enable row level security|create policy|grant select/i);
+  assert.match(lifecycle,/synchronizeKeywordLibraryInTransaction\(trx,scope\)/);
+  assert.match(lifecycle,/keyword_patterns:indexed\?\.created/);
   assert.match(admin,/locale:normalizeUiLocale\(scopeDraft\.locale\)/);
   assert.doesNotMatch(admin,/keyword_rows\)!==66/);
 });
