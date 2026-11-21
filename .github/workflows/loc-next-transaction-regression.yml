@@ -63,7 +63,7 @@ jobs:
           ]){
             const html=fs.readFileSync(file,'utf8');
             assert.match(html,/<html/);
-            assert.match(html,/_next\\/static/);
+            assert.ok(html.includes('/_next/static/'),file+' missing Next client bundles');
           }
           assert.equal(fs.existsSync('out/_loc/routes'),false);
           NODE
