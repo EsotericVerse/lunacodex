@@ -5,11 +5,9 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
 import {transactionWrites} from '../db/db-client.mjs';
-import {selectRows} from '../db/db-query.mjs';
 import {createUid8} from '../model/uid';
 import {useAccount} from '../auth/use-account';
 import {hasIrrecoverableEncoding,repairMojibakeText} from '../content/content-policy';
-import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 const blankMedia=()=>({
@@ -65,12 +63,9 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
     if([mediaType,mediaDescription,mediaTitle].some(hasIrrecoverableEncoding))
       throw new Error(t('uiExtra.importUI.mediaEncoding'));
     const scope=account.scopeDataFor(scopeId);
-    const article=galaxyLink?(await selectRows(scope?.galaxy,{
-      columns:galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','),
-      filters:[{column:'uid',operator:'eq',value:galaxyLink}],
-      limit:1,authenticated:true
-    })).rows?.[0]:null;
-    if(galaxyLink&&!article)throw new Error('找不到指定的文章 UID。');
+    // Article identity and its current media_link are verified/locked by
+    // the SAME backend SQL transaction that inserts the new MediaAnchor.
+    // No pre-transaction SELECT or overwrite from a stale JS snapshot.
     const mediaUid=createUid8();
     const anchor=scope?.anchor;
     if(!anchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
@@ -78,15 +73,13 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
       uid:mediaUid,type:mediaType,title:mediaTitle||null,
       url:String(draft.url||'').trim()||null,
       description:mediaDescription,
-      createtime:article?.createtime?new Date(article.createtime).toISOString():
-        mediaIso(draft.createtime)||new Date().toISOString()
+      createtime:mediaIso(draft.createtime)||new Date().toISOString()
     });
     const operations=[{p_table:anchor,p_operation:'insert',p_rows:[record]}];
-    if(article){
-      const prior=Array.isArray(article.media_link)?article.media_link:[];
-      operations.push({p_table:scope.galaxy,p_operation:'update',
-        p_values:{media_link:[...new Set([...prior,mediaUid])]},
-        p_filters:[{column:'uid',operator:'eq',value:article.uid}]});
+    if(galaxyLink){
+      if(!scope.galaxy)throw Error('文章 Scope 資料表尚未就緒');
+      operations.push({p_table:scope.galaxy,p_operation:'append_media_link',
+        p_values:{article_uid:galaxyLink,media_uid:mediaUid}});
     }
     return {operations,
       afterCommit:()=>{
