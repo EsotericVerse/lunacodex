@@ -345,13 +345,14 @@ export default function ScopeBlockDraftList({
           {allowEntities&&draft.entities.length?' · '+draft.entities.length+' 筆附屬內容':''}
         </p>
       </div>;
-    // Home edit mode omits the public Hero entirely. The first row is an
-    // editing workspace, opened immediately; its image URL remains editable.
-    // Other frames retain their published markup and open a form on demand.
+    // LOC homepage edit is a single BlockNote list, not visual homepage
+    // frames mixed with form cards. The view tree is fully unmounted by
+    // ScopeEditableBlocks before this list is created.
     const homePreview=pageName==='index'&&typeof renderDisplay==='function'&&
       typeof resolveSlotClassName==='function';
-    if(homePreview&&pinnedHero&&scopeId==='loc'){
-      return <section className="scope-home-hero-editor scope-editable-block scope-block-draft"
+    if(homePreview&&scopeId==='loc'){
+      return <section className={'loc-card scope-editable-block scope-block-draft loc-home-draft-entry'+
+          (pinnedHero?' scope-home-hero-editor':'')}
         key={draft.uid} data-page-name={pageName} data-block-order={draft.order}>
         {controls}
         {content}
