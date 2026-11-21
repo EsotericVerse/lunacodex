@@ -59,7 +59,8 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
       const createtime=draft.createdDate?new Date(draft.createdDate+'T00:00:00+08:00').toISOString():new Date().toISOString();
       const lyricsUid=hasBlockNoteContent(lyrics)?createUid8():null;
       const styleUid=lyricsUid&&hasBlockNoteContent(stylePrompt)?createUid8():null;
-      const metaUid=description?createUid8():null;
+      const metaTags=[...new Set(description.split(',').map(value=>value.trim()).filter(Boolean))];
+      if(metaTags.length&&!lyricsUid)throw new Error('Suno Meta Tag 必須與歌詞一起儲存');
       const externalUrl=String(draft.url||'').trim();
       if(externalUrl&&!/^https?:\/\/[^\s]+$/i.test(externalUrl))
         throw new Error('Suno 網址必須為有效 HTTP(S) URL');
@@ -73,7 +74,8 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           uid:lyricsUid,
           title,content:lyrics,createtime,
           source_id:sourceId,
-          target_id:[...new Set([...(normalizeRelationIds(draft.target_id)||[]),...(metaUid?[metaUid]:[])])],
+          target_id:normalizeRelationIds(draft.target_id),
+          meta_tags:metaTags,
           ref_id:styleUid||draft.ref_id.trim()||null,
           url:externalUrl||null,site:'suno',media_link:externalUrl?[externalUrl]:null,
           statics:true,culture:true,search:true,trace:true,list:true,keyword:true,others:true,extract:true
@@ -87,11 +89,6 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:true,extract:true
         }]});
       }
-      if(metaUid)operations.push({p_table:galaxy,p_operation:'insert',p_rows:[{
-        uid:metaUid,title:title+'｜Suno Meta Tags',content:description,
-        createtime,site:'suno',statics:false,culture:false,search:false,
-        trace:false,list:false,keyword:false,others:true,extract:true
-      }]});
       return {operations,
         afterCommit:()=>{setStatus(t('uiExtra.importUI.sunoSaved'));setDraft(freshSunoDraft());},
         onFailure:error=>setStatus(error?.message||t('uiExtra.importUI.sunoSaveFailed'))};
