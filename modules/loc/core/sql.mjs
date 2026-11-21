@@ -122,7 +122,7 @@ function requireFilter(where){
     }
     return typeof item.column==='string';
   };
-  if(!constrained(where))throw new TypeError('LOC SQL write requires a concrete WHERE predicate');
+  if(!constrained(where))throw new TypeError('LOC SQL write requires a WHERE filter with a concrete WHERE predicate');
 }
 export function compileUpdate(model,values,where,dialect='postgres'){
   requireFilter(where);
