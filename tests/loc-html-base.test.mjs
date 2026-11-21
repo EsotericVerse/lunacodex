@@ -49,3 +49,10 @@ test('every source route is an authored HTML document, not JSX',()=>{
   assert.match(build,/item\.name==='page.html'/);
   assert.doesNotMatch(build,/page\.jsx/);
 });
+
+test('iOS local lease stays bounded without a global application shell',()=>{
+  assert.match(entry,/hasExpiredLocalDeadline\(\)/);
+  assert.match(entry,/getLocalDeadline\(\)>0/);
+  assert.match(entry,/stopLocalDeadline\(\)/);
+  assert.match(entry,/window\.location\.replace\('\/local\/index\.html'\)/);
+});

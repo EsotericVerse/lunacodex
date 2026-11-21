@@ -5,6 +5,8 @@ import {UiLocaleProvider,useLoadedUiLocale} from '../../i18n/ui-locale.jsx';
 import {EditDockProvider,useEditDock} from '../../modular/edit-dock.jsx';
 import FlashMessage from '../notifications/FlashMessage.jsx';
 import {getDbSourceStatus,subscribeDbSourceStatus} from '../providers/db-source-status.mjs';
+import {getLocalDeadline,hasExpiredLocalDeadline,stopLocalDeadline}
+  from '../local/session.mjs';
 
 // HTML already contains navigation, footer and the page's feature attributes.
 // Nothing resolves a browser route or mounts a global React application shell.
@@ -132,7 +134,25 @@ function Interactive(){
     </EditDockProvider>
   </UiLocaleProvider>;
 }
-if(node&&component!=='outbound'){
+function enforceDeviceLocalLease(){
+  if(window.location.protocol!=='capacitor:')return false;
+  const local=scopeId==='local'||component==='phone';
+  if(hasExpiredLocalDeadline()&&local){
+    stopLocalDeadline();
+    window.location.replace('/index.html');
+    return true;
+  }
+  if(getLocalDeadline()>0&&!local){
+    window.location.replace('/local/index.html');
+    return true;
+  }
+  return false;
+}
+if(node&&component!=='outbound'&&!enforceDeviceLocalLease()){
+  if(window.location.protocol==='capacitor:'){
+    window.addEventListener('focus',enforceDeviceLocalLease);
+    window.addEventListener('pageshow',enforceDeviceLocalLease);
+  }
   document.querySelector('[data-loc-data-source]')?.replaceChildren();
   createRoot(node).render(<Interactive/>);
 }
