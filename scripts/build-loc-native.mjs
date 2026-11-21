@@ -48,9 +48,10 @@ try{
         (entry!==exclude&&!entry.startsWith(exclude+path.sep))});
   }
   const vendor=path.join(root,'node_modules/maplibre-gl/dist');
-  if(!fs.existsSync(path.join(vendor,'maplibre-gl.mjs')))
-    throw new Error('LOC ESM map provider missing');
-  for(const name of fs.readdirSync(vendor)){
+  // The LOC core builds even with zero installed packages. An installed
+  // provider contributes an on-demand extension, never a framework dependency.
+  const mapAvailable=fs.existsSync(path.join(vendor,'maplibre-gl.mjs'));
+  if(mapAvailable)for(const name of fs.readdirSync(vendor)){
     if(!name.endsWith('.mjs')&&!name.endsWith('.css'))continue;
     const source=path.join(vendor,name);
     if(!fs.statSync(source).isFile())continue;
@@ -85,7 +86,7 @@ try{
   fs.renameSync(temp,output);
   fs.writeFileSync(path.join(output,'_loc/native-report.json'),
     JSON.stringify({framework:'LOC',rendering:'HTML',routes:total,
-      clientFrameworks:[],generatedAt:new Date().toISOString()}));
+      clientFrameworks:[],mapProvider:mapAvailable,generatedAt:new Date().toISOString()}));
   console.log('[LOC Native] '+total+' HTML pages; independent of React/Preact/Next');
 }catch(error){
   fs.rmSync(temp,{recursive:true,force:true});
