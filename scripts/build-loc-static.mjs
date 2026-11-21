@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {NATIVE_STATIC_ROUTE_SCRIPT,INITIAL_THEME_SCRIPT} from '../app/modular/runtime/theme-bootstrap.mjs';
 import {pathToFileURL} from 'node:url';
-import {sharedWebRoutes,shellRouteManifest,shellRouteBootstrap,
+import {sharedWebRoutes,outboundWebRoutes,shellRouteManifest,shellRouteBootstrap,
   sharedWebRedirects,sharedWebRobotsHeaders} from './loc-shared-route-shell.mjs';
 
 const root=process.cwd();
@@ -152,9 +152,11 @@ try{
     return html;
   }
   const shared=sharedWebRoutes(records);
+  const outboundRoutes=outboundWebRoutes(records);
   const sharedSet=new Set(shared.map(page=>page.route));
+  const outboundSet=new Set(outboundRoutes.map(page=>page.route));
   for(const page of records){
-    if(!native&&sharedSet.has(page.route))continue;
+    if(!native&&(sharedSet.has(page.route)||outboundSet.has(page.route)))continue;
     const staticHome=renderPublicScopeHome({route:page.route,entry:page.name,native});
     const dest=path.join(out,page.route.slice(1));
     fs.mkdirSync(dest,{recursive:true});
@@ -208,7 +210,9 @@ try{
   fs.writeFileSync(path.join(out,'_loc','build-report.json'),JSON.stringify({
     runtime:'HTML documents + on-demand React',bundler:'esbuild',
     routes:records.length,sharedWebRoutes:native?0:shared.length,
-    emittedHtmlRoutes:native?records.length:records.length-shared.length+1,
+    outboundRedirectRoutes:native?0:outboundRoutes.length,
+    emittedHtmlRoutes:native?records.length:
+      records.length-shared.length-outboundRoutes.length+1,
     sharedCss:cssHref,editorCss:editorCssHref,
     jsBytes:Object.entries(compiled.metafile.outputs).filter(([p])=>p.endsWith('.js')).reduce((sum,[,v])=>sum+v.bytes,0)
   }));
