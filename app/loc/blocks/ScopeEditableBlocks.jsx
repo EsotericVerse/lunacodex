@@ -10,8 +10,7 @@ import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import {useAppBootstrap} from '../runtime/app-bootstrap';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
-import {selectLiveScopeBlocks} from '../scope/scope-data';
+import {selectScopeBlocks,selectLiveScopeBlocks} from '../scope/scope-data';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import {useAccount} from '../auth/use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
@@ -87,8 +86,8 @@ export default function ScopeEditableBlocks({
   const bootstrap=useAppBootstrap(scopeId,pageName,{
     enabled:!isScopeHomepageBlock&&!editingContent
   });
-  const published=useAsyncResource(['published-home-page',scopeId,pageName],
-    ()=>loadPublishedBlocks(scopeId,pageName),{
+  const published=useAsyncResource(['scope-public-blocks',scopeId,pageName],
+    ()=>selectScopeBlocks(scopeId,pageName),{
       enabled:isScopeHomepageBlock&&!editingContent
     });
   const editorRows=useAsyncResource(['scope-blocks',scopeId,pageName],

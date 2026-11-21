@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
+import {useFixedPageCanvas,ExistingHero} from '../runtime/fixed-canvas.jsx';
 import {exportLocalGalaxy,importLocalGalaxyFile,listLocalGalaxy} from './galaxy.mjs';
 
 const viewTitles={home:'本機資料',culture:'文化',statics:'統計',trace:'痕跡',search:'搜尋'};
@@ -120,13 +121,19 @@ export default function LocalScopeWorkspace({view='home'}){
       setBusy(false);
     }
   }
-  if(!native)return <main className="scope-main"><section className="scope-page">
-    <section className="loc-card">Local Scope 僅在 iOS App 提供。</section>
-  </section></main>;
+  const heroCanvas=useFixedPageCanvas({
+    headerClassName:view==='home'?'loc-local-hero':'loc-local-heading',
+    mainClassName:'scope-main loc-local-workspace'
+  });
+  if(!native){
+    const unavailable=<section className="loc-card">Local Scope 僅在 iOS App 提供。</section>;
+    return heroCanvas?unavailable:<main className="scope-main"><section className="scope-page">
+      {unavailable}
+    </section></main>;
+  }
 
   const listing=filtered.slice(0,visible);
-  return <main className="scope-main loc-local-workspace" data-local-view={view}><section className="scope-page">
-    {view==='home'?<header className="loc-local-hero" aria-labelledby="loc-local-home-title">
+  const localHeader=view==='home'?<>
       <div className="loc-local-hero-copy">
         <p className="loc-eyebrow">LUNA CODEX · LOCAL SCOPE</p>
         <h1 id="loc-local-home-title">虹月光的本機銀河</h1>
@@ -134,12 +141,12 @@ export default function LocalScopeWorkspace({view='home'}){
       </div>
       <img src="/assets/site/local/lunarcus-rainbow-hero.avif"
         alt="銀色浮空河流與彩虹橋的 LunArcus 視覺" loading="eager"/>
-    </header>:<header className="loc-local-heading">
+    </>:<>
       <p className="loc-eyebrow">LOCAL SCOPE</p>
       <h1>{viewTitles[view]||'本機銀河'}</h1>
       <p>本頁只讀取這台裝置的 Galaxy，不連接雲端 Scope 資料庫。</p>
-    </header>}
-
+    </>;
+  const localBody=<>
     <section className="loc-local-overview" aria-label="本機資料概況">
       <div className="loc-local-kpi"><strong>{rows.length}</strong><span>文章</span></div>
       <div className="loc-local-kpi"><strong>{groups.length}</strong><span>來源</span></div>
@@ -202,5 +209,14 @@ export default function LocalScopeWorkspace({view='home'}){
       {filtered.length>visible?<button type="button" className="loc-button"
         onClick={()=>setVisible(current=>current+rowsPerPage)}>再顯示 {Math.min(rowsPerPage,filtered.length-visible)} 篇</button>:null}
     </section>:null}
-  </section></main>;
+  </>;
+  return heroCanvas?<>
+    <ExistingHero canvas={heroCanvas}>{localHeader}</ExistingHero>
+    {localBody}
+  </>:<main className="scope-main loc-local-workspace" data-local-view={view}>
+    <section className="scope-page">
+      <header className={view==='home'?'loc-local-hero':'loc-local-heading'}>{localHeader}</header>
+      {localBody}
+    </section>
+  </main>;
 }

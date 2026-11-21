@@ -6,7 +6,6 @@ import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs'
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
-import {hasPublishedBlocks,loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
@@ -337,11 +336,9 @@ export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[a-z0-9_-]+$/.test(name))return [];
-  // Even an intentionally EMPTY published page is complete presentation
-  // data. Don't probe SQL for freshness on ordinary navigation. The editor
-  // uses selectLiveScopeBlocks() and never consumes this release snapshot.
-  if(hasPublishedBlocks(id,name))return loadPublishedBlocks(id,name);
-  // An as-yet-unpublished page retains its existing on-demand SQL fallback.
+  // Every authored static page has its own DIVs already; its data reader
+  // performs the actual SELECT after that frame mounts. Cache only matching
+  // scope/page data during this visit, never bundle a release-time snapshot.
   return getOrLoadScopedRead(blockRelation(id),['page','blocks',name],
     ()=>selectLiveScopeBlocks(id,name));
 }

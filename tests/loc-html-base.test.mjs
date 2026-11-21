@@ -31,6 +31,68 @@ test('on-demand React does not mount an AppShell or a router',()=>{
   assert.match(entry,/PhoneWorkspace/);
   assert.match(entry,/ExtensionBridge/);
 });
+test('all three Scope homepages use one live Blocks reader after static navigation',()=>{
+  const home=readFileSync(new URL('../app/loc/runtime/public-home-entry.jsx',import.meta.url),'utf8');
+  const display=readFileSync(new URL('../app/loc/runtime/public-home-entry.jsx',import.meta.url),'utf8');
+  assert.match(render,/id="loc-home-sql-slot"/);
+  assert.match(render,/routes\/home\.js/);
+  assert.doesNotMatch(render,/published-blocks\/(?:loc|lrunes|lo3rwang)\/index/);
+  assert.match(home,/kind:'block_list'/);
+  assert.match(home,/credentials:'omit'/);
+  assert.match(home,/new AbortController\(\)/);
+  assert.match(display,/HomeBlock\.rows\(rows,'index'/);
+});
+test('every LOC feature renders into its fixed header and content DIVs',()=>{
+  const feature=readFileSync(new URL('../app/modular/ui.jsx',import.meta.url),'utf8');
+  const loc=readFileSync(new URL('../app/loc/LocApp.jsx',import.meta.url),'utf8');
+  assert.match(render,/id="loc-feature-main"/);
+  assert.match(render,/id="loc-feature-hero-canvas"/);
+  assert.match(render,/data-loc-canvas="content"/);
+  assert.match(feature,/<ExistingHero canvas=\{heroCanvas\}>/);
+  assert.match(feature,/hero_block\(\[groupHeroPage,scopeHeroPage\]\)/);
+  assert.doesNotMatch(feature,/PUBLISHED_HERO_ROWS/);
+  assert.match(feature,/if\(heroCanvas\)return/);
+  assert.match(feature,/useFixedPageCanvas/);
+  assert.match(loc,/document\.getElementById\('loc-feature-hero-canvas'\)/);
+  assert.match(check,/Missing fixed LOC DIV canvas/);
+});
+test('fixed DIV canvas is reused by custom Scope and device-local pages',()=>{
+  const generic=readFileSync(new URL('../app/loc/views/GenericScopeHomeView.jsx',import.meta.url),'utf8');
+  const local=readFileSync(new URL('../app/loc/local/Workspace.jsx',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../app/loc/runtime/fixed-canvas.jsx',import.meta.url),'utf8');
+  assert.match(generic,/<FeaturePage featureId="home"/);
+  assert.doesNotMatch(generic,/return <main className="scope-main"/);
+  assert.match(local,/useFixedPageCanvas/);
+  assert.match(render,/\['loc','settings','features','phone'\]/);
+  assert.match(local,/<ExistingHero canvas=\{heroCanvas\}>/);
+  assert.match(shared,/document\.getElementById\('loc-feature-main'\)/);
+  assert.match(shared,/document\.getElementById\('loc-interactive-root'\)/);
+});
+test('public data is queried after the frame, never from bundled Block snapshots',()=>{
+  const scope=readFileSync(new URL('../app/loc/scope/scope-data.js',import.meta.url),'utf8');
+  const bootstrap=readFileSync(new URL('../app/loc/runtime/app-bootstrap.js',import.meta.url),'utf8');
+  const blocks=readFileSync(new URL('../app/loc/blocks/ScopeEditableBlocks.jsx',import.meta.url),'utf8');
+  assert.doesNotMatch(scope,/hasPublishedBlocks\(id,name\)/);
+  assert.doesNotMatch(bootstrap,/loadPublishedBlocks/);
+  assert.doesNotMatch(blocks,/loadPublishedBlocks/);
+  assert.match(blocks,/selectScopeBlocks\(scopeId,pageName\)/);
+});
+test('the original six-key menu is reused for management without a second portal',()=>{
+  assert.match(entry,/links\.length!==6/);
+  assert.match(entry,/link\.dataset\.locMenuMode='management'/);
+  assert.match(entry,/restore of restoration/);
+  assert.doesNotMatch(entry,/scope-edit-dock-actions/);
+});
+test('entry authorization begins after the fixed Hero has settled',()=>{
+  const hero=readFileSync(new URL('../app/loc/runtime/fixed-canvas.jsx',import.meta.url),'utf8');
+  const management=readFileSync(new URL('../app/loc/management/ManagementAccess.jsx',import.meta.url),'utf8');
+  const admin=readFileSync(new URL('../app/loc/views/AdminHomeView.jsx',import.meta.url),'utf8');
+  const feature=readFileSync(new URL('../app/modular/ui.jsx',import.meta.url),'utf8');
+  assert.match(hero,/loc-feature-hero-ready/);
+  assert.match(management,/if\(!heroReady\)return undefined/);
+  assert.match(admin,/useAccount\(\{enabled:heroReady\}\)/);
+  assert.match(feature,/heroCanvas\.dataset\.locHeroReady='true'/);
+});
 test('LRS links are published HTML instead of React redirects',()=>{
   assert.match(build,/outbound\?'<script>/);
   assert.match(check,/LRS outbound HTML must link directly/);
@@ -64,10 +126,27 @@ test('native static pages enforce local lease before mounting a feature',()=>{
   assert.match(theme,/window\.localStorage\.removeItem\(key\)/);
 });
 
-test('LOC default theme uses Taipei time unless manually selected',()=>{
+test('all eight conditional CSS palettes load; manual selections never persist',()=>{
   const theme=readFileSync(new URL('../app/modular/runtime/theme-bootstrap.mjs',import.meta.url),'utf8');
+  const controls=readFileSync(new URL('../app/loc/runtime/html-controls.js',import.meta.url),'utf8');
+  const build=readFileSync(new URL('../scripts/build-loc-static.mjs',import.meta.url),'utf8');
   const images=readFileSync(new URL('../app/site-images.js',import.meta.url),'utf8');
-  assert.match(theme,/scope==='loc'\?auto:defaults\[scope\]\|\|auto/);
   assert.match(theme,/timeZone:'Asia\/Taipei'/);
+  assert.match(theme,/loc-default-theme-id-v1/);
+  assert.match(build,/Array\.from\(\{length:8\}/);
+  assert.match(build,/loc-theme-palette-/);
+  assert.doesNotMatch(controls,/loc-user-theme-selection-v1|loc-active-theme-id-v1/);
+  assert.doesNotMatch(theme,/loc-user-theme-selection-v1/);
   assert.match(images,/locArchitectureAsset=\{src:'\/pics\/ChaosGalaxy\.webp'\}/);
+});
+
+test('page copy is loaded only for the requested route and selected locale',()=>{
+  const controls=readFileSync(new URL('../app/loc/runtime/html-controls.js',import.meta.url),'utf8');
+  const copy=readFileSync(new URL('../app/i18n/ui-copy.js',import.meta.url),'utf8');
+  assert.match(copy,/loadUiLocale/);
+  assert.match(copy,/pageLocaleRoute/);
+  assert.doesNotMatch(controls,/loc-page-locale-once-v1/);
+  assert.match(build,/data-page-language="zh-Hant"/);
+  assert.doesNotMatch(render,/data-loc-data-source/);
+  assert.doesNotMatch(entry,/DataSourceStatus/);
 });

@@ -155,8 +155,12 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   // for a config SQL request must not block the Hero or content.
   if(!enabled)return children;
   const config=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId&&row.active!==false)?.config;
-  if(!config)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定尚未發布。</p></section></section></main>;
-  if(!scopeFeatureEnabled(config,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
+  if(!config)return <FeaturePage featureId={view}><section className="loc-card">
+    <p className="scope-status scope-error">Scope 設定尚未發布。</p>
+  </section></FeaturePage>;
+  if(!scopeFeatureEnabled(config,flag))return <FeaturePage featureId={view}><section className="loc-card">
+    <p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p>
+  </section></FeaturePage>;
   return children;
 }
 
@@ -188,27 +192,28 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     ['statics','culture'].includes(forcedView));
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){
-    return <main className="scope-main"><section className="scope-page">
+    return <FeaturePage featureId={forcedView}>
       <p className="scope-status" role="status">此本機資料工作區僅在 iOS App 提供。網頁版正在返回設定。</p>
-    </section></main>;
+    </FeaturePage>;
   }
-  // A local native page reads only the device Galaxy. Reuse the existing
-  // website six-feature routes, but never mount cloud FeatureGate or SQL.
+  // Device-local data uses the same authored DIVs but never cloud SQL.
   if(scopeId==='local'&&forcedView!=='setting'){
-    return <div className="loc-next-main" data-loc-scope="local" data-loc-view={forcedView}>
-      <Suspense fallback={<div className="loc-loading">正在讀取本機 Galaxy…</div>}>
-        <LocalScopeWorkspace view={forcedView}/>
-      </Suspense>
-    </div>;
+    const workspace=<Suspense fallback={<div className="loc-loading">正在讀取本機 Galaxy…</div>}>
+      <LocalScopeWorkspace view={forcedView}/>
+    </Suspense>;
+    return typeof document!=='undefined'&&document.getElementById('loc-feature-hero-canvas')
+      ?workspace:<div className="loc-next-main" data-loc-scope="local" data-loc-view={forcedView}>{workspace}</div>;
   }
   if(!forcedScope&&runtime.dynamic&&!runtime.registryResolved){
-    return <div className="loc-next-main" data-loc-scope={scopeId}><div className="loc-loading"><UiText id="uiExtra.feature.registryLoading"/></div></div>;
+    return <FeaturePage featureId={forcedView}>
+      <div className="loc-loading"><UiText id="uiExtra.feature.registryLoading"/></div>
+    </FeaturePage>;
   }
   if(!forcedScope&&runtime.dynamic&&(runtime.registryError||!runtime.registryRow)){
-    return <main className="scope-main"><section className="scope-page"><section className="loc-card">
+    return <FeaturePage featureId={forcedView}><section className="loc-card">
       <h1><UiText id="uiExtra.feature.registryUnavailable"/></h1>
       <p className="scope-status scope-error">{runtime.registryError||t('uiExtra.feature.registryNotFound')}</p>
-    </section></section></main>;
+    </section></FeaturePage>;
   }
 
   const managementRoute=['manage','searchManage','sourceManage','keywordManage','keywords'].includes(forcedView)||
@@ -226,23 +231,31 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   const managementPage=<ActiveView section={forcedSection} scopeId={scopeId}
     scopeGroup={scopeMeta?.featureScope||scopeMeta?.registry?.parent_scope_id||
       (scopeMeta?.aggregateChildren?scopeId:null)}/>;
+  const content=<Suspense fallback={forcedView==='home'?<HomeFrameLoading/>:
+    <FeatureFrameLoading featureId={managementRoute?managementFeature:forcedView}/>}>
+    <FeatureGate scopeId={scopeId} scopeMeta={scopeMeta} view={forcedView}>
+      {groupOverviewView?<FeaturePage featureId={forcedView}>
+        <ScopeGroupOverview
+          scopeId={scopeId}
+          featureId={forcedView}
+          title={scopeMeta.label+' · '+t({statics:'features.statics.title',culture:'features.culture.title'}[forcedView])}
+          description={t('uiExtra.feature.groupGuide')}
+        />
+      </FeaturePage>:managementRoute?<ManagementAccess key={scopeId+':'+forcedView+':'+runtime.pathname}
+        scopeId={scopeId} level={managementLevel} featureId={managementFeature}
+        staticFrame={['manage','searchManage','sourceManage','keywordManage'].includes(forcedView)}
+      >{managementPage}</ManagementAccess>:managementPage}
+    </FeatureGate>
+  </Suspense>;
+  // The authored HTML already provides this route's main and content frame.
+  // A public homepage upgrades only its existing content canvas, never
+  // replaces the static main or the shared navigation.
+  if(typeof document!=='undefined'&&(
+    document.getElementById('loc-feature-hero-canvas')||
+    document.getElementById('loc-interactive-root')?.classList.contains('loc-next-main')))
+    return content;
   return <div className="loc-next-main" data-loc-scope={scopeId} data-loc-view={forcedView}
     role={forcedView==='home'&&['loc','lo3rwang','lrunes'].includes(scopeId)?'main':undefined}>
-    <Suspense fallback={forcedView==='home'?<HomeFrameLoading/>:
-      <FeatureFrameLoading featureId={managementRoute?managementFeature:forcedView}/>}>
-      <FeatureGate scopeId={scopeId} scopeMeta={scopeMeta} view={forcedView}>
-        {groupOverviewView?<FeaturePage featureId={forcedView}>
-          <ScopeGroupOverview
-            scopeId={scopeId}
-            featureId={forcedView}
-            title={scopeMeta.label+' · '+t({statics:'features.statics.title',culture:'features.culture.title'}[forcedView])}
-            description={t('uiExtra.feature.groupGuide')}
-          />
-        </FeaturePage>:managementRoute?<ManagementAccess key={scopeId+':'+forcedView+':'+runtime.pathname}
-          scopeId={scopeId} level={managementLevel} featureId={managementFeature}
-          staticFrame={['manage','searchManage','sourceManage','keywordManage'].includes(forcedView)}
-        >{managementPage}</ManagementAccess>:managementPage}
-      </FeatureGate>
-    </Suspense>
+    {content}
   </div>;
 }
