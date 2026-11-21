@@ -34,7 +34,7 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
   const account=useAccount();
   const editDock=useEditDock();
   const inDock=Boolean(editDock?.active&&editDock.scopeId===dockScopeId);
-  const dockActions=useRef({save:null,discard:null,isDirty:null,isBusy:null});
+  const dockActions=useRef({save:null,prepareTransaction:null,discard:null,isDirty:null,isBusy:null});
   const [draft,setDraft]=useState(blankMedia);
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
@@ -42,6 +42,7 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
     if(!inDock)return undefined;
     return editDock.register({
       save:()=>dockActions.current.save(),
+      prepareTransaction:()=>dockActions.current.prepareTransaction(),
       discard:()=>dockActions.current.discard(),
       isDirty:()=>dockActions.current.isDirty(),
       isBusy:()=>dockActions.current.isBusy()
@@ -53,48 +54,59 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
 
   const change=(key,value)=>setDraft(current=>({...current,[key]:value}));
 
+  async function prepareMediaTransaction(){
+    if(busy)throw Error('多媒體儲存仍在執行');
+    const galaxyLink=String(draft.galaxy_link||'').trim();
+    if(galaxyLink&&galaxyLink.length!==8)throw new Error(t('uiExtra.importUI.linkUidInvalid'));
+    const mediaType=repairMojibakeText(draft.type).trim();
+    if(!mediaType)throw new Error(t('uiExtra.importUI.mediaTypeRequired'));
+    const mediaDescription=repairMojibakeText(draft.description).trim();
+    const mediaTitle=repairMojibakeText(draft.title).trim();
+    if([mediaType,mediaDescription,mediaTitle].some(hasIrrecoverableEncoding))
+      throw new Error(t('uiExtra.importUI.mediaEncoding'));
+    const scope=account.scopeDataFor(scopeId);
+    const article=galaxyLink?(await selectRows(scope?.galaxy,{
+      columns:galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','),
+      filters:[{column:'uid',operator:'eq',value:galaxyLink}],
+      limit:1,authenticated:true
+    })).rows?.[0]:null;
+    if(galaxyLink&&!article)throw new Error('找不到指定的文章 UID。');
+    const mediaUid=createUid8();
+    const anchor=scope?.anchor;
+    if(!anchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
+    const record=mediaAnchorRecord({
+      uid:mediaUid,type:mediaType,title:mediaTitle||null,
+      url:String(draft.url||'').trim()||null,
+      description:mediaDescription,
+      createtime:article?.createtime?new Date(article.createtime).toISOString():
+        mediaIso(draft.createtime)||new Date().toISOString()
+    });
+    const operations=[{p_table:anchor,p_operation:'insert',p_rows:[record]}];
+    if(article){
+      const prior=Array.isArray(article.media_link)?article.media_link:[];
+      operations.push({p_table:scope.galaxy,p_operation:'update',
+        p_values:{media_link:[...new Set([...prior,mediaUid])]},
+        p_filters:[{column:'uid',operator:'eq',value:article.uid}]});
+    }
+    return {operations,
+      afterCommit:()=>{
+        setStatus(t('uiExtra.importUI.mediaSaved'));
+        setDraft(blankMedia());
+      },
+      onFailure:error=>{
+        const message=error?.message||t('uiExtra.importUI.mediaSaveFailed');
+        setStatus(message);
+        if(inDock)editDock.setNotice(message);
+      }};
+  }
   async function save(event){
     event?.preventDefault?.();
     if(busy)return false;
     setBusy(true);setStatus('');
     try{
-      const galaxyLink=String(draft.galaxy_link||'').trim();
-      if(galaxyLink&&galaxyLink.length!==8)throw new Error(t('uiExtra.importUI.linkUidInvalid'));
-      const mediaType=repairMojibakeText(draft.type).trim();
-      if(!mediaType)throw new Error(t('uiExtra.importUI.mediaTypeRequired'));
-      const mediaDescription=repairMojibakeText(draft.description).trim();
-      const mediaTitle=repairMojibakeText(draft.title).trim();
-      if([mediaType,mediaDescription,mediaTitle].some(hasIrrecoverableEncoding))throw new Error(t('uiExtra.importUI.mediaEncoding'));
-      const scope=account.scopeDataFor(scopeId);
-      const article=galaxyLink?(await selectRows(scope?.galaxy,{
-        // The article lookup only needs the canonical anchor context; use the
-        // shared projection instead of a one-off Galaxy column string.
-        columns:galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','),
-        filters:[{column:'uid',operator:'eq',value:galaxyLink}],
-        limit:1,authenticated:true
-      })).rows?.[0]:null;
-      if(galaxyLink&&!article)throw new Error('找不到指定的文章 UID。');
-      const mediaUid=createUid8();
-      const anchor=scope?.anchor;
-      if(!anchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
-      const record=mediaAnchorRecord({
-        uid:mediaUid,type:mediaType,title:mediaTitle||null,
-        url:String(draft.url||'').trim()||null,
-        description:mediaDescription,
-        createtime:article?.createtime?new Date(article.createtime).toISOString():
-          mediaIso(draft.createtime)||new Date().toISOString()
-      });
-      const operations=[{p_table:anchor,p_operation:'insert',p_rows:[record]}];
-      if(article){
-        const prior=Array.isArray(article.media_link)?article.media_link:[];
-        operations.push({p_table:scope.galaxy,p_operation:'update',
-          p_values:{media_link:[...new Set([...prior,mediaUid])]},
-          p_filters:[{column:'uid',operator:'eq',value:article.uid}]});
-      }
-      // The new media Anchor must never survive a failed Galaxy link update.
-      await transactionWrites(operations);
-      setStatus(t('uiExtra.importUI.mediaSaved'));
-      setDraft(blankMedia());
+      const plan=await prepareMediaTransaction();
+      await transactionWrites(plan.operations);
+      await plan.afterCommit();
       return true;
     }catch(error){
       const message=error?.message||t('uiExtra.importUI.mediaSaveFailed');
@@ -104,6 +116,7 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
   }
   dockActions.current={
     save:()=>save(),
+    prepareTransaction:()=>prepareMediaTransaction(),
     discard:()=>{setDraft(blankMedia());setStatus('');},
     isDirty:()=>Object.keys(blankMedia()).some(key=>draft[key]!==blankMedia()[key]),
     isBusy:()=>busy
