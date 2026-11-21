@@ -9,13 +9,20 @@ function pageFiles(folder,relative=''){
   return fs.readdirSync(folder,{withFileTypes:true}).flatMap(item=>{
     const sub=path.posix.join(relative,item.name),full=path.join(folder,item.name);
     if(item.isDirectory())return pageFiles(full,sub);
-    return item.isFile()&&/^page\.(jsx|js|tsx)$/.test(item.name)?[sub]:[];
+    return item.isFile()&&item.name==='page.html'?[sub]:[];
   });
 }
-const pageRoutes=pageFiles(app).map(file=>{
+const pageSources=pageFiles(app);
+const pageRoutes=pageSources.map(file=>{
   const dir=path.posix.dirname(file);
   return '/'+(dir==='.'?'':dir+'/');
 });
+if(pageSources.length!==80)throw Error('LOC authored HTML document count changed: '+pageSources.length);
+for(const file of pageSources){
+  if(!exists(path.join(app,file)))throw Error('Missing authored HTML: '+file);
+  if(exists(path.join(app,path.posix.dirname(file),'page.jsx')))
+    throw Error('Old JSX page wrapper remains: '+file);
+}
 const required=['/','/culture/','/search/','/statics/','/trace/','/settings/','/admin/','/my-phone/','/lo3rwang/','/lrunes/'];
 for(const route of required)if(!pageRoutes.includes(route))throw Error('Required LOC route absent: '+route);
 // Validate the actual esbuild CSS entry output, not an assumed filename.

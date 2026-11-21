@@ -5,7 +5,12 @@ on:
     paths:
       - 'scripts/build-loc-static.mjs'
       - 'scripts/verify-loc-output.mjs'
+      - 'scripts/sync-page-locale-assets.mjs'
       - 'app/modular/routing/scope-registry.js'
+      - 'app/**/page.html'
+      - 'app/page.html'
+      - 'app/**/page.jsx'
+      - 'app/page.jsx'
       - 'app/loc/runtime/html-entry.jsx'
       - 'tests/loc-html-base.test.mjs'
       - '.github/workflows/loc-static-regression.yml'
@@ -14,6 +19,10 @@ on:
     paths:
       - 'scripts/build-loc-static.mjs'
       - 'scripts/verify-loc-output.mjs'
+      - 'app/**/page.html'
+      - 'app/page.html'
+      - 'app/**/page.jsx'
+      - 'app/page.jsx'
       - 'app/loc/runtime/html-entry.jsx'
       - 'tests/loc-html-base.test.mjs'
       - '.github/workflows/loc-static-regression.yml'

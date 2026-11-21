@@ -19,7 +19,7 @@ function pages(folder,relative=''){
   return fs.readdirSync(folder,{withFileTypes:true}).flatMap(item=>{
     const sub=path.posix.join(relative,item.name);
     if(item.isDirectory())return pages(path.join(folder,item.name),sub);
-    return item.isFile()&&/^page\.(jsx|js|tsx)$/.test(item.name)?[sub]:[];
+    return item.isFile()&&item.name==='page.html'?[sub]:[];
   });
 }
 const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
@@ -30,43 +30,34 @@ fs.mkdirSync(scratch,{recursive:true});
 try{
   run(['run','prebuild']);
   const allPages=pages(abs('app')).sort();
-  if(allPages.length<60)throw new Error('LOC route loss: '+allPages.length);
+  if(allPages.length<60)throw new Error('LOC HTML document loss: '+allPages.length);
   const entryPoints={
     '_loc/site':abs('app/globals.css'),
     '_loc/editor':abs('app/styles/editor.css'),
     'public-preferences':abs('app/loc/public-home-preferences.jsx'),
     interactive:abs('app/loc/runtime/html-entry.jsx')
   };
-  const records=[];
-  for(let i=0;i<allPages.length;i++){
-    const name='_loc/routes/interactive';
-    const file=allPages[i];
+  const decode=s=>String(s||'').replace(/&(amp|quot|lt|gt|#39);/g,(_,key)=>
+    ({amp:'&',quot:'"',lt:'<',gt:'>', '#39':"'"})[key]);
+  const records=allPages.map(file=>{
     const route='/'+(path.posix.dirname(file)==='.'?'':path.posix.dirname(file)+'/');
-    const source=fs.readFileSync(abs('app/'+file),'utf8');
-    const title=source.match(/title:\s*['"]([^'"]+)['"]/)?.[1]||'LOC 月典';
-    const description=source.match(/description:\s*['"]([^'"]+)['"]/)?.[1]||'';
-    const noIndex=/noIndex:\s*true|index:\s*false/.test(source);
-    // Page data is baked into the HTML itself. No runtime URL routing table.
-    const part=route.split('/').filter(Boolean);
-    const group=['lo3rwang','lrunes','local','scope-shell'].includes(part[0])?part.shift():'';
-    const relative=part.join('/');
-    const scope=route==='/my-phone/'?'local':
-      source.match(/forcedScope="([^"]+)"/)?.[1]||
-      (group&&group!=='scope-shell'?group:'loc');
-    const view=source.match(/forcedView="([^"]+)"/)?.[1]||
-      source.match(/view="([^"]+)"/)?.[1]||'home';
-    const section=source.match(/forcedSection="([^"]+)"/)?.[1]||'';
-    const component=/GalaxyLinkBridge/.test(source)?'bridge':
-      /GlobalSettings/.test(source)?'settings':
-      /FeatureSettingsPage/.test(source)?'features':
-      /LocalScopeWorkspace/.test(source)?'phone':
-      /AuthorHomeView/.test(source)?'work':
-      /LegacyManagementRedirect/.test(source)?'legacy':
-      ['card','daily','game'].includes(part[0])?'outbound':'loc';
-    const redirectTarget=source.match(/target="([^"]+)"/)?.[1]||'';
-    records.push({route,name,title,description,noIndex,scope,view,section,component,
-      relative,group,redirectTarget});
-  }
+    const markup=fs.readFileSync(abs('app/'+file),'utf8');
+    const text=(pattern)=>decode(markup.match(pattern)?.[1]||'');
+    const title=text(/<title>([^<]*)<\/title>/i)||'LOC 月典';
+    const description=text(/<meta name="description" content="([^"]*)">/i);
+    const noIndex=/<meta name="robots" content="noindex,nofollow">/i.test(markup);
+    const attr=name=>text(new RegExp('\\bdata-loc-'+name+'="([^"]*)"','i'));
+    const component=attr('component'),view=attr('view'),scope=attr('scope');
+    const section=attr('section'),redirectTarget=attr('redirect');
+    if(!['loc','outbound','legacy','phone','settings','features','work','bridge'].includes(component)||
+      !view||!scope||!/^[a-z][a-z0-9]{0,14}$/.test(scope))
+      throw Error('Invalid LOC HTML page attributes: '+file);
+    if(component==='legacy'&&!redirectTarget)
+      throw Error('Legacy URL must declare its destination: '+file);
+    const relative=route.replace(/^\/lrunes\//,'/').slice(1).replace(/\/$/,'');
+    return {route,name:'_loc/routes/interactive',title,description,noIndex,
+      component,view,scope,section,redirectTarget,relative};
+  });
   const compiled=await build({
     entryPoints,outdir:out,bundle:true,splitting:true,format:'esm',
     platform:'browser',target:'es2022',jsx:'automatic',jsxImportSource:'react',
