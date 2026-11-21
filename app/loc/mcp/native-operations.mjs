@@ -164,7 +164,7 @@ export async function handleNativeLocOperation(request,env={},{
     // additional MCP/Gateway operation or delegated authorization scope.
     if(body.kind==='managed-action'&&
        ['media_anchor_candidates','anchor_import_page','import_site_presence',
-         'search_galaxy_private'].includes(body.name)&&host!==WEB_HOST)
+         'search_galaxy_private','save_scope_trace_edit'].includes(body.name)&&host!==WEB_HOST)
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request,fetchImpl,{trustedMcpBridge:host===MCP_HOST});

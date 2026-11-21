@@ -286,9 +286,13 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
     p_table:'silver.'+id+'_anchor',p_operation:'insert',p_rows:rows
   }]);
   const count=rows.length;
-  const review=organizeAnchorCandidates(await readAllTraceAnchors(id));
+  // A successful SQL COMMIT cannot be reclassified as a failed import
+  // because the subsequent UI-only duplicate review did not load.
+  let review=[],auditError='';
+  try{review=organizeAnchorCandidates(await readAllTraceAnchors(id));}
+  catch{auditError='地點已提交，但後續整理清單讀取失敗；請重新整理，勿重複匯入。';}
   return {count,skipped,consolidated:0,duplicatesInBatch:skipped,reviewCount:review.length,
-    reviewPreview:review.slice(0,8),auditError:''};
+    reviewPreview:review.slice(0,8),auditError};
 }
 function validatedConnections({scopeId,type,anchorUids=[],anchors=[],hasRoutes=false}){
   const id=idScope(scopeId),list=Array.isArray(anchorUids)?anchorUids:[];
@@ -352,6 +356,22 @@ export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false
     invisible:normalizedInvisible(invisible)
   }));
   return ids.length;
+}
+// TraceManagement's six-key Save is one native business transaction:
+// title groups, current Point, existing relation-safe merge and visibility
+// share authorization, the SQL connection and COMMIT/ROLLBACK.
+export async function saveTracePage({scopeId,renames=[],point=null,
+  keepUid='',mergeUids=[],visibility=null}={}){
+  const scope=writableScope(scopeId);
+  const result=checked(await dbAuthClient.schema('silver').managedAction(
+    'save_scope_trace_edit',{
+      p_scope_id:scope,p_renames:renames,p_point:point,p_keep_uid:keepUid,
+      p_merge_uids:mergeUids,p_visibility:visibility
+    }),'儲存空間定錨');
+  if(!result||!['renamed_count','merged_count','visibility_count'].every(
+    key=>Number.isSafeInteger(result[key])&&result[key]>=0))
+    throw Error('空間儲存回執未確認，請重新讀取，勿重複提交');
+  return result;
 }
 export async function deleteTraceMap({scopeId,uid,type='path'}){
   const id=writableScope(scopeId);
