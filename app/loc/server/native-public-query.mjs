@@ -306,15 +306,12 @@ export async function handleNativePublicQuery(request,env={},{
     if(analytics){
       stage='analytics';
       const settings={role:'anon',publishedScopeIds:PUBLIC_SCOPES};
-      // A request-scoped PostgreSQL pool creates a new physical pg.Client
-      // for every acquisition. Pin the connection for this multi-statement
-      // read, then release it once after all awaited analytics work finishes.
-      // A read-only connection lease avoids BEGIN/COMMIT and long-lived
-      // transaction snapshots. The portable adapter still needs Kysely's
-      // database-level introspection API, so retain its existing DB contract.
+      // All PostgreSQL statements contributing to a single analytics
+      // response share one transaction and its bounded snapshot. The portable
+      // adapter retains its dialect-specific introspection contract below.
       const output=selected.engine==='postgres'
-        ?await selected.db.connection().execute(conn=>
-          executeKyselyAnalytics(conn,analytics,settings))
+        ?await selected.db.transaction().setIsolationLevel('repeatable read').execute(trx=>
+          executeKyselyAnalytics(trx,analytics,settings))
         :await executePortableKyselyAnalytics(selected.db,analytics,{
           engine:selected.engine,namespace:selected.namespace||'dbo',role:'anon'
         });
@@ -332,7 +329,7 @@ export async function handleNativePublicQuery(request,env={},{
     }
     // A list plus its exact total is one logical read result. Use a single
     // transaction instead of reacquiring the physical connection for COUNT.
-    return selected.db.transaction().execute(async trx=>{
+    return selected.db.transaction().setIsolationLevel('repeatable read').execute(async trx=>{
     if(normalized.head){
       const result=await withFilters(trx.selectFrom(table),normalized)
         .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst();

@@ -5,6 +5,7 @@ import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
 import {closeLocDatabase,bindLocRequestAbort} from '../app/loc/mcp/native-kysely.mjs';
 import {readFileSync} from 'node:fs';
 import {articleDistribution} from '../app/loc/mcp/article-distribution.mjs';
+import {setKeywordClassShare} from '../app/loc/keywords/sql-service.mjs';
 
 const body=async response=>JSON.parse(await response.text());
 
@@ -155,4 +156,100 @@ test('standalone article distribution owns SQL, borrowed analytics do not',async
   const inherited=await make(true);
   assert.equal(inherited.total,7);
   assert.deepEqual(calls,[]);
+});
+
+test('Suno, article, theme, TimeRiver and Search editors expose complete Save plans',()=>{
+  const files=[
+    ['../app/loc/media/SunoImportPanel.jsx','prepareSunoTransaction'],
+    ['../app/loc/management/ManagementArticlePublisher.jsx','prepareArticleTransaction'],
+    ['../app/loc/scope/ScopeSettingsPanel.jsx','prepareThemeTransaction'],
+    ['../app/modular/features/CultureTimelineEditor.jsx','prepareTimeTransaction'],
+    ['../app/modular/features/Search.jsx','prepareSearchEditTransaction'],
+    ['../app/loc/keywords/ui/KeywordLibraryPanel.jsx','prepareKeywordNodeTransaction']
+  ];
+  for(const [path,name] of files){
+    const source=readFileSync(new URL(path,import.meta.url),'utf8');
+    assert.ok(source.includes(name),path+' missing SQL write preparation');
+    assert.match(source,/prepareTransaction:/,path+' must register with six-key Save');
+    assert.match(source,/transactionWrites\(/,path+' must use the shared SQL transaction');
+  }
+  const suno=readFileSync(new URL(files[0][0],import.meta.url),'utf8');
+  assert.doesNotMatch(suno,/await insertRows\(/);
+  const culture=readFileSync(new URL(files[3][0],import.meta.url),'utf8');
+  assert.match(culture,/p_expected_count:ids\.length/);
+});
+test('Keyword subtree deletion includes a single transactional Pattern reconciliation',()=>{
+  const editor=readFileSync(new URL('../app/loc/keywords/ui/KeywordLibraryPanel.jsx',import.meta.url),'utf8');
+  const sql=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  assert.match(editor,/transactionWrites\(operations,\{keywordSyncScope:scopeId\}\)/);
+  assert.match(sql,/synchronizeKeywordLibraryInTransaction\(trx,keywordSyncScope\)/);
+  assert.match(sql,/if\(!await canLocAccess\(trx,'scope',keywordSyncScope\)\)/);
+  assert.match(sql,/p_expected_count/);
+  const contract=readFileSync(new URL('../app/loc/db/db-contract.mjs',import.meta.url),'utf8');
+  const copyStart=contract.indexOf('async function copyKeywordLibraryClass(');
+  const copyEnd=contract.indexOf('async function copyRune66KeywordClassUnchecked(',copyStart);
+  assert.ok(copyStart>=0&&copyEnd>copyStart);
+  const copy=contract.slice(copyStart,copyEnd);
+  assert.match(copy,/await transactionWrites\(operations\)/);
+  assert.doesNotMatch(copy,/await writeKeywordLibraryItem\(/);
+});
+
+test('keyword sharing uses one locked read-modify-write transaction and fails closed',async()=>{
+  let metadata={class_shares:{ABCD1234:false},other:{unrelated:true}};
+  const events=[];
+  const db={transaction:()=>({execute:async work=>{
+    events.push('begin');
+    const original=structuredClone(metadata);
+    const trx={
+      selectFrom(table){
+        assert.equal(table,'silver.lo3rwang');
+        return {select(field){
+          assert.equal(field,'keyword_meta');
+          return {where(column,op,value){
+            assert.deepEqual([column,op,value],['id','=','lo3rwang']);
+            return {forUpdate(){events.push('lock');return {
+              executeTakeFirst:async()=>({keyword_meta:metadata})
+            };}};
+          }};
+        }};
+      },
+      updateTable(table){
+        assert.equal(table,'silver.lo3rwang');
+        return {set(values){
+          return {where(column,op,value){
+            assert.deepEqual([column,op,value],['id','=','lo3rwang']);
+            return {executeTakeFirst:async()=>{
+              events.push('update');metadata=JSON.parse(values.keyword_meta);
+              return {numUpdatedRows:1n};
+            }};
+          }};
+        }};
+      }
+    };
+    try{const out=await work(trx);events.push('commit');return out;}
+    catch(error){metadata=original;events.push('rollback');throw error;}
+  }})};
+  const rights=async()=>{events.push('authorize');};
+  const result=await setKeywordClassShare(db,'lo3rwang','ABCD1234',true,{
+    authorizeTransaction:rights
+  });
+  assert.equal(result.keyword_meta.class_shares.ABCD1234,true);
+  assert.deepEqual(metadata.other,{unrelated:true});
+  assert.deepEqual(events,['begin','authorize','lock','update','commit']);
+  events.length=0;
+  await assert.rejects(setKeywordClassShare(db,'lo3rwang','ABCD1234',false,{
+    authorizeTransaction:async()=>{throw Error('Scope denied');}
+  }),/Scope denied/);
+  assert.equal(metadata.class_shares.ABCD1234,true);
+  assert.deepEqual(events,['begin','rollback']);
+});
+test('non-batch writes resolve api.manage inside the same owned SQL transaction',()=>{
+  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  assert.ok(native.includes("const isManagedBatch=['managed-transaction','managed-write','managed-action',"));
+  for(const kind of ['mcp-conversation','mcp-scope-status','mcp-sync','mcp-append'])
+    assert.ok(native.includes("'"+kind+"'"),kind+' must join transaction authorization');
+  assert.ok(native.includes('await loadMcpLocAccess(trx,claims.email'));
+  assert.match(native,/readLocAccess\(trx,claims.email,\{/);
+  assert.match(native,/bindLocAuthorization\(trx,\{role:claims.role,claims,engine:selected.engine\}\)/);
+  assert.doesNotMatch(native,/withFixedPolicyWrite\(/);
 });

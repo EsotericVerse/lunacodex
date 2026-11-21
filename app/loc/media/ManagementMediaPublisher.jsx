@@ -106,7 +106,9 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
     try{
       const plan=await prepareMediaTransaction();
       await transactionWrites(plan.operations);
-      await plan.afterCommit();
+      try{await plan.afterCommit();}
+      catch{setStatus('資料已提交，但畫面更新失敗；請重新整理。');}
+
       return true;
     }catch(error){
       const message=error?.message||t('uiExtra.importUI.mediaSaveFailed');

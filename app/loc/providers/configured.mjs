@@ -113,10 +113,10 @@ export function createConfiguredAdapter({
     }
     return {data:result?.data,error:null};
   };
-  const managedTransaction=async operations=>{
+  const managedTransaction=async(operations,{keywordSyncScope=''}={})=>{
     let result;
     try{
-      result=await operation('managed-transaction','',{operations});
+      result=await operation('managed-transaction','',{operations,keywordSyncScope});
     }catch(error){
       if(error?.code==='LOC_WRITE_RESULT_UNKNOWN')
         for(const item of operations)invalidateScopedReadCache(item?.p_table);

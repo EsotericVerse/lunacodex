@@ -616,12 +616,43 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
     return {uid:itemUid,removed:linked.removed};
   });
 }
+// Class sharing is one read-modify-write transaction, not a page SELECT
+// followed by a separate HTTP UPDATE that could overwrite a newer setting.
+export async function setKeywordClassShare(db,scope,classUid,enabled,{
+  authorizeTransaction=()=>{}
+}={}){
+  checkScope(scope);checkClass(classUid);
+  if(typeof enabled!=='boolean')fail('Invalid Keyword sharing choice');
+  return db.transaction().execute(async trx=>{
+    await authorizeTransaction(trx);
+    const current=await trx.selectFrom(configName(scope))
+      .select('keyword_meta').where('id','=',scope)
+      .forUpdate().executeTakeFirst();
+    if(!current)fail('Keyword Scope config missing',404);
+    const metadata=attr({attr:current.keyword_meta})||{};
+    const keyword_meta={...metadata,
+      class_shares:{...(metadata.class_shares||{}),[classUid]:enabled}};
+    const result=await trx.updateTable(configName(scope))
+      .set({keyword_meta:JSON.stringify(keyword_meta)})
+      .where('id','=',scope).executeTakeFirst();
+    if(Number(result?.numUpdatedRows||0)!==1)
+      fail('Keyword sharing update did not complete',409);
+    return {keyword_meta};
+  });
+}
+
+// Shared transactional body. The managed multi-write endpoint already owns
+// its transaction; it must not open another connection or nested COMMIT.
+export async function synchronizeKeywordLibraryInTransaction(trx,scope){
+  checkScope(scope);
+  return ensureScopePatternLibrary(trx,scope);
+}
 export async function synchronizeKeywordLibrary(db,scope,{
   authorizeTransaction=()=>{}
 }={}){
   checkScope(scope);
   return db.transaction().execute(async trx=>{
     await authorizeTransaction(trx);
-    return ensureScopePatternLibrary(trx,scope);
+    return synchronizeKeywordLibraryInTransaction(trx,scope);
   });
 }

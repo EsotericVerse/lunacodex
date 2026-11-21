@@ -18,13 +18,12 @@ import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
+import {synchronizeKeywordLibraryInTransaction} from '../keywords/sql-service.mjs';
 import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from './native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
-import {withFixedPolicyWrite,fixedPolicyWriteModel} from '../../../packages/zenstack/policy-runtime.mjs';
-import {ZenStackClient} from '@zenstackhq/orm';
-import {PolicyPlugin} from '@zenstackhq/plugin-policy';
+import {fixedPolicyWriteModel} from '../../../packages/zenstack/policy-runtime.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const JWKS=AUTH+'/api/auth/jwks';
@@ -212,20 +211,15 @@ export async function handleNativeLocOperation(request,env={},{
     // A normal Search toggle never asks for edit grants. Only when a search
     // is submitted does OAuth establish the owner and loc_user opt into a
     // private read; only then may the business Scope eligibility be checked.
-    if(body.kind==='managed-action'&&body.name==='search_galaxy_private'){
-      if(host!==WEB_HOST)throw refusal('Search is website-only',404);
-      const preference=await selected.db.selectFrom('silver.loc_user')
-        .select('search').where('owner_id','=',claims.sub).executeTakeFirst();
-      if(preference?.search?.list!==true)
-        throw refusal('Manager search preference disabled',403);
-    }
     // Extension imports and direct MCP operations share the same role-based
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
     if(operationKind==='short-import')importPhase='permission';
     // Managed batches resolve their one authorization snapshot inside the
     // SAME transaction as all of their writes, not in a preceding query.
-    const isManagedBatch=body.kind==='managed-transaction';
+    const isManagedBatch=['managed-transaction','managed-write','managed-action',
+      'mcp-conversation','mcp-scope-status','mcp-sync','mcp-append']
+      .includes(body.kind);
     let permission=null;
     if(!isManagedBatch){
       permission=host===MCP_HOST
@@ -263,25 +257,36 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='mcp-conversation'){
       if(host!==MCP_HOST)throw refusal('MCP conversation endpoint only',404);
-      const result=await selected.db.transaction().execute(trx=>
-        executeLocConversation(trx,body,claims));
+      const result=await selected.db.transaction().execute(async trx=>{
+        const rights=await loadMcpLocAccess(trx,claims.email,{
+          dialect:selected.dialect,engine:selected.engine,transactional:true});
+        claims.me=rights.canWrite;claims.grants=rights.grants;
+        if(writeKinds.has(body.kind)&&!rights.canWrite)
+          throw refusal('LOC write permission denied',403);
+        return executeLocConversation(trx,body,claims);
+      });
       return reply({data:result});
     }
     if(body.kind==='mcp-scope-status'){
       if(host!==MCP_HOST)throw refusal('MCP Scope endpoint only',404);
       if(!/^[a-z][a-z0-9]{0,14}$/.test(body.scopeid))
         throw refusal('Invalid Scope',400);
-      const allowed=permission.grants.includes('global:manage')||
-        permission.grants.includes(body.scopeid+':read');
-      if(!allowed)throw refusal('LOC Scope permission required',403);
-      const row=await selected.db.selectFrom('api.manage')
-        .select(['id','manage_role','active','galaxy_table','anchor_table'])
-        .where('id','=',body.scopeid).executeTakeFirst();
-      return reply({data:{scopeid:body.scopeid,active:row?.active===true,
-        role:row?.manage_role||'',
-        database:'主要資料庫連線',readable:true,
-        writable:permission.grants.includes('global:manage')||
-          permission.grants.includes(body.scopeid+':write')}});
+      const data=await selected.db.transaction().execute(async trx=>{
+        const rights=await loadMcpLocAccess(trx,claims.email,{
+          dialect:selected.dialect,engine:selected.engine,transactional:true});
+        claims.me=rights.canWrite;claims.grants=rights.grants;
+        const allowed=rights.grants.includes('global:manage')||
+          rights.grants.includes(body.scopeid+':read');
+        if(!allowed)throw refusal('LOC Scope permission required',403);
+        const row=await trx.selectFrom('api.manage')
+          .select(['id','manage_role','active','galaxy_table','anchor_table'])
+          .where('id','=',body.scopeid).executeTakeFirst();
+        return {scopeid:body.scopeid,active:row?.active===true,
+          role:row?.manage_role||'',database:'主要資料庫連線',readable:true,
+          writable:rights.grants.includes('global:manage')||
+            rights.grants.includes(body.scopeid+':write')};
+      });
+      return reply({data});
     }
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
@@ -301,6 +306,15 @@ export async function handleNativeLocOperation(request,env={},{
       // there is no arbitrary operation-count cap or separate auth channel.
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
       const operations=body.operations;
+      const keywordSyncScope=String(body.keywordSyncScope||'');
+      // Explicit purpose-only reconciliation: the caller may batch only that
+      // Scope's own Anchor and configuration edits. This is not generic SQL.
+      if(keywordSyncScope&&(
+        !/^[a-z][a-z0-9]{0,14}$/.test(keywordSyncScope)||
+        operations?.some(item=>![
+          'silver.'+keywordSyncScope+'_anchor','silver.'+keywordSyncScope
+        ].includes(item?.p_table))))
+        throw refusal('Keyword reconciliation Scope mismatch',400);
       if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
         operations.some(entry=>!entry||typeof entry!=='object'||
           Array.isArray(entry)||!['insert','update','delete','upsert'].includes(entry.p_operation)||
@@ -355,6 +369,12 @@ export async function handleNativeLocOperation(request,env={},{
               });
           }
           const affected=Number(output?.data?.count??0);
+          // A caller may require an exact cardinality for a selected UID
+          // batch. A partial match is a failed logical operation, not COMMIT.
+          const expected=payload.p_expected_count;
+          if(expected!==undefined&&
+            (!Number.isSafeInteger(expected)||expected<0||expected!==affected))
+            throw refusal('LOC transaction affected-row count mismatch',409);
           if(!Number.isSafeInteger(affected)||affected<0||
             (['update','delete'].includes(payload.p_operation)&&affected===0)||
             (['insert','upsert'].includes(payload.p_operation)&&
@@ -362,70 +382,67 @@ export async function handleNativeLocOperation(request,env={},{
             throw refusal('LOC transaction operation did not complete',409);
           outcomes.push({count:affected});
         }
+        if(keywordSyncScope){
+          if(!await canLocAccess(trx,'scope',keywordSyncScope))
+            throw refusal('Keyword Scope management permission denied',403);
+          await synchronizeKeywordLibraryInTransaction(trx,keywordSyncScope);
+        }
         return outcomes;
       });
       return reply({data:{results,count:results.reduce((total,item)=>total+item.count,0)}});
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      if(!claims.grants?.some(grant=>grant==='global:manage'||grant.endsWith(':manage')))
-        throw refusal('LOC management delegation required',403);
-      // PostgreSQL fixed-model mutations keep the existing ZenStack policy
-      // path. For a non-PostgreSQL MAIN database, use the already installed
-      // portable Kysely writer only after rechecking api.manage in the same
-      // transaction. Neither external targets nor arbitrary SQL are writable.
-      const payload=body.payload||{};
-      if(selected.engine!=='postgres'){
-        if(body.kind!=='managed-write')
-          throw refusal('This LOC management action needs a portable implementation',503);
-        const row=await selected.db.transaction().execute(async trx=>{
-          bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
+      const row=await selected.db.transaction().execute(async trx=>{
+        // Resolve the existing authenticated Manage projection on this exact
+        // transaction connection. No preliminary role SELECT, new RLS, or
+        // second pooled client is used for the same logical operation.
+        const rights=host===MCP_HOST
+          ?await loadMcpLocAccess(trx,claims.email,{
+            dialect:selected.dialect,engine:selected.engine,transactional:true})
+          :await readLocAccess(trx,claims.email,{
+            dialect:selected.dialect,engine:selected.engine,website:true,
+            transactional:true});
+        claims.me=rights.canWrite;
+        claims.grants=rights.grants;
+        if(!rights.canWrite||!rights.grants.some(grant=>
+          grant==='global:manage'||grant.endsWith(':manage')))
+          throw refusal('LOC management delegation required',403);
+        bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
+        if(body.kind==='managed-action'){
+          if(selected.engine!=='postgres')
+            throw refusal('This LOC management action needs a portable implementation',503);
+          if(body.name==='search_galaxy_private'){
+            if(host!==WEB_HOST)throw refusal('Search is website-only',404);
+            const preference=await trx.selectFrom('silver.loc_user')
+              .select('search').where('owner_id','=',claims.sub).executeTakeFirst();
+            if(preference?.search?.list!==true)
+              throw refusal('Manager search preference disabled',403);
+          }
+          return (await executeManagedKyselyAction(trx,body,claims)).data;
+        }
+        const payload=body.payload||{};
+        const fixed=['api.manage','silver.loc'].includes(payload.p_table);
+        if(fixed&&['update','delete'].includes(payload.p_operation)){
+          if(!await canLocAccess(trx,'global'))throw refusal('Global LOC management required',403);
+          if(selected.engine==='postgres'){
+            const modelName=fixedPolicyWriteModel({engine:selected.engine},body,
+              claims.role,claims);
+            if(!modelName)throw refusal('Fixed LOC management model denied',403);
+            return (await executeManagedKyselyWrite(trx,body,{modelName})).data;
+          }
           if(payload.p_table==='api.manage'){
-            if(!claims.grants.includes('global:manage')||
-                !await canLocAccess(trx,'global'))
-              throw refusal('LOC Registry management permission denied',403);
-            if(!['update','delete'].includes(payload.p_operation))
-              throw refusal('Registry mutation requires a fixed operation',403);
             if(!Array.isArray(payload.p_filters)||!payload.p_filters.length)
               throw refusal('Unsafe unfiltered managed write',400);
-            return applyManagedWrite(trx,
-              registryRelationForEngine(selected.engine),payload);
+            return applyManagedWrite(trx,registryRelationForEngine(selected.engine),payload);
           }
-          return (await executeCrossEngineManagedWrite(trx,body,{
+        }
+        return selected.engine==='postgres'
+          ?(await executeManagedKyselyWrite(trx,body)).data
+          :(await executeCrossEngineManagedWrite(trx,body,{
             engine:selected.engine,namespace:selected.namespace,
             role:claims.role,claims
           })).data;
-        });
-        return reply({data:row});
-      }
-      // Keep the fixed-model ZenStack policy path for UPDATE and DELETE.
-      // All other known LOC tables use the existing Kysely management
-      // executor, with the signed principal bound to this transaction.
-      const fixed=body.kind==='managed-write'&&
-        ['api.manage','silver.loc'].includes(payload.p_table)&&
-        ['update','delete'].includes(payload.p_operation);
-      if(fixed){
-        if(!selected.dialect)throw refusal('LOC native Kysely driver is not configured',503);
-        const row=await withFixedPolicyWrite(selected.db,{engine:selected.engine},
-          body,claims.role,claims,
-          {dialect:selected.dialect,ZenStackClient,PolicyPlugin},
-          async(qb,modelName)=>{
-              if(!Array.isArray(payload.p_filters)||!payload.p_filters.length)
-                throw refusal('Unsafe unfiltered managed write',400);
-              // api.manage remains the live source of management rights in
-             // the same Kysely transaction as the ZenStack-model write.
-             bindLocAuthorization(qb,{role:claims.role,claims});
-             if(!await canLocAccess(qb,'global','','Manage'))
-               throw refusal('LOC Registry management permission denied',403);
-             return applyManagedWrite(qb,modelName,payload);
-           });
-        return reply({data:row});
-      }
-      const row=await selected.db.transaction().execute(async trx=>{
-        bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
-        return body.kind==='managed-write'
-          ?(await executeManagedKyselyWrite(trx,body)).data
-          :(await executeManagedKyselyAction(trx,body,claims)).data;
       });
       return reply({data:row});
     }
@@ -437,7 +454,13 @@ export async function handleNativeLocOperation(request,env={},{
     if(body.kind==='mcp-sync'||body.kind==='mcp-append'){
       if(selected.tableName)
         throw refusal('LOC MCP control database is unavailable for writing',503);
-      const result=await selected.db.transaction().execute(trx=>runMcp(trx));
+      const result=await selected.db.transaction().execute(async trx=>{
+        const rights=await loadMcpLocAccess(trx,claims.email,{
+          dialect:selected.dialect,engine:selected.engine,transactional:true});
+        claims.me=rights.canWrite;claims.grants=rights.grants;
+        if(!rights.canWrite)throw refusal('LOC write permission denied',403);
+        return runMcp(trx);
+      });
       return reply({data:result.data});
     }
     const result=await runMcp(selected.db);

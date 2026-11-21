@@ -8,7 +8,7 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 // silently dropped by this split.
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
-import {insertRows,updateRows} from '../db/db-client.mjs';
+import {transactionWrites} from '../db/db-client.mjs';
 import {selectRows} from '../db/db-query.mjs';
 import {useAccount} from '../auth/use-account';
 import {createUid8} from '../model/uid';
@@ -50,7 +50,7 @@ export default function ManagementArticlePublisher({scopeId}){
   const t=useUiText();
   const account=useAccount();
   const editDock=useEditDock();
-  const dockActions=useRef({save:null,discard:null});
+  const dockActions=useRef({save:null,prepareTransaction:null,discard:null});
   const activateDock=useRef(()=>{});
   const inDock=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const [draft,setDraft]=useState(blank());
@@ -64,6 +64,7 @@ export default function ManagementArticlePublisher({scopeId}){
     if(!inDock)return undefined;
     const unregister=editDock.register({
       save:()=>dockActions.current.save(),
+      prepareTransaction:()=>dockActions.current.prepareTransaction(),
       discard:()=>dockActions.current.discard(),
       isDirty:()=>dockActions.current.isDirty(),
       isBusy:()=>dockActions.current.isBusy()
@@ -117,11 +118,8 @@ export default function ManagementArticlePublisher({scopeId}){
     finally{setLoadingUid(false);}
   }
 
-  async function save(event){
-    event?.preventDefault?.();
-    if(busy||loadingUid)return false;
-    setBusy(true);setStatus('');
-    try{
+  async function prepareArticleTransaction(){
+    if(busy||loadingUid)throw Error('文章編輯仍在執行');
       const content=await requireGalaxyContent(draft.bodyHtml||blocksToPlainText(draft.bodyBlocks));
       if(!editingUid&&!draft.source.trim())throw new Error(UI_COPY.management.sourceRequired);
       const now=new Date().toISOString();
@@ -139,9 +137,9 @@ export default function ManagementArticlePublisher({scopeId}){
         createtime:draft.createtime?new Date(draft.createtime).toISOString():now,
         site:draft.source.trim()
       };
+      const operations=[];
+      let afterCommit;
       if(editingUid){
-        // Update only edited fields: don't rewrite unrelated metadata, null
-        // searchable flags, or timestamps on older Galaxy articles.
         const original=loadedBaseline.current;
         if(!original)throw new Error(t('uiExtra.publisher.uidNotFound'));
         const changed={};
@@ -156,32 +154,50 @@ export default function ManagementArticlePublisher({scopeId}){
         for(const key of GALAXY_ABLE_KEYS){
           if(values[key]!==original.permissions?.[key])changed[key]=values[key];
         }
-        if(Object.keys(changed).length){
-          await updateRows(galaxy,{...changed,UpdateTime:now},{
-            filters:[{column:'uid',operator:'eq',value:editingUid}]
-          });
-        }
-        loadedBaseline.current={...draft};
-        setStatus(Object.keys(changed).length
-          ?t('uiExtra.publisher.articleUpdated')
-          :t('uiExtra.publisher.noChanges'));
+        if(Object.keys(changed).length)
+          operations.push({p_table:galaxy,p_operation:'update',
+            p_values:{...changed,UpdateTime:now},
+            p_filters:[{column:'uid',operator:'eq',value:editingUid}]});
+        afterCommit=()=>{
+          loadedBaseline.current={...draft};
+          setStatus(Object.keys(changed).length
+            ?t('uiExtra.publisher.articleUpdated')
+            :t('uiExtra.publisher.noChanges'));
+        };
       }else{
-        await insertRows(galaxy,[{uid:createUid8(),...values}]);
-        resetDraft();
-        setStatus(UI_COPY.management.articlePublished);
+        operations.push({p_table:galaxy,p_operation:'insert',
+          p_rows:[{uid:createUid8(),...values}]});
+        afterCommit=()=>{
+          resetDraft();setStatus(UI_COPY.management.articlePublished);
+        };
       }
+      return {operations,afterCommit,
+        onFailure:error=>{
+          const message=error?.message||UI_COPY.management.articlePublishFailed;
+          setStatus(message);
+          if(inDock)editDock.setNotice(message);
+        }};
+  }
+  async function save(event){
+    event?.preventDefault?.();
+    if(busy||loadingUid)return false;
+    setBusy(true);setStatus('');
+    try{
+      const plan=await prepareArticleTransaction();
+      if(plan.operations.length)await transactionWrites(plan.operations);
+      try{await plan.afterCommit();}
+      catch{setStatus('資料已提交，但畫面更新失敗；請重新整理。');}
+
       return true;
     }catch(error){
       const message=error?.message||UI_COPY.management.articlePublishFailed;
-      setStatus(message);
-      if(inDock)editDock.setNotice(message);
+      setStatus(message);if(inDock)editDock.setNotice(message);
       return false;
-    }finally{
-      setBusy(false);
-    }
+    }finally{setBusy(false);}
   }
   dockActions.current={
     save:()=>save(),
+    prepareTransaction:()=>prepareArticleTransaction(),
     discard:resetDraft,
     isDirty,
     // Loading a draft by UID must not lock navigation as '正在儲存'.

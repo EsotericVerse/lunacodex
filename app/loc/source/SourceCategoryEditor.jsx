@@ -126,7 +126,9 @@ export function AdminSourceCategories(){
     try{
       const plan=prepareSourceTransaction();
       await transactionWrites(plan.operations);
-      await plan.afterCommit();
+      try{await plan.afterCommit();}
+      catch{setError('資料已提交，但來源畫面重新讀取失敗；請重新整理。');}
+
       return true;
     }catch(error){setError(String(error?.message||error));return false;}
     finally{setBusy(false);}

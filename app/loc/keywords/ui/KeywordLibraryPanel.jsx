@@ -4,7 +4,7 @@ import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
 import {useEditDock} from '../../../modular/edit-dock';
-import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db/db-client.mjs';
+import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,transactionWrites,prepareKeywordLibraryWrite,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db/db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
 import {allocateAnchorUid} from '../../model/uid.js';
 import ManagementSectionNav from '../../../modular/ManagementSectionNav';
@@ -215,9 +215,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setEditor({node});setPendingParent(parentUid);
     setKeywordText('');setClassExceptionText('');setNotice('');
   };
-  const markStale=async(uid)=>{
+  const staleWriteFor=uid=>{
     const cl=classOf(tree,uid);
-    if(!cl)return;
+    if(!cl)return null;
     // Keep the last completion receipt to confirm lost HTTP responses.
     // Changed Class rules cannot reuse the old per-word scan timestamps.
     const meta=config.keyword_meta||{},by_class={...(meta.by_class||{})};
@@ -229,56 +229,83 @@ export default function KeywordLibraryPanel({scopeId,account}){
       }
     }
     const keyword_meta={...meta,by_class,pattern_scans:scans};
-    const {error:staleError}=await dbAuthRelation(configTable)
-      .update({keyword_meta,staticstime:null}).eq('id',scopeId);
-    if(staleError)throw staleError;
+    return {p_table:configTable,p_operation:'update',
+      p_values:{keyword_meta,staticstime:null},
+      p_filters:[{column:'id',operator:'eq',value:scopeId}]};
+  };
+  const markStale=async uid=>{
+    const write=staleWriteFor(uid);
+    if(write)await transactionWrites([write]);
+  };
+  const draftKeywordNode=()=>{
+    if(!draft)throw Error('關鍵詞編輯資料尚未就緒');
+    const node={...draft,
+      name:String(draft.name||'').trim(),
+      lists:draft.type==='item'?onlyWords(keywordText):[...draft.lists],
+      attr:draft.type==='class'?{
+        ...(draft.attr||{}),
+        exceptions:{
+          ...(draft.attr?.exceptions||{}),
+          skip_article:onlyWords(classExceptionText)
+        }
+      }:draft.attr
+    };
+    if(node.type==='class')classSkipArticleWords(node.attr);
+    if(!node.name)throw new Error('請填寫名稱');
+    if(!TYPES.includes(node.type))throw new Error('Keywords Type 無效');
+    if(node.type==='category')throw new Error('關鍵字目錄請至群組管理編輯');
+    return node;
+  };
+  const prepareKeywordNodeTransaction=async()=>{
+    if(busy)throw Error('關鍵詞編輯仍在執行');
+    const node=draftKeywordNode();
+    if(node.type==='item')
+      throw Error('Item／Pattern 必須使用既有關鍵詞專用交易，請單獨儲存。');
+    const isNew=!tree.index.has(node.uid),operations=[];
+    operations.push(await prepareKeywordLibraryWrite(scopeId,isNew?'insert':'update',node));
+    let staleUid=node.uid;
+    if(isNew&&node.type!=='class'){
+      const parent=tree.index.get(pendingParent);
+      const expected=TYPES[TYPES.indexOf(node.type)-1];
+      if(!parent||parent.type!==expected)throw new Error('請先選擇上層分類。');
+      operations.push(await prepareKeywordLibraryWrite(scopeId,'update',{
+        ...parent,lists:[...parent.lists,node.uid]
+      }));
+      staleUid=parent.uid;
+    }
+    const stale=staleWriteFor(staleUid);
+    if(stale)operations.push(stale);
+    return {operations,
+      afterCommit:async()=>{
+        await load(node.uid);await invalidate();
+        setNotice('已儲存；相關關鍵字群組需重新分析。');
+      },
+      onFailure:error=>setError(String(error?.message||error))};
   };
   const saveNode=async()=>{
     if(!draft||busy)return false;
     setBusy(true);setError('');
     try{
-      const node={...draft,
-        name:String(draft.name||'').trim(),
-        lists:draft.type==='item'?onlyWords(keywordText):[...draft.lists],
-        attr:draft.type==='class'?{
-          ...(draft.attr||{}),
-          exceptions:{
-            ...(draft.attr?.exceptions||{}),
-            skip_article:onlyWords(classExceptionText)
-          }
-        }:draft.attr
-      };
-      if(node.type==='class')classSkipArticleWords(node.attr);
-      if(!node.name)throw new Error('請填寫名稱');
-      if(!TYPES.includes(node.type))throw new Error('Keywords Type 無效');
-      const isNew=!tree.index.has(node.uid);
-      if(node.type==='category')throw new Error('群組關鍵字目錄請到群組管理頁面編輯。');
+      const node=draftKeywordNode();
       if(node.type==='item'){
-         const {keywordService}=await import('../service-client.mjs');
-         await keywordService('saveItem',{scopeId,item:{
-           uid:node.uid,name:node.name,desc:String(node.desc||''),
-           words:node.lists,mode:isNew?'create':'update',
-           ...(isNew?{parentUid:pendingParent}:{})
-         }});
-       }else if(isNew&&node.type!=='class'){
-         const parent=tree.index.get(pendingParent);
-         const expected=TYPES[TYPES.indexOf(node.type)-1];
-         if(!parent||parent.type!==expected)throw new Error('請先選擇上層分類。');
-         await writeKeywordLibraryItem(scopeId,'insert',node);
-         try{await writeKeywordLibraryItem(scopeId,'update',{
-           ...parent,lists:[...parent.lists,node.uid]
-         });}catch(error){
-           await writeKeywordLibraryItem(scopeId,'delete',node).catch(()=>{});
-           throw error;
-         }
-         await markStale(parent.uid);
-       }else{
-         await writeKeywordLibraryItem(scopeId,isNew?'insert':'update',node);
-         await markStale(node.uid);
-       }
-       await load(node.uid);await invalidate();setNotice('已儲存；相關關鍵字群組需重新分析。');
+        const {keywordService}=await import('../service-client.mjs');
+        await keywordService('saveItem',{scopeId,item:{
+          uid:node.uid,name:node.name,desc:String(node.desc||''),
+          words:node.lists,
+          mode:tree.index.has(node.uid)?'update':'create',
+          ...(!tree.index.has(node.uid)?{parentUid:pendingParent}:{})
+        }});
+        await load(node.uid);await invalidate();
+        setNotice('已儲存；相關關字群組需重新分析。');
+      }else{
+        const plan=await prepareKeywordNodeTransaction();
+        await transactionWrites(plan.operations);
+        try{await plan.afterCommit();}
+        catch{setError('資料已提交，但關鍵詞畫面更新失敗；請重新讀取。');}
+
+      }
       return true;
-    }catch(e){setError(String(e.message||e));return false;}
+    }catch(error){setError(String(error?.message||error));return false;}
     finally{setBusy(false);}
   };
   const removeNode=async(node=draft||selected)=>{
@@ -294,30 +321,35 @@ export default function KeywordLibraryPanel({scopeId,account}){
          return;
        }
        const parent=parentOf(tree,node.uid);
-      if(parent)await writeKeywordLibraryItem(scopeId,'update',{
-        ...parent,lists:parent.lists.filter(uid=>uid!==node.uid)
-      });
-      await markStale(node.uid);
-      const descendants=descendantsOfKeyword(rows,node.uid).reverse();
-      const removedIds=new Set(descendants.map(row=>row.uid));
-      const activeRemoved=removedIds.has(config.current_keyword_class_uid);
-      for(const child of descendants)await writeKeywordLibraryItem(scopeId,'delete',child);
-      const removedClasses=descendants.filter(child=>child.type==='class');
-      if(removedClasses.length){
-        let keyword_meta=config.keyword_meta||{};
-        for(const deleted of removedClasses)
-          keyword_meta=invalidateKeywordClass(keyword_meta,deleted.uid);
-        const surviving=[...tree.index.values()].find(record=>
-          record.type==='class'&&!removedIds.has(record.uid));
-        const nextUid=activeRemoved?surviving?.uid||null:config.current_keyword_class_uid;
-        const {error:settingsError}=await dbAuthRelation(configTable)
-          .update({current_keyword_class_uid:nextUid,
-            staticstime:null,keyword_meta})
-          .eq('id',scopeId);
-        if(settingsError)throw settingsError;
-      }
-      const {keywordService}=await import('../service-client.mjs');
-       await keywordService('syncLibrary',{scopeId});
+       const descendants=descendantsOfKeyword(rows,node.uid).reverse();
+       const removedIds=new Set(descendants.map(row=>row.uid));
+       const activeRemoved=removedIds.has(config.current_keyword_class_uid);
+       const removedClasses=descendants.filter(child=>child.type==='class');
+       const operations=[];
+       if(parent)operations.push(await prepareKeywordLibraryWrite(scopeId,'update',{
+         ...parent,lists:parent.lists.filter(uid=>uid!==node.uid)
+       }));
+       if(removedClasses.length){
+         let keyword_meta=config.keyword_meta||{};
+         for(const deleted of removedClasses)
+           keyword_meta=invalidateKeywordClass(keyword_meta,deleted.uid);
+         const surviving=[...tree.index.values()].find(record=>
+           record.type==='class'&&!removedIds.has(record.uid));
+         const nextUid=activeRemoved?surviving?.uid||null:config.current_keyword_class_uid;
+         operations.push({p_table:configTable,p_operation:'update',
+           p_values:{current_keyword_class_uid:nextUid,staticstime:null,keyword_meta},
+           p_filters:[{column:'id',operator:'eq',value:scopeId}]});
+       }else{
+         const stale=staleWriteFor(node.uid);
+         if(stale)operations.push(stale);
+       }
+       for(const child of descendants){
+         const deletion=await prepareKeywordLibraryWrite(scopeId,'delete',child);
+         operations.push({...deletion,p_expected_count:1});
+       }
+       // Parent detach, descendant deletion, Config invalidation AND Pattern
+       // library reconciliation all share the same SQL COMMIT/ROLLBACK.
+       await transactionWrites(operations,{keywordSyncScope:scopeId});
        await load(parent?.uid||'');await invalidate();
       setNotice('已刪除；不會刪除文章。');
     }catch(e){setError(String(e.message||e));}
@@ -327,15 +359,13 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(busy||sharingBusy||!classUid)return;
     setSharingBusy(true);setError('');
     try{
-      const {data,error:readError}=await dbAuthRelation(configTable)
-        .select('keyword_meta').eq('id',scopeId).limit(1);
-      if(readError||data?.length!==1)throw new Error(readError?.message||'讀取共享設定失敗');
-      const currentMeta=data[0].keyword_meta||{};
-      const keyword_meta={...currentMeta,
-        class_shares:{...(currentMeta.class_shares||{}),[classUid]:Boolean(enabled)}};
-      const {data:saved,error:saveError}=await dbAuthRelation(configTable)
-        .update({keyword_meta}).eq('id',scopeId).select('id');
-      if(saveError||saved?.length!==1)throw new Error(saveError?.message||'共享設定儲存失敗');
+      const {keywordService}=await import('../service-client.mjs');
+      const saved=await keywordService('setClassShare',{
+        scopeId,classUid,enabled:Boolean(enabled)
+      });
+      const keyword_meta=saved?.keyword_meta;
+      if(!keyword_meta||typeof keyword_meta!=='object')
+        throw Error('共享設定回執無效，請重新讀取資料。');
       setConfig(current=>({...current,keyword_meta}));
       setSavedConfig(current=>({...current,keyword_meta}));
       await invalidate();
@@ -343,10 +373,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
     }catch(e){setError(String(e.message||e));}
     finally{setSharingBusy(false);}
   };
-  const saveConfig=async()=>{
-    if(busy||loading)return false;
-    setBusy(true);setError('');
-    try{
+  const prepareKeywordConfigTransaction=()=>{
+    if(busy||loading)throw Error('關鍵詞管理資料尚未載入');
       const scanRuleChanged=Number(config.keyword_min_chars)!==
         Number(savedConfig.keyword_min_chars);
       // A display threshold does not change any Pattern posting.
@@ -367,10 +395,22 @@ export default function KeywordLibraryPanel({scopeId,account}){
         staticstime:null,
         ...(scanRuleChanged?{keyword_meta:invalidated}:{})
       };
-      const {data,error:writeError}=await dbAuthRelation(configTable).update(payload)
-        .eq('id',scopeId).select('id');
-      if(writeError||data?.length!==1)throw new Error(writeError?.message||'儲存設定失敗');
-      await load();await invalidate();setNotice('設定已儲存。');return true;
+      return {operations:[{p_table:configTable,p_operation:'update',
+        p_values:payload,p_filters:[{column:'id',operator:'eq',value:scopeId}]}],
+        afterCommit:async()=>{
+          await load();await invalidate();setNotice('設定已儲存。');
+        },
+        onFailure:error=>setError(String(error?.message||error))
+      };
+  };
+  const saveConfig=async()=>{
+    if(busy||loading)return false;
+    setBusy(true);setError('');
+    try{
+      const plan=prepareKeywordConfigTransaction();
+      await transactionWrites(plan.operations);
+      await plan.afterCommit();
+      return true;
     }catch(e){setError(String(e.message||e));return false;}
     finally{setBusy(false);}
   };
@@ -506,6 +546,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
   };
   dockActions.current={
     save:()=>workspace==='analysis'?saveConfig():saveNode(),
+    prepareTransaction:()=>workspace==='analysis'
+      ?prepareKeywordConfigTransaction():prepareKeywordNodeTransaction(),
     isDirty:()=>workspace==='analysis'
       ?['current_keyword_class_uid','keyword_min_chars','keyword_min_documents']
         .some(key=>String(config[key]??'')!==String(savedConfig[key]??''))
@@ -517,6 +559,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(!dock?.active||dock.scopeId!==scopeId||!canEdit)return;
     return dock.register({
       save:()=>dockActions.current.save(),
+      prepareTransaction:()=>dockActions.current.prepareTransaction(),
       isDirty:()=>dockActions.current.isDirty(),
       isBusy:()=>dockActions.current.isBusy()
     });

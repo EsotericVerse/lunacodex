@@ -431,16 +431,25 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
   async function commitRegistryDraft({includeMappings=false}={}){
     if(!selected||!current)return false;
     setStatus('');
+    let committed=false;
     try{
       const operations=[...registryDraftWrites(),
         ...(includeMappings?mappingDraftWrites():[])];
       if(operations.length)await transactionWrites(operations);
+      committed=true;
       if(includeMappings)setNewMapping({...EMPTY_MAPPING});
       setStatus(current.scope_id+' 已更新。');
       setEditDraft(null);
       refresh();
       return true;
-    }catch(error){setStatus(error?.message||'管理設定儲存失敗。');return false;}
+    }catch(error){
+      if(committed){
+        setStatus('資料已提交，但管理畫面刷新失敗；請重新讀取。');
+        return true;
+      }
+      setStatus(error?.message||'管理設定儲存失敗。');
+      return false;
+    }
   }
   async function saveRegistryAndConfig(){
     if(!draftDirty)return true;

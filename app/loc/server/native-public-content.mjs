@@ -184,7 +184,7 @@ export async function handleNativePublicContent(request,env={},{
       // LOC combined scope totals may run several related SELECTs. Pin one
       // request-owned connection and transaction for the complete result;
       // finish SQL before returning the chart payload to the browser.
-      const data=await query.transaction().execute(trx=>kind==='loc'
+      const data=await query.transaction().setIsolationLevel('repeatable read').execute(trx=>kind==='loc'
         ?readLocGroupNumeric(trx,start,end,port)
         :readGalaxyNumeric(trx,scope,kind,start,end,port));
       return respond({data});

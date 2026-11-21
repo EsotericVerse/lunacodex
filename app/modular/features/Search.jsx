@@ -13,7 +13,7 @@ import {publicPatternSuggestions} from '../../loc/search/public-pattern-suggesti
 import {blockNoteSuggestionItems} from '../../loc/editor/blocknote-suggestions.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 
-import {dbAuthClient,dbPublicClient,deleteRows,updateRows,getAccountSession} from '../../loc/db/db-client.mjs';
+import {dbAuthClient,dbPublicClient,deleteRows,transactionWrites,getAccountSession} from '../../loc/db/db-client.mjs';
 import {useAccount,readVerifiedManagementEntry} from '../../loc/auth/use-account';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ScopeLink from '../ScopeLink';
@@ -783,11 +783,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       if(!managementMode)setFullTextError(message);
     }
   }
-  async function saveEditing(result){
-    if(!adminListRequested||authorizedEditingKey!==result?.key)return false;
-    if(!editDraft||!result?.editableTable||!result.editableField||editBusy)return false;
-    setEditBusy(true);setEditError('');
-    try{
+  async function prepareSearchEditTransaction(result){
+    if(!adminListRequested||authorizedEditingKey!==result?.key)
+      throw Error('搜尋編輯未取得授權');
+    if(!editDraft||!result?.editableTable||!result.editableField||editBusy)
+      throw Error('搜尋編輯資料尚未就緒');
       const isGalaxy=result.resourceType==='galaxy';
       const {SearchEditDraft}=await import('./search-edit-draft');
       const {blocksToPlainText}=isGalaxy?await import('../../loc/editor/blocknote-content.mjs'):{blocksToPlainText:null};
@@ -807,12 +807,17 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         // MediaAnchor attr is validated by the existing ZModel/Zod boundary,
         // not the Galaxy attribute guard.
         contentPatch={...(titleChanged?{title:nextTitle}:{}),...attrs};
-        if(!Object.keys(contentPatch).length){
-          if(!managementMode){setEditingKey('');setEditDraft(null);}
-          return true;
-        }
+        if(!Object.keys(contentPatch).length)
+          return {operations:[],
+            afterCommit:()=>{if(!managementMode){setEditingKey('');setEditDraft(null);}}};
       }
-      await updateRows(result.editableTable,contentPatch,{filters:[{column:result.editableIdColumn,operator:'eq',value:result.editResourceId||result.resourceId}]});
+
+      return {
+        operations:[{p_table:result.editableTable,p_operation:'update',
+          p_values:contentPatch,
+          p_filters:[{column:result.editableIdColumn,operator:'eq',
+            value:result.editResourceId||result.resourceId}]}],
+        afterCommit:()=>{
       setResults(current=>current.map(item=>{
         if(item.key!==result.key)return item;
         const updatedUrl=Object.hasOwn(contentPatch,'attr')?contentPatch.attr?.url:item.editRow?.url;
@@ -835,14 +840,27 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         setEditingKey('');setEditDraft(null);setAuthorizedEditingKey('');
       }
       setStatus('');
+        },
+        onFailure:error=>setEditError(String(error?.message||error||UI_COPY.search.saveFailed))
+      };
+  }
+  async function saveEditing(result){
+    if(!adminListRequested||authorizedEditingKey!==result?.key)return false;
+    if(!editDraft||!result?.editableTable||!result.editableField||editBusy)return false;
+    setEditBusy(true);setEditError('');
+    try{
+      const plan=await prepareSearchEditTransaction(result);
+      if(plan.operations.length)await transactionWrites(plan.operations);
+      try{await plan.afterCommit?.();}
+      catch{setEditError('資料已提交，但搜尋畫面更新失敗；請重新讀取。');}
+
       return true;
     }catch(exception){
       const message=String(exception?.message||exception||UI_COPY.search.saveFailed);
       setEditError(message);
       if(editDock?.active)editDock.setNotice(message);
       return false;
-    }
-    finally{setEditBusy(false)}
+    }finally{setEditBusy(false);}
   }
   async function deleteEditing(result){
     if(!adminListRequested||authorizedEditingKey!==result?.key)return;
@@ -986,6 +1004,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
 
   dockActions.current={
     save:()=>saveEditing(editTargetRef.current),
+    prepareTransaction:()=>prepareSearchEditTransaction(editTargetRef.current),
     discard:()=>{setEditingKey('');setEditDraft(null);setEditError('')},
     isDirty:()=>Boolean(editDraft&&(
       editDraft.title!==editDraft.originalTitle||
@@ -998,6 +1017,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(!managementMode||!editingKey||!editDraft||!editDock?.active)return undefined;
     return editDock.register({
       save:()=>dockActions.current.save(),
+      prepareTransaction:()=>dockActions.current.prepareTransaction(),
       discard:()=>dockActions.current.discard(),
       isDirty:()=>dockActions.current.isDirty(),
       isBusy:()=>dockActions.current.isBusy()
