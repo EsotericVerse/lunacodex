@@ -1,12 +1,12 @@
 'use client';
 
-import {useEffect,useMemo,useState} from 'react';
-import {getScope,isKnownScope,normalizeScopeId,resolveScope,rememberCurrentBrowserRoute} from './routing/scope-registry';
+import {useEffect,useState} from 'react';
+import {getScope,isKnownScope,normalizeScopeId,rememberCurrentBrowserRoute} from './routing/scope-registry';
 import {PUBLISHED_SITE_BOOTSTRAP} from './published-site-bootstrap.js';
 import {SCOPE_ROUTE_INDEX} from './routing/scope-route-index.js';
 
-// Routing and the public Scope configuration are immutable release metadata.
-// They never require a page Bootstrap, SQL lookup, React fetch effect or TTL.
+// The HTML document provides its own Scope identity. Published config is
+// presentation data only, never a browser route lookup or SQL request.
 const registryByScope=new Map((PUBLISHED_SITE_BOOTSTRAP.registry||[])
   .filter(row=>row.active!==false).map(row=>[row.scope_id,row]));
 const configByScope=new Map(SCOPE_ROUTE_INDEX
@@ -35,9 +35,10 @@ export function useScopeRuntime(){
     return()=>window.removeEventListener('popstate',sync);
   },[]);
 
-  const genericId=useMemo(()=>genericRouteScope(pathname,location.search),
-    [pathname,location.search]);
-  const scopeId=genericId||(genericShell?'':resolveScope(location.host,pathname));
+  const genericId=genericRouteScope(pathname,location.search);
+  const publishedScope=normalizeScopeId(
+    typeof document==='undefined'?'loc':document.body?.dataset.locScope)||'loc';
+  const scopeId=genericId||(genericShell?'':publishedScope);
   const dynamic=Boolean(genericShell&&(!genericId||!isKnownScope(genericId)));
   useEffect(()=>{
     if(!location.mounted||!scopeId)return;
