@@ -59,22 +59,57 @@ if(!exists(path.join(out,'_loc','routes','controls.js')))
   throw Error('On-demand HTML preference controls bundle missing');
 if(!exists(path.join(out,'_loc','routes','interactive.js')))
   throw Error('Shared interactive HTML entrypoint missing');
+if(!exists(path.join(out,'_loc','routes','home.js')))
+  throw Error('LOC one-request home content entry missing');
 if(!fs.existsSync(path.join(out,'pics')))throw Error('LOC image URL path /pics not staged');
 if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))throw Error('IPA contains originals');
 for(const route of pageRoutes){
   const entry=path.join(out,route.slice(1),'index.html');
   if(!exists(entry))throw Error('Missing route: '+route);
   const html=read(entry);
+  // One published frame per route. Eighty authored route documents are
+  // different URLs, not eighty separate Nav/Footer/Canvas implementations.
+  // Never let a feature accidentally render a second outer shell.
+  const frameClasses=[...html.matchAll(/class="([^"]*)"/g)]
+    .map(match=>match[1].split(' '));
+  for(const frame of ['scope-global','scope-feature-dock','scope-footer']){
+    const count=frameClasses.filter(classes=>classes.includes(frame)).length;
+    if(count!==1)throw Error('LOC shared HTML frame '+frame+' appears '+count+
+      ' times on '+route);
+  }
+  if([...html.matchAll(/id="loc-root"/g)].length!==1)
+    throw Error('LOC route must own exactly one root HTML element: '+route);
   if(!html.includes('href="'+report.sharedCss+'"'))throw Error('LOC shared CSS not linked from '+route);
+  for(let number=1;number<=8;number++){
+    const id='theme-'+number;
+    if(!html.includes('id="loc-theme-palette-'+id+'" href="/themes/'+id+'.css"'))
+      throw Error('LOC missing theme palette '+id+' on '+route);
+  }
+  if(html.includes('data-loc-data-source'))
+    throw Error('LOC public frame exposes obsolete database connection status: '+route);
   const publicHome=['/','/lo3rwang/','/lrunes/'].includes(route);
+  const staticCanvas=!publicHome&&
+    /data-loc-component="(?:loc|settings|features|phone)"/.test(html);
+  if(staticCanvas){
+    for(const id of ['loc-feature-main','loc-feature-hero-canvas','loc-interactive-root']){
+      if(!html.includes('id="'+id+'"'))throw Error('Missing fixed LOC DIV canvas '+id+': '+route);
+    }
+    if(!/<header[^>]+id="loc-feature-hero-canvas"/.test(html))
+      throw Error('LOC Hero canvas must remain its original header: '+route);
+    if(!/id="loc-interactive-root"[^>]+data-loc-canvas="content"/.test(html))
+      throw Error('LOC feature content canvas must exist before SQL/JS: '+route);
+  }
   const src=html.match(/<script type="module" src="(\/_loc\/routes\/interactive\.js)"><\/script>/)?.[1];
   if(publicHome){
     if(html.includes('href="'+report.editorCss+'"'))
       throw Error('LOC public homepage should not download editor CSS: '+route);
     if(src||!html.includes('id="loc-static-upgrade"')||!html.includes('data-loc-upgrade="edit"'))
       throw Error('LOC public home must not automatically start Preact: '+route);
-    if(!html.includes('class="loc-view loc-home"')||!html.includes('loc-home-block__header'))
-      throw Error('LOC public home published content missing: '+route);
+    if(!html.includes('id="loc-home-sql-slot"')||
+        !html.includes('src="/_loc/routes/home.js"'))
+      throw Error('LOC homepage must query Blocks after its static frame: '+route);
+    if(html.includes('loc-home-block__header'))
+      throw Error('LOC homepage must not render release-snapshot Blocks: '+route);
     if(!html.includes('type="application/ld+json"'))
       throw Error('LOC public home structured data missing: '+route);
   }else if(html.includes('data-loc-component="work"')){

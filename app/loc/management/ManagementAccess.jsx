@@ -6,6 +6,7 @@ import {FeaturePage} from '../../modular/ui';
 import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {dbAuthEvents} from '../db/db-client.mjs';
 import {verifyManagementEntry} from '../auth/management-entry-verification.mjs';
+import {useFixedHeroReady} from '../runtime/fixed-canvas.jsx';
 
 const granted=(grants,id,level)=>level==='global'
   ?Boolean(grants?.canLocAccessSync('global'))
@@ -49,6 +50,7 @@ export function useVerifiedManagementGrants(){
 // editing controls. An OAuth session alone never grants LOC Scope access.
 export default function ManagementAccess({scopeId,level='scope',featureId='manage',staticFrame=false,children}){
   const account=useAccount({enabled:false}),dock=useEditDock();
+  const heroReady=useFixedHeroReady();
   // SSR and initial hydration must render the same fixed, unprivileged frame.
   // The effect below can restore a valid browser Session after hydration.
   const [verification,setVerification]=useState(pending);
@@ -59,6 +61,9 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
     :(readVerifiedManagementEntry()||account.refresh()),[account.refresh]);
 
   useEffect(()=>{
+    // A management menu is not a second page bootstrap: the fixed Hero
+    // finishes first, then the one Scope+Role entry verification begins.
+    if(!heroReady)return undefined;
     let active=true;
     // A verified, unexpired UI snapshot avoids a needless permission request
     // during ordinary navigation. Explicit Retry always verifies on server.
@@ -78,7 +83,7 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
         error:String(cause?.message||cause||'管理權限查詢失敗')});
     });
     return ()=>{active=false;};
-  },[check,account.refresh,scopeId,level,retryAttempt]);
+  },[heroReady,check,account.refresh,scopeId,level,retryAttempt]);
 
   // A verified account change revokes editing; an initial empty SDK event
   // is not an actual sign-out.

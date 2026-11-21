@@ -3,6 +3,7 @@ import {lazy,Suspense} from 'react';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useEffect,useState} from 'react';
 import {useAccount} from '../auth/use-account';
+import {useFixedHeroReady} from '../runtime/fixed-canvas.jsx';
 import {useEditDock} from '../../modular/edit-dock';
 import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {FeaturePage} from '../../modular/ui';
@@ -35,7 +36,8 @@ export default function AdminHomeView({scopeGroup}){
   useUiSection('admin');
   useUiSection('uiExtra.adminView');
   const UI_COPY=useUiCopy();
-  const account=useAccount();
+  const heroReady=useFixedHeroReady();
+  const account=useAccount({enabled:heroReady});
   const editDock=useEditDock();
   // /admin/ uses its own global-permission gate. The route boundary already
   // releases the previous page's transient readers; this view does not

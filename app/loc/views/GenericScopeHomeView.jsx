@@ -30,8 +30,8 @@ export default function GenericScopeHomeView(){
       />
     </FeaturePage>;
   }
-  return <main className="scope-main"><section className="scope-page">
-    <header className="loc-card scope-hero"><p className="loc-eyebrow">Scope</p><h1>{scope.label}</h1><p>{scopeId}</p></header>
+  return <FeaturePage featureId="home" titleOverride={scope.label}
+    subtitle={scopeId} eyebrow="Scope">
     <section className="loc-card">
       <ScopeEditableBlocks scopeId={scopeId} page="index" explicitEditButton/>
       <p className="scope-status">{registryRow?.domain||registryRow?.directory||''}</p>
@@ -43,5 +43,5 @@ export default function GenericScopeHomeView(){
         <ScopeLink href={navigationHref(scopeId,scopeId==='loc'?'admin':'manage',native)} native={native}><UiText id="common.management"/></ScopeLink>
       </div>
     </section>
-  </section></main>;
+  </FeaturePage>;
 }
