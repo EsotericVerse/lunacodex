@@ -59,7 +59,7 @@ export default function ScopeBlockDraftList({
   // The homepage enters its editor directly, without rendering the Hero.
   // Block 1 is the pinned Hero configuration, not a second preview frame.
   const [activeDraftUid,setActiveDraftUid]=useState(()=>
-    pageName==='index'
+    pageName==='index'&&scopeId==='loc'
       ?slots.find(slot=>HomeBlock.isPinnedHomeHero(pageName,slot))?.uid||null
       :null);
   const [activeEntityKey,setActiveEntityKey]=useState('');
@@ -350,7 +350,7 @@ export default function ScopeBlockDraftList({
     // Other frames retain their published markup and open a form on demand.
     const homePreview=pageName==='index'&&typeof renderDisplay==='function'&&
       typeof resolveSlotClassName==='function';
-    if(homePreview&&pinnedHero){
+    if(homePreview&&pinnedHero&&scopeId==='loc'){
       return <section className="scope-home-hero-editor scope-editable-block scope-block-draft"
         key={draft.uid} data-page-name={pageName} data-block-order={draft.order}>
         {controls}
