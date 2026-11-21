@@ -50,7 +50,8 @@ try{
     const part=route.split('/').filter(Boolean);
     const group=['lo3rwang','lrunes','local','scope-shell'].includes(part[0])?part.shift():'';
     const relative=part.join('/');
-    const scope=source.match(/forcedScope="([^"]+)"/)?.[1]||
+    const scope=route==='/my-phone/'?'local':
+      source.match(/forcedScope="([^"]+)"/)?.[1]||
       (group&&group!=='scope-shell'?group:'loc');
     const view=source.match(/forcedView="([^"]+)"/)?.[1]||
       source.match(/view="([^"]+)"/)?.[1]||'home';
