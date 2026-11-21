@@ -310,7 +310,7 @@ export async function handleNativePublicQuery(request,env={},{
       // response share one transaction and its bounded snapshot. The portable
       // adapter retains its dialect-specific introspection contract below.
       const output=selected.engine==='postgres'
-        ?await selected.db.transaction().execute(trx=>
+        ?await selected.db.transaction().setIsolationLevel('repeatable read').execute(trx=>
           executeKyselyAnalytics(trx,analytics,settings))
         :await executePortableKyselyAnalytics(selected.db,analytics,{
           engine:selected.engine,namespace:selected.namespace||'dbo',role:'anon'
@@ -329,7 +329,7 @@ export async function handleNativePublicQuery(request,env={},{
     }
     // A list plus its exact total is one logical read result. Use a single
     // transaction instead of reacquiring the physical connection for COUNT.
-    return selected.db.transaction().execute(async trx=>{
+    return selected.db.transaction().setIsolationLevel('repeatable read').execute(async trx=>{
     if(normalized.head){
       const result=await withFilters(trx.selectFrom(table),normalized)
         .select(eb=>eb.fn.countAll().as('count')).executeTakeFirst();
