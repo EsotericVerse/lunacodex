@@ -2,7 +2,7 @@
 // A Scope's own keyword_meta sharing flags, not arbitrary requested SQL
 // or caller identity, determine the only visible Class rows.
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
-import {directMcpKysely} from './native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from './native-kysely.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
 const jsonHeaders={'content-type':'application/json; charset=utf-8',
@@ -20,14 +20,18 @@ export async function handleNativePublicClasses(request,env={},{
   const scope=String(url.searchParams.get('scopeid')||'');
   if(!SCOPE.test(scope)||[...url.searchParams.keys()].some(k=>k!=='scopeid'))
     return reply({error:'Invalid Scope'},400);
+  let port=null;
+  let releaseAbort=()=>{};
   try{
     // Public directory always reads the trusted default source, never a
     // browser-selected database ID, credentials or arbitrary relation.
-    const port=await database(env,'',{waitUntil});
+    port=await database(env,'',{waitUntil});
+    releaseAbort=bindLocRequestAbort(port,request.signal);
+    return port.db.transaction().execute(async trx=>{
     const namespace=port.namespace||'silver';
     const control=portableRelation(scope,port.engine,namespace);
     const anchor=portableRelation(scope+'_anchor',port.engine,namespace);
-    const config=await port.db.selectFrom(control)
+    const config=await trx.selectFrom(control)
       .select('keyword_meta').where('id','=',scope).limit(1).executeTakeFirst();
     let meta=config?.keyword_meta||{};
     if(typeof meta==='string'){
@@ -37,14 +41,19 @@ export async function handleNativePublicClasses(request,env={},{
       .filter(([uid,flag])=>UID.test(uid)&&flag===true)
       .slice(0,100).map(([uid])=>uid);
     if(!shared.length)return reply({data:[]});
-    const rows=await port.db.selectFrom(anchor)
+    const rows=await trx.selectFrom(anchor)
       .select(['uid','title']).where('type','=','class')
       .where('uid','in',shared).orderBy('title','asc').limit(100).execute();
     const allowed=new Set(shared);
     return reply({data:rows.filter(row=>allowed.has(String(row.uid||'')))
       .map(row=>({scopeId:scope,classUid:row.uid,name:row.title}))});
+    });
   }catch(error){
     console.error('[LOC public Class directory]',String(error?.message||error));
     return reply({error:'Public Class directory unavailable'},503);
+  }finally{
+    releaseAbort();
+    try{await closeLocDatabase(port);}
+    catch(error){console.error('[LOC Class SQL cleanup]',{code:String(error?.code||'CLOSE_FAILED').slice(0,64)});}
   }
 }
