@@ -45,8 +45,8 @@ jobs:
           cache: npm
       - name: Install existing build packages
         run: npm ci --no-audit --no-fund
-      - name: Verify minimal HTML entry contract
-        run: node --test tests/loc-html-base.test.mjs
+      - name: Run all LOC regression tests
+        run: node --test tests/*.test.mjs
       - name: Build existing static HTML routes
         run: npm run build:static
       - name: Verify static content and browser bundles
