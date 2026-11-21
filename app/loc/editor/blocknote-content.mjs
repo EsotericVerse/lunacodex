@@ -122,12 +122,18 @@ export function canonicalBlockNoteBlocks(blocks){
 }
 
 export function canonicalBlockNoteHtml(html){
-  // Preserve every blank paragraph as a visible blank line, including
-  // legacy U+FFFC and genuinely empty <p>. Do not touch inline/media content.
-  return String(html??'').replace(blankHtmlParagraph,(match,attrs,body)=>{
+  // Keep authored HTML and blank paragraphs; editor UI metadata is not content.
+  const normalized=String(html??'').replace(blankHtmlParagraph,(match,attrs,body)=>{
     if(body.trim()&&!objectOnlyHtml.test(body))return match;
     return '<p'+attrs+'><br></p>';
   });
+  return normalized
+    .replace(/\s(?:classname="bn-inline-content-section"|data-inline-content-type="link"|class="bn-inline-content"|data-editable="")/g,'')
+    .replace(/<h[1-6]\b[^>]*>/gi,tag=>tag.replace(/\sdata-level="[1-6]"/g,''))
+    .replace(/<img\b[^>]*>/gi,tag=>tag
+      .replace(/\sdata-url="[^"]*"/g,attr=>/\ssrc=/.test(tag)?'':attr)
+      .replace(/\sdata-name="[^"]*"/g,attr=>/\salt=/.test(tag)?'':attr)
+      .replace(/\sdata-preview-width="[^"]*"/g,attr=>/\swidth=/.test(tag)?'':attr));
 }
 
 // Shared, URL-only images for BlockNote; never store file bytes or data URIs.

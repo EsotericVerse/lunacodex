@@ -35,11 +35,7 @@ const systemNames=[...new Set([...globalList.ArticleTag,'Others'].map(x=>String(
 
 function cleanPublishedHtml(value,scope,page){
   if(typeof value!=='string')return value;
-  let html=value.replaceAll(' classname="bn-inline-content-section"','')
-    .replaceAll(' data-inline-content-type="link"','')
-    .replaceAll(' data-level="2"','')
-    .replaceAll(' data-level="3"','')
-    .replaceAll(' data-editable=""','');
+  let html=value;
   if(scope==='loc'&&page==='index'){
     html=html.replaceAll('https://loc.lo3rwang.cc/governance/','https://loc.lo3rwang.cc/trace/');
     html=html.replaceAll('>治理</a>','>痕跡</a>');
