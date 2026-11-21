@@ -137,9 +137,10 @@ export function getScope(id){
   return genericScope(scopeId);
 }
 
+const LOC_FALLBACK_HOST='loc.lo3rwang.cc';
 export function scopeOrigin(scopeId){
   const id=normalizeScopeId(scopeId);
-  const row=registryRouteRows.get(id);
+  const row=SCOPE_ROUTE_INDEX.find(item=>item.scope_id===id&&item.active!==false);
   // The generated JS route index is authoritative before any network read.
   return row?.domain?'https://'+row.domain:'https://'+LOC_FALLBACK_HOST;
 }
@@ -147,7 +148,7 @@ export function scopeOrigin(scopeId){
 function scopeBaseHref(scopeId){
   const id=normalizeScopeId(scopeId);
   if(id&&!SCOPES[id])return 'https://'+LOC_FALLBACK_HOST+GENERIC_SCOPE_PATH;
-  const row=registryRouteRows.get(id);
+  const row=SCOPE_ROUTE_INDEX.find(item=>item.scope_id===id&&item.active!==false);
   if(row?.domain)return 'https://'+row.domain;
   if(row?.directory)return 'https://'+LOC_FALLBACK_HOST+cleanPath(row.directory);
   if(id===DEFAULT_SCOPE_ID)return 'https://'+LOC_FALLBACK_HOST;
