@@ -9,10 +9,10 @@ export const SCOPES=Object.freeze({
   lrunes:{label:'月之符文',path:'/lrunes/',theme:'theme-5'}
 });
 export const SECTIONS=Object.freeze({
-  culture:'文化',statics:'統計',trace:'痕跡',search:'搜尋',manage:'管理',settings:'設定'
+  culture:'文化',statics:'統計',trace:'痕跡',search:'搜尋',manage:'管理',settings:'設定',article:'作品'
 });
 export function href(scope,section='home'){
-  return SCOPES[scope].path+(section==='home'?'':section+'/');
+  return section==='article'?'/work/':SCOPES[scope].path+(section==='home'?'':section+'/');
 }
 function sourceImage(value){
   if(!value)return '';
