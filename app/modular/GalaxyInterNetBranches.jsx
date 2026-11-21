@@ -1,11 +1,12 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 import {useState} from 'react';
-import dynamic from './runtime/dynamic';
 import {galaxyInterNetEdges} from '../../packages/zenstack/galaxy-inter-net.mjs';
 
 // Second-level Anchor resolver is loaded only when a user opens its branch.
-const GalaxyAnchorInterNet=dynamic(()=>import('./GalaxyAnchorInterNet'),{loading:()=>null});
+const LazyGalaxyAnchorInterNet=lazy(()=>import('./GalaxyAnchorInterNet'));
+function GalaxyAnchorInterNet(props){return <Suspense fallback={null}><LazyGalaxyAnchorInterNet {...props}/></Suspense>;}
 import {featureNavigationHref,galaxyIdentityHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
 

@@ -1,2 +1,0 @@
-import {lazy,Suspense} from 'react';
-export default function dynamic(loader,{loading:Loading=null}={}){const Component=lazy(async()=>{const m=await loader();return {default:m.default||m};});return function Dynamic(props){return <Suspense fallback={Loading?<Loading/>:null}><Component {...props}/></Suspense>;};}

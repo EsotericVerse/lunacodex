@@ -1,2 +1,0 @@
-import {forwardRef} from 'react';
-export default forwardRef(function Link({href,replace,scroll,prefetch,locale,as,children,...props},ref){return <a {...props} ref={ref} href={typeof href==='string'?href:href?.pathname||'/'}>{children}</a>;});

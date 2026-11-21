@@ -1,4 +1,5 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 import {FeaturePage} from '../../modular/ui';
 import UiText,{useUiText} from '../../i18n/UiText';
@@ -6,12 +7,13 @@ import {navigationHref} from '../../modular/routing/scope-registry.js';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import ScopeLink from '../../modular/ScopeLink';
-import dynamic from '../../modular/runtime/dynamic';
 import {useUiSection} from '../../i18n/ui-locale';
 // Only one of these mutually exclusive home capabilities is needed per Scope.
 // Scope Groups must not load the editing implementation.
-const ScopeGroupOverview=dynamic(()=>import('../scope/ScopeGroupOverview'),{loading:()=>null});
-const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks'),{loading:()=>null});
+const LazyScopeGroupOverview=lazy(()=>import('../scope/ScopeGroupOverview'));
+function ScopeGroupOverview(props){return <Suspense fallback={null}><LazyScopeGroupOverview {...props}/></Suspense>;}
+const LazyScopeEditableBlocks=lazy(()=>import('../blocks/ScopeEditableBlocks'));
+function ScopeEditableBlocks(props){return <Suspense fallback={null}><LazyScopeEditableBlocks {...props}/></Suspense>;}
 
 export default function GenericScopeHomeView(){
   useUiSection('uiExtra.genericScope');

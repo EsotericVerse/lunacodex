@@ -1,7 +1,7 @@
+import {useMemo} from 'react';
 'use client';
 
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useSearchParams} from './runtime/navigation';
 import {motion,useReducedMotion} from 'motion/react';
 import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
 
@@ -63,7 +63,7 @@ export default function ManagementSectionNav({id,title,panelId,items,value,onCha
 // not navigate or remount the page (and therefore do not jump to the Hero).
 // The History API only mirrors selection for deep links/back-forward support.
 export function useManagementSection(items,defaultValue='',aliases={}){
-  const searchParams=useSearchParams();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const resolve=raw=>{
     const requested=aliases[raw]||raw;
     const fallback=items.some(item=>item.value===defaultValue)?defaultValue:items[0]?.value||'';

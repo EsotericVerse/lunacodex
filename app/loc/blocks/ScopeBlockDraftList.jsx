@@ -1,8 +1,8 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
-import dynamic from '../../modular/runtime/dynamic';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
@@ -14,8 +14,10 @@ import {HeroImageFieldset} from './HeroImageFields';
 import {invalidateScopeBlockPage} from '../scope/scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
 
-const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
-const ObjectEditor=dynamic(()=>import('../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
+const LazyBlockNoteEditor=lazy(()=>import('../editor/BlockNoteEditor'));
+function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
+const LazyObjectEditor=lazy(()=>import('../editor/BlockNoteEditor').then(mod=>({default:mod.ObjectEditor})));
+function ObjectEditor(props){return <Suspense fallback={null}><LazyObjectEditor {...props}/></Suspense>;}
 
 const TITLE_LIMIT=64;
 const EYEBROW_LIMIT=64;

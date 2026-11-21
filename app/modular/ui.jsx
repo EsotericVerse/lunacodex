@@ -1,10 +1,9 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import UiText,{useUiText} from '../i18n/UiText';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
-import dynamic from './runtime/dynamic';
-import {usePathname} from './runtime/navigation';
 import {useEditDock} from './edit-dock';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {UI_COPY} from '../i18n/ui-copy';
@@ -44,8 +43,10 @@ import ScopeLink from './ScopeLink';
 import {featureNavigationHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
 // Shared display stays light: mount the editor only on pages that need it.
-const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
-const ArticleTimeAnchorAction=dynamic(()=>import('./ArticleTimeAnchorAction'),{loading:()=>null});
+const LazyBlockNoteEditor=lazy(()=>import('../loc/editor/BlockNoteEditor'));
+function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
+const LazyArticleTimeAnchorAction=lazy(()=>import('./ArticleTimeAnchorAction'));
+function ArticleTimeAnchorAction(props){return <Suspense fallback={null}><LazyArticleTimeAnchorAction {...props}/></Suspense>;}
 
 function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=false,scopeId=''}){
   const sign=HomeBlock.heroExtraFor(scopeId);
@@ -73,7 +74,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const resolvedSubtitle=localizedScope?.[featureId]||scope?.featureSubtitles?.[featureId]||profile.subtitle||'';
   const resolvedDescription=description??profile.description;
   const finalSubtitle=subtitle||resolvedSubtitle;
-  const pathname=usePathname();
+  const pathname=(typeof window==='undefined'?'/':window.location.pathname);
   const editDock=useEditDock();
   const editing=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const managementSlot=HomeBlock.managementHeroSlot(pathname,scopeId,editing,featureId);
@@ -177,9 +178,9 @@ function safeRelationLinksOf(items=[],defaultLabel=''){
     });
 }
 
-const ArticleContextStatisticsChart=dynamic(()=>import('./modules/statistics/StatisticsMultiChart'),{
-  ssr:false,loading:()=> <p className="scope-status">正在準備統計圖…</p>
-});
+const LazyArticleContextStatisticsChart=lazy(()=>import('./modules/statistics/StatisticsMultiChart'));
+const ArticleContextStatisticsChartLoading=()=> <p className="scope-status">正在準備統計圖…</p>;
+function ArticleContextStatisticsChart(props){return <Suspense fallback={<ArticleContextStatisticsChartLoading/>}><LazyArticleContextStatisticsChart {...props}/></Suspense>;}
 function ArticleStatisticsPreview({scopeId='',statistics=null}){
   const [open,setOpen]=useState(false);
   const [range,setRange]=useState('week');

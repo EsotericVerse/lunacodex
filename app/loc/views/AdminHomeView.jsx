@@ -1,7 +1,7 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useEffect,useState} from 'react';
-import dynamic from '../../modular/runtime/dynamic';
 import {useAccount} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
 import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
@@ -18,10 +18,18 @@ const ADMIN_OPTIONS=Object.freeze([
   {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'},
   {value:'io',label:'匯入與系統工具',shortLabel:'工具',description:'匯入匯出與系統限制'}
 ]);
-const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
-const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{loading:PanelLoading});
-const ThemeEditor=dynamic(()=>import('./admin-panels/ThemeEditor'),{loading:PanelLoading});
-const FeatureHeroImages=dynamic(()=>import('./admin-panels/FeatureHeroImages'),{loading:PanelLoading});
+const LazyDatabaseTarget=lazy(()=>import('./admin-panels/DatabaseTarget'));
+const DatabaseTargetLoading=PanelLoading;
+function DatabaseTarget(props){return <Suspense fallback={<DatabaseTargetLoading/>}><LazyDatabaseTarget {...props}/></Suspense>;}
+const LazyRuntimeIoSettings=lazy(()=>import('./admin-panels/RuntimeIoSettings'));
+const RuntimeIoSettingsLoading=PanelLoading;
+function RuntimeIoSettings(props){return <Suspense fallback={<RuntimeIoSettingsLoading/>}><LazyRuntimeIoSettings {...props}/></Suspense>;}
+const LazyThemeEditor=lazy(()=>import('./admin-panels/ThemeEditor'));
+const ThemeEditorLoading=PanelLoading;
+function ThemeEditor(props){return <Suspense fallback={<ThemeEditorLoading/>}><LazyThemeEditor {...props}/></Suspense>;}
+const LazyFeatureHeroImages=lazy(()=>import('./admin-panels/FeatureHeroImages'));
+const FeatureHeroImagesLoading=PanelLoading;
+function FeatureHeroImages(props){return <Suspense fallback={<FeatureHeroImagesLoading/>}><LazyFeatureHeroImages {...props}/></Suspense>;}
 
 export default function AdminHomeView({scopeGroup}){
   useUiSection('admin');

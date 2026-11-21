@@ -1,9 +1,8 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import dynamic from '../runtime/dynamic';
 
 import ScopeOptionPicker from '../ScopeOptionPicker';
-import {useSearchParams} from '../runtime/navigation';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useEditDock} from '../edit-dock';
@@ -15,7 +14,8 @@ import {anniversarySuggestionsForDate} from '../../loc/culture/anniversary.mjs';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture/anchor-bulk.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';
-const BlockNoteEditor=dynamic(()=>import('../../loc/editor/BlockNoteEditor'),{loading:()=>null});
+const LazyBlockNoteEditor=lazy(()=>import('../../loc/editor/BlockNoteEditor'));
+function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
 
 const TIME_COLUMNS='uid,type,title,description,attr,invisible';
 // Read/write the physical TimeAnchor variant; the editor's 'anchor' label is
@@ -98,7 +98,7 @@ export default function CultureTimelineEditor({
   const copy=useUiCopy();
   const editDock=useEditDock();
   const resourceCache=useResourceCache();
-  const searchParams=useSearchParams();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const routeAnchorDate=String(searchParams?.get?.('anchorDate')||'').slice(0,10);
   const effectiveAnchorDate=day(suggestedAnchorDate||(!selectedRecordId?routeAnchorDate:''));
   const dataScope=String(scopeId||'').trim();

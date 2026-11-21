@@ -1,6 +1,6 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
-import dynamic from '../runtime/dynamic';
 import UiText from '../../i18n/UiText';
 import {useAccount} from '../../loc/auth/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
@@ -9,9 +9,9 @@ import {FeaturePage} from '../ui';
 import ManagementWorkspaceFrame from '../../loc/management/ManagementWorkspaceFrame';
 import {useUiSection} from '../../i18n/ui-locale';
 
-const KeywordLibraryPanel=dynamic(()=>import('../../loc/keywords/ui/KeywordLibraryPanel'),{
-  loading:()=> <p className="scope-status"><UiText id="uiExtra.keywords.settingsLoading"/></p>
-});
+const LazyKeywordLibraryPanel=lazy(()=>import('../../loc/keywords/ui/KeywordLibraryPanel'));
+const KeywordLibraryPanelLoading=()=> <p className="scope-status"><UiText id="uiExtra.keywords.settingsLoading"/></p>;
+function KeywordLibraryPanel(props){return <Suspense fallback={<KeywordLibraryPanelLoading/>}><LazyKeywordLibraryPanel {...props}/></Suspense>;}
 
 export default function KeywordSettings(){
   useUiSection('uiExtra.keywords');

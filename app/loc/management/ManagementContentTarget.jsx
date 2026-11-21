@@ -1,6 +1,6 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
-import dynamic from '../../modular/runtime/dynamic';
 import {useAccount} from '../auth/use-account';
 import {defaultScopeData} from '../scope/scope-data';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
@@ -10,9 +10,13 @@ import PanelLoading from '../ui/PanelLoading';
 // article destinations are derived from the owner Scope, not user-selectable
 // database identifiers. Other Scope pages continue using their own scopeId.
 const DEFAULT_MANAGED_SCOPE_ID=SCOPE_ROUTE_INDEX.find(row=>row.active&&row.scope_id!=='loc')?.scope_id||'';
-const ManagementMediaWorkspace=dynamic(()=>import('../media/ManagementMediaWorkspace'),{loading:()=>null});
-const ManagementArticlePublisher=dynamic(()=>import('./ManagementArticlePublisher'),{loading:PanelLoading});
-const ManagementImportPanel=dynamic(()=>import('../import/ManagementImportPanel'),{loading:()=>null});
+const LazyManagementMediaWorkspace=lazy(()=>import('../media/ManagementMediaWorkspace'));
+function ManagementMediaWorkspace(props){return <Suspense fallback={null}><LazyManagementMediaWorkspace {...props}/></Suspense>;}
+const LazyManagementArticlePublisher=lazy(()=>import('./ManagementArticlePublisher'));
+const ManagementArticlePublisherLoading=PanelLoading;
+function ManagementArticlePublisher(props){return <Suspense fallback={<ManagementArticlePublisherLoading/>}><LazyManagementArticlePublisher {...props}/></Suspense>;}
+const LazyManagementImportPanel=lazy(()=>import('../import/ManagementImportPanel'));
+function ManagementImportPanel(props){return <Suspense fallback={null}><LazyManagementImportPanel {...props}/></Suspense>;}
 
 export default function ManagementContentTarget({scopeId,mode='import',globalAdmin=false}){
   const account=useAccount();

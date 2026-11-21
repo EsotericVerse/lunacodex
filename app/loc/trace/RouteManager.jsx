@@ -1,11 +1,10 @@
 'use client';
+import {lazy,Suspense} from 'react';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
-import dynamic from '../../modular/runtime/dynamic';
 import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
 import {planTraceVisibilityUids} from './visibility-plan.mjs';
 import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {useSearchParams} from '../../modular/runtime/navigation';
 import {useAccount} from '../auth/use-account';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
@@ -19,17 +18,18 @@ import {
   readDefaultTraceRoute,setDefaultTraceRoute,clearDefaultTraceRoute,chooseDefaultTraceRoute
 } from '../../modular/features/trace/trace-route-preference.mjs';
 
-const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
-const TraceMap=dynamic(()=>import('../../modular/features/trace/TraceMap'),{
-  ssr:false,loading:()=> <p className="scope-status">正在載入地圖…</p>
-});
+const LazyBlockNoteEditor=lazy(()=>import('../editor/BlockNoteEditor'));
+function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
+const LazyTraceMap=lazy(()=>import('../../modular/features/trace/TraceMap'));
+const TraceMapLoading=()=> <p className="scope-status">正在載入地圖…</p>;
+function TraceMap(props){return <Suspense fallback={<TraceMapLoading/>}><LazyTraceMap {...props}/></Suspense>;}
 const TRACE_SOURCE_ROWS=SCOPE_ROUTE_INDEX.filter(row=>row.active&&TRACE_SCOPES.includes(row.scope_id)&&row.scope_id!=='loc');
 const MAX_ROAD=80,MAX_LINES=400;
 const unique=items=>[...new Set(items)];
 const validPair=pair=>Array.isArray(pair)&&pair.length===2&&pair[0]&&pair[1]&&pair[0]!==pair[1];
 
 export default function TraceRouteManager({scopeId,mode='all'}){
-  const account=useAccount(),cache=useResourceCache(),params=useSearchParams();
+  const account=useAccount(),cache=useResourceCache(),params=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const dock=useEditDock();
   const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
   const [owner,setOwner]=useState(scopeId==='loc'?(TRACE_SOURCE_ROWS[0]?.scope_id||''):scopeId);

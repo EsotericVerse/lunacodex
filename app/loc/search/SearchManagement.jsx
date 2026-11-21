@@ -1,8 +1,8 @@
+import {lazy,Suspense} from 'react';
+import {useMemo} from 'react';
 'use client';
 
 import {useEffect} from 'react';
-import dynamic from '../../modular/runtime/dynamic';
-import {useSearchParams} from '../../modular/runtime/navigation';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
@@ -11,13 +11,20 @@ import {useVerifiedManagementGrants} from '../management/ManagementAccess';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
-const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks'),{loading:()=>null});
-const ManagementArticlePublisher=dynamic(()=>import('../management/ManagementArticlePublisher'),{loading:()=>null});
-const ManagementMediaWorkspace=dynamic(()=>import('../media/ManagementMediaWorkspace'),{loading:()=>null});
-const ManagementContentTarget=dynamic(()=>import('../management/ManagementContentTarget'),{loading:()=>null});
-const ManagementImportPanel=dynamic(()=>import('../import/ManagementImportPanel'),{loading:()=>null});
-const ScopeSettingsPanel=dynamic(()=>import('../scope/ScopeSettingsPanel'),{loading:()=>null});
-const ScopeGroupAccessPanel=dynamic(()=>import('../scope/ScopeGroupAccessPanel'),{loading:()=>null});
+const LazyScopeEditableBlocks=lazy(()=>import('../blocks/ScopeEditableBlocks'));
+function ScopeEditableBlocks(props){return <Suspense fallback={null}><LazyScopeEditableBlocks {...props}/></Suspense>;}
+const LazyManagementArticlePublisher=lazy(()=>import('../management/ManagementArticlePublisher'));
+function ManagementArticlePublisher(props){return <Suspense fallback={null}><LazyManagementArticlePublisher {...props}/></Suspense>;}
+const LazyManagementMediaWorkspace=lazy(()=>import('../media/ManagementMediaWorkspace'));
+function ManagementMediaWorkspace(props){return <Suspense fallback={null}><LazyManagementMediaWorkspace {...props}/></Suspense>;}
+const LazyManagementContentTarget=lazy(()=>import('../management/ManagementContentTarget'));
+function ManagementContentTarget(props){return <Suspense fallback={null}><LazyManagementContentTarget {...props}/></Suspense>;}
+const LazyManagementImportPanel=lazy(()=>import('../import/ManagementImportPanel'));
+function ManagementImportPanel(props){return <Suspense fallback={null}><LazyManagementImportPanel {...props}/></Suspense>;}
+const LazyScopeSettingsPanel=lazy(()=>import('../scope/ScopeSettingsPanel'));
+function ScopeSettingsPanel(props){return <Suspense fallback={null}><LazyScopeSettingsPanel {...props}/></Suspense>;}
+const LazyScopeGroupAccessPanel=lazy(()=>import('../scope/ScopeGroupAccessPanel'));
+function ScopeGroupAccessPanel(props){return <Suspense fallback={null}><LazyScopeGroupAccessPanel {...props}/></Suspense>;}
 
 // Article Control sections share one Scope ownership and authorization boundary. Moving a panel
 // never changes its Scope ownership, database tables or authorizer.
@@ -45,7 +52,7 @@ export default function SearchManagement(){
   const {scopeId}=useScopeRuntime();
   const editDock=useEditDock();
   const account=useVerifiedManagementGrants();
-  const searchParams=useSearchParams();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const isLocAdmin=scopeId==='loc';
   // Personal preferences belong to the last Settings tab, not Article Control.
   // Preserve old bookmarks without mounting the retired Scope classification editor.

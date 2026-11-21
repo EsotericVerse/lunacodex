@@ -1,14 +1,16 @@
 'use client';
+import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
-import dynamic from '../../../modular/runtime/dynamic';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../../scope/scope-data';
 import {HomeBlock} from '../../blocks/home-block-model';
 import {heroImageUrl as imageUrlOf} from '../../blocks/hero-image.mjs';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 
-const ScopeEditableBlocks=dynamic(()=>import('../../blocks/ScopeEditableBlocks'),{loading:()=>null});
-const BlockNoteEditor=dynamic(()=>import('../../editor/BlockNoteEditor'),{loading:()=>null});
+const LazyScopeEditableBlocks=lazy(()=>import('../../blocks/ScopeEditableBlocks'));
+function ScopeEditableBlocks(props){return <Suspense fallback={null}><LazyScopeEditableBlocks {...props}/></Suspense>;}
+const LazyBlockNoteEditor=lazy(()=>import('../../editor/BlockNoteEditor'));
+function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
 
 // Admin has six feature tabs. Management Heroes are editors INSIDE the
 // corresponding feature panel, not extra navigation items.
