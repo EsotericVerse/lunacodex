@@ -14,6 +14,8 @@ on:
       - 'app/loc/runtime/html-entry.jsx'
       - 'app/loc/runtime/html-controls.js'
       - 'tests/loc-html-base.test.mjs'
+      - 'tests/loc-db-connectivity.test.mjs'
+      - 'functions/api/loc-auth-connectivity.js'
       - '.github/workflows/loc-static-regression.yml'
   push:
     branches: [main]
@@ -27,6 +29,8 @@ on:
       - 'app/loc/runtime/html-entry.jsx'
       - 'app/loc/runtime/html-controls.js'
       - 'tests/loc-html-base.test.mjs'
+      - 'tests/loc-db-connectivity.test.mjs'
+      - 'functions/api/loc-auth-connectivity.js'
       - '.github/workflows/loc-static-regression.yml'
   workflow_dispatch:
 
