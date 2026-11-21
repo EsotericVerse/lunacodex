@@ -185,7 +185,9 @@ export default function ManagementArticlePublisher({scopeId}){
     try{
       const plan=await prepareArticleTransaction();
       if(plan.operations.length)await transactionWrites(plan.operations);
-      await plan.afterCommit();
+      try{await plan.afterCommit();}
+      catch{setStatus('資料已提交，但畫面更新失敗；請重新整理。');}
+
       return true;
     }catch(error){
       const message=error?.message||UI_COPY.management.articlePublishFailed;
