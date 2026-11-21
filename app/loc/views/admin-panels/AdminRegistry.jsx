@@ -626,18 +626,20 @@ function CreateNodePanel({data,kind='scope',onClose}){
         directory:mode==='directory'?'/'+id:null,
         parent_scope_id:'loc',
         theme:'system-default',
+        locale:normalizeUiLocale(scopeDraft.locale),
         copy_keywords:true
       });
-      // The RPC returned successfully; a later schema-cache failure is not a failed creation.
+      // SQL created all four Scope tables, copied the selected Class and
+      // committed Registry/locale together. Do not send another UPDATE/SELECT.
       provisioned=true;
-      if(String(provisionedScope?.scope_id||'')!==id)throw new Error('人員建立回應缺少正確代碼。');
-      if(Number(provisionedScope?.keyword_rows)!==66)throw new Error('符文66複製數量不正確，請核對資料庫。');
-      await updateRows('silver.'+id,{
-        locale:normalizeUiLocale(scopeDraft.locale),
-        updated_at:new Date().toISOString()
-      },{filters:[{column:'id',operator:'eq',value:id}]});
-      const config=await readAdminScopeConfig(id);
-      if(!config)throw new Error('人員設定尚未可讀。');
+      if(String(provisionedScope?.scope_id||'')!==id||
+        provisionedScope?.created!==true)
+        throw new Error('人員建立已提交，但回執內容不完整，請重新讀取。');
+      // The actual selected Class may have 67 Items (66 symbols plus an
+      // extra category). Never hard-code 66 or duplicate the SQL count.
+      if(!Number.isSafeInteger(Number(provisionedScope?.keyword_rows))||
+        Number(provisionedScope.keyword_rows)<1)
+        throw new Error('已建立，但複製的關鍵詞數量需要核對。');
       setStatus('人員 '+id+' 已建立。');
       refresh();
       onClose?.();
@@ -778,12 +780,11 @@ export default function AdminRegistry(){
     try{
       const result=await deleteScope(id);
       if(result?.deleted!==true||result?.scope_id!==id){
-        throw new Error('刪除 RPC 未回傳正確的完成確認。');
+        throw new Error('刪除交易未回傳正確的完成確認。');
       }
-      const {data:remaining,error:verifyError}=await dbAuthRelation('api.manage')
-        .select('id').eq('id',id).limit(1);
-      if(verifyError)throw new Error('刪除已執行，但 Registry 驗證失敗：'+verifyError.message);
-      if(remaining?.length)throw new Error('資料庫仍存在 '+id+'，已取消前端成功提示。');
+      // A SQL COMMIT receipt already confirms Registry, linked summary,
+      // and physical Scope tables were deleted together in one transaction.
+      // A second SELECT here would only add another connection and race.
       setRegistry(rows=>rows.filter(row=>row.scope_id!==id));
       setSelectedId(current=>current===id?'loc':current);
       setDeletePending('');
