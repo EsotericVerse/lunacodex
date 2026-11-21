@@ -93,7 +93,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   // A complete logical Save crosses the HTTP boundary once. The trusted
   // backend checks identity and api.manage once and runs all steps atomically.
   // Keywords and imports retain their own explicit large-batch protocols.
-  async function transactionWritesUnchecked(operations){
+  async function transactionWritesUnchecked(operations,{keywordSyncScope=''}={}){
     if(!Array.isArray(operations)||!operations.length)
       throw new Error('LOC transaction requires at least one write');
     preflightWrite();
@@ -115,7 +115,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       }
       return item;
     });
-    const {data,error}=await authClient.schema('silver').managedTransaction(normalized);
+    const {data,error}=await authClient.schema('silver').managedTransaction(normalized,{keywordSyncScope});
     if(error)throw new Error(error.message||'LOC transaction failed');
     if(!Array.isArray(data?.results)||data.results.length!==normalized.length)
       throw new Error('LOC transaction result is unconfirmed; reload before retrying');
