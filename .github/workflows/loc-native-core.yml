@@ -44,7 +44,7 @@ jobs:
           test -s out/work/index.html
           test -s out/loc-native-client.mjs
           test -s out/_loc/core/index.mjs
-          test -s out/_loc/vendor/maplibre-gl.js
+          test -s out/_loc/vendor/maplibre-gl.mjs
           test ! -e out/_loc/routes
           test ! -e out/sw.js
           grep -q 'LOC Framework' out/index.html
