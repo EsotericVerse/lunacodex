@@ -23,10 +23,12 @@ if(!exists(path.join(out,'_loc','build-report.json')))throw Error('LOC build-rep
 const report=JSON.parse(read(path.join(out,'_loc','build-report.json')));
 if(!/^\/_loc\/[^?#]+\.css$/.test(report.sharedCss)||!exists(path.join(out,report.sharedCss.slice(1))))
   throw Error('LOC shared CSS missing or invalid: '+report.sharedCss);
-if(report.runtime!=='Preact'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
+if(report.runtime!=='Native React + optional Preact island'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
   throw Error('LOC Preact route manifest mismatch');
 if(report.editorCss!=='/_loc/routes/editor.css'||!exists(path.join(out,report.editorCss.slice(1))))
   throw Error('LOC editor-on-demand stylesheet missing: '+report.editorCss);
+if(!exists(path.join(out,'_loc','routes','public-preferences.js')))
+  throw Error('Native Preact preferences island missing');
 if(fs.existsSync(path.join(out,'_next')))throw Error('Next.js assets left in LOC export');
 const css=read(path.join(out,report.sharedCss.slice(1)));
 if(/assets\/pics\//.test(css))throw Error('LOC CSS still bundles raw source image paths');
@@ -63,4 +65,4 @@ if(!api.include?.includes('/api/loc-public-query')||!api.include?.includes('/api
   throw Error('Cloudflare SQL/permissions route contract missing');
 const pkg=JSON.parse(read(path.join(root,'package.json')));
 if('next' in pkg.dependencies)throw Error('Next remains a LOC runtime dependency');
-console.log('[LOC QA] '+pageRoutes.length+' Preact HTML routes and entrypoint files valid; static CSS, themes, native bootstrap, SQL Functions routing, images: OK. JS bytes='+report.jsBytes+'; target='+(native?'IPA':'Web'));
+console.log('[LOC QA] '+pageRoutes.length+' static/interactive HTML routes and entrypoint files valid; static CSS, themes, native bootstrap, SQL Functions routing, images: OK. JS bytes='+report.jsBytes+'; target='+(native?'IPA':'Web'));

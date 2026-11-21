@@ -93,7 +93,7 @@ function StaticSite({scopeId,rows}){
    <SiteFooter scopeId={scopeId}/>
  </>;
 }
-function activateOnDemand(entry){
+function activateOnDemand(entry,scopeId){
  // A single event bridge, not another app or router. In particular there is
  // no automatic import of Preact while reading published pages.
  return '<script id="loc-static-upgrade">'+[
@@ -102,6 +102,14 @@ function activateOnDemand(entry){
   'const target=event.target.closest("[data-loc-upgrade]");',
   'if(!target||busy)return;event.preventDefault();busy=true;',
   'const edit=target.dataset.locUpgrade==="edit";',
+  'if(!edit){try{const mod=await import("/_loc/routes/public-preferences.js");',
+  'const panel=document.createElement("div");panel.className="loc-static-preferences-mount";',
+  'target.after(panel);target.hidden=true;',
+  'mod.mountPublicPreferences(panel,{scopeId:'+JSON.stringify(scopeId)+',onOpenFull:()=>{',
+  'panel.remove();target.hidden=false;target.dataset.locUpgrade="edit";target.click();',
+  'target.dataset.locUpgrade="interface";}});',
+  '}catch(error){console.error("LOC Preact preferences failed",error);}',
+  'busy=false;return;}',
   'const fallback=root.innerHTML;target.disabled=true;',
   'target.textContent="正在載入功能…";',
   'const observer=new MutationObserver(()=>{if(!edit)return;',
@@ -124,6 +132,6 @@ export function renderPublicScopeHome({route,entry}){
  return {
    scopeId,blockCount:rows.length,
    html:renderToStaticMarkup(<StaticSite scopeId={scopeId} rows={rows}/>),
-   loader:activateOnDemand(entry)
+   loader:activateOnDemand(entry,scopeId)
  };
 }

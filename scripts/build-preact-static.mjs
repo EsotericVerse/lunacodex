@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {NATIVE_STATIC_ROUTE_SCRIPT,INITIAL_THEME_SCRIPT} from '../app/modular/runtime/theme-bootstrap.mjs';
@@ -10,7 +9,6 @@ const root=process.cwd();
 const out=path.join(root,'out');
 const scratch=path.join(root,'.loc-preact-build');
 const abs=p=>path.join(root,p);
-const require=createRequire(import.meta.url);
 const command=process.platform==='win32'?'npm.cmd':'npm';
 const native=process.env.LOC_NATIVE_BUNDLE==='1';
 function run(args){
@@ -33,7 +31,11 @@ try{
   run(['run','prebuild']);
   const allPages=pages(abs('app')).sort();
   if(allPages.length<60)throw new Error('LOC route loss: '+allPages.length);
-  const entryPoints={'_loc/site':abs('app/globals.css'),'_loc/editor':abs('app/styles/editor.css')};
+  const entryPoints={
+    '_loc/site':abs('app/globals.css'),
+    '_loc/editor':abs('app/styles/editor.css'),
+    'public-preferences':abs('app/loc/public-home-preferences.jsx')
+  };
   const records=[];
   for(let i=0;i<allPages.length;i++){
     const name='_loc/routes/p'+i;
@@ -42,10 +44,10 @@ try{
     const entry=path.join(scratch,'entry-'+i+'.jsx');
     fs.writeFileSync(entry,[
       "import {createRoot} from 'react-dom/client';",
-      "import {h} from 'preact';",
+      "import {createElement} from 'react';",
       'import Shell from '+JSON.stringify(abs('app/AppShell.jsx'))+';',
       'import Page from '+JSON.stringify(abs('app/'+file))+';',
-      "createRoot(document.getElementById('loc-root')).render(h(Shell,null,h(Page)));"
+      "createRoot(document.getElementById('loc-root')).render(createElement(Shell,null,createElement(Page)));"
     ].join('\n'));
     entryPoints[name]=entry;
     const source=fs.readFileSync(abs('app/'+file),'utf8');
@@ -54,25 +56,15 @@ try{
     const noIndex=/noIndex:\s*true|index:\s*false/.test(source);
     records.push({route,name,title,description,noIndex});
   }
-  const preact=path.dirname(require.resolve('preact/package.json'));
-  const alias={
-    react:path.join(preact,'compat'),
-    'react-dom':path.join(preact,'compat'),
-    'react-dom/client':path.join(preact,'compat','client'),
-    'react-dom/server':path.join(preact,'compat','server'),
-    'react-dom/test-utils':path.join(preact,'test-utils'),
-    'react/jsx-runtime':path.join(preact,'jsx-runtime'),
-    'react/jsx-dev-runtime':path.join(preact,'jsx-dev-runtime')
-  };
   const compiled=await build({
     entryPoints,outdir:out,bundle:true,splitting:true,format:'esm',
     platform:'browser',target:'es2022',jsx:'automatic',jsxImportSource:'react',
-    alias,logLevel:'warning',minify:true,metafile:true,
+    logLevel:'warning',minify:true,metafile:true,
     entryNames:'_loc/routes/[name]',chunkNames:'_loc/chunks/[name]-[hash]',
     assetNames:'_loc/assets/[name]-[hash]',
     loader:{'.woff':'file','.woff2':'file','.ttf':'file','.png':'file','.svg':'file','.webp':'file','.gif':'file','.jpg':'file','.jpeg':'file','.avif':'file'},
     define:{'process.env.NODE_ENV':'"production"'},
-    plugins:[{name:'loc-next-removal',setup(ctx){
+    plugins:[{name:'loc-native-assets',setup(ctx){
       // Web and IPA both resolve staged /pics URLs; never rebundle images into CSS.
       ctx.onResolve({filter:/^\/pics\//},args=>({path:args.path,external:true}));
       ctx.onResolve({filter:/^next\//},args=>({errors:[{text:'Unsupported legacy Next import: '+args.path}]}));
@@ -153,10 +145,10 @@ try{
   if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))
     throw new Error('Native export contains raw card originals');
   fs.writeFileSync(path.join(out,'_loc','build-report.json'),JSON.stringify({
-    runtime:'Preact',bundler:'esbuild',routes:records.length,sharedCss:cssHref,editorCss:editorCssHref,
+    runtime:'Native React + optional Preact island',bundler:'esbuild',routes:records.length,sharedCss:cssHref,editorCss:editorCssHref,
     jsBytes:Object.entries(compiled.metafile.outputs).filter(([p])=>p.endsWith('.js')).reduce((sum,[,v])=>sum+v.bytes,0)
   }));
-  console.log('[LOC] Preact + esbuild: '+records.length+' static HTML routes, '+(native?'IPA':'Web')+' target.');
+  console.log('[LOC] esbuild native React features + optional Preact islands: '+records.length+' HTML routes; '+(native?'IPA':'Web')+' target.');
 }catch(error){
   fs.rmSync(out,{recursive:true,force:true});
   throw error;
