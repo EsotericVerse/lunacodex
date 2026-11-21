@@ -173,7 +173,8 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
       modelName==='Loc'&&table==='loc'))
     reject('Invalid fixed LOC model for management write',403);
   const operation=payload.p_operation;
-  if(!['insert','upsert','update','delete','update_batch'].includes(operation))
+  if(!['insert','upsert','update','delete','update_batch',
+    'append_media_link'].includes(operation))
     reject('Invalid managed write operation');
   const rows=['insert','upsert'].includes(operation)?validateRows(payload.p_rows):[];
   const values=payload.p_values;
@@ -189,6 +190,34 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
       Object.assign(values,validateLocRegistryDomain(values));
   }
   await authorizeRelation(trx,table,operation,values,filters,rows);
+  if(operation==='append_media_link'){
+    // A purpose-only Galaxy/MediaAnchor link, not arbitrary SQL mutation.
+    // The Anchor INSERT and this row-locked append belong to the same
+    // existing Kysely transaction and cannot overwrite concurrent links.
+    if(!/^[a-z][a-z0-9]{0,14}_galaxy$/.test(table)||
+      !values||typeof values!=='object'||Array.isArray(values)||
+      Object.keys(values).sort().join(',')!=='article_uid,media_uid'||
+      !UID.test(values.article_uid)||!UID.test(values.media_uid)||
+      payload.p_filters!==undefined&&payload.p_filters?.length)
+      reject('Invalid LOC MediaAnchor link operation');
+    const scope=table.slice(0,-7),galaxy='silver.'+table;
+    const linked=await trx.selectFrom('silver.'+scope+'_anchor')
+      .select('uid').where('uid','=',values.media_uid)
+      .where('type','in',ANCHOR_TYPE_GROUPS.media).executeTakeFirst();
+    if(!linked)reject('MediaAnchor was not inserted in this Scope',409);
+    const article=await trx.selectFrom(galaxy).select('media_link')
+      .where('uid','=',values.article_uid).forUpdate().executeTakeFirst();
+    if(!article)reject('Linked Galaxy article does not exist',409);
+    const prior=Array.isArray(article.media_link)?article.media_link:[];
+    const next=[...new Set([...prior.map(String),values.media_uid])];
+    // Same row lock and transaction: no stale browser-side replacement.
+    const updated=await trx.updateTable(galaxy)
+      .set({media_link:next}).where('uid','=',values.article_uid)
+      .executeTakeFirst();
+    if(Number(updated?.numUpdatedRows||0)!==1)
+      reject('Media link update did not complete',409);
+    return {data:{count:1}};
+  }
   // Authorized writes now share the exact ZModel column guard already used
   // by query SELECT/UPDATE. Unmodeled, explicitly authorized custom Scope
   // relations retain their existing Kysely handling.
