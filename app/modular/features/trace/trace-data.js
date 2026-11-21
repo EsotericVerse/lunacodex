@@ -1,6 +1,6 @@
 'use client';
 
-import {dbPublicClient,dbAuthClient} from '../../../loc/db/db-client.mjs';
+import {dbPublicClient,dbAuthClient,transactionWrites} from '../../../loc/db/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
 import {allocateAnchorUid} from '../../../loc/model/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -330,13 +330,32 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
       invisible:normalizedInvisible(invisible),attr})
     .eq('uid',key).eq('type',type).select('uid').single(),'更新路線或痕跡圖');
 }
-export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false}){
-  const id=writableScope(scopeId),ids=[...new Set(uids.map(textValue))];
-  if(!ids.length||ids.length>200||ids.some(uid=>!VALID_ID.test(uid)))throw Error('請選擇 1 至 200 筆有效項目');
-  const rows=checked(await physicalPoint(id).update({invisible:normalizedInvisible(invisible)})
-    .eq('type','point').in('uid',ids).select('uid'),'大量設定空間隱藏')||[];
-  if(rows.length!==ids.length)throw Error('部分地點權限未更新，請重新讀取');
-  return rows.length;
+// One logical visibility operation may cover Points, Routes and Trace maps.
+// Keep the typed Anchor filter, but put every 500-UID SQL chunk under ONE
+// managed transaction instead of committing each chunk independently.
+export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false,
+  types=['point']}){
+  const id=writableScope(scopeId),
+    ids=[...new Set((Array.isArray(uids)?uids:[]).map(textValue))];
+  const kinds=[...new Set(Array.isArray(types)?types:[])];
+  if(!ids.length||ids.length>5000||ids.some(uid=>!VALID_ID.test(uid))||
+    !kinds.length||kinds.some(kind=>!['point','path','trace'].includes(kind)))
+    throw Error('空間可見性 UID 或類型無效');
+  const value=normalizedInvisible(invisible),operations=[];
+  for(let i=0;i<ids.length;i+=500){
+    const group=ids.slice(i,i+500);
+    operations.push({p_table:'silver.'+id+'_anchor',
+      p_operation:'update',p_values:{invisible:value},
+      p_filters:[
+        {column:'uid',operator:'in',value:group},
+        {column:'type',operator:'in',value:kinds}
+      ],p_expected_count:group.length});
+  }
+  const receipt=await transactionWrites(operations);
+  const count=receipt.results.reduce((sum,item)=>sum+Number(item.count||0),0);
+  if(count!==ids.length)
+    throw Error('空間可見性變更回執不完整，請重新讀取核對');
+  return count;
 }
 export async function deleteTraceMap({scopeId,uid,type='path'}){
   const id=writableScope(scopeId);
