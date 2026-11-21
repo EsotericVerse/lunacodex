@@ -552,6 +552,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       p_directory:String(values.directory||'').trim()||null,
       p_parent_scope_id:String(values.parent_scope_id||'loc').trim()||'loc',
       p_theme:String(values.theme||'system-default').trim()||'system-default',
+      p_locale:String(values.locale||'zh-Hant').trim()||'zh-Hant',
       p_copy_keywords:values.copy_keywords!==false
     };
     const {data,error}=await authClient.schema('silver').managedAction('provision_scope',payload);
