@@ -4,6 +4,8 @@ import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {NATIVE_STATIC_ROUTE_SCRIPT,INITIAL_THEME_SCRIPT} from '../app/modular/runtime/theme-bootstrap.mjs';
 import {pathToFileURL} from 'node:url';
+import {sharedWebRoutes,outboundWebRoutes,shellRouteManifest,shellRouteBootstrap,
+  sharedWebRedirects,sharedWebRobotsHeaders} from './loc-shared-route-shell.mjs';
 
 const root=process.cwd();
 const out=path.join(root,'out');
@@ -120,35 +122,13 @@ try{
     target:'node22',logLevel:'warning'
   });
   const {renderPublicScopeHome,renderPublicFeatureFrame}=await import(pathToFileURL(staticRenderer).href);
-  for(const page of records){
-    const staticHome=renderPublicScopeHome({route:page.route,entry:page.name,native});
-    const dest=path.join(out,page.route.slice(1));
-    fs.mkdirSync(dest,{recursive:true});
-    const outbound=page.component==='outbound';
-    const target=outbound?'https://lrs.lo3rwang.cc/'+page.relative+'/':'';
-    const current=page.component==='settings'||page.component==='features'?'settings':
-      page.view==='searchManage'?'search':
-      page.view==='sourceManage'?'culture':
-      ['keywords','keywordManage'].includes(page.view)?'statics':
-      page.view==='manage'&&page.relative.includes('trace')?'trace':page.view;
-    const frame=staticHome?staticHome.html:
-      renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target,
-        feature:current,view:page.view,component:page.component,
-        work:page.component==='work',native});
+  // One shared HTML contract. Web feature paths are rewritten to one output
+  // shell; IPA keeps authored index.html entrypoints for native navigation.
+  function documentHtml(page,frame,load,staticHome=null,routeBootstrap=''){
     const attrs=' data-loc-component="'+escape(page.component)+'" data-loc-view="'+
       escape(page.view)+'" data-loc-scope="'+escape(page.scope)+'"'+
       (page.section?' data-loc-section="'+escape(page.section)+'"':'')+
       (page.redirectTarget?' data-loc-redirect="'+escape(page.redirectTarget)+'"':'');
-    const load=staticHome?staticHome.loader:
-      page.component==='work'?'':outbound?'<script>location.replace('+JSON.stringify(target)+')</script>':
-      page.component==='legacy'
-        ?'<script>if(location.protocol!=="capacitor:"){const next=new URL('+
-          JSON.stringify(page.redirectTarget)+',location.href);'+
-          'const old=new URL(location.href);for(const [k,v] of old.searchParams)'+
-          'if(!next.searchParams.has(k))next.searchParams.append(k,v);'+
-          'next.hash=old.hash;location.replace(next.href);}</script>'+
-          '<script type="module" src="/'+page.name+'.js"></script>'
-        :'<script type="module" src="/'+page.name+'.js"></script>';
     const html=[
       '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">',
       '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">',
@@ -166,16 +146,74 @@ try{
       }),
       '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"'+attrs+'>',
       '<div id="loc-root" data-page-language="zh-Hant">'+frame+'</div>',
-      "<script id=\"loc-html-controls\">(()=>{try{\n  const theme=document.querySelector('[data-loc-control=\"theme\"]');\n  if(theme)theme.value='system-default';\n}catch{}\ndocument.addEventListener('change',async event=>{\n  const input=event.target.closest?.('[data-loc-control]');\n  if(!input)return;\n  try{\n    const module=await import('/_loc/routes/controls.js');\n    await module.applyHtmlPreference(input.dataset.locControl,input.value,\n      (location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc'));\n  }catch(error){console.error('LOC preference failed',error);}\n});})();</script>",load,
+      "<script id=\"loc-html-controls\">(()=>{try{\n  const theme=document.querySelector('[data-loc-control=\"theme\"]');\n  if(theme)theme.value='system-default';\n}catch{}\ndocument.addEventListener('change',async event=>{\n  const input=event.target.closest?.('[data-loc-control]');\n  if(!input)return;\n  try{\n    const module=await import('/_loc/routes/controls.js');\n    await module.applyHtmlPreference(input.dataset.locControl,input.value,\n      (location.pathname.startsWith('/scope-shell/')?new URLSearchParams(location.search).get('scopeid')||'loc':document.body.dataset.locScope||'loc'));\n  }catch(error){console.error('LOC preference failed',error);}\n});})();</script>",routeBootstrap,load,
       '</body></html>'
     ].join('');
+    return html;
+  }
+  const shared=sharedWebRoutes(records);
+  const outboundRoutes=outboundWebRoutes(records);
+  const sharedSet=new Set(shared.map(page=>page.route));
+  const outboundSet=new Set(outboundRoutes.map(page=>page.route));
+  for(const page of records){
+    if(!native&&(sharedSet.has(page.route)||outboundSet.has(page.route)))continue;
+    const staticHome=renderPublicScopeHome({route:page.route,entry:page.name,native});
+    const dest=path.join(out,page.route.slice(1));
+    fs.mkdirSync(dest,{recursive:true});
+    const outbound=page.component==='outbound';
+    const target=outbound?'https://lrs.lo3rwang.cc/'+page.relative+'/':'';
+    const current=page.component==='settings'||page.component==='features'?'settings':
+      page.view==='searchManage'?'search':
+      page.view==='sourceManage'?'culture':
+      ['keywords','keywordManage'].includes(page.view)?'statics':
+      page.view==='manage'&&page.relative.includes('trace')?'trace':page.view;
+    const frame=staticHome?staticHome.html:
+      renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target,
+        feature:current,view:page.view,component:page.component,
+        work:page.component==='work',native});
+    const load=staticHome?staticHome.loader:
+      page.component==='work'?'':outbound?'<script>location.replace('+JSON.stringify(target)+')</script>':
+      page.component==='legacy'
+        ?'<script>if(location.protocol!=="capacitor:"){const next=new URL('+
+          JSON.stringify(page.redirectTarget)+',location.href);'+
+          'const old=new URL(location.href);for(const [k,v] of old.searchParams)'+
+          'if(!next.searchParams.has(k))next.searchParams.append(k,v);'+
+          'next.hash=old.hash;location.replace(next.href);}</script>'+
+          '<script type="module" src="/'+page.name+'.js"></script>'
+        :'<script type="module" src="/'+page.name+'.js"></script>';
+    const html=documentHtml(page,frame,load,staticHome);
     fs.writeFileSync(path.join(dest,'index.html'),html);
   }
+  if(!native){
+    const shellPage={route:'/_loc/shell.html',component:'loc',scope:'loc',
+      view:'culture',section:'',noIndex:false,title:'LOC 月典',description:''};
+    const shellFrame=renderPublicFeatureFrame({scopeId:'loc',title:'LOC 月典',
+      component:'loc',view:'culture',feature:'culture',native:false});
+    const shellHTML=documentHtml(shellPage,shellFrame,
+      '<script type="module" src="/_loc/routes/interactive.js"></script>',
+      null,shellRouteBootstrap(records));
+    fs.writeFileSync(path.join(out,'_loc','shell.html'),shellHTML);
+    fs.writeFileSync(path.join(out,'_loc','shared-routes.json'),
+      JSON.stringify(shellRouteManifest(records)));
+  }
   fs.cpSync(abs('public'),out,{recursive:true,force:true});
+  if(!native){
+    const redirects=path.join(out,'_redirects');
+    const existing=fs.existsSync(redirects)?fs.readFileSync(redirects,'utf8'):'';
+    fs.writeFileSync(redirects,existing+'\n'+sharedWebRedirects(records));
+    const headers=path.join(out,'_headers');
+    const original=fs.existsSync(headers)?fs.readFileSync(headers,'utf8'):'';
+    fs.writeFileSync(headers,original+'\n'+sharedWebRobotsHeaders(records)+'\n');
+  }
   if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))
     throw new Error('Native export contains raw card originals');
   fs.writeFileSync(path.join(out,'_loc','build-report.json'),JSON.stringify({
-    runtime:'HTML documents + on-demand React',bundler:'esbuild',routes:records.length,sharedCss:cssHref,editorCss:editorCssHref,
+    runtime:'HTML documents + on-demand React',bundler:'esbuild',
+    routes:records.length,sharedWebRoutes:native?0:shared.length,
+    outboundRedirectRoutes:native?0:outboundRoutes.length,
+    emittedHtmlRoutes:native?records.length:
+      records.length-shared.length-outboundRoutes.length+1,
+    sharedCss:cssHref,editorCss:editorCssHref,
     jsBytes:Object.entries(compiled.metafile.outputs).filter(([p])=>p.endsWith('.js')).reduce((sum,[,v])=>sum+v.bytes,0)
   }));
   console.log('[LOC] HTML documents + on-demand features: '+records.length+' HTML routes; '+(native?'IPA':'Web')+' target.');
