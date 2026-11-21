@@ -85,6 +85,23 @@ jobs:
           assert.deepEqual(routes.exclude,[]);
           assert.ok(!fs.readdirSync('out').includes('sw.js'));
           NODE
+          # Preserve the nine historical LRS links without legacy React redirect pages.
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const manifest=fs.readFileSync('out/_redirects','utf8');
+          const routes=['/card/','/card/daily/','/card/duel/','/card/list/',
+            '/daily/','/daily/log/','/daily/trend/','/game/','/game/room/'];
+          for(const route of routes){
+            const target='https://lrs.lo3rwang.cc'+route;
+            assert.ok(manifest.includes(route+' '+target+' 302'),route+' Pages redirect');
+            const file='out/'+route.slice(1)+'index.html';
+            assert.ok(fs.existsSync(file),file);
+            const page=fs.readFileSync(file,'utf8');
+            assert.ok(page.includes('http-equiv="refresh"'),route+' offline redirect');
+            assert.ok(page.includes(target),route+' target');
+          }
+          NODE
           grep -q 'LOC Framework' out/index.html
           node -e 'const x=require("./out/_loc/native-report.json");if(x.routes!==22||x.clientFrameworks.length)process.exit(1);console.log(x)'
 
