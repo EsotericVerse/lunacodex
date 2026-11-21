@@ -1,9 +1,8 @@
 'use client';
 import {lazy,Suspense} from 'react';
-import {createPortal} from 'react-dom';
 import UiText,{useUiText} from '../i18n/UiText';
 
-import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
 import {useEditDock} from './edit-dock';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
@@ -12,6 +11,7 @@ import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
 import {hero_block,selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
+import {useFixedPageCanvas,ExistingHero} from '../loc/runtime/fixed-canvas.jsx';
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
@@ -105,31 +105,15 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   />;
   // Every LOC feature works inside the same authored HTML frame. Hero and
   // content are independent canvases: no second main, header, or page shell.
-  const heroCanvas=typeof document==='undefined'?null:document.getElementById('loc-feature-hero-canvas');
   const heroSource=managementMode?managementTextPage:shared?'loc':'default';
-  useLayoutEffect(()=>{
-    if(!heroCanvas)return;
-    const header=heroCanvas;
-    const main=document.getElementById('loc-feature-main');
-    const content=document.getElementById('loc-interactive-root');
-    const title=document.getElementById('loc-static-feature-title');
-    if(!header||!main||!content)return;
-    title?.setAttribute('hidden','');
-    header.className=heroClassName;
-    header.dataset.featureHeroSource=heroSource;
-    if(heroImageOverride)header.style.setProperty('--scope-feature-hero-image','url("'+heroImageOverride+'")');
-    else header.style.removeProperty('--scope-feature-hero-image');
-    main.classList.toggle('scope-main--edit-workspace',managementMode);
-    if(publicFeature)main.dataset.publicFeature=publicFeature;
-    else delete main.dataset.publicFeature;
-    content.classList.toggle('loc-public-content',Boolean(publicFeature));
-    return ()=>{
-      title?.removeAttribute('hidden');
-      header.style.removeProperty('--scope-feature-hero-image');
-    };
-  },[heroCanvas,heroClassName,heroImageOverride,managementMode,heroSource,publicFeature]);
+  const heroCanvas=useFixedPageCanvas({
+    headerClassName:heroClassName,
+    mainClassName:'scope-main'+(managementMode?' scope-main--edit-workspace':''),
+    headerSource:heroSource,imageUrl:heroImageOverride,
+    publicFeature,contentClass:publicFeature?'loc-public-content':''
+  });
   if(heroCanvas)return <>
-    {createPortal(hero,heroCanvas)}
+    <ExistingHero canvas={heroCanvas}>{hero}</ExistingHero>
     {children}
   </>;
   return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
