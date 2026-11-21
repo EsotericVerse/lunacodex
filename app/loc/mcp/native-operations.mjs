@@ -252,7 +252,7 @@ export async function handleNativeLocOperation(request,env={},{
       const args=body.args||{};
       if(args.scopeid!==undefined&&args.scopeid!==body.scopeid)
         throw refusal('MCP Scope mismatch',400);
-      return reply({data:await readPublicGalaxy({...args,scopeid:body.scopeid},env,{waitUntil})});
+      return reply({data:await readPublicGalaxy({...args,scopeid:body.scopeid},env,{waitUntil,databasePort:selected})});
     }
     if(body.kind==='mcp-article-stat'){
       if(host!==MCP_HOST||body.scopeid!=='loc')
