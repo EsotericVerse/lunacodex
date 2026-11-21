@@ -156,3 +156,39 @@ test('standalone article distribution owns SQL, borrowed analytics do not',async
   assert.equal(inherited.total,7);
   assert.deepEqual(calls,[]);
 });
+
+test('Suno, article, theme, TimeRiver and Search editors expose complete Save plans',()=>{
+  const files=[
+    ['../app/loc/media/SunoImportPanel.jsx','prepareSunoTransaction'],
+    ['../app/loc/management/ManagementArticlePublisher.jsx','prepareArticleTransaction'],
+    ['../app/loc/scope/ScopeSettingsPanel.jsx','prepareThemeTransaction'],
+    ['../app/modular/features/CultureTimelineEditor.jsx','prepareTimeTransaction'],
+    ['../app/modular/features/Search.jsx','prepareSearchEditTransaction'],
+    ['../app/loc/keywords/ui/KeywordLibraryPanel.jsx','prepareKeywordNodeTransaction']
+  ];
+  for(const [path,name] of files){
+    const source=readFileSync(new URL(path,import.meta.url),'utf8');
+    assert.ok(source.includes(name),path+' missing SQL write preparation');
+    assert.match(source,/prepareTransaction:/,path+' must register with six-key Save');
+    assert.match(source,/transactionWrites\(/,path+' must use the shared SQL transaction');
+  }
+  const suno=readFileSync(new URL(files[0][0],import.meta.url),'utf8');
+  assert.doesNotMatch(suno,/await insertRows\(/);
+  const culture=readFileSync(new URL(files[3][0],import.meta.url),'utf8');
+  assert.match(culture,/p_expected_count:ids\.length/);
+});
+test('Keyword subtree deletion includes a single transactional Pattern reconciliation',()=>{
+  const editor=readFileSync(new URL('../app/loc/keywords/ui/KeywordLibraryPanel.jsx',import.meta.url),'utf8');
+  const sql=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  assert.match(editor,/transactionWrites\(operations,\{keywordSyncScope:scopeId\}\)/);
+  assert.match(sql,/synchronizeKeywordLibraryInTransaction\(trx,keywordSyncScope\)/);
+  assert.match(sql,/if\(!await canLocAccess\(trx,'scope',keywordSyncScope\)\)/);
+  assert.match(sql,/p_expected_count/);
+  const contract=readFileSync(new URL('../app/loc/db/db-contract.mjs',import.meta.url),'utf8');
+  const copyStart=contract.indexOf('async function copyKeywordLibraryClass(');
+  const copyEnd=contract.indexOf('async function copyRune66KeywordClassUnchecked(',copyStart);
+  assert.ok(copyStart>=0&&copyEnd>copyStart);
+  const copy=contract.slice(copyStart,copyEnd);
+  assert.match(copy,/await transactionWrites\(operations\)/);
+  assert.doesNotMatch(copy,/await writeKeywordLibraryItem\(/);
+});
