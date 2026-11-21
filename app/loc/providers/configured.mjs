@@ -56,7 +56,7 @@ export function createConfiguredAdapter({
     // no extra COUNT, poll or cache-version SQL is ever triggered here.
     // LOC group aggregates can depend on multiple Scopes, so invalidate the
     // shared numeric family rather than guessing a single physical relation.
-    if(kind==='short-import'||kind==='managed-write'||
+    if(kind==='short-import'||kind==='managed-write'||kind==='managed-transaction'||
        (kind==='managed-action'&&!READ_ACTIONS.has(String(fields.name||''))))
       invalidateCachedReadPrefix('scope-aggregate:');
     return result;
