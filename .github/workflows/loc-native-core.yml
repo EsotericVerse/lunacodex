@@ -49,6 +49,9 @@ jobs:
           test ! -d node_modules/esbuild
           test ! -d node_modules/kysely
           test ! -d node_modules/@zenstackhq
+          test ! -d node_modules/@blocknote
+          test ! -d node_modules/recharts
+          test ! -d node_modules/vis-timeline
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           import assert from 'node:assert/strict';
