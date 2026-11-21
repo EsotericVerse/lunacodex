@@ -12,6 +12,7 @@ on:
       - 'app/**/page.jsx'
       - 'app/page.jsx'
       - 'app/loc/runtime/html-entry.jsx'
+      - 'app/loc/runtime/html-controls.js'
       - 'tests/loc-html-base.test.mjs'
       - '.github/workflows/loc-static-regression.yml'
   push:
@@ -24,6 +25,7 @@ on:
       - 'app/**/page.jsx'
       - 'app/page.jsx'
       - 'app/loc/runtime/html-entry.jsx'
+      - 'app/loc/runtime/html-controls.js'
       - 'tests/loc-html-base.test.mjs'
       - '.github/workflows/loc-static-regression.yml'
   workflow_dispatch:

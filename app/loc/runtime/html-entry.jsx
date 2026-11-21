@@ -1,8 +1,9 @@
-import React,{lazy,Suspense,useEffect} from 'react';
+import React,{lazy,Suspense,useEffect,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createPortal} from 'react-dom';
 import {UiLocaleProvider,useLoadedUiLocale} from '../../i18n/ui-locale.jsx';
 import {EditDockProvider,useEditDock} from '../../modular/edit-dock.jsx';
+import FlashMessage from '../notifications/FlashMessage.jsx';
 
 // HTML already contains navigation, footer and the page's feature attributes.
 // Nothing resolves a browser route or mounts a global React application shell.
@@ -61,13 +62,20 @@ function EditorControls(){
   </div>,surface);
 }
 function Interactive(){
-  useLoadedUiLocale('zh-Hant',window.location.pathname);
-  return <UiLocaleProvider locale="zh-Hant" pathname={window.location.pathname}>
+  const [locale,setLocale]=useState(()=>window.__locHtmlLocale||'zh-Hant');
+  useEffect(()=>{
+    const onLocale=event=>setLocale(event.detail?.locale||'zh-Hant');
+    window.addEventListener('loc-html-locale-changed',onLocale);
+    return()=>window.removeEventListener('loc-html-locale-changed',onLocale);
+  },[]);
+  useLoadedUiLocale(locale,window.location.pathname);
+  return <UiLocaleProvider locale={locale} pathname={window.location.pathname}>
     <EditDockProvider scopeId={scopeId}>
       <Suspense fallback={<main className="scope-main" role="status">正在載入頁面內容…</main>}>
         <Feature/>
       </Suspense>
       <EditorControls/>
+      <FlashMessage/>
     </EditDockProvider>
   </UiLocaleProvider>;
 }

@@ -55,6 +55,8 @@ for(const name of ['LOC-culture','LOC-statics','LOC-search','LOC-admin','scope-c
 
 if(fs.readdirSync(path.join(out,'_loc','routes')).some(file=>/^p\\d+\\.js$/.test(file)))
   throw Error('Per-page React entrypoint emitted by HTML builder');
+if(!exists(path.join(out,'_loc','routes','controls.js')))
+  throw Error('On-demand HTML preference controls bundle missing');
 if(!exists(path.join(out,'_loc','routes','interactive.js')))
   throw Error('Shared interactive HTML entrypoint missing');
 if(!fs.existsSync(path.join(out,'pics')))throw Error('LOC image URL path /pics not staged');
@@ -83,6 +85,9 @@ for(const route of pageRoutes){
       throw Error('LRS outbound HTML must link directly without React: '+route);
   }else if(!src||!exists(path.join(out,src.slice(1))))
     throw Error('Missing executable LOC interaction bundle for '+route);
+  if(!html.includes('data-loc-control="theme"')||!html.includes('data-loc-control="locale"')||
+      !html.includes('id="loc-html-controls"'))
+    throw Error('Static HTML footer controls missing: '+route);
   if(!publicHome&&!html.includes('data-loc-component='))
     throw Error('HTML feature metadata missing: '+route);
   if(!html.includes('id="loc-theme-bootstrap"')||!html.includes('id="loc-native-static-route"'))

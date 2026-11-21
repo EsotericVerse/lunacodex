@@ -1,6 +1,8 @@
 // Single-source LOC static publishing: render the same homepage components used
 // by the interactive editor. No copied block renderer, no browser hydration.
 import React from 'react';
+import {UI_LOCALE_OPTIONS} from '../app/i18n/ui-copy.js';
+import {PUBLISHED_THEME_META} from '../app/modular/published-theme-meta.js';
 import JsonLd from '../app/seo/JsonLd.jsx';
 import AuthorHomeView from '../app/loc/views/AuthorHomeView.jsx';
 import {locWebSiteJsonLd,lunarunesWebSiteJsonLd,authorProfileJsonLd}
@@ -53,13 +55,13 @@ function PublicNavigation({scopeId,native=false}){
        <div className="scope-nav-viewport">
          <div className="scope-nav-items">
            {rootNav.map(scope=><a href={navigationHref(scope.id,'',native)} key={scope.id}
-             aria-current={scope.id===scopeId?'page':undefined}>
+             aria-current={scope.id===scopeId?'page':undefined} data-loc-scope-link={scope.id}>
              {scope.nav.label||scope.id}
            </a>)}
          </div>
        </div>
      </div>
-     <a className="scope-nav-loc-home" href="/" aria-current={scopeId==='loc'?'page':undefined}>首頁</a>
+     <a className="scope-nav-loc-home" data-loc-home-link href="/" aria-current={scopeId==='loc'?'page':undefined}>首頁</a>
    </nav>
  </header>;
 }
@@ -67,11 +69,12 @@ function PublicDock({scopeId,current='home',native=false}){
  return <div className="scope-feature-dock scope-floating-edit-buttons"
    role="toolbar" aria-label="Scope 功能選單" data-scope={scopeId} data-action-count={6}>
    {features.map(item=><a key={item.id}
+     data-loc-feature-link={item.id}
      href={item.id==='settings'?(native?'/local/settings/index.html?scopeid='+scopeId:'/settings/?scopeid='+scopeId):navigationHref(scopeId,item.route,native)}
      aria-current={item.id===current?'page':undefined}>
      {item.id==='home'?<span className="scope-dock-active-pill" aria-hidden="true"/>:null}
      <span className="scope-dock-motion-icon"><BottomNavIcon name={item.name}/></span>
-     <span>{item.label}</span>
+     <span data-loc-feature-label>{item.label}</span>
    </a>)}
  </div>;
 }
@@ -84,6 +87,17 @@ function SiteFooter({scopeId,home=true,native=false}){
      <div className="scope-footer-row">
        <a href="mailto:sopa2306@gmail.com">聯絡方式</a>
        {home?<button className="loc-button" type="button" data-loc-upgrade="interface">語系與主題設定</button>:<a href={native?"/local/settings/index.html?scopeid="+scopeId:"/settings/?scopeid="+scopeId}>語系與主題設定</a>}
+       <label className="scope-theme-control"><span data-loc-label="theme">主題</span>
+         <select aria-label="主題" data-loc-control="theme" defaultValue="system-default">
+           <option value="system-default">系統預設</option>
+           {PUBLISHED_THEME_META.map(([id,label])=><option key={id} value={id}>{label}</option>)}
+         </select>
+       </label>
+       <label className="scope-theme-control scope-language-control"><span data-loc-label="language">語系</span>
+         <select aria-label="語系" data-loc-control="locale" defaultValue="zh-Hant">
+           {UI_LOCALE_OPTIONS.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}
+         </select>
+       </label>
        <small className="scope-footer-date-basis">日期基準：Asia/Taipei (UTC+08:00)</small>
      </div>
    </footer>

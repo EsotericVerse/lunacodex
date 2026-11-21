@@ -35,7 +35,8 @@ try{
     '_loc/site':abs('app/globals.css'),
     '_loc/editor':abs('app/styles/editor.css'),
     'public-preferences':abs('app/loc/public-home-preferences.jsx'),
-    interactive:abs('app/loc/runtime/html-entry.jsx')
+    interactive:abs('app/loc/runtime/html-entry.jsx'),
+    controls:abs('app/loc/runtime/html-controls.js')
   };
   const decode=s=>String(s||'').replace(/&(amp|quot|lt|gt|#39);/g,(_,key)=>
     ({amp:'&',quot:'"',lt:'<',gt:'>', '#39':"'"})[key]);
@@ -157,7 +158,8 @@ try{
       '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
       '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
       '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"'+attrs+'>',
-      '<div id="loc-root">'+frame+'</div>',load,
+      '<div id="loc-root">'+frame+'</div>',
+      "<script id=\"loc-html-controls\">(()=>{try{\n  const theme=document.querySelector('[data-loc-control=\"theme\"]');\n  if(theme){\n    const scope=document.body.dataset.locScope||'loc';\n    const value=JSON.parse(sessionStorage.getItem('loc-user-theme-selection-v1')||'{}')[scope];\n    const selected=/^[1-8]$/.test(String(value??''))?'theme-'+value:String(value||'');\n    if([...theme.options].some(option=>option.value===selected))theme.value=selected;\n  }\n}catch{}\ndocument.addEventListener('change',async event=>{\n  const input=event.target.closest?.('[data-loc-control]');\n  if(!input)return;\n  try{\n    const module=await import('/_loc/routes/controls.js');\n    await module.applyHtmlPreference(input.dataset.locControl,input.value,\n      document.body.dataset.locScope||'loc');\n  }catch(error){console.error('LOC preference failed',error);}\n});})();</script>",load,
       '</body></html>'
     ].join('');
     fs.writeFileSync(path.join(dest,'index.html'),html);
