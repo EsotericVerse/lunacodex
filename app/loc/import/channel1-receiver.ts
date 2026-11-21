@@ -49,9 +49,9 @@ function valid(r:any){
  r.part_index<r.part_count&&UUID.test(r.group_id);
 }
 // Standalone fixed-operation ingestion via Kysely / pg; no generic SQL transport.
-let connection:any=null;
 function database(){
- if(connection)return connection;
+ // Channel 1 owns a new one-request SQL resource. No process-global Pool
+ // survives after its transaction has committed or rolled back.
  // First-party Channel 1 service uses a server-only LOC connection profile.
  const alias=String(Deno.env.get("LOC_CHANNEL1_DB_ALIAS")||
    Deno.env.get("LOC_CONTROL_DB_ALIAS")||"").trim();
@@ -64,9 +64,8 @@ function database(){
  if(profile?.engine!=="postgres"||typeof profile.url!=="string"||!profile.url)
   throw Error("Channel 1 SQL alias must point to PostgreSQL"); 
  const url=profile.url;
- const pool=new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:7000,idleTimeoutMillis:15000});
- connection=new Kysely({dialect:new PostgresDialect({pool})});
- return connection;
+ const pool=new pg.Pool({connectionString:url,max:1,connectionTimeoutMillis:7000});
+ return new Kysely({dialect:new PostgresDialect({pool})});
 }
 Deno.serve(async(request)=>{
  if(request.method!=="POST")return response({error:"method not allowed"},405);
@@ -89,20 +88,40 @@ Deno.serve(async(request)=>{
    title:(r.title||"網頁紀錄").slice(0,270)+segment,
    content:r.content,url:r.url,createtime:null,date:null,...flags};
  });
+ let db:any=null;
+ let closing:Promise<void>|null=null;
+ const close=()=>{
+  if(!db)return Promise.resolve();
+  if(!closing)closing=db.destroy();
+  return closing;
+ };
+ const aborted=()=>request.signal.aborted;
+ const onAbort=()=>{void close().catch(()=>{});};
  try{
-  const db=database();
+  db=database();
+  request.signal.addEventListener("abort",onAbort,{once:true});
+  if(aborted())throw Error("Channel 1 request aborted");
   const table="silver."+dest+"_galaxy";
   await db.transaction().execute(async(trx)=>{
+   if(aborted())throw Error("Channel 1 request aborted");
    await sql`select pg_advisory_xact_lock(17483, 1)`.execute(trx);
    const existing=await trx.selectFrom(table).select("site_id")
     .where("site_id","in",rows.map(r=>r.site_id)).execute();
    const seen=new Set(existing.map(r=>r.site_id));
    const missing=rows.filter(r=>!seen.has(r.site_id));
    if(missing.length)await trx.insertInto(table).values(missing).execute();
+   // An interrupted batch is a failed transaction even if SQL statements
+   // have returned. Never COMMIT an abort detected before completion.
+   if(aborted())throw Error("Channel 1 request aborted");
   });
   return response({accepted:true,id:batch.id,count:batch.records.length});
  }catch(error){
   console.error("[LOC Channel1 ingest]",error);
   return response({error:"database unavailable; batch not acknowledged"},503);
+ }finally{
+  request.signal.removeEventListener("abort",onAbort);
+  // COMMIT/ROLLBACK completes before destroying the one-request pool.
+  // Also release the pool on failed CONNECT, validation or partial SQL.
+  await close().catch(error=>console.error("[LOC Channel1 close]",error));
  }
 });
