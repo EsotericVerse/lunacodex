@@ -66,7 +66,7 @@ export function shellRouteBootstrap(pages){
 }
 export function sharedWebRedirects(pages){
   return sharedWebRoutes(pages).flatMap(page=>{
-    const root=page.route==='/'?'':page.route.replace(/\\/$/,'');
+    const root=page.route.endsWith('/')?page.route.slice(0,-1):page.route;
     // Explicit exact paths only: no catch-all to swallow assets or /api.
     return [root,root+'/'].filter(Boolean)
       .map(path=>path+' /_loc/shell.html 200');
