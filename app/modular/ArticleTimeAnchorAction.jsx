@@ -5,23 +5,14 @@ import {useEffect,useId,useRef,useState} from 'react';
 import {useAccount} from '../loc/auth/use-account';
 import {selectManagedScope} from '../loc/scope/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../loc/db/db-query.mjs';
-import {insertRows} from '../loc/db/db-client.mjs';
-import {allocateTimeUid} from '../loc/culture/time-anchor-ranges.mjs';
+import {dbAuthClient} from '../loc/db/db-client.mjs';
+
 import {anniversarySuggestionsForDate} from '../loc/culture/anniversary.mjs';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 
 const LazyBlockNoteEditor=lazy(()=>import('../loc/editor/BlockNoteEditor'));
 function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
 const validDay=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
-
-async function findDateAnchor(table,date){
-  const {rows=[]}=await selectRows(table,{
-    columns:'uid,title,description,address',
-    filters:[{column:'type',operator:'eq',value:'anchor'},{column:'address',operator:'eq',value:date}],
-    limit:1,authenticated:true
-  });
-  return rows[0]||null;
-}
 
 export default function ArticleTimeAnchorAction({
   scopeId='',date='',articleCreateTime='',onCreated=null,suggestions=[],label='新增時間定錨'
@@ -77,12 +68,6 @@ export default function ArticleTimeAnchorAction({
       }
       const target=await selectManagedScope(scopeId);
       if(!target?.time)throw new Error('無法取得此 Scope 的時間資料表。');
-      const existing=await findDateAnchor(target.time,date);
-      if(existing){
-        onCreated?.(existing);
-        setNotice('此日期已有時間定錨，已沿用原有紀錄。');
-        return;
-      }
       setTable(target.time);
       const provided=Array.isArray(suggestions)?suggestions.filter(item=>item?.date===date):[];
       applySuggestedDescription(provided[0]?.title||'');
@@ -93,13 +78,15 @@ export default function ArticleTimeAnchorAction({
       // Suggestions are ephemeral; writes happen only on Submit.
       if(!provided.length)try{
         const {rows:existingAnchors}=await selectRows(target.time,{
-          columns:'uid,type,title,address',
-          filters:[{column:'type',operator:'eq',value:'anchor'}],
+          columns:'uid,type,title,attr',
+          filters:[{column:'type',operator:'eq',value:'date'}],
           limit:DB_QUERY_BATCH_SIZE,maxLimit:DB_QUERY_BATCH_SIZE,authenticated:true
         });
-        const suggested=anniversarySuggestionsForDate(date,existingAnchors,{
-          birthday:target.birthday
-        });
+        const suggested=anniversarySuggestionsForDate(date,existingAnchors.map(row=>({
+          ...row,type:'anchor',
+          address:typeof row.attr==='string'
+            ?JSON.parse(row.attr).date:row.attr?.date
+        })),{birthday:target.birthday});
         setAnnualSuggestions(suggested);
         if(suggested.length)applySuggestedDescription(suggested[0].title);
       }catch{setAnnualSuggestions([]);}
@@ -131,22 +118,24 @@ export default function ArticleTimeAnchorAction({
         if(!touchEditorSession(window.sessionStorage))
           throw new Error('無法重新建立編輯 Session。');
       }
-      const existing=await findDateAnchor(table,date);
-      if(existing){
-        onCreated?.(existing);
-        setNotice('此日期已有時間定錨，已沿用原有紀錄。');
-      }else{
-        const uid=allocateTimeUid();
-        const chosen=annualSuggestions.find(item=>item.title===details);
-        const original=Date.parse(String(articleCreateTime||''));
-        const record={uid,type:'anchor',title:chosen?.title||date,description:details,
-          address:date,anchor_ids:null,invisible:false,
-          ...(Number.isFinite(original)?{createtime:new Date(original).toISOString()}:{})};
-        const result=await insertRows(table,[record]);
-        if(result?.count!==1)throw new Error('新增時間定錨未確認成功。');
-        onCreated?.(record);
-        setNotice('已新增 '+date+' 的時間定錨。');
-      }
+      const chosen=annualSuggestions.find(item=>item.title===details);
+      const original=Date.parse(String(articleCreateTime||''));
+      // The business backend serializably reads an existing DateAnchor,
+      // otherwise INSERTs its physical type=date/attr.date in the SAME SQL
+      // transaction. No stale duplicate preflight or second DB request.
+      const {data,error:writeError}=await dbAuthClient.schema('silver')
+        .managedAction('ensure_date_anchor',{
+          p_scope_id:scopeId,p_date:date,
+          p_title:chosen?.title||date,p_description:details,
+          ...(Number.isFinite(original)
+            ?{p_createtime:new Date(original).toISOString()}:{})
+        });
+      if(writeError||!data?.uid)
+        throw new Error(writeError?.message||'時間定錨交易回執未確認；請先重新讀取再試。');
+      onCreated?.({...data,type:'anchor',address:date});
+      setNotice(data.existing
+        ?'此日期已有時間定錨，已沿用原有紀錄。'
+        :'已新增 '+date+' 的時間定錨。');
       setOpen(false);
       setDescription('');
       setAnnualSuggestions([]);
