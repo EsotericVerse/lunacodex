@@ -7,7 +7,12 @@ const MAX_ENTRIES=120;
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{
   const names=await caches.keys();
-  await Promise.all(names.filter(name=>name.startsWith('loc-public-')||name.startsWith('loc-static-next-')&&name!==CACHE)
+  // Framework rollbacks must retire the old Preact/esbuild asset cache too.
+  // Only LOC-owned, browser-static asset caches are affected. HTML, DB and OAuth
+  // have never been cached by this worker.
+  await Promise.all(names.filter(name=>
+    name!==CACHE&&(name.startsWith('loc-public-')||
+      name.startsWith('loc-static-next-')||name.startsWith('loc-static-preact-')))
     .map(name=>caches.delete(name)));
   await self.clients.claim();
 })()));
