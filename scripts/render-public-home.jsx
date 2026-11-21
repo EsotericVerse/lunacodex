@@ -3,6 +3,7 @@
 import React from 'react';
 import {UI_LOCALE_OPTIONS} from '../app/i18n/ui-copy.js';
 import {PUBLISHED_THEME_META} from '../app/modular/published-theme-meta.js';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
 import JsonLd from '../app/seo/JsonLd.jsx';
 import AuthorHomeView from '../app/loc/views/AuthorHomeView.jsx';
 import {locWebSiteJsonLd,lunarunesWebSiteJsonLd,authorProfileJsonLd}
@@ -31,6 +32,13 @@ const features=[{id:'home',label:'首頁',name:'home',route:''},
   }),{id:'settings',label:'設定',name:'settings',route:'settings'}];
 const rootNav=Object.values(SCOPES).filter(scope=>scope.nav&&scope.id!=='loc')
   .sort((a,b)=>(a.nav.position==='before'?0:1)-(b.nav.position==='before'?0:1)||Number(a.nav.order||0)-Number(b.nav.order||0));
+const knownNavIds=new Set(rootNav.map(scope=>scope.id));
+const extraNav=(PUBLISHED_SITE_BOOTSTRAP.registry||[])
+  .filter(row=>row.active!==false&&!knownNavIds.has(row.scope_id)&&
+    !['loc','admin','local'].includes(row.scope_id))
+  .map(row=>({id:row.scope_id,nav:{label:
+    (PUBLISHED_SITE_BOOTSTRAP.page_copy||[]).find(copy=>copy.scope_id===row.scope_id)?.Title_TW||
+    row.display_name||row.scope_id}}));
 
 function PublicHome({scopeId,rows}){
  const View=displays[scopeId];
@@ -54,7 +62,7 @@ function PublicNavigation({scopeId,native=false}){
      <div className="scope-nav-rail">
        <div className="scope-nav-viewport">
          <div className="scope-nav-items">
-           {rootNav.map(scope=><a href={navigationHref(scope.id,'',native)} key={scope.id}
+           {[...rootNav,...extraNav].map(scope=><a href={navigationHref(scope.id,'',native)} key={scope.id}
              aria-current={scope.id===scopeId?'page':undefined} data-loc-scope-link={scope.id}>
              {scope.nav.label||scope.id}
            </a>)}
@@ -100,6 +108,12 @@ function SiteFooter({scopeId,home=true,native=false}){
          </select>
        </label>
        <small className="scope-footer-date-basis">日期基準：Asia/Taipei (UTC+08:00)</small>
+     </div>
+     <div data-loc-data-source className="scope-data-source-global">
+       <details className="scope-data-source-details">
+         <summary>資料來源狀態</summary>
+         <div className="scope-data-source-values"><span>{scopeId==='local'?'本機資料庫':'主要資料庫連線'}</span></div>
+       </details>
      </div>
    </footer>
  </>;
