@@ -19,6 +19,7 @@ function fakeRegistry(initial=ORIGINAL){
   const registry=structuredClone(initial),summary=new Map(
     initial.map(item=>[item.id,item.display_name]));
   const calls=[];
+  const scopeConfigs=new Map([['lo3rwang',{display_name:'Owner'}]]);
   const trx={
     selectFrom(table){
       assert.equal(table,'api.manage as m');
@@ -63,7 +64,11 @@ function fakeRegistry(initial=ORIGINAL){
               }
               if(table==='silver.loc'&&summary.has(id))
                 summary.set(id,values.display_name);
-              return summary.has(id)||registry.some(x=>x.id===id)?[{id}]:[];
+              if(table.startsWith('silver.')&&table!=='silver.loc'&&
+                scopeConfigs.has(table.slice(7)))
+                Object.assign(scopeConfigs.get(table.slice(7)),values);
+              return summary.has(id)||registry.some(x=>x.id===id)||
+                scopeConfigs.has(table.slice(7))?[{id}]:[];
             }};
           }};
         }};
@@ -71,7 +76,7 @@ function fakeRegistry(initial=ORIGINAL){
     }
   };
   bindLocAuthorization(trx,OWNER);
-  return {trx,registry,summary,calls};
+  return {trx,registry,summary,scopeConfigs,calls};
 }
 test('Scope Registry group creation commits its Registry and display projection together',async()=>{
   const state=fakeRegistry();
@@ -86,6 +91,18 @@ test('Scope Registry group creation commits its Registry and display projection 
   assert.equal(state.summary.get('testgroup'),'測試群組');
   assert.deepEqual(state.calls,
     ['registry-lock','insert:api.manage','insert:silver.loc']);
+});
+test('Scope rename updates both public config and Registry summary atomically',async()=>{
+  const state=fakeRegistry();
+  const result=await manageScopeRegistryNative(state.trx,{
+    p_operation:'update',p_scope_id:'lo3rwang',
+    p_values:{display_name:'新顯示名稱'}
+  });
+  assert.equal(result.display_name,'新顯示名稱');
+  assert.equal(state.summary.get('lo3rwang'),'新顯示名稱');
+  assert.equal(state.scopeConfigs.get('lo3rwang').display_name,'新顯示名稱');
+  assert.deepEqual(state.calls,['registry-lock','update:api.manage',
+    'update:silver.loc','update:silver.lo3rwang']);
 });
 test('Scope Registry refuses duplicate routes, unlisted writes and cycles',async()=>{
   const state=fakeRegistry();
