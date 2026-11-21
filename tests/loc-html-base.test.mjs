@@ -63,6 +63,7 @@ test('fixed DIV canvas is reused by custom Scope and device-local pages',()=>{
   assert.match(generic,/<FeaturePage featureId="home"/);
   assert.doesNotMatch(generic,/return <main className="scope-main"/);
   assert.match(local,/useFixedPageCanvas/);
+  assert.match(render,/\['loc','settings','features','phone'\]/);
   assert.match(local,/<ExistingHero canvas=\{heroCanvas\}>/);
   assert.match(shared,/document\.getElementById\('loc-feature-main'\)/);
   assert.match(shared,/document\.getElementById\('loc-interactive-root'\)/);
