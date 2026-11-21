@@ -116,7 +116,7 @@ jobs:
           test -x "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap"
       - name: Build LOC static export for the existing native shell
         env:
-          LOC_NATIVE_BUNDLE: '1'
+          NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'
         run: |
           npm run build:static
           test -f out/index.html

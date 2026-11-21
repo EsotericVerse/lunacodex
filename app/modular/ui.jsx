@@ -1,17 +1,42 @@
 'use client';
-import {lazy,Suspense} from 'react';
 import UiText,{useUiText} from '../i18n/UiText';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
+import dynamic from 'next/dynamic';
+import {usePathname} from 'next/navigation';
 import {useEditDock} from './edit-dock';
 import {useAsyncResource} from '../../packages/zenstack/client-queries';
 import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
-import {hero_block,selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
-import {useFixedPageCanvas,ExistingHero} from '../loc/runtime/fixed-canvas.jsx';
+import {selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
+import groupHero_culture from './published-blocks/loc/group_culture.js';
+import scopeHero_culture from './published-blocks/loc/scope_culture.js';
+import groupHero_statics from './published-blocks/loc/group_statics.js';
+import scopeHero_statics from './published-blocks/loc/scope_statics.js';
+import groupHero_trace from './published-blocks/loc/group_trace.js';
+import scopeHero_trace from './published-blocks/loc/scope_trace.js';
+import groupHero_search from './published-blocks/loc/group_search.js';
+import scopeHero_search from './published-blocks/loc/scope_search.js';
+import groupHero_admin from './published-blocks/loc/group_admin.js';
+import scopeHero_admin from './published-blocks/loc/scope_admin.js';
+import groupHero_manage from './published-blocks/loc/group_manage.js';
+import scopeHero_manage from './published-blocks/loc/scope_manage.js';
+import groupHero_setting from './published-blocks/loc/group_setting.js';
+import scopeHero_setting from './published-blocks/loc/scope_setting.js';
+// Public feature Heroes are already published build-time data, not a second
+// runtime request. Both server HTML and client hydration render the same copy.
+const PUBLISHED_HERO_ROWS=Object.freeze({
+  culture:[...groupHero_culture,...scopeHero_culture],
+  statics:[...groupHero_statics,...scopeHero_statics],
+  trace:[...groupHero_trace,...scopeHero_trace],
+  search:[...groupHero_search,...scopeHero_search],
+  admin:[...groupHero_admin,...scopeHero_admin],
+  manage:[...groupHero_manage,...scopeHero_manage],
+  setting:[...groupHero_setting,...scopeHero_setting]
+});
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
@@ -19,10 +44,8 @@ import ScopeLink from './ScopeLink';
 import {featureNavigationHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
 // Shared display stays light: mount the editor only on pages that need it.
-const LazyBlockNoteEditor=lazy(()=>import('../loc/editor/BlockNoteEditor'));
-function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
-const LazyArticleTimeAnchorAction=lazy(()=>import('./ArticleTimeAnchorAction'));
-function ArticleTimeAnchorAction(props){return <Suspense fallback={null}><LazyArticleTimeAnchorAction {...props}/></Suspense>;}
+const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
+const ArticleTimeAnchorAction=dynamic(()=>import('./ArticleTimeAnchorAction'),{loading:()=>null});
 
 function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=false,scopeId=''}){
   const sign=HomeBlock.heroExtraFor(scopeId);
@@ -40,7 +63,7 @@ function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=fa
   </>;
 }
 
-export function FeaturePage({featureId,children,titleOverride=null,subtitle=null,description=null,eyebrow=''}){
+export function FeaturePage({featureId,children,titleOverride=null,subtitle=null,description=null}){
   const {scope,scopeId}=useScopeRuntime();
   const copy=useUiCopy();
   const {locale}=useUiLocale();
@@ -50,7 +73,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const resolvedSubtitle=localizedScope?.[featureId]||scope?.featureSubtitles?.[featureId]||profile.subtitle||'';
   const resolvedDescription=description??profile.description;
   const finalSubtitle=subtitle||resolvedSubtitle;
-  const pathname=(typeof window==='undefined'?'/':window.location.pathname);
+  const pathname=usePathname();
   const editDock=useEditDock();
   const editing=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const managementSlot=HomeBlock.managementHeroSlot(pathname,scopeId,editing,featureId);
@@ -59,17 +82,17 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const artworkId=managementMode?'manage':featureId;
   const heroClassName='loc-card scope-hero scope-feature-hero'+(HomeBlock.FEATURE_HERO_ORDER[artworkId]?' scope-feature-hero--artwork scope-feature-hero--'+artworkId:'');
   const hasFeatureHero=Boolean(HomeBlock.FEATURE_HERO_ORDER[featureId]);
-  // The authored Chinese Hero canvas exists before this function mounts.
-  // One fixed public SQL read obtains only this feature's two Hero slots;
-  // no other page's published Hero bundle is preloaded.
+  // Public Heroes (including Admin/Settings landing pages) read published
+  // presentation assets. Only an explicitly opened management workspace uses
+  // live authoring data; no Auth or SQL is needed to render a public Hero.
   const groupHeroPage=HomeBlock.featureHeroPageFor(featureId);
   const scopeHeroPage='scope_'+featureId;
-  const publicHeroQuery=useAsyncResource(['loc-feature-hero',featureId],
-    ()=>hero_block([groupHeroPage,scopeHeroPage]),
-    {enabled:hasFeatureHero&&!managementMode});
-  const heroRows=publicHeroQuery.data||[];
-  const groupHeroRows=heroRows.filter(row=>row.page_name===groupHeroPage);
-  const scopeHeroRows=heroRows.filter(row=>row.page_name===scopeHeroPage);
+  // Static release snapshot renders immediately, on the server and on the
+  // client. Do not first paint fallback legacy copy and then re-read the Hero.
+  // Management mode keeps its independent authoritative editing reads below.
+  const publishedRows=PUBLISHED_HERO_ROWS[featureId]||[];
+  const groupHeroRows=publishedRows.filter(row=>row.page_name===groupHeroPage);
+  const scopeHeroRows=publishedRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   // Management Hero and the editor use the same mounted query key when
@@ -95,40 +118,17 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   };
 
   const publicFeature=!managementMode&&['culture','statics','search','trace'].includes(featureId)?featureId:'';
-  const hero=<FeatureHeroContent
-    scopeId={scopeId}
-    eyebrow={shared?.eyebrow||eyebrow}
-    title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
-    subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
-    description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
-    rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
-  />;
-  // Every LOC feature works inside the same authored HTML frame. Hero and
-  // content are independent canvases: no second main, header, or page shell.
-  const heroSource=managementMode?managementTextPage:shared?'loc':'default';
-  const heroCanvas=useFixedPageCanvas({
-    headerClassName:heroClassName,
-    mainClassName:'scope-main'+(managementMode?' scope-main--edit-workspace':''),
-    headerSource:heroSource,imageUrl:heroImageOverride,
-    publicFeature,contentClass:publicFeature?'loc-public-content':''
-  });
-  // Mark only this already-painted Hero as ready; protected management
-  // entrance checks run after its SQL result or fallback has settled.
-  const heroReady=!hasFeatureHero||publicHeroQuery.isSuccess||
-    publicHeroQuery.isError||managementMode;
-  useEffect(()=>{
-    if(!heroCanvas||!heroReady)return;
-    heroCanvas.dataset.locHeroReady='true';
-    window.dispatchEvent(new Event('loc-feature-hero-ready'));
-  },[heroCanvas,heroReady]);
-  if(heroCanvas)return <>
-    <ExistingHero canvas={heroCanvas}>{hero}</ExistingHero>
-    {children}
-  </>;
   return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
     <section className="scope-page">
       <header className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
-        {hero}
+        <FeatureHeroContent
+          scopeId={scopeId}
+          eyebrow={shared?.eyebrow||''}
+          title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
+          subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
+          description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
+          rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
+        />
       </header>
       <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
         {children}
@@ -177,9 +177,9 @@ function safeRelationLinksOf(items=[],defaultLabel=''){
     });
 }
 
-const LazyArticleContextStatisticsChart=lazy(()=>import('./modules/statistics/StatisticsMultiChart'));
-const ArticleContextStatisticsChartLoading=()=> <p className="scope-status">正在準備統計圖…</p>;
-function ArticleContextStatisticsChart(props){return <Suspense fallback={<ArticleContextStatisticsChartLoading/>}><LazyArticleContextStatisticsChart {...props}/></Suspense>;}
+const ArticleContextStatisticsChart=dynamic(()=>import('./modules/statistics/StatisticsMultiChart'),{
+  ssr:false,loading:()=> <p className="scope-status">正在準備統計圖…</p>
+});
 function ArticleStatisticsPreview({scopeId='',statistics=null}){
   const [open,setOpen]=useState(false);
   const [range,setRange]=useState('week');

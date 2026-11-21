@@ -1,7 +1,7 @@
 'use client';
-import {lazy,Suspense} from 'react';
 
 import {useEffect,useId,useRef,useState} from 'react';
+import dynamic from 'next/dynamic';
 import {useAccount} from '../loc/auth/use-account';
 import {selectManagedScope} from '../loc/scope/scope-data';
 import {DB_QUERY_BATCH_SIZE,selectRows} from '../loc/db/db-query.mjs';
@@ -10,8 +10,7 @@ import {allocateTimeUid} from '../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../loc/culture/anniversary.mjs';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 
-const LazyBlockNoteEditor=lazy(()=>import('../loc/editor/BlockNoteEditor'));
-function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
+const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const validDay=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
 async function findDateAnchor(table,date){

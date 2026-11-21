@@ -1,13 +1,12 @@
 'use client';
-import {lazy,Suspense} from 'react';
 
 import {useMemo} from 'react';
+import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 import {dbPublicClient} from '../../../loc/db/db-client.mjs';
 
-const LazyCultureTimeline=lazy(()=>import('../../modules/culture-timeline/CultureTimeline'));
-function CultureTimeline(props){return <Suspense fallback={null}><LazyCultureTimeline {...props}/></Suspense>;}
+const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const TYPE_LABELS=Object.freeze({image:'圖片',video:'影片',rune:'符文',suno:'音樂'});
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 const mediaTypes=ANCHOR_TYPE_GROUPS.media;

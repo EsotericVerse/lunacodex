@@ -1,13 +1,11 @@
 'use client';
-import {lazy,Suspense} from 'react';
 
 import {WorkSummaryCard} from './ui';
 import {useEffect,useRef,useState} from 'react';
+import dynamic from 'next/dynamic';
 // A plain-text article does not need an editor chunk; edit and rich view mount on demand.
-const LazyBlockNoteEditor=lazy(()=>import('../loc/editor/BlockNoteEditor'));
-function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
-const LazyObjectEditor=lazy(()=>import('../loc/editor/BlockNoteEditor').then(mod=>({default:mod.ObjectEditor})));
-function ObjectEditor(props){return <Suspense fallback={null}><LazyObjectEditor {...props}/></Suspense>;}
+const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 import {UI_COPY} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
 import UiText,{useUiText} from '../i18n/UiText';

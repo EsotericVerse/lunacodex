@@ -74,18 +74,10 @@ function RichHtml({html,className='',stripImage=false,scopeId='loc'}){
   return content.trim()?<div className={className} dangerouslySetInnerHTML={{__html:content}}/>:null;
 }
 
-// Only LOC-owned published source has an audited build-time alternative.
-// Keep the saved PNG URL as a fallback and do not rewrite Galaxy image data.
-function optimizedHomeWebp(src=''){
-  return /^(?:https:\/\/loc\.lo3rwang\.cc)?\/pics\/LOC-2\.png(?:\?.*)?$/i.test(src)
-    ?'/pics/LOC-2.webp':'';
-}
-
 function SharedHomeBlockDisplay(slot,scopeId='loc'){
   const hero=Number(slot?.order)===1;
   const sign=hero?HomeBlock.heroExtraFor(scopeId):null;
   const image=resolveHomeImage(slot,scopeId);
-  const optimized=optimizedHomeWebp(image.src);
   const imageOnly=!hero&&Boolean(image.src)&&image.position==='only';
   const children=HomeBlock.visibleEntities(slot).filter(entity=>entity.title||
     BlockNoteContent.image.stripHeroImageTag(entity.text).replace(/<[^>]*>/g,'').trim());
@@ -98,19 +90,16 @@ function SharedHomeBlockDisplay(slot,scopeId='loc'){
   const body=<RichHtml html={slot.text} stripImage scopeId={scopeId} className="loc-home-block__body"/>;
   const media=image.src?(hero?<figure className="loc-home-block__media home-hero-visual" aria-label={image.alt}>
     <picture>{image.small?<source media="(max-width: 760px)" srcSet={image.small.src}/>:null}
-      {optimized?<source type="image/webp" srcSet={optimized}/>:null}
       <img src={image.src} alt="" aria-hidden="true" loading="eager" fetchPriority="high" decoding="async"/></picture>
   </figure>:<article className="loc-home-block__media loc-home-block__media-bubble loc-bubble"
     style={{'--loc-home-media-max':image.width+'px'}}>
-    <picture>{optimized?<source type="image/webp" srcSet={optimized}/>:null}
-      <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/></picture>
+    <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/>
   </article>):null;
   return <>
     {header}
     {imageOnly?<div className="loc-home-block__body loc-home-block__body--image"
       style={{'--loc-home-media-max':image.width+'px'}}>
-      <picture>{optimized?<source type="image/webp" srcSet={optimized}/>:null}
-        <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/></picture>
+      <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/>
     </div>:body}
     {children.length?<div className="loc-home-block__children" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([slot.bubbleColumns],slot.pageName||'index')}}>
       {children.map((entity,index)=>{

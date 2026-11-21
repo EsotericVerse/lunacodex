@@ -1,6 +1,7 @@
 'use client';
 
 import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState} from 'react';
+import {usePathname,useRouter} from 'next/navigation';
 import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents,transactionWrites} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
@@ -12,7 +13,8 @@ import {useQueryClient} from '../../packages/zenstack/client-queries';
 const EditDockContext=createContext(null);
 
 export function EditDockProvider({children,scopeId}){
-    const pathname=(typeof window==='undefined'?'/':window.location.pathname);
+  const router=useRouter();
+  const pathname=usePathname();
   const queryClient=useQueryClient();
   // Route-owned Scope ID is received from AppShell. Only editing is mutable.
   const [editing,setEditing]=useState(false);
@@ -163,10 +165,10 @@ export function EditDockProvider({children,scopeId}){
       isManagementHref(url.href)){
       window.location.assign(url.href);
     }else{
-      if(history==='push')window.location.assign(url.pathname+url.search+url.hash);
-      else window.location.replace(url.pathname+url.search+url.hash);
+      if(history==='push')router.push(url.pathname+url.search+url.hash,{scroll});
+      else router.replace(url.pathname+url.search+url.hash,{scroll});
     }
-  },[]);
+  },[router]);
   const complete=useCallback(target=>{
     end();
     navigate(target);

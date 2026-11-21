@@ -1,8 +1,8 @@
 'use client';
-import {Fragment,lazy,Suspense} from 'react';
 
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
+import dynamic from 'next/dynamic';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
@@ -14,10 +14,8 @@ import {HeroImageFieldset} from './HeroImageFields';
 import {invalidateScopeBlockPage} from '../scope/scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
 
-const LazyBlockNoteEditor=lazy(()=>import('../editor/BlockNoteEditor'));
-function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
-const LazyObjectEditor=lazy(()=>import('../editor/BlockNoteEditor').then(mod=>({default:mod.ObjectEditor})));
-function ObjectEditor(props){return <Suspense fallback={null}><LazyObjectEditor {...props}/></Suspense>;}
+const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
+const ObjectEditor=dynamic(()=>import('../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 
 const TITLE_LIMIT=64;
 const EYEBROW_LIMIT=64;
@@ -30,7 +28,6 @@ function stripInlineImage(value){
 export default function ScopeBlockDraftList({
   slots,scopeId,pageName,allowDelete=true,allowEntities=true,allowImages=true,
   editEyebrow=true,canAddBlock=false,slotClassName='loc-card',editSlotClassName='',
-  renderDisplay=null,resolveSlotClassName=null,resolveSlotStyle=null,
   preserveOrder=false,toolbar=null,onDone,onCancel,onDirtyChange=null
 }){
   useUiSection('uiExtra.editBlocks');
@@ -54,15 +51,6 @@ export default function ScopeBlockDraftList({
   });
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
-  // Never mount every BlockNote on edit entry. One expanded frame and, at
-  // most, one of its child editors are enough to modify the complete draft.
-  // The homepage enters its editor directly, without rendering the Hero.
-  // Block 1 is the pinned Hero configuration, not a second preview frame.
-  const [activeDraftUid,setActiveDraftUid]=useState(()=>
-    pageName==='index'&&scopeId==='loc'
-      ?slots.find(slot=>HomeBlock.isPinnedHomeHero(pageName,slot))?.uid||null
-      :null);
-  const [activeEntityKey,setActiveEntityKey]=useState('');
 
   async function publishSavedBlocks(rows){
     // The rows were committed by SQL. Update the active viewer from those exact
@@ -73,16 +61,7 @@ export default function ScopeBlockDraftList({
   }
 
   function patchDraft(uid,patch){
-    setDrafts(current=>{
-      let changed=false;
-      const next=current.map(draft=>{
-        if(draft.uid!==uid)return draft;
-        if(Object.entries(patch).every(([key,value])=>Object.is(draft[key],value)))return draft;
-        changed=true;
-        return {...draft,...patch};
-      });
-      return changed?next:current;
-    });
+    setDrafts(current=>current.map(draft=>draft.uid===uid?{...draft,...patch}:draft));
   }
   function patchImage(uid,changes,removeEmbedded=true){
     setDrafts(current=>current.map(draft=>{
@@ -158,16 +137,13 @@ export default function ScopeBlockDraftList({
     });
   }
   function addBlock(){
-    const uid=HomeBlock.createUid();
     setDrafts(current=>{
       const nextOrder=Math.max(0,...current.map(draft=>Number(draft.order)||0))+1;
       return [...current,{
-        uid,stored:false,order:nextOrder,
+        uid:HomeBlock.createUid(),stored:false,order:nextOrder,
         eyebrow:'',title:'',subtitle:'',text:'',image:null,entities:[],bubbleColumns:HomeBlock.defaultBubbleColumns(pageName),_deleted:false
       }];
     });
-    setActiveDraftUid(uid);
-    setActiveEntityKey('');
   }
 
   async function save({switching=false}={}){
@@ -257,10 +233,7 @@ export default function ScopeBlockDraftList({
 
   function renderDraftEntities(draft){
     return <div className="scope-block-entity-grid" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([draft.bubbleColumns],pageName)}}>
-      {draft.entities.map((entity,index)=>{
-        const entityKey=draft.uid+':'+entity.uid;
-        const expanded=activeEntityKey===entityKey;
-        return <article className={HomeBlock.childPresentation(entity.title)==='card'?'scope-block-entity':'loc-bubble scope-block-text-bubble'} key={entity.uid}>
+      {draft.entities.map((entity,index)=><article className={HomeBlock.childPresentation(entity.title)==='card'?'scope-block-entity':'loc-bubble scope-block-text-bubble'} key={entity.uid}>
         <div className="scope-block-entity-actions">
           <button type="button" className="loc-button" disabled={index===0||busy} onClick={()=>moveEntity(draft.uid,index,-1)}>←</button>
           <button type="button" className="loc-button" disabled={index===draft.entities.length-1||busy} onClick={()=>moveEntity(draft.uid,index,1)}>→</button>
@@ -271,18 +244,13 @@ export default function ScopeBlockDraftList({
           <input className="scope-search-input" placeholder={t('uiExtra.editBlocks.bubbleHint')} value={entity.title}
             onChange={event=>updateEntity(draft.uid,index,{title:event.target.value})}/>
         </label>
-        <button type="button" className="loc-button" aria-expanded={expanded}
-          onClick={()=>setActiveEntityKey(current=>current===entityKey?'':entityKey)}>
-          {expanded?'收合附屬內容':'編輯附屬內容'}
-        </button>
-        {expanded?<BlockNoteEditor
+        <BlockNoteEditor
           editorKey={entity.uid+':draft'}
           content={entity.text?{html:entity.text}:''}
           onHtmlChange={html=>updateEntity(draft.uid,index,{text:html})}
           canInsertImage={allowImages&&canInsertImageIn(draft,entity.text)}
-        />:<p className="scope-editor-stage__help">{BlockNoteContent.text.blocksToPlainText(entity.text).slice(0,160)}</p>}
-      </article>;
-      })}
+        />
+      </article>)}
       {draft.entities.length<HomeBlock.entityLimit?<button type="button" className="scope-block-entity-add" onClick={()=>addEntity(draft.uid)} disabled={busy}>
         <UiText id="uiExtra.editBlocks.addChild"/>
       </button>:null}
@@ -293,18 +261,12 @@ export default function ScopeBlockDraftList({
     const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
     const image=isHomeFrame?resolveHomeImage(draft,scopeId):null;
     const pinnedHero=HomeBlock.isPinnedHomeHero(pageName,draft);
-    const expanded=activeDraftUid===draft.uid;
-    const controls=<div className="scope-inline-editbar">
-        <button type="button" className="loc-button" aria-expanded={expanded}
-          onClick={()=>{
-            setActiveDraftUid(current=>current===draft.uid?null:draft.uid);
-            setActiveEntityKey('');
-          }}>{expanded?'收合區塊':'編輯區塊 '+draft.order}</button>
+    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'} key={draft.uid}>
+      <div className="scope-inline-editbar">
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index-1)} onClick={()=>moveBlock(draft.uid,-1)}><UiText id="uiExtra.editBlocks.moveUp"/></button>:null}
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index+1)} onClick={()=>moveBlock(draft.uid,1)}><UiText id="uiExtra.editBlocks.moveDown"/></button>:null}
         {allowDelete?<button type="button" className="loc-button scope-danger-button" disabled={busy} onClick={()=>toggleDelete(draft.uid)}><UiText id="uiExtra.editBlocks.remove"/></button>:null}
-      </div>;
-    const content=expanded?<>
+      </div>
       <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3><p className="scope-editor-stage__help">依序設定標題、副標題與正文；下方另行設定圖片及附屬內容。</p>
       <ObjectEditor mode="scope" fields={[
         ...(editEyebrow?[{
@@ -338,40 +300,6 @@ export default function ScopeBlockDraftList({
         </label>
         {renderDraftEntities(draft)}
       </div>:null}
-      </>:<div className="scope-editor-stage">
-        <strong>{draft.title||'區塊 '+draft.order}</strong>
-        <p className="scope-editor-stage__help">
-          {draft.subtitle||'點選「編輯區塊」開啟文字編輯器'}
-          {allowEntities&&draft.entities.length?' · '+draft.entities.length+' 筆附屬內容':''}
-        </p>
-      </div>;
-    // Home edit mode omits the public Hero entirely. The first row is an
-    // editing workspace, opened immediately; its image URL remains editable.
-    // Other frames retain their published markup and open a form on demand.
-    const homePreview=pageName==='index'&&typeof renderDisplay==='function'&&
-      typeof resolveSlotClassName==='function';
-    if(homePreview&&pinnedHero&&scopeId==='loc'){
-      return <section className="scope-home-hero-editor scope-editable-block scope-block-draft"
-        key={draft.uid} data-page-name={pageName} data-block-order={draft.order}>
-        {controls}
-        {content}
-      </section>;
-    }
-    if(homePreview){
-      return <Fragment key={draft.uid}>
-        <section className={resolveSlotClassName(draft)+' scope-editable-block scope-home-edit-preview'}
-          style={typeof resolveSlotStyle==='function'?resolveSlotStyle(draft):undefined}
-          data-page-name={pageName} data-block-order={draft.order}>
-          {renderDisplay(draft)}
-          {controls}
-        </section>
-        {expanded?<div className="scope-home-edit-fields">{content}</div>:null}
-      </Fragment>;
-    }
-    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'}
-      key={draft.uid}>
-      {controls}
-      {content}
     </section>;
   }
 
@@ -379,13 +307,10 @@ export default function ScopeBlockDraftList({
     save,isDirty:()=>JSON.stringify(drafts)!==initialDrafts.current,
     isBusy:()=>busy,discard:onCancel
   };
-  // Callback identity changes must not fire the old cleanup after each
-  // keystroke; that previously toggled parent dirty state unnecessarily.
-  const onDirtyChangeRef=useRef(onDirtyChange);
-  onDirtyChangeRef.current=onDirtyChange;
-  const isDraftDirty=JSON.stringify(drafts)!==initialDrafts.current;
-  useEffect(()=>{onDirtyChangeRef.current?.(isDraftDirty);},[isDraftDirty]);
-  useEffect(()=>()=>onDirtyChangeRef.current?.(false),[]);
+  useEffect(()=>{
+    onDirtyChange?.(JSON.stringify(drafts)!==initialDrafts.current);
+    return ()=>onDirtyChange?.(false);
+  },[drafts,onDirtyChange]);
 
   useEffect(()=>{
     // Admin can also be opened directly, without homepage Edit mode.

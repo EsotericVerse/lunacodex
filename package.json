@@ -5,17 +5,16 @@
   "scripts": {
     "prepare": "node scripts/prepare-local-workspace.mjs",
     "prebuild": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs && node scripts/check-js-syntax.mjs",
-    "dev": "npm run build:static && node scripts/serve-loc-static.mjs",
-    "build": "npm run build:static",
-    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-loc-static.mjs && node scripts/verify-loc-output.mjs && node scripts/audit-loc-packages.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",
     "audit:static": "node scripts/audit-static-content.mjs",
     "test:static-assets": "node --test tests/static-export-assets.test.mjs",
     "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
-    "predev": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs",
-    "audit:packages": "node scripts/audit-loc-packages.mjs"
+    "predev": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs"
   },
   "dependencies": {
     "@better-auth/sso": "1.7.18",
@@ -38,6 +37,7 @@
     "maplibre-gl": "6.16.0",
     "modern-ahocorasick": "3.3.0",
     "motion": "13.4.4",
+    "next": "16.4.6",
     "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -45,8 +45,7 @@
     "vis-data": "8.0.6",
     "vis-network": "10.1.5",
     "vis-timeline": "8.5.6",
-    "zod": "4.6.7",
-    "preact": "10.29.8"
+    "zod": "4.6.7"
   },
   "overrides": {
     "source-map-js": "1.2.2",
@@ -59,7 +58,6 @@
     "@capacitor/ios": "8.5.3",
     "@types/node": "26.6.6",
     "sharp": "0.35.5",
-    "typescript": "5.9.3",
-    "esbuild": "0.28.2"
+    "typescript": "5.9.3"
   }
 }

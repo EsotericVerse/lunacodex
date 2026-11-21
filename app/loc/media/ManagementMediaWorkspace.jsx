@@ -1,14 +1,11 @@
 'use client';
-import {lazy,Suspense} from 'react';
 
 import {useState} from 'react';
+import dynamic from 'next/dynamic';
 import {useEditDock} from '../../modular/edit-dock';
 
-const LazyManagementMediaPublisher=lazy(()=>import('./ManagementMediaPublisher'));
-function ManagementMediaPublisher(props){return <Suspense fallback={null}><LazyManagementMediaPublisher {...props}/></Suspense>;}
-const LazySunoImportPanel=lazy(()=>import('./SunoImportPanel'));
-const SunoImportPanelLoading=()=> <p role="status" className="scope-status">正在載入 Suno 音樂編輯器…</p>;
-function SunoImportPanel(props){return <Suspense fallback={<SunoImportPanelLoading/>}><LazySunoImportPanel {...props}/></Suspense>;}
+const ManagementMediaPublisher=dynamic(()=>import('./ManagementMediaPublisher'),{loading:()=>null});
+const SunoImportPanel=dynamic(()=>import('./SunoImportPanel'),{loading:()=> <p role="status" className="scope-status">正在載入 Suno 音樂編輯器…</p>});
 
 // Suno is a multimedia publishing workflow, not an independent management
 // category. Keep each editor's writes and authorization in its existing owner.

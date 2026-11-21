@@ -1,5 +1,5 @@
 'use client';
-import {lazy,Suspense} from 'react';
+import {parseBlockImage} from './hero-image.mjs';
 import UiText from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 
@@ -8,16 +8,16 @@ import {motion,useReducedMotion} from 'motion/react';
 import {useEditDock} from '../../modular/edit-dock';
 import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
+import dynamic from 'next/dynamic';
 import {useAppBootstrap} from '../runtime/app-bootstrap';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {selectScopeBlocks,selectLiveScopeBlocks} from '../scope/scope-data';
+import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
+import {selectLiveScopeBlocks} from '../scope/scope-data';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import {useAccount} from '../auth/use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
-const LazyScopeBlockEditorSession=lazy(()=>import('./ScopeBlockEditorSession'));
-function ScopeBlockEditorSession(props){return <Suspense fallback={null}><LazyScopeBlockEditorSession {...props}/></Suspense>;}
-const LazyScopeBlockDraftList=lazy(()=>import('./ScopeBlockDraftList'));
-function ScopeBlockDraftList(props){return <Suspense fallback={null}><LazyScopeBlockDraftList {...props}/></Suspense>;}
+const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
+const ScopeBlockDraftList=dynamic(()=>import('./ScopeBlockDraftList'),{loading:()=>null});
 import {isInteractiveContentTarget} from '../content/content-policy.js';
 
 import {HomeBlock} from './home-block-model';
@@ -26,6 +26,21 @@ import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 function pageNameOf(value='index'){
   const page=String(value||'index').trim().toLowerCase();
   return page==='home'?'index':page;
+}
+
+function normalizeRow(row,order,pageName='index'){
+  return {
+    uid:String(row?.uid||''),
+    stored:Boolean(row?.uid),
+    order:Number(row?.block_order||order||1),
+    eyebrow:String(row?.block_eyebrow||''),
+    title:String(row?.block_title||''),
+    subtitle:String(row?.block_subtitle||''),
+    text:HomeBlock.removeDuplicatedLegacySubtitle(row?.block_text,row?.block_subtitle),
+    image:parseBlockImage(row?.block_image),
+    bubbleColumns:HomeBlock.bubbleColumns(row?.block_entity,pageName),
+    entities:HomeBlock.normalizeEntities(row?.block_entity)
+  };
 }
 
 export default function ScopeEditableBlocks({
@@ -86,18 +101,16 @@ export default function ScopeEditableBlocks({
   const bootstrap=useAppBootstrap(scopeId,pageName,{
     enabled:!isScopeHomepageBlock&&!editingContent
   });
-  const published=useAsyncResource(['scope-public-blocks',scopeId,pageName],
-    ()=>selectScopeBlocks(scopeId,pageName),{
+  const published=useAsyncResource(['published-home-page',scopeId,pageName],
+    ()=>loadPublishedBlocks(scopeId,pageName),{
       enabled:isScopeHomepageBlock&&!editingContent
     });
   const editorRows=useAsyncResource(['scope-blocks',scopeId,pageName],
     ()=>selectLiveScopeBlocks(scopeId,pageName),{
       enabled:editingContent
     });
-  // Keep the approved published home visible while the authoritative edit
-  // snapshot loads. Only the ready live rows become writable drafts.
-  const displayRows=recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks);
-  const blocks=editingContent?(editorRows.isSuccess?editorRows.data:displayRows):displayRows;
+  const blocks=editingContent?editorRows.data
+    :(recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks));
   const editingReady=editorRows.isSuccess;
   const editingError=editorRows.isError;
   const rememberSavedRows=()=>{
@@ -120,21 +133,21 @@ export default function ScopeEditableBlocks({
     const rows=Array.isArray(blocks)?blocks:[];
     if(normalizedOrders.length){
       const byOrder=new Map(rows.map(row=>[Number(row.block_order),row]));
-      return normalizedOrders.map(order=>HomeBlock.normalizeRow(byOrder.get(order),order,pageName));
+      return normalizedOrders.map(order=>normalizeRow(byOrder.get(order),order,pageName));
     }
     if(Number.isInteger(maxBlocks)&&maxBlocks>0){
-      const displayed=HomeBlock.rows(rows,pageName,maxBlocks).map(row=>HomeBlock.normalizeRow(row,row.block_order,pageName));
+      const displayed=HomeBlock.rows(rows,pageName,maxBlocks).map(row=>normalizeRow(row,row.block_order,pageName));
       if(editingSlot&&!editingSlot.stored&&!displayed.some(slot=>slot.order===editingSlot.order)&&editingSlot.order<=maxBlocks){
         displayed.push({...editingSlot});
       }
       if(Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0&&placeholderFirstOrder<=maxBlocks
           &&!displayed.some(slot=>slot.order===placeholderFirstOrder)){
-        displayed.push(HomeBlock.normalizeRow(null,placeholderFirstOrder,pageName));
+        displayed.push(normalizeRow(null,placeholderFirstOrder,pageName));
       }
       displayed.sort((a,b)=>a.order-b.order);
       return displayed;
     }
-    const displayed=rows.map(row=>HomeBlock.normalizeRow(row,row.block_order,pageName));
+    const displayed=rows.map(row=>normalizeRow(row,row.block_order,pageName));
     // Unbounded pages must render the unsaved editingSlot, or the Add Block button appears inert.
     if(editingSlot&&!editingSlot.stored&&!displayed.some(slot=>slot.order===editingSlot.order)){
       displayed.push({...editingSlot});
@@ -225,14 +238,10 @@ export default function ScopeEditableBlocks({
     const heroSlotOrder=Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0?placeholderFirstOrder:null;
     const contents=<>
       {!editing&&!heroSlotOrder?toggleButton:null}
-      {editing&&!editingReady?<div
-        className={scopeId==='loc'&&pageName==='index'?'scope-home-hero-editor':'scope-status'}
-        role="status">
-        <p className="scope-status">
-          {editingError?'編輯資料讀取失敗，請重新進入編輯。':'正在讀取最新編輯資料…'}
-        </p>
-      </div>:null}
-      {editing?(editingReady?<ScopeBlockDraftList
+      {editing&&!editingReady?<p className="scope-status" role="status">
+        {editingError?'編輯資料讀取失敗，請重新進入編輯。':'正在讀取最新編輯資料…'}
+      </p>:null}
+      {editing&&editingReady?<ScopeBlockDraftList
         slots={slots}
         scopeId={scopeId}
         pageName={pageName}
@@ -243,9 +252,6 @@ export default function ScopeEditableBlocks({
         canAddBlock={canAddBlock}
         slotClassName={slotClassName}
         editSlotClassName={editSlotClassName}
-        renderDisplay={renderDisplay}
-        resolveSlotClassName={resolveSlotClassName}
-        resolveSlotStyle={resolveSlotStyle}
         preserveOrder={Boolean(normalizedOrders.length)}
         toolbar={toggleButton}
         onDirtyChange={onDirtyChange}
@@ -278,7 +284,7 @@ export default function ScopeEditableBlocks({
             editDock.complete(navigationHref(scopeId,'',native));
           else onEditorExit?.(notice);
         }}
-      />:null):slots.flatMap((slot,index)=>{
+      />:slots.flatMap((slot,index)=>{
         const empty=!BlockNoteContent.text.hasBlockNoteFrameContent(slot);
         if(empty&&!canEdit&&slot.order!==placeholderFirstOrder)return [];
         if(onSuggestionClick&&!canEdit
@@ -382,7 +388,7 @@ export default function ScopeEditableBlocks({
     {canEdit&&!normalizedOrders.length&&(!maxBlocks||nextOrder<=maxBlocks)?<button
       type="button"
       className="loc-button scope-add-page-block"
-      onClick={()=>begin(HomeBlock.normalizeRow(null,nextOrder,pageName))}
+      onClick={()=>begin(normalizeRow(null,nextOrder,pageName))}
       disabled={Boolean(editingSlot)}
     ><UiText id="uiExtra.editBlocks.addBlock"/></button>:null}
     {message?<p className="scope-status" role="status">{message}</p>:null}

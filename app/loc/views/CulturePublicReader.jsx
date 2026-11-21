@@ -1,6 +1,6 @@
 'use client';
-import {lazy,Suspense} from 'react';
 import {useEffect,useMemo,useRef,useState} from 'react';
+import dynamic from 'next/dynamic';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {FeaturePage} from '../../modular/ui';
 import {selectRows} from '../db/db-query.mjs';
@@ -18,8 +18,7 @@ import {unassignedPublicDateAnchors} from '../culture/time-trace-river.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
 import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 
-const LazyCultureTimeline=lazy(()=>import('../../modular/modules/culture-timeline/CultureTimeline'));
-function CultureTimeline(props){return <Suspense fallback={null}><LazyCultureTimeline {...props}/></Suspense>;}
+const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
 const NO_FOCUS=Object.freeze({});
 const datePart=value=>String(value||'').slice(0,10);
