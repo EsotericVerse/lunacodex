@@ -15,6 +15,10 @@ on:
       - 'app/loc/runtime/html-controls.js'
       - 'tests/loc-html-base.test.mjs'
       - 'tests/loc-db-connectivity.test.mjs'
+      - 'tests/loc-home-edit-layout.test.mjs'
+      - 'app/loc/blocks/ScopeEditableBlocks.jsx'
+      - 'app/loc/blocks/ScopeBlockDraftList.jsx'
+      - 'app/styles/home-composition.css'
       - 'functions/api/loc-auth-connectivity.js'
       - '.github/workflows/loc-static-regression.yml'
   push:
@@ -30,6 +34,10 @@ on:
       - 'app/loc/runtime/html-controls.js'
       - 'tests/loc-html-base.test.mjs'
       - 'tests/loc-db-connectivity.test.mjs'
+      - 'tests/loc-home-edit-layout.test.mjs'
+      - 'app/loc/blocks/ScopeEditableBlocks.jsx'
+      - 'app/loc/blocks/ScopeBlockDraftList.jsx'
+      - 'app/styles/home-composition.css'
       - 'functions/api/loc-auth-connectivity.js'
       - '.github/workflows/loc-static-regression.yml'
   workflow_dispatch:

@@ -95,8 +95,10 @@ export default function ScopeEditableBlocks({
     ()=>selectLiveScopeBlocks(scopeId,pageName),{
       enabled:editingContent
     });
-  const blocks=editingContent?editorRows.data
-    :(recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks));
+  // Keep the approved published home visible while the authoritative edit
+  // snapshot loads. Only the ready live rows become writable drafts.
+  const displayRows=recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks);
+  const blocks=editingContent?(editorRows.isSuccess?editorRows.data:displayRows):displayRows;
   const editingReady=editorRows.isSuccess;
   const editingError=editorRows.isError;
   const rememberSavedRows=()=>{
@@ -224,10 +226,14 @@ export default function ScopeEditableBlocks({
     const heroSlotOrder=Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0?placeholderFirstOrder:null;
     const contents=<>
       {!editing&&!heroSlotOrder?toggleButton:null}
-      {editing&&!editingReady?<p className="scope-status" role="status">
-        {editingError?'編輯資料讀取失敗，請重新進入編輯。':'正在讀取最新編輯資料…'}
-      </p>:null}
-      {editing&&editingReady?<ScopeBlockDraftList
+      {editing&&!editingReady?<div
+        className={scopeId==='loc'&&pageName==='index'?'scope-home-hero-editor':'scope-status'}
+        role="status">
+        <p className="scope-status">
+          {editingError?'編輯資料讀取失敗，請重新進入編輯。':'正在讀取最新編輯資料…'}
+        </p>
+      </div>:null}
+      {editing?(editingReady?<ScopeBlockDraftList
         slots={slots}
         scopeId={scopeId}
         pageName={pageName}
@@ -238,6 +244,9 @@ export default function ScopeEditableBlocks({
         canAddBlock={canAddBlock}
         slotClassName={slotClassName}
         editSlotClassName={editSlotClassName}
+        renderDisplay={renderDisplay}
+        resolveSlotClassName={resolveSlotClassName}
+        resolveSlotStyle={resolveSlotStyle}
         preserveOrder={Boolean(normalizedOrders.length)}
         toolbar={toggleButton}
         onDirtyChange={onDirtyChange}
@@ -270,7 +279,7 @@ export default function ScopeEditableBlocks({
             editDock.complete(navigationHref(scopeId,'',native));
           else onEditorExit?.(notice);
         }}
-      />:slots.flatMap((slot,index)=>{
+      />:null):slots.flatMap((slot,index)=>{
         const empty=!BlockNoteContent.text.hasBlockNoteFrameContent(slot);
         if(empty&&!canEdit&&slot.order!==placeholderFirstOrder)return [];
         if(onSuggestionClick&&!canEdit

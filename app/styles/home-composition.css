@@ -361,3 +361,52 @@
     line-height:1.5;
   }
 }
+
+/* Edit mode omits the public Hero. Its editor occupies the first layout
+   position, so returning to the homepage can load the Hero in that slot.
+   Other frames keep their published display markup while editing. */
+.loc-next-main[data-loc-view="home"] .loc-home>.scope-home-edit-preview>.scope-inline-editbar{
+  position:absolute;
+  top:.5rem;
+  right:.5rem;
+  left:auto;
+  display:flex;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  max-width:calc(100% - 1rem);
+  margin:0;
+}
+.loc-next-main[data-loc-view="home"] .loc-home>.scope-home-edit-fields{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:.85rem;
+  min-width:0;
+  padding:clamp(.8rem,1.75vw,1.4rem);
+  background:var(--loc-panel);
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+}
+
+.loc-next-main[data-loc-view="home"] .loc-home>.scope-home-hero-editor{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  align-content:start;
+  gap:.85rem;
+  min-width:0;
+  min-height:clamp(360px,48vw,620px);
+  padding:clamp(.9rem,2.2vw,1.6rem);
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
+  background:var(--loc-panel);
+}
+.loc-next-main[data-loc-view="home"] .loc-home>.scope-home-hero-editor>.scope-inline-editbar{
+  position:relative;
+  inset:auto;
+  margin:0;
+  justify-self:end;
+}
+@media(max-width:760px){
+  .loc-next-main[data-loc-view="home"] .loc-home>.scope-home-hero-editor{
+    min-height:clamp(340px,47svh,445px);
+  }
+}
