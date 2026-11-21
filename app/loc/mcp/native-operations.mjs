@@ -18,7 +18,7 @@ import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
-import {directMcpKysely} from './native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from './native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
@@ -138,7 +138,7 @@ export async function handleNativeLocOperation(request,env={},{
     return reply({error:{message:'Payload too large'}},413);
   let operationKind='',importPhase='request';
   let selected=null;
-  let onAbort=null;
+  let releaseAbort=()=>{};
   try{
     let body;
     try{body=await readBoundedJson(request.body,MAX_BYTES)}
@@ -195,9 +195,7 @@ export async function handleNativeLocOperation(request,env={},{
     selected=await database(env,control?'':externalTarget,{waitUntil});
     // Cancellation belongs to the request, not to whichever page initiated it.
     // Closing an in-flight client aborts its uncommitted SQL transaction.
-    onAbort=()=>{void selected?.pool?.abort?.()};
-    if(request.signal?.aborted)onAbort();
-    else request.signal?.addEventListener('abort',onAbort,{once:true});
+    releaseAbort=bindLocRequestAbort(selected,request.signal);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     // Personal preferences are self-service under the verified website Session.
@@ -480,18 +478,14 @@ em.count,0)}});
       ...(profileFailure?{code,stage:'db_connection'}:{})}},
       status>=400&&status<=599?status:500);
   }finally{
-    if(onAbort)request.signal?.removeEventListener('abort',onAbort);
-    // This is the single resource ownership boundary for EVERY native LOC
-    // operation, including permission denial, read-only work and imports.
-    // Kysely destroy awaits the request-scoped pool's close in all cases.
-    if(selected?.db){
-      try{await selected.db.destroy();}
-      catch(error){
-        console.error('[LOC native database cleanup]',{
-          code:String(error?.code||'CLOSE_FAILED').slice(0,64)
-        });
-        try{await selected.pool?.end?.();}catch{}
-      }
+    releaseAbort();
+    // The transaction has completed or thrown before this cleanup; every
+    // rejected authorization, read, import and write releases its connection.
+    try{await closeLocDatabase(selected);}
+    catch(error){
+      console.error('[LOC native database cleanup]',{
+        code:String(error?.code||'CLOSE_FAILED').slice(0,64)
+      });
     }
   }
 }
