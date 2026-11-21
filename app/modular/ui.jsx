@@ -40,7 +40,7 @@ function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=fa
   </>;
 }
 
-export function FeaturePage({featureId,children,titleOverride=null,subtitle=null,description=null}){
+export function FeaturePage({featureId,children,titleOverride=null,subtitle=null,description=null,eyebrow=''}){
   const {scope,scopeId}=useScopeRuntime();
   const copy=useUiCopy();
   const {locale}=useUiLocale();
@@ -97,7 +97,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const publicFeature=!managementMode&&['culture','statics','search','trace'].includes(featureId)?featureId:'';
   const hero=<FeatureHeroContent
     scopeId={scopeId}
-    eyebrow={shared?.eyebrow||''}
+    eyebrow={shared?.eyebrow||eyebrow}
     title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
     subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
     description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
