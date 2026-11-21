@@ -35,6 +35,7 @@ import {reconcileExistingImportAnchors} from './reconcile-anchors.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from '../archive/import-safety.mjs';
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
+import {publicImageUrl,imageGalaxyCandidates} from './image-galaxy.mjs';
 import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
 import {MAX_ROWS,urlSafeInBatches} from '../query/query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content/content-policy';
@@ -139,8 +140,11 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
   const uid=String(((isFacebook||isThreads||isInstagram)&&entry?.import_uid)||
     value('uid')||entry?.import_uid||createUid8()).trim();
   const rawUrl=String(value('url')||'').trim();
+  const imageGalaxyRow=Boolean(content&&publicImageUrl(rawUrl)&&
+    (row.__imageGalaxy===true||
+      String(value('media_type')||'').trim().toLowerCase()==='image'));
   const mediaCandidates=[value('media'),value('media_link'),
-    ...(isArchiveMediaUrl(rawUrl)?[rawUrl]:[])]
+    ...(isArchiveMediaUrl(rawUrl)&&!imageGalaxyRow?[rawUrl]:[])]
     .filter(item=>item!==''&&item!==undefined&&item!==null);
   let mediaRecords=[],mediaRefs=[],mediaWarning='';
   const importedRuneReferences=value('rune_references');
@@ -240,7 +244,8 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     target_id:normalizeRelationIds(value('target_id')),
     site_id:String(originalSiteId||'').trim()||null,
     ref_id:String(value('ref_id')||'').trim()||null,
-    url:!isArchiveMediaUrl(rawUrl)&&!importMapUrlCoordinates(rawUrl)?rawUrl||null:null,
+    url:imageGalaxyRow?publicImageUrl(rawUrl):
+      !isArchiveMediaUrl(rawUrl)&&!importMapUrlCoordinates(rawUrl)?rawUrl||null:null,
     ...(mediaRefs.length?{media_link:mediaRefs}:{}),
     site:String(selectedSource||'').trim()
   };
@@ -581,6 +586,81 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       await flushMediaLinks();
 
   return {created,connected,resolvedIds,conflicts:mediaConflicts};
+}
+
+
+// Images are independent Galaxy rows linked by source_id, not media_link.
+async function syncImportedImageGalaxies({
+  records=[],knownArticleIds=new Map(),articlesByUid=new Map(),galaxy,onProgress
+}={}){
+  const images=imageGalaxyCandidates(records,{
+    resolveOwner:uid=>knownArticleIds.get(uid)||(articlesByUid.has(uid)?uid:''),
+    articlesByUid
+  });
+  if(!images.length)return {created:0,existing:0,conflicts:0};
+  const wanted=new Map(images.map(row=>[JSON.stringify([row.source_id,row.url]),row]));
+  const saved=new Map(),urls=[...new Set(images.map(row=>row.url))];
+  let examined=0;
+  for(const batch of urlSafeInBatches(urls,'url')){
+    let cursor='';
+    for(;;){
+      let query=dbAuthRelation(galaxy).select('uid,source_id,url')
+        .in('url',batch).order('uid',{ascending:true}).limit(500);
+      if(cursor)query=query.gt('uid',cursor);
+      const {data,error}=await query;
+      if(error)throw Error('圖片 Galaxy URL 查詢失敗：'+error.message);
+      const rows=data||[];
+      if(!Array.isArray(rows)||rows.length>500)throw Error('圖片 Galaxy 查詢回傳不完整');
+      for(const row of rows){
+        const key=JSON.stringify([String(row.source_id||''),String(row.url||'')]);
+        if(!wanted.has(key))continue;
+        if(!saved.has(key))saved.set(key,new Set());
+        saved.get(key).add(String(row.uid||''));
+      }
+      if(rows.length<500)break;
+      const next=String(rows.at(-1)?.uid||'');
+      if(!/^[A-Za-z0-9]{8}$/.test(next)||next<=cursor)
+        throw Error('圖片 Galaxy URL 游標未前進');
+      cursor=next;
+    }
+    examined+=batch.length;
+    onProgress?.({stage:'核對圖片 Galaxy',completed:examined,total:urls.length});
+  }
+  const inserts=[],offsets=new Map();
+  let existing=0,conflicts=0;
+  for(const row of images){
+    const key=JSON.stringify([row.source_id,row.url]),found=saved.get(key);
+    if(found?.size===1){existing++;continue;}
+    if(found?.size>1){conflicts++;continue;}
+    const time=Date.parse(String(row.createtime||''));
+    const basis=Number.isFinite(time)?time:Date.now();
+    const offset=offsets.get(basis)||0;
+    offsets.set(basis,offset+1);
+    inserts.push({
+      uid:createUid8(),source_id:row.source_id,url:row.url,
+      title:row.title,content:row.content,site:row.site,
+      createtime:new Date(basis+offset+1).toISOString(),
+      ...galaxyAble({site:row.site,statics:false,culture:false,search:false,
+        trace:false,list:false,keyword:false,extract:false,others:false})
+    });
+  }
+  let created=0;
+  for(let i=0;i<inserts.length;i+=MAX_ROWS){
+    const batch=inserts.slice(i,i+MAX_ROWS);
+    const result=await insertImportBatches(batch,{
+      batchSize:MAX_ROWS,
+      verifyUidConflict:async uid=>{
+        const {data,error}=await dbAuthRelation(galaxy).select('uid').eq('uid',uid).limit(1);
+        if(error)throw Error('圖片 UID 比對失敗：'+error.message);
+        return Boolean(data?.length);
+      },
+      writeBatch:rows=>insertImportRows(galaxy,rows)
+    });
+    created+=result.inserted;
+    conflicts+=result.conflicts;
+    onProgress?.({stage:'新增圖片 Galaxy',completed:i+batch.length,total:inserts.length});
+  }
+  return {created,existing,conflicts};
 }
 
 function UniversalImport({scopeId,format,onFormatChange}) {
@@ -1705,10 +1785,34 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           {...record,__article_uid:knownArticleIds.get(owner)||null,
             createtime:record.createtime||articleTimes.get(owner)||null}:record;
       });
+      // The image child's owner is the already-persisted original Galaxy UID.
+      // Pictures never become Anchor records or media_link UID references.
+      const imageRecords=[
+        ...analyzed.normalized.flatMap(item=>(item.mediaRecords||[])
+          .filter(row=>String(row.media_type||row.type||'').toLowerCase()==='image')),
+        ...safeMediaOnly.filter(row=>String(row.media_type||row.type||'').toLowerCase()==='image'),
+        ...canonicalArchiveMedia.filter(row=>row.type==='image')
+      ];
+      const articlesByUid=new Map();
+      for(const row of analyzed.valid){
+        articlesByUid.set(String(row.uid),row);
+        const saved=knownArticleIds.get(String(row.uid));
+        if(saved)articlesByUid.set(String(saved),row);
+      }
+      const images=await syncImportedImageGalaxies({
+        records:imageRecords,knownArticleIds,articlesByUid,galaxy,
+        onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
+      });
+      const notImage=row=>String(row.type||row.media_type||'').toLowerCase()!=='image';
+      const imageArchiveIds=new Set(canonicalArchiveMedia
+        .filter(row=>row.type==='image').map(row=>String(row.uid)));
       const mediaSummary=await syncImportedMedia({
-        normalized:analyzed.normalized,
-        mediaOnly:[...safeMediaOnly,...canonicalArchiveMedia],
-        extraLinks:archivePlan.mediaLinks,
+        normalized:analyzed.normalized.map(item=>({
+          ...item,mediaRecords:(item.mediaRecords||[]).filter(notImage)
+        })),
+        mediaOnly:[...safeMediaOnly,...canonicalArchiveMedia].filter(notImage),
+        extraLinks:archivePlan.mediaLinks.filter(link=>
+          !imageArchiveIds.has(String(link.media_uid))),
         knownArticleIds,scopeId,galaxy,mediaAnchor,t,
         onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
       });
@@ -1738,6 +1842,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         duplicateCount+ambiguousGroups.length;
       showProgress('匯入完成',1,1);
       setStatus(t('uiExtra.importUI.importLinkedComplete',{articles:result.inserted,media:mediaSummary.created,linked:mediaSummary.connected,skipped})+
+        '；圖片 Galaxy 新增 '+images.created.toLocaleString()+' 筆，沿用 '+
+        images.existing.toLocaleString()+' 筆'+
+        (images.conflicts?'，重複關聯待確認 '+images.conflicts.toLocaleString()+' 筆':'')+'。'+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
         '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+
         (missingPointUids.size?'；發現 '+missingPointUids.size.toLocaleString()+' 個既有 place_id 在 Point UID 索引中不存在，未依 location 重建或改指向其他地點。UID：'+[...missingPointUids].slice(0,5).join(',')+(missingPointUids.size>5?' 等':'')+'。':'')+
