@@ -113,7 +113,9 @@ export function archiveAttachmentReferences(record){
       const mediaType=archiveMediaType(uri,hint);
       const existing=found.get(uri);
       if(!existing||(!existing.url&&directUrl))
-        found.set(uri,{uri,mediaType,url:publicUrl(directUrl)});
+        found.set(uri,{uri,mediaType,url:publicUrl(directUrl),
+          caption:[value.caption,value.alt_text,value.alt,value.photo_description,
+            value.description,value.title].find(v=>typeof v==='string'&&v.trim())||''});
     }
     if(depth<6)for(const key of CHILD_KEYS)if(value[key]!=null){
       const childHint=/^(?:image_versions2|image|photo|photos|images|thumbnail|thumbnail_resources)$/i.test(key)?'image':
@@ -137,7 +139,7 @@ export function createArchiveEvidenceCollector(){
     if(!validRef(path))return null;
     if(!records.has(path))records.set(path,{
       entry_path:path,platform:platformFromPath(path),media_type:archiveMediaType(path),
-      galaxy_uids:new Set(),source_files:new Set(),url:publicUrl(path),
+      galaxy_uids:new Set(),source_files:new Set(),url:publicUrl(path),caption:'',
       latitude:null,longitude:null,camera_local_time:null,found_in_zip:false,referenced_by_post:false
     });
     return records.get(path);
@@ -151,6 +153,8 @@ export function createArchiveEvidenceCollector(){
         item.platform=String(record.platform||item.platform||'').slice(0,32);
         item.media_type=attachment.mediaType||item.media_type;
         item.url=publicUrl(attachment.url)||item.url;
+        if(!item.caption&&typeof attachment.caption==='string')
+          item.caption=attachment.caption.trim();
         if(galaxyUid)item.galaxy_uids.add(galaxyUid);
         if(record.sourcePath)item.source_files.add(record.sourcePath);
       }
@@ -207,7 +211,7 @@ export function createArchiveEvidenceCollector(){
         scope_id:scopeId,archive_id:archiveId,entry_path:item.entry_path,
         platform:item.platform||null,media_type:item.media_type,
         galaxy_uids:[...item.galaxy_uids],source_files:[...item.source_files],
-        url:item.url,latitude:item.latitude,longitude:item.longitude,
+        url:item.url,caption:item.caption,latitude:item.latitude,longitude:item.longitude,
         camera_local_time:item.camera_local_time,found_in_zip:item.found_in_zip,
         referenced_by_post:item.referenced_by_post
       }));
@@ -245,7 +249,9 @@ export function prepareArchiveMedia(evidence=[],knownUids=new Set(),articleTimes
       uid:id,type,url:publicUrl(entry.url),
       title:owners.map(uid=>String(articleTitles.get(uid)||'').trim()).find(Boolean)||
         ({image:'圖片',video:'影片',audio:'音訊'}[type]||'媒體'),
-      description:owners.map(uid=>String(articleContents.get(uid)||'').trim()).find(Boolean)||null,
+      // The parent article's prose is not the image's own caption.
+      description:type==='image'?String(entry.caption||'').trim()||null:
+        owners.map(uid=>String(articleContents.get(uid)||'').trim()).find(Boolean)||null,
       createtime:articleTime,location:null
     };
     const hasUrl=Boolean(row.url);
@@ -255,8 +261,9 @@ export function prepareArchiveMedia(evidence=[],knownUids=new Set(),articleTimes
     // Standalone/orphan ZIP files are NOT manufactured into empty media rows.
     const linkedZipMedia=!hasUrl&&Boolean(entry.found_in_zip)&&
       Boolean(entry.referenced_by_post)&&owners.length>0&&
-      ['image','video','audio'].includes(type);
-    if(hasUrl||linkedZipMedia){
+      ['video','audio'].includes(type);
+    const usefulImage=type==='image'&&hasUrl&&Boolean(row.description);
+    if(usefulImage||(type!=='image'&&(hasUrl||linkedZipMedia))){
       media.push({...row,__article_uid:owners[0]||null});
       for(const uid of owners)mediaLinks.push({uid,media_uid:id});
     }
