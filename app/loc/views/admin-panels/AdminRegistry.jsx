@@ -13,7 +13,7 @@ function ObjectEditor(props){return <Suspense fallback={null}><LazyObjectEditor 
 import {ScopeFeatureToggles} from '../../../modular/ui';
 import {scopeConfigColumns,scopeFeaturePatch,scopeFeatureName} from '../../scope/scope-config-fields.mjs';
 import {
-  deleteScope,dbAuthClient,dbAuthRelation,manageScopeRegistry,provisionScope,updateRows
+  deleteScope,dbAuthClient,dbAuthRelation,manageScopeRegistry,provisionScope,transactionWrites,updateRows
 } from '../../db/db-client.mjs';
 
 const EMPTY_SCOPE_CREATE={scope_id:'',email:'',locale:'zh-Hant',route_mode:'directory'};
@@ -341,54 +341,96 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
   });
   const patchMapping=(id,key,value)=>setMappings(rows=>rows.map(row=>row.id===id?{...row,[key]:value}:row));
 
-  async function saveRegistryAndConfig(){
-    if(!selected||!current)return false;
-    if(!draftDirty)return true;
-    setStatus('');
-    try{
+  // Registry, LOC presentation metadata and Scope configuration are one
+  // logical Save. Prepare the physical operations BEFORE the HTTP request.
+  const registryUpdate=(table,values,id)=>({
+    p_table:table,p_operation:'update',p_values:values,
+    p_filters:[{column:'id',operator:'eq',value:id}]
+  });
+  function registryDraftWrites(){
+    if(!selected||!current||!draftDirty)return [];
+    const writes=[];
+    const id=current.scope_id;
+    if(current.scope_kind!=='system'){
       const routingFields=['display_name','domain','directory','parent_scope_id','active','sort_order'];
       const routingDirty=routingFields.some(key=>current[key]!==selected[key]);
-      if(current.scope_kind!=='system'&&routingDirty){
+      if(routingDirty){
         const hasDomain=Boolean(String(current.domain||'').trim());
         const hasDirectory=Boolean(String(current.directory||'').trim());
         if(hasDomain===hasDirectory)throw new Error('Domain / Directory 必須二選一。');
-        await manageScopeRegistry('update',current.scope_id,{
-          display_name:String(current.display_name||current.scope_id).trim(),
+        writes.push(registryUpdate('api.manage',{
           domain:String(current.domain||'').trim()||null,
           directory:String(current.directory||'').trim()||null,
-          parent_scope_id:current.scope_id==='loc'?null:(String(current.parent_scope_id||'').trim()||null),
-          active:current.scope_id==='loc'?true:current.active!==false,
+          parent_scope_id:id==='loc'?null:(String(current.parent_scope_id||'').trim()||null),
+          active:id==='loc'?true:current.active!==false,
           sort_order:Number(current.sort_order)||0
-        });
+        },id));
       }
-      // Independent of owner email and role. One LOC UPDATE per changed
-      // Group/Scope metadata instead of a Routing update for each field.
-      if(current.scope_kind!=='system'){
-        const locPatch={};
-        for(const key of ['title_tw','desc_tw','birthday']){
-          if(current[key]!==selected[key])
-            locPatch[key]=key==='birthday'?(current[key]||null):String(current[key]||'').trim();
-        }
-        if(Object.keys(locPatch).length)
-          await updateRows('silver.loc',locPatch,
-            {filters:[{column:'id',operator:'eq',value:current.scope_id}]});
+      const locPatch={};
+      if(routingDirty&&current.display_name!==selected.display_name)
+        locPatch.display_name=String(current.display_name||id).trim();
+      for(const key of ['title_tw','desc_tw','birthday']){
+        if(current[key]!==selected[key])
+          locPatch[key]=key==='birthday'?(current[key]||null):String(current[key]||'').trim();
       }
-      if(current.scope_kind==='scope'&&currentConfig&&JSON.stringify(currentConfig)!==JSON.stringify(config)){
-        await updateRows('silver.'+current.scope_id,{
-          display_name:String(currentConfig.display_name||current.scope_id).trim(),
-          search_intro:String(currentConfig.search_intro||'').trim(),
-          search_aliases:normalizeAliases(currentConfig.search_aliases),
-          theme:String(currentConfig.theme||'system-default'),
-          locale:normalizeUiLocale(currentConfig.locale),
-          ...scopeFeaturePatch(current.scope_id,currentConfig),
-          updated_at:new Date().toISOString()
-        },{filters:[{column:'id',operator:'eq',value:current.scope_id}]});
-      }
+      if(Object.keys(locPatch).length)
+        writes.push(registryUpdate('silver.loc',locPatch,id));
+    }
+    if(current.scope_kind==='scope'&&currentConfig&&
+      JSON.stringify(currentConfig)!==JSON.stringify(config))
+      writes.push(registryUpdate('silver.'+id,{
+        display_name:String(currentConfig.display_name||id).trim(),
+        search_intro:String(currentConfig.search_intro||'').trim(),
+        search_aliases:normalizeAliases(currentConfig.search_aliases),
+        theme:String(currentConfig.theme||'system-default'),
+        locale:normalizeUiLocale(currentConfig.locale),
+        ...scopeFeaturePatch(id,currentConfig),
+        updated_at:new Date().toISOString()
+      },id));
+    return writes;
+  }
+  function mappingDraftWrites(){
+    const writes=[];
+    for(const row of editedMappings){
+      const email=String(row.email||'').trim().toLowerCase();
+      if(!/^\\S+@\\S+\\.\\S+$/.test(email))
+        throw new Error('Email 格式不正確。');
+      writes.push(registryUpdate('api.manage',{
+        email,galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
+        anchor_table:String(row.anchor||'anchor').trim()||'anchor'
+      },row.id));
+    }
+    if(newMappingDirty){
+      if(!selected||selected.scope_kind!=='scope')
+        throw new Error('請先選擇 Scope');
+      const email=String(newMapping.email||'').trim().toLowerCase();
+      if(!/^\\S+@\\S+\\.\\S+$/.test(email))
+        throw new Error('Email 格式不正確。');
+      writes.push(registryUpdate('api.manage',{
+        email,manage_role:'scope',
+        galaxy_table:String(newMapping.galaxy||'galaxy').trim()||'galaxy',
+        anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor'
+      },selected.scope_id));
+    }
+    return writes;
+  }
+  async function commitRegistryDraft({includeMappings=false}={}){
+    if(!selected||!current)return false;
+    setStatus('');
+    try{
+      const operations=[...registryDraftWrites(),
+        ...(includeMappings?mappingDraftWrites():[])];
+      if(operations.length)await transactionWrites(operations);
+      if(includeMappings)setNewMapping({...EMPTY_MAPPING});
       setStatus(current.scope_id+' 已更新。');
       setEditDraft(null);
       refresh();
       return true;
-    }catch(error){setStatus(error?.message||'人員更新失敗。');return false;}
+    }catch(error){setStatus(error?.message||'管理設定儲存失敗。');return false;}
+  }
+  async function saveRegistryAndConfig(){
+    if(!draftDirty)return true;
+    return commitRegistryDraft();
   }
 
   async function saveMapping(row){
@@ -446,14 +488,9 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
   },[dirtyRef,draftDirty,editedMappings.length,newMappingDirty]);
   useEditDockForm({
     isDirty:()=>Boolean(draftDirty||editedMappings.length||newMappingDirty),
-    save:async()=>{
-      if(draftDirty&&await saveRegistryAndConfig()!==true)return false;
-      for(const item of editedMappings){
-        if(await saveMapping(item)!==true)return false;
-      }
-      if(newMappingDirty&&await addMapping()!==true)return false;
-      return true;
-    }
+    // A single six-key Save can touch all three physical management tables.
+    // No individual mapping or configuration request can partially commit.
+    save:()=>commitRegistryDraft({includeMappings:true})
   });
 
   if(!selected)return <aside className="admin-context-panel"><p className="scope-status">請選擇人員或群組</p></aside>;
