@@ -1,7 +1,7 @@
 // Read-only connectivity check for the native PostgreSQL driver.
 // Reuses LOC's Kysely/pg.Client transport and Cloudflare LOC_DATABASE_URI.
 // No credentials, SQL input, target selection or arbitrary parameters exposed.
-import {db_connection} from '../../app/loc/mcp/native-kysely.mjs';
+import {db_connection,closeLocDatabase,bindLocRequestAbort} from '../../app/loc/mcp/native-kysely.mjs';
 
 const json=(body,status=200)=>new Response(JSON.stringify(body),{
   status,headers:{'content-type':'application/json; charset=utf-8',
@@ -36,11 +36,14 @@ function failureCode(error){
  return {code,reason,detail};
 }
 
-export async function testLocAuthConnection(env={},database=db_connection){
+export async function testLocAuthConnection(env={},database=db_connection,{waitUntil,signal}={}){
  if(!String(env.LOC_DATABASE_URI||'').trim())
   return json({ok:false,stage:'configuration',code:'LOC_DATABASE_URI_MISSING'},503);
+ let connection=null;
+ let releaseAbort=()=>{};
  try{
-  const connection=await database(env,'loc-main');
+  connection=await database(env,'loc-main',{waitUntil});
+  releaseAbort=bindLocRequestAbort(connection,signal);
   if(connection.engine!=='postgres')return json({ok:false,stage:'driver',code:'NOT_POSTGRES'},503);
   // A literal SELECT without FROM verifies the native pg/TCP connection.
   // Do not make connection health depend on one Scope table existing or
@@ -52,6 +55,13 @@ export async function testLocAuthConnection(env={},database=db_connection){
   return json({ok:true,connection:'postgresql',driver:'pg',probe:'select_1'});
  }catch(error){
   return json({ok:false,stage:'sql-query',...failureCode(error)},503);
+ }finally{
+  releaseAbort();
+  // The health probe must never leave a socket open after its single SELECT.
+  try{await closeLocDatabase(connection);}
+  catch(error){console.error('[LOC health SQL cleanup]',{code:String(error?.code||'CLOSE_FAILED').slice(0,64)});}
  }
 }
-export function onRequestGet({env}){return testLocAuthConnection(env)}
+export function onRequestGet({request,env,waitUntil}){
+ return testLocAuthConnection(env,db_connection,{waitUntil,signal:request?.signal});
+}
