@@ -31,7 +31,7 @@ try{
   };
   const common={
     bundle:true,platform:'browser',format:'esm',target:'es2022',jsx:'automatic',
-    jsxImportSource:'preact',alias,logLevel:'silent',minify:true,
+    jsxImportSource:'react',alias,logLevel:'silent',minify:true,
     define:{'process.env.NODE_ENV':'"production"'},
     loader:{'.woff':'file','.woff2':'file','.ttf':'file','.png':'file','.svg':'file','.webp':'file','.gif':'file'},
     assetNames:'assets/[name]-[hash]',metafile:true
