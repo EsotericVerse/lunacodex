@@ -49,3 +49,34 @@ jobs:
           test ! -e out/sw.js
           grep -q 'LOC Framework' out/index.html
           node -e 'const x=require("./out/_loc/native-report.json");if(x.routes!==22||x.clientFrameworks.length)process.exit(1);console.log(x)'
+
+      - name: Exercise native HTTP runtime without database secrets
+        shell: bash
+        run: |
+          PORT=8877 node scripts/serve-loc-static.mjs >/tmp/loc-native-http.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          let ready=false;
+          for(let i=0;i<30;i++){
+            try{
+              const response=await fetch('http://127.0.0.1:8877/');
+              if(response.ok){ready=true;break;}
+            }catch{}
+            await new Promise(resolve=>setTimeout(resolve,100));
+          }
+          assert.ok(ready,'LOC native HTTP server did not start');
+          for(const route of ['/','/work/','/culture/','/lo3rwang/','/lrunes/']){
+            const response=await fetch('http://127.0.0.1:8877'+route);
+            assert.equal(response.status,200,route);
+            assert.match(await response.text(),/LOC/);
+          }
+          const js=await fetch('http://127.0.0.1:8877/loc-native-client.mjs');
+          assert.match(js.headers.get('content-type'),/text\/javascript/);
+          const invalid=await fetch('http://127.0.0.1:8877/api/loc-framework?scope=unknown');
+          assert.equal(invalid.status,400);
+          const offline=await fetch('http://127.0.0.1:8877/api/loc-framework?scope=loc');
+          assert.equal(offline.status,503);
+          console.log('LOC native static, ESM, routing and API guards passed');
+          NODE
