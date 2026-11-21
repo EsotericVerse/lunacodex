@@ -1,7 +1,7 @@
 // LOC Pages fixed-purpose Keyword API. No generic SQL Gateway and no
 // database credentials are sent to browsers. Every private request carries
 // a cryptographically verified LOC Auth Scope delegation.
-import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../../app/loc/mcp/native-kysely.mjs';
 import {bindLocAuthorization,canLocAccess} from '../../app/loc/providers/loc-authorization.mjs';
 import {verifiedIdentity} from '../_loc-delegation.mjs';
 import {readLocAccess} from '../../app/loc/permissions/loc_access.mjs';
@@ -26,15 +26,11 @@ function respond(data,status=200){
 const error=(message,status=400)=>{
   const e=new Error(message);e.httpStatus=status;throw e;
 };
-async function permission(db,role,claims,scope){
-  return db.transaction().execute(async trx=>{
-    bindLocAuthorization(trx,{role,claims});
-    return canLocAccess(trx,'scope',scope);
-  });
-}
-
 export async function onRequestPost(context){
   let stage='request';
+  let entry=null;
+  let releaseAbort=()=>{};
+  let streamOwnsConnection=false;
   try{
     const request=context.request;
     const {waitUntil}=context;
@@ -63,26 +59,33 @@ export async function onRequestPost(context){
     // The existing Pages native Kysely connection is server-selected; never
     // accept a target URL, SQL dialect or credential from HTTP arguments.
     stage='database';
-    const entry=await directMcpKysely(context.env,'',{waitUntil});
+    entry=await directMcpKysely(context.env,'',{waitUntil});
+    releaseAbort=bindLocRequestAbort(entry,request.signal);
     const db=entry.db;
-    // This is the independent database role decision, not LOC Auth.
     stage='authorization';
-    const rights=await readLocAccess(db,claims.email,{
-      dialect:entry.dialect,engine:entry.engine,website:true
+    // One active Registry read and one Scope grant decision in the same SQL
+    // transaction; later keyword batches retain their existing boundaries.
+    const owner=await db.transaction().execute(async trx=>{
+      const rights=await readLocAccess(trx,claims.email,{
+        dialect:entry.dialect,engine:entry.engine,website:true,
+        transactional:true
+      });
+      claims.me=rights.canWrite;
+      claims.grants=rights.grants;
+      bindLocAuthorization(trx,{role,claims});
+      return canLocAccess(trx,'scope',scope);
     });
-    claims.me=rights.canWrite;
-    claims.grants=rights.grants;
     stage='operation:'+operation;
     let result;
     if(operation==='suggest'){
       // Management-only suggestion; a single verified Scope.
-      if(!await permission(db,role,claims,scope))
+      if(!owner)
         error('Scope Keyword management permission required',403);
       result=await suggestKeywordPatterns(db,[scope],String(args.query||''),{
         ownerScopes:new Set([scope])
       });
     }else{
-      const owner=await permission(db,role,claims,scope);
+
       if(operation==='analyzeStatus'){
         if(!owner)error('Scope Keyword management permission required',403);
         result=await readKeywordAnalysisCompletion(db,scope,args.classUid,args.attemptId);
@@ -100,6 +103,9 @@ export async function onRequestPost(context){
           // existing callers. Analysis and authorization still run once.
           if(request.headers.get('accept')?.includes('application/x-ndjson')){
             const encoder=new TextEncoder();
+            // The running stream, not the already-returned handler, owns SQL
+            // until its analysis finishes or the client disconnects.
+            streamOwnsConnection=true;
             const stream=new ReadableStream({
               start(controller){
                 const emit=(kind,data)=>{
@@ -130,6 +136,9 @@ export async function onRequestPost(context){
                       :'關鍵詞資料來源目前無法處理此請求'});
                   }finally{
                     clearInterval(heartbeat);
+                    releaseAbort();
+                    try{await closeLocDatabase(entry);}
+                    catch(error){console.error('[LOC keyword stream cleanup]',{code:String(error?.code||'CLOSE_FAILED').slice(0,64)});}
                     try{controller.close();}catch{}
                   }
                 })();
@@ -184,6 +193,12 @@ export async function onRequestPost(context){
         '關鍵詞資料來源目前無法處理此請求',
       ...(status>=500?{stage,code}:{})
     },status);
+  }finally{
+    if(!streamOwnsConnection){
+      releaseAbort();
+      try{await closeLocDatabase(entry);}
+      catch(error){console.error('[LOC keyword SQL cleanup]',{code:String(error?.code||'CLOSE_FAILED').slice(0,64)});}
+    }
   }
 }
 export function onRequestGet(){return respond({error:'POST required'},405);}
