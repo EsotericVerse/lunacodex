@@ -282,7 +282,9 @@ export async function handleNativeLocOperation(request,env={},{
           engine:selected.engine,namespace:selected.namespace,
           onPhase:phase=>{importPhase=phase;}})
       });
-      return     if(body.kind==='managed-transaction'){
+      return reply(receipt);
+    }
+    if(body.kind==='managed-transaction'){
       // One HTTP request, one established LOC business principal, one SQL
       // transaction. The request-size boundary limits the total workload;
       // there is no arbitrary operation-count cap or separate auth channel.
