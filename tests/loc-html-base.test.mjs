@@ -150,3 +150,33 @@ test('page copy is loaded only for the requested route and selected locale',()=>
   assert.doesNotMatch(render,/data-loc-data-source/);
   assert.doesNotMatch(entry,/DataSourceStatus/);
 });
+
+test('one LOC Web shell covers authored features, while home and native remain distinct',async()=>{
+  const {sharedWebRoutes,shellRouteManifest,shellRouteBootstrap,
+    sharedWebRedirects,sharedWebRobotsHeaders}
+    =await import('../scripts/loc-shared-route-shell.mjs');
+  const pages=[
+    {route:'/',component:'loc',scope:'loc',view:'home',title:'首頁'},
+    {route:'/culture/',component:'loc',scope:'loc',view:'culture',title:'文化'},
+    {route:'/admin/',component:'loc',scope:'loc',view:'admin',
+      title:'系統管理',noIndex:true},
+    {route:'/lrunes/card/',component:'outbound',scope:'lrunes',view:'home'},
+    {route:'/lo3rwang/',component:'loc',scope:'lo3rwang',view:'home'}
+  ];
+  assert.deepEqual(sharedWebRoutes(pages).map(page=>page.route),
+    ['/culture/','/admin/']);
+  const manifest=shellRouteManifest(pages);
+  assert.equal(manifest['/culture/'].title,'文化');
+  assert.equal(manifest['/admin/'].noIndex,true);
+  assert.equal(manifest['/lrunes/card/'],undefined);
+  const bootstrap=shellRouteBootstrap(pages);
+  assert.match(bootstrap,/loc-shared-route-bootstrap/);
+  assert.match(bootstrap,/locComponent=page.component/);
+  assert.match(bootstrap,/locView=page.view/);
+  assert.match(bootstrap,/loc-static-feature-title/);
+  const redirects=sharedWebRedirects(pages);
+  assert.match(redirects,/\/culture\/ \/_loc\/shell\.html 200/);
+  assert.match(redirects,/\/culture \/_loc\/shell\.html 200/);
+  assert.doesNotMatch(redirects,/\/lrunes\/card/);
+  assert.match(sharedWebRobotsHeaders(pages),/\/admin\/\n  X-Robots-Tag: noindex, nofollow/);
+});
