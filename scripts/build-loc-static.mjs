@@ -133,8 +133,12 @@ try{
     fs.mkdirSync(dest,{recursive:true});
     const outbound=page.component==='outbound';
     const target=outbound?'https://lrs.lo3rwang.cc/'+page.relative+'/':'';
+    const current=page.component==='settings'||page.component==='features'?'settings':
+      page.view==='searchManage'?'search':
+      ['keywords','keywordManage'].includes(page.view)?'statics':
+      page.view==='manage'&&page.relative.includes('trace')?'trace':page.view;
     const frame=staticHome?staticHome.html:
-      renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target});
+      renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target,feature:current});
     const attrs=' data-loc-component="'+escape(page.component)+'" data-loc-view="'+
       escape(page.view)+'" data-loc-scope="'+escape(page.scope)+'"'+
       (page.section?' data-loc-section="'+escape(page.section)+'"':'')+

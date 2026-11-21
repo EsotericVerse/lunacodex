@@ -57,12 +57,12 @@ function PublicNavigation({scopeId}){
    </nav>
  </header>;
 }
-function PublicDock({scopeId}){
+function PublicDock({scopeId,current='home'}){
  return <div className="scope-feature-dock scope-floating-edit-buttons"
    role="toolbar" aria-label="Scope 功能選單" data-scope={scopeId} data-action-count={6}>
    {features.map(item=><a key={item.id}
      href={item.id==='settings'?'/settings/?scopeid='+scopeId:navigationHref(scopeId,item.route,false)}
-     aria-current={item.id==='home'?'page':undefined}>
+     aria-current={item.id===current?'page':undefined}>
      {item.id==='home'?<span className="scope-dock-active-pill" aria-hidden="true"/>:null}
      <span className="scope-dock-motion-icon"><BottomNavIcon name={item.name}/></span>
      <span>{item.label}</span>
@@ -95,7 +95,7 @@ function StaticSite({scopeId,rows}){
 }
 // Static HTML already owns navigation and the six feature links.
 // An interactive component mounts only inside the following content slot.
-export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link=''}={}){
+export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link='',feature='home'}={}){
  return renderToStaticMarkup(<>
    <PublicNavigation scopeId={scopeId}/>
    <div id="loc-interactive-root" data-feature-content="true">
@@ -104,7 +104,7 @@ export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link=
        {link?<p><a href={link}>前往 LunaRunes</a></p>:null}
      </section></main>
    </div>
-   <PublicDock scopeId={scopeId}/>
+   <PublicDock scopeId={scopeId} current={feature}/>
    <SiteFooter scopeId={scopeId} home={false}/>
  </>);
 }

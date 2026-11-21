@@ -40,8 +40,8 @@ function EditorControls(){
   useEffect(()=>{
     if(!surface)return undefined;
     const links=[...surface.children].filter(item=>item.tagName==='A');
-    for(const link of links)link.hidden=Boolean(dock?.active);
-    return ()=>{for(const link of links)link.hidden=false;};
+    for(const link of links)link.style.display=dock?.active?'none':'';
+    return ()=>{for(const link of links)link.style.display='';};
   },[surface,dock?.active]);
   if(!dock?.active||!surface)return null;
   const base=scopeId==='loc'?'/':'/'+scopeId+'/';
