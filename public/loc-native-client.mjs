@@ -1,9 +1,10 @@
 import {html,mountHTML} from '/_loc/core/index.mjs';
+import {parseRichText} from '/_loc/core/rich-text.mjs';
 
 const panel=document.getElementById('loc-feature-panel');
 const scope=document.querySelector('.loc-layout')?.dataset.scope||'loc';
 const route=location.pathname.split('/').filter(Boolean);
-const section=route.find(value=>['culture','statics','trace','search','manage','settings'].includes(value))||'home';
+const section=(route.find(value=>['culture','statics','trace','search','manage','settings','work'].includes(value))||'home').replace('work','article');
 
 function render(view){mountHTML(panel,view);}
 function status(message){render(html('p',{role:'status','class':'loc-status'},message));}
@@ -50,6 +51,26 @@ function renderBars(rows,{category,value,max=20}){
   });
   panel.replaceChildren(chart);
 }
+async function article(){
+  const query=new URLSearchParams(location.search);
+  const owner=query.get('scope')||'';
+  const uid=query.get('uid')||'';
+  if(!['lo3rwang','lrunes'].includes(owner)||!/^[A-Za-z0-9]{8}$/.test(uid))
+    return status('找不到指定作品');
+  status('正在讀取作品…');
+  const target='/api/loc-framework?'+new URLSearchParams({scope:owner,kind:'article',uid});
+  const response=await fetch(target,{cache:'no-store',credentials:'omit'});
+  const result=await response.json().catch(()=>null);
+  if(!response.ok)throw Error(result?.error||'作品讀取失敗');
+  const work=result?.data?.[0];
+  if(!work)return status('找不到指定作品');
+  render(html('article',{'class':'loc-work'},
+    html('h2',{},work.title||'未命名作品'),
+    html('p',{'class':'loc-status'},[owner,cleanDate(work.createtime||work.date),work.site]
+      .filter(Boolean).join(' · ')),
+    ...parseRichText(work.content||'')
+  ));
+}
 async function culture(){
   status('正在讀取時間資料…');
   const rows=await read('culture');
@@ -68,7 +89,8 @@ async function statics(){
 }
 function searchResult(row){
   return html('li',{},
-    html('h3',{},row.title||'未命名作品'),
+    html('h3',{},html('a',{href:'/work/?scope='+encodeURIComponent(row.scope)+
+      '&uid='+encodeURIComponent(row.uid)},row.title||'未命名作品')),
     html('small',{},[row.scope,cleanDate(row.createtime||row.date),row.site]
       .filter(Boolean).join(' · '))
   );
@@ -104,6 +126,12 @@ async function trace(){
   status('正在讀取空間定錨資料…');
   const rows=await read('trace');
   if(!rows.length)return status('目前沒有具備座標的公開空間定錨點');
+  if(!document.getElementById('loc-native-map-style')){
+    const css=document.createElement('link');
+    css.id='loc-native-map-style';css.rel='stylesheet';
+    css.href='/_loc/vendor/maplibre-gl.css';
+    document.head.append(css);
+  }
   const maplibregl=await loadMaplibre();
   const viewport=document.createElement('div');
   viewport.style.height='min(70vh,580px)';
@@ -137,7 +165,7 @@ function settings(){
     html('p',{},'設定僅儲存在目前瀏覽器分頁，不涉及帳號或資料庫。'),
     html('div',{'class':'loc-toolbar'},
       ...[['auto','跟隨系統'],['light','明亮'],['dark','深色']].map(([value,label])=>
-        html('button',{type:'button','aria-pressed':saved===value,
+        html('button',{type:'button','aria-pressed':String(saved===value),
           onClick:()=>{
             try{sessionStorage.setItem('loc-native-color-mode',value)}catch{}
             applyColorMode(value);settings();
@@ -167,7 +195,7 @@ function init(){
     else status('請輸入關鍵詞搜尋公開作品');
     return;
   }
-  const action={culture,statics,trace,manage:management,settings}[section];
+  const action={culture,statics,trace,article,manage:management,settings}[section];
   if(action)void Promise.resolve().then(action).catch(showError);
 }
 function showError(cause){status('LOC 功能暫時無法使用：'+String(cause?.message||cause));}
