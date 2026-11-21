@@ -58,21 +58,46 @@ function EditorControls(){
     return ()=>{for(const link of links)link.style.display='';};
   },[surface,dock?.active]);
   if(!dock?.active||!surface)return null;
+  const native=window.location.protocol==='capacitor:';
   const base=generic?'/scope-shell/':scopeId==='loc'?'/':'/'+scopeId+'/';
-  const suffix=generic?'?scopeid='+encodeURIComponent(scopeId):'';
-  const options=[
-    ['時間定錨',base+'culture/manage/'+suffix],
-    ['關鍵詞',base+'statics/manage/'+suffix],
-    ['空間定錨',base+'trace/manage/'+suffix],
-    ['文章管理',base+'search/manage/'+suffix]
+  const destination=(segment='',params={})=>{
+    const route=base+(segment?segment.replace(/^\\/+|\\/+$/g,'')+'/':'')+(native?'index.html':'');
+    const url=new URL(route,window.location.origin);
+    if(generic)url.searchParams.set('scopeid',scopeId);
+    for(const [key,value] of Object.entries(params))url.searchParams.set(key,value);
+    return url.pathname+url.search;
+  };
+  const isLocal=scopeId==='local';
+  const isLoc=scopeId==='loc';
+  const options=isLoc?[
+    ...(dock.canManageGlobal?[['系統管理',native?'/admin/index.html':'/admin/']]:[]),
+    ['關鍵詞',destination('statics/manage',{edit:'1'})],
+    ['人員作品管理',destination('culture/manage',{edit:'1'})],
+    ['文章管理',destination('search/manage',{section:'publish',edit:'1'})]
+  ]:isLocal?[
+    ['時間定錨',''],
+    ['關鍵詞',''],
+    ['管理',destination('manage')],
+    ['文章管理',destination('search')]
+  ]:[
+    ['時間定錨',destination('culture/manage',{edit:'1'})],
+    ['關鍵詞',destination('statics/manage',{edit:'1'})],
+    ['空間定錨',destination('manage',{section:'anchor',edit:'1'})],
+    ['文章管理',destination('search/manage',{section:'publish',edit:'1'})]
   ];
+  const locationParts=window.location.pathname.split('/').filter(Boolean);
+  const back=locationParts.includes('culture')?'culture':
+    locationParts.includes('statics')?'statics':
+    locationParts.includes('search')?'search':
+    locationParts.includes('trace')?'trace':'';
   return createPortal(<div className="scope-edit-dock-actions" role="group" aria-label="編輯功能">
-    <button type="button" disabled={dock.busy} onClick={()=>dock.save({exitOnSuccess:view==='home'})}>儲存</button>
-    {options.map(([label,href])=><button type="button" key={href}
-      disabled={dock.busy} onClick={()=>dock.switchTo(href)}>{label}</button>)}
-    <button type="button" disabled={dock.busy}
-      onClick={()=>dock.discard(base)}>取消</button>
-    {dock.notice?<p role="status">{dock.notice}</p>:null}
+    <button className="scope-edit-dock-action" type="button" disabled={dock.busy}
+      onClick={()=>dock.save({exitOnSuccess:view==='home'})}>儲存</button>
+    {options.map(([label,href])=><button className="scope-edit-dock-action" type="button"
+      key={label} disabled={dock.busy||!href} onClick={()=>dock.switchTo(href)}>{label}</button>)}
+    <button className="scope-edit-dock-action" type="button" disabled={dock.busy}
+      onClick={()=>dock.discard(destination(back))}>取消</button>
+    {dock.notice?<p role="status" className="scope-edit-dock-notice">{dock.notice}</p>:null}
   </div>,surface);
 }
 function DataSourceStatus(){
@@ -107,5 +132,7 @@ function Interactive(){
     </EditDockProvider>
   </UiLocaleProvider>;
 }
-if(node&&component!=='outbound')
+if(node&&component!=='outbound'){
+  document.querySelector('[data-loc-data-source]')?.replaceChildren();
   createRoot(node).render(<Interactive/>);
+}

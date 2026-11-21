@@ -21,9 +21,12 @@ export const INITIAL_THEME_SCRIPT=`(()=>{try{
   const hostname=(window.location.hostname||'').toLowerCase();
   const game=/(?:^|\\/)game(?:\\/|$)/.test(pathname);
   const admin=pathname==='/admin'||pathname.startsWith('/admin/');
-  const scope=admin?'admin':game?'lrunes':pathname.startsWith('/lo3rwang/')||pathname==='/lo3rwang'
+  const requestedScope=pathname.startsWith('/scope-shell/')
+    ?new URLSearchParams(window.location.search).get('scopeid')||'':'';
+  const scoped=/^[a-z][a-z0-9]{0,14}$/.test(requestedScope)?requestedScope:'';
+  const scope=scoped||(admin?'admin':game?'lrunes':pathname.startsWith('/lo3rwang/')||pathname==='/lo3rwang'
     ?'lo3rwang':pathname.startsWith('/lrunes/')||pathname==='/lrunes'||hostname.startsWith('lrunes.')
-    ?'lrunes':hostname.startsWith('lo3rwang.')?'lo3rwang':'loc';
+    ?'lrunes':hostname.startsWith('lo3rwang.')?'lo3rwang':'loc');
   let hour=new Date().getHours();
   try{
     const part=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',hour:'2-digit',hourCycle:'h23'}).formatToParts(new Date()).find(x=>x.type==='hour');
