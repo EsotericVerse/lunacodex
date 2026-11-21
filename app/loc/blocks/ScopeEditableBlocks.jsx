@@ -95,8 +95,10 @@ export default function ScopeEditableBlocks({
     ()=>selectLiveScopeBlocks(scopeId,pageName),{
       enabled:editingContent
     });
-  const blocks=editingContent?editorRows.data
-    :(recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks));
+  // Keep the approved published home visible while the authoritative edit
+  // snapshot loads. Only the ready live rows become writable drafts.
+  const displayRows=recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks);
+  const blocks=editingContent?(editorRows.isSuccess?editorRows.data:displayRows):displayRows;
   const editingReady=editorRows.isSuccess;
   const editingError=editorRows.isError;
   const rememberSavedRows=()=>{
