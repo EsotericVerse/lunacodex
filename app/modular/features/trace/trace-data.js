@@ -1,6 +1,6 @@
 'use client';
 
-import {dbPublicClient,dbAuthClient} from '../../../loc/db/db-client.mjs';
+import {dbPublicClient,dbAuthClient,transactionWrites} from '../../../loc/db/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
 import {allocateAnchorUid} from '../../../loc/model/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -237,15 +237,26 @@ export async function updateTraceAnchor({scopeId,uid,title,description='',addres
 }
 // Bulk rename preserves every Trace UID, coordinate, timestamp and route reference.
 // It changes title only; the caller explicitly selects a reviewed canonical spelling.
+// A large rename is one HTTP envelope and one database commit, not one
+// committed write per UI chunk. Exact UID cardinality prevents partial Save.
+function traceUidChanges(scope,ids,values){
+  return Array.from({length:Math.ceil(ids.length/500)},(_,i)=>{
+    const batch=ids.slice(i*500,(i+1)*500);
+    return {
+      p_table:'silver.'+scope+'_anchor',p_operation:'update',p_values:values,
+      p_filters:[{column:'type',operator:'eq',value:'point'},
+        {column:'uid',operator:'in',value:batch}],
+      p_expected_count:batch.length
+    };
+  });
+}
 export async function renameTraceAnchorTitles({scopeId,uids,title}){
   const id=writableScope(scopeId);
-  const ids=[...new Set((uids||[]).map(value=>textValue(value)))];
-  if(!ids.length||ids.length>100||ids.some(uid=>!VALID_ID.test(uid)))
+  const ids=[...new Set((uids||[]).map(textValue))];
+  if(!ids.length||ids.length>10000||ids.some(uid=>!VALID_ID.test(uid)))
     throw Error('快速更新定錨點清單無效');
-  const rows=checked(await physicalPoint(id).update({title:nonempty(title,'地點標題')})
-    .eq('type','point').in('uid',ids).select('uid'),'快速更新地點名稱')||[];
-  if(rows.length!==ids.length)throw Error('部分地點未能更新，請重新載入確認 UID');
-  return rows.length;
+  await transactionWrites(traceUidChanges(id,ids,{title:nonempty(title,'地點標題')}));
+  return ids.length;
 }
 export async function addTraceAnchorsBatch({scopeId,places=[]}){
   const id=writableScope(scopeId);
@@ -262,16 +273,19 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
     inserts.push({title,description:descriptionText(place.description||''),
       address,postal_address:postalText(place.address||''),times:Array.isArray(place.times)?place.times:[]});
   }
-  let count=0;
-  for(let offset=0;offset<inserts.length;offset+=80){
-    const rows=inserts.slice(offset,offset+80).map(place=>({
-      uid:allocateAnchorUid(),type:'point',title:place.title,
+  const allocated=new Set();
+  const rows=inserts.map(place=>{
+    const uid=allocateAnchorUid(allocated);
+    allocated.add(uid);
+    return {uid,type:'point',title:place.title,
       description:place.description,invisible:false,
       attr:pointAttr({address:place.postal_address,
-        longitude:place.address?.[0],latitude:place.address?.[1],times:place.times})
-    }));
-    count+=(checked(await physicalPoint(id).insert(rows).select('uid'),'批次新增地點')||[]).length;
-  }
+        longitude:place.address?.[0],latitude:place.address?.[1],times:place.times})};
+  });
+  if(rows.length)await transactionWrites([{
+    p_table:'silver.'+id+'_anchor',p_operation:'insert',p_rows:rows
+  }]);
+  const count=rows.length;
   const review=organizeAnchorCandidates(await readAllTraceAnchors(id));
   return {count,skipped,consolidated:0,duplicatesInBatch:skipped,reviewCount:review.length,
     reviewPreview:review.slice(0,8),auditError:''};
@@ -332,11 +346,12 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
 }
 export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false}){
   const id=writableScope(scopeId),ids=[...new Set(uids.map(textValue))];
-  if(!ids.length||ids.length>200||ids.some(uid=>!VALID_ID.test(uid)))throw Error('請選擇 1 至 200 筆有效項目');
-  const rows=checked(await physicalPoint(id).update({invisible:normalizedInvisible(invisible)})
-    .eq('type','point').in('uid',ids).select('uid'),'大量設定空間隱藏')||[];
-  if(rows.length!==ids.length)throw Error('部分地點權限未更新，請重新讀取');
-  return rows.length;
+  if(!ids.length||ids.length>10000||ids.some(uid=>!VALID_ID.test(uid)))
+    throw Error('請選擇有效的空間定錨點');
+  await transactionWrites(traceUidChanges(id,ids,{
+    invisible:normalizedInvisible(invisible)
+  }));
+  return ids.length;
 }
 export async function deleteTraceMap({scopeId,uid,type='path'}){
   const id=writableScope(scopeId);

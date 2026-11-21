@@ -265,9 +265,7 @@ export default function TraceRouteManager({scopeId,mode='all'}){
       if(!window.confirm('確定將 '+uids.length+' 筆空間紀錄設定為'+(invisible?'隱藏':'顯示')+'？'+
         (bulkVisibilityMode==='self'?'只變更所選項目。':'將同步變更本次選定的關聯項目。')))return;
       setBusy(true);setError(false);setNotice('');
-      let count=0;
-      for(let i=0;i<uids.length;i+=200)
-        count+=await updateTraceVisibilityBulk({scopeId:owner,uids:uids.slice(i,i+200),invisible});
+      const count=await updateTraceVisibilityBulk({scopeId:owner,uids,invisible});
       setBulkSelected([]);await index.mutate();await refresh();
       setNotice('已更新 '+count+' 筆空間顯示設定。');
     }catch(e){setError(true);setNotice(String(e.message||e));}

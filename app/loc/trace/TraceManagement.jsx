@@ -130,10 +130,9 @@ function AnchorEditor({scopeId,spatial,reload}){
       // chosen primary title always wins when both touch the same anchor.
       let renamed=0,visibilityCount=0,mergedCount=0;
       for(const [key,task] of Object.entries(pendingRenames)){
-        for(let i=0;i<task.uids.length;i+=100)
-          renamed+=await renameTraceAnchorTitles({
-            scopeId,uids:task.uids.slice(i,i+100),title:task.title
-          });
+        renamed+=await renameTraceAnchorTitles({
+          scopeId,uids:task.uids,title:task.title
+        });
         setPendingRenames(current=>{
           const next={...current};delete next[key];return next;
         });
@@ -155,10 +154,9 @@ function AnchorEditor({scopeId,spatial,reload}){
         setBulkUids(ids=>ids.filter(uid=>!sources.includes(uid)));
       }
       if(visibility){
-        for(let i=0;i<visibility.uids.length;i+=200)
-          visibilityCount+=await updateTraceVisibilityBulk({
-            scopeId,uids:visibility.uids.slice(i,i+200),invisible:visibility.invisible
-          });
+        visibilityCount=await updateTraceVisibilityBulk({
+          scopeId,uids:visibility.uids,invisible:visibility.invisible
+        });
         setPendingVisibility(null);setBulkUids([]);
       }
       // reload() already revalidates the mounted, authenticated Trace query.
