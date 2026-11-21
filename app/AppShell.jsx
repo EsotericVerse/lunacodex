@@ -235,7 +235,9 @@ function ScopePageCopy({scopeId,display_name,pageName='index'}){
       ?String(pageCopy?.Title_TW||display_name||'').trim()
       :'';
     if(title&&document.title!==title)document.title=title;
-    const description=String(pageCopy?.Desc_TW||'').trim();
+    const description=pageName==='index'&&enabled
+      ?String(pageCopy?.Desc_TW||'').trim()
+      :'';
     if(description){
       let meta=document.head.querySelector('meta[name="description"]');
       if(!meta){
