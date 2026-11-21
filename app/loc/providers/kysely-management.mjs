@@ -867,7 +867,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
     await sql`reset role`.execute(trx);
     const rows=await zmodelRegistryJoin(trx,{optionalLoc:true})
-      .select(['m.id as id','l.display_name as display_name','m.email as email',
+      .select(['m.id as id',sql`coalesce(l.display_name,m.note,m.id)`.as('display_name'),'m.email as email',
         'm.manage_role as manage_role','m.domain as domain','m.directory as directory',
         'm.parent_scope_id as parent_scope_id','m.active as active',
         'm.sort_order as sort_order','m.galaxy_table as galaxy_table',
