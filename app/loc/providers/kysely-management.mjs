@@ -364,7 +364,7 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
   'media_anchor_candidates','anchor_import_page','import_site_presence',
   'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope',
-  'save_trace_editor_batch']);
+  'save_trace_editor_batch','ensure_date_anchor']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
 // A Search-only, read-only action behind the verified LOC Web Session.
@@ -640,6 +640,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
     save_trace_editor_batch:['p_scope_id','p_renames','p_point','p_merge_uids',
       'p_visibility'],
+    ensure_date_anchor:['p_scope_id','p_date','p_title','p_description','p_createtime'],
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
     loc_access:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
@@ -787,6 +788,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   }
   if(name==='merge_scope_trace_place_names')return {data:await mergeScopePoints(trx,args),count:null};
   if(name==='save_trace_editor_batch')return {data:await saveTraceEditorBatch(trx,args),count:null};
+  if(name==='ensure_date_anchor')return {data:await ensureDateAnchor(trx,args),count:null};
   if(name==='import_shared_keyword_class')return {data:await importSharedKeywordClass(trx,args),count:null};
   if(name==='refresh_scope_search_summary')return {data:await refreshScopeSearchSummary(trx,args),count:null};
   if(name==='loc_admin_settings')return {data:await managedLocSettings(trx,args,claims),count:null};
@@ -1111,6 +1113,52 @@ async function refreshScopeSearchSummary(trx,args){
 // create/update, UID merge, and visibility edits either all COMMIT together
 // or none do. The existing mergeScopePoints() retains its Galaxy/place_id
 // and route reference repair; it merely borrows the verified transaction.
+// An article-specific TimeAnchor is a persisted DateAnchor ZModel, not the
+// editor's virtual 'anchor/address' projection. Check the calendar day and
+// insert only when missing under one serializable SQL transaction, returning
+// the existing UID on repeated Save. No second read/write HTTP request.
+async function ensureDateAnchor(trx,args){
+  const checked=z.strictObject({
+    p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
+    p_date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    p_title:z.string().trim().min(1).max(256),
+    p_description:z.string().trim().min(1).max(4000),
+    p_createtime:z.string().nullish()
+  }).safeParse(args);
+  if(!checked.success)reject('Invalid DateAnchor request');
+  const {p_scope_id,p_date,p_title,p_description,p_createtime}=checked.data;
+  const parsed=new Date(p_date+'T00:00:00.000Z');
+  if(Number.isNaN(parsed.getTime())||
+    parsed.toISOString().slice(0,10)!==p_date)
+    reject('Invalid TimeAnchor calendar date');
+  const scope=await scopedWrite(trx,p_scope_id);
+  if(scope==='loc')reject('LOC aggregate does not own a TimeAnchor',403);
+  const relation='silver.'+scope+'_anchor';
+  const row=await trx.selectFrom(relation)
+    .select(['uid','title','description','attr','createtime'])
+    .where('type','=','date')
+    .where(sql`attr->>'date'`,'=',p_date)
+    .orderBy('uid','asc').limit(1).executeTakeFirst();
+  if(row){
+    return {uid:row.uid,title:row.title||p_date,
+      description:row.description||'',address:p_date,
+      createtime:row.createtime||null,existing:true};
+  }
+  const uid=allocateAnchorUid();
+  const created=p_createtime?new Date(p_createtime):null;
+  if(created&&Number.isNaN(created.getTime()))
+    reject('Invalid original article creation time');
+  const values={uid,type:'date',title:p_title,
+    description:p_description,invisible:false,
+    attr:sql`${JSON.stringify({date:p_date})}::jsonb`,
+    ...(created?{createtime:created.toISOString()}:{})};
+  const saved=await trx.insertInto(relation).values(values)
+    .returning('uid').executeTakeFirst();
+  if(saved?.uid!==uid)reject('TimeAnchor insert was not committed',409);
+  return {uid,title:p_title,description:p_description,
+    address:p_date,createtime:created?.toISOString()||null,existing:false};
+}
+
 async function saveTraceEditorBatch(trx,args){
   const scope=await scopedWrite(trx,args.p_scope_id);
   if(scope==='loc')reject('LOC aggregate Trace Scope is not editable',403);

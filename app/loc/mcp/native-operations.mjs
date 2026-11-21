@@ -158,7 +158,8 @@ export async function handleNativeLocOperation(request,env={},{
     // The LOC administrator creates and removes SQL Scopes only through
     // the verified Web Session. Do not expose DDL through MCP OAuth delegates.
     if(body.kind==='managed-action'&&
-      ['provision_scope','manage_scope_registry','delete_scope'].includes(body.name)&&
+      ['provision_scope','manage_scope_registry','delete_scope',
+        'ensure_date_anchor'].includes(body.name)&&
       host!==WEB_HOST)throw refusal('LOC Scope lifecycle is website-only',403);
     // The media importer is a website-only read for existing behavior, NOT an
     // additional MCP/Gateway operation or delegated authorization scope.
@@ -419,7 +420,8 @@ export async function handleNativeLocOperation(request,env={},{
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
       const lifecycle=body.kind==='managed-action'&&
-        ['provision_scope','manage_scope_registry','delete_scope'].includes(body.name);
+        ['provision_scope','manage_scope_registry','delete_scope',
+          'ensure_date_anchor'].includes(body.name);
       // Registry route uniqueness and DDL require a stable snapshot across
       // concurrent administrator actions; the same SQL transaction still owns
       // authorization, data creation/deletion, and COMMIT or ROLLBACK.
