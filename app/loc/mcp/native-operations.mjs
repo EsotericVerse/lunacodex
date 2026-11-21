@@ -217,7 +217,8 @@ export async function handleNativeLocOperation(request,env={},{
     if(operationKind==='short-import')importPhase='permission';
     // Managed batches resolve their one authorization snapshot inside the
     // SAME transaction as all of their writes, not in a preceding query.
-    const isManagedBatch=['managed-transaction','managed-write','managed-action']
+    const isManagedBatch=['managed-transaction','managed-write','managed-action',
+      'mcp-conversation','mcp-scope-status','mcp-sync','mcp-append']
       .includes(body.kind);
     let permission=null;
     if(!isManagedBatch){
@@ -256,25 +257,36 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='mcp-conversation'){
       if(host!==MCP_HOST)throw refusal('MCP conversation endpoint only',404);
-      const result=await selected.db.transaction().execute(trx=>
-        executeLocConversation(trx,body,claims));
+      const result=await selected.db.transaction().execute(async trx=>{
+        const rights=await loadMcpLocAccess(trx,claims.email,{
+          dialect:selected.dialect,engine:selected.engine,transactional:true});
+        claims.me=rights.canWrite;claims.grants=rights.grants;
+        if(writeKinds.has(body.kind)&&!rights.canWrite)
+          throw refusal('LOC write permission denied',403);
+        return executeLocConversation(trx,body,claims);
+      });
       return reply({data:result});
     }
     if(body.kind==='mcp-scope-status'){
       if(host!==MCP_HOST)throw refusal('MCP Scope endpoint only',404);
       if(!/^[a-z][a-z0-9]{0,14}$/.test(body.scopeid))
         throw refusal('Invalid Scope',400);
-      const allowed=permission.grants.includes('global:manage')||
-        permission.grants.includes(body.scopeid+':read');
-      if(!allowed)throw refusal('LOC Scope permission required',403);
-      const row=await selected.db.selectFrom('api.manage')
-        .select(['id','manage_role','active','galaxy_table','anchor_table'])
-        .where('id','=',body.scopeid).executeTakeFirst();
-      return reply({data:{scopeid:body.scopeid,active:row?.active===true,
-        role:row?.manage_role||'',
-        database:'主要資料庫連線',readable:true,
-        writable:permission.grants.includes('global:manage')||
-          permission.grants.includes(body.scopeid+':write')}});
+      const data=await selected.db.transaction().execute(async trx=>{
+        const rights=await loadMcpLocAccess(trx,claims.email,{
+          dialect:selected.dialect,engine:selected.engine,transactional:true});
+        claims.me=rights.canWrite;claims.grants=rights.grants;
+        const allowed=rights.grants.includes('global:manage')||
+          rights.grants.includes(body.scopeid+':read');
+        if(!allowed)throw refusal('LOC Scope permission required',403);
+        const row=await trx.selectFrom('api.manage')
+          .select(['id','manage_role','active','galaxy_table','anchor_table'])
+          .where('id','=',body.scopeid).executeTakeFirst();
+        return {scopeid:body.scopeid,active:row?.active===true,
+          role:row?.manage_role||'',database:'主要資料庫連線',readable:true,
+          writable:rights.grants.includes('global:manage')||
+            rights.grants.includes(body.scopeid+':write')};
+      });
+      return reply({data});
     }
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
@@ -442,7 +454,13 @@ export async function handleNativeLocOperation(request,env={},{
     if(body.kind==='mcp-sync'||body.kind==='mcp-append'){
       if(selected.tableName)
         throw refusal('LOC MCP control database is unavailable for writing',503);
-      const result=await selected.db.transaction().execute(trx=>runMcp(trx));
+      const result=await selected.db.transaction().execute(async trx=>{
+        const rights=await loadMcpLocAccess(trx,claims.email,{
+          dialect:selected.dialect,engine:selected.engine,transactional:true});
+        claims.me=rights.canWrite;claims.grants=rights.grants;
+        if(!rights.canWrite)throw refusal('LOC write permission denied',403);
+        return runMcp(trx);
+      });
       return reply({data:result.data});
     }
     const result=await runMcp(selected.db);
