@@ -75,6 +75,29 @@ try{
       total++;
     }
   }
+  // LOC retains historical LRS URLs without React redirect components.
+  // Cloudflare Pages reads _redirects; iOS and the local static server use HTML fallbacks.
+  const lrsRedirects=[
+    ['/card/','符文美術場域'],['/card/daily/','每日符文'],
+    ['/card/duel/','符文抽牌'],['/card/list/','符文圖鑑'],
+    ['/daily/','每日符文'],['/daily/log/','每日符文紀錄'],
+    ['/daily/trend/','每日符文趨勢'],['/game/','符文桌遊'],
+    ['/game/room/','符文遊戲房間']
+  ];
+  const redirectRules=[];
+  for(const [pathname,title] of lrsRedirects){
+    const target=new URL(pathname,'https://lrs.lo3rwang.cc').href;
+    const dest=path.join(temp,pathname.slice(1),'index.html');
+    fs.mkdirSync(path.dirname(dest),{recursive:true});
+    fs.writeFileSync(dest,'<!doctype html><html lang="zh-Hant"><head>'+ 
+      '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+      '<meta http-equiv="refresh" content="0;url='+target+'">'+
+      '<link rel="canonical" href="'+target+'"><title>'+title+' · LunaRunes</title>'+ 
+      '</head><body><main><h1>正在前往 LunaRunes</h1>'+ 
+      '<p><a href="'+target+'">前往月之符文</a></p></main></body></html>','utf8');
+    redirectRules.push(pathname+' '+target+' 302');
+  }
+  fs.writeFileSync(path.join(temp,'_redirects'),redirectRules.join('\\n')+'\\n');
   const workDir=path.join(temp,'work');
   fs.mkdirSync(workDir,{recursive:true});
   fs.writeFileSync(path.join(workDir,'index.html'),
