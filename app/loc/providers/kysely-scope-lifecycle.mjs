@@ -11,8 +11,10 @@ import {allocateAnchorUid} from '../model/uid.js';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BUILTIN=new Set(['admin','loc','lrunes','lo3rwang']);
-const REGISTRY_FIELDS=['id','display_name','email','domain','directory',
-  'parent_scope_id','manage_role','active','sort_order'];
+const REGISTRY_FIELDS=['m.id as id','l.display_name as display_name',
+  'm.email as email','m.domain as domain','m.directory as directory',
+  'm.parent_scope_id as parent_scope_id','m.manage_role as manage_role',
+  'm.active as active','m.sort_order as sort_order'];
 const EDIT_FIELDS=new Set(['display_name','domain','directory',
   'parent_scope_id','active','sort_order']);
 
@@ -66,8 +68,9 @@ function checkRouteUnique(rows,{domain,directory},except=''){
 async function registryRows(trx){
   // Serializable is selected by the caller. Lock the existing Registry
   // records as well, so re-parenting cannot race with another deletion.
-  return trx.selectFrom('api.manage')
-    .select(REGISTRY_FIELDS).orderBy('id','asc').forUpdate().execute();
+  return trx.selectFrom('api.manage as m')
+    .leftJoin('silver.loc as l','l.id','m.id')
+    .select(REGISTRY_FIELDS).orderBy('m.id','asc').forUpdate('m').execute();
 }
 function requireGlobal(trx){
   if(!canLocAccess(trx,'global'))
@@ -144,7 +147,7 @@ export async function manageScopeRegistryNative(trx,args){
     :requestedSort;
   if(!Number.isSafeInteger(sort)||sort<0)
     reject('Invalid Scope sort order');
-  const fields={display_name:name,...target,parent_scope_id:id==='loc'?null:parent,
+  const fields={...target,parent_scope_id:id==='loc'?null:parent,
     active,sort_order:sort};
   if(operation==='create_group'){
     await trx.insertInto('api.manage').values({
@@ -266,7 +269,7 @@ export async function provisionScopeNative(trx,args){
     ...(birthday?{birthday}: {})
   }).execute();
   await trx.insertInto('api.manage').values({
-    id:scope,display_name:name,email,
+    id:scope,email,
     ...target,parent_scope_id:parent,active:true,
     sort_order:sort,manage_role:'scope',
     galaxy_table:'galaxy',anchor_table:'anchor'
