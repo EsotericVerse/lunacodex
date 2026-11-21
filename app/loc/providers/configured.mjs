@@ -41,14 +41,25 @@ export function createConfiguredAdapter({
       ?AbortSignal.any([transientReadSignal(),AbortSignal.timeout(30000)])
       :AbortSignal.timeout(30000);
     // Cookies still authenticate every request; no extra Auth round-trip.
-    const response=await fetchImpl('/api/loc-native',{
-      method:'POST',
-      credentials:'include',
-      cache:'no-store',
-      headers:{'content-type':'application/json',accept:'application/json'},
-      body:JSON.stringify({kind,scopeid,...fields}),
-      signal
-    });
+    let response;
+    try{
+      response=await fetchImpl('/api/loc-native',{
+        method:'POST',credentials:'include',cache:'no-store',
+        headers:{'content-type':'application/json',accept:'application/json'},
+        body:JSON.stringify({kind,scopeid,...fields}),signal
+      });
+    }catch(error){
+      // A lost HTTP response does NOT prove the database rolled back. Do not
+      // tell the editor to retry blindly or leave an ambiguous stale cache.
+      if(kind==='managed-transaction'||kind==='managed-write'||
+         kind==='short-import'||kind==='managed-action'&&!readOnly){
+        invalidateCachedReadPrefix('scope-aggregate:');
+        const uncertain=new Error('儲存回應中斷，提交結果未確認；請重新讀取後再決定是否重試。');
+        uncertain.code='LOC_WRITE_RESULT_UNKNOWN';
+        throw uncertain;
+      }
+      throw error;
+    }
     const result=await response.json().catch(()=>null);
     if(!response.ok)throw errorFromResponse(result,response);
     // Public Culture/Statistics aggregates are semi-dynamic snapshots, not
@@ -103,12 +114,16 @@ export function createConfiguredAdapter({
     return {data:result?.data,error:null};
   };
   const managedTransaction=async operations=>{
-    const result=await operation('managed-transaction','',{operations});
-    // A successful COMMIT invalidates exactly the affected physical relations.
-    // A rejected batch changes no public cache or page canvas.
-    for(const item of operations){
-      invalidateScopedReadCache(item?.p_table);
+    let result;
+    try{
+      result=await operation('managed-transaction','',{operations});
+    }catch(error){
+      if(error?.code==='LOC_WRITE_RESULT_UNKNOWN')
+        for(const item of operations)invalidateScopedReadCache(item?.p_table);
+      throw error;
     }
+    // A verified response confirms COMMIT; a rejected batch is not replayed.
+    for(const item of operations)invalidateScopedReadCache(item?.p_table);
     return {data:result?.data,error:null};
   };
   const managedWrite=async payload=>{
