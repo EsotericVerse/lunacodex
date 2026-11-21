@@ -108,6 +108,12 @@ try{
       });
     }}]
   });
+  const cssOutputs=Object.entries(compiled.metafile.outputs).filter(([file])=>file.endsWith('.css'));
+  const sharedCss=cssOutputs.find(([,meta])=>String(meta.entryPoint||'').replaceAll('\\','/').endsWith('/app/globals.css'));
+  if(!sharedCss)throw new Error('LOC global CSS output missing: '+JSON.stringify(cssOutputs.map(([file,meta])=>({file,entryPoint:meta.entryPoint}))));
+  const cssHref='/'+path.relative(out,path.resolve(root,sharedCss[0])).replaceAll('\\','/');
+  if(!fs.existsSync(path.join(out,cssHref.slice(1))))throw new Error('LOC global CSS file not found at '+cssHref);
+  console.log('[LOC styles] '+cssHref+'; CSS assets='+cssOutputs.length);
   for(const page of records){
     const dest=path.join(out,page.route.slice(1));
     fs.mkdirSync(dest,{recursive:true});
@@ -121,7 +127,7 @@ try{
       page.noIndex?'<meta name="robots" content="noindex,nofollow">':'',
       '<link rel="canonical" href="https://loc.lo3rwang.cc'+page.route+'">',
       '<link rel="icon" href="/assets/site/icons/loc-favicon.png">',
-      '<link rel="stylesheet" href="/_loc/site.css">',css,
+      '<link rel="stylesheet" href="'+cssHref+'">',css,
       '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
       '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
       '</head><body class="loc-app-shell"><div id="loc-root">',
@@ -134,7 +140,7 @@ try{
   if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))
     throw new Error('Native export contains raw card originals');
   fs.writeFileSync(path.join(out,'_loc','build-report.json'),JSON.stringify({
-    runtime:'Preact',bundler:'esbuild',routes:records.length,
+    runtime:'Preact',bundler:'esbuild',routes:records.length,sharedCss:cssHref,
     jsBytes:Object.entries(compiled.metafile.outputs).filter(([p])=>p.endsWith('.js')).reduce((sum,[,v])=>sum+v.bytes,0)
   }));
   console.log('[LOC] Preact + esbuild: '+records.length+' static HTML routes, '+(native?'IPA':'Web')+' target.');

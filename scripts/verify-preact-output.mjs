@@ -18,9 +18,11 @@ const pageRoutes=pageFiles(app).map(file=>{
 });
 const required=['/','/culture/','/search/','/statics/','/trace/','/settings/','/admin/','/my-phone/','/lo3rwang/','/lrunes/'];
 for(const route of required)if(!pageRoutes.includes(route))throw Error('Required LOC route absent: '+route);
-if(!exists(path.join(out,'_loc','site.css')))throw Error('LOC shared CSS missing');
+// Validate the actual esbuild CSS entry output, not an assumed filename.
 if(!exists(path.join(out,'_loc','build-report.json')))throw Error('LOC build-report missing');
 const report=JSON.parse(read(path.join(out,'_loc','build-report.json')));
+if(!/^\/_loc\/[^?#]+\.css$/.test(report.sharedCss)||!exists(path.join(out,report.sharedCss.slice(1))))
+  throw Error('LOC shared CSS missing or invalid: '+report.sharedCss);
 if(report.runtime!=='Preact'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
   throw Error('LOC Preact route manifest mismatch');
 if(fs.existsSync(path.join(out,'_next')))throw Error('Next.js assets left in LOC export');
@@ -30,6 +32,7 @@ for(const route of pageRoutes){
   const entry=path.join(out,route.slice(1),'index.html');
   if(!exists(entry))throw Error('Missing route: '+route);
   const html=read(entry);
+  if(!html.includes('href="'+report.sharedCss+'"'))throw Error('LOC shared CSS not linked from '+route);
   const src=html.match(/<script type="module" src="(\/_loc\/routes\/p\d+\.js)"><\/script>/)?.[1];
   if(!src||!exists(path.join(out,src.slice(1))))throw Error('Missing executable Preact bundle for '+route);
   if(!html.includes('id="loc-theme-bootstrap"')||!html.includes('id="loc-native-static-route"'))
