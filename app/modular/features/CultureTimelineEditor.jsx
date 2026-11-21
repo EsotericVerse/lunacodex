@@ -4,11 +4,8 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 
 import ScopeOptionPicker from '../ScopeOptionPicker';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
-import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useEditDock} from '../edit-dock';
 import {transactionWrites} from '../../loc/db/db-client.mjs';
-import {revalidateServerMetadata} from '../../loc/scope/scope-data';
-import {DB_QUERY_BATCH_SIZE,selectRows} from '../../loc/db/db-query.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/culture/anniversary.mjs';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture/anchor-bulk.mjs';
@@ -50,54 +47,14 @@ function normalizeDraft(row){
   return {...blank(row.type),...row,address:day(row.address),
     anchor_ids:Array.isArray(row.anchor_ids)?row.anchor_ids:[]};
 }
-// A single keyset reader for initial editor state and explicit bulk actions.
-// Adapt each transport page to actual payload size, not the total article count.
-// The memory guard fails explicitly instead of silently hiding later records.
-const MAX_TIME_EDITOR_BYTES=32*1024*1024;
-const TARGET_TIME_PAGE_BYTES=2*1024*1024;
-async function readCompleteTimeRecords(timeTable){
-  const gathered=[],seen=new Set();
-  let afterUid='',pageRows=Math.min(2000,DB_QUERY_BATCH_SIZE);
-  let averageRowBytes=0,usedBytes=0;
-  for(;;){
-    const filters=[{column:'type',operator:'in',value:PERSISTED_TIME_TYPES}];
-    if(afterUid)filters.push({column:'uid',operator:'gt',value:afterUid});
-    const {rows=[]}=await selectRows(timeTable,{
-      columns:TIME_COLUMNS,filters,orders:[{column:'uid',ascending:true}],
-      limit:pageRows,authenticated:true
-    });
-    if(!Array.isArray(rows)||rows.length>pageRows)
-      throw Error('時間紀錄分頁回傳不完整，已停止編輯');
-    let pageBytes=0;
-    for(const row of rows){
-      const uid=String(row?.uid||'');
-      if(!uid||seen.has(uid))throw Error('時間紀錄 UID 重複或無效，已停止編輯');
-      seen.add(uid);
-      const bytes=JSON.stringify(row).length*2+128;
-      pageBytes+=bytes;usedBytes+=bytes;
-      if(usedBytes>MAX_TIME_EDITOR_BYTES)
-        throw Error('時間紀錄超出編輯器記憶體預算，未載入不完整清單');
-      gathered.push(projectTimeAnchorRow(row));
-    }
-    if(rows.length<pageRows)return gathered;
-    afterUid=String(rows.at(-1).uid);
-    const measured=pageBytes/Math.max(1,rows.length);
-    averageRowBytes=averageRowBytes===0||measured>averageRowBytes
-      ?measured:averageRowBytes*0.7+measured*0.3;
-    pageRows=Math.max(1,Math.min(
-      DB_QUERY_BATCH_SIZE*4,pageRows*2,
-      Math.floor(TARGET_TIME_PAGE_BYTES/Math.max(128,averageRowBytes))));
-  }
-}
-
 export default function CultureTimelineEditor({
-  scopeId='',timeTable:providedTimeTable='',birthday='',selectedRecordId='',suggestedAnchorDate='',
+  scopeId='',timeTable:providedTimeTable='',timeRecords=null,timeLoading=false,timeError=null,
+  birthday='',selectedRecordId='',suggestedAnchorDate='',
   suggestedRecordType='anchor',suggestedRequestNonce=0,defaultRecordType='anchor',onClose=null,onDataChanged=null
 }){
   useUiSection('uiExtra.dataErrors');
   const copy=useUiCopy();
   const editDock=useEditDock();
-  const resourceCache=useResourceCache();
   const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const routeAnchorDate=String(searchParams?.get?.('anchorDate')||'').slice(0,10);
   const effectiveAnchorDate=day(suggestedAnchorDate||(!selectedRecordId?routeAnchorDate:''));
@@ -127,12 +84,10 @@ export default function CultureTimelineEditor({
   const dockActions=useRef({save:null,isDirty:()=>false,isBusy:()=>false});
   const editorRef=useRef(null),inputRef=useRef(null);
 
-  const query=useAsyncResource({
-    queryKey:['culture-period-settings',dataScope,timeTable],
-    enabled:editable,
-    queryFn:()=>readCompleteTimeRecords(timeTable)
-  });
-  const all=query.data||[];
+  // The authorized parent owns the complete dataset. This form does not
+  // issue another SQL query just to reshape the same Time Anchors.
+  const all=Array.isArray(timeRecords)?timeRecords:[];
+  const query={isPending:timeLoading||!Array.isArray(timeRecords),error:timeError};
   const anchors=useMemo(()=>new Map(all.filter(row=>row.type==='anchor').map(row=>[String(row.uid),row])),[all]);
   const eventChoices=useMemo(()=>[...all].filter(row=>row.type==='period'),[all]);
   const eventByUid=useMemo(()=>new Map(eventChoices.map(row=>[String(row.uid),row])),[eventChoices]);
@@ -159,18 +114,23 @@ export default function CultureTimelineEditor({
     }
     return map;
   },[eventChoices]);
-  const rows=useMemo(()=>[...all].sort((a,b)=>{
-    const position=row=>{
-      if(row.type==='anchor')return day(row.address);
-      const eventRanges=eventChoices.map(event=>({...event,ranges:resolveTimeSegments(event.anchor_ids,anchors,{period:false})}));
-      return row.type==='era'
-        ?(row.anchor_ids||[]).flatMap(id=>eventRanges.find(event=>event.uid===id)?.ranges||[])
-          .map(range=>range.start_date).filter(Boolean).sort()[0]||'9999-12-31'
-        :resolveTimeSegments(row.anchor_ids,anchors,{period:false})
-          .map(range=>range.start_date).filter(Boolean).sort()[0]||'9999-12-31';
-    };
-    return position(a).localeCompare(position(b));
-  }),[all,anchors,eventChoices]);
+  // Resolve each saved Date/Period/Era position once. Sorting by repeatedly
+  // resolving the full Period graph for every comparison was unnecessarily
+  // expensive even after the SQL read had finished.
+  const rows=useMemo(()=>{
+    const earliest=ranges=>ranges.map(range=>range.start_date)
+      .filter(Boolean).sort()[0]||'9999-12-31';
+    const periodStarts=new Map(eventChoices.map(event=>[
+      event.uid,earliest(resolveTimeSegments(event.anchor_ids,anchors,{period:false}))
+    ]));
+    const positions=new Map(all.map(row=>{
+      if(row.type==='anchor')return [row.uid,day(row.address)];
+      if(row.type==='era')return [row.uid,(row.anchor_ids||[])
+        .map(uid=>periodStarts.get(uid)).filter(Boolean).sort()[0]||'9999-12-31'];
+      return [row.uid,earliest(resolveTimeSegments(row.anchor_ids,anchors,{period:false}))];
+    }));
+    return [...all].sort((a,b)=>(positions.get(a.uid)||'').localeCompare(positions.get(b.uid)||''));
+  },[all,anchors,eventChoices]);
   const recordOptions=useMemo(()=>rows.filter(row=>row.type===browseType).map(row=>({
     value:String(row.uid),
     label:(row.type==='anchor'&&day(row.address)?day(row.address)+'｜':'')+String(row.title||'未命名紀錄')
@@ -271,7 +231,7 @@ export default function CultureTimelineEditor({
   const removePair=index=>setTracePairs(items=>items.filter((_,i)=>i!==index));
   // Reuse the same complete reader for bulk edits instead of issuing
   // a separate OFFSET-based full scan with another row-count ceiling.
-  const loadTimeRecords=()=>readCompleteTimeRecords(timeTable);
+  const loadTimeRecords=()=>Promise.resolve(all);
   const autoOrganize=async()=>{
     if(busy||!['period','era'].includes(draft.type))return;
     setBusy(true);setMessage('');setOrganizedDates([]);
@@ -332,25 +292,12 @@ export default function CultureTimelineEditor({
         p_table:timeTable,p_operation:'insert',
         p_rows:additions.map(row=>writeTimeAnchorRow(row))
       }]);
-      refresh();
       await onDataChanged?.();
       setAnnualOpen(false);startNew('anchor');
       setMessage('已建立 '+additions.length+' 個紀念日定錨，跳過 '+
         (plans.length-additions.length)+' 個既有日期。');
     }catch(error){setMessage(error?.message||'批次建立失敗');}
     finally{setBusy(false);}
-  };
-  const refresh=()=>{
-    if(dataScope!=='local')void revalidateServerMetadata();
-    // Never hold the Save lock while refetching UI data.
-    // In-place revalidation keeps existing records visible during refresh.
-    void Promise.allSettled([
-      resourceCache.revalidate({queryKey:['culture-timeline',scopeId]}),
-      resourceCache.revalidate({queryKey:['culture-period-settings',dataScope,timeTable]}),
-      resourceCache.revalidate({queryKey:['culture-time-periods',scopeId]}),
-      resourceCache.revalidate({queryKey:['culture-period-roots','v2',scopeId]}),
-      resourceCache.revalidate({queryKey:['culture-period-source-snapshot','v6',scopeId]})
-    ]);
   };
   const prepareTimeTransaction=()=>{
     if(busy||query.isPending)throw Error('時間紀錄尚未就緒');
@@ -425,7 +372,7 @@ export default function CultureTimelineEditor({
       }
       return {operations,
         afterCommit:async()=>{
-          refresh();reset();
+          reset();
           await onDataChanged?.();
           setMessage('已儲存，時間長河已更新。');
         },
@@ -455,7 +402,7 @@ export default function CultureTimelineEditor({
       // Periods survive anchor deletion; only their affected UID links become invalid.
       await transactionWrites([{p_table:timeTable,p_operation:'delete',
         p_filters:[{column:'uid',operator:'eq',value:selectedId}]}]);
-      refresh();reset();
+      reset();
       await onDataChanged?.();
       setMessage('已刪除，時間長河已更新。');
     }catch(error){setMessage(error?.message||'刪除失敗');}
@@ -479,7 +426,6 @@ export default function CultureTimelineEditor({
       }
       await transactionWrites(plans);
       const count=visibilitySelection.length;
-      void query.mutate();refresh();
       await onDataChanged?.();
       setVisibilitySelection([]);setMessage('已更新 '+count+' 筆時間隱藏設定。');
     }catch(e){setMessage(String(e.message||e));}finally{setVisibilityBusy(false);}

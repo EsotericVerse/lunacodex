@@ -5,7 +5,7 @@
 import {CultureTimelineModel} from '../../modular/modules/culture-timeline/culture-timeline-model';
 import {workDisplayText} from '../../modular/work-display-model';
 import {selectScopeDailyCounts} from '../galaxy/galaxy-query';
-import {selectAllRows,selectCount,selectRows} from '../db/db-query.mjs';
+import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from '../db/db-query.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
 import {publicContentFilters} from '../content/content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from '../scope/scope-data';
@@ -331,6 +331,70 @@ export async function selectLocCultureDensity({
     sourceGroups:built.sourceGroups,
     sourceScopeRiverItems:built.sourceScopeRiverItems,
     sourceScopeGroups:built.sourceScopeGroups
+  };
+}
+
+
+const MANAGED_TIME_COLUMNS='uid,type,title,description,attr,invisible';
+const MAX_MANAGED_TIME_BYTES=32*1024*1024;
+const TARGET_MANAGED_TIME_PAGE_BYTES=2*1024*1024;
+// Read the complete historical set once for BOTH the editor and TimeRiver.
+// A one-year camera is only a viewport, never a SQL date filter. This is a
+// single authorized read flow with bounded transport pages, no extra COUNT.
+async function readManagedTimeRecords(table,{signal=null}={}){
+  const collected=[],seen=new Set();
+  let afterUid='',pageRows=Math.min(2000,DB_QUERY_BATCH_SIZE);
+  let averageBytes=0,totalBytes=0;
+  for(;;){
+    if(signal?.aborted){const error=new Error('Time read cancelled');error.name='AbortError';throw error;}
+    const filters=[{column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.time}];
+    if(afterUid)filters.push({column:'uid',operator:'gt',value:afterUid});
+    const {rows=[]}=await selectRows(table,{
+      columns:MANAGED_TIME_COLUMNS,filters,
+      orders:[{column:'uid',ascending:true}],
+      limit:pageRows,authenticated:true,signal
+    });
+    if(!Array.isArray(rows)||rows.length>pageRows)
+      throw Error('時間紀錄分頁回傳不完整，已停止編輯');
+    let pageBytes=0;
+    for(const row of rows){
+      const uid=String(row?.uid||'');
+      if(!uid||seen.has(uid))throw Error('時間紀錄 UID 重複或無效，已停止編輯');
+      seen.add(uid);
+      const bytes=JSON.stringify(row).length*2+128;
+      pageBytes+=bytes;totalBytes+=bytes;
+      if(totalBytes>MAX_MANAGED_TIME_BYTES)
+        throw Error('時間紀錄超出編輯器記憶體預算，未載入不完整清單');
+      collected.push(projectTimeAnchor(row));
+    }
+    if(rows.length<pageRows)return collected;
+    afterUid=String(rows.at(-1).uid);
+    const measured=pageBytes/Math.max(1,rows.length);
+    averageBytes=averageBytes===0||measured>averageBytes
+      ?measured:averageBytes*.7+measured*.3;
+    pageRows=Math.max(1,Math.min(DB_QUERY_BATCH_SIZE*4,pageRows*2,
+      Math.floor(TARGET_MANAGED_TIME_PAGE_BYTES/Math.max(128,averageBytes))));
+  }
+}
+
+// The one authorized dataset is projected to the TimeRiver and form controls.
+// Data lifetime belongs to the mounted Culture page, not a second SQL cache.
+export async function selectScopeCultureManagementData(scopeId,{signal=null}={}){
+  const id=scopeIdOf(scopeId);
+  const published=(PUBLISHED_SITE_BOOTSTRAP.registry||[]).some(row=>
+    row.scope_id===id&&row.scope_kind==='scope'&&row.active!==false);
+  const scope=published?defaultScopeData(id):null;
+  if(!scope||id==='loc')throw Error('找不到 Scope 時間編輯資料設定');
+  const editorRows=await readManagedTimeRecords(scope.time,{signal});
+  const parts=cultureParts(editorRows,scope.id);
+  const openRange=openPeriodRangeFromRows(scope.id,editorRows);
+  return {
+    scopeId:id,scope,editorRows,
+    eras:{eras:parts.eras},periods:parts.periods,
+    openRanges:openRange?[openRange]:[],scopeRanges:[],
+    timelineItems:timelineItems(parts.normalizedContext),
+    events:parts.events,trajectories:parts.trajectories,
+    styleComments:parts.styleComments,works:[]
   };
 }
 
