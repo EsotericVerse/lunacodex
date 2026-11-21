@@ -55,7 +55,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       (targetEmail&&targetEmail===saved.email))clearAuthorization();
   }
   // A failed write must never look saved: show a visible notice, then rethrow so the caller also sees the error.
-  const WRITE_FAILED_NOTICE='儲存失敗，資料尚未寫入資料庫，請稍後再試。';
+  const WRITE_FAILED_NOTICE='儲存失敗或結果未確認，請重新讀取確認後再重試。';
   function withWriteNotice(run){
     return async(...args)=>{
       try{return await run(...args);}
@@ -118,7 +118,12 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const {data,error}=await authClient.schema('silver').managedTransaction(normalized);
     if(error)throw new Error(error.message||'LOC transaction failed');
     if(!Array.isArray(data?.results)||data.results.length!==normalized.length)
-      throw new Error('LOC transaction response is incomplete');
+      throw new Error('LOC transaction result is unconfirmed; reload before retrying');
+    for(const item of normalized){
+      if(item.p_table!=='api.manage')continue;
+      const scopeFilter=(item.p_filters||[]).find(filter=>filter?.column==='id');
+      invalidateRelevantAuthorization(scopeFilter?.value,item.p_values?.email);
+    }
     return data;
   }
 
