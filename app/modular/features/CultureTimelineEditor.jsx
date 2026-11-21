@@ -438,7 +438,9 @@ export default function CultureTimelineEditor({
     try{
       const plan=prepareTimeTransaction();
       await transactionWrites(plan.operations);
-      await plan.afterCommit();
+      try{await plan.afterCommit();}
+      catch{setMessage('資料已提交，但時間長河未能重新整理；請重新讀取。');}
+
       return true;
     }catch(error){
       setMessage(error?.message||'儲存失敗');
