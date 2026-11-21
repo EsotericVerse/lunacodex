@@ -23,6 +23,12 @@ test('time editor can start its authorized read without a second public river',(
   assert.match(culture,/const scopeData=query\.data\?\.scope\|\|\(isTimeEditingView&&!isAggregateScope/);
   assert.match(culture,/defaultScopeData\(scopeId\)/);
   const editor=read('app/modular/features/CultureTimelineEditor.jsx');
-  assert.match(editor,/queryFn:\(\)=>readCompleteTimeRecords\(timeTable\)/);
+  const query=read('app/loc/culture/query.js');
+  assert.match(culture,/selectScopeCultureManagementData\(scopeId,\{signal\}\)/);
+  assert.match(culture,/timeRecords=\{query\.data\?\.editorRows\|\|null\}/);
+  assert.match(query,/const editorRows=await readManagedTimeRecords\(scope\.time,\{signal\}\)/);
+  assert.match(query,/const parts=cultureParts\(editorRows,scope\.id\)/);
+  assert.match(editor,/const all=Array\.isArray\(timeRecords\)\?timeRecords:\[\]/);
+  assert.doesNotMatch(editor,/selectRows\(|readCompleteTimeRecords|useAsyncResource/);
   assert.match(editor,/transactionWrites\(plan\.operations\)/);
 });
