@@ -83,3 +83,15 @@ test('LOC data uses caller-owned authorization and driver',async()=>{
   assert.equal(calls.length,1);
   await assert.rejects(db.delete('galaxy',{column:'uid',value:'A'}),/access denied/);
 });
+
+test('optional LOC site renders native HTML without the legacy runtime',async()=>{
+  const {documentHTML}=await import('../modules/loc/site/index.mjs');
+  const culture=documentHTML({scope:'loc',section:'culture',description:'LOC'});
+  assert.match(culture,/<html lang="zh-Hant">/);
+  assert.match(culture,/<nav class="loc-nav"/);
+  assert.match(culture,/src="\/loc-native-client\.mjs"/);
+  assert.doesNotMatch(culture,/_loc\/routes\/|jsx-runtime|react-dom/);
+  const homepage=documentHTML({scope:'lo3rwang',section:'home',rows:[]});
+  assert.match(homepage,/<title>政德<\/title>/);
+  assert.doesNotMatch(homepage,/src="\/loc-native-client\.mjs"/);
+});
