@@ -44,7 +44,8 @@ function pointRecord(input){
     invisible:input.invisible};
 }
 function modeled(scope,operation,values){
-  assertZModelAnchorBlockManagedValues('silver.'+scope+'_anchor',operation,values);
+  assertZModelAnchorBlockManagedValues('silver.'+scope+'_anchor',operation,
+    operation==='insert'?[values]:values);
 }
 function jsonb(value){return sql`${JSON.stringify(value)}::jsonb`;}
 async function updateUids(trx,relation,scope,ids,values){
