@@ -1,0 +1,130 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
+import {manageScopeRegistryNative,provisionScopeNative,deleteScopeNative}
+  from '../app/loc/providers/kysely-scope-lifecycle.mjs';
+
+const OWNER={role:'authenticated',claims:{provider:'loc',me:true,
+  sub:'owner-test-1234',email:'owner@example.com',grants:['global:manage']}};
+const ORIGINAL=[
+  {id:'loc',display_name:'月典',manage_role:'group',
+    domain:'loc.example.com',directory:null,parent_scope_id:null,
+    sort_order:10,active:true},
+  {id:'lo3rwang',display_name:'Owner',manage_role:'scope',
+    domain:null,directory:'/lo3rwang',parent_scope_id:'loc',
+    sort_order:20,active:true}
+];
+function fakeRegistry(initial=ORIGINAL){
+  const registry=structuredClone(initial),summary=new Map(
+    initial.map(item=>[item.id,item.display_name]));
+  const calls=[];
+  const trx={
+    selectFrom(table){
+      assert.equal(table,'api.manage');
+      return {select(cols){
+        assert.ok(cols.includes('id'));
+        return {orderBy(column){
+          assert.equal(column,'id');
+          return {forUpdate(){
+            return {async execute(){calls.push('registry-lock');return registry;}};
+          }};
+        }};
+      }};
+    },
+    insertInto(table){
+      return {values(value){
+        return {async execute(){
+          calls.push('insert:'+table);
+          if(table==='api.manage')registry.push(value);
+          else if(table==='silver.loc')summary.set(value.id,value.display_name);
+          else assert.fail('Unexpected SQL table '+table);
+        }};
+      }};
+    },
+    updateTable(table){
+      return {set(values){
+        return {where(column,operator,id){
+          assert.deepEqual([column,operator],['id','=']);
+          return {returning(){
+            return {async execute(){
+              calls.push('update:'+table);
+              if(table==='api.manage'){
+                const row=registry.find(x=>x.id===id);
+                if(row)Object.assign(row,values);
+              }
+              if(table==='silver.loc'&&summary.has(id))
+                summary.set(id,values.display_name);
+              return summary.has(id)||registry.some(x=>x.id===id)?[{id}]:[];
+            }};
+          }};
+        }};
+      }};
+    }
+  };
+  bindLocAuthorization(trx,OWNER);
+  return {trx,registry,summary,calls};
+}
+test('Scope Registry group creation commits its Registry and display projection together',async()=>{
+  const state=fakeRegistry();
+  const result=await manageScopeRegistryNative(state.trx,{
+    p_operation:'create_group',p_scope_id:'testgroup',
+    p_values:{display_name:'測試群組',directory:'/testgroup',
+      parent_scope_id:'loc'}
+  });
+  assert.equal(result.scope_id,'testgroup');
+  assert.equal(result.route_mode,'directory');
+  assert.equal(state.registry.find(x=>x.id==='testgroup').manage_role,'group');
+  assert.equal(state.summary.get('testgroup'),'測試群組');
+  assert.deepEqual(state.calls,
+    ['registry-lock','insert:api.manage','insert:silver.loc']);
+});
+test('Scope Registry refuses duplicate routes, unlisted writes and cycles',async()=>{
+  const state=fakeRegistry();
+  const create=p_values=>manageScopeRegistryNative(state.trx,{
+    p_operation:'create_group',p_scope_id:'testgroup',p_values
+  });
+  await assert.rejects(create({display_name:'Dupe',directory:'/lo3rwang',
+    parent_scope_id:'loc'}),/already registered/);
+  await assert.rejects(create({display_name:'Invalid',directory:'/valid',
+    parent_scope_id:'loc',email:'forbidden@example.com'}),/immutable/);
+  await assert.rejects(create({display_name:'Invalid',domain:'ab.example.com',
+    directory:'/path',parent_scope_id:'loc'}),/Exactly one/);
+  await assert.rejects(manageScopeRegistryNative(state.trx,{
+    p_operation:'update',p_scope_id:'loc',
+    p_values:{display_name:'月典',directory:'/loc'}
+  }),/Exactly one/);
+  assert.equal(state.registry.length,2);
+});
+test('Scope creation and deletion both demand existing global LOC authorization',async()=>{
+  const denied={selectFrom(){assert.fail('unauthorized SQL request');}};
+  await assert.rejects(provisionScopeNative(denied,{
+    p_scope_id:'testscope',p_display_name:'Test',p_email:'me@example.com',
+    p_directory:'/testscope'
+  }),/global management permission/);
+  await assert.rejects(deleteScopeNative(denied,{p_scope_id:'testscope'}),
+    /global management permission/);
+  const state=fakeRegistry();
+  await assert.rejects(provisionScopeNative(state.trx,{
+    p_scope_id:'testscope',p_display_name:'Test',p_email:'me@example.com',
+    p_domain:'test.example.com',p_directory:'/testscope'
+  }),/Exactly one/);
+  await assert.rejects(deleteScopeNative(state.trx,{p_scope_id:'lo3rwang'}),
+    /Built-in LOC Scope/);
+  assert.deepEqual(state.calls,[]);
+});
+test('Scope lifecycle uses serializable website Session and no legacy RPC',()=>{
+  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  const actions=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const lifecycle=readFileSync(new URL('../app/loc/providers/kysely-scope-lifecycle.mjs',import.meta.url),'utf8');
+  const admin=readFileSync(new URL('../app/loc/views/admin-panels/AdminRegistry.jsx',import.meta.url),'utf8');
+  assert.match(native,/host!==WEB_HOST\)throw refusal\('LOC Scope lifecycle is website-only'/);
+  assert.match(native,/transaction\.setIsolationLevel\('serializable'\)/);
+  for(const action of ['provision_scope','manage_scope_registry','delete_scope']){
+    assert.ok(actions.includes("'"+action+"'"),action+' must be supported');
+  }
+  assert.doesNotMatch(lifecycle,/silver\.manage\(|api\.(?:provision_scope|delete_scope|manage_scope_registry)\(/);
+  assert.doesNotMatch(lifecycle,/enable row level security|create policy|grant select/i);
+  assert.match(admin,/locale:normalizeUiLocale\(scopeDraft\.locale\)/);
+  assert.doesNotMatch(admin,/keyword_rows\)!==66/);
+});
