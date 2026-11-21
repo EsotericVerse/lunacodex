@@ -1,6 +1,6 @@
 // MCP uses the exact same api.manage ZModel/PolicyPlugin role reader as Web.
 // Its grants remain restricted to active records: virtual Admin is web-only.
-import {directMcpKysely} from './native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase} from './native-kysely.mjs';
 import {z} from 'zod';
 import {readLocAccess} from '../permissions/loc_access.mjs';
 
@@ -29,12 +29,16 @@ export async function authorizeMcpRole(email,env={},{
   const verified=String(email||'').trim().toLowerCase();
   if(!VerifiedEmail.safeParse(verified).success)
     throw denial('Verified LOC identity required',401);
-  let permissions;
+  let permissions,port=null;
   try{
-    const {db,dialect,engine}=await database(env,'',{waitUntil});
-    permissions=await readLocAccess(db,verified,{dialect,engine});
+    port=await database(env,'',{waitUntil});
+    permissions=await readLocAccess(port.db,verified,{
+      dialect:port.dialect,engine:port.engine});
   }catch{
     throw denial('LOC MCP role service unavailable',503);
+  }finally{
+    // Standalone OAuth authorizer owns this request's SQL connection.
+    await closeLocDatabase(port);
   }
   if(!permissions.roles.length)throw denial('LOC MCP role not granted',403);
   return {email:verified,roles:permissions.roles.map(({id,role})=>({id,role})),
