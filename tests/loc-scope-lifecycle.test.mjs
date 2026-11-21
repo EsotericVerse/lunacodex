@@ -103,6 +103,14 @@ test('Scope Registry refuses duplicate routes, unlisted writes and cycles',async
     p_values:{display_name:'月典',directory:'/loc'}
   }),/Exactly one/);
   assert.equal(state.registry.length,2);
+  const system=fakeRegistry([...ORIGINAL,{id:'admin',
+    manage_role:'admin',display_name:'Admin',
+    domain:null,directory:'/admin',parent_scope_id:null,
+    active:true,sort_order:0}]);
+  await assert.rejects(manageScopeRegistryNative(system.trx,{
+    p_operation:'update',p_scope_id:'admin',
+    p_values:{display_name:'Hijack',directory:'/admin'}
+  }),/System Scope Registry cannot be edited/);
 });
 test('Scope creation and deletion both demand existing global LOC authorization',async()=>{
   const denied={selectFrom(){assert.fail('unauthorized SQL request');}};
