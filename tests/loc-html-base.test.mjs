@@ -48,10 +48,11 @@ test('every LOC feature renders into its fixed header and content DIVs',()=>{
   assert.match(render,/id="loc-feature-main"/);
   assert.match(render,/id="loc-feature-hero-canvas"/);
   assert.match(render,/data-loc-canvas="content"/);
-  assert.match(feature,/createPortal\(hero,heroCanvas\)/);
+  assert.match(feature,/<ExistingHero canvas=\{heroCanvas\}>/);
   assert.match(feature,/hero_block\(\[groupHeroPage,scopeHeroPage\]\)/);
   assert.doesNotMatch(feature,/PUBLISHED_HERO_ROWS/);
   assert.match(feature,/if\(heroCanvas\)return/);
+  assert.match(feature,/useFixedPageCanvas/);
   assert.match(loc,/document\.getElementById\('loc-feature-hero-canvas'\)/);
   assert.match(check,/Missing fixed LOC DIV canvas/);
 });
