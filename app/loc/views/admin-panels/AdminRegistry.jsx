@@ -414,6 +414,20 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     }
     return writes;
   }
+  function prepareRegistryTransaction(){
+    if(!selected||!current)throw Error('請先選擇管理項目');
+    setStatus('');
+    return {
+      operations:[...registryDraftWrites(),...mappingDraftWrites()],
+      afterCommit:()=>{
+        setNewMapping({...EMPTY_MAPPING});
+        setStatus(current.scope_id+' 已更新。');
+        setEditDraft(null);
+        refresh();
+      },
+      onFailure:error=>setStatus(error?.message||'管理設定儲存失敗。')
+    };
+  }
   async function commitRegistryDraft({includeMappings=false}={}){
     if(!selected||!current)return false;
     setStatus('');
@@ -490,7 +504,8 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     isDirty:()=>Boolean(draftDirty||editedMappings.length||newMappingDirty),
     // A single six-key Save can touch all three physical management tables.
     // No individual mapping or configuration request can partially commit.
-    save:()=>commitRegistryDraft({includeMappings:true})
+    save:()=>commitRegistryDraft({includeMappings:true}),
+    prepareTransaction:prepareRegistryTransaction
   });
 
   if(!selected)return <aside className="admin-context-panel"><p className="scope-status">請選擇人員或群組</p></aside>;
