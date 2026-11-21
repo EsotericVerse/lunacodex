@@ -363,7 +363,8 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
   'media_anchor_candidates','anchor_import_page','import_site_presence',
-  'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope']);
+  'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope',
+  'save_trace_editor_batch']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
 // A Search-only, read-only action behind the verified LOC Web Session.
@@ -637,6 +638,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     refresh_scope_search_summary:['p_scope_id'],
     bulk_update_galaxy_able:['p_scope_id','p_site','p_flags','p_apply','p_expected_count','p_batch_size'],
     merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
+    save_trace_editor_batch:['p_scope_id','p_renames','p_point','p_merge_uids',
+      'p_visibility'],
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
     loc_access:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
@@ -783,6 +786,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     return {data:await locAccessRows(trx,type,id),count:null};
   }
   if(name==='merge_scope_trace_place_names')return {data:await mergeScopePoints(trx,args),count:null};
+  if(name==='save_trace_editor_batch')return {data:await saveTraceEditorBatch(trx,args),count:null};
   if(name==='import_shared_keyword_class')return {data:await importSharedKeywordClass(trx,args),count:null};
   if(name==='refresh_scope_search_summary')return {data:await refreshScopeSearchSummary(trx,args),count:null};
   if(name==='loc_admin_settings')return {data:await managedLocSettings(trx,args,claims),count:null};
@@ -1103,12 +1107,123 @@ async function refreshScopeSearchSummary(trx,args){
   return {scope_id:scope,...snapshot};
 }
 
-async function mergeScopePoints(trx,args){
+// The Trace editor owns one logical Save: title standardization, Point
+// create/update, UID merge, and visibility edits either all COMMIT together
+// or none do. The existing mergeScopePoints() retains its Galaxy/place_id
+// and route reference repair; it merely borrows the verified transaction.
+async function saveTraceEditorBatch(trx,args){
+  const scope=await scopedWrite(trx,args.p_scope_id);
+  if(scope==='loc')reject('LOC aggregate Trace Scope is not editable',403);
+  const anchor='silver.'+scope+'_anchor';
+  const renames=args.p_renames??[];
+  const merge=args.p_merge_uids??[];
+  const visibility=args.p_visibility??null;
+  const point=args.p_point??null;
+  if(!Array.isArray(renames)||renames.length>100||
+    !Array.isArray(merge)||merge.length>100||
+    (visibility!==null&&(typeof visibility!=='object'||Array.isArray(visibility)))||
+    (point!==null&&(typeof point!=='object'||Array.isArray(point)))||
+    (!renames.length&&!merge.length&&!visibility&&!point))
+    reject('Invalid Trace editor transaction');
+  let renamed=0,merged=0,visibilityCount=0,savedUid='';
+  let renameTotal=0;
+  for(const task of renames){
+    if(!task||typeof task!=='object'||Array.isArray(task)||
+      Object.keys(task).some(key=>!['uids','title'].includes(key))||
+      !Array.isArray(task.uids)||!task.uids.length||task.uids.length>100)
+      reject('Invalid Trace title batch');
+    const ids=task.uids.map(validUid),newTitle=String(task.title||'').trim();
+    if(!newTitle||newTitle.length>120||new Set(ids).size!==ids.length)
+      reject('Invalid Trace title or duplicate UID');
+    renameTotal+=ids.length;
+    if(renameTotal>2000)reject('Trace title batch is too large');
+    const rows=await trx.updateTable(anchor).set({title:newTitle})
+      .where('type','=','point').where('uid','in',ids).returning('uid').execute();
+    if(rows.length!==ids.length)reject('Trace title batch incomplete',409);
+    renamed+=rows.length;
+  }
+  if(point){
+    const allowed=['uid','title','description','address','longitude',
+      'latitude','invisible'];
+    if(Object.keys(point).some(key=>!allowed.includes(key)))
+      reject('Unexpected Trace Point field');
+    const title=String(point.title||'').trim(),
+      description=String(point.description||'').trim(),
+      address=String(point.address||'').trim();
+    if(!title||title.length>120||description.length>2000||address.length>320||
+      typeof point.invisible!=='boolean')
+      reject('Invalid Trace Point fields');
+    const x=point.longitude==null?'':String(point.longitude).trim();
+    const y=point.latitude==null?'':String(point.latitude).trim();
+    if(Boolean(x)!==Boolean(y))reject('Trace coordinates must be a pair');
+    if(x&&(!Number.isFinite(Number(x))||!Number.isFinite(Number(y))||
+      Math.abs(Number(x))>180||Math.abs(Number(y))>90))
+      reject('Invalid Trace coordinates');
+    const key=point.uid?validUid(point.uid):allocateAnchorUid();
+    let attr={};
+    if(point.uid){
+      const before=await trx.selectFrom(anchor).select(['uid','attr'])
+        .where('type','=','point').where('uid','=',key)
+        .forUpdate().executeTakeFirst();
+      if(!before)reject('Trace Point no longer exists',409);
+      attr=typeof before.attr==='string'?JSON.parse(before.attr):(before.attr||{});
+    }
+    if(x){attr.longitude=Number(x);attr.latitude=Number(y);}
+    else{delete attr.longitude;delete attr.latitude;}
+    if(address){
+      if(Array.isArray(attr.location))
+        attr.location=[...new Set([...attr.location,address])];
+      else attr.location=address;
+    }
+    const values={title,description,invisible:point.invisible,
+      attr:sql`${JSON.stringify(attr)}::jsonb`};
+    if(point.uid){
+      const rows=await trx.updateTable(anchor).set(values)
+        .where('uid','=',key).where('type','=','point').returning('uid').execute();
+      if(rows.length!==1)reject('Trace Point update incomplete',409);
+    }else{
+      const row=await trx.insertInto(anchor).values({uid:key,type:'point',...values})
+        .returning('uid').executeTakeFirst();
+      if(String(row?.uid||'').trim()!==key)
+        reject('Trace Point insert incomplete',409);
+    }
+    savedUid=key;
+  }
+  if(merge.length){
+    if(!point?.uid)reject('Existing primary Point required for merge');
+    merged=await mergeScopePoints(trx,{
+      p_scope_id:scope,p_keep_uid:point.uid,p_remove_uids:merge
+    },{verifiedScope:scope});
+  }
+  if(visibility){
+    if(Object.keys(visibility).some(key=>!['uids','invisible'].includes(key))||
+      !Array.isArray(visibility.uids)||!visibility.uids.length||
+      visibility.uids.length>3000||typeof visibility.invisible!=='boolean')
+      reject('Invalid Trace visibility batch');
+    const ids=visibility.uids.map(validUid);
+    if(new Set(ids).size!==ids.length)
+      reject('Duplicate Trace visibility UID');
+    // PostgreSQL permits arrays larger than 500 as one typed parameter.
+    // Only this trusted fixed-purpose action may use the bounded bulk list.
+    const rows=await trx.updateTable(anchor)
+      .set({invisible:visibility.invisible})
+      .where('type','=','point').where('uid','in',ids)
+      .returning('uid').execute();
+    if(rows.length!==ids.length)reject('Trace visibility batch incomplete',409);
+    visibilityCount=rows.length;
+  }
+  return {uid:savedUid,renamed,merged_count:merged,
+    visibility_count:visibilityCount,committed:true};
+}
+
+async function mergeScopePoints(trx,args,{verifiedScope=''}={}){
   const keep=validUid(args.p_keep_uid),removed=args.p_remove_uids;
   if(!Array.isArray(removed)||removed.length<1||removed.length>100||
      removed.some(id=>!UID.test(String(id))||id===keep)||
      new Set(removed).size!==removed.length)reject('Invalid Point merge UIDs');
-  const scope=await scopedWrite(trx,args.p_scope_id);
+  const scope=verifiedScope
+    ?validScope(args.p_scope_id):await scopedWrite(trx,args.p_scope_id);
+  if(verifiedScope&&scope!==verifiedScope)reject('Trace Scope mismatch',403);
   const anchor='silver.'+scope+'_anchor',galaxy='silver.'+scope+'_galaxy';
   const points=await trx.selectFrom(anchor).select(['uid','title','attr'])
     .where('type','=','point').where('uid','in',[keep,...removed]).forUpdate().execute();

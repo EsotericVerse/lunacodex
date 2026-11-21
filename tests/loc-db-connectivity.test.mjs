@@ -4,6 +4,7 @@ import {testLocAuthConnection} from '../functions/api/loc-auth-connectivity.js';
 import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
 import {closeLocDatabase,bindLocRequestAbort} from '../app/loc/mcp/native-kysely.mjs';
 import {readFileSync} from 'node:fs';
+import {executeManagedKyselyAction} from '../app/loc/providers/kysely-management.mjs';
 import {articleDistribution} from '../app/loc/mcp/article-distribution.mjs';
 import {readMemory} from '../app/loc/mcp/galaxy-read.mjs';
 import {setKeywordClassShare} from '../app/loc/keywords/sql-service.mjs';
@@ -294,4 +295,35 @@ test('every multi-statement MCP public read verifies grants in its own transacti
   assert.match(source,/databasePort:\{\.\.\.selected,db:trx,dialect:null\}/);
   assert.match(source,/borrowed:true,inTransaction:true/);
   assert.match(source,/return runMcp\(trx\)/);
+});
+
+test('Trace editor batches are one authenticated business SQL transaction',async()=>{
+  const provider=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const editor=readFileSync(new URL('../app/loc/trace/TraceManagement.jsx',import.meta.url),'utf8');
+  const service=readFileSync(new URL('../app/modular/features/trace/trace-data.js',import.meta.url),'utf8');
+  const marker=provider.slice(provider.indexOf('async function saveTraceEditorBatch('),
+    provider.indexOf('async function mergeScopePoints('));
+  assert.match(marker,/const scope=await scopedWrite\(trx,args\.p_scope_id\)/);
+  assert.match(marker,/for\(const task of renames\)/);
+  assert.match(marker,/mergeScopePoints\(trx,\{/);
+  assert.match(marker,/\{verifiedScope:scope\}/);
+  assert.match(marker,/Trace visibility batch incomplete/);
+  assert.match(marker,/return \{uid:savedUid,renamed,merged_count:merged,/);
+  assert.match(editor,/await saveTraceEditorBatch\(\{/);
+  assert.doesNotMatch(editor,/await renameTraceAnchorTitles\(/);
+  assert.doesNotMatch(editor,/await updateTraceVisibilityBulk\(/);
+  assert.doesNotMatch(editor,/await mergeTraceAnchorPoints\(/);
+  assert.match(service,/managedAction\(\s*'save_trace_editor_batch'/);
+  const maps=readFileSync(new URL('../app/loc/trace/RouteManager.jsx',import.meta.url),'utf8');
+  assert.match(service,/p_expected_count:group\.length/);
+  assert.match(service,/transactionWrites\(operations\)/);
+  assert.match(service,/\['point','path','trace'\]/);
+  assert.match(maps,/types:\['point','path','trace'\]/);
+  assert.doesNotMatch(maps,/uids\.slice\(i,i\+200\)/);
+
+  const denied={selectFrom(){assert.fail('unauthorized Trace SQL executed');}};
+  await assert.rejects(executeManagedKyselyAction(denied,{
+    name:'save_trace_editor_batch',args:{p_scope_id:'lo3rwang',
+      p_point:{title:'Title',invisible:false}}
+  }),/Scope write permission required/);
 });

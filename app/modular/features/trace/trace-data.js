@@ -1,6 +1,6 @@
 'use client';
 
-import {dbPublicClient,dbAuthClient} from '../../../loc/db/db-client.mjs';
+import {dbPublicClient,dbAuthClient,transactionWrites} from '../../../loc/db/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
 import {allocateAnchorUid} from '../../../loc/model/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -330,13 +330,32 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
       invisible:normalizedInvisible(invisible),attr})
     .eq('uid',key).eq('type',type).select('uid').single(),'更新路線或痕跡圖');
 }
-export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false}){
-  const id=writableScope(scopeId),ids=[...new Set(uids.map(textValue))];
-  if(!ids.length||ids.length>200||ids.some(uid=>!VALID_ID.test(uid)))throw Error('請選擇 1 至 200 筆有效項目');
-  const rows=checked(await physicalPoint(id).update({invisible:normalizedInvisible(invisible)})
-    .eq('type','point').in('uid',ids).select('uid'),'大量設定空間隱藏')||[];
-  if(rows.length!==ids.length)throw Error('部分地點權限未更新，請重新讀取');
-  return rows.length;
+// One logical visibility operation may cover Points, Routes and Trace maps.
+// Keep the typed Anchor filter, but put every 500-UID SQL chunk under ONE
+// managed transaction instead of committing each chunk independently.
+export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false,
+  types=['point']}){
+  const id=writableScope(scopeId),
+    ids=[...new Set((Array.isArray(uids)?uids:[]).map(textValue))];
+  const kinds=[...new Set(Array.isArray(types)?types:[])];
+  if(!ids.length||ids.length>5000||ids.some(uid=>!VALID_ID.test(uid))||
+    !kinds.length||kinds.some(kind=>!['point','path','trace'].includes(kind)))
+    throw Error('空間可見性 UID 或類型無效');
+  const value=normalizedInvisible(invisible),operations=[];
+  for(let i=0;i<ids.length;i+=500){
+    const group=ids.slice(i,i+500);
+    operations.push({p_table:'silver.'+id+'_anchor',
+      p_operation:'update',p_values:{invisible:value},
+      p_filters:[
+        {column:'uid',operator:'in',value:group},
+        {column:'type',operator:'in',value:kinds}
+      ],p_expected_count:group.length});
+  }
+  const receipt=await transactionWrites(operations);
+  const count=receipt.results.reduce((sum,item)=>sum+Number(item.count||0),0);
+  if(count!==ids.length)
+    throw Error('空間可見性變更回執不完整，請重新讀取核對');
+  return count;
 }
 export async function deleteTraceMap({scopeId,uid,type='path'}){
   const id=writableScope(scopeId);
@@ -349,6 +368,21 @@ export async function deleteTraceMap({scopeId,uid,type='path'}){
  * in the primary point's attr.location, and delete source points atomically.
  * No client-side multi-step deletion or fallback to obsolete _trace.
  */
+// The Trace editor's six-key Save has one SQL owner. Titles, Point
+// updates, route/article UID merges and visibility must never be published
+// independently while the other pending actions can still fail.
+export async function saveTraceEditorBatch({scopeId,renames=[],point=null,
+  mergeUids=[],visibility=null}){
+  const id=writableScope(scopeId);
+  const result=checked(await dbAuthClient.schema('silver').managedAction(
+    'save_trace_editor_batch',{
+      p_scope_id:id,p_renames:renames,p_point:point,
+      p_merge_uids:mergeUids,p_visibility:visibility
+    }),'空間定錨整體儲存');
+  if(result?.committed!==true)
+    throw Error('空間定錨資料交易回執不完整，請重新讀取後核對');
+  return result;
+}
 export async function mergeTraceAnchorPoints({scopeId,keepUid,removeUids=[]}){
   const id=writableScope(scopeId),primary=textValue(keepUid);
   const sources=[...new Set(removeUids.map(textValue).filter(Boolean))];
