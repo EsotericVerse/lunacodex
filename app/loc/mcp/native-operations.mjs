@@ -366,8 +366,6 @@ export async function handleNativeLocOperation(request,env={},{
       });
       return reply({data:{results,count:results.reduce((total,item)=>total+item.count,0)}});
     }
-em.count,0)}});
-    }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
       if(!claims.grants?.some(grant=>grant==='global:manage'||grant.endsWith(':manage')))
