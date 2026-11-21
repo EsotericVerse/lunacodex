@@ -4,6 +4,7 @@ import {testLocAuthConnection} from '../functions/api/loc-auth-connectivity.js';
 import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
 import {closeLocDatabase,bindLocRequestAbort} from '../app/loc/mcp/native-kysely.mjs';
 import {readFileSync} from 'node:fs';
+import {articleDistribution} from '../app/loc/mcp/article-distribution.mjs';
 
 const body=async response=>JSON.parse(await response.text());
 
@@ -113,4 +114,45 @@ test('LOC operation source contains one transaction and verified permission snap
   assert.match(native,/await selected\.db\.transaction\(\)\.execute\(async trx=>/);
   assert.match(native,/await closeLocDatabase\(selected\)/);
   assert.match(dock,/await transactionWrites\(operations\)/);
+});
+
+test('health-check SQL ownership closes connection after successful and invalid probes',async()=>{
+  for(const connected of [1,0]){
+    const calls=[];
+    const port={engine:'postgres',
+      db:{
+        selectNoFrom:()=>({executeTakeFirstOrThrow:async()=>({connected})}),
+        async destroy(){calls.push('destroy');}
+      },
+      pool:{async end(){calls.push('pool-end');}}
+    };
+    const response=await testLocAuthConnection(
+      {LOC_DATABASE_URI:'configured-secret-not-inspected'},
+      async()=>port);
+    assert.equal(response.status,connected===1?200:503);
+    assert.deepEqual(calls,['destroy','pool-end']);
+  }
+});
+test('standalone article distribution owns SQL, borrowed analytics do not',async()=>{
+  const now=new Date('2026-11-22T00:00:00+08:00');
+  const calls=[];
+  const port={
+    db:{
+      transaction:()=>({execute:async fn=>fn({})}),
+      async destroy(){calls.push('destroy');}
+    },
+    pool:{async end(){calls.push('pool-end');}}
+  };
+  const make=borrowed=>articleDistribution({period:'calendar_year',year:2026},{},{
+    database:async()=>port,
+    analytics:async()=>({data:{rows:[{day:'2026-11-01',item_count:7}]}}),
+    now,borrowed
+  });
+  const standalone=await make(false);
+  assert.equal(standalone.total,7);
+  assert.deepEqual(calls,['destroy','pool-end']);
+  calls.length=0;
+  const inherited=await make(true);
+  assert.equal(inherited.total,7);
+  assert.deepEqual(calls,[]);
 });
