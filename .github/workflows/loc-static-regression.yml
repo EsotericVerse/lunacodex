@@ -77,6 +77,12 @@ on:
 permissions:
   contents: read
 
+# A newer commit supersedes stale CI for this PR or main.
+# Keep the newest meaningful validation; do not accumulate full builds.
+concurrency:
+  group: loc-static-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   static-html:
     runs-on: ubuntu-24.04
