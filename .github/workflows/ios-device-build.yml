@@ -74,8 +74,12 @@ jobs:
             "release_tag=$REQUESTED_RELEASE_TAG" \
             "loc_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - run: npm ci --no-audit --no-fund
-      - name: Parse JavaScript and JSX before paying for the macOS build
-        run: npm run check:syntax
+      - name: Verify LOC native Framework before paying for the macOS build
+        run: |
+          npm test
+          node --check public/loc-native-client.mjs
+          node --check scripts/build-loc-native.mjs
+          node --check functions/api/loc-framework.js
 
   build-device-ipa:
     needs: guard
