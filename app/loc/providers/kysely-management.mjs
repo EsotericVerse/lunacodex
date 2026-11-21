@@ -361,7 +361,7 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
   'media_anchor_candidates','anchor_import_page','import_site_presence',
-  'search_galaxy_private']);
+  'search_galaxy_private','manage_scope_registry']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
 // A Search-only, read-only action behind the verified LOC Web Session.
@@ -616,6 +616,111 @@ async function syncSearchPatterns(trx,args){
   return storeScopePatternMatches(trx,scope,proposed);
 }
 
+
+// LOC owns the active Registry model. This is a single native Kysely
+// transaction, not a SECURITY DEFINER stored procedure or a new registry.
+const SCOPE_REGISTRY_ID=/^[a-z][a-z0-9]{0,14}$/;
+const SCOPE_REGISTRY_KEYS=new Set([
+  'display_name','domain','directory','parent_scope_id','active','sort_order'
+]);
+async function manageScopeRegistryKysely(trx,args){
+  if(!await canLocAccess(trx,'global'))reject('Global LOC management required',403);
+  const operation=String(args.p_operation||'').trim().toLowerCase();
+  const id=String(args.p_scope_id||'').trim().toLowerCase();
+  const values=args.p_values;
+  if(!['create_group','update'].includes(operation)||
+    !SCOPE_REGISTRY_ID.test(id)||
+    !values||typeof values!=='object'||Array.isArray(values)||
+    Object.keys(values).some(key=>!SCOPE_REGISTRY_KEYS.has(key)))
+    reject('Invalid Scope Registry operation');
+  // Lock the always-present root Registry row to serialize changes to the
+  // hierarchy, route uniqueness and automatic sort order without another
+  // connection. A concurrent administrator waits for this transaction.
+  await sql`reset role`.execute(trx);
+  const root=await trx.selectFrom('api.manage')
+    .select('id').where('id','=','loc').forUpdate().executeTakeFirst();
+  if(!root)reject('LOC Registry root is missing',409);
+  const registry=await trx.selectFrom('api.manage')
+    .select(['id','manage_role','parent_scope_id','active',
+      'display_name','domain','directory','sort_order']).execute();
+  const index=new Map(registry.map(row=>[row.id,row]));
+  const before=index.get(id);
+  if(operation==='create_group'&&before)reject('Scope Registry ID already exists',409);
+  if(operation==='update'&&(!before||!['group','scope'].includes(before.manage_role)))
+    reject('Scope Registry entry cannot be updated',403);
+  const title=values.display_name===undefined
+    ?String(before?.display_name||'').trim()
+    :String(values.display_name||'').trim();
+  const domain=values.domain===undefined
+    ?String(before?.domain||'').trim().toLowerCase()
+    :String(values.domain||'').trim().toLowerCase();
+  const rawDirectory=values.directory===undefined
+    ?String(before?.directory||'').trim().toLowerCase()
+    :String(values.directory||'').trim().toLowerCase();
+  const directory=rawDirectory?'/'+rawDirectory.replace(/^\\/+|\\/+$/g,''):'';
+  const parent=values.parent_scope_id===undefined
+    ?String(before?.parent_scope_id||'').trim().toLowerCase()
+    :String(values.parent_scope_id||'').trim().toLowerCase();
+  const active=values.active===undefined?before?.active!==false:values.active;
+  if(!title||title.length>200||typeof active!=='boolean')
+    reject('Invalid Scope Registry name or active state');
+  if((domain==='')===(directory===''))
+    reject('Exactly one Domain or Directory is required');
+  if(domain&&!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(domain))
+    reject('Invalid Scope Registry Domain');
+  if(directory&&!/^\\/[a-z0-9][a-z0-9/_-]*$/.test(directory))
+    reject('Invalid Scope Registry Directory');
+  for(const row of registry){
+    if(row.id===id)continue;
+    if(domain&&String(row.domain||'').toLowerCase()===domain||
+       directory&&String(row.directory||'').toLowerCase()===directory)
+      reject('Scope Registry route already belongs to another Scope',409);
+  }
+  if(id==='loc'){
+    if(parent||!active)reject('LOC root Group must remain active and unparented');
+  }else{
+    const parentRow=index.get(parent);
+    if(!parentRow||parentRow.manage_role!=='group'||parentRow.active!==true)
+      reject('Parent Scope Group is missing or inactive',409);
+    let next=parent;
+    const seen=new Set([id]);
+    while(next){
+      if(seen.has(next))reject('Scope Registry parent would create a cycle',409);
+      seen.add(next);
+      next=index.get(next)?.parent_scope_id||'';
+    }
+  }
+  if(operation==='update'&&before.manage_role==='group'&&!active&&
+    registry.some(row=>row.parent_scope_id===id&&row.active))
+    reject('Active child Scopes must be moved before disabling a Group',409);
+  const automatic=operation==='create_group'&&values.sort_order===undefined;
+  const order=automatic
+    ?Math.max(0,...registry.filter(row=>row.parent_scope_id===parent)
+      .map(row=>Number(row.sort_order)||0))+10
+    :values.sort_order===undefined?Number(before?.sort_order)||0:values.sort_order;
+  if(!Number.isSafeInteger(order)||Math.abs(order)>2147483647)
+    reject('Invalid Scope Registry order');
+  const record={
+    display_name:title,domain:domain||null,directory:directory||null,
+    parent_scope_id:parent||null,active,sort_order:order
+  };
+  const query=operation==='create_group'
+    ?trx.insertInto('api.manage').values({id,manage_role:'group',...record})
+    :trx.updateTable('api.manage').set(record).where('id','=',id);
+  const saved=await query.returning([
+    'id','display_name','manage_role','domain','directory',
+    'parent_scope_id','active','sort_order'
+  ]).executeTakeFirst();
+  if(saved?.id!==id)reject('Scope Registry transaction did not persist',409);
+  return {
+    scope_id:saved.id,display_name:saved.display_name,
+    scope_kind:saved.manage_role==='group'?'group':'scope',
+    domain:saved.domain,directory:saved.directory,
+    parent_scope_id:saved.parent_scope_id,
+    active:saved.active,sort_order:saved.sort_order
+  };
+}
+
 export async function executeManagedKyselyAction(trx,body,claims={}){
   const name=String(body?.name||'');
   if(!ACTIONS.has(name)||!body.args||typeof body.args!=='object'||
@@ -639,6 +744,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     loc_access:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
     read_scope_registry_admin:[],
+    manage_scope_registry:['p_operation','p_scope_id','p_values'],
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
     suggest_search_patterns:['p_scope_ids','p_query'],
     keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
@@ -747,6 +853,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       .orderBy('uid','asc').execute();
     return {data:rows,count:rows.length};
   }
+  if(name==='manage_scope_registry')return {data:await manageScopeRegistryKysely(trx,args),count:null};
   if(name==='read_scope_registry_admin'){
     if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
     await sql`reset role`.execute(trx);
