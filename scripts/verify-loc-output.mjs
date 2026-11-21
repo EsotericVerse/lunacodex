@@ -98,7 +98,7 @@ if(native){
   const redirects=read(path.join(out,'_redirects')).split('\n');
   const headers=read(path.join(out,'_headers'));
   for(const route of outboundRoutes){
-    const relative=route.replace(/^\\/lrunes\\//,'/').slice(1);
+    const relative=route.startsWith('/lrunes/')?route.slice('/lrunes/'.length):route.slice(1);
     const target='https://lrs.lo3rwang.cc/'+relative;
     if(!redirects.includes(route+' '+target+' 302'))
       throw Error('Direct LRS outbound redirect missing '+route);
