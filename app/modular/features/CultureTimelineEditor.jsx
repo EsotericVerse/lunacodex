@@ -3,7 +3,6 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import dynamic from '../runtime/dynamic';
 
 import ScopeOptionPicker from '../ScopeOptionPicker';
-import {useSearchParams} from '../runtime/navigation';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useEditDock} from '../edit-dock';
@@ -98,7 +97,7 @@ export default function CultureTimelineEditor({
   const copy=useUiCopy();
   const editDock=useEditDock();
   const resourceCache=useResourceCache();
-  const searchParams=useSearchParams();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const routeAnchorDate=String(searchParams?.get?.('anchorDate')||'').slice(0,10);
   const effectiveAnchorDate=day(suggestedAnchorDate||(!selectedRecordId?routeAnchorDate:''));
   const dataScope=String(scopeId||'').trim();

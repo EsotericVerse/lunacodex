@@ -1,8 +1,8 @@
+import {useMemo} from 'react';
 'use client';
 
 import {useEffect} from 'react';
 import dynamic from '../../modular/runtime/dynamic';
-import {useSearchParams} from '../../modular/runtime/navigation';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
@@ -23,7 +23,7 @@ const PLACE_KEYS=new Set(PLACE_OPTIONS.map(item=>item.value));
 
 export default function ScopeManagement({scopeId:routeScopeId='loc',section:entrySection=''}){
   const editDock=useEditDock();
-  const searchParams=useSearchParams();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const isLoc=routeScopeId==='loc';
   const traceOnly=entrySection==='traceMap';
   // Spatial tasks are the first-level navigation. No extra "地點管理" layer.

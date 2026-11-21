@@ -1,7 +1,6 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {useSearchParams} from '../runtime/navigation';
 import dynamic from '../runtime/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import {FeaturePage} from '../ui';
@@ -60,7 +59,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const [readyMapMode,setReadyMapMode]=useState('');
   const [annualGaugeOn,setAnnualGaugeOn]=useState(true);
   const [annualGaugeDetailVisible,setAnnualGaugeDetailVisible]=useState(false);
-  const routeParams=useSearchParams();
+  const routeParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const selectedPlaceUid=String(routeParams?.get('place')||'').trim();
   const selectedMapUid=String(routeParams?.get('map')||'').trim();
   const [twoPointDemo,setTwoPointDemo]=useState(false);

@@ -6,7 +6,6 @@ import UiText,{useUiText} from '../../i18n/UiText';
 import {useEffect,useMemo,useState} from 'react';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import dynamic from '../runtime/dynamic';
-import {useRouter,useSearchParams} from '../runtime/navigation';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 
 // Defer Galaxy's data/query engine until the selected statistics mode needs it.
@@ -141,8 +140,7 @@ function facetTrend(rows=[],window={},selectedCategories=[]){
 function StatisticTypeSelect({scopeId,navigation,types}) {
   const UI_COPY=useUiCopy();
   const t=useUiText();
-  const router=useRouter();
-  // Pick one ZModel dimension. The Source subtree is picked in a separate
+    // Pick one ZModel dimension. The Source subtree is picked in a separate
   // field only when Source is active, avoiding duplicate long dropdowns.
   const requested=String(navigation.rankingType||'');
   const active=types.includes(requested)?requested:
@@ -153,7 +151,7 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
     <select id="statistics-ranking-type" className="scope-select" value={active} onChange={event=>{
       const value=event.target.value;
       if(!value||value===active)return;
-      router.push(featureNavigationHref(scopeId,'statics',{
+      window.location.assign(featureNavigationHref(scopeId,'statics',{
         ...navigation,rankingType:value,source:undefined
       }));
     }}>
@@ -694,7 +692,7 @@ export default function Statistics(){
   useUiSection('uiExtra.statisticsView');
   useUiSection('uiExtra.chartTypes');
   const {scopeId,scope}=useScopeRuntime();
-  const searchParams=useSearchParams();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const navigation=useMemo(()=>readFeatureNavigation(searchParams),[searchParams]);
   // The landing page is always total-only, including for existing users
   // whose legacy loc_user.statics.display was 'source'.

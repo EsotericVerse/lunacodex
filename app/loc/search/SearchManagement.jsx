@@ -1,8 +1,8 @@
+import {useMemo} from 'react';
 'use client';
 
 import {useEffect} from 'react';
 import dynamic from '../../modular/runtime/dynamic';
-import {useSearchParams} from '../../modular/runtime/navigation';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
@@ -45,7 +45,7 @@ export default function SearchManagement(){
   const {scopeId}=useScopeRuntime();
   const editDock=useEditDock();
   const account=useVerifiedManagementGrants();
-  const searchParams=useSearchParams();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const isLocAdmin=scopeId==='loc';
   // Personal preferences belong to the last Settings tab, not Article Control.
   // Preserve old bookmarks without mounting the retired Scope classification editor.

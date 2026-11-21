@@ -1,7 +1,5 @@
 'use client';
 
-import Link from './runtime/link';
-
 export function isSameOriginHref(href=''){
   const value=String(href||'');
   if(!/^https?:\/\//i.test(value))return true;
@@ -19,10 +17,7 @@ export function isManagementHref(href=''){
   catch{return false;}
 }
 
-// SPA cleanup belongs to PageResourceBoundary, once per actual route change.
-// Clicking a link must not reset readers ahead of that new route's first paint.
-export default function ScopeLink({href,native=false,children,onClick,target,...rest}){
-  if(native||!isSameOriginHref(href)||isManagementHref(href))
-    return <a href={href} target={target} onClick={onClick} {...rest}>{children}</a>;
-  return <Link href={href} target={target} onClick={onClick} {...rest}>{children}</Link>;
+// Every LOC route is a real exported HTML document. Use native anchors.
+export default function ScopeLink({href,children,onClick,target,native=false,...rest}){
+  return <a href={href} target={target} onClick={onClick} {...rest}>{children}</a>;
 }

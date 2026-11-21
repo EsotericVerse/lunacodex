@@ -5,7 +5,6 @@ import dynamic from '../../modular/runtime/dynamic';
 import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
 import {planTraceVisibilityUids} from './visibility-plan.mjs';
 import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {useSearchParams} from '../../modular/runtime/navigation';
 import {useAccount} from '../auth/use-account';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
@@ -29,7 +28,7 @@ const unique=items=>[...new Set(items)];
 const validPair=pair=>Array.isArray(pair)&&pair.length===2&&pair[0]&&pair[1]&&pair[0]!==pair[1];
 
 export default function TraceRouteManager({scopeId,mode='all'}){
-  const account=useAccount(),cache=useResourceCache(),params=useSearchParams();
+  const account=useAccount(),cache=useResourceCache(),params=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const dock=useEditDock();
   const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
   const [owner,setOwner]=useState(scopeId==='loc'?(TRACE_SOURCE_ROWS[0]?.scope_id||''):scopeId);

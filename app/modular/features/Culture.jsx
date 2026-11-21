@@ -9,7 +9,6 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import {cultureDensityByUnit,simpleTimeRiver} from '../../loc/preferences/loc-feature-preferences.mjs';
 import dynamic from '../runtime/dynamic';
-import {usePathname,useSearchParams} from '../runtime/navigation';
 import {useAsyncResource,useAsyncInfiniteResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeatureNavigation} from '../routing/feature-navigation';
 import ScopeLink from '../ScopeLink';
@@ -213,10 +212,10 @@ export default function Culture(){
   // A list editor is offered only after the user opts in; authorization stays on Edit.
   const adminListRequested=Boolean(userActive&&userSettings.list===true);
   const [worksOpen,setWorksOpen]=useState(false);
-  const searchParams=useSearchParams();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const editDock=useEditDock();
   const canUseScopeEditor=Boolean(editDock?.active&&editDock.scopeId===scopeId);
-  const pathname=usePathname()||'';
+  const pathname=(typeof window==='undefined'?'/':window.location.pathname)||'';
   const isTimeEditingView=canUseScopeEditor&&(pathname.endsWith('/culture/manage')||
     pathname.endsWith('/culture/manage/')||searchParams?.get('edit')==='1');
   // Public Culture does not load management grants; editing must verify them.

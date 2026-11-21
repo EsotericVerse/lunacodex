@@ -1,14 +1,12 @@
 'use client';
 
-import {usePathname} from '../../modular/runtime/navigation';
-import Link from '../../modular/runtime/link';
 import {FeaturePage} from '../../modular/ui';
 import {useSearchManagerSwitch} from './use-search-manager-switch';
 
 // The Settings homepage has one control option. No access lookup, grant
 // request, private data read or category/keyword scan runs when toggling it.
 export default function FeatureSettingsPage({embedded=false,dashboard=false,accountCard=null}){
-  const pathname=usePathname()||'';
+  const pathname=typeof window==='undefined'?'':window.location.pathname;
   const settingsHref=pathname.startsWith('/local/')?'/local/settings/':'/settings/';
   // The cosmetic switch is session-local and defaults off. Entering Settings
   // must not query silver.loc_user just to render this toggle; authorization
@@ -28,7 +26,7 @@ export default function FeatureSettingsPage({embedded=false,dashboard=false,acco
   </div>;
   const content=<>
     {!embedded?<nav aria-label="返回設定">
-      <Link href={settingsHref} className="loc-button">返回設定</Link>
+      <a href={settingsHref} className="loc-button">返回設定</a>
     </nav>:null}
     {controls}
   </>;

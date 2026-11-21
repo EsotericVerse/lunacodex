@@ -6,7 +6,6 @@ import {useUiSection} from '../i18n/ui-locale';
 import dynamic from '../modular/runtime/dynamic';
 import {recoverChunkOnce} from './ui/chunk-recovery.mjs';
 import {Suspense,useEffect,useState} from 'react';
-import {useRouter} from '../modular/runtime/navigation';
 import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/routing/scope-registry';
@@ -131,8 +130,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   const runtime=useScopeRuntime();
   const scopeId=forcedScope||runtime.scopeId;
   const scopeMeta=forcedScope&&runtime.scopeId!==forcedScope?getScope(forcedScope):runtime.scope;
-  const router=useRouter();
-  const [nativeOnlyReady,setNativeOnlyReady]=useState(false);
+    const [nativeOnlyReady,setNativeOnlyReady]=useState(false);
   useEffect(()=>{
     if(!scopeMeta?.nativeOnly)return;
     if(Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='ios'){
@@ -141,8 +139,8 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     }
     // Public Global Settings remains available on Web; the private
     // /local/* feature pages do not. A bookmark must not bypass the menu.
-    router.replace('/local/settings/');
-  },[scopeMeta?.nativeOnly,router]);
+    window.location.replace('/local/settings/');
+  },[scopeMeta?.nativeOnly]);
   const publicCulture=forcedView==='culture'&&scopeId!=='loc'&&scopeId!=='lrunes'
     &&scopeId!=='local'&&!runtime.pathname.includes('/culture/manage');
   const ActiveView=publicCulture?CulturePublic:forcedView==='home'

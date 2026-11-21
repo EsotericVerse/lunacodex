@@ -12,7 +12,6 @@ import ActivityMotion from '../ActivityMotion';
 import {publicPatternSuggestions} from '../../loc/search/public-pattern-suggestions.mjs';
 import {blockNoteSuggestionItems} from '../../loc/editor/blocknote-suggestions.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
-import {useRouter,useSearchParams} from '../runtime/navigation';
 
 import {dbAuthClient,dbPublicClient,deleteRows,updateRows,getAccountSession} from '../../loc/db/db-client.mjs';
 import {useAccount,readVerifiedManagementEntry} from '../../loc/auth/use-account';
@@ -256,9 +255,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const adminSearchActive=Boolean(adminSearchRequested&&!legacyManagementRoute);
   const privilegedSearch=managementMode;
   const locPublicSearch=scopeId==='loc'&&!privilegedSearch;
-  const searchParams=useSearchParams();
-  const router=useRouter();
-  const resourceCache=useResourceCache();
+  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
+    const resourceCache=useResourceCache();
   const [publicView,setPublicView]=useState('search');
   const [query,setQuery]=useState('');
   const [searchPopularOpen,setSearchPopularOpen]=useState(false);
@@ -882,7 +880,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     resetSearchState();
     // Management queries stay in the authorized workspace. Only a public
     // search reset changes the public URL.
-    if(!managementMode)router.replace(featureNavigationHref(scopeId,'search'));
+    if(!managementMode)window.location.replace(featureNavigationHref(scopeId,'search'));
   }
   // Type is an exact advanced-filter selection. Never search the type name.
   const filterTypes=[
@@ -947,11 +945,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     });
     if(url!==current||searchParams?.get('identity')){
       // Query-only changes must not remount Search and its Scope/Auth loaders.
-      // Next.js integrates native History API updates with useSearchParams;
+      // Native history updates stay local; the current query is read directly.
       // the existing URL-driven effect then runs the search exactly once.
       if(new URL(url).pathname===window.location.pathname)
         window.history.pushState(null,'',url);
-      else router.push(url,{scroll:false});
+      else window.location.assign(url);
       return;
     }
     // Next.js does not remount for an identical URL; repeated suggestions must still search.
@@ -970,7 +968,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return;
     }
     if(managementMode){
-      // No router.push: navigation re-enters the permission gate, remounts
+      // Full navigation re-enters the permission gate, remounts
       // SearchManagement, and loses the user's query before results arrive.
       void executeSearch(query,null,{overrideOptions:{
         contentType:'',sourceFilter:'',startDate,endDate,scopeFilter,
@@ -1085,7 +1083,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return;
     }
     const href=workspaceSearchHref(text,next);
-    router.push(href,{scroll:false});
+    window.location.assign(href);
   }
 
   function applyDefaultTimeWindow(){
