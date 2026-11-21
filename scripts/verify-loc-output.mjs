@@ -66,7 +66,7 @@ for(const route of pageRoutes){
   if(!exists(entry))throw Error('Missing route: '+route);
   const html=read(entry);
   if(!html.includes('href="'+report.sharedCss+'"'))throw Error('LOC shared CSS not linked from '+route);
-  const publicHome=!native&&['/','/lo3rwang/','/lrunes/'].includes(route);
+  const publicHome=['/','/lo3rwang/','/lrunes/'].includes(route);
   const src=html.match(/<script type="module" src="(\/_loc\/routes\/interactive\.js)"><\/script>/)?.[1];
   if(publicHome){
     if(html.includes('href="'+report.editorCss+'"'))

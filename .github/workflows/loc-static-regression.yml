@@ -87,4 +87,11 @@ jobs:
           const report=JSON.parse(fs.readFileSync('out/_loc/build-report.json','utf8'));
           assert.ok(report.routes>=60);
           assert.equal(fs.existsSync('out/_next'),false);
+          for(const page of ['out/index.html','out/lo3rwang/index.html','out/lrunes/index.html']){
+            const homepage=fs.readFileSync(page,'utf8');
+            assert.match(homepage,/loc-static-reading/);
+            assert.match(homepage,/href="\/my-phone\/index.html"/);
+            assert.match(homepage,/data-native="ios"/);
+            assert.doesNotMatch(homepage,/<script type="module" src="\/_loc\/routes\/interactive.js"/);
+          }
           NODE

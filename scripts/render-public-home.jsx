@@ -58,6 +58,7 @@ function PublicNavigation({scopeId,native=false}){
              aria-current={scope.id===scopeId?'page':undefined} data-loc-scope-link={scope.id}>
              {scope.nav.label||scope.id}
            </a>)}
+           {native?<a data-loc-scope-link="local" href="/my-phone/index.html">我的手機</a>:null}
          </div>
        </div>
      </div>
@@ -103,14 +104,14 @@ function SiteFooter({scopeId,home=true,native=false}){
    </footer>
  </>;
 }
-function StaticSite({scopeId,rows}){
+function StaticSite({scopeId,rows,native=false}){
  return <>
-   <PublicNavigation scopeId={scopeId}/>
+   <PublicNavigation scopeId={scopeId} native={native}/>
    <main className="loc-next-main" data-loc-view="home" data-loc-scope={scopeId}>
      <PublicHome scopeId={scopeId} rows={rows}/>
    </main>
-   <PublicDock scopeId={scopeId}/>
-   <SiteFooter scopeId={scopeId}/>
+   <PublicDock scopeId={scopeId} native={native}/>
+   <SiteFooter scopeId={scopeId} native={native}/>
    <JsonLd data={structuredHome[scopeId]?.()}/>
  </>;
 }
@@ -159,7 +160,7 @@ function activateOnDemand(entry,scopeId){
   '});})();'
  ].join('')+'</script>';
 }
-export function renderPublicScopeHome({route,entry}){
+export function renderPublicScopeHome({route,entry,native=false}){
  const scopeId=Object.keys(routes).find(key=>routes[key]===route);
  if(!scopeId)return null;
  const rows=HomeBlock.rows(collections[scopeId],'index',HomeBlock.limit);
@@ -167,7 +168,7 @@ export function renderPublicScopeHome({route,entry}){
    throw new Error('LOC published homepage has no Hero: '+scopeId);
  return {
    scopeId,blockCount:rows.length,
-   html:renderToStaticMarkup(<StaticSite scopeId={scopeId} rows={rows}/>),
+   html:renderToStaticMarkup(<StaticSite scopeId={scopeId} rows={rows} native={native}/>),
    loader:activateOnDemand(entry,scopeId)
  };
 }

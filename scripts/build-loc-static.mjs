@@ -120,7 +120,7 @@ try{
   });
   const {renderPublicScopeHome,renderPublicFeatureFrame}=await import(pathToFileURL(staticRenderer).href);
   for(const page of records){
-    const staticHome=!native?renderPublicScopeHome({route:page.route,entry:page.name}):null;
+    const staticHome=renderPublicScopeHome({route:page.route,entry:page.name,native});
     const dest=path.join(out,page.route.slice(1));
     fs.mkdirSync(dest,{recursive:true});
     const outbound=page.component==='outbound';
