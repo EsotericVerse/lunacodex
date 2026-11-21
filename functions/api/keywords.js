@@ -78,9 +78,7 @@ export async function onRequestPost(context){
       claims.me=rights.canWrite;
       claims.grants=rights.grants;
       bindLocAuthorization(trx,{role,claims});
-      if(!canLocAccess(trx,'scope',scope))
-        error('Scope Keyword management permission required',403);
-      return true;
+      return canLocAccess(trx,'scope',scope);
     };
     const owner=singleWrite?false:
       await db.transaction().execute(verifyScope);
@@ -101,7 +99,8 @@ export async function onRequestPost(context){
       }else if(['analyze','reset','saveItem','deleteItem','syncLibrary','setClassShare'].includes(operation)){
         if(!singleWrite&&!owner)error('Scope Keyword management permission required',403);
         const authorizeTransaction=async trx=>{
-          if(singleWrite)await verifyScope(trx);
+          if(singleWrite&&!await verifyScope(trx))
+            error('Scope Keyword management permission required',403);
           else{
             bindLocAuthorization(trx,{role,claims});
             if(!canLocAccess(trx,'scope',scope))
