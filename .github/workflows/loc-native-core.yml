@@ -1,0 +1,24 @@
+name: LOC Native Framework Core
+
+on:
+  pull_request:
+    paths:
+      - 'modules/loc/core/**'
+      - 'tests/loc-native-framework.test.mjs'
+      - '.github/workflows/loc-native-core.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+      - name: Test LOC native framework without npm install
+        run: node --test tests/loc-native-framework.test.mjs
