@@ -34,7 +34,7 @@ jobs:
           node --check modules/loc/site/index.mjs
       - name: Build opt-in LOC HTML without npm install
         run: node scripts/build-loc-native.mjs
-      - name: Verify native routes, original assets, and LRS redirects
+      - name: Verify LOC-owned native routes without LRS routing
         run: |
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
@@ -48,16 +48,10 @@ jobs:
             'out/_loc/core/index.mjs','out/pics/LOC-2.png']){
             assert.ok(fs.statSync(file).size>0,file);
           }
-          const rules=fs.readFileSync('out/_redirects','utf8').trim().split(/\r?\n/);
-          const routes=['/card/','/card/daily/','/card/duel/','/card/list/',
-            '/daily/','/daily/log/','/daily/trend/','/game/','/game/room/'];
-          assert.equal(rules.length,routes.length);
-          for(const route of routes){
-            const target='https://lrs.lo3rwang.cc'+route;
-            assert.ok(rules.includes(route+' '+target+' 302'),route);
-            const html=fs.readFileSync('out/'+route.slice(1)+'index.html','utf8');
-            assert.ok(html.includes(target),route);
-            assert.ok(html.includes('http-equiv="refresh"'),route);
+          assert.equal(fs.existsSync('out/_redirects'),false);
+          for(const route of ['card','card/daily','card/duel','card/list',
+              'daily','daily/log','daily/trend','game','game/room']){
+            assert.equal(fs.existsSync('out/'+route+'/index.html'),false,route);
           }
           assert.equal(fs.existsSync('out/_loc/routes'),false);
           assert.equal(fs.existsSync('out/sw.js'),false);
