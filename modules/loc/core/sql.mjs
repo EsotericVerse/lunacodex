@@ -93,3 +93,55 @@ export function compileCount(model,{where=null}={},dialect='postgres'){
     params:Object.freeze(c.params),dialect:c.dialect
   });
 }
+
+
+// Writes are explicit, parameterized, and require an actual filter for updates/deletes.
+export function compileInsert(model,values,dialect='postgres'){
+  const c=compiler(model,dialect);
+  if(!values||typeof values!=='object'||Array.isArray(values))
+    throw new TypeError('LOC SQL insert values must be an object');
+  const fields=Object.keys(values);
+  if(!fields.length)throw new TypeError('LOC SQL insert needs values');
+  const columns=fields.map(c.col).join(', ');
+  const placeholders=fields.map(field=>c.bind(values[field])).join(', ');
+  return Object.freeze({
+    text:'INSERT INTO '+qualified(model.table,c.dialect)+' ('+columns+') VALUES ('+placeholders+')',
+    params:Object.freeze(c.params),dialect:c.dialect
+  });
+}
+function requireFilter(where){
+  if(!where||typeof where!=='object')
+    throw new TypeError('LOC SQL write requires a WHERE filter');
+  const count=item=>{
+    if(!item||typeof item!=='object')return 0;
+    if('all' in item||'any' in item){
+      const items=item.all??item.any;
+      if(!Array.isArray(items))return 0;
+      return items.reduce((sum,part)=>sum+count(part),0);
+    }
+    return typeof item.column==='string'?1:0;
+  };
+  if(count(where)===0)throw new TypeError('LOC SQL write requires a concrete WHERE predicate');
+}
+export function compileUpdate(model,values,where,dialect='postgres'){
+  requireFilter(where);
+  const c=compiler(model,dialect);
+  if(!values||typeof values!=='object'||Array.isArray(values))
+    throw new TypeError('LOC SQL update values must be an object');
+  const fields=Object.keys(values);
+  if(!fields.length)throw new TypeError('LOC SQL update needs values');
+  const assignments=fields.map(field=>c.col(field)+' = '+c.bind(values[field]));
+  const filter=c.predicate(where);
+  return Object.freeze({
+    text:'UPDATE '+qualified(model.table,c.dialect)+' SET '+assignments.join(', ')+' WHERE '+filter,
+    params:Object.freeze(c.params),dialect:c.dialect
+  });
+}
+export function compileDelete(model,where,dialect='postgres'){
+  requireFilter(where);
+  const c=compiler(model,dialect);
+  return Object.freeze({
+    text:'DELETE FROM '+qualified(model.table,c.dialect)+' WHERE '+c.predicate(where),
+    params:Object.freeze(c.params),dialect:c.dialect
+  });
+}
