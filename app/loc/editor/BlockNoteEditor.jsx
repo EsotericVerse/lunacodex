@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {Fragment} from 'react';
 import {UI_COPY} from '../../i18n/ui-copy';
 import {useUiSection} from '../../i18n/ui-locale';

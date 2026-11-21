@@ -2,7 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';

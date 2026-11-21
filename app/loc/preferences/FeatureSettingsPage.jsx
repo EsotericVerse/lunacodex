@@ -1,7 +1,7 @@
 'use client';
 
-import {usePathname} from 'next/navigation';
-import Link from 'next/link';
+import {usePathname} from '../../modular/runtime/navigation';
+import Link from '../../modular/runtime/link';
 import {FeaturePage} from '../../modular/ui';
 import {useSearchManagerSwitch} from './use-search-manager-switch';
 

@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import dynamic from '../../../modular/runtime/dynamic';
 import LocManagementWorkspace from '../../management/LocManagementWorkspace';
 import {ProtectedManagementSlot} from '../../management/ManagementAccess';
 import PanelLoading from '../../ui/PanelLoading';

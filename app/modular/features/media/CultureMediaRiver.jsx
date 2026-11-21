@@ -1,7 +1,7 @@
 'use client';
 
 import {useMemo} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../../runtime/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 import {dbPublicClient} from '../../../loc/db/db-client.mjs';

@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import PanelLoading from '../ui/PanelLoading';
 import TimelinePlaceManager from './TimelinePlaceManager';
 

@@ -5,8 +5,8 @@ import UiText,{useUiText} from '../../i18n/UiText';
 
 import {useEffect,useMemo,useState} from 'react';
 import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
-import dynamic from 'next/dynamic';
-import {useRouter,useSearchParams} from 'next/navigation';
+import dynamic from '../runtime/dynamic';
+import {useRouter,useSearchParams} from '../runtime/navigation';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 
 // Defer Galaxy's data/query engine until the selected statistics mode needs it.

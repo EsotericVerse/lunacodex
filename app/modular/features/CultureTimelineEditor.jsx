@@ -1,9 +1,9 @@
 'use client';
 import {useEffect,useMemo,useRef,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../runtime/dynamic';
 
 import ScopeOptionPicker from '../ScopeOptionPicker';
-import {useSearchParams} from 'next/navigation';
+import {useSearchParams} from '../runtime/navigation';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {useEditDock} from '../edit-dock';

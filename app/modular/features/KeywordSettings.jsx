@@ -1,6 +1,6 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+import dynamic from '../runtime/dynamic';
 import UiText from '../../i18n/UiText';
 import {useAccount} from '../../loc/auth/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';

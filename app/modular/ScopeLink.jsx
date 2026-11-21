@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from './runtime/link';
 
 export function isSameOriginHref(href=''){
   const value=String(href||'');

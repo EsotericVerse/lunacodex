@@ -1,7 +1,7 @@
 'use client';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useEffect,useState} from 'react';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {useAccount} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
 import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';

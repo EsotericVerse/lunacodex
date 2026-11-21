@@ -4,7 +4,7 @@ import {useUiSection} from '../../i18n/ui-locale';
 
 import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {useAccount} from '../auth/use-account';
 import {FeaturePage} from '../../modular/ui';

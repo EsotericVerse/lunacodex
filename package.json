@@ -5,9 +5,9 @@
   "scripts": {
     "prepare": "node scripts/prepare-local-workspace.mjs",
     "prebuild": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs && node scripts/check-js-syntax.mjs",
-    "dev": "next dev",
-    "build": "next build",
-    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",
+    "dev": "npm run build:static && node scripts/serve-preact-static.mjs",
+    "build": "npm run build:static",
+    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/verify-preact-native-preview.mjs && node scripts/build-preact-static.mjs && node scripts/verify-preact-output.mjs",
     "audit:static": "node scripts/audit-static-content.mjs",
     "test:static-assets": "node --test tests/static-export-assets.test.mjs",
     "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",
@@ -37,7 +37,6 @@
     "maplibre-gl": "6.16.0",
     "modern-ahocorasick": "3.3.0",
     "motion": "13.4.4",
-    "next": "16.4.6",
     "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -45,7 +44,8 @@
     "vis-data": "8.0.6",
     "vis-network": "10.1.5",
     "vis-timeline": "8.5.6",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "preact": "10.29.8"
   },
   "overrides": {
     "source-map-js": "1.2.2",
@@ -58,6 +58,7 @@
     "@capacitor/ios": "8.5.3",
     "@types/node": "26.6.6",
     "sharp": "0.35.5",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "esbuild": "0.28.2"
   }
 }

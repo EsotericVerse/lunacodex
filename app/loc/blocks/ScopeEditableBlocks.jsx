@@ -8,7 +8,7 @@ import {motion,useReducedMotion} from 'motion/react';
 import {useEditDock} from '../../modular/edit-dock';
 import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
-import dynamic from 'next/dynamic';
+import dynamic from '../../modular/runtime/dynamic';
 import {useAppBootstrap} from '../runtime/app-bootstrap';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';

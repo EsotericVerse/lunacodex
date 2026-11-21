@@ -1,7 +1,7 @@
 'use client';
 
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useSearchParams} from 'next/navigation';
+import {useSearchParams} from './runtime/navigation';
 import {motion,useReducedMotion} from 'motion/react';
 import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
 
