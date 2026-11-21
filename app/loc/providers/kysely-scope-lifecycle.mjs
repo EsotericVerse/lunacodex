@@ -11,7 +11,25 @@ import {synchronizeKeywordLibraryInTransaction} from '../keywords/sql-service.mj
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const BUILTIN=new Set(['admin','loc','lrunes','lo3rwang']);
+const BUILTIN=new Set(['admin','loc','lrunes','lo3rwang','local']);
+// Root paths are authored LOC HTML endpoints. A dynamic Scope must not
+// silently replace a feature, extension, public asset or device-local route.
+const ROOT_PATHS=new Set([
+  ...BUILTIN,'api','assets','pics','vendor','themes','culture','statics',
+  'search','trace','manage','settings','work','card','daily','game',
+  'extension','myphone','scope','scope-shell'
+]);
+const SERVICE_HOSTS=new Set([
+  'auth.lo3rwang.cc','mcp.lo3rwang.cc','lrs.lo3rwang.cc'
+]);
+function checkReservedRoute(target,before=null){
+  const root=String(target.directory||'').split('/').filter(Boolean)[0]||'';
+  if(root&&ROOT_PATHS.has(root)&&target.directory!==before?.directory)
+    reject('Scope directory conflicts with an existing LOC route',409);
+  if(target.domain&&SERVICE_HOSTS.has(target.domain)&&
+    target.domain!==before?.domain)
+    reject('Scope domain conflicts with an existing service',409);
+}
 const REGISTRY_FIELDS=['m.id as id','l.display_name as display_name',
   'm.email as email','m.domain as domain','m.directory as directory',
   'm.parent_scope_id as parent_scope_id','m.manage_role as manage_role',
@@ -128,6 +146,7 @@ export async function manageScopeRegistryNative(trx,args){
   const target=route(values.domain!==undefined?values.domain:current?.domain,
     values.directory!==undefined?values.directory:current?.directory);
   checkRouteUnique(rows,target,operation==='update'?id:'');
+  checkReservedRoute(target,current);
   const parent=id==='loc'?null:
     scopeId(values.parent_scope_id??current?.parent_scope_id??'loc');
   const active=values.active===undefined
@@ -246,6 +265,8 @@ export async function provisionScopeNative(trx,args){
   const rows=await registryRows(trx);
   if(registered(rows,scope))reject('Scope already exists',409);
   parentGroup(rows,parent);checkRouteUnique(rows,target);
+  if(ROOT_PATHS.has(scope))reject('Scope ID conflicts with an existing route',409);
+  checkReservedRoute(target);
   const sort=Math.max(0,...rows.filter(row=>row.parent_scope_id===parent)
     .map(row=>Number(row.sort_order)||0))+10;
   const models=['', '_blocks','_galaxy','_anchor'];
