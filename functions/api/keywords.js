@@ -65,7 +65,12 @@ export async function onRequestPost(context){
     stage='authorization';
     // One active Registry read and one Scope grant decision in the same SQL
     // transaction; later keyword batches retain their existing boundaries.
-    const owner=await db.transaction().execute(async trx=>{
+    // A short Keyword write owns its own SQL Transaction. Resolve its ONE
+    // api.manage grant inside that transaction, not in an earlier connection
+    // lease. Long analysis remains explicitly checkpointed/batched.
+    const singleWrite=['reset','saveItem','deleteItem','syncLibrary','setClassShare']
+      .includes(operation);
+    const verifyScope=async trx=>{
       const rights=await readLocAccess(trx,claims.email,{
         dialect:entry.dialect,engine:entry.engine,website:true,
         transactional:true
@@ -73,8 +78,12 @@ export async function onRequestPost(context){
       claims.me=rights.canWrite;
       claims.grants=rights.grants;
       bindLocAuthorization(trx,{role,claims});
-      return canLocAccess(trx,'scope',scope);
-    });
+      if(!canLocAccess(trx,'scope',scope))
+        error('Scope Keyword management permission required',403);
+      return true;
+    };
+    const owner=singleWrite?false:
+      await db.transaction().execute(verifyScope);
     stage='operation:'+operation;
     let result;
     if(operation==='suggest'){
@@ -90,11 +99,14 @@ export async function onRequestPost(context){
         if(!owner)error('Scope Keyword management permission required',403);
         result=await readKeywordAnalysisCompletion(db,scope,args.classUid,args.attemptId);
       }else if(['analyze','reset','saveItem','deleteItem','syncLibrary','setClassShare'].includes(operation)){
-        if(!owner)error('Scope Keyword management permission required',403);
+        if(!singleWrite&&!owner)error('Scope Keyword management permission required',403);
         const authorizeTransaction=async trx=>{
-          bindLocAuthorization(trx,{role,claims});
-          if(!await canLocAccess(trx,'scope',scope))
-            error('Scope Keyword authorization expired',403);
+          if(singleWrite)await verifyScope(trx);
+          else{
+            bindLocAuthorization(trx,{role,claims});
+            if(!canLocAccess(trx,'scope',scope))
+              error('Scope Keyword authorization expired',403);
+          }
         };
         if(operation==='reset')
           result=await resetKeywordScope(db,scope,args.classUid,{authorizeTransaction});
