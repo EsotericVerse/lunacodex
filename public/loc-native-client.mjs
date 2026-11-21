@@ -38,11 +38,11 @@ async function publicAnalytics(view,target){
     p_scope_id:target,p_view:view,p_start:null,p_end:null,p_options:{}
   }});
 }
-async function publicSelect(target,kind,columns,filters=[],{limit=40,offset=0,orFilters=[]}={}){
+async function publicSelect(target,kind,columns,filters=[],{limit=40,offset=0,orFilters=[],orders=[]}={}){
   if(!PUBLIC_SCOPES.includes(target)||!['galaxy','anchor'].includes(kind))
     throw new TypeError('Unknown LOC public Scope/relation');
   return publicQuery({schema:'silver',table:target+'_'+kind,columns,filters,
-    orFilters,orders:[],limit,offset,head:false,count:null,cardinality:null});
+    orFilters,orders,limit,offset,head:false,count:null,cardinality:null});
 }
 
 function cleanDate(value){
@@ -101,10 +101,9 @@ async function article(){
 }
 async function culture(){
   status('正在讀取時間資料…');
-  const source=scope==='loc'
-    ?await publicContent('loc','loc')
+  const rows=scope==='loc'
+    ?(await Promise.all(PUBLIC_SCOPES.map(id=>publicContent('culture_density',id,true)))).flat()
     :await publicContent('culture_density',scope,true);
-  const rows=Array.isArray(source)?source:source?.rows;
   if(!Array.isArray(rows))throw new Error('文化資料格式不符合 LOC 契約');
   const grouped=new Map();
   for(const row of rows){
@@ -141,32 +140,44 @@ function searchResult(row){
       .filter(Boolean).join(' · '))
   );
 }
+let searchState={query:'',scope:'',pages:new Map()};
 async function search(page=0){
   const form=document.getElementById('loc-search-form');
   const input=form?.querySelector('input[name=q]');
   const query=input?.value.trim()||'';
   if(!query){status('請輸入搜尋關鍵詞');return;}
   if(query.length>120)throw new Error('搜尋文字超過長度限制');
+  const scopes=scope==='loc'?PUBLIC_SCOPES:[scope];
+  if(searchState.query!==query||searchState.scope!==scope){
+    searchState={query,scope,pages:new Map([[0,Object.fromEntries(scopes.map(id=>[id,0]))]])};
+  }
+  const cursors=searchState.pages.get(page);
+  if(!cursors)throw new Error('搜尋頁碼無效');
   status('正在搜尋…');
   const term=query.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/[\r\n\t]/g,' ');
-  const scopes=scope==='loc'?PUBLIC_SCOPES:[scope];
   const results=await Promise.all(scopes.map(async target=>{
     const records=await publicSelect(target,'galaxy',
       ['uid','title','date','createtime','site'],
       [{column:'search',op:'eq',value:true}],
       {orFilters:['title.contains."'+term+'",content.contains."'+term+'"'],
-        limit:40,offset:page*40});
+        orders:[{column:'createtime',ascending:false},{column:'uid',ascending:false}],
+        limit:40,offset:cursors[target]});
     if(!Array.isArray(records))throw new Error('搜尋資料格式錯誤');
     return records.map(row=>({...row,scope:target}));
   }));
   const all=results.flat().sort((a,b)=>
-    String(b.createtime||b.date||'').localeCompare(String(a.createtime||a.date||''))).slice(0,40);
+    String(b.createtime||b.date||'').localeCompare(String(a.createtime||a.date||''))||
+    String(b.uid||'').localeCompare(String(a.uid||''))).slice(0,40);
+  const consumed=Object.fromEntries(scopes.map(target=>[target,
+    all.filter(row=>row.scope===target).length]));
+  const more=results.some(rows=>rows.length===40)||results.flat().length>40;
+  if(more)searchState.pages.set(page+1,Object.fromEntries(scopes.map(
+    target=>[target,cursors[target]+consumed[target]])));
   const heading=html('p',{'class':'loc-status'},'搜尋結果：'+all.length+' 筆');
   const list=html('ul',{},...all.map(searchResult));
   render(html('div',{},heading,list,
     ...(page>0?[html('button',{onClick:()=>void search(page-1).catch(showError)},'上一頁')]:[]),
-    ...(results.some(rows=>rows.length===40)?
-      [html('button',{onClick:()=>void search(page+1).catch(showError)},'下一頁')]:[])
+    ...(more?[html('button',{onClick:()=>void search(page+1).catch(showError)},'下一頁')]:[])
   ));
 }
 
