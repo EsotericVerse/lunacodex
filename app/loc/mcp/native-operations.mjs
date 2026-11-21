@@ -155,6 +155,11 @@ export async function handleNativeLocOperation(request,env={},{
     // MCP hostname and their own audience.
     if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-transaction'&&body.kind!=='managed-action'&&body.kind!=='personal-read'&&body.kind!=='personal-write')
       throw refusal('Not found',404);
+    // The LOC administrator creates and removes SQL Scopes only through
+    // the verified Web Session. Do not expose DDL through MCP OAuth delegates.
+    if(body.kind==='managed-action'&&
+      ['provision_scope','manage_scope_registry','delete_scope'].includes(body.name)&&
+      host!==WEB_HOST)throw refusal('LOC Scope lifecycle is website-only',403);
     // The media importer is a website-only read for existing behavior, NOT an
     // additional MCP/Gateway operation or delegated authorization scope.
     if(body.kind==='managed-action'&&
@@ -413,7 +418,14 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      const row=await selected.db.transaction().execute(async trx=>{
+      const lifecycle=body.kind==='managed-action'&&
+        ['provision_scope','manage_scope_registry','delete_scope'].includes(body.name);
+      // Registry route uniqueness and DDL require a stable snapshot across
+      // concurrent administrator actions; the same SQL transaction still owns
+      // authorization, data creation/deletion, and COMMIT or ROLLBACK.
+      const transaction=selected.db.transaction();
+      const row=await (lifecycle
+        ?transaction.setIsolationLevel('serializable'):transaction).execute(async trx=>{
         // Resolve the existing authenticated Manage projection on this exact
         // transaction connection. No preliminary role SELECT, new RLS, or
         // second pooled client is used for the same logical operation.
