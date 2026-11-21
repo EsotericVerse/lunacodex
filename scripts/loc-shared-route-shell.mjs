@@ -64,13 +64,24 @@ export function shellRouteBootstrap(pages){
     'else item.removeAttribute("aria-current");}'+
   '})();</script>';
 }
+// LRS has its own domain and framework. Web outbound links are real HTTP
+// redirects; they do not need LOC HTML or its entire interactive bundle.
+export function outboundWebRoutes(pages){
+  return pages.filter(page=>page.component==='outbound');
+}
+function routeVariants(route){
+  const root=route.endsWith('/')?route.slice(0,-1):route;
+  return [root,root+'/'].filter(Boolean);
+}
 export function sharedWebRedirects(pages){
-  return sharedWebRoutes(pages).flatMap(page=>{
-    const root=page.route.endsWith('/')?page.route.slice(0,-1):page.route;
-    // Explicit exact paths only: no catch-all to swallow assets or /api.
-    return [root,root+'/'].filter(Boolean)
-      .map(path=>path+' /_loc/shell.html 200');
-  }).join('\n')+'\n';
+  const shared=sharedWebRoutes(pages).flatMap(page=>
+    routeVariants(page.route).map(path=>path+' /_loc/shell.html 200'));
+  const outbound=outboundWebRoutes(pages).flatMap(page=>{
+    const target='https://lrs.lo3rwang.cc/'+page.relative+'/';
+    return routeVariants(page.route).map(path=>path+' '+target+' 302');
+  });
+  // Explicit exact paths only: no catch-all to swallow assets or /api.
+  return [...shared,...outbound].join('\n')+'\n';
 }
 export function sharedWebRobotsHeaders(pages){
   return sharedWebRoutes(pages)
