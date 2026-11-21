@@ -314,6 +314,13 @@ test('Trace editor batches are one authenticated business SQL transaction',async
   assert.doesNotMatch(editor,/await updateTraceVisibilityBulk\(/);
   assert.doesNotMatch(editor,/await mergeTraceAnchorPoints\(/);
   assert.match(service,/managedAction\(\s*'save_trace_editor_batch'/);
+  const maps=readFileSync(new URL('../app/loc/trace/RouteManager.jsx',import.meta.url),'utf8');
+  assert.match(service,/p_expected_count:group\.length/);
+  assert.match(service,/transactionWrites\(operations\)/);
+  assert.match(service,/\['point','path','trace'\]/);
+  assert.match(maps,/types:\['point','path','trace'\]/);
+  assert.doesNotMatch(maps,/uids\.slice\(i,i\+200\)/);
+
   const denied={selectFrom(){assert.fail('unauthorized Trace SQL executed');}};
   await assert.rejects(executeManagedKyselyAction(denied,{
     name:'save_trace_editor_batch',args:{p_scope_id:'lo3rwang',
