@@ -112,7 +112,8 @@ export async function manageScopeRegistryNative(trx,args){
   const current=registered(rows,id);
   if(operation==='create_group'&&current)reject('Scope ID already exists',409);
   if(operation==='update'&&!current)reject('Scope Registry row not found',404);
-  if(operation==='update'&&current.manage_role==='system')
+  if(operation==='update'&&(
+    id==='admin'||!['group','scope'].includes(current.manage_role)))
     reject('System Scope Registry cannot be edited',403);
   const name=nonEmptyName(values.display_name??current?.display_name);
   const target=route(values.domain!==undefined?values.domain:current?.domain,
