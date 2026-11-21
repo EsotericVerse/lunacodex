@@ -3,19 +3,12 @@
   "version": "1.1.1-rc.6",
   "private": true,
   "scripts": {
-    "prepare": "node scripts/prepare-local-workspace.mjs",
-    "prebuild": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs && node scripts/check-js-syntax.mjs",
     "dev": "npm run build:static && node scripts/serve-loc-static.mjs",
     "build": "npm run build:static",
-    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-loc-static.mjs && node scripts/verify-loc-output.mjs && node scripts/audit-loc-packages.mjs",
-    "audit:static": "node scripts/audit-static-content.mjs",
-    "test:static-assets": "node --test tests/static-export-assets.test.mjs",
-    "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",
-    "sync:public": "node scripts/generate-public-blocks.mjs",
-    "check:syntax": "node scripts/check-js-syntax.mjs",
-    "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
-    "predev": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs",
-    "audit:packages": "node scripts/audit-loc-packages.mjs"
+    "build:static": "node scripts/build-loc-native.mjs",
+    "build:native": "node scripts/build-loc-native.mjs",
+    "test": "node --test tests/loc-native-framework.test.mjs",
+    "test:native": "node --test tests/loc-native-framework.test.mjs"
   },
   "dependencies": {
     "@better-auth/sso": "1.7.18",
