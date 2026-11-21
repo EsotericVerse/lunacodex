@@ -393,7 +393,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     const writes=[];
     for(const row of editedMappings){
       const email=String(row.email||'').trim().toLowerCase();
-      if(!/^\\S+@\\S+\\.\\S+$/.test(email))
+      if(!/^\S+@\S+\.\S+$/.test(email))
         throw new Error('Email 格式不正確。');
       writes.push(registryUpdate('api.manage',{
         email,galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
@@ -404,7 +404,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       if(!selected||selected.scope_kind!=='scope')
         throw new Error('請先選擇 Scope');
       const email=String(newMapping.email||'').trim().toLowerCase();
-      if(!/^\\S+@\\S+\\.\\S+$/.test(email))
+      if(!/^\S+@\S+\.\S+$/.test(email))
         throw new Error('Email 格式不正確。');
       writes.push(registryUpdate('api.manage',{
         email,manage_role:'scope',
@@ -590,7 +590,7 @@ function CreateNodePanel({data,kind='scope',onClose}){
       if(!/^[a-z][a-z0-9]{0,14}$/.test(id))throw new Error('人員代碼格式不正確。');
       const email=String(scopeDraft.email||'').trim().toLowerCase();
       if(!email)throw new Error('請先設定管理者 Email。');
-      if(!/^\\S+@\\S+\\.\\S+$/.test(email))throw new Error('Email 格式不正確。');
+      if(!/^\S+@\S+\.\S+$/.test(email))throw new Error('Email 格式不正確。');
       const mode=scopeDraft.route_mode;
       if(!['directory','domain'].includes(mode))throw new Error('請選擇 Directory 或 Domain。');
       if(duplicateDomainLabelError(id,mode))throw new Error('網域名稱重複，拒絕建立。');
