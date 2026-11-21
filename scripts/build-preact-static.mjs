@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {NATIVE_STATIC_ROUTE_SCRIPT,INITIAL_THEME_SCRIPT} from '../app/modular/runtime/theme-bootstrap.mjs';
+import {pathToFileURL} from 'node:url';
 
 const root=process.cwd();
 const out=path.join(root,'out');
@@ -32,7 +33,7 @@ try{
   run(['run','prebuild']);
   const allPages=pages(abs('app')).sort();
   if(allPages.length<60)throw new Error('LOC route loss: '+allPages.length);
-  const entryPoints={'_loc/site':abs('app/globals.css')};
+  const entryPoints={'_loc/site':abs('app/globals.css'),'_loc/editor':abs('app/styles/editor.css')};
   const records=[];
   for(let i=0;i<allPages.length;i++){
     const name='_loc/routes/p'+i;
@@ -109,8 +110,22 @@ try{
   if(!sharedCss)throw new Error('LOC global CSS output missing: '+JSON.stringify(cssOutputs.map(([file,meta])=>({file,entryPoint:meta.entryPoint}))));
   const cssHref='/'+path.relative(out,path.resolve(root,sharedCss[0])).replaceAll('\\','/');
   if(!fs.existsSync(path.join(out,cssHref.slice(1))))throw new Error('LOC global CSS file not found at '+cssHref);
+  const editorCssHref='/_loc/routes/editor.css';
+  if(!fs.existsSync(path.join(out,editorCssHref.slice(1))))
+    throw new Error('LOC editor-only stylesheet missing: '+editorCssHref);
   console.log('[LOC styles] '+cssHref+'; CSS assets='+cssOutputs.length);
+  // Server-side rendering uses the canonical LOC Block components and the
+  // already-installed ReactDOMServer at BUILD time only.
+  const staticRenderer=path.join(scratch,'public-home-ssr.mjs');
+  await build({
+    entryPoints:[abs('scripts/render-public-home.jsx')],
+    outfile:staticRenderer,bundle:true,platform:'node',format:'esm',
+    packages:'external',jsx:'automatic',jsxImportSource:'react',
+    target:'node22',logLevel:'warning'
+  });
+  const {renderPublicScopeHome}=await import(pathToFileURL(staticRenderer).href);
   for(const page of records){
+    const staticHome=!native?renderPublicScopeHome({route:page.route,entry:page.name}):null;
     const dest=path.join(out,page.route.slice(1));
     fs.mkdirSync(dest,{recursive:true});
     const scope=page.route.startsWith('/lrunes/')?'theme-4':'theme-7';
@@ -126,9 +141,11 @@ try{
       '<link rel="stylesheet" href="'+cssHref+'">',css,
       '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
       '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
-      '</head><body class="loc-app-shell"><div id="loc-root">',
-      '<main class="scope-main"><section class="scope-page"><header class="loc-card scope-hero"><h1>'+escape(page.title)+'</h1></header></section></main>',
-      '</div><script type="module" src="/'+page.name+'.js"></script></body></html>'
+      '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"><div id="loc-root">',
+      staticHome?staticHome.html:'<main class="scope-main"><section class="scope-page"><header class="loc-card scope-hero"><h1>'+escape(page.title)+'</h1></header></section></main>',
+      '</div>',
+      staticHome?staticHome.loader:'<script type="module" src="/'+page.name+'.js"></script>',
+      '</body></html>'
     ].join('');
     fs.writeFileSync(path.join(dest,'index.html'),html);
   }
@@ -136,7 +153,7 @@ try{
   if(native&&fs.existsSync(path.join(out,'pics','64Card_org')))
     throw new Error('Native export contains raw card originals');
   fs.writeFileSync(path.join(out,'_loc','build-report.json'),JSON.stringify({
-    runtime:'Preact',bundler:'esbuild',routes:records.length,sharedCss:cssHref,
+    runtime:'Preact',bundler:'esbuild',routes:records.length,sharedCss:cssHref,editorCss:editorCssHref,
     jsBytes:Object.entries(compiled.metafile.outputs).filter(([p])=>p.endsWith('.js')).reduce((sum,[,v])=>sum+v.bytes,0)
   }));
   console.log('[LOC] Preact + esbuild: '+records.length+' static HTML routes, '+(native?'IPA':'Web')+' target.');

@@ -1,3 +1,4 @@
+import {parseBlockImage} from './hero-image.mjs';
 // U+FFFC is ProseMirror's representation of a leaf/embedded object.
 // Convert only orphan placeholder-only paragraphs into actual HTML line breaks from LOC's legacy HTML.
 // Never remove the marker inside meaningful text or media markup: it may
@@ -272,8 +273,24 @@ export function heroExtraFor(scopeId=''){
   return FIXED_HERO_SIGNS[String(scopeId||'')]||null;
 }
 
+export function normalizeHomeBlockRow(row,order,pageName='index'){
+  return {
+    uid:String(row?.uid||''),
+    stored:Boolean(row?.uid),
+    order:Number(row?.block_order||order||1),
+    eyebrow:String(row?.block_eyebrow||''),
+    title:String(row?.block_title||''),
+    subtitle:String(row?.block_subtitle||''),
+    text:HomeBlock.removeDuplicatedLegacySubtitle(row?.block_text,row?.block_subtitle),
+    image:parseBlockImage(row?.block_image),
+    bubbleColumns:HomeBlock.bubbleColumns(row?.block_entity,pageName),
+    entities:HomeBlock.normalizeEntities(row?.block_entity)
+  };
+}
+
 /** Composable home frames, children and feature-page headers share one object. */
 export const HomeBlock=Object.freeze({
+  normalizeRow:normalizeHomeBlockRow,
   entityLimit:HOME_BLOCK_ENTITY_LIMIT,
   createUid:createHomeBlockUid,
   normalizeEntities:normalizeHomeBlockEntities,

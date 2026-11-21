@@ -25,6 +25,8 @@ if(!/^\/_loc\/[^?#]+\.css$/.test(report.sharedCss)||!exists(path.join(out,report
   throw Error('LOC shared CSS missing or invalid: '+report.sharedCss);
 if(report.runtime!=='Preact'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
   throw Error('LOC Preact route manifest mismatch');
+if(report.editorCss!=='/_loc/routes/editor.css'||!exists(path.join(out,report.editorCss.slice(1))))
+  throw Error('LOC editor-on-demand stylesheet missing: '+report.editorCss);
 if(fs.existsSync(path.join(out,'_next')))throw Error('Next.js assets left in LOC export');
 const css=read(path.join(out,report.sharedCss.slice(1)));
 if(/assets\/pics\//.test(css))throw Error('LOC CSS still bundles raw source image paths');
@@ -41,8 +43,17 @@ for(const route of pageRoutes){
   if(!exists(entry))throw Error('Missing route: '+route);
   const html=read(entry);
   if(!html.includes('href="'+report.sharedCss+'"'))throw Error('LOC shared CSS not linked from '+route);
+  const publicHome=!native&&['/','/lo3rwang/','/lrunes/'].includes(route);
   const src=html.match(/<script type="module" src="(\/_loc\/routes\/p\d+\.js)"><\/script>/)?.[1];
-  if(!src||!exists(path.join(out,src.slice(1))))throw Error('Missing executable Preact bundle for '+route);
+  if(publicHome){
+    if(html.includes('href="'+report.editorCss+'"'))
+      throw Error('LOC public homepage should not download editor CSS: '+route);
+    if(src||!html.includes('id="loc-static-upgrade"')||!html.includes('data-loc-upgrade="edit"'))
+      throw Error('LOC public home must not automatically start Preact: '+route);
+    if(!html.includes('class="loc-view loc-home"')||!html.includes('loc-home-block__header'))
+      throw Error('LOC public home published content missing: '+route);
+  }else if(!src||!exists(path.join(out,src.slice(1))))
+    throw Error('Missing executable Preact bundle for '+route);
   if(!html.includes('id="loc-theme-bootstrap"')||!html.includes('id="loc-native-static-route"'))
     throw Error('Lost native/theme bootstraps at '+route);
   if(/_next\/|__next|next\/navigation/i.test(html))throw Error('Next.js leaked into route '+route);
