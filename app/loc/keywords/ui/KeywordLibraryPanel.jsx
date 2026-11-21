@@ -319,30 +319,35 @@ export default function KeywordLibraryPanel({scopeId,account}){
          return;
        }
        const parent=parentOf(tree,node.uid);
-      if(parent)await writeKeywordLibraryItem(scopeId,'update',{
-        ...parent,lists:parent.lists.filter(uid=>uid!==node.uid)
-      });
-      await markStale(node.uid);
-      const descendants=descendantsOfKeyword(rows,node.uid).reverse();
-      const removedIds=new Set(descendants.map(row=>row.uid));
-      const activeRemoved=removedIds.has(config.current_keyword_class_uid);
-      for(const child of descendants)await writeKeywordLibraryItem(scopeId,'delete',child);
-      const removedClasses=descendants.filter(child=>child.type==='class');
-      if(removedClasses.length){
-        let keyword_meta=config.keyword_meta||{};
-        for(const deleted of removedClasses)
-          keyword_meta=invalidateKeywordClass(keyword_meta,deleted.uid);
-        const surviving=[...tree.index.values()].find(record=>
-          record.type==='class'&&!removedIds.has(record.uid));
-        const nextUid=activeRemoved?surviving?.uid||null:config.current_keyword_class_uid;
-        const {error:settingsError}=await dbAuthRelation(configTable)
-          .update({current_keyword_class_uid:nextUid,
-            staticstime:null,keyword_meta})
-          .eq('id',scopeId);
-        if(settingsError)throw settingsError;
-      }
-      const {keywordService}=await import('../service-client.mjs');
-       await keywordService('syncLibrary',{scopeId});
+       const descendants=descendantsOfKeyword(rows,node.uid).reverse();
+       const removedIds=new Set(descendants.map(row=>row.uid));
+       const activeRemoved=removedIds.has(config.current_keyword_class_uid);
+       const removedClasses=descendants.filter(child=>child.type==='class');
+       const operations=[];
+       if(parent)operations.push(await prepareKeywordLibraryWrite(scopeId,'update',{
+         ...parent,lists:parent.lists.filter(uid=>uid!==node.uid)
+       }));
+       if(removedClasses.length){
+         let keyword_meta=config.keyword_meta||{};
+         for(const deleted of removedClasses)
+           keyword_meta=invalidateKeywordClass(keyword_meta,deleted.uid);
+         const surviving=[...tree.index.values()].find(record=>
+           record.type==='class'&&!removedIds.has(record.uid));
+         const nextUid=activeRemoved?surviving?.uid||null:config.current_keyword_class_uid;
+         operations.push({p_table:configTable,p_operation:'update',
+           p_values:{current_keyword_class_uid:nextUid,staticstime:null,keyword_meta},
+           p_filters:[{column:'id',operator:'eq',value:scopeId}]});
+       }else{
+         const stale=staleWriteFor(node.uid);
+         if(stale)operations.push(stale);
+       }
+       for(const child of descendants){
+         const deletion=await prepareKeywordLibraryWrite(scopeId,'delete',child);
+         operations.push({...deletion,p_expected_count:1});
+       }
+       // Parent detach, descendant deletion, Config invalidation AND Pattern
+       // library reconciliation all share the same SQL COMMIT/ROLLBACK.
+       await transactionWrites(operations,{keywordSyncScope:scopeId});
        await load(parent?.uid||'');await invalidate();
       setNotice('已刪除；不會刪除文章。');
     }catch(e){setError(String(e.message||e));}
