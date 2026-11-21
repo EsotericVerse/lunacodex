@@ -1,5 +1,5 @@
-// Copies sibling page.html i18n JSON into published LOC locale assets for both Web and
-// native IPA exports. Source-of-truth stays beside each page.html, not in public.
+// Copies sibling page.jsx i18n JSON into Next public assets for both Web and
+// native IPA exports. Source-of-truth stays beside each page.jsx, not in public.
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
@@ -13,7 +13,7 @@ const locales=['zh_tw','zh_cn','en','ja'];
 function pageDirs(folder,found=[]){
   for(const entry of fs.readdirSync(folder,{withFileTypes:true})){
     const full=path.join(folder,entry.name);
-    if(entry.isFile()&&entry.name==='page.html')found.push(folder);
+    if(entry.isFile()&&entry.name==='page.jsx')found.push(folder);
     else if(entry.isDirectory())pageDirs(full,found);
   }
   return found;
@@ -31,14 +31,14 @@ function writeLocale(bytes,destination){
   fs.writeFileSync(destination,bytes);
 }
 const pages=pageDirs(app).sort();
-if(!pages.length)throw new Error('No page.html routes found');
+if(!pages.length)throw new Error('No page.jsx routes found');
 // Only these two generated namespaces belong to this script. Do not touch
 // other public files or another Agent's assets.
 for(const suffix of ['pages','shared'])
   fs.rmSync(path.join(target,suffix),{recursive:true,force:true});
 function localeSource(dir,locale){
   const route=path.relative(app,dir).replace(/\\/g,'/');
-  // LRS owns non-page sources under app/lrunes; these HTML documents
+  // LRS owns non-page sources under app/lrunes; these page.jsx wrappers
   // reuse their LOC feature route JSON, never a tracked LRS-owned copy.
   const canonical=route==='lrunes'?'':route.startsWith('lrunes/')?route.slice(7):null;
   return canonical===null?path.join(dir,'i18n',locale+'.json')

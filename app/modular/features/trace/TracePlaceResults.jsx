@@ -1,9 +1,9 @@
 'use client';
-import {lazy,Suspense} from 'react';
 
 import {useEffect,useMemo,useState} from 'react';
 import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
 import {timeUnitBucket} from '../../../loc/preferences/default-time-unit.mjs';
+import dynamic from 'next/dynamic';
 import {useAsyncInfiniteResource,useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {selectRows} from '../../../loc/db/db-query.mjs';
 import {traceArticleIdFilters,groupedTraceDays} from './trace-panel-filters.mjs';
@@ -18,12 +18,8 @@ import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 import {galaxyReadColumnsFor} from '../../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 
-const LazyCultureTimeline=lazy(()=>import('../../modules/culture-timeline/CultureTimeline'));
-const CultureTimelineLoading=()=> <p className="scope-status">正在開啟時間長河…</p>;
-function CultureTimeline(props){return <Suspense fallback={<CultureTimelineLoading/>}><LazyCultureTimeline {...props}/></Suspense>;}
-const LazyStatisticsMultiChart=lazy(()=>import('../../modules/statistics/StatisticsMultiChart'));
-const StatisticsMultiChartLoading=()=> <p className="scope-status">正在開啟統計圖…</p>;
-function StatisticsMultiChart(props){return <Suspense fallback={<StatisticsMultiChartLoading/>}><LazyStatisticsMultiChart {...props}/></Suspense>;}
+const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
+const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
 const PAGE_SIZE=100;
 const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 

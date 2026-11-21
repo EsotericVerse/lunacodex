@@ -1,12 +1,13 @@
 'use client';
 
-import {useEffect,useState} from 'react';
-import {getScope,isKnownScope,normalizeScopeId,rememberCurrentBrowserRoute} from './routing/scope-registry';
+import {useEffect,useMemo,useState} from 'react';
+import {usePathname} from 'next/navigation';
+import {getScope,isKnownScope,normalizeScopeId,resolveScope,rememberCurrentBrowserRoute} from './routing/scope-registry';
 import {PUBLISHED_SITE_BOOTSTRAP} from './published-site-bootstrap.js';
 import {SCOPE_ROUTE_INDEX} from './routing/scope-route-index.js';
 
-// The HTML document provides its own Scope identity. Published config is
-// presentation data only, never a browser route lookup or SQL request.
+// Routing and the public Scope configuration are immutable release metadata.
+// They never require a page Bootstrap, SQL lookup, React fetch effect or TTL.
 const registryByScope=new Map((PUBLISHED_SITE_BOOTSTRAP.registry||[])
   .filter(row=>row.active!==false).map(row=>[row.scope_id,row]));
 const configByScope=new Map(SCOPE_ROUTE_INDEX
@@ -20,7 +21,7 @@ function genericRouteScope(pathname,search){
 }
 
 export function useScopeRuntime(){
-  const pathname=(typeof window==='undefined'?'/':window.location.pathname)||'/';
+  const pathname=usePathname()||'/';
   const genericShell=pathname==='/scope-shell'||pathname.startsWith('/scope-shell/');
   const [location,setLocation]=useState({host:'',search:'',mounted:false});
 
@@ -35,10 +36,9 @@ export function useScopeRuntime(){
     return()=>window.removeEventListener('popstate',sync);
   },[]);
 
-  const genericId=genericRouteScope(pathname,location.search);
-  const publishedScope=normalizeScopeId(
-    typeof document==='undefined'?'loc':document.body?.dataset.locScope)||'loc';
-  const scopeId=genericId||(genericShell?'':publishedScope);
+  const genericId=useMemo(()=>genericRouteScope(pathname,location.search),
+    [pathname,location.search]);
+  const scopeId=genericId||(genericShell?'':resolveScope(location.host,pathname));
   const dynamic=Boolean(genericShell&&(!genericId||!isKnownScope(genericId)));
   useEffect(()=>{
     if(!location.mounted||!scopeId)return;

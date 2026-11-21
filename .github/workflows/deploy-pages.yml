@@ -1,5 +1,5 @@
 
-name: Deploy Main LOC Preact to GitHub Pages
+name: Deploy Main Next to GitHub Pages
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 # Manual LOC GitHub Pages fallback only. The normal LOC publisher already
-# handles main; auto-publishing both would duplicate full LOC builds.
+# handles main; auto-publishing both would duplicate full Next.js builds.
 # No Cloudflare token, DNS change or Worker grant.
 concurrency:
   group: pages
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run build:static 2>&1 | tee /tmp/loc-build.log
+          npm run build:static 2>&1 | tee /tmp/next-build.log
 
       - name: Report build failure
         if: failure()
@@ -51,8 +51,8 @@ jobs:
           {
             echo '## Build failure'
             echo '```'
-            if [ -f /tmp/loc-build.log ]; then
-              tail -n 200 /tmp/loc-build.log
+            if [ -f /tmp/next-build.log ]; then
+              tail -n 200 /tmp/next-build.log
             else
               echo 'Build did not start or failed before logging.'
             fi

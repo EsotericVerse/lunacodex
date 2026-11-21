@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {transform} from 'esbuild';
+import {createRequire} from 'node:module';
+const {parse}=createRequire(import.meta.url)('@babel/parser');
 
 test('Channel 1 SQL pool lifetime is exactly one ingestion request',()=>{
   const src=readFileSync(new URL('../app/loc/import/channel1-receiver.ts',import.meta.url),'utf8');
@@ -18,6 +19,7 @@ test('Channel 1 SQL pool lifetime is exactly one ingestion request',()=>{
 
 test('Channel 1 Deno TypeScript parses without adding a runtime dependency',async()=>{
   const src=readFileSync(new URL('../app/loc/import/channel1-receiver.ts',import.meta.url),'utf8');
-  const transpiled=await transform(src,{loader:'ts',format:'esm',target:'es2022'});
-  assert.ok(transpiled.code.includes('Deno.serve'));
+  const parsed=parse(src,{sourceType:'module',plugins:['typescript']});
+  assert.equal(parsed.type,'File');
+  assert.ok(src.includes('Deno.serve'));
 });

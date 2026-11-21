@@ -1,8 +1,8 @@
-import {lazy,Suspense} from 'react';
-import {useMemo} from 'react';
 'use client';
 
 import {useEffect} from 'react';
+import dynamic from 'next/dynamic';
+import {useSearchParams} from 'next/navigation';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
@@ -12,12 +12,8 @@ import PanelLoading from '../ui/PanelLoading';
 import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {PLACE_OPTIONS} from '../trace/PlaceManagement';
 
-const LazyTraceManagementPanel=lazy(()=>import('../trace/TraceManagement'));
-const TraceManagementPanelLoading=PanelLoading;
-function TraceManagementPanel(props){return <Suspense fallback={<TraceManagementPanelLoading/>}><LazyTraceManagementPanel {...props}/></Suspense>;}
-const LazyPlaceManagement=lazy(()=>import('../trace/PlaceManagement').catch(recoverChunkOnce));
-const PlaceManagementLoading=PanelLoading;
-function PlaceManagement(props){return <Suspense fallback={<PlaceManagementLoading/>}><LazyPlaceManagement {...props}/></Suspense>;}
+const TraceManagementPanel=dynamic(()=>import('../trace/TraceManagement'),{loading:PanelLoading});
+const PlaceManagement=dynamic(()=>import('../trace/PlaceManagement').catch(recoverChunkOnce),{loading:PanelLoading});
 
 const SPATIAL_OPTIONS=[
   {value:'path',label:'路線',description:'依序連接空間定錨點'},
@@ -27,7 +23,7 @@ const PLACE_KEYS=new Set(PLACE_OPTIONS.map(item=>item.value));
 
 export default function ScopeManagement({scopeId:routeScopeId='loc',section:entrySection=''}){
   const editDock=useEditDock();
-  const searchParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
+  const searchParams=useSearchParams();
   const isLoc=routeScopeId==='loc';
   const traceOnly=entrySection==='traceMap';
   // Spatial tasks are the first-level navigation. No extra "地點管理" layer.

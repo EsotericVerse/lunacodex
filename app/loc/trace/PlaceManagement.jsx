@@ -1,15 +1,11 @@
 'use client';
-import {lazy,Suspense} from 'react';
 
+import dynamic from 'next/dynamic';
 import PanelLoading from '../ui/PanelLoading';
 import TimelinePlaceManager from './TimelinePlaceManager';
 
-const LazyTraceManagement=lazy(()=>import('./TraceManagement'));
-const TraceManagementLoading=PanelLoading;
-function TraceManagement(props){return <Suspense fallback={<TraceManagementLoading/>}><LazyTraceManagement {...props}/></Suspense>;}
-const LazyPlaceBatchFill=lazy(()=>import('./PlaceBatchFill'));
-const PlaceBatchFillLoading=PanelLoading;
-function PlaceBatchFill(props){return <Suspense fallback={<PlaceBatchFillLoading/>}><LazyPlaceBatchFill {...props}/></Suspense>;}
+const TraceManagement=dynamic(()=>import('./TraceManagement'),{loading:PanelLoading});
+const PlaceBatchFill=dynamic(()=>import('./PlaceBatchFill'),{loading:PanelLoading});
 
 // These are first-level Spatial Management tabs, not nested Place Management options.
 export const PLACE_OPTIONS=Object.freeze([

@@ -1,11 +1,12 @@
 'use client';
-import {lazy} from 'react';
 import FieldText from '../i18n/FieldText';
 import UiText,{useUiText} from '../i18n/UiText';
 import {useUiSection} from '../i18n/ui-locale';
 
+import dynamic from 'next/dynamic';
 import {recoverChunkOnce} from './ui/chunk-recovery.mjs';
 import {Suspense,useEffect,useState} from 'react';
+import {useRouter} from 'next/navigation';
 import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/routing/scope-registry';
@@ -70,60 +71,24 @@ const loading=()=> <HomeFrameLoading/>;
 // Scope feature switches gate public access even for an admin; identity never overrides publication.
 // Heavy visualizations and editors should load only when their own page opens.
 // Each home and group capability is independently loaded for its actual route.
-const LazyAboutView=lazy(()=>import('./views/AboutView'));
-const AboutViewLoading=loading;
-function AboutView(props){return <Suspense fallback={<AboutViewLoading/>}><LazyAboutView {...props}/></Suspense>;}
-const LazyAuthorHomeView=lazy(()=>import('./views/AuthorHomeView'));
-const AuthorHomeViewLoading=loading;
-function AuthorHomeView(props){return <Suspense fallback={<AuthorHomeViewLoading/>}><LazyAuthorHomeView {...props}/></Suspense>;}
-const LazyAdminHomeView=lazy(()=>import('./views/AdminHomeView'));
-const AdminHomeViewLoading=featureLoading('admin');
-function AdminHomeView(props){return <Suspense fallback={<AdminHomeViewLoading/>}><LazyAdminHomeView {...props}/></Suspense>;}
-const LazyGenericScopeHomeView=lazy(()=>import('./views/GenericScopeHomeView'));
-const GenericScopeHomeViewLoading=loading;
-function GenericScopeHomeView(props){return <Suspense fallback={<GenericScopeHomeViewLoading/>}><LazyGenericScopeHomeView {...props}/></Suspense>;}
-const LazyScopeGroupOverview=lazy(()=>import('./scope/ScopeGroupOverview'));
-const ScopeGroupOverviewLoading=loading;
-function ScopeGroupOverview(props){return <Suspense fallback={<ScopeGroupOverviewLoading/>}><LazyScopeGroupOverview {...props}/></Suspense>;}
-const LazyStatistics=lazy(()=>import('../modular/features/Statistics').catch(recoverChunkOnce));
-const StatisticsLoading=featureLoading('statics');
-function Statistics(props){return <Suspense fallback={<StatisticsLoading/>}><LazyStatistics {...props}/></Suspense>;}
-const LazyKeywordSettings=lazy(()=>import('../modular/features/KeywordSettings'));
-const KeywordSettingsLoading=featureLoading('statics');
-function KeywordSettings(props){return <Suspense fallback={<KeywordSettingsLoading/>}><LazyKeywordSettings {...props}/></Suspense>;}
-const LazyCulture=lazy(()=>import('../modular/features/Culture'));
-const CultureLoading=featureLoading('culture');
-function Culture(props){return <Suspense fallback={<CultureLoading/>}><LazyCulture {...props}/></Suspense>;}
-const LazyCulturePublic=lazy(()=>import('./views/CulturePublicReader'));
-const CulturePublicLoading=featureLoading('culture');
-function CulturePublic(props){return <Suspense fallback={<CulturePublicLoading/>}><LazyCulturePublic {...props}/></Suspense>;}
-const LazySearch=lazy(()=>import('../modular/features/Search').catch(recoverChunkOnce));
-const SearchLoading=featureLoading('search');
-function Search(props){return <Suspense fallback={<SearchLoading/>}><LazySearch {...props}/></Suspense>;}
-const LazySearchManagement=lazy(()=>import('./search/SearchManagement'));
-const SearchManagementLoading=featureLoading('search');
-function SearchManagement(props){return <Suspense fallback={<SearchManagementLoading/>}><LazySearchManagement {...props}/></Suspense>;}
-const LazyTrace=lazy(()=>import('../modular/features/Trace'));
-const TraceLoading=featureLoading('trace');
-function Trace(props){return <Suspense fallback={<TraceLoading/>}><LazyTrace {...props}/></Suspense>;}
-const LazyRunesHomeView=lazy(()=>import('./views/LrsPortalView'));
-const RunesHomeViewLoading=loading;
-function RunesHomeView(props){return <Suspense fallback={<RunesHomeViewLoading/>}><LazyRunesHomeView {...props}/></Suspense>;}
-const LazyManagementView=lazy(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce));
-const ManagementViewLoading=featureLoading('manage');
-function ManagementView(props){return <Suspense fallback={<ManagementViewLoading/>}><LazyManagementView {...props}/></Suspense>;}
-const LazySourceManagementView=lazy(()=>import('./source/LocSourceManagement'));
-const SourceManagementViewLoading=featureLoading('culture');
-function SourceManagementView(props){return <Suspense fallback={<SourceManagementViewLoading/>}><LazySourceManagementView {...props}/></Suspense>;}
-const LazyKeywordManagementView=lazy(()=>import('./keywords/ui/LocKeywordManagementPage'));
-const KeywordManagementViewLoading=featureLoading('statics');
-function KeywordManagementView(props){return <Suspense fallback={<KeywordManagementViewLoading/>}><LazyKeywordManagementView {...props}/></Suspense>;}
-const LazyLocalSettingView=lazy(()=>import('./views/LocalSettingView'));
-const LocalSettingViewLoading=featureLoading('setting');
-function LocalSettingView(props){return <Suspense fallback={<LocalSettingViewLoading/>}><LazyLocalSettingView {...props}/></Suspense>;}
-const LazyLocalScopeWorkspace=lazy(()=>import('./local/Workspace'));
-const LocalScopeWorkspaceLoading=loading;
-function LocalScopeWorkspace(props){return <Suspense fallback={<LocalScopeWorkspaceLoading/>}><LazyLocalScopeWorkspace {...props}/></Suspense>;}
+const AboutView=dynamic(()=>import('./views/AboutView'),{loading});
+const AuthorHomeView=dynamic(()=>import('./views/AuthorHomeView'),{loading});
+const AdminHomeView=dynamic(()=>import('./views/AdminHomeView'),{loading:featureLoading('admin')});
+const GenericScopeHomeView=dynamic(()=>import('./views/GenericScopeHomeView'),{loading});
+const ScopeGroupOverview=dynamic(()=>import('./scope/ScopeGroupOverview'),{loading});
+const Statistics=dynamic(()=>import('../modular/features/Statistics').catch(recoverChunkOnce),{loading:featureLoading('statics')});
+const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),{loading:featureLoading('statics')});
+const Culture=dynamic(()=>import('../modular/features/Culture'),{loading:featureLoading('culture')});
+const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading:featureLoading('culture')});
+const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading:featureLoading('search')});
+const SearchManagement=dynamic(()=>import('./search/SearchManagement'),{loading:featureLoading('search')});
+const Trace=dynamic(()=>import('../modular/features/Trace'),{loading:featureLoading('trace')});
+const RunesHomeView=dynamic(()=>import('./views/LrsPortalView'),{loading});
+const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading:featureLoading('manage')});
+const SourceManagementView=dynamic(()=>import('./source/LocSourceManagement'),{loading:featureLoading('culture')});
+const KeywordManagementView=dynamic(()=>import('./keywords/ui/LocKeywordManagementPage'),{loading:featureLoading('statics')});
+const LocalSettingView=dynamic(()=>import('./views/LocalSettingView'),{loading:featureLoading('setting')});
+const LocalScopeWorkspace=dynamic(()=>import('./local/Workspace'),{loading});
 
 const VIEWS={
   admin:AdminHomeView,
@@ -155,12 +120,8 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   // for a config SQL request must not block the Hero or content.
   if(!enabled)return children;
   const config=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId&&row.active!==false)?.config;
-  if(!config)return <FeaturePage featureId={view}><section className="loc-card">
-    <p className="scope-status scope-error">Scope 設定尚未發布。</p>
-  </section></FeaturePage>;
-  if(!scopeFeatureEnabled(config,flag))return <FeaturePage featureId={view}><section className="loc-card">
-    <p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p>
-  </section></FeaturePage>;
+  if(!config)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定尚未發布。</p></section></section></main>;
+  if(!scopeFeatureEnabled(config,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
   return children;
 }
 
@@ -170,7 +131,8 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   const runtime=useScopeRuntime();
   const scopeId=forcedScope||runtime.scopeId;
   const scopeMeta=forcedScope&&runtime.scopeId!==forcedScope?getScope(forcedScope):runtime.scope;
-    const [nativeOnlyReady,setNativeOnlyReady]=useState(false);
+  const router=useRouter();
+  const [nativeOnlyReady,setNativeOnlyReady]=useState(false);
   useEffect(()=>{
     if(!scopeMeta?.nativeOnly)return;
     if(Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='ios'){
@@ -179,8 +141,8 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     }
     // Public Global Settings remains available on Web; the private
     // /local/* feature pages do not. A bookmark must not bypass the menu.
-    window.location.replace('/local/settings/');
-  },[scopeMeta?.nativeOnly]);
+    router.replace('/local/settings/');
+  },[scopeMeta?.nativeOnly,router]);
   const publicCulture=forcedView==='culture'&&scopeId!=='loc'&&scopeId!=='lrunes'
     &&scopeId!=='local'&&!runtime.pathname.includes('/culture/manage');
   const ActiveView=publicCulture?CulturePublic:forcedView==='home'
@@ -192,28 +154,27 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     ['statics','culture'].includes(forcedView));
 
   if(scopeMeta?.nativeOnly&&!nativeOnlyReady){
-    return <FeaturePage featureId={forcedView}>
+    return <main className="scope-main"><section className="scope-page">
       <p className="scope-status" role="status">此本機資料工作區僅在 iOS App 提供。網頁版正在返回設定。</p>
-    </FeaturePage>;
+    </section></main>;
   }
-  // Device-local data uses the same authored DIVs but never cloud SQL.
+  // A local native page reads only the device Galaxy. Reuse the existing
+  // website six-feature routes, but never mount cloud FeatureGate or SQL.
   if(scopeId==='local'&&forcedView!=='setting'){
-    const workspace=<Suspense fallback={<div className="loc-loading">正在讀取本機 Galaxy…</div>}>
-      <LocalScopeWorkspace view={forcedView}/>
-    </Suspense>;
-    return typeof document!=='undefined'&&document.getElementById('loc-feature-hero-canvas')
-      ?workspace:<div className="loc-next-main" data-loc-scope="local" data-loc-view={forcedView}>{workspace}</div>;
+    return <div className="loc-next-main" data-loc-scope="local" data-loc-view={forcedView}>
+      <Suspense fallback={<div className="loc-loading">正在讀取本機 Galaxy…</div>}>
+        <LocalScopeWorkspace view={forcedView}/>
+      </Suspense>
+    </div>;
   }
   if(!forcedScope&&runtime.dynamic&&!runtime.registryResolved){
-    return <FeaturePage featureId={forcedView}>
-      <div className="loc-loading"><UiText id="uiExtra.feature.registryLoading"/></div>
-    </FeaturePage>;
+    return <div className="loc-next-main" data-loc-scope={scopeId}><div className="loc-loading"><UiText id="uiExtra.feature.registryLoading"/></div></div>;
   }
   if(!forcedScope&&runtime.dynamic&&(runtime.registryError||!runtime.registryRow)){
-    return <FeaturePage featureId={forcedView}><section className="loc-card">
+    return <main className="scope-main"><section className="scope-page"><section className="loc-card">
       <h1><UiText id="uiExtra.feature.registryUnavailable"/></h1>
       <p className="scope-status scope-error">{runtime.registryError||t('uiExtra.feature.registryNotFound')}</p>
-    </section></FeaturePage>;
+    </section></section></main>;
   }
 
   const managementRoute=['manage','searchManage','sourceManage','keywordManage','keywords'].includes(forcedView)||
@@ -231,31 +192,23 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   const managementPage=<ActiveView section={forcedSection} scopeId={scopeId}
     scopeGroup={scopeMeta?.featureScope||scopeMeta?.registry?.parent_scope_id||
       (scopeMeta?.aggregateChildren?scopeId:null)}/>;
-  const content=<Suspense fallback={forcedView==='home'?<HomeFrameLoading/>:
-    <FeatureFrameLoading featureId={managementRoute?managementFeature:forcedView}/>}>
-    <FeatureGate scopeId={scopeId} scopeMeta={scopeMeta} view={forcedView}>
-      {groupOverviewView?<FeaturePage featureId={forcedView}>
-        <ScopeGroupOverview
-          scopeId={scopeId}
-          featureId={forcedView}
-          title={scopeMeta.label+' · '+t({statics:'features.statics.title',culture:'features.culture.title'}[forcedView])}
-          description={t('uiExtra.feature.groupGuide')}
-        />
-      </FeaturePage>:managementRoute?<ManagementAccess key={scopeId+':'+forcedView+':'+runtime.pathname}
-        scopeId={scopeId} level={managementLevel} featureId={managementFeature}
-        staticFrame={['manage','searchManage','sourceManage','keywordManage'].includes(forcedView)}
-      >{managementPage}</ManagementAccess>:managementPage}
-    </FeatureGate>
-  </Suspense>;
-  // The authored HTML already provides this route's main and content frame.
-  // A public homepage upgrades only its existing content canvas, never
-  // replaces the static main or the shared navigation.
-  if(typeof document!=='undefined'&&(
-    document.getElementById('loc-feature-hero-canvas')||
-    document.getElementById('loc-interactive-root')?.classList.contains('loc-next-main')))
-    return content;
   return <div className="loc-next-main" data-loc-scope={scopeId} data-loc-view={forcedView}
     role={forcedView==='home'&&['loc','lo3rwang','lrunes'].includes(scopeId)?'main':undefined}>
-    {content}
+    <Suspense fallback={forcedView==='home'?<HomeFrameLoading/>:
+      <FeatureFrameLoading featureId={managementRoute?managementFeature:forcedView}/>}>
+      <FeatureGate scopeId={scopeId} scopeMeta={scopeMeta} view={forcedView}>
+        {groupOverviewView?<FeaturePage featureId={forcedView}>
+          <ScopeGroupOverview
+            scopeId={scopeId}
+            featureId={forcedView}
+            title={scopeMeta.label+' · '+t({statics:'features.statics.title',culture:'features.culture.title'}[forcedView])}
+            description={t('uiExtra.feature.groupGuide')}
+          />
+        </FeaturePage>:managementRoute?<ManagementAccess key={scopeId+':'+forcedView+':'+runtime.pathname}
+          scopeId={scopeId} level={managementLevel} featureId={managementFeature}
+          staticFrame={['manage','searchManage','sourceManage','keywordManage'].includes(forcedView)}
+        >{managementPage}</ManagementAccess>:managementPage}
+      </FeatureGate>
+    </Suspense>
   </div>;
 }

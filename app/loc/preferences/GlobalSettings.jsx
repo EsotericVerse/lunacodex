@@ -1,25 +1,19 @@
 'use client';
-import {lazy,Suspense} from 'react';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 
 import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {useAccount} from '../auth/use-account';
 import {FeaturePage} from '../../modular/ui';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
 // The home/account Settings screens never download import or management editors.
-const LazyPrivateLocalFiles=lazy(()=>import('../local/PrivateFiles'));
-const PrivateLocalFilesLoading=PanelLoading;
-function PrivateLocalFiles(props){return <Suspense fallback={<PrivateLocalFilesLoading/>}><LazyPrivateLocalFiles {...props}/></Suspense>;}
-const LazyLocalScopeModeSettings=lazy(()=>import('../local/ModeSettings'));
-const LocalScopeModeSettingsLoading=PanelLoading;
-function LocalScopeModeSettings(props){return <Suspense fallback={<LocalScopeModeSettingsLoading/>}><LazyLocalScopeModeSettings {...props}/></Suspense>;}
-const LazyLocScopeConnections=lazy(()=>import('../scope/LocScopeConnections'));
-const LocScopeConnectionsLoading=PanelLoading;
-function LocScopeConnections(props){return <Suspense fallback={<LocScopeConnectionsLoading/>}><LazyLocScopeConnections {...props}/></Suspense>;}
+const PrivateLocalFiles=dynamic(()=>import('../local/PrivateFiles'),{loading:PanelLoading});
+const LocalScopeModeSettings=dynamic(()=>import('../local/ModeSettings'),{loading:PanelLoading});
+const LocScopeConnections=dynamic(()=>import('../scope/LocScopeConnections'),{loading:PanelLoading});
 import FeatureSettingsPage from './FeatureSettingsPage';
 import {clearSearchManagerSwitch} from './use-search-manager-switch';
 import {selectScopeRegistry} from '../scope/scope-data';

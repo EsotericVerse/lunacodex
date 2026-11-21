@@ -1,6 +1,6 @@
 'use client';
-import {lazy,Suspense} from 'react';
 
+import dynamic from 'next/dynamic';
 import LocManagementWorkspace from '../management/LocManagementWorkspace';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
@@ -12,15 +12,9 @@ import {ProtectedManagementSlot} from '../management/ManagementAccess';
 // Group managers edit work classifications and member names here.
 // Global Admin reuses its existing vis-network personnel editor here.
 // Source hierarchy shares the same destination, without widening write access.
-const LazyLocGroupMemberList=lazy(()=>import('../scope/LocGroupMemberList'));
-const LocGroupMemberListLoading=PanelLoading;
-function LocGroupMemberList(props){return <Suspense fallback={<LocGroupMemberListLoading/>}><LazyLocGroupMemberList {...props}/></Suspense>;}
-const LazyAdminRegistry=lazy(()=>import('../views/admin-panels/AdminRegistry'));
-const AdminRegistryLoading=PanelLoading;
-function AdminRegistry(props){return <Suspense fallback={<AdminRegistryLoading/>}><LazyAdminRegistry {...props}/></Suspense>;}
-const LazyAdminSourceCategories=lazy(()=>import('./SourceCategoryEditor').then(mod=>({default:mod.AdminSourceCategories})));
-const AdminSourceCategoriesLoading=PanelLoading;
-function AdminSourceCategories(props){return <Suspense fallback={<AdminSourceCategoriesLoading/>}><LazyAdminSourceCategories {...props}/></Suspense>;}
+const LocGroupMemberList=dynamic(()=>import('../scope/LocGroupMemberList'),{loading:PanelLoading});
+const AdminRegistry=dynamic(()=>import('../views/admin-panels/AdminRegistry'),{loading:PanelLoading});
+const AdminSourceCategories=dynamic(()=>import('./SourceCategoryEditor').then(mod=>mod.AdminSourceCategories),{loading:PanelLoading});
 
 const OPTIONS=Object.freeze([
   {value:'members',label:'人員',shortLabel:'人員',description:'僅修改所屬人員的顯示名稱，不變更帳號或 Email。'}

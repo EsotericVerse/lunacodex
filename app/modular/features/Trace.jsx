@@ -1,7 +1,8 @@
 'use client';
-import {lazy,Suspense} from 'react';
 
 import {useEffect,useMemo,useState} from 'react';
+import {useSearchParams} from 'next/navigation';
+import dynamic from 'next/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import {FeaturePage} from '../ui';
 import LocTracePreview from './LocTracePreview';
@@ -28,15 +29,16 @@ import {
 
 // A Current route loads only its members. Without a saved route, show the
 // Scope's saved anchors automatically.
-const LazyTraceMap=lazy(()=>import('./trace/TraceMap'));
-const TraceMapLoading=()=> <p className="scope-status" role="status"><UiText id="uiExtra.traceUI.loadingMap"/></p>;
-function TraceMap(props){return <Suspense fallback={<TraceMapLoading/>}><LazyTraceMap {...props}/></Suspense>;}
-const LazyTraceTerritoryPanel=lazy(()=>import('./trace/TraceTerritoryPanel'));
-const TraceTerritoryPanelLoading=()=> <p className="scope-status" role="status">載入年度戰略地圖中…</p>;
-function TraceTerritoryPanel(props){return <Suspense fallback={<TraceTerritoryPanelLoading/>}><LazyTraceTerritoryPanel {...props}/></Suspense>;}
-const LazyTracePlaceResults=lazy(()=>import('./trace/TracePlaceResults'));
-const TracePlaceResultsLoading=()=> <p className="scope-status"><UiText id="uiExtra.traceUI.loadingPlaceResults"/></p>;
-function TracePlaceResults(props){return <Suspense fallback={<TracePlaceResultsLoading/>}><LazyTracePlaceResults {...props}/></Suspense>;}
+const TraceMap=dynamic(()=>import('./trace/TraceMap'),{
+  ssr:false,
+  loading:()=> <p className="scope-status" role="status"><UiText id="uiExtra.traceUI.loadingMap"/></p>
+});
+const TraceTerritoryPanel=dynamic(()=>import('./trace/TraceTerritoryPanel'),{
+  ssr:false,loading:()=> <p className="scope-status" role="status">載入年度戰略地圖中…</p>
+});
+const TracePlaceResults=dynamic(()=>import('./trace/TracePlaceResults'),{
+  loading:()=> <p className="scope-status"><UiText id="uiExtra.traceUI.loadingPlaceResults"/></p>
+});
 
 // Keep LOC's preview in a separate component tree. Its mount performs no
 // yearly-article analytics, loc_anchor reads or legacy territory rendering.
@@ -58,7 +60,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const [readyMapMode,setReadyMapMode]=useState('');
   const [annualGaugeOn,setAnnualGaugeOn]=useState(true);
   const [annualGaugeDetailVisible,setAnnualGaugeDetailVisible]=useState(false);
-  const routeParams=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
+  const routeParams=useSearchParams();
   const selectedPlaceUid=String(routeParams?.get('place')||'').trim();
   const selectedMapUid=String(routeParams?.get('map')||'').trim();
   const [twoPointDemo,setTwoPointDemo]=useState(false);

@@ -7,27 +7,6 @@ import {blockNoteSuggestionItems} from './blocknote-suggestions.mjs';
 import {BlockNoteView} from '@blocknote/mantine';
 import {canonicalBlockNoteBlocks,canonicalBlockNoteHtml,BlockNoteContent} from './blocknote-content.mjs';
 
-// No editor CSS request on public pages. Multiple concurrently mounted canvases
-// share one stylesheet; the last unmount releases it.
-const EDITOR_STYLES_ID='loc-blocknote-styles';
-let editorStyleUsers=0;
-function useEditorStyles(){
-  useEffect(()=>{
-    editorStyleUsers+=1;
-    if(!document.getElementById(EDITOR_STYLES_ID)){
-      const link=document.createElement('link');
-      link.id=EDITOR_STYLES_ID;
-      link.rel='stylesheet';
-      link.href='/_loc/routes/editor.css';
-      document.head.appendChild(link);
-    }
-    return ()=>{
-      editorStyleUsers=Math.max(0,editorStyleUsers-1);
-      if(editorStyleUsers===0)document.getElementById(EDITOR_STYLES_ID)?.remove();
-    };
-  },[]);
-}
-
 // Keep the native BlockNote/Mantine tools, menus and portalled suggestions
 // on the same live LOC palette as the editor surface. Using CSS var() lets
 // every published theme switch without remounting the editor or changing data.
@@ -60,7 +39,6 @@ export default function BlockNoteEditorClient({
   onChange=null,
   onHtmlChange=null
 }){
-  useEditorStyles();
   const editor=useCreateBlockNote({
     initialContent:canonicalBlockNoteBlocks(initialBlocks),
     domAttributes:{editor:{'aria-label':editable?ariaLabel:'文字內容'}}
