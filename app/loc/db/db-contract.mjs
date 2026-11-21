@@ -417,38 +417,40 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     });
   }
 
-  async function writeKeywordLibraryItem(scopeId,operation,node={}){
+  async function prepareKeywordLibraryWrite(scopeId,operation,node={}){
     const scope=normalizeScopeId(scopeId),table='silver.'+scope+'_anchor';
     preflightWrite(table);
     const op=String(operation||'').toLowerCase();
-    if(!['insert','update','delete'].includes(op))throw Error('Invalid KeywordAnchor operation');
-    // normalizeKeywordTreeRow accepts an editor/legacy projection; it is NOT
-    // the physical SQL schema. Save only each current Anchor type's own fields.
+    if(!['insert','update','delete'].includes(op))
+      throw Error('Invalid KeywordAnchor operation');
     const {normalizeKeywordTreeRow}=await import('../keywords/tree.mjs');
-    const v=normalizeKeywordTreeRow(node),q=dbAuthRelation(table);
+    const v=normalizeKeywordTreeRow(node);
     const field=v.type==='item'?'keyword':'uid';
     const attr={...(node.attr&&typeof node.attr==='object'?node.attr:{}),[field]:v.lists};
     if(['item','group'].includes(v.type)){
-      // Legacy article-hit and cached numeric payloads have no authority.
-      // Item.attr.uid remains the required Pattern *Anchor* UID links.
       for(const key of ['uidlists','articles','hits','total'])delete attr[key];
     }
     if(v.type==='class'){
       const {classSkipArticleWords}=await import('../keywords/class-exceptions.mjs');
       classSkipArticleWords(attr);
     }
-    let query;
-    if(op==='insert')query=q.insert({uid:v.uid,type:v.type,title:v.name,
-      description:v.desc,attr}).select('uid');
-    else if(op==='update')query=q.update({title:v.name,description:v.desc,attr})
-      .eq('uid',v.uid).eq('type',v.type).select('uid');
-    else query=q.delete().eq('uid',v.uid).eq('type',v.type).select('uid');
-    const {data,error}=await query;
-    if(error||data?.length!==1)throw Error(error?.message||'KeywordAnchor write affected no rows');
-    // This direct authenticated row writer bypasses managedWrite; ensure its
-    // committed Anchor change invalidates the SAME scoped ZModel read cache.
-    invalidateScopedReadCache(table);
-    return {uid:v.uid,count:1};
+    const filters=[{column:'uid',operator:'eq',value:v.uid},
+      {column:'type',operator:'eq',value:v.type}];
+    const p_table=table;
+    if(op==='insert')
+      return {p_table,p_operation:'insert',
+        p_rows:[{uid:v.uid,type:v.type,title:v.name,
+          description:v.desc,attr}]};
+    if(op==='update')
+      return {p_table,p_operation:'update',
+        p_values:{title:v.name,description:v.desc,attr},p_filters:filters};
+    return {p_table,p_operation:'delete',p_filters:filters};
+  }
+  async function writeKeywordLibraryItem(scopeId,operation,node={}){
+    const write=await prepareKeywordLibraryWrite(scopeId,operation,node);
+    // The same single-transaction writer as other management Anchors.
+    await transactionWrites([write]);
+    return {uid:node.uid,count:1};
   }
   async function copyKeywordLibraryClass(scopeId,sourceClassUid,targetClassName){
     const scope=normalizeScopeId(scopeId),source=String(sourceClassUid||''),
@@ -473,27 +475,21 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       const uid=allocateAnchorUid(new Set(occupied));
       occupied.push(uid);mapping.set(node.uid,uid);
     }
-    const saved=[];
-    try{
-      // Child nodes first so a published Class cannot reference missing nodes.
-      for(const node of [...descendants].reverse()){
-        const copy={...node,uid:mapping.get(node.uid),
-          name:node.uid===original.uid?target:node.name,
-          lists:node.type==='item'?[...node.lists]:node.lists.map(uid=>mapping.get(uid)),
-          uid_lists:[]};
-        await writeKeywordLibraryItem(scope,'insert',copy);
-        saved.push(copy);
-      }
-      // Category is Scope Group managed. Preserve legacy parent links if present,
-      // but never force new Class trees to create a Category.
-      if(category)await writeKeywordLibraryItem(scope,'update',{
-        ...category,lists:[...category.lists,mapping.get(original.uid)]});
-    }catch(error){
-      for(const node of saved.reverse())
-        await writeKeywordLibraryItem(scope,'delete',node).catch(()=>{});
-      throw error;
+    const operations=[];
+    // Insert children before the Class that references them. A failed
+    // dependency, parent update or key collision ROLLBACKS the entire copy.
+    for(const node of [...descendants].reverse()){
+      const copy={...node,uid:mapping.get(node.uid),
+        name:node.uid===original.uid?target:node.name,
+        lists:node.type==='item'?[...node.lists]:node.lists.map(uid=>mapping.get(uid)),
+        uid_lists:[]};
+      operations.push(await prepareKeywordLibraryWrite(scope,'insert',copy));
     }
-    return {count:saved.length,class_uid:mapping.get(original.uid),uid:mapping.get(original.uid)};
+    if(category)operations.push(await prepareKeywordLibraryWrite(scope,'update',{
+      ...category,lists:[...category.lists,mapping.get(original.uid)]}));
+    await transactionWrites(operations);
+    return {count:descendants.length,class_uid:mapping.get(original.uid),
+      uid:mapping.get(original.uid)};
   }
 
 
@@ -593,7 +589,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(error)throw new Error(error.message||'Account sign-out failed');
   }
 
-  return {publicClient,authClient,dbAuthRelation,selectAuthRow,transactionWrites,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocSso,signOutAccount};
+  return {publicClient,authClient,dbAuthRelation,selectAuthRow,transactionWrites,prepareKeywordLibraryWrite,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocSso,signOutAccount};
 }
 
 // One universal hard ceiling for all database read adapters and selected columns.
