@@ -33,7 +33,7 @@ test('on-demand React does not mount an AppShell or a router',()=>{
 });
 test('all three Scope homepages use one live Blocks reader after static navigation',()=>{
   const home=readFileSync(new URL('../app/loc/runtime/public-home-entry.jsx',import.meta.url),'utf8');
-  const display=readFileSync(new URL('../app/loc/blocks/PublicHomeBlocks.jsx',import.meta.url),'utf8');
+  const display=readFileSync(new URL('../app/loc/runtime/public-home-entry.jsx',import.meta.url),'utf8');
   assert.match(render,/id="loc-home-sql-slot"/);
   assert.match(render,/routes\/home\.js/);
   assert.doesNotMatch(render,/published-blocks\/(?:loc|lrunes|lo3rwang)\/index/);
