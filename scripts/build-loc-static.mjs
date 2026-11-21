@@ -130,7 +130,7 @@ try{
       page.view==='manage'&&page.relative.includes('trace')?'trace':page.view;
     const frame=staticHome?staticHome.html:
       renderPublicFeatureFrame({scopeId:page.scope,title:page.title,link:target,
-        feature:current,work:page.component==='work'});
+        feature:current,work:page.component==='work',native});
     const attrs=' data-loc-component="'+escape(page.component)+'" data-loc-view="'+
       escape(page.view)+'" data-loc-scope="'+escape(page.scope)+'"'+
       (page.section?' data-loc-section="'+escape(page.section)+'"':'')+

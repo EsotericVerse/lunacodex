@@ -46,13 +46,13 @@ function PublicHome({scopeId,rows}){
    })}
  </section>;
 }
-function PublicNavigation({scopeId}){
- return <header className="scope-global" data-native="web">
+function PublicNavigation({scopeId,native=false}){
+ return <header className="scope-global" data-native={native?"ios":"web"}>
    <nav className="scope-nav" aria-label="Scope 導覽">
      <div className="scope-nav-rail">
        <div className="scope-nav-viewport">
          <div className="scope-nav-items">
-           {rootNav.map(scope=><a href={navigationHref(scope.id,'',false)} key={scope.id}
+           {rootNav.map(scope=><a href={navigationHref(scope.id,'',native)} key={scope.id}
              aria-current={scope.id===scopeId?'page':undefined}>
              {scope.nav.label||scope.id}
            </a>)}
@@ -63,11 +63,11 @@ function PublicNavigation({scopeId}){
    </nav>
  </header>;
 }
-function PublicDock({scopeId,current='home'}){
+function PublicDock({scopeId,current='home',native=false}){
  return <div className="scope-feature-dock scope-floating-edit-buttons"
    role="toolbar" aria-label="Scope 功能選單" data-scope={scopeId} data-action-count={6}>
    {features.map(item=><a key={item.id}
-     href={item.id==='settings'?'/settings/?scopeid='+scopeId:navigationHref(scopeId,item.route,false)}
+     href={item.id==='settings'?(native?'/local/settings/index.html?scopeid='+scopeId:'/settings/?scopeid='+scopeId):navigationHref(scopeId,item.route,native)}
      aria-current={item.id===current?'page':undefined}>
      {item.id==='home'?<span className="scope-dock-active-pill" aria-hidden="true"/>:null}
      <span className="scope-dock-motion-icon"><BottomNavIcon name={item.name}/></span>
@@ -75,7 +75,7 @@ function PublicDock({scopeId,current='home'}){
    </a>)}
  </div>;
 }
-function SiteFooter({scopeId,home=true}){
+function SiteFooter({scopeId,home=true,native=false}){
  return <>
    {home?<div className="scope-home-edit-entry">
      <button type="button" className="loc-button" data-loc-upgrade="edit">進入編輯模式</button>
@@ -83,7 +83,7 @@ function SiteFooter({scopeId,home=true}){
    <footer className="scope-footer" data-scope={scopeId}>
      <div className="scope-footer-row">
        <a href="mailto:sopa2306@gmail.com">聯絡方式</a>
-       {home?<button className="loc-button" type="button" data-loc-upgrade="interface">語系與主題設定</button>:<a href="/settings/">語系與主題設定</a>}
+       {home?<button className="loc-button" type="button" data-loc-upgrade="interface">語系與主題設定</button>:<a href={native?"/local/settings/index.html?scopeid="+scopeId:"/settings/?scopeid="+scopeId}>語系與主題設定</a>}
        <small className="scope-footer-date-basis">日期基準：Asia/Taipei (UTC+08:00)</small>
      </div>
    </footer>
@@ -102,17 +102,17 @@ function StaticSite({scopeId,rows}){
 }
 // Static HTML already owns navigation and the six feature links.
 // An interactive component mounts only inside the following content slot.
-export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link='',feature='home',work=false}={}){
+export function renderPublicFeatureFrame({scopeId='loc',title='LOC 月典',link='',feature='home',work=false,native=false}={}){
  return renderToStaticMarkup(<>
-   <PublicNavigation scopeId={scopeId}/>
+   <PublicNavigation scopeId={scopeId} native={native}/>
    <div id="loc-interactive-root" data-feature-content="true">
      {work?<AuthorHomeView section="work"/>:<main className="scope-main"><section className="scope-page">
        <header className="loc-card scope-hero"><h1>{title}</h1></header>
        {link?<p><a href={link}>前往 LunaRunes</a></p>:null}
      </section></main>}
    </div>
-   <PublicDock scopeId={scopeId} current={feature}/>
-   <SiteFooter scopeId={scopeId} home={false}/>
+   <PublicDock scopeId={scopeId} current={feature} native={native}/>
+   <SiteFooter scopeId={scopeId} home={false} native={native}/>
  </>);
 }
 function activateOnDemand(entry,scopeId){

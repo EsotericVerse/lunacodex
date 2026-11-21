@@ -76,6 +76,12 @@ jobs:
           const html=fs.readFileSync('out/my-phone/index.html','utf8');
           assert.match(html,/data-loc-scope="local"/);
           assert.match(html,/data-loc-component="phone"/);
+          assert.match(html,/data-native="ios"/);
+          assert.match(html,/href="\/lo3rwang\/index.html"/);
+          assert.doesNotMatch(html,/href="https:\/\/loc\.lo3rwang\.cc\/lo3rwang\//);
+          const local=fs.readFileSync('out/local/statics/index.html','utf8');
+          assert.match(local,/href="\/local\/culture\/index.html"/);
+          assert.match(local,/href="\/local\/settings\/index.html\?scopeid=local"/);
           const report=JSON.parse(fs.readFileSync('out/_loc/build-report.json','utf8'));
           assert.ok(report.routes>=60);
           assert.equal(fs.existsSync('out/_next'),false);
