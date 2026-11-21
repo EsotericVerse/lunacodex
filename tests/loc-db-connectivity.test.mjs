@@ -295,3 +295,18 @@ test('every multi-statement MCP public read verifies grants in its own transacti
   assert.match(source,/borrowed:true,inTransaction:true/);
   assert.match(source,/return runMcp\(trx\)/);
 });
+
+test('Scope Registry no longer invokes the obsolete silver.manage SQL functions',()=>{
+  const managed=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const handler=managed.slice(managed.indexOf('async function manageScopeRegistryKysely('),
+    managed.indexOf('export async function executeManagedKyselyAction('));
+  assert.ok(handler.includes("trx.selectFrom('api.manage')"));
+  assert.ok(handler.includes(".forUpdate().executeTakeFirst()"));
+  assert.ok(handler.includes("trx.insertInto('api.manage')"));
+  assert.ok(handler.includes("trx.updateTable('api.manage')"));
+  assert.ok(handler.includes("trx.updateTable('silver.'+id)"));
+  assert.ok(handler.includes("await canLocAccess(trx,'global')"));
+  assert.ok(handler.includes('Scope Registry parent would create a cycle'));
+  assert.doesNotMatch(handler,/silver\.manage|sql\`(?:select|call)\s+(?:silver|api)\./i);
+  assert.match(managed,/if\(name==='manage_scope_registry'\)return \{data:await manageScopeRegistryKysely\(trx,args\),count:null\}/);
+});
