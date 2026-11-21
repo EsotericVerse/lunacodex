@@ -35,7 +35,7 @@ try{
     const source=path.join(root,'public',asset);
     if(fs.existsSync(source))fs.copyFileSync(source,path.join(temp,asset));
   }
-  for(const directory of ['assets','extension']){
+  for(const directory of ['assets']){
     const source=path.join(root,'public',directory);
     if(fs.existsSync(source))fs.cpSync(source,path.join(temp,directory),{recursive:true});
   }
