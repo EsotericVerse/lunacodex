@@ -129,6 +129,24 @@ test('Scope Registry refuses duplicate routes, unlisted writes and cycles',async
     p_values:{display_name:'Hijack',directory:'/admin'}
   }),/System Scope Registry cannot be edited/);
 });
+test('dynamic Scopes cannot occupy existing LOC URLs or service hosts',async()=>{
+  const state=fakeRegistry();
+  const create=(id,route)=>manageScopeRegistryNative(state.trx,{
+    p_operation:'create_group',p_scope_id:id,p_values:{
+      display_name:'Reserved',parent_scope_id:'loc',...route
+    }
+  });
+  await assert.rejects(create('example',{directory:'/culture'}),/existing LOC route/);
+  await assert.rejects(create('example',{domain:'auth.lo3rwang.cc'}),/existing service/);
+  await assert.rejects(provisionScopeNative(state.trx,{
+    p_scope_id:'local',p_display_name:'Invalid',p_email:'valid@example.com',
+    p_directory:'/local'
+  }),/Reserved LOC Scope/);
+  await assert.rejects(provisionScopeNative(state.trx,{
+    p_scope_id:'culture',p_display_name:'Invalid',p_email:'valid@example.com',
+    p_directory:'/custom'
+  }),/existing route/);
+});
 test('Scope creation and deletion both demand existing global LOC authorization',async()=>{
   const denied={selectFrom(){assert.fail('unauthorized SQL request');}};
   await assert.rejects(provisionScopeNative(denied,{
