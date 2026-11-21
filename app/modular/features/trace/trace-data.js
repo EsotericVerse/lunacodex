@@ -353,6 +353,22 @@ export async function updateTraceVisibilityBulk({scopeId,uids=[],invisible=false
   }));
   return ids.length;
 }
+// TraceManagement's six-key Save is one native business transaction:
+// title groups, current Point, existing relation-safe merge and visibility
+// share authorization, the SQL connection and COMMIT/ROLLBACK.
+export async function saveTracePage({scopeId,renames=[],point=null,
+  keepUid='',mergeUids=[],visibility=null}={}){
+  const scope=writableScope(scopeId);
+  const result=checked(await dbAuthClient.schema('silver').managedAction(
+    'save_scope_trace_edit',{
+      p_scope_id:scope,p_renames:renames,p_point:point,p_keep_uid:keepUid,
+      p_merge_uids:mergeUids,p_visibility:visibility
+    }),'儲存空間定錨');
+  if(!result||!['renamed_count','merged_count','visibility_count'].every(
+    key=>Number.isSafeInteger(result[key])&&result[key]>=0))
+    throw Error('空間儲存回執未確認，請重新讀取，勿重複提交');
+  return result;
+}
 export async function deleteTraceMap({scopeId,uid,type='path'}){
   const id=writableScope(scopeId);
   if(!validUid(uid)||!['path','trace'].includes(type))throw Error('無效的刪除目標');
