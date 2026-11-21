@@ -2,7 +2,7 @@
 // No JSX, React, Preact, Next, Vite, esbuild or framework compatibility step.
 import fs from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {documentHTML,SCOPES,SECTIONS,href} from '../modules/loc/site/index.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -11,7 +11,6 @@ const published=path.join(root,'app/modular/published-blocks');
 const sourceFiles={
   loc:'loc/index.js',lo3rwang:'lo3rwang/index.js',lrunes:'lrunes/index.js'
 };
-const targetFile=(route)=>path.join(output,route.replace(/^\/+/,'')+'index.html');
 if(!fs.existsSync(path.join(root,'public/loc-native.css')))
   throw new Error('LOC native CSS is missing');
 if(!fs.existsSync(path.join(root,'public/loc-native-client.mjs')))
@@ -20,7 +19,7 @@ const snapshots=Object.create(null);
 for(const [scope,relative] of Object.entries(sourceFiles)){
   const source=path.join(published,relative);
   if(!fs.existsSync(source))throw new Error('LOC published data missing: '+source);
-  const imported=await import('file://'+source.replaceAll('\\','/'));
+  const imported=await import(pathToFileURL(source).href);
   if(!Array.isArray(imported.default))throw new TypeError('Invalid published LOC blocks');
   snapshots[scope]=imported.default;
   if(!snapshots[scope].some(row=>row.page_name==='index'&&Number(row.block_order)===1))
@@ -31,7 +30,31 @@ fs.rmSync(temp,{recursive:true,force:true});
 fs.mkdirSync(temp,{recursive:true});
 try{
   // Never merge a previous framework bundle back into the native output.
-  fs.cpSync(path.join(root,'public'),temp,{recursive:true});
+  // Copy only native public resources; never ship legacy UI scripts or SW.
+  for(const asset of ['loc-native.css','loc-native-client.mjs','CNAME','_headers','_routes.json']){
+    const source=path.join(root,'public',asset);
+    if(fs.existsSync(source))fs.copyFileSync(source,path.join(temp,asset));
+  }
+  for(const directory of ['assets','extension']){
+    const source=path.join(root,'public',directory);
+    if(fs.existsSync(source))fs.cpSync(source,path.join(temp,directory),{recursive:true});
+  }
+  // LOC's source images remain authored assets, not imported JS/CSS objects.
+  const images=path.join(root,'assets/pics');
+  if(fs.existsSync(images)){
+    const exclude=path.join(images,'64Card_org');
+    fs.cpSync(images,path.join(temp,'pics'),{recursive:true,
+      filter:entry=>process.env.LOC_NATIVE_BUNDLE!=='1'||
+        (entry!==exclude&&!entry.startsWith(exclude+path.sep))});
+  }
+  const vendor=path.join(root,'node_modules/maplibre-gl/dist');
+  for(const name of ['maplibre-gl.js','maplibre-gl.css']){
+    const source=path.join(vendor,name);
+    if(!fs.existsSync(source))throw new Error('LOC map extension missing: '+source);
+    const dest=path.join(temp,'_loc','vendor',name);
+    fs.mkdirSync(path.dirname(dest),{recursive:true});
+    fs.copyFileSync(source,dest);
+  }
   const nativeCore=path.join(temp,'_loc','core');
   fs.mkdirSync(path.dirname(nativeCore),{recursive:true});
   fs.cpSync(path.join(root,'modules/loc/core'),nativeCore,{recursive:true});
