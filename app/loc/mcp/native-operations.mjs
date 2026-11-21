@@ -137,6 +137,8 @@ export async function handleNativeLocOperation(request,env={},{
   if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
     return reply({error:{message:'Payload too large'}},413);
   let operationKind='',importPhase='request';
+  let selected=null;
+  let onAbort=null;
   try{
     let body;
     try{body=await readBoundedJson(request.body,MAX_BYTES)}
@@ -190,7 +192,12 @@ export async function handleNativeLocOperation(request,env={},{
     const externalTarget=claims.db_target&&claims.db_target!==primaryId
       ?claims.db_target:'';
     if(operationKind==='short-import')importPhase='database';
-    const selected=await database(env,control?'':externalTarget,{waitUntil});
+    selected=await database(env,control?'':externalTarget,{waitUntil});
+    // Cancellation belongs to the request, not to whichever page initiated it.
+    // Closing an in-flight client aborts its uncommitted SQL transaction.
+    onAbort=()=>{void selected?.pool?.abort?.()};
+    if(request.signal?.aborted)onAbort();
+    else request.signal?.addEventListener('abort',onAbort,{once:true});
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     // Personal preferences are self-service under the verified website Session.
@@ -458,5 +465,19 @@ em.count,0)}});
       ...(importCode?{code:importCode,stage:importPhase}:{}),
       ...(profileFailure?{code,stage:'db_connection'}:{})}},
       status>=400&&status<=599?status:500);
+  }finally{
+    if(onAbort)request.signal?.removeEventListener('abort',onAbort);
+    // This is the single resource ownership boundary for EVERY native LOC
+    // operation, including permission denial, read-only work and imports.
+    // Kysely destroy awaits the request-scoped pool's close in all cases.
+    if(selected?.db){
+      try{await selected.db.destroy();}
+      catch(error){
+        console.error('[LOC native database cleanup]',{
+          code:String(error?.code||'CLOSE_FAILED').slice(0,64)
+        });
+        try{await selected.pool?.end?.();}catch{}
+      }
+    }
   }
 }
