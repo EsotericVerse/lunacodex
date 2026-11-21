@@ -17,8 +17,8 @@ function denial(message,httpStatus){
 
 // One bounded role SELECT, shared by MCP/Extension and website. No extra
 // activeMcpRows Kysely implementation or separate grant builder.
-export async function loadMcpLocAccess(db,email,{dialect,engine}={}){
-  const rights=await readLocAccess(db,email,{dialect,engine});
+export async function loadMcpLocAccess(db,email,{dialect,engine,transactional=false}={}){
+  const rights=await readLocAccess(db,email,{dialect,engine,transactional});
   if(!rights.roles.length)throw denial('LOC MCP role not granted',403);
   return rights;
 }
