@@ -68,7 +68,6 @@ export const SCOPES=Object.freeze({
 });
 
 const DEFAULT_SCOPE_ID=Object.values(SCOPES).find(scope=>scope.default)?.id||Object.keys(SCOPES)[0];
-const GENERIC_SCOPE_HOST='loc.lo3rwang.cc';
 const GENERIC_SCOPE_PATH='/scope-shell';
 const SCOPE_ID_PATTERN=/^[a-z][a-z0-9]{0,14}$/;
 
@@ -125,63 +124,10 @@ function genericScope(id){
   });
 }
 
-function cleanHost(host=''){
-  return String(host||'').toLowerCase().split(':')[0];
-}
-
 function cleanPath(pathname='/'){
   const value='/' + String(pathname||'/')
-    .split('?')[0]
-    .split('#')[0]
-    .split('/')
-    .filter(Boolean)
-    .join('/');
+    .split('?')[0].split('#')[0].split('/').filter(Boolean).join('/');
   return value==='/'?'/':value;
-}
-
-// Resolve all public Scope URLs from the generated JS snapshot, not the
-// bootstrap RPC. This is ready before hydration, without SQL/ISR round trips.
-// Updates are made by regenerating scope-route-index.js after an admin edit.
-const registryRouteRows=new Map(SCOPE_ROUTE_INDEX
-  .filter(row=>row.active!==false)
-  .map(row=>[row.scope_id,{
-    domain:String(row.domain||'').trim().toLowerCase(),
-    directory:String(row.directory||'').trim()
-  }]));
-const LOC_FALLBACK_HOST='loc.lo3rwang.cc';
-export function resolveScope(host='',pathname='/'){
-  const h=cleanHost(host);
-  const path=cleanPath(pathname);
-  const segments=path.split('/').filter(Boolean);
-  // System Admin is a protected LOC feature route, not a published Scope.
-  // Keep the same canonical LOC Scope through navigation, hydration and
-  // EditDock; independent global authorization still gates the page.
-  if((path==='/admin'||path.startsWith('/admin/'))&&
-      (!h||h===LOC_FALLBACK_HOST||h==='localhost'||h==='127.0.0.1'))
-    return 'loc';
-  // Directory routes MUST precede the parent's catch-all Domain route:
-  // loc.lo3rwang.cc/lo3rwang/ is lo3rwang, not loc.
-  for(const [id,row] of registryRouteRows){
-    if(!row.directory||h!==LOC_FALLBACK_HOST)continue;
-    const base=cleanPath(row.directory);
-    if(path===base||path.startsWith(base+'/'))return id;
-  }
-  // The published LOC origin also carries a real /lrunes/* Next.js mount.
-  // This is an explicit built-in application alias, NOT an inferred Scope
-  // Directory: it must resolve to lrunes for theme, editor and permissions
-  // even while the canonical registered Domain is lrunes.lo3rwang.cc.
-  if(h===LOC_FALLBACK_HOST&&(path==='/lrunes'||path.startsWith('/lrunes/')))
-    return 'lrunes';
-  for(const [id,row] of registryRouteRows){
-    if(row.domain&&row.domain===h)return id;
-  }
-  // The native static shell has filesystem paths even without public domains.
-  // Never override a declared public Domain with a guessed directory.
-  if(segments[0]&&segments[0]!=='loc'&&SCOPES[segments[0]]){
-    const row=registryRouteRows.get(segments[0]);
-    if(!row?.domain||h==='localhost'||h==='127.0.0.1'||!h)return segments[0];
-  }
-  return DEFAULT_SCOPE_ID;
 }
 
 export function getScope(id){

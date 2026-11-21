@@ -5,6 +5,7 @@ on:
     paths:
       - 'scripts/build-loc-static.mjs'
       - 'scripts/verify-loc-output.mjs'
+      - 'app/modular/routing/scope-registry.js'
       - 'app/loc/runtime/html-entry.jsx'
       - 'tests/loc-html-base.test.mjs'
       - '.github/workflows/loc-static-regression.yml'
