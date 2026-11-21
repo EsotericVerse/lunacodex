@@ -21,13 +21,21 @@ function fakeRegistry(initial=ORIGINAL){
   const calls=[];
   const trx={
     selectFrom(table){
-      assert.equal(table,'api.manage');
-      return {select(cols){
-        assert.ok(cols.includes('id'));
-        return {orderBy(column){
-          assert.equal(column,'id');
-          return {forUpdate(){
-            return {async execute(){calls.push('registry-lock');return registry;}};
+      assert.equal(table,'api.manage as m');
+      return {leftJoin(relation,on,left){
+        assert.deepEqual([relation,on,left],['silver.loc as l','l.id','m.id']);
+        return {select(cols){
+          assert.ok(cols.includes('m.id as id'));
+          return {orderBy(column){
+            assert.equal(column,'m.id');
+            return {forUpdate(alias){
+              assert.equal(alias,'m');
+              return {async execute(){
+                calls.push('registry-lock');
+                return registry.map(row=>({...row,
+                  display_name:summary.get(row.id)||null}));
+              }};
+            }};
           }};
         }};
       }};
