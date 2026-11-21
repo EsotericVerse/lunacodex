@@ -238,6 +238,9 @@ export default function ScopeEditableBlocks({
         canAddBlock={canAddBlock}
         slotClassName={slotClassName}
         editSlotClassName={editSlotClassName}
+        renderDisplay={renderDisplay}
+        resolveSlotClassName={resolveSlotClassName}
+        resolveSlotStyle={resolveSlotStyle}
         preserveOrder={Boolean(normalizedOrders.length)}
         toolbar={toggleButton}
         onDirtyChange={onDirtyChange}
