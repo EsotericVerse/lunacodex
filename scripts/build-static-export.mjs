@@ -42,6 +42,8 @@ try{
     LOC_STATIC_EXPORT:'1'
   });
   run(process.execPath,[path.join(root,'scripts','copy-static-assets.mjs')]);
+  // Experiment branch only: bundle Preact against the LOC editor in isolation.
+  run(process.execPath,[path.join(root,'scripts','verify-preact-compat-preview.mjs')]);
   // Visual diagnostics are explicit QA, not part of every production build.
   fs.mkdirSync(nextBuild,{recursive:true});
   fs.writeFileSync(targetFile,target+'\n');
