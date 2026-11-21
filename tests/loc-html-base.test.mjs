@@ -183,10 +183,11 @@ test('one LOC Web shell covers authored features, while home and native remain d
 });
 
 test('combined LOC release uses one HTML Router and one authorized SQL transaction boundary',()=>{
-  const builder=read('../scripts/build-loc-static.mjs');
-  const native=read('../app/loc/mcp/native-operations.mjs');
-  const scope=read('../app/loc/providers/kysely-scope-lifecycle.mjs');
-  const dock=read('../app/modular/edit-dock.jsx');
+  const source=path=>readFileSync(new URL(path,import.meta.url),'utf8');
+  const builder=source('../scripts/build-loc-static.mjs');
+  const native=source('../app/loc/mcp/native-operations.mjs');
+  const scope=source('../app/loc/providers/kysely-scope-lifecycle.mjs');
+  const dock=source('../app/modular/edit-dock.jsx');
   assert.match(builder,/sharedWebRoutes\(records\)/);
   assert.match(builder,/shellRouteBootstrap\(records\)/);
   assert.match(builder,/sharedWebRedirects\(records\)/);
