@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'scripts/build-loc-static.mjs'
+      - 'scripts/render-public-home.jsx'
       - 'scripts/verify-loc-output.mjs'
       - 'scripts/sync-page-locale-assets.mjs'
       - 'app/modular/routing/scope-registry.js'
@@ -25,6 +26,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/build-loc-static.mjs'
+      - 'scripts/render-public-home.jsx'
       - 'scripts/verify-loc-output.mjs'
       - 'app/**/page.html'
       - 'app/page.html'
@@ -75,7 +77,9 @@ jobs:
             assert.match(html,/<html lang="zh-Hant">/);
             assert.match(html,/<link rel="stylesheet" href="/);
           }
-          assert.match(fs.readFileSync('out/index.html','utf8'),/loc-static-reading/);
+          const home=fs.readFileSync('out/index.html','utf8');
+          assert.match(home,/id="loc-interactive-root"/);
+          assert.doesNotMatch(home,/loc-home-block__header|loc-static-reading|loc-static-upgrade/);
           NODE
 
       - name: Browser smoke — real HTML feature mount without extra dependencies
@@ -125,7 +129,10 @@ jobs:
           assert.equal(fs.existsSync('out/_next'),false);
           for(const page of ['out/index.html','out/lo3rwang/index.html','out/lrunes/index.html']){
             const homepage=fs.readFileSync(page,'utf8');
-            assert.match(homepage,/loc-static-reading/);
+            if(page==='out/index.html'){
+              assert.match(homepage,/id="loc-interactive-root"/);
+              assert.doesNotMatch(homepage,/loc-home-block__header|loc-static-reading/);
+            }else assert.match(homepage,/loc-static-reading/);
             assert.match(homepage,/href="\/my-phone\/index.html"/);
             assert.match(homepage,/data-native="ios"/);
             assert.doesNotMatch(homepage,/<script type="module" src="\/_loc\/routes\/interactive.js"/);
