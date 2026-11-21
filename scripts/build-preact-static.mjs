@@ -4,6 +4,7 @@ import {createRequire} from 'node:module';
 import {spawnSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {NATIVE_STATIC_ROUTE_SCRIPT,INITIAL_THEME_SCRIPT} from '../app/modular/runtime/theme-bootstrap.mjs';
+import {renderPublicScopeHome} from './render-loc-static-home.mjs';
 
 const root=process.cwd();
 const out=path.join(root,'out');
@@ -111,6 +112,7 @@ try{
   if(!fs.existsSync(path.join(out,cssHref.slice(1))))throw new Error('LOC global CSS file not found at '+cssHref);
   console.log('[LOC styles] '+cssHref+'; CSS assets='+cssOutputs.length);
   for(const page of records){
+    const staticHome=!native?renderPublicScopeHome({route:page.route,entry:page.name}):null;
     const dest=path.join(out,page.route.slice(1));
     fs.mkdirSync(dest,{recursive:true});
     const scope=page.route.startsWith('/lrunes/')?'theme-4':'theme-7';
@@ -126,9 +128,11 @@ try{
       '<link rel="stylesheet" href="'+cssHref+'">',css,
       '<script id="loc-native-static-route">'+NATIVE_STATIC_ROUTE_SCRIPT+'</script>',
       '<script id="loc-theme-bootstrap">'+INITIAL_THEME_SCRIPT+'</script>',
-      '</head><body class="loc-app-shell"><div id="loc-root">',
-      '<main class="scope-main"><section class="scope-page"><header class="loc-card scope-hero"><h1>'+escape(page.title)+'</h1></header></section></main>',
-      '</div><script type="module" src="/'+page.name+'.js"></script></body></html>'
+      '</head><body class="loc-app-shell'+(staticHome?' loc-static-reading':'')+'"><div id="loc-root">',
+      staticHome?staticHome.html:'<main class="scope-main"><section class="scope-page"><header class="loc-card scope-hero"><h1>'+escape(page.title)+'</h1></header></section></main>',
+      '</div>',
+      staticHome?staticHome.loader:'<script type="module" src="/'+page.name+'.js"></script>',
+      '</body></html>'
     ].join('');
     fs.writeFileSync(path.join(dest,'index.html'),html);
   }
