@@ -112,6 +112,15 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     headerSource:heroSource,imageUrl:heroImageOverride,
     publicFeature,contentClass:publicFeature?'loc-public-content':''
   });
+  // Mark only this already-painted Hero as ready; protected management
+  // entrance checks run after its SQL result or fallback has settled.
+  const heroReady=!hasFeatureHero||publicHeroQuery.isSuccess||
+    publicHeroQuery.isError||managementMode;
+  useEffect(()=>{
+    if(!heroCanvas||!heroReady)return;
+    heroCanvas.dataset.locHeroReady='true';
+    window.dispatchEvent(new Event('loc-feature-hero-ready'));
+  },[heroCanvas,heroReady]);
   if(heroCanvas)return <>
     <ExistingHero canvas={heroCanvas}>{hero}</ExistingHero>
     {children}
