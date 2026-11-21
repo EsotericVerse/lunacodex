@@ -71,7 +71,7 @@ for(const route of pageRoutes){
   // different URLs, not eighty separate Nav/Footer/Canvas implementations.
   // Never let a feature accidentally render a second outer shell.
   const frameClasses=[...html.matchAll(/class="([^"]*)"/g)]
-    .map(match=>match[1].split(/\\s+/));
+    .map(match=>match[1].split(' '));
   for(const frame of ['scope-global','scope-feature-dock','scope-footer']){
     const count=frameClasses.filter(classes=>classes.includes(frame)).length;
     if(count!==1)throw Error('LOC shared HTML frame '+frame+' appears '+count+
