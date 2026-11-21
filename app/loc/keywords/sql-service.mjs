@@ -616,12 +616,18 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
     return {uid:itemUid,removed:linked.removed};
   });
 }
+// Shared transactional body. The managed multi-write endpoint already owns
+// its transaction; it must not open another connection or nested COMMIT.
+export async function synchronizeKeywordLibraryInTransaction(trx,scope){
+  checkScope(scope);
+  return ensureScopePatternLibrary(trx,scope);
+}
 export async function synchronizeKeywordLibrary(db,scope,{
   authorizeTransaction=()=>{}
 }={}){
   checkScope(scope);
   return db.transaction().execute(async trx=>{
     await authorizeTransaction(trx);
-    return ensureScopePatternLibrary(trx,scope);
+    return synchronizeKeywordLibraryInTransaction(trx,scope);
   });
 }
