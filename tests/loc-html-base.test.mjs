@@ -76,6 +76,22 @@ test('public data is queried after the frame, never from bundled Block snapshots
   assert.doesNotMatch(blocks,/loadPublishedBlocks/);
   assert.match(blocks,/selectScopeBlocks\(scopeId,pageName\)/);
 });
+test('the original six-key menu is reused for management without a second portal',()=>{
+  assert.match(entry,/links\.length!==6/);
+  assert.match(entry,/link\.dataset\.locMenuMode='management'/);
+  assert.match(entry,/restore of restoration/);
+  assert.doesNotMatch(entry,/scope-edit-dock-actions/);
+});
+test('entry authorization begins after the fixed Hero has settled',()=>{
+  const hero=readFileSync(new URL('../app/loc/runtime/fixed-canvas.jsx',import.meta.url),'utf8');
+  const management=readFileSync(new URL('../app/loc/management/ManagementAccess.jsx',import.meta.url),'utf8');
+  const admin=readFileSync(new URL('../app/loc/views/AdminHomeView.jsx',import.meta.url),'utf8');
+  const feature=readFileSync(new URL('../app/modular/ui.jsx',import.meta.url),'utf8');
+  assert.match(hero,/loc-feature-hero-ready/);
+  assert.match(management,/if\(!heroReady\)return undefined/);
+  assert.match(admin,/useAccount\(\{enabled:heroReady\}\)/);
+  assert.match(feature,/heroCanvas\.dataset\.locHeroReady='true'/);
+});
 test('LRS links are published HTML instead of React redirects',()=>{
   assert.match(build,/outbound\?'<script>/);
   assert.match(check,/LRS outbound HTML must link directly/);
