@@ -89,11 +89,11 @@ Deno.serve(async(request)=>{
    content:r.content,url:r.url,createtime:null,date:null,...flags};
  });
  let db:any=null;
- let closed=false;
- const close=async()=>{
-  if(closed||!db)return;
-  closed=true;
-  await db.destroy();
+ let closing:Promise<void>|null=null;
+ const close=()=>{
+  if(!db)return Promise.resolve();
+  if(!closing)closing=db.destroy();
+  return closing;
  };
  const aborted=()=>request.signal.aborted;
  const onAbort=()=>{void close().catch(()=>{});};
