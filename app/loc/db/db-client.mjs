@@ -29,6 +29,11 @@ function routedSchema(schemaName,cloudSchema){
       if(isUnprovisionedLocal(payload?.p_table,schemaName))return unavailableLocal();
       return cloudSchema.managedWrite(payload);
     },
+    managedTransaction(operations){
+      if(schemaName==='local'||operations?.some(item=>
+        isUnprovisionedLocal(item?.p_table,schemaName)))return unavailableLocal();
+      return cloudSchema.managedTransaction(operations);
+    },
     managedAction(name,args={}){
       if(schemaName==='local'||args?.p_scope_id==='local')return unavailableLocal();
       return cloudSchema.managedAction(name,args);
@@ -68,4 +73,4 @@ export const dbConfiguredPublicClient=adapter.configuredPublicClient
 export const dbAuthEvents=adapter.auth;
 export const dbPrimarySourceLabel=adapter.primarySourceLabel||'Primary';
 export const dbBackupSourceLabel=adapter.backupSourceLabel??'';
-export const {publicClient:dbPublicClient,authClient:dbAuthClient,dbAuthRelation,selectAuthRow,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocSso,signOutAccount}=client;
+export const {publicClient:dbPublicClient,authClient:dbAuthClient,dbAuthRelation,selectAuthRow,transactionWrites,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocSso,signOutAccount}=client;
