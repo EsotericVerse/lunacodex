@@ -60,7 +60,7 @@ try{
   fs.cpSync(path.join(root,'modules/loc/core'),nativeCore,{recursive:true});
   let total=0;
   for(const scope of Object.keys(SCOPES)){
-    for(const section of ['home',...Object.keys(SECTIONS)]){
+    for(const section of ['home',...Object.keys(SECTIONS).filter(value=>value!=='article')]){
       const pathname=href(scope,section);
       const html=documentHTML({scope,section,rows:snapshots[scope],
         description:section==='home'?'LOC 自有 HTML Framework':
@@ -71,6 +71,11 @@ try{
       total++;
     }
   }
+  const workDir=path.join(temp,'work');
+  fs.mkdirSync(workDir,{recursive:true});
+  fs.writeFileSync(path.join(workDir,'index.html'),
+    documentHTML({scope:'loc',section:'article',description:'LOC 公開作品'}));
+  total++;
   // The ordinary LOC server exposes only its own generated HTML and assets.
   // A native IPA may reuse this directory without any JSX hydration.
   fs.rmSync(output,{recursive:true,force:true});
