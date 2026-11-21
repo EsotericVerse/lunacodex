@@ -55,3 +55,20 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket='',wait
   return connection;
 }
 export {db_connection as directMcpKysely};
+
+/** Close a trusted LOC request's SQL ownership once all work has settled.
+ * db.destroy() owns Kysely's connection release; pool.end() also closes
+ * connections acquired before Kysely could finish constructing a query.
+ */
+export async function closeLocDatabase(port){
+  if(!port)return;
+  try{await port.db?.destroy?.();}
+  finally{await port.pool?.end?.();}
+}
+export function bindLocRequestAbort(port,signal){
+  if(!signal||!port?.pool?.abort)return ()=>{};
+  const abort=()=>{void port.pool.abort();};
+  if(signal.aborted)abort();
+  else signal.addEventListener('abort',abort,{once:true});
+  return ()=>signal.removeEventListener('abort',abort);
+}
