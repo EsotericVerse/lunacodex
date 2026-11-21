@@ -7,6 +7,7 @@
 import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
+import {synchronizeKeywordLibraryInTransaction} from '../keywords/sql-service.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -112,7 +113,8 @@ export async function manageScopeRegistryNative(trx,args){
   const current=registered(rows,id);
   if(operation==='create_group'&&current)reject('Scope ID already exists',409);
   if(operation==='update'&&!current)reject('Scope Registry row not found',404);
-  if(operation==='update'&&current.manage_role==='system')
+  if(operation==='update'&&(
+    id==='admin'||!['group','scope'].includes(current.manage_role)))
     reject('System Scope Registry cannot be edited',403);
   const name=nonEmptyName(values.display_name??current?.display_name);
   const target=route(values.domain!==undefined?values.domain:current?.domain,
@@ -274,9 +276,17 @@ export async function provisionScopeNative(trx,args){
     sort_order:sort,manage_role:'scope',
     galaxy_table:'galaxy',anchor_table:'anchor'
   }).execute();
+  // Pattern is the authoritative Keyword ZModel index. Copying only Item
+  // labels would leave the new Scope with broken Item -> Pattern UID edges.
+  // Reconcile the 67 literal Items before the SAME COMMIT as Registry/DDL.
+  const indexed=copyKeywords
+    ?await synchronizeKeywordLibraryInTransaction(trx,scope):null;
+  if(copyKeywords&&(!indexed||indexed.created<1))
+    reject('Scope Keyword Pattern index incomplete',409);
   return receipt(scope,name,target,{
     parent_scope_id:parent,keyword_rows:keywordCount,
-    keyword_class_uid:classUid,locale,created:true});
+    keyword_class_uid:classUid,
+    keyword_patterns:indexed?.created??0,locale,created:true});
 }
 
 export async function deleteScopeNative(trx,args){

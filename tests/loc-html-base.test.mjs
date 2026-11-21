@@ -181,3 +181,21 @@ test('one LOC Web shell covers authored features, while home and native remain d
   assert.match(redirects,/\/lrunes\/card\/ https:\/\/lrs\.lo3rwang\.cc\/card\/ 302/);
   assert.match(sharedWebRobotsHeaders(pages),/\/admin\/\n  X-Robots-Tag: noindex, nofollow/);
 });
+
+test('combined LOC release uses one HTML Router and one authorized SQL transaction boundary',()=>{
+  const source=path=>readFileSync(new URL(path,import.meta.url),'utf8');
+  const builder=source('../scripts/build-loc-static.mjs');
+  const native=source('../app/loc/mcp/native-operations.mjs');
+  const scope=source('../app/loc/providers/kysely-scope-lifecycle.mjs');
+  const dock=source('../app/modular/edit-dock.jsx');
+  assert.match(builder,/sharedWebRoutes\(records\)/);
+  assert.match(builder,/shellRouteBootstrap\(records\)/);
+  assert.match(builder,/sharedWebRedirects\(records\)/);
+  assert.match(builder,/outboundRedirectRoutes/);
+  assert.match(native,/const lifecycle=body\.kind==='managed-action'/);
+  assert.match(native,/transaction\.setIsolationLevel\('serializable'\)/);
+  assert.match(native,/readLocAccess\(trx,claims\.email/);
+  assert.match(scope,/requireGlobal\(trx\)/);
+  assert.match(scope,/copyDefaultKeywordClass\(trx,scope\)/);
+  assert.match(dock,/transactionWrites\(operations\)/);
+});
