@@ -55,7 +55,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       (targetEmail&&targetEmail===saved.email))clearAuthorization();
   }
   // A failed write must never look saved: show a visible notice, then rethrow so the caller also sees the error.
-  const WRITE_FAILED_NOTICE='儲存失敗，資料尚未寫入資料庫，請稍後再試。';
+  const WRITE_FAILED_NOTICE='儲存失敗或結果未確認，請重新讀取確認後再重試。';
   function withWriteNotice(run){
     return async(...args)=>{
       try{return await run(...args);}
@@ -63,6 +63,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     };
   }
   const managementWrite=withWriteNotice(managementWriteUnchecked);
+  const transactionWrites=withWriteNotice(transactionWritesUnchecked);
   const insertRows=withWriteNotice(insertRowsUnchecked);
   // Import batch retries handle UID conflicts themselves. Keep auth checks and
   // failures, but do not flash a global notice for every bisected retry.
@@ -88,6 +89,43 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   const deleteScope=withWriteNotice(deleteScopeUnchecked);
   const provisionScope=withWriteNotice(provisionScopeUnchecked);
   const manageScopeRegistry=withWriteNotice(manageScopeRegistryUnchecked);
+
+  // A complete logical Save crosses the HTTP boundary once. The trusted
+  // backend checks identity and api.manage once and runs all steps atomically.
+  // Keywords and imports retain their own explicit large-batch protocols.
+  async function transactionWritesUnchecked(operations){
+    if(!Array.isArray(operations)||!operations.length)
+      throw new Error('LOC transaction requires at least one write');
+    preflightWrite();
+    const normalized=operations.map(item=>{
+      if(!item||typeof item!=='object'||Array.isArray(item))
+        throw new Error('Invalid LOC transaction write');
+      const table=item.p_table;
+      const operation=item.p_operation;
+      if(operation==='insert'){
+        const rows=Array.isArray(item.p_rows)?item.p_rows:[];
+        for(const row of rows)validateGalaxyWrite(table,row);
+        return {...item,p_rows:isScopedGalaxy(table)
+          ?prepareGalaxyInsertRows(table,rows):rows};
+      }
+      if(operation==='update'){
+        validateGalaxyWrite(table,item.p_values);
+        return {...item,p_values:isScopedGalaxy(table)
+          ?prepareGalaxyUpdateValues(table,item.p_values):item.p_values};
+      }
+      return item;
+    });
+    const {data,error}=await authClient.schema('silver').managedTransaction(normalized);
+    if(error)throw new Error(error.message||'LOC transaction failed');
+    if(!Array.isArray(data?.results)||data.results.length!==normalized.length)
+      throw new Error('LOC transaction result is unconfirmed; reload before retrying');
+    for(const item of normalized){
+      if(item.p_table!=='api.manage')continue;
+      const scopeFilter=(item.p_filters||[]).find(filter=>filter?.column==='id');
+      invalidateRelevantAuthorization(scopeFilter?.value,item.p_values?.email);
+    }
+    return data;
+  }
 
   async function managementWriteUnchecked(payload,{normalizedGalaxy=false}={}){
     preflightWrite(payload?.p_table);
@@ -555,7 +593,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(error)throw new Error(error.message||'Account sign-out failed');
   }
 
-  return {publicClient,authClient,dbAuthRelation,selectAuthRow,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocSso,signOutAccount};
+  return {publicClient,authClient,dbAuthRelation,selectAuthRow,transactionWrites,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocSso,signOutAccount};
 }
 
 // One universal hard ceiling for all database read adapters and selected columns.

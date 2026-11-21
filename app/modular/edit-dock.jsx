@@ -2,7 +2,7 @@
 
 import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState} from 'react';
 import {Capacitor} from '@capacitor/core';
-import {dbAuthEvents} from '../loc/db/db-client.mjs';
+import {dbAuthEvents,transactionWrites} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
 import {useQueryClient} from '../../packages/zenstack/client-queries';
@@ -131,7 +131,8 @@ export function EditDockProvider({children,scopeId}){
   // Each mounted editor supplies the *current page's* save function.
   // Unmounting clears it only if no later editor has replaced it.
   const register=useCallback(actions=>{
-    const editor={save:actions.save,discard:actions.discard,isDirty:actions.isDirty,
+    const editor={save:actions.save,prepareTransaction:actions.prepareTransaction,
+      discard:actions.discard,isDirty:actions.isDirty,
       isBusy:actions.isBusy,isDestructive:actions.isDestructive};
     registeredEditors.current.add(editor);
     const activate=()=>{
@@ -196,13 +197,52 @@ export function EditDockProvider({children,scopeId}){
     setNotice('');
     try{
       if(scopeId!=='local')assertEditorSession(window.sessionStorage);
-      for(const editor of editors){
-        const saved=await editor.save();
+      if(editors.length>1&&editors.some(editor=>
+        typeof editor.prepareTransaction!=='function')){
+        // Never claim an atomic page Save if some editors would issue their
+        // own independent HTTP requests and commit halfway through.
+        setNotice('部分編輯器尚未支援同次交易；已保留全部修改，請分別儲存。');
+        return;
+      }
+      if(editors.every(editor=>typeof editor.prepareTransaction==='function')){
+        const prepared=[];
+        try{
+          for(const editor of editors){
+            const plan=await editor.prepareTransaction();
+            if(epoch!==operationEpoch.current)return;
+            if(!plan||!Array.isArray(plan.operations))
+              throw new Error('管理編輯器未提供完整的交易操作');
+            prepared.push(plan);
+          }
+        }catch(error){
+          for(const plan of prepared){
+            try{await plan.onFailure?.(error);}catch{}
+          }
+          throw error;
+        }
+        try{
+          const operations=prepared.flatMap(plan=>plan.operations);
+          if(operations.length)await transactionWrites(operations);
+        }catch(error){
+          for(const plan of prepared){
+            try{await plan.onFailure?.(error);}catch{}
+          }
+          throw error;
+        }
+        // Only after confirmed COMMIT may any form clear its draft.
+        // A UI refresh failure cannot be mistaken for a SQL ROLLBACK.
+        for(const plan of prepared){
+          try{await plan.afterCommit?.();}
+          catch(error){
+            setNotice('資料已提交，但畫面更新失敗，請重新讀取。');
+            return;
+          }
+        }
+      }else{
+        const saved=await editors[0].save();
         if(epoch!==operationEpoch.current)return;
         if(saved!==true){
-          // The editor already reported why (e.g. 儲存失敗：…); only fall back
-          // to the generic line when it reported nothing.
-          if(!noticeRef.current)setNotice('部分設定未儲存，已保留編輯內容。請檢查各區塊提示。');
+          if(!noticeRef.current)setNotice('設定尚未儲存，已保留編輯內容。請檢查區塊提示。');
           return;
         }
       }
@@ -278,6 +318,8 @@ export function useEditDockForm(actions){
     if(!dock?.register)return;
     const unregister=dock.register({
       save:options=>latest.current.save?.(options),
+      prepareTransaction:latest.current.prepareTransaction
+        ?()=>latest.current.prepareTransaction():undefined,
       discard:()=>latest.current.discard?.(),
       isDirty:()=>Boolean(latest.current.isDirty?.()),
       isBusy:()=>Boolean(latest.current.isBusy?.()),

@@ -3,7 +3,7 @@
 // table/column/operator input, connection URL, or browser-selected driver.
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {scopeConfigColumns,scopeFeatureEnabled} from '../scope/scope-config-fields.mjs';
-import {directMcpKysely} from '../mcp/native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../mcp/native-kysely.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../packages/zenstack/policy-runtime.mjs';
@@ -161,12 +161,15 @@ export async function handleNativePublicContent(request,env={},{
     if(!scopeFeatureEnabled(published?.config,flag))
       return respond({error:'Public feature unavailable'},403);
   }
+  let port=null;
+  let releaseAbort=()=>{};
   try{
     // Alias and credential are server-owned. An HTTP parameter must never
     // determine the engine, endpoint, connection profile or SQL relation.
     const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
     if(!primary)throw Error('LOC main SQL target is not configured');
-    const port=await database(env,primary.target_id,{waitUntil});
+    port=await database(env,primary.target_id,{waitUntil});
+    releaseAbort=bindLocRequestAbort(port,request.signal);
     if(!port?.db||!['postgres','mysql','mssql'].includes(port.engine))
       return respond({error:'LOC native database unavailable',stage:'driver'},503);
     const query=port.db;
@@ -315,5 +318,10 @@ export async function handleNativePublicContent(request,env={},{
     console.error('[LOC native public content]',{stage:'kysely-query',code,reason,type});
     return respond({error:'LOC native Kysely query failed',
       stage:'kysely-query',code,reason,type},503);
+    }finally{
+    releaseAbort();
+    // Public reads return complete JSON before releasing the request's SQL.
+    try{await closeLocDatabase(port);}
+    catch(error){console.error('[LOC public SQL cleanup]',{code:String(error?.code||'CLOSE_FAILED').slice(0,64)});}
   }
 }

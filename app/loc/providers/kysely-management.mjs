@@ -209,7 +209,9 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   // This does not introduce a database Auth API or a separate SQL Gateway.
   await sql`reset role`.execute(trx);
   const relation=table==='manage'?'api.manage':'silver.'+table;
-  const name=modelName||relation;
+  // modelName is only a verified ZModel policy identity; Kysely queries
+  // must address the actual SQL relation, never the logical model name.
+  const name=relation;
   if(operation==='update'){
     // Every authorized managed relation has a fixed single-column PK:
     // Registry and Scope config -> id; Galaxy/Anchor/Blocks -> uid.

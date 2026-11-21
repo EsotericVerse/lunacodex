@@ -18,11 +18,11 @@ import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
-import {directMcpKysely} from './native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from './native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
-import {withFixedPolicyWrite} from '../../../packages/zenstack/policy-runtime.mjs';
+import {withFixedPolicyWrite,fixedPolicyWriteModel} from '../../../packages/zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
 import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 
@@ -31,7 +31,7 @@ const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','mcp-authorize','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-action','personal-read','personal-write']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','mcp-authorize','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
@@ -137,6 +137,8 @@ export async function handleNativeLocOperation(request,env={},{
   if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
     return reply({error:{message:'Payload too large'}},413);
   let operationKind='',importPhase='request';
+  let selected=null;
+  let releaseAbort=()=>{};
   try{
     let body;
     try{body=await readBoundedJson(request.body,MAX_BYTES)}
@@ -152,7 +154,7 @@ export async function handleNativeLocOperation(request,env={},{
     // The website exposes only short-import and the fixed-model managed
     // write. MCP business operations remain restricted to the dedicated
     // MCP hostname and their own audience.
-    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-action'&&body.kind!=='personal-read'&&body.kind!=='personal-write')
+    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-transaction'&&body.kind!=='managed-action'&&body.kind!=='personal-read'&&body.kind!=='personal-write')
       throw refusal('Not found',404);
     // The media importer is a website-only read for existing behavior, NOT an
     // additional MCP/Gateway operation or delegated authorization scope.
@@ -165,7 +167,7 @@ export async function handleNativeLocOperation(request,env={},{
     // LOC Auth verifies the identity; only active api.manage grants may
     // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
-      'managed-write','managed-action',
+      'managed-write','managed-transaction','managed-action',
       ...(body.kind==='mcp-conversation'&&['record','record_ordered'].includes(body.action)?['mcp-conversation']:[])]);
     // MCP write requires both an OAuth delegation for importing and the
     // independently checked LOC business permission. OAuth alone never grants
@@ -185,12 +187,15 @@ export async function handleNativeLocOperation(request,env={},{
     // Personal preferences and Admin settings always use LOC's control
     // database. A user's selected external database is for their Scope data,
     // never for silver.loc_user / api.manage.
-    const control=['personal-read','personal-write','managed-write','managed-action']
+    const control=['personal-read','personal-write','managed-write','managed-transaction','managed-action']
       .includes(body.kind);
     const externalTarget=claims.db_target&&claims.db_target!==primaryId
       ?claims.db_target:'';
     if(operationKind==='short-import')importPhase='database';
-    const selected=await database(env,control?'':externalTarget,{waitUntil});
+    selected=await database(env,control?'':externalTarget,{waitUntil});
+    // Cancellation belongs to the request, not to whichever page initiated it.
+    // Closing an in-flight client aborts its uncommitted SQL transaction.
+    releaseAbort=bindLocRequestAbort(selected,request.signal);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
     // Personal preferences are self-service under the verified website Session.
@@ -218,13 +223,19 @@ export async function handleNativeLocOperation(request,env={},{
     // Gateway gate. Website editor grants retain their existing separate policy.
     // Each request performs one active api.manage lookup, never a second probe.
     if(operationKind==='short-import')importPhase='permission';
-    const permission=host===MCP_HOST
-      ?await loadMcpLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine})
-      :await readLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine,website:true});
-    claims.me=permission.canWrite;
-    claims.grants=permission.grants;
-    if(writeKinds.has(body.kind)&&!permission.canWrite)
-      throw refusal('LOC write permission denied',403);
+    // Managed batches resolve their one authorization snapshot inside the
+    // SAME transaction as all of their writes, not in a preceding query.
+    const isManagedBatch=body.kind==='managed-transaction';
+    let permission=null;
+    if(!isManagedBatch){
+      permission=host===MCP_HOST
+        ?await loadMcpLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine})
+        :await readLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine,website:true});
+      claims.me=permission.canWrite;
+      claims.grants=permission.grants;
+      if(writeKinds.has(body.kind)&&!permission.canWrite)
+        throw refusal('LOC write permission denied',403);
+    }
     // These fixed MCP operations are business data; no Authority-owned
     // custom Scope grants, token service, or SQL profile endpoint is involved.
     // LAS asks LOC to resolve its existing active api.manage eligibility. 
@@ -241,7 +252,7 @@ export async function handleNativeLocOperation(request,env={},{
       const args=body.args||{};
       if(args.scopeid!==undefined&&args.scopeid!==body.scopeid)
         throw refusal('MCP Scope mismatch',400);
-      return reply({data:await readPublicGalaxy({...args,scopeid:body.scopeid},env,{waitUntil})});
+      return reply({data:await readPublicGalaxy({...args,scopeid:body.scopeid},env,{waitUntil,databasePort:selected})});
     }
     if(body.kind==='mcp-article-stat'){
       if(host!==MCP_HOST||body.scopeid!=='loc')
@@ -283,6 +294,77 @@ export async function handleNativeLocOperation(request,env={},{
           onPhase:phase=>{importPhase=phase;}})
       });
       return reply(receipt);
+    }
+    if(body.kind==='managed-transaction'){
+      // One HTTP request, one established LOC business principal, one SQL
+      // transaction. The request-size boundary limits the total workload;
+      // there is no arbitrary operation-count cap or separate auth channel.
+      if(selected.tableName)throw refusal('External mapped tables are read only',403);
+      const operations=body.operations;
+      if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
+        operations.some(entry=>!entry||typeof entry!=='object'||
+          Array.isArray(entry)||!['insert','update','delete','upsert'].includes(entry.p_operation)||
+          typeof entry.p_table!=='string'))
+        throw refusal('Invalid LOC management transaction',400);
+      const results=await selected.db.transaction().execute(async trx=>{
+        const verifiedRights=host===MCP_HOST
+          ?await loadMcpLocAccess(trx,claims.email,{
+            dialect:selected.dialect,engine:selected.engine,transactional:true})
+          :await readLocAccess(trx,claims.email,{
+            dialect:selected.dialect,engine:selected.engine,website:true,transactional:true});
+        claims.me=verifiedRights.canWrite;
+        claims.grants=verifiedRights.grants;
+        if(!verifiedRights.canWrite||!claims.grants.some(grant=>
+          grant==='global:manage'||grant.endsWith(':manage')))
+          throw refusal('LOC management delegation required',403);
+        bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
+        const outcomes=[];
+        for(const payload of operations){
+          const fixed=['api.manage','silver.loc'].includes(payload.p_table);
+          const action={kind:'managed-write',payload};
+          let output;
+          if(fixed){
+            // The existing fixed ZModel management models are global-only.
+            // Resolve their established policy mapping against the signed
+            // principal, but execute inside this SAME Kysely transaction.
+            const modelName=selected.engine==='postgres'
+              ?fixedPolicyWriteModel({engine:selected.engine},action,claims.role,claims)
+              :null;
+            if(!claims.grants.includes('global:manage')||
+              !await canLocAccess(trx,'global')||
+              !['update','delete'].includes(payload.p_operation)||
+              (selected.engine==='postgres'&&!modelName))
+              throw refusal('LOC fixed management policy denied',403);
+            if(selected.engine==='postgres'){
+              output=await executeManagedKyselyWrite(trx,action,{modelName});
+            }else if(payload.p_table==='api.manage'){
+              output={data:await applyManagedWrite(trx,
+                registryRelationForEngine(selected.engine),payload)};
+            }else{
+              output=await executeCrossEngineManagedWrite(trx,action,{
+                engine:selected.engine,namespace:selected.namespace,
+                role:claims.role,claims
+              });
+            }
+          }else{
+            output=selected.engine==='postgres'
+              ?await executeManagedKyselyWrite(trx,action)
+              :await executeCrossEngineManagedWrite(trx,action,{
+                engine:selected.engine,namespace:selected.namespace,
+                role:claims.role,claims
+              });
+          }
+          const affected=Number(output?.data?.count??0);
+          if(!Number.isSafeInteger(affected)||affected<0||
+            (['update','delete'].includes(payload.p_operation)&&affected===0)||
+            (['insert','upsert'].includes(payload.p_operation)&&
+              affected!==payload.p_rows?.length))
+            throw refusal('LOC transaction operation did not complete',409);
+          outcomes.push({count:affected});
+        }
+        return outcomes;
+      });
+      return reply({data:{results,count:results.reduce((total,item)=>total+item.count,0)}});
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
@@ -393,5 +475,15 @@ export async function handleNativeLocOperation(request,env={},{
       ...(importCode?{code:importCode,stage:importPhase}:{}),
       ...(profileFailure?{code,stage:'db_connection'}:{})}},
       status>=400&&status<=599?status:500);
+  }finally{
+    releaseAbort();
+    // The transaction has completed or thrown before this cleanup; every
+    // rejected authorization, read, import and write releases its connection.
+    try{await closeLocDatabase(selected);}
+    catch(error){
+      console.error('[LOC native database cleanup]',{
+        code:String(error?.code||'CLOSE_FAILED').slice(0,64)
+      });
+    }
   }
 }

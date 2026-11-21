@@ -2,7 +2,7 @@
 import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {insertRows,updateRows,deleteRows,dbAuthClient} from '../db/db-client.mjs';
+import {transactionWrites,dbAuthClient} from '../db/db-client.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -89,45 +89,50 @@ export function AdminSourceCategories(){
     setDraft({uid,type,title:'',description:''});
     setError('');setNotice('');
   };
+  const prepareSourceTransaction=()=>{
+    if(!draft||busy)throw Error('來源編輯器尚未就緒');
+    const title=draft.title.trim();
+    if(!title)throw Error('請填寫來源名稱');
+    const exists=byUid.has(draft.uid);
+    const uid=draft.uid,operations=[];
+    if(exists){
+      operations.push({p_table:TABLE,p_operation:'update',
+        p_values:{title,description:draft.description||null},
+        p_filters:[{column:'uid',operator:'eq',value:uid}]});
+    }else{
+      const parent=byUid.get(pendingParent);
+      if(draft.type!=='universe'&&(!parent||
+        nextZModelAnchorType('source',parent.type)!==draft.type))
+        throw Error('請先選擇正確的上一層來源節點');
+      operations.push({p_table:TABLE,p_operation:'insert',
+        p_rows:[{uid,type:draft.type,title,
+          description:draft.description||null,
+          attr:{uid:[],counts:{...EMPTY_COUNTS}}}]});
+      if(parent)operations.push({p_table:TABLE,p_operation:'update',
+        p_values:{attr:{...parent.attr,uid:[...parent.attr.uid,uid]}},
+        p_filters:[{column:'uid',operator:'eq',value:parent.uid}]});
+    }
+    setError('');setNotice('');
+    return {operations,
+      afterCommit:async()=>{
+        await load();setSelected(uid);setDraft(null);
+        setNotice(exists?'來源名稱已更新。':'已新增來源並建立 UID 關聯。');
+      },
+      onFailure:error=>setError(String(error?.message||error))};
+  };
   const save=async()=>{
     if(!draft||busy)return false;
-    const title=draft.title.trim();
-    if(!title){setError('請填寫來源名稱');return false;}
-    setBusy(true);setError('');setNotice('');
+    setBusy(true);
     try{
-      const exists=byUid.has(draft.uid);
-      if(exists){
-        await updateRows(TABLE,{title,description:draft.description||null},{filters:[
-          {column:'uid',operator:'eq',value:draft.uid}]});
-      }else{
-        const parent=byUid.get(pendingParent);
-        if(draft.type!=='universe'&&(!parent||nextZModelAnchorType('source',parent.type)!==draft.type))
-          throw Error('請先選擇正確的上一層來源節點');
-        // The new node has its own UID and zeroed Scope counts. No title-based relation.
-        await insertRows(TABLE,[{uid:draft.uid,type:draft.type,title,
-          description:draft.description||null,
-          attr:{uid:[],counts:{...EMPTY_COUNTS}}}]);
-        if(parent){
-          try{
-            await updateRows(TABLE,{attr:{...parent.attr,
-              uid:[...parent.attr.uid,draft.uid]}},{filters:[
-              {column:'uid',operator:'eq',value:parent.uid}]});
-          }catch(e){
-            await deleteRows(TABLE,{filters:[{column:'uid',operator:'eq',value:draft.uid}]})
-              .catch(()=>{});
-            throw e;
-          }
-        }
-      }
-      await load();setSelected(draft.uid);setDraft(null);
-      setNotice(exists?'來源名稱已更新。':'已新增來源並建立 UID 關聯。');
+      const plan=prepareSourceTransaction();
+      await transactionWrites(plan.operations);
+      await plan.afterCommit();
       return true;
-    }catch(e){setError(String(e.message||e));return false;}
+    }catch(error){setError(String(error?.message||error));return false;}
     finally{setBusy(false);}
   };
-  // This editor is mounted only under Admin management. Use the existing six-key Save.
-  useEditDockForm({save,isDirty,isBusy:()=>busy,
-    discard:()=>{setDraft(null);setError('');}});
+  useEditDockForm({save,prepareTransaction:prepareSourceTransaction,isDirty,
+    isBusy:()=>busy,discard:()=>{setDraft(null);setError('');}});
   const remove=async()=>{
     if(!current||busy)return;
     if(children(current.uid).length){setError('此節點仍有下層來源，請先處理子節點。');return;}
@@ -135,10 +140,14 @@ export function AdminSourceCategories(){
     setBusy(true);setError('');setNotice('');
     try{
       const parent=nodes.find(row=>row.attr.uid.includes(current.uid));
-      if(parent)await updateRows(TABLE,{attr:{...parent.attr,
-        uid:parent.attr.uid.filter(uid=>uid!==current.uid)}},{filters:[
-          {column:'uid',operator:'eq',value:parent.uid}]});
-      await deleteRows(TABLE,{filters:[{column:'uid',operator:'eq',value:current.uid}]});
+      const operations=[];
+      if(parent)operations.push({p_table:TABLE,p_operation:'update',
+        p_values:{attr:{...parent.attr,
+          uid:parent.attr.uid.filter(uid=>uid!==current.uid)}},
+        p_filters:[{column:'uid',operator:'eq',value:parent.uid}]});
+      operations.push({p_table:TABLE,p_operation:'delete',
+        p_filters:[{column:'uid',operator:'eq',value:current.uid}]});
+      await transactionWrites(operations);
       await load();setSelected(parent?.uid||'');setDraft(null);
       setNotice('來源已刪除，原始文章未修改。');
     }catch(e){setError(String(e.message||e));}

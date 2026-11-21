@@ -1,6 +1,6 @@
 import {verifiedLocWebsiteSession} from '../../app/loc/auth/verified-session.mjs';
 import {readLocAccess} from '../../app/loc/permissions/loc_access.mjs';
-import {directMcpKysely} from '../../app/loc/mcp/native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../../app/loc/mcp/native-kysely.mjs';
 
 // The website checks LOC Auth's Session, then reads one policy-enforced
 // api.manage ZModel projection. No second role registry or query loop.
@@ -8,10 +8,14 @@ export async function onRequestGet({request,env,waitUntil}){
   const response=(body,status=200)=>new Response(JSON.stringify(body),{
     status,headers:{'content-type':'application/json','cache-control':'no-store'}
   });
+  let port=null;
+  let releaseAbort=()=>{};
   try{
     const session=await verifiedLocWebsiteSession(request);
-    const {db,dialect,engine}=await directMcpKysely(env,'',{waitUntil});
-    const result=await readLocAccess(db,session.email,{dialect,engine,website:true});
+    port=await directMcpKysely(env,'',{waitUntil});
+    releaseAbort=bindLocRequestAbort(port,request.signal);
+    const result=await readLocAccess(port.db,session.email,{
+      dialect:port.dialect,engine:port.engine,website:true});
     return response({...result,email:session.email,subject:session.userId});
   }catch(error){
     const status=[401,403,429,502,503].includes(Number(error?.httpStatus))
@@ -24,5 +28,9 @@ export async function onRequestGet({request,env,waitUntil}){
     // is never cached as a successful permission result.
     return response({canWrite:false,canManage:false,grants:[],
       error:message,reason:error?.reason||'unknown'},status);
+  }finally{
+    releaseAbort();
+    try{await closeLocDatabase(port);}
+    catch(error){console.error('[LOC permission SQL cleanup]',{code:String(error?.code||'CLOSE_FAILED').slice(0,64)});}
   }
 }
