@@ -11,7 +11,7 @@ import {executeKyselyAnalytics,executePortableKyselyAnalytics}
   from '../providers/kysely-analytics.mjs';
 import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
-import {directMcpKysely} from '../mcp/native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../mcp/native-kysely.mjs';
 import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../packages/zenstack/policy-runtime.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
@@ -281,12 +281,15 @@ export async function handleNativePublicQuery(request,env={},{
     }
   }
   let stage='driver';
+  let selected=null;
+  let releaseAbort=()=>{};
   try{
     // No bearer, email, user-supplied alias, SQL text or table override.
     // Force the same fixed control target used by api.manage authorization.
     const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
     if(!primary)throw Error('LOC primary SQL target is not configured');
-    const selected=await database(env,primary.target_id,{waitUntil});
+    selected=await database(env,primary.target_id,{waitUntil});
+    releaseAbort=bindLocRequestAbort(selected,request.signal);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw Error('LOC Kysely driver unavailable');
     const table=analytics||action?null:portableRelation(normalized.table,selected.engine,
@@ -386,5 +389,10 @@ export async function handleNativePublicQuery(request,env={},{
     const type=types.find(name=>['Error','TypeError','SyntaxError','RangeError','AggregateError'].includes(name))||'Other';
     console.error('[LOC public Kysely]',{stage,code,reason,type});
     return respond({error:'LOC Kysely public read failed',stage,code,reason,type},503);
+    }finally{
+    releaseAbort();
+    // Public reads return complete JSON before releasing the request's SQL.
+    try{await closeLocDatabase(selected);}
+    catch(error){console.error('[LOC public SQL cleanup]',{code:String(error?.code||'CLOSE_FAILED').slice(0,64)});}
   }
 }
