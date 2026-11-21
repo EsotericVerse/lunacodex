@@ -67,6 +67,16 @@ for(const route of pageRoutes){
   const entry=path.join(out,route.slice(1),'index.html');
   if(!exists(entry))throw Error('Missing route: '+route);
   const html=read(entry);
+  // One published frame per route. Eighty authored route documents are
+  // different URLs, not eighty separate Nav/Footer/Canvas implementations.
+  // Never let a feature accidentally render a second outer shell.
+  for(const frame of ['scope-global','scope-feature-dock','scope-footer']){
+    const count=[...html.matchAll(new RegExp('class="[^"]*\\\\b'+frame+'\\\\b','g'))].length;
+    if(count!==1)throw Error('LOC shared HTML frame '+frame+' appears '+count+
+      ' times on '+route);
+  }
+  if([...html.matchAll(/id="loc-root"/g)].length!==1)
+    throw Error('LOC route must own exactly one root HTML element: '+route);
   if(!html.includes('href="'+report.sharedCss+'"'))throw Error('LOC shared CSS not linked from '+route);
   for(let number=1;number<=8;number++){
     const id='theme-'+number;
