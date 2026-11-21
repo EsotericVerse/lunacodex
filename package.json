@@ -3,56 +3,18 @@
   "version": "1.1.1-rc.6",
   "private": true,
   "scripts": {
-    "dev": "npm run build:static && node scripts/serve-loc-static.mjs",
-    "build": "npm run build:static",
+    "dev": "node scripts/build-loc-native.mjs && node scripts/serve-loc-static.mjs",
+    "build": "node scripts/build-loc-native.mjs",
     "build:static": "node scripts/build-loc-native.mjs",
-    "build:native": "node scripts/build-loc-native.mjs",
     "test": "node --test tests/loc-native-framework.test.mjs",
     "test:native": "node --test tests/loc-native-framework.test.mjs"
   },
   "dependencies": {
-    "@better-auth/sso": "1.7.18",
-    "@blocknote/core": "0.55.0",
-    "@blocknote/mantine": "0.55.0",
-    "@blocknote/react": "0.55.0",
-    "@capacitor/core": "8.5.3",
-    "@capacitor/filesystem": "8.0.0",
-    "@capacitor/share": "8.0.0",
-    "@streamparser/json": "0.0.26",
-    "@zenstackhq/orm": "3.10.2",
-    "@zenstackhq/plugin-policy": "3.10.2",
-    "@zenstackhq/zod": "3.10.2",
-    "better-auth": "1.7.18",
-    "fflate": "0.8.3",
-    "immer": "^11.2.10",
-    "jsonpath-plus": "11.2.2",
-    "karaul": "0.1.0",
-    "kysely": "0.29.9",
-    "maplibre-gl": "6.16.0",
-    "modern-ahocorasick": "3.3.0",
-    "motion": "13.4.4",
     "pg": "8.23.1",
-    "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "recharts": "3.10.1",
-    "vis-data": "8.0.6",
-    "vis-network": "10.1.5",
-    "vis-timeline": "8.5.6",
-    "zod": "4.6.7",
-    "preact": "10.29.8"
-  },
-  "overrides": {
-    "source-map-js": "1.2.2",
-    "cuid": "npm:@paralleldrive/cuid2@2.3.1",
-    "uuid": "11.1.1",
-    "use-sync-external-store": "1.6.0"
+    "maplibre-gl": "6.16.0",
+    "@capacitor/core": "8.5.3"
   },
   "devDependencies": {
-    "@babel/parser": "7.29.14",
-    "@capacitor/ios": "8.5.3",
-    "@types/node": "26.6.6",
-    "sharp": "0.35.5",
-    "typescript": "5.9.3",
-    "esbuild": "0.28.2"
+    "@capacitor/ios": "8.5.3"
   }
 }
