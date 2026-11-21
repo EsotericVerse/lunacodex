@@ -72,12 +72,12 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     // source flags are expanded before the model-derived Zod parse, while
     // the original authoring/content guard still checks incoming attributes.
     // The private normalizedGalaxy flag does not cross the HTTP boundary.
-    if(!isScopedGalaxy(table))return insertRowsUnchecked(table,rows);
+    if(!isScopedGalaxy(table))return insertRowsUnchecked(table,rows,{importBatch:true});
     for(const row of rows)validateGalaxyWrite(table,row);
     const prepared=prepareGalaxyInsertRows(table,rows);
     const {assertZModelImportRows}=await import('../../../packages/zenstack/import-validation.mjs');
     assertZModelImportRows(table,prepared,{onProgress:onValidationProgress});
-    return insertRowsUnchecked(table,prepared,{normalizedGalaxy:true});
+    return insertRowsUnchecked(table,prepared,{normalizedGalaxy:true,importBatch:true});
   };
   const updateRows=withWriteNotice(updateRowsUnchecked);
   const deleteRows=withWriteNotice(deleteRowsUnchecked);
@@ -150,12 +150,23 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return data||{count:0};
   }
 
-  async function insertRowsUnchecked(table,rows,{normalizedGalaxy=false}={}){
+  async function insertRowsUnchecked(table,rows,{normalizedGalaxy=false,importBatch=false}={}){
     const list=Array.isArray(rows)?rows:[];
-    // Import rows passed through the original content guard and the strict
-    // model-derived Zod validator before reaching this shared batch writer.
+    if(!list.length)return {count:0};
     if(!normalizedGalaxy)
       for(const row of list)validateGalaxyWrite(table,row);
+    if(!importBatch){
+      // Every ordinary multi-row Save is one HTTP + one SQL Transaction,
+      // regardless of how many physical INSERT statements the DB chooses.
+      // Only the explicit high-volume import API retains batch checkpoints.
+      const receipt=await transactionWritesUnchecked([{
+        p_table:table,p_operation:'insert',p_rows:list
+      }]);
+      const count=Number(receipt?.results?.[0]?.count??0);
+      if(count!==list.length)
+        throw new Error('LOC insert receipt incomplete; reload before retrying');
+      return {count};
+    }
     const batchSize=MAX_ROWS;
     let count=0;
     for(let offset=0;offset<list.length;offset+=batchSize){
