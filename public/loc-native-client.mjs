@@ -110,16 +110,9 @@ async function search(page=0){
 }
 let mapLoader=null;
 function loadMaplibre(){
-  if(mapLoader)return mapLoader;
-  mapLoader=new Promise((resolve,reject)=>{
-    if(window.maplibregl){resolve(window.maplibregl);return;}
-    const script=document.createElement('script');
-    script.src='/_loc/vendor/maplibre-gl.js';script.async=true;
-    script.onload=()=>window.maplibregl?resolve(window.maplibregl):
-      reject(new Error('MapLibre 未載入'));
-    script.onerror=()=>reject(new Error('地圖功能載入失敗'));
-    document.head.appendChild(script);
-  }).catch(error=>{mapLoader=null;throw error;});
+  // MapLibre 6 is ESM. Only the Trace page fetches this optional provider.
+  if(!mapLoader)mapLoader=import('/_loc/vendor/maplibre-gl.mjs')
+    .catch(error=>{mapLoader=null;throw error;});
   return mapLoader;
 }
 async function trace(){
