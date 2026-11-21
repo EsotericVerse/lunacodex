@@ -258,7 +258,7 @@ export async function handleNativeLocOperation(request,env={},{
       if(host!==MCP_HOST||body.scopeid!=='loc')
         throw refusal('Invalid MCP article statistics scope',400);
       return reply({data:await articleDistribution(body.args||{},env,{
-        database:async()=>selected
+        database:async()=>selected,borrowed:true
       })});
     }
     if(body.kind==='mcp-conversation'){
