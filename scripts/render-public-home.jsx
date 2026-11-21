@@ -16,12 +16,11 @@ import LocHomeBlockDisplay,{
 } from '../app/loc/blocks/LocHomeBlockDisplay.jsx';
 import BottomNavIcon from '../app/modular/BottomNavIcon.jsx';
 import {SCOPES,FEATURES,navigationHref} from '../app/modular/routing/scope-registry.js';
-import locRows from '../app/modular/published-blocks/loc/index.js';
 import authorRows from '../app/modular/published-blocks/lo3rwang/index.js';
 import runesRows from '../app/modular/published-blocks/lrunes/index.js';
 
 const routes={loc:'/',lo3rwang:'/lo3rwang/',lrunes:'/lrunes/'};
-const collections={loc:locRows,lo3rwang:authorRows,lrunes:runesRows};
+const collections={lo3rwang:authorRows,lrunes:runesRows};
 const displays={loc:LocHomeBlockDisplay,lo3rwang:AuthorHomeBlockDisplay,lrunes:RunesHomeBlockDisplay};
 const structuredHome={loc:locWebSiteJsonLd,lo3rwang:authorProfileJsonLd,
   lrunes:lunarunesWebSiteJsonLd};
@@ -118,14 +117,20 @@ function SiteFooter({scopeId,home=true,native=false}){
    </footer>
  </>;
 }
-function StaticSite({scopeId,rows,native=false}){
+function StaticSite({scopeId,rows,native=false,live=false}){
  return <>
    <PublicNavigation scopeId={scopeId} native={native}/>
-   <main className="loc-next-main" data-loc-view="home" data-loc-scope={scopeId}>
+   {live?<div id="loc-interactive-root">
+     <main className="loc-next-main" data-loc-view="home" data-loc-scope={scopeId}>
+       <section className="loc-view loc-home" role="status" aria-busy="true">
+         <p className="scope-status">正在讀取首頁資料…</p>
+       </section>
+     </main>
+   </div>:<main className="loc-next-main" data-loc-view="home" data-loc-scope={scopeId}>
      <PublicHome scopeId={scopeId} rows={rows}/>
-   </main>
+   </main>}
    <PublicDock scopeId={scopeId} native={native}/>
-   <SiteFooter scopeId={scopeId} native={native}/>
+   <SiteFooter scopeId={scopeId} home={!live} native={native}/>
    <JsonLd data={structuredHome[scopeId]?.()}/>
  </>;
 }
@@ -177,6 +182,14 @@ function activateOnDemand(entry,scopeId){
 export function renderPublicScopeHome({route,entry,native=false}){
  const scopeId=Object.keys(routes).find(key=>routes[key]===route);
  if(!scopeId)return null;
+ // LOC's root home is a static layout contract, not a release-time SQL snapshot.
+ // The mounted content performs a fresh, bounded public SELECT once per view.
+ // Its editor reuses the same mount and replaces the content after a new SELECT.
+ if(scopeId==='loc')return {
+   scopeId,blockCount:0,live:true,
+   html:renderToStaticMarkup(<StaticSite scopeId={scopeId} rows={[]} native={native} live/>),
+   loader:'<script type="module" src="/'+entry+'.js"></script>'
+ };
  const rows=HomeBlock.rows(collections[scopeId],'index',HomeBlock.limit);
  if(!rows.length||Number(rows[0].block_order)!==1)
    throw new Error('LOC published homepage has no Hero: '+scopeId);
