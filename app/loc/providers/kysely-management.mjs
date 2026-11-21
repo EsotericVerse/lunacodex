@@ -3,6 +3,8 @@
 // Historical RPC/legacy payload helpers are not independent authorities;
 // Tree Models do not grant access, run SQL, or create additional relations.
 import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
+import {provisionScopeNative,manageScopeRegistryNative,deleteScopeNative}
+  from './kysely-scope-lifecycle.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
   modeledBooleanColumns,zmodelRegistryJoin,verifyModeledSqlFields}
   from '../../../packages/zenstack/model-column-guard.mjs';
@@ -361,7 +363,7 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
   'media_anchor_candidates','anchor_import_page','import_site_presence',
-  'search_galaxy_private']);
+  'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
 // A Search-only, read-only action behind the verified LOC Web Session.
@@ -639,6 +641,10 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     loc_access:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
     read_scope_registry_admin:[],
+    provision_scope:['p_scope_id','p_display_name','p_email','p_birthday',
+      'p_domain','p_directory','p_parent_scope_id','p_theme','p_locale','p_copy_keywords'],
+    manage_scope_registry:['p_operation','p_scope_id','p_values'],
+    delete_scope:['p_scope_id'],
     sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
     suggest_search_patterns:['p_scope_ids','p_query'],
     keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
@@ -650,6 +656,12 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       'p_source_mode','p_sources','p_place_only']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
+  if(name==='provision_scope')
+    return {data:await provisionScopeNative(trx,args),count:null};
+  if(name==='manage_scope_registry')
+    return {data:await manageScopeRegistryNative(trx,args),count:null};
+  if(name==='delete_scope')
+    return {data:await deleteScopeNative(trx,args),count:null};
   if(name==='search_galaxy_private')return searchPrivateGalaxy(trx,args,claims);
   if(name==='import_site_presence'){
     // Verified Better Auth LOC Web Session + active api.manage Scope grants.
