@@ -73,7 +73,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           source_id:sourceId,target_id:normalizeRelationIds(draft.target_id),ref_id:styleUid||draft.ref_id.trim()||null,
           url:draft.url.trim()||null,site:'suno',media_link:[mediaUid],
           statics:true,culture:true,search:true,trace:true,list:true,keyword:true,others:true,extract:true
-        }]);
+        }]});
       }
       if(styleUid){
         operations.push({p_table:galaxy,p_operation:'insert',p_rows:[{
@@ -81,12 +81,12 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           title:title+'｜Suno Style',content:stylePrompt,createtime,
           target_id:[lyricsUid],site:'suno',
           statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:true,extract:true
-        }]);
+        }]});
       }
       operations.push({p_table:anchor,p_operation:'insert',p_rows:[mediaAnchorRecord({
         uid:mediaUid,type:'suno',title,url:draft.url.trim()||null,
         description:description||null,createtime
-      })]);
+      })]});
       return {operations,
         afterCommit:()=>{setStatus(t('uiExtra.importUI.sunoSaved'));setDraft(freshSunoDraft());},
         onFailure:error=>setStatus(error?.message||t('uiExtra.importUI.sunoSaveFailed'))};
