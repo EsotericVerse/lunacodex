@@ -145,3 +145,26 @@ export function compileDelete(model,where,dialect='postgres'){
     params:Object.freeze(c.params),dialect:c.dialect
   });
 }
+
+
+// Aggregate source/date counts without fetching article bodies or creating a
+// second dataset in browser memory. SQL forms remain dialect-independent.
+export function compileGroupCount(model,{
+  column,where=null,limit
+}={},dialect='postgres'){
+  if(limit!==undefined&&(!Number.isSafeInteger(limit)||limit<1))
+    throw new TypeError('Invalid LOC aggregate limit');
+  const c=compiler(model,dialect);
+  const field=c.col(column);
+  let text='SELECT '+field+' AS '+identifier('value',c.dialect)+
+    ', COUNT(*) AS '+identifier('total',c.dialect)+
+    ' FROM '+qualified(model.table,c.dialect)+
+    (where?' WHERE '+c.predicate(where):'')+
+    ' GROUP BY '+field+' ORDER BY '+field+' ASC';
+  if(limit!==undefined){
+    if(c.dialect==='mssql')
+      text+=' OFFSET 0 ROWS FETCH NEXT '+c.bind(limit)+' ROWS ONLY';
+    else text+=' LIMIT '+c.bind(limit);
+  }
+  return Object.freeze({text,params:Object.freeze(c.params),dialect:c.dialect});
+}
