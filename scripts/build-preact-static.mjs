@@ -109,7 +109,7 @@ try{
     }}]
   });
   const cssOutputs=Object.entries(compiled.metafile.outputs).filter(([file])=>file.endsWith('.css'));
-  const sharedCss=cssOutputs.find(([,meta])=>String(meta.entryPoint||'').replaceAll('\\','/').replace(/^\\.\\//,'').endsWith('app/globals.css'));
+  const sharedCss=cssOutputs.find(([,meta])=>String(meta.entryPoint||'').endsWith('app/globals.css'));
   if(!sharedCss)throw new Error('LOC global CSS output missing: '+JSON.stringify(cssOutputs.map(([file,meta])=>({file,entryPoint:meta.entryPoint}))));
   const cssHref='/'+path.relative(out,path.resolve(root,sharedCss[0])).replaceAll('\\','/');
   if(!fs.existsSync(path.join(out,cssHref.slice(1))))throw new Error('LOC global CSS file not found at '+cssHref);
