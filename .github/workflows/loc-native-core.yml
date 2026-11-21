@@ -75,6 +75,16 @@ jobs:
           test -s out/_loc/vendor/maplibre-gl.mjs
           test ! -e out/_loc/routes
           test ! -e out/sw.js
+          test ! -e out/extension
+          test ! -e out/_loc/routes
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const routes=JSON.parse(fs.readFileSync('out/_routes.json','utf8'));
+          assert.deepEqual(routes.include,['/api/loc-framework']);
+          assert.deepEqual(routes.exclude,[]);
+          assert.ok(!fs.readdirSync('out').includes('sw.js'));
+          NODE
           grep -q 'LOC Framework' out/index.html
           node -e 'const x=require("./out/_loc/native-report.json");if(x.routes!==22||x.clientFrameworks.length)process.exit(1);console.log(x)'
 
