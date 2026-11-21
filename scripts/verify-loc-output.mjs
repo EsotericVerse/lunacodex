@@ -71,10 +71,25 @@ for(const route of pageRoutes){
   if(publicHome){
     if(html.includes('href="'+report.editorCss+'"'))
       throw Error('LOC public homepage should not download editor CSS: '+route);
-    if(src||!html.includes('id="loc-static-upgrade"')||!html.includes('data-loc-upgrade="edit"'))
-      throw Error('LOC public home must not automatically start Preact: '+route);
-    if(!html.includes('class="loc-view loc-home"')||!html.includes('loc-home-block__header'))
-      throw Error('LOC public home published content missing: '+route);
+    if(route==='/'){
+      // Only the static layout is shipped in the root HTML. Its Home SELECT
+      // runs after mount and the edit mode uses the same exclusive content slot.
+      if(src!=='/_loc/routes/interactive.js'||
+         !html.includes('id="loc-interactive-root"')||
+         !html.includes('class="loc-view loc-home"')||
+         html.includes('loc-home-block__header')||
+         html.includes('loc-static-upgrade')||
+         html.includes('loc-static-reading')||
+         html.includes('data-loc-upgrade="edit"'))
+        throw Error('LOC home must ship only one static shell and a live SQL mount');
+    }else{
+      if(src||!html.includes('id="loc-static-upgrade"')||
+        !html.includes('data-loc-upgrade="edit"'))
+        throw Error('Published Scope home upgrade contract changed: '+route);
+      if(!html.includes('class="loc-view loc-home"')||
+         !html.includes('loc-home-block__header'))
+        throw Error('Published Scope home content missing: '+route);
+    }
     if(!html.includes('type="application/ld+json"'))
       throw Error('LOC public home structured data missing: '+route);
   }else if(html.includes('data-loc-component="work"')){
