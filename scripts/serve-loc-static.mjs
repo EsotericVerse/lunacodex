@@ -1,4 +1,4 @@
-// Minimal local server for Preact/esbuild static output. Cloudflare handles /api/* in Preview.
+// Minimal local server for LOC/esbuild static output. Cloudflare handles /api/* in Preview.
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -22,4 +22,4 @@ const server=http.createServer((request,response)=>{
   });
 });
 const port=Number(process.env.PORT||8000);
-server.listen(port,'127.0.0.1',()=>console.log('LOC Preact static dev: http://127.0.0.1:'+port));
+server.listen(port,'127.0.0.1',()=>console.log('LOC static dev: http://127.0.0.1:'+port));

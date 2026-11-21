@@ -29,7 +29,7 @@ for(const file of files){
 }
 // Build-time generation and native packaging do not show up as ordinary imports.
 const generated=new Map([
-  ['react-dom',['scripts/build-preact-static.mjs: generated React-compatible entry']],
+  ['react-dom',['scripts/build-loc-static.mjs: direct React-only feature entry']],
   ['@capacitor/ios',['.github/workflows/ios-device-build.yml: native toolchain']],
   ['typescript',['TypeScript source / tsconfig toolchain']],
   ['@types/node',['Node 22 build scripts and TypeScript ambient definitions']]

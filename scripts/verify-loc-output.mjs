@@ -24,11 +24,19 @@ const report=JSON.parse(read(path.join(out,'_loc','build-report.json')));
 if(!/^\/_loc\/[^?#]+\.css$/.test(report.sharedCss)||!exists(path.join(out,report.sharedCss.slice(1))))
   throw Error('LOC shared CSS missing or invalid: '+report.sharedCss);
 if(report.runtime!=='Native React + optional Preact island'||report.bundler!=='esbuild'||report.routes!==pageRoutes.length)
-  throw Error('LOC Preact route manifest mismatch');
+  throw Error('LOC static route manifest mismatch');
 if(report.editorCss!=='/_loc/routes/editor.css'||!exists(path.join(out,report.editorCss.slice(1))))
   throw Error('LOC editor-on-demand stylesheet missing: '+report.editorCss);
 if(!exists(path.join(out,'_loc','routes','public-preferences.js')))
-  throw Error('Native Preact preferences island missing');
+  throw Error('LOC Preact preferences island missing');
+// A framework version must not reintroduce React-to-Preact mapping or Next-style shims.
+const source=read(path.join(root,'scripts','build-loc-static.mjs'));
+if(source.includes('preact/compat')||/\balias\s*:\s*\{/.test(source))
+  throw Error('LOC build contains forbidden React/Preact compatibility mapping');
+for(const stale of ['dynamic.jsx','navigation.js','link.jsx']){
+  if(fs.existsSync(path.join(root,'app','modular','runtime',stale)))
+    throw Error('LOC has a retired Next-style runtime adapter: '+stale);
+}
 if(fs.existsSync(path.join(out,'_next')))throw Error('Next.js assets left in LOC export');
 const css=read(path.join(out,report.sharedCss.slice(1)));
 if(/assets\/pics\//.test(css))throw Error('LOC CSS still bundles raw source image paths');
@@ -55,7 +63,7 @@ for(const route of pageRoutes){
     if(!html.includes('class="loc-view loc-home"')||!html.includes('loc-home-block__header'))
       throw Error('LOC public home published content missing: '+route);
   }else if(!src||!exists(path.join(out,src.slice(1))))
-    throw Error('Missing executable Preact bundle for '+route);
+    throw Error('Missing executable LOC interaction bundle for '+route);
   if(!html.includes('id="loc-theme-bootstrap"')||!html.includes('id="loc-native-static-route"'))
     throw Error('Lost native/theme bootstraps at '+route);
   if(/_next\/|__next|next\/navigation/i.test(html))throw Error('Next.js leaked into route '+route);

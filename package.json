@@ -5,9 +5,9 @@
   "scripts": {
     "prepare": "node scripts/prepare-local-workspace.mjs",
     "prebuild": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs && node scripts/check-js-syntax.mjs",
-    "dev": "npm run build:static && node scripts/serve-preact-static.mjs",
+    "dev": "npm run build:static && node scripts/serve-loc-static.mjs",
     "build": "npm run build:static",
-    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-preact-static.mjs && node scripts/verify-preact-output.mjs && node scripts/audit-loc-packages.mjs",
+    "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-loc-static.mjs && node scripts/verify-loc-output.mjs && node scripts/audit-loc-packages.mjs",
     "audit:static": "node scripts/audit-static-content.mjs",
     "test:static-assets": "node --test tests/static-export-assets.test.mjs",
     "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",

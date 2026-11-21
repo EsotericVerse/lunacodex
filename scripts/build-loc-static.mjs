@@ -7,7 +7,7 @@ import {pathToFileURL} from 'node:url';
 
 const root=process.cwd();
 const out=path.join(root,'out');
-const scratch=path.join(root,'.loc-preact-build');
+const scratch=path.join(root,'.loc-esbuild-build');
 const abs=p=>path.join(root,p);
 const command=process.platform==='win32'?'npm.cmd':'npm';
 const native=process.env.LOC_NATIVE_BUNDLE==='1';
