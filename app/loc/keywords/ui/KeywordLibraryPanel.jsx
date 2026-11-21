@@ -368,10 +368,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
     }catch(e){setError(String(e.message||e));}
     finally{setSharingBusy(false);}
   };
-  const saveConfig=async()=>{
-    if(busy||loading)return false;
-    setBusy(true);setError('');
-    try{
+  const prepareKeywordConfigTransaction=()=>{
+    if(busy||loading)throw Error('關鍵詞管理資料尚未載入');
       const scanRuleChanged=Number(config.keyword_min_chars)!==
         Number(savedConfig.keyword_min_chars);
       // A display threshold does not change any Pattern posting.
@@ -392,10 +390,22 @@ export default function KeywordLibraryPanel({scopeId,account}){
         staticstime:null,
         ...(scanRuleChanged?{keyword_meta:invalidated}:{})
       };
-      const {data,error:writeError}=await dbAuthRelation(configTable).update(payload)
-        .eq('id',scopeId).select('id');
-      if(writeError||data?.length!==1)throw new Error(writeError?.message||'儲存設定失敗');
-      await load();await invalidate();setNotice('設定已儲存。');return true;
+      return {operations:[{p_table:configTable,p_operation:'update',
+        p_values:payload,p_filters:[{column:'id',operator:'eq',value:scopeId}]}],
+        afterCommit:async()=>{
+          await load();await invalidate();setNotice('設定已儲存。');
+        },
+        onFailure:error=>setError(String(error?.message||error))
+      };
+  };
+  const saveConfig=async()=>{
+    if(busy||loading)return false;
+    setBusy(true);setError('');
+    try{
+      const plan=prepareKeywordConfigTransaction();
+      await transactionWrites(plan.operations);
+      await plan.afterCommit();
+      return true;
     }catch(e){setError(String(e.message||e));return false;}
     finally{setBusy(false);}
   };
