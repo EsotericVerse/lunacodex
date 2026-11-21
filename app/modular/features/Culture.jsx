@@ -25,7 +25,7 @@ import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../l
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy/galaxy-query';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {revalidateServerMetadata} from '../../loc/scope/scope-data';
+import {defaultScopeData,revalidateServerMetadata} from '../../loc/scope/scope-data';
 
 import {deleteRows,insertRows,updateRows} from '../../loc/db/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db/db-query.mjs';
@@ -328,7 +328,10 @@ export default function Culture(){
   // Time structure is authoritative without any remote ISR Period request.
   const allPeriods=useMemo(()=>sortPeriods(query.data?.eras?.eras||[]),[query.data]);
   const classificationScope=scopeId;
-  const scopeData=query.data?.scope||null;
+  // Published Scope/table identity is synchronous. The protected editor can
+  // begin its own authorized read without waiting for a second public river.
+  const scopeData=query.data?.scope||(isTimeEditingView&&!isAggregateScope
+    ?defaultScopeData(scopeId):null);
   // Use a stable periods array: date-navigation effects must not re-run just
   // because a different Culture panel or query refreshed the page.
   const primaryPeriods=useMemo(()=>isAggregateScope?[]:allPeriods.filter(item=>String(item?.scope_id||'')===scopeId),[isAggregateScope,allPeriods,scopeId]);
