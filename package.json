@@ -8,6 +8,8 @@
     "dev": "next dev",
     "build": "next build",
     "build:static": "node scripts/sync-zenstack-schema-contract.mjs && node scripts/build-static-export.mjs",
+    "audit:static": "node scripts/audit-static-content.mjs",
+    "test:static-assets": "node --test tests/static-export-assets.test.mjs",
     "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
