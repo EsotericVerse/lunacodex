@@ -8,6 +8,7 @@ on:
       - 'public/loc-native-*'
       - 'functions/api/loc-framework.js'
       - 'package.json'
+      - 'package-lock.json'
       - 'tests/loc-native-framework.test.mjs'
       - '.github/workflows/loc-native-core.yml'
   workflow_dispatch:
@@ -40,6 +41,24 @@ jobs:
           node -e 'const x=require("./out/_loc/native-report.json");if(x.mapProvider||x.clientFrameworks.length)process.exit(1)'
       - name: Install current extension and server drivers
         run: npm ci --no-audit --no-fund
+      - name: Verify minimal dependency graph
+        run: |
+          npm ls --depth=0
+          test ! -d node_modules/react
+          test ! -d node_modules/preact
+          test ! -d node_modules/esbuild
+          test ! -d node_modules/kysely
+          test ! -d node_modules/@zenstackhq
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const root=JSON.parse(fs.readFileSync('package.json'));
+          const lock=JSON.parse(fs.readFileSync('package-lock.json'));
+          assert.equal(Object.keys(root.dependencies).length,3);
+          assert.equal(Object.keys(root.devDependencies).length,1);
+          assert.ok(Object.keys(lock.packages).length<50);
+          assert.equal(root.scripts.build,'node scripts/build-loc-native.mjs');
+          NODE
       - name: Build LOC native HTML website
         run: npm run build
       - name: Verify clean-slate HTML export
