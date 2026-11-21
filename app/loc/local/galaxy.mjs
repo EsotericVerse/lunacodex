@@ -42,11 +42,12 @@ export function normalizeLocalGalaxyRow(source={}){
   row.createtime=dateValue(row.createtime??new Date().toISOString(),'createtime');
   if(row.date!=null)row.date=dateValue(row.date,'date').slice(0,10);
   if(row.UpdateTime!=null)row.UpdateTime=dateValue(row.UpdateTime,'UpdateTime');
-  for(const field of ['target_id','media_link']){
-    if(row[field]!=null&&(!Array.isArray(row[field])||
-        row[field].some(item=>typeof item!=='string'||!UID.test(item))))
-      throw new Error('本機 Galaxy UID 清單無效：'+field);
-  }
+  if(row.target_id!=null&&(!Array.isArray(row.target_id)||
+      row.target_id.some(item=>typeof item!=='string'||!UID.test(item))))
+    throw new Error('本機 Galaxy UID 清單無效：target_id');
+  if(row.media_link!=null&&(!Array.isArray(row.media_link)||
+      row.media_link.some(item=>typeof item!=='string'||!/^https?:\/\/[^\s]+$/i.test(item))))
+    throw new Error('本機 Galaxy 媒體連結必須是 HTTP(S) URL');
   // Validate against the actual shared ZenStack Galaxy read type. It is
   // a projection over the same fields, not a second hand-written model.
   const parsed=validator.safeParse({...row,
