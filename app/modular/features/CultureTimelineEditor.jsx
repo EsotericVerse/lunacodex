@@ -114,18 +114,23 @@ export default function CultureTimelineEditor({
     }
     return map;
   },[eventChoices]);
-  const rows=useMemo(()=>[...all].sort((a,b)=>{
-    const position=row=>{
-      if(row.type==='anchor')return day(row.address);
-      const eventRanges=eventChoices.map(event=>({...event,ranges:resolveTimeSegments(event.anchor_ids,anchors,{period:false})}));
-      return row.type==='era'
-        ?(row.anchor_ids||[]).flatMap(id=>eventRanges.find(event=>event.uid===id)?.ranges||[])
-          .map(range=>range.start_date).filter(Boolean).sort()[0]||'9999-12-31'
-        :resolveTimeSegments(row.anchor_ids,anchors,{period:false})
-          .map(range=>range.start_date).filter(Boolean).sort()[0]||'9999-12-31';
-    };
-    return position(a).localeCompare(position(b));
-  }),[all,anchors,eventChoices]);
+  // Resolve each saved Date/Period/Era position once. Sorting by repeatedly
+  // resolving the full Period graph for every comparison was unnecessarily
+  // expensive even after the SQL read had finished.
+  const rows=useMemo(()=>{
+    const earliest=ranges=>ranges.map(range=>range.start_date)
+      .filter(Boolean).sort()[0]||'9999-12-31';
+    const periodStarts=new Map(eventChoices.map(event=>[
+      event.uid,earliest(resolveTimeSegments(event.anchor_ids,anchors,{period:false}))
+    ]));
+    const positions=new Map(all.map(row=>{
+      if(row.type==='anchor')return [row.uid,day(row.address)];
+      if(row.type==='era')return [row.uid,(row.anchor_ids||[])
+        .map(uid=>periodStarts.get(uid)).filter(Boolean).sort()[0]||'9999-12-31'];
+      return [row.uid,earliest(resolveTimeSegments(row.anchor_ids,anchors,{period:false}))];
+    }));
+    return [...all].sort((a,b)=>(positions.get(a.uid)||'').localeCompare(positions.get(b.uid)||''));
+  },[all,anchors,eventChoices]);
   const recordOptions=useMemo(()=>rows.filter(row=>row.type===browseType).map(row=>({
     value:String(row.uid),
     label:(row.type==='anchor'&&day(row.address)?day(row.address)+'｜':'')+String(row.title||'未命名紀錄')
