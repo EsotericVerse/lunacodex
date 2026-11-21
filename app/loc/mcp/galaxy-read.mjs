@@ -4,7 +4,7 @@ import {portableContainsSpec} from '../providers/portable-search.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {scopedZModelSchema} from '../../../packages/zenstack/scoped-schema.mjs';
 import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
-import {directMcpKysely} from './native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase} from './native-kysely.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 // This is a specific read model executed by the trusted MCP application, NOT
@@ -20,36 +20,40 @@ function scopeAllowed(value){
   if(!PUBLIC_SCOPE_IDS.includes(id))throw bad('Only configured public Galaxy Scopes are available');
   return id;
 }
-async function scopedDatabase(scopeid,env,waitUntil){
-  const port=await directMcpKysely(env,'',{waitUntil});
-  if(!port?.db||typeof port.db.selectFrom!=='function'||
-     port.engine!=='postgres')
-    throw unavailable('LOC MCP direct SQL driver is unavailable');
-  const namespace=port.namespace??'silver';
-  if(namespace&&!/^[A-Za-z][A-Za-z0-9_]*$/.test(namespace))
-    throw unavailable('LOC MCP SQL namespace is invalid');
-  // The existing Galaxy ZModel owns the physical mapping AND column contract.
-  // Use its scoped Kysely-backed query builder when a real trusted dialect is
-  // present; injected test ports without a dialect retain their SQL adapter.
-  const galaxy=scopedZModelSchema({scopeId:scopeid,namespace}).models.Galaxy;
-  const required=['uid','title','content','createtime','date','site','url','search','list'];
-  if(required.some(field=>!Object.hasOwn(galaxy.fields,field)))
-    throw unavailable('Galaxy ZModel read contract mismatch');
-  const relation=galaxy.attributes.find(attr=>attr.name==='@@map')
-    ?.args?.[0]?.value?.value;
-  if(typeof relation!=='string'||!relation)
-    throw unavailable('Galaxy ZModel table mapping is missing');
-  if(port.dialect){
-    const client=createScopedLocClient({dialect:port.dialect,scopeId:scopeid,namespace});
-    return {db:client.$qb,table:'Galaxy'};
+async function scopedDatabase(scopeid,env,waitUntil,databasePort=null){
+  const owned=!databasePort;
+  const port=databasePort||await directMcpKysely(env,'',{waitUntil});
+  try{
+    if(!port?.db||typeof port.db.selectFrom!=='function'||
+      port.engine!=='postgres')
+      throw unavailable('LOC MCP direct SQL driver is unavailable');
+    const namespace=port.namespace??'silver';
+    if(namespace&&!/^[A-Za-z][A-Za-z0-9_]*$/.test(namespace))
+      throw unavailable('LOC MCP SQL namespace is invalid');
+    const galaxy=scopedZModelSchema({scopeId:scopeid,namespace}).models.Galaxy;
+    const required=['uid','title','content','createtime','date','site','url','search','list'];
+    if(required.some(field=>!Object.hasOwn(galaxy.fields,field)))
+      throw unavailable('Galaxy ZModel read contract mismatch');
+    const relation=galaxy.attributes.find(attr=>attr.name==='@@map')
+      ?.args?.[0]?.value?.value;
+    if(typeof relation!=='string'||!relation)
+      throw unavailable('Galaxy ZModel table mapping is missing');
+    if(port.dialect){
+      const client=createScopedLocClient({dialect:port.dialect,scopeId:scopeid,namespace});
+      return {db:client.$qb,table:'Galaxy',port:owned?port:null};
+    }
+    return {db:port.db,table:portableRelation(relation,port.engine,namespace),
+      port:owned?port:null};
+  }catch(error){
+    if(owned)await closeLocDatabase(port);
+    throw error;
   }
-  return {db:port.db,table:portableRelation(relation,port.engine,namespace)};
 }
 // Private MCP conversations and old PR development records must never leak
 // from a public Galaxy read even if a historical Boolean was set incorrectly.
 const publicSite=sql`( ${sql.ref('site')} is null or lower(${sql.ref('site')}) not in (${sql.join(['mcp','github'])}) )`;
 
-export async function searchMemory(args={},env={},{waitUntil}={}){
+export async function searchMemory(args={},env={},{waitUntil,databasePort=null}={}){
   if(args.user_requested!==true)
     throw bad('只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。');
   const scopeid=scopeAllowed(args.scopeid);
@@ -63,7 +67,8 @@ export async function searchMemory(args={},env={},{waitUntil}={}){
   const offset=args.offset===undefined?0:Number(args.offset);
   if(!Number.isInteger(limit)||limit<1||limit>20)throw bad('limit must be between 1 and 20');
   if(!Number.isInteger(offset)||offset<0||offset>500)throw bad('offset must be between 0 and 500');
-  const {db,table}=await scopedDatabase(scopeid,env,waitUntil);
+  const {db,table,port}=await scopedDatabase(scopeid,env,waitUntil,databasePort);
+  try{
   const spec=portableContainsSpec(term);
   const columnLike=column=>sql`${spec.fold?sql`lower(${sql.ref(column)})`:sql.ref(column)} like ${spec.pattern} escape '!'`;
   const rows=await db.selectFrom(table)
@@ -79,8 +84,9 @@ export async function searchMemory(args={},env={},{waitUntil}={}){
       trace:row.trace??null,list:row.list??null,keyword:row.keyword??null,
       extract:row.extract??null,others:row.others??null})),
     has_more:rows.length===limit};
+  }finally{await closeLocDatabase(port);}
 }
-export async function readMemory(args={},env={},{waitUntil}={}){
+export async function readMemory(args={},env={},{waitUntil,databasePort=null}={}){
   const scopeid=scopeAllowed(args.scopeid);
   const uid=String(args.uid||'').trim();
   if(!UID.test(uid))throw bad('uid must be an 8-character, case-sensitive Base62 ID');
@@ -89,7 +95,8 @@ export async function readMemory(args={},env={},{waitUntil}={}){
   if(!Number.isInteger(offset)||offset<0||offset>1000000)throw bad('offset must be 0–1000000');
   if(!Number.isInteger(maxChars)||maxChars<1||maxChars>40000)
     throw bad('max_chars must be 1–40000');
-  const {db,table}=await scopedDatabase(scopeid,env,waitUntil);
+  const {db,table,port}=await scopedDatabase(scopeid,env,waitUntil,databasePort);
+  try{
   const rows=await db.selectFrom(table)
     .select(galaxyReadColumns('GalaxyUidRead'))
     .where('uid','=',uid).where('list','=',true).where(publicSite)
@@ -103,4 +110,5 @@ export async function readMemory(args={},env={},{waitUntil}={}){
     media_link:row.media_link||null,place_id:row.place_id||null,
     location:row.location||null,content:content.slice(offset,offset+maxChars),
     offset,total_chars:content.length,next_offset:offset+maxChars<content.length?offset+maxChars:null};
+  }finally{await closeLocDatabase(port);}
 }
