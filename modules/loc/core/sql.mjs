@@ -110,18 +110,19 @@ export function compileInsert(model,values,dialect='postgres'){
   });
 }
 function requireFilter(where){
-  if(!where||typeof where!=='object')
-    throw new TypeError('LOC SQL write requires a WHERE filter');
-  const count=item=>{
-    if(!item||typeof item!=='object')return 0;
+  // An OR branch that is always true would turn a filtered write into a table-wide write.
+  // Require a concrete predicate in every OR arm, not merely somewhere in the tree.
+  const constrained=item=>{
+    if(!item||typeof item!=='object'||Array.isArray(item))return false;
     if('all' in item||'any' in item){
-      const items=item.all??item.any;
-      if(!Array.isArray(items))return 0;
-      return items.reduce((sum,part)=>sum+count(part),0);
+      const isAll='all' in item;
+      const items=isAll?item.all:item.any;
+      if(!Array.isArray(items)||items.length===0)return false;
+      return isAll?items.some(constrained):items.every(constrained);
     }
-    return typeof item.column==='string'?1:0;
+    return typeof item.column==='string';
   };
-  if(count(where)===0)throw new TypeError('LOC SQL write requires a concrete WHERE predicate');
+  if(!constrained(where))throw new TypeError('LOC SQL write requires a WHERE filter with a concrete WHERE predicate');
 }
 export function compileUpdate(model,values,where,dialect='postgres'){
   requireFilter(where);

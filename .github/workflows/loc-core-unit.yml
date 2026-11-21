@@ -1,0 +1,29 @@
+name: LOC Framework Core
+on:
+  pull_request:
+    paths:
+      - 'modules/loc/core/**'
+      - 'tests/loc-native-framework.test.mjs'
+      - '.github/workflows/loc-core-unit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'modules/loc/core/**'
+      - 'tests/loc-native-framework.test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  framework-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+      - name: Validate native LOC source
+        run: |
+          for file in modules/loc/core/*.mjs; do node --check "$file"; done
+      - name: Test LOC core without installing third-party frameworks
+        run: node --test tests/loc-native-framework.test.mjs

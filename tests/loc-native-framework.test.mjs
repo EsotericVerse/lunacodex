@@ -49,6 +49,8 @@ test('SQL dialects use true engine-specific placeholders and quoting',()=>{
     assert.deepEqual(del.params,['A']);
     assert.throws(()=>compileUpdate(schema,{title:'X'},null,dialect),/WHERE filter/);
     assert.throws(()=>compileDelete(schema,{all:[]},dialect),/concrete WHERE predicate/);
+    assert.throws(()=>compileUpdate(schema,{title:'X'}, {any:[{column:'uid',value:'A'},{all:[]}]}, dialect), /concrete WHERE predicate/);
+    assert.throws(()=>compileDelete(schema,{any:[{column:'uid',value:'A'},{all:[]}]}, dialect), /concrete WHERE predicate/);
   }
 });
 
