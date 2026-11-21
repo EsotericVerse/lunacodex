@@ -72,7 +72,7 @@ try{
     entryPoints,outdir:out,bundle:true,splitting:true,format:'esm',
     platform:'browser',target:'es2022',jsx:'automatic',jsxImportSource:'react',
     alias,logLevel:'warning',minify:true,metafile:true,
-    entryNames:'[name]',chunkNames:'_loc/chunks/[name]-[hash]',
+    entryNames:'_loc/routes/[name]',chunkNames:'_loc/chunks/[name]-[hash]',
     assetNames:'_loc/assets/[name]-[hash]',
     loader:{'.woff':'file','.woff2':'file','.ttf':'file','.png':'file','.svg':'file','.webp':'file','.gif':'file','.jpg':'file','.jpeg':'file','.avif':'file'},
     define:{'process.env.NODE_ENV':'"production"'},
