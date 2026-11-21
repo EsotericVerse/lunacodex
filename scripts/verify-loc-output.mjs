@@ -66,6 +66,8 @@ for(const route of pageRoutes){
       throw Error('LOC public home must not automatically start Preact: '+route);
     if(!html.includes('class="loc-view loc-home"')||!html.includes('loc-home-block__header'))
       throw Error('LOC public home published content missing: '+route);
+    if(!html.includes('type="application/ld+json"'))
+      throw Error('LOC public home structured data missing: '+route);
   }else if(html.includes('data-loc-component="outbound"')){
     if(src||!html.includes('https://lrs.lo3rwang.cc/'))
       throw Error('LRS outbound HTML must link directly without React: '+route);

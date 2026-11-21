@@ -1,6 +1,9 @@
 // Single-source LOC static publishing: render the same homepage components used
 // by the interactive editor. No copied block renderer, no browser hydration.
 import React from 'react';
+import JsonLd from '../app/seo/JsonLd.jsx';
+import {locWebSiteJsonLd,lunarunesWebSiteJsonLd,authorProfileJsonLd}
+  from '../app/seo/metadata.js';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {HomeBlock} from '../app/loc/blocks/home-block-model.js';
 import LocHomeBlockDisplay,{
@@ -16,6 +19,8 @@ import runesRows from '../app/modular/published-blocks/lrunes/index.js';
 const routes={loc:'/',lo3rwang:'/lo3rwang/',lrunes:'/lrunes/'};
 const collections={loc:locRows,lo3rwang:authorRows,lrunes:runesRows};
 const displays={loc:LocHomeBlockDisplay,lo3rwang:AuthorHomeBlockDisplay,lrunes:RunesHomeBlockDisplay};
+const structuredHome={loc:locWebSiteJsonLd,lo3rwang:authorProfileJsonLd,
+  lrunes:lunarunesWebSiteJsonLd};
 const features=[{id:'home',label:'首頁',name:'home',route:''},
   ...['culture','statics','trace','search'].map(id=>{
     const meta=FEATURES.find(item=>item.id===id);
@@ -91,6 +96,7 @@ function StaticSite({scopeId,rows}){
    </main>
    <PublicDock scopeId={scopeId}/>
    <SiteFooter scopeId={scopeId}/>
+   <JsonLd data={structuredHome[scopeId]?.()}/>
  </>;
 }
 // Static HTML already owns navigation and the six feature links.
