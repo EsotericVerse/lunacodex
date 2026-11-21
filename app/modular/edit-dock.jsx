@@ -204,7 +204,7 @@ export function EditDockProvider({children,scopeId}){
         setNotice('部分編輯器尚未支援同次交易；已保留全部修改，請分別儲存。');
         return;
       }
-      if(editors.every(editor=>typeof editor.prepareTransaction==='function')){
+      if(editors.length>1&&editors.every(editor=>typeof editor.prepareTransaction==='function')){
         const prepared=[];
         try{
           for(const editor of editors){
