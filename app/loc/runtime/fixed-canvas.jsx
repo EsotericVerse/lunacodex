@@ -1,6 +1,6 @@
 // LOC owns the authored page shell. Features may update its existing
 // Hero and content containers; they must not replace either ancestor.
-import {useLayoutEffect} from 'react';
+import {useEffect,useLayoutEffect,useState} from 'react';
 import {createPortal} from 'react-dom';
 
 export function useFixedPageCanvas({
@@ -47,4 +47,21 @@ export function useFixedPageCanvas({
 }
 export function ExistingHero({canvas,children}){
   return canvas?createPortal(children,canvas):null;
+}
+
+// The management entrance waits for the page's Hero data to settle.
+// An ordinary public page never reads Auth just to paint its frame.
+export function useFixedHeroReady(){
+  const [ready,setReady]=useState(()=>typeof document==='undefined'||
+    !document.getElementById('loc-feature-hero-canvas')||
+    document.getElementById('loc-feature-hero-canvas').dataset.locHeroReady==='true');
+  useEffect(()=>{
+    const canvas=document.getElementById('loc-feature-hero-canvas');
+    if(!canvas||canvas.dataset.locHeroReady==='true'){setReady(true);return undefined;}
+    const onReady=()=>setReady(true);
+    window.addEventListener('loc-feature-hero-ready',onReady);
+    if(canvas.dataset.locHeroReady==='true')setReady(true);
+    return ()=>window.removeEventListener('loc-feature-hero-ready',onReady);
+  },[]);
+  return ready;
 }
