@@ -229,7 +229,7 @@ export default function ScopeEditableBlocks({
       {editing&&!editingReady?<p className="scope-status" role="status">
         {editingError?'編輯資料讀取失敗，請重新進入編輯。':'正在讀取最新編輯資料…'}
       </p>:null}
-      {editing&&editingReady?<ScopeBlockDraftList
+      {editing?(editingReady?<ScopeBlockDraftList
         slots={slots}
         scopeId={scopeId}
         pageName={pageName}
@@ -275,7 +275,7 @@ export default function ScopeEditableBlocks({
             editDock.complete(navigationHref(scopeId,'',native));
           else onEditorExit?.(notice);
         }}
-      />:slots.flatMap((slot,index)=>{
+      />:null):slots.flatMap((slot,index)=>{
         const empty=!BlockNoteContent.text.hasBlockNoteFrameContent(slot);
         if(empty&&!canEdit&&slot.order!==placeholderFirstOrder)return [];
         if(onSuggestionClick&&!canEdit
