@@ -18,6 +18,7 @@ import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {executeLocPersonal} from '../providers/kysely-personal.mjs';
+import {synchronizeKeywordLibraryInTransaction} from '../keywords/sql-service.mjs';
 import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from './native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
@@ -301,6 +302,15 @@ export async function handleNativeLocOperation(request,env={},{
       // there is no arbitrary operation-count cap or separate auth channel.
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
       const operations=body.operations;
+      const keywordSyncScope=String(body.keywordSyncScope||'');
+      // Explicit purpose-only reconciliation: the caller may batch only that
+      // Scope's own Anchor and configuration edits. This is not generic SQL.
+      if(keywordSyncScope&&(
+        !/^[a-z][a-z0-9]{0,14}$/.test(keywordSyncScope)||
+        operations?.some(item=>![
+          'silver.'+keywordSyncScope+'_anchor','silver.'+keywordSyncScope
+        ].includes(item?.p_table))))
+        throw refusal('Keyword reconciliation Scope mismatch',400);
       if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
         operations.some(entry=>!entry||typeof entry!=='object'||
           Array.isArray(entry)||!['insert','update','delete','upsert'].includes(entry.p_operation)||
@@ -367,6 +377,11 @@ export async function handleNativeLocOperation(request,env={},{
               affected!==payload.p_rows?.length))
             throw refusal('LOC transaction operation did not complete',409);
           outcomes.push({count:affected});
+        }
+        if(keywordSyncScope){
+          if(!await canLocAccess(trx,'scope',keywordSyncScope))
+            throw refusal('Keyword Scope management permission denied',403);
+          await synchronizeKeywordLibraryInTransaction(trx,keywordSyncScope);
         }
         return outcomes;
       });
