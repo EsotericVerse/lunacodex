@@ -21,8 +21,10 @@ export function isManagementHref(href=''){
 
 // SPA cleanup belongs to PageResourceBoundary, once per actual route change.
 // Clicking a link must not reset readers ahead of that new route's first paint.
-export default function ScopeLink({href,native=false,children,onClick,target,...rest}){
+// The shared NAV is visible on every page. Next's default viewport prefetch
+// otherwise fetches every route's HTML and RSC payload before a user clicks.
+export default function ScopeLink({href,native=false,children,onClick,target,prefetch=false,...rest}){
   if(native||!isSameOriginHref(href)||isManagementHref(href))
     return <a href={href} target={target} onClick={onClick} {...rest}>{children}</a>;
-  return <Link href={href} target={target} onClick={onClick} {...rest}>{children}</Link>;
+  return <Link href={href} target={target} onClick={onClick} prefetch={prefetch} {...rest}>{children}</Link>;
 }
