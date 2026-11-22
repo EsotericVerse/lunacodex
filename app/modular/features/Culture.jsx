@@ -212,8 +212,13 @@ export default function Culture(){
   const editDock=useEditDock();
   const canUseScopeEditor=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const pathname=usePathname()||'';
-  const isTimeEditingView=canUseScopeEditor&&(pathname.endsWith('/culture/manage')||
-    pathname.endsWith('/culture/manage/')||searchParams?.get('edit')==='1');
+  // A management URL must render its management workspace even after a full
+  // navigation or an Edit Dock remount. The verified account still controls
+  // access to the editor; a URL or dock state never confers permission.
+  const onTimeManageRoute=pathname.endsWith('/culture/manage')||
+    pathname.endsWith('/culture/manage/');
+  const isTimeEditingView=onTimeManageRoute||
+    (canUseScopeEditor&&searchParams?.get('edit')==='1');
   // Public Culture does not load management grants; editing must verify them.
   const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor});
   const [locCultureView,setLocCultureView]=useState('period');
@@ -1358,6 +1363,8 @@ export default function Culture(){
             {query.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
             {!query.isPending&&!query.error&&!timelineItems.length
               ?<p className='scope-status'>目前尚未建立此類時間紀錄，可直接在下方新增。</p>:null}
+            {!query.isPending&&!query.error&&!editorEraRiver.groups.length
+              ?<p className='scope-status' role='status'>時間紀錄已讀取，但目前沒有可顯示的時代／定錨點。</p>:null}
             {!query.isPending&&!query.error&&editorEraRiver.groups.length>0?<CultureTimeline
               key={'time-editor-era-period'}
               items={editorEraRiver.items}
