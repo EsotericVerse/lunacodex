@@ -106,14 +106,14 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
           ?<p className="scope-status" role="status">正在載入頁面標題…</p>:null}
         {!managementMode&&hasFeatureHero&&heroQuery.isError
           ?<p className="scope-status scope-error" role="alert">頁面標題讀取失敗</p>:null}
-        <FeatureHeroContent
+        {(managementMode||!hasFeatureHero||heroQuery.isSuccess)?<FeatureHeroContent
           scopeId={scopeId}
           eyebrow={shared?.eyebrow||''}
           title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
           subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
           description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
           rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
-        />
+        />:null}
       </header>
       <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
         {children}
