@@ -64,9 +64,9 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
         state.groupCounts[a]-state.groupCounts[b]||groupOrder.get(a)-groupOrder.get(b))[0];
       else if(tied.length===1)group=tied[0];
       else if(!groupOrder.has(group))group=fallback;
-      if(groupOrder.has(group)){
+      if(hits.size&&groupOrder.has(group)){
         state.groupCounts[group]++;
-        if(hits.size)state.groupDocuments[group]++;
+        state.groupDocuments[group]++;
       }
       const day=dayOf(doc.date);
       if(/^\d{4}-\d{2}-\d{2}$/.test(day)&&hits.size){
@@ -130,11 +130,12 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     const ids=page.rows.filter(row=>row.keyword!==false).map(row=>String(row.uid));
     if(ids.length){
       const docs=await readContent(ids);
-      const actual=new Set(docs.map(row=>String(row.uid)));
-      if(!Array.isArray(docs)||actual.size!==ids.length||
-        ids.some(id=>!actual.has(id))||docs.length!==ids.length)
+      if(!Array.isArray(docs)||docs.length!==ids.length)
         throw Error('Incomplete Item scan article page');
-      a.absorb(docs);
+      const byUid=new Map(docs.map(row=>[String(row.uid),row]));
+      if(byUid.size!==ids.length||ids.some(id=>!byUid.has(id)))
+        throw Error('Incomplete Item scan article page');
+      a.absorb(ids.map(id=>byUid.get(id)));
     }
     a.state.scanned=scanned;
     onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed});
@@ -156,7 +157,7 @@ export async function readItemKeywordProjection(db,scope,{items,groups,start='',
   let after='';
   for(;;){
     let q=db.selectFrom('silver.'+scope+'_galaxy')
-      .select(['uid','title','content','keyword','date','site','place_id'])
+      .select(['uid','title','content','keyword','date','site','place_id','createtime'])
       .orderBy('uid','asc').limit(256);
     if(after)q=q.where('uid','>',after);
     if(start)q=q.where('date','>=',start);
