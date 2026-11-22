@@ -41,7 +41,7 @@ export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={
     put('relation','target_id',target,{label:relatedTitles?.[target]||''});
   // Galaxy media_link stores public URLs, never MediaAnchor UID references.
   // Source links render directly without a second relation lookup.
-  for(const value of !federated&&Array.isArray(anchor.media_link)?anchor.media_link:[]){
+  for(const value of !federated&&Array.isArray(shape.media_link)?shape.media_link:[]){
     const url=String(value||'').trim();
     if(/^https?:\/\//i.test(url))
       put('media','media_link',url,{kind:'url',label:url,resolved:true});
