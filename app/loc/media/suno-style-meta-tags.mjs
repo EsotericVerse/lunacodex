@@ -51,3 +51,23 @@ export function refreshSunoStyleMetaTags(source,current=''){
     seen.add(key);return true;
   }).join(', ');
 }
+
+
+/**
+ * Suno Meta Tags are readable editorial notes INSIDE Galaxy.content.
+ * They do not become a Galaxy.meta_tags SQL field, a second Anchor, or
+ * words sung in the lyrics. Keep the lyric body unchanged and put the
+ * arrangement explanation at its end, clearly marked as non-lyrics.
+ */
+export function appendSunoMetaTagsToArticle(content,metaTags){
+  const body=String(content??'').trim();
+  const tags=String(metaTags??'').trim();
+  if(!tags||!body||body.includes('編曲版本說明｜非歌詞'))return body;
+  const html=/<\/?(?:p|div|h[1-6]|section|ul|ol|li)\b|<br\s*\/?\s*>/iu.test(body);
+  if(!html)return body+'\n\n編曲版本說明｜非歌詞\nMeta Tags：'+tags;
+  const escapeHtml=text=>String(text).replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  return body+'\n<p><strong>編曲版本說明｜非歌詞</strong></p>'+
+    '<p>Meta Tags：'+escapeHtml(tags)+'</p>';
+}
