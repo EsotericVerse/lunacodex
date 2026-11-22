@@ -123,6 +123,16 @@ test('one SiteAnchor rollup includes multimedia but offers only Galaxy/Domain',(
   assert.equal(byName.has('Yesterday'),true); // PastBy > SeeYou > Yesterday
 });
 
+test('Space comparisons use statics=true without changing ordinary Trace territory',()=>{
+  const ui=readFileSync(new URL('../app/modular/modules/statistics/ScopeSelfIntersection.jsx',import.meta.url),'utf8');
+  const sql=readFileSync(new URL('../app/loc/providers/kysely-analytics.mjs',import.meta.url),'utf8');
+  assert.match(ui,/p_options:\{withPoints:false,statisticsOnly:true\}/);
+  assert.match(sql,/async function traceTerritory\(trx,scope,start,end,\{withPoints=false,statisticsOnly=false\}/);
+  assert.match(sql,/const statisticsFilter=statisticsOnly\?sql/);
+  assert.match(sql,/if\(options.statisticsOnly===true\)query=query.where\('statics','=',true\)/);
+  assert.match(sql,/statisticsOnly:options.statisticsOnly===true/);
+});
+
 test('all four families are present in the cascading metric picker',()=>{
   const mk=(name,id)=>({name,id});
   const groups=comparisonMetricGroups('all',{
