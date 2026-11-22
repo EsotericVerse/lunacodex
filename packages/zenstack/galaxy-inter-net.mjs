@@ -39,12 +39,12 @@ export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={
   put('relation','ref_id',relation.ref_id,{label:relatedTitles?.[relation.ref_id]||''});
   for(const target of Array.isArray(relation.target_id)?relation.target_id:[])
     put('relation','target_id',target,{label:relatedTitles?.[target]||''});
-  const mediaByUid=new Map((Array.isArray(media)?media:[])
-    .filter(item=>asUid(item?.uid)).map(item=>[String(item.uid),item]));
-  for(const uid of !federated&&Array.isArray(anchor.media_link)?anchor.media_link:[]){
-    const entry=mediaByUid.get(String(uid));
-    put('media','media_link',uid,{kind:'media',
-      label:entry?.title||entry?.type||'',resolved:entry?true:null});
+  // Galaxy media_link stores public URLs, never MediaAnchor UID references.
+  // Source links render directly without a second relation lookup.
+  for(const value of !federated&&Array.isArray(anchor.media_link)?anchor.media_link:[]){
+    const url=String(value||'').trim();
+    if(/^https?:\/\//i.test(url))
+      put('media','media_link',url,{kind:'url',label:url,resolved:true});
   }
   if(!federated)put('space','place_id',anchor.place_id,{kind:'point',
     label:place?.uid===anchor.place_id?place?.title||place?.location||'':'',
