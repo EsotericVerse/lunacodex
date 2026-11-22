@@ -2,16 +2,14 @@
 import {dbAuthRelation} from '../db/db-client.mjs';
 
 const TABLE='silver.loc_user';
-const COLUMNS='uid,owner_id,email,culture,statics,trace,search,keyword,updated_at';
+const COLUMNS='uid,owner_id,email,culture,statics,trace,search,updated_at';
 const UID=/^[A-Za-z0-9]{8}$/;
-const KEYWORD=/^[a-z][a-z0-9]{0,30}:(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/;
-export const LOC_USER_FIELDS=Object.freeze(['culture','statics','trace','search','keyword']);
+export const LOC_USER_FIELDS=Object.freeze(['culture','statics','trace','search']);
 export const LOC_USER_DEFAULTS=Object.freeze({
   culture:Object.freeze({time:'era',display:'density',unit:'day',sort:'desc',list:false}),
   statics:Object.freeze({display:'source',unit:'day',sort:'desc',list:false}),
   trace:Object.freeze({display:'anchor',time:'none',sort:'desc',list:false}),
-  search:Object.freeze({field:'content',sort:'asc',list:false}),
-  keyword:'none'
+  search:Object.freeze({field:'content',sort:'asc',list:false})
 });
 const ALLOWED=Object.freeze({
   culture:{time:['anchor','period','era'],display:['density','keywords'],
@@ -42,17 +40,10 @@ export function normalizeLocUser(row={}){
     }
     value[field]=normal;
   }
-  const selection=String(source.keyword||'none');
-  value.keyword=selection==='none'||KEYWORD.test(selection)?selection:'none';
   return value;
 }
 export function validateLocUserField(field,value){
   if(!LOC_USER_FIELDS.includes(field))throw new Error('不允許修改這個個人設定欄位');
-  if(field==='keyword'){
-    if(value!=='none'&&!KEYWORD.test(String(value||'')))
-      throw new Error('關鍵詞群組必須為無或 Scope 與四碼／八碼 UID');
-    return value;
-  }
   if(!value||typeof value!=='object'||Array.isArray(value))
     throw new Error('個人設定需為指定欄位的物件');
   const output={};

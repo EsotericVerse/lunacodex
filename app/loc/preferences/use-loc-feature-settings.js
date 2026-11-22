@@ -6,5 +6,5 @@ import {LOC_USER_DEFAULTS} from './loc-user-store.mjs';
 export default function useLocFeatureSettings(feature){
   const {data,ready}=useLocUser();
   return {settings:ready&&data?.[feature]||LOC_USER_DEFAULTS[feature],
-    active:Boolean(ready&&data),keyword:ready?data.keyword:'none'};
+    active:Boolean(ready&&data)};
 }

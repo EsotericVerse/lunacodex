@@ -1,8 +1,7 @@
 // LOC Session owns only its silver.loc_user preferences row. Other business
 // relations, including retired user-record tables, are never personal APIs.
 const TABLE='silver.loc_user';
-const WRITABLE=new Set(['culture','statics','trace','search','keyword',
-  'draw_response','list_page_size','locale','updated_at']);
+const WRITABLE=new Set(['culture','statics','trace','search','updated_at']);
 const COLUMN=/^[A-Za-z_][A-Za-z0-9_]{0,119}$/;
 const OPS={eq:'=',neq:'!=',gt:'>',gte:'>=',lt:'<',lte:'<=',
   like:'like',ilike:'ilike',in:'in',is:'is'};
