@@ -23,8 +23,8 @@ import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
   from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import * as z from 'zod';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
-import {keywordPatternItemMetrics} from '../keywords/search-pattern.mjs';
-import {readScopePatternRows,storeScopePatternMatches} from '../keywords/anchor-index.mjs';
+import {readItemKeywordProjection,itemKeywordStatistics,
+  itemKeywordSuggestions} from '../keywords/item-count-analysis.mjs';
 import {parseSearchQuery} from '../search/query.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
@@ -560,46 +560,33 @@ async function keywordPatternStatistics(trx,args){
       keywords:Array.isArray(attributes(row).keyword)?attributes(row).keyword:[]
     };
   }));
-  // The Anchor supplies hierarchy and words only. Every hit/UID/count comes
-  // exclusively from loc_search_pattern, including newly composed Items.
-  const patterns=await readScopePatternRows(trx,scope);
   const start=String(args.p_start_date||''),end=String(args.p_end_date||'');
   const source=String(args.p_source||'').trim();
   if([start,end].some(value=>value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))||
      start&&end&&start>end||source.length>120)
     reject('Invalid Keyword statistics date or source');
-  let allowed=null;
+  const groups=groupUids.map(uid=>({uid,title:byGroup.get(uid).title}));
+  let totals;
   if(start||end||source){
-    allowed=new Set();
-    const uids=[...new Set(patterns.flatMap(row=>row.uid_list||[]))];
-    // Only dated/source metadata for already indexed UIDs. No article text,
-    // Anchor count, JSONB join or separate stored statistics.
-    for(let i=0;i<uids.length;i+=500){
-      let query=trx.selectFrom('silver.'+scope+'_galaxy')
-        .select('uid').where('uid','in',uids.slice(i,i+500))
-        .where('keyword','=',true);
-      if(start)query=query.where('date','>=',start);
-      if(end)query=query.where('date','<=',end);
-      if(source)query=query.where('site','=',source);
-      for(const row of await query.execute())allowed.add(String(row.uid));
-    }
+    const result=await readItemKeywordProjection(trx,scope,{
+      items,groups,start,end,source,owner:true,
+      minChars:Math.max(0,Number(config?.keyword_min_chars)||0)
+    });
+    totals=result.totals;
+  }else{
+    const n=await trx.selectFrom(table).select(['uid','num'])
+      .where('uid','in',[classUid,...groupUids,...itemUids]).execute();
+    const byUid=new Map(n.map(row=>[row.uid,Number(row.num)||0]));
+    const receipt=config?.keyword_meta?.by_class?.[classUid]||{};
+    totals={...receipt,
+      itemCounts:Object.fromEntries(items.map(item=>[item.uid,byUid.get(item.uid)||0])),
+      groupCounts:Object.fromEntries(groups.map(group=>[group.uid,byUid.get(group.uid)||0]))};
   }
-  const metrics=keywordPatternItemMetrics(items,patterns,{articleUids:allowed});
-  const groups=groupUids.map(uid=>{
-    const members=metrics.items.filter(item=>item.group_uid===uid);
-    const hits=members.reduce((sum,item)=>sum+item.hit_count,0);
-    return {uid,name:String(byGroup.get(uid).title||''),hit_count:hits,
-      document_count:Number(metrics.group_document_counts?.[uid])||0,
-      ratio:metrics.total_hits?100*hits/metrics.total_hits:0};
-  });
-  return {
-    class_uid:classUid,class_name:String(root.title||''),groups,
-    ...metrics
-  };
+  return {class_uid:classUid,class_name:String(root.title||''),
+    ...itemKeywordStatistics(items,groups,totals)};
 }
 
-// Indexed Keyword suggestions stay inside the verified LOC Scope-management
-// channel. No anonymous SELECT exposes private Item vocabulary or article UIDs.
+// Suggestions come from authored Item vocabulary, not Pattern postings.
 async function suggestSearchPatterns(trx,args){
   const requested=args.p_scope_ids;
   const query=String(args.p_query??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -609,44 +596,25 @@ async function suggestSearchPatterns(trx,args){
   const granted=[];
   for(const id of new Set(requested))
     if(await canLocAccess(trx,'scope',id))granted.push(id);
-  if(!granted.length)reject('No authorized Pattern Scope',403);
+  if(!granted.length)reject('No authorized Keyword Scope',403);
   await sql`reset role`.execute(trx);
   const found=new Map();
   for(const scope of granted){
-    const rows=await readScopePatternRows(trx,scope);
-    for(const row of rows){
-      const key=String(row.pattern||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');
-      if(!key.startsWith(query))continue;
-      const current=found.get(key)||{pattern:row.pattern,count:0};
-      current.count+=row.count;
-      found.set(key,current);
+    const rows=await trx.selectFrom('silver.'+scope+'_anchor')
+      .select(['title','attr']).where('type','=','item').execute();
+    for(const row of itemKeywordSuggestions(rows.map(item=>({
+      item_name:item.title,keywords:Array.isArray(item.attr?.keyword)?item.attr.keyword:[]
+    })),query)){
+      const key=String(row.pattern).normalize('NFKC').toLocaleLowerCase('zh-Hant');
+      if(!found.has(key))found.set(key,row);
     }
   }
-  return [...found.values()].sort((a,b)=>b.count-a.count||
-    a.pattern.localeCompare(b.pattern)).slice(0,10);
+  return [...found.values()].sort((a,b)=>a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
-async function syncSearchPatterns(trx,args){
-  const scope=await scopedWrite(trx,args.p_scope_id);
-  const classUid=validUid(args.p_class_uid);
-  const proposed=args.p_patterns;
-  if(args.p_final!==undefined&&typeof args.p_final!=='boolean')
-    reject('Invalid Pattern finalization');
-  if(!Array.isArray(proposed)||proposed.length>4000)
-    reject('Invalid Pattern batch');
-  const anchor='silver.'+scope+'_anchor';
-  const klass=await trx.selectFrom(anchor).select('uid')
-    .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
-  if(!klass)reject('Keyword Class is missing');
-  for(const row of proposed){
-    // A Pattern write always targets its physical UID. The word is a
-    // lexeme for matching documents, not an upsert/lookup identity.
-    if(row?.scopeid!==scope||!UID.test(String(row?.uid||''))||
-       typeof row?.pattern!=='string'||!Array.isArray(row.uid_list)||
-       row.count!==row.uid_list.length)
-      reject('Invalid Pattern UID batch row');
-  }
-  return storeScopePatternMatches(trx,scope,proposed);
+async function syncSearchPatterns(){
+  // Retired writer: no frontend or extension can recreate Galaxy UID postings.
+  reject('Item keyword analysis no longer writes Pattern indexes',410);
 }
 
 export async function executeManagedKyselyAction(trx,body,claims={}){
