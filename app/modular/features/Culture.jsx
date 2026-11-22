@@ -15,7 +15,16 @@ import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeature
 import ScopeLink from '../ScopeLink';
 import {useEditDock} from '../edit-dock';
 import {featureDataErrorMessage} from '../feature-data-state';
-const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTimeline'),{loading:()=>null});
+// Keep a visible, CSS-only waiting state even before the timeline chunk loads.
+function CultureTimeLoading({label='正在載入時間定錨…'}){
+  return <div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
+    <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+    <span>{label}</span>
+  </div>;
+}
+const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTimeline'),{
+  loading:()=> <CultureTimeLoading label='正在準備時間長河…'/>
+});
 import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
@@ -41,7 +50,9 @@ import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui'
 import ManagementWorkspaceFrame from '../../loc/management/ManagementWorkspaceFrame';
 // Article cards/editing are requested only when results actually render.
 const Article=dynamic(()=>import('../Article'),{loading:()=>null});
-const CultureTimelineEditor=dynamic(()=>import('./CultureTimelineEditor'),{loading:()=>null});
+const CultureTimelineEditor=dynamic(()=>import('./CultureTimelineEditor'),{
+  loading:()=> <CultureTimeLoading label='正在準備時間定錨編輯器…'/>
+});
 const CulturePlaceRiver=dynamic(()=>import('./trace/CulturePlaceRiver'),{loading:()=>null});
 const CultureMediaRiver=dynamic(()=>import('./media/CultureMediaRiver'),{loading:()=>null});
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
@@ -1360,7 +1371,7 @@ export default function Culture(){
       <ManagementWorkspaceFrame level="scope" title="時間定錨管理">
         <section className="management-workspace-panel scope-time-edit-root">
         {!editorAvailable?<p className='scope-status'>此區沒有個別 Scope 的時間編輯資料。</p>:null}
-        {editorAvailable&&permissionPending?<p className='scope-status' role='status'>正在確認此 Scope 的編輯權限…</p>:null}
+        {editorAvailable&&permissionPending?<CultureTimeLoading label='正在確認此 Scope 的編輯權限…'/>:null}
         {editorAvailable&&!permissionPending&&!editorAuthorized?<p className='scope-status scope-error' role='alert'>
           {account.error?String(account.error):account.user?'目前登入帳號沒有此 Scope 的管理權限。':'請先至設定首頁登入，才能編輯時間定錨。'}
         </p>:null}
@@ -1372,7 +1383,7 @@ export default function Culture(){
               <button type='button' className='loc-button' disabled={query.isPending}
                 onClick={()=>void refreshTimelineData().catch(error=>setEditError(error?.message||'時間長河更新失敗'))}>更新時間長河</button>
             </div>
-            {query.isPending?<p className='scope-status' role='status'>正在載入時間紀錄…</p>:null}
+            {query.isPending?<CultureTimeLoading label='正在載入時間紀錄…'/>:null}
             {query.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
             {!query.isPending&&!query.error&&!timelineItems.length
               ?<p className='scope-status'>目前尚未建立此類時間紀錄，可直接在下方新增。</p>:null}
