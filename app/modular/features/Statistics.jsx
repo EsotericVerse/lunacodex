@@ -20,7 +20,7 @@ import {useScopeRuntime} from '../use-scope-runtime';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {FeaturePage} from '../ui';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
-import {sourceOutlineOptions} from '../../loc/source/keyword-options.mjs';
+import {sourceOutlineOptions} from '../../loc/source/outline-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
 import {usePassiveSessionAccount} from '../../loc/auth/use-account';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
