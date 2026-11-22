@@ -122,7 +122,7 @@ test('Culture, Statistics and protected Source editor use one UID-based outline'
   assert.match(editor,/sourceOutline\.filter\(row=>row\.path\[0\]===root\.code\)/);
   assert.doesNotMatch(statistics,/source\.domain\?source\.domain/);
   assert.doesNotMatch(editor,/children\(root\.uid\)\.flatMap/);
-  const source=read('app/loc/source/keyword-options.mjs');
+  const source=read('app/loc/source/outline-options.mjs');
   assert.match(source,/sourceTaxonomyFromAnchors\(anchorRows,\{includeHidden:true\}\)/);
 });
 
