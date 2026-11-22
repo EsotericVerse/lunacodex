@@ -149,12 +149,14 @@ test('Statistics places require both switches while Trace keeps its own feature 
   const stats=readFileSync(new URL('../app/modular/features/Statistics.jsx',import.meta.url),'utf8');
   const trace=readFileSync(new URL('../app/modular/features/trace/TraceTerritoryPanel.jsx',import.meta.url),'utf8');
   const sql=readFileSync(new URL('../app/loc/providers/kysely-analytics.mjs',import.meta.url),'utf8');
-  assert.match(stats,/p_view:'trace_places'[\\s\\S]*?p_options:\\{statisticsOnly:true\\}/);
-  assert.match(trace,/p_view:'trace_territory'[\\s\\S]*?p_options:\\{withPoints:true\\}/);
-  assert.match(sql,/where trace is true \\$,?\\{statisticsFilter\\} and date is not null/);
-  assert.match(sql,/if\\(opts.requireStatics===true\\)query=query.where\\('statics','=',true\\)/);
-  assert.match(sql,/const rows=await grouped\\('trace',\\['date','location'\\],\\{/);
-  assert.match(sql,/requireStatics:options.statisticsOnly===true/);
+  assert.ok(stats.includes("p_view:'trace_places'"));
+  assert.ok(stats.includes('p_options:{statisticsOnly:true}'));
+  assert.ok(trace.includes("p_view:'trace_territory'"));
+  assert.ok(trace.includes('p_options:{withPoints:true}'));
+  assert.ok(sql.includes('where trace is true ${statisticsFilter} and date is not null'));
+  assert.ok(sql.includes("if(opts.requireStatics===true)query=query.where('statics','=',true)"));
+  assert.ok(sql.includes("const rows=await grouped('trace',['date','location'],{"));
+  assert.ok(sql.includes('requireStatics:options.statisticsOnly===true'));
 });
 
 test('all four families are present in the cascading metric picker',()=>{
