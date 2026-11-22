@@ -9,7 +9,7 @@ import {sourceIntersectionOutline} from '../../../loc/statistics/source-tree-mea
 export default function SourceTreePicker({
   metrics=[],value='',takenIds=new Set(),onChange,label='來源',
   // The general Source selector may allow all four levels. Intersection
-  // expressly permits only Galaxy/Domain; Universe and From remain navigation.
+  // displays Universe headings and Galaxy/Domain choices, with no From rows.
   selectableTypes=null
 }){
   // In intersections Universe is a heading; only Galaxy and Domain are
