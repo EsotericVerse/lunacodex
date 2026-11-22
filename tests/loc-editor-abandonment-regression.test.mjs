@@ -39,14 +39,18 @@ test('Culture orders Era > Period > Date anchors, then the next Era',()=>{
     {uid:'DDDD0002',entry_type:'anchor',scope_id:scope,title:'Unassigned',
       start_date:'2024-01-01'}
   ];
-  const expanded=['trace:'+scope+':'+a,'trace:'+scope+':'+b];
+  const first='trace:'+scope+':'+a;
+  const second='trace:'+scope+':'+b;
+  const periodId=first+':period:PPPP0001';
   for(const editorOnly of [true,false]){
+    const expanded=editorOnly?[first,periodId,second]:[first,second];
     const river=buildEraRiver(records,expanded,{editorOnly,scopeId:scope});
     const ordered=river.groups.map(row=>row.id);
-    const era=ordered.indexOf(expanded[0]);
+    const era=ordered.indexOf(first);
     const period=ordered.findIndex(id=>id.includes('PPPP0001'));
-    const date=ordered.findIndex(id=>id.includes('anchors:')||id.endsWith(':anchors'));
-    const nextEra=ordered.indexOf(expanded[1]);
+    const date=ordered.findIndex(id=>id.includes('anchors:')||
+      id.endsWith(':anchors')||id.endsWith(':dates'));
+    const nextEra=ordered.indexOf(second);
     assert.ok(era>=0&&era<period&&period<date&&date<nextEra,
       'must sort Era, its Period, its Date anchor group, then next Era');
     assert.ok(river.groups.some(row=>row.id==='time-undefined:'+scope));
