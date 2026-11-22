@@ -160,7 +160,7 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
   PeriodAnchor:{uid:{type:'String',array:true,optional:true},date:{type:'String',array:true,optional:true}},
   EraAnchor:{period:{type:'String',array:true,optional:true},date:{type:'String',array:true,optional:true}},
   PointAnchor:{longitude:{type:'Float',optional:true},latitude:{type:'Float',optional:true},
-    location:{type:'String',optional:true},times:{type:'String',array:true,optional:true}},
+    location:{type:'String',optional:true}},
   PathAnchor:{point:{type:'String',array:true,optional:true}},
   TraceAnchor:{point:{type:'String',array:true,optional:true},path:{type:'String',array:true,optional:true}},
   ImageAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
