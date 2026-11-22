@@ -17,6 +17,7 @@ import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs
 import {annualGaugeGroups,annualGaugeValues} from './trace/trace-annual-gauges.mjs';
 import {dbPublicClient} from '../../loc/db/db-client.mjs';
 import {publicTraceMapChoices,locReferencedPointGroups,clusterLocSharedPoints} from './trace/trace-map-choices.mjs';
+import {traceRouteHierarchy} from './trace/trace-route-hierarchy.mjs';
 import {pickTraceDemoStop,traceDemoRoute} from './trace/trace-demo-route.mjs';
 import {
   readDefaultTraceRoute,setDefaultTraceRoute,chooseDefaultTraceRoute,
@@ -110,11 +111,19 @@ function ScopeTrace({scopeId='lo3rwang'}){
   // point scan. The selector starts with saved path/trace definitions only.
   const maps=allMapChoices;
   const mapChoiceKey=row=>isLoc?row.source_scope+':'+row.uid:row.uid;
+  const routeHierarchy=useMemo(()=>traceRouteHierarchy(maps,scopeId),[allMaps,scopeId]);
   const currentMap=useMemo(()=>isLoc
     ?maps.find(row=>row.source_scope+':'+row.uid===currentTraceChoice)
       ||maps.find(row=>row.trace_type==='path')||null
     :chooseDefaultTraceRoute(maps,scopeId,currentTraceChoice),
     [allMaps,scopeId,currentTraceChoice,isLoc]);
+  // Parent Trace owns a referenced set of Path children. Never flatten.
+  const currentTraceGroup=routeHierarchy.groups.find(group=>
+    group.trace.uid===currentMap?.uid||
+    group.paths.some(path=>path.uid===currentMap?.uid))||null;
+  const currentTraceGroupKey=currentTraceGroup
+    ?mapChoiceKey(currentTraceGroup.trace):'__standalone__';
+  const displayedRoutes=currentTraceGroup?.paths||routeHierarchy.orphans;
   const periodScopeId=isLoc?(currentMap?.source_scope||'loc'):scopeId;
   const deepLinkedPlace=useAsyncResource({
     queryKey:['trace-open-place',periodScopeId,selectedPlaceUid],
@@ -233,19 +242,33 @@ function ScopeTrace({scopeId='lo3rwang'}){
     <div className="loc-trace-float-choices">
       {supported&&!isLoc&&routeListOpen?<label>
         <span>{t("currentMaps")}</span>
-        <select className="scope-select"
-          value={currentMap?mapChoiceKey(currentMap):''}
-          onChange={event=>chooseCurrentTrace(event.target.value)}
+        <select className="scope-select" aria-label="痕跡圖選擇"
+          value={currentTraceGroupKey}
+          onChange={event=>{
+            const value=event.target.value;
+            if(value==='__standalone__'){
+              const first=routeHierarchy.orphans[0];
+              if(first)chooseCurrentTrace(mapChoiceKey(first));
+            }else chooseCurrentTrace(value);
+          }}
           disabled={traceIndex.isPending||Boolean(traceIndex.error)||!maps.length}>
-          {isLoc
-            ?(maps.length?maps.map(map=><option key={mapChoiceKey(map)} value={mapChoiceKey(map)}>
-              {map.source_scope==='lrunes'?t('runes'):t('author')} · {map.title}
-            </option>):<option value="">{t("noMaps")}</option>)
-            :maps.map(map=><option key={mapChoiceKey(map)} value={mapChoiceKey(map)}>
-              {map.title}（{map.trace_type==='trace'?t('traceMap'):t('routeMap')}）
-            </option>)}
-
+          {routeHierarchy.groups.map(group=><option key={mapChoiceKey(group.trace)}
+            value={mapChoiceKey(group.trace)}>{group.trace.title}</option>)}
+          {routeHierarchy.orphans.length?<option value="__standalone__">
+            未歸屬痕跡圖的路線圖
+          </option>:null}
         </select>
+        <label><span>路線圖</span>
+          <select className="scope-select" aria-label="所屬路線圖選擇"
+            value={currentMap?.trace_type==='path'?mapChoiceKey(currentMap):'__overview__'}
+            onChange={event=>chooseCurrentTrace(event.target.value==='__overview__'
+              ?mapChoiceKey(currentTraceGroup.trace):event.target.value)}
+            disabled={traceIndex.isPending||Boolean(traceIndex.error)||!displayedRoutes.length}>
+            {currentTraceGroup?<option value="__overview__">整個痕跡圖</option>:null}
+            {displayedRoutes.map(route=><option key={mapChoiceKey(route)}
+              value={mapChoiceKey(route)}>{route.title}</option>)}
+          </select>
+        </label>
       </label>:null}
       {!isLoc?<details className="loc-trace-more-controls">
         <summary>{t("more")}</summary>
