@@ -28,8 +28,10 @@ export function parseAnchorFeatureTransaction(body){
   const parsed=schema.safeParse(body);
   if(!parsed.success)throw Object.assign(Error('Invalid Anchor feature model'),{httpStatus:400});
   const value=parsed.data,allowed=ANCHOR_TYPE_GROUPS[value.family];
-  if(!scopes.has(value.scope)||value.scope==='admin'||value.scope==='loc'&&
-    value.family!=='source'||!Array.isArray(allowed)||
+  // The entire SiteAnchor taxonomy exists ONLY in silver.loc_anchor.
+  // Source is never a family within an author's private <scope>_anchor.
+  if(!scopes.has(value.scope)||value.scope==='admin'||
+    (value.family==='source')!==(value.scope==='loc')||!Array.isArray(allowed)||
     value.types?.some(type=>!allowed.includes(type))||
     value.uids&&value.cursor||value.cursor&&value.offset!==undefined||
     value.uids&&value.uids.length>100||
@@ -46,7 +48,8 @@ export function parseAnchorFeatureTransaction(body){
     order:value.order||'uid'};
 }
 export async function executeAnchorFeatureTransaction(trx,model){
-  const table='silver.'+(model.scope==='loc'?'loc_anchor':model.scope+'_anchor');
+  const table=model.family==='source'
+    ?'silver.loc_anchor':'silver.'+model.scope+'_anchor';
   let query=trx.selectFrom(table).where('type','in',model.types);
   if(model.mode==='public')query=query.where('invisible','=',false);
   if(model.uids)query=query.where('uid','in',model.uids);
