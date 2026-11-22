@@ -144,19 +144,24 @@ export function planImportPointUidLink(previousUid,nextUid){
   return {changes:changedFields(next,patches),patches};
 }
 
-// MediaAnchor UID is a separate namespace. This is the only operation which
-// writes media_link: append verified attached IDs to this one saved Galaxy
-// article, no global Anchor scan, no changes when the links already exist.
-export function planImportMediaUidLinks(prior=[],additions=[]){
-  if(!Array.isArray(prior))throw new TypeError('媒體 UID 清單不是陣列');
-  const known=new Set(prior.map(checkedUid));
+// Galaxy.media_link is a URL list, not MediaAnchor foreign keys.
+// Only attach actual HTTPS/HTTP public links. The Anchor UID remains its
+// separate, typed record identity and is never written to the Galaxy array.
+export function planImportMediaUrlLinks(prior=[],additions=[]){
+  if(!Array.isArray(prior))throw new TypeError('媒體 URL 清單不是陣列');
+  const mediaUrl=value=>{
+    const link=String(value||'').trim();
+    if(!/^https?:\/\//i.test(link))throw new TypeError('Galaxy.media_link 僅接受公開網址');
+    return link;
+  };
+  const known=new Set(prior.map(mediaUrl));
   const before={media_link:[...prior]};
   const [next,patches]=produceWithPatches(before,draft=>{
     for(const raw of additions){
-      const id=checkedUid(raw);
-      if(known.has(id))continue;
-      known.add(id);
-      draft.media_link.push(id);
+      const link=mediaUrl(raw);
+      if(known.has(link))continue;
+      known.add(link);
+      draft.media_link.push(link);
     }
   });
   return {changes:changedFields(next,patches),patches};
