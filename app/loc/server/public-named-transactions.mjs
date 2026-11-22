@@ -10,6 +10,8 @@ import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../mcp/nativ
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {parseGalaxyFeatureTransaction,executeGalaxyFeatureTransaction} from '../model/galaxy-feature-transactions.mjs';
 import {checkSearchQos} from '../providers/search-qos.mjs';
+import {parseGalaxyRecordTransaction,executeGalaxyRecordTransaction} from '../model/galaxy-record-transactions.mjs';
+import {parseAnchorFeatureTransaction,executeAnchorFeatureTransaction} from '../model/anchor-feature-transactions.mjs';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
@@ -34,7 +36,8 @@ function scopeId(value){
 }
 function normalize(body){
   if(!KEYS(body,['kind','operation','scope','mode','cursor','limit','args','name',
-    'feature','startDate','endDate','category','result'])||
+    'feature','startDate','endDate','category','result',
+    'view','uids','family','types','order'])||
     body.kind!=='transaction')throw bad();
   if(body.operation==='time-anchors'){
     if(!KEYS(body,['kind','operation','scope','mode','cursor','limit']))throw bad();
@@ -46,6 +49,8 @@ function normalize(body){
     return {operation:'time-anchors',scope,mode,cursor,limit};
   }
   if(body.operation==='galaxy-feature')return parseGalaxyFeatureTransaction(body);
+  if(body.operation==='galaxy-records')return parseGalaxyRecordTransaction(body);
+  if(body.operation==='anchor-feature')return parseAnchorFeatureTransaction(body);
   if(body.operation==='analytics'){
     if(!KEYS(body,['kind','operation','args'])||!OBJECT(body.args)||
       typeof body.args.p_view!=='string')throw bad();
@@ -78,16 +83,49 @@ export async function handleNamedPublicTransaction(request,env={},{
   }catch(error){return respond({error:'Invalid named LOC transaction'},error.httpStatus||400)}
   // Only TimeAnchor editing and editor-only Point-name suggestions require a
   // Session. Identity is verified once; grants are calculated from JS, not SQL.
-  if(operation.operation==='time-anchors'&&operation.mode==='editor'||
+  if(['galaxy-records','anchor-feature'].includes(operation.operation)&&
+     operation.mode==='editor'||
+     if(operation.operation==='time-anchors'&&operation.mode==='editor'||
      operation.operation==='action'&&operation.name==='search_scope_trace_place_names'){
     let session;
     try{session=await verifySession(request)}
     catch(error){return respond({error:'LOC Session unavailable'},error.httpStatus||503)}
     let scope;
-    try{scope=operation.operation==='time-anchors'?operation.scope:
-      scopeId(operation.args.p_scope_id)}
+    try{scope=['time-anchors','galaxy-records','anchor-feature'].includes(operation.operation)
+      ?operation.scope:scopeId(operation.args.p_scope_id)}
     catch{return respond({error:'Unavailable Scope'},400)}
     if(!canEdit(session,scope))return respond({error:'LOC Scope not authorized'},403);
+  }
+  if(operation.operation==='galaxy-records'||operation.operation==='anchor-feature'){
+    let port=null,release=()=>{},status=200;
+    const initiated=Date.now();
+    const receipt={requestedBy:operation.operation==='galaxy-records'?'galaxy':'anchor',
+      model:operation.operation,scope:operation.scope,
+      view:operation.view||operation.family,mode:operation.mode,
+      ray:String(request.headers.get('cf-ray')||'').slice(0,80)||null};
+    try{
+      const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
+      if(!primary)throw Error('LOC database unavailable');
+      port=await database(env,primary.target_id,{waitUntil});
+      release=bindLocRequestAbort(port,request.signal);
+      if(!port?.db||port.engine!=='postgres')throw Error('LOC database unavailable');
+      const data=await port.db.transaction().setIsolationLevel('repeatable read')
+        .execute(trx=>operation.operation==='galaxy-records'
+          ?executeGalaxyRecordTransaction(trx,operation)
+          :executeAnchorFeatureTransaction(trx,operation));
+      return respond({data,transaction:receipt});
+    }catch(error){
+      status=error?.httpStatus||503;
+      console.error('[LOC fixed record transaction failed]',{...receipt,
+        code:String(error?.code||'FAILED').slice(0,40)});
+      return respond({error:'Fixed record transaction unavailable',
+        transaction:receipt},status);
+    }finally{
+      console.info('[LOC fixed record transaction]',{
+        ...receipt,status,elapsedMs:Date.now()-initiated});
+      release();
+      try{await closeLocDatabase(port)}catch{}
+    }
   }
   if(operation.operation==='galaxy-feature'){
     // Parse and validate the fixed model before any SQL connection.
