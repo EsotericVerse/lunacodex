@@ -487,9 +487,8 @@ type GalaxyUidRelation {
     target_id String[]?
     ref_id String?
 }
-// Media/place/time/site are already indexed in these physical Galaxy fields.
+// Place/time/site are already indexed in these physical Galaxy fields. Media URL values are not Anchor references.
 type GalaxyUidAnchor {
-    media_link String[]?
     place_id String?
     location String?
     date DateTime?
