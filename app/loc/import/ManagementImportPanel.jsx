@@ -1574,7 +1574,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         });
         if(receipt)setCheckpointHint(receipt);
       };
-      let updateQueue=[];
+      let updateQueue=[],updateBytes=0;
       const existingCount=existingBySiteId.size;
       if(existingCount)showProgress('更新既有文章',0,existingCount);
       const flushUpdates=async()=>{
@@ -1582,7 +1582,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const count=updateQueue.length,started=Date.now();
         const result=await updateImportRows(galaxy,updateQueue);
         updated+=result.count;
-        updateQueue=[];
+        updateQueue=[];updateBytes=0;
         updateSizer.observe(count,Date.now()-started);
         // A receipt's confirmed count is rows examined, not only rows
         // changed. Most reimports update very few columns.
@@ -1613,10 +1613,16 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           anchorSnapshot?.place?.knownPointUids.has(storedPointUid);
         if(storedPointUid&&anchorSnapshot&&!savedPointExists)
           missingPointUids.add(storedPointUid);
-        if(Object.keys(changes).length)
-          updateQueue.push({uid:String(existing.uid),...changes});
+        if(Object.keys(changes).length){
+          const update={uid:String(existing.uid),...changes};
+          const bytes=updateSizer.byteSize(update);
+          if(updateSizer.shouldFlush(updateQueue.length,updateBytes,bytes))
+            await flushUpdates();
+          updateQueue.push(update);updateBytes+=bytes;
+          if(updateSizer.shouldFlush(updateQueue.length,updateBytes))
+            await flushUpdates();
+        }
         checkedExisting++;
-        if(updateQueue.length>=updateSizer.size)await flushUpdates();
         if(checkedExisting%25===0||checkedExisting===existingCount)
           showProgress('更新既有文章',checkedExisting,existingCount);
       }
