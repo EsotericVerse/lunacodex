@@ -36,7 +36,7 @@ export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
   GalaxyUidRead:Object.freeze({
     uid:required('String'),title:optional('String'),
     content:optional('String'),createtime:optional('DateTime'),
-    url:optional('String'),media_link:optional('String',true),
+    url:optional('String'),
     relation:optional('GalaxyUidRelation'),
     anchor:optional('GalaxyUidAnchor')
   })
