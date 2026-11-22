@@ -25,10 +25,24 @@ let invalid=0;
 for(const file of files){
   try{
     const ts=/\.(?:[cm]?ts|tsx)$/.test(file);
-    parse(readFileSync(file,'utf8'),{
+    const ast=parse(readFileSync(file,'utf8'),{
       sourceType:['.cjs','.cts'].includes(extname(file))?'commonjs':'module',
       plugins:ts?['typescript','jsx']:['jsx']
     });
+    // Babel accepts a quoted expression after an import, but Next.js will
+    // reject it as a misplaced React/Next file directive during production
+    // compilation. A genuine directive is in program.directives; a misplaced
+    // one becomes an ExpressionStatement in program.body.
+    for(const statement of ast.program.body){
+      if(statement.type!=='ExpressionStatement'||
+        statement.expression?.type!=='StringLiteral'||
+        !['use client','use server','use cache'].includes(statement.expression.value))
+        continue;
+      const error=new Error('Next.js "'+statement.expression.value+
+        '" directive must appear at the beginning of the file, before imports or other statements');
+      error.loc=statement.loc?.start;
+      throw error;
+    }
   }catch(error){
     invalid++;
     const loc=error.loc?`:${error.loc.line}:${error.loc.column+1}`:'';
