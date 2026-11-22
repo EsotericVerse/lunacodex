@@ -54,3 +54,30 @@ export function sourceStatisticsTree(rows=[],taxonomy={}){
     // These are presentation totals, never independent SQL statistics.
     totals};
 }
+
+// Intersection navigation starts at each Universe heading, then exposes only
+// Galaxy and Domain. From nodes stay inside metricIdsForSite rollups, never
+// appear as selectable or displayed rows in this two-level chooser.
+// Follow persisted Anchor parent UIDs, never guess a path from source names.
+export function sourceIntersectionOutline(metrics=[]){
+  const nodes=(Array.isArray(metrics)?metrics:[])
+    .filter(node=>node?.kind==='source_tree');
+  const children=new Map();
+  for(const node of nodes){
+    if(!node.parentUid)continue;
+    const siblings=children.get(node.parentUid)||[];
+    siblings.push(node);
+    children.set(node.parentUid,siblings);
+  }
+  return nodes.filter(node=>node.type==='universe'&&!node.parentUid)
+    .map(universe=>({
+      uid:universe.uid,name:universe.name,
+      galaxies:(children.get(universe.uid)||[])
+        .filter(node=>node.type==='galaxy')
+        .map(galaxy=>({
+          ...galaxy,
+          domains:(children.get(galaxy.uid)||[])
+            .filter(node=>node.type==='domain')
+        }))
+    }));
+}
