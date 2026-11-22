@@ -1847,13 +1847,13 @@ export default function Culture(){
                       return <div className='scope-work-list-row' key={workKey+'-'+index}>
                         <span>標題：{work.title}</span>
                         <span> 日期：{work.date}</span>
-                        <WorkFullText
+                        {work.extract===true?<WorkFullText
                           open={fullTextKey===workKey}
                           loading={fullTextLoading&&fullTextKey===workKey}
                           error={fullTextKey===workKey?fullTextError:''}
                           content={fullTextKey===workKey?fullText:''}
                           onToggle={()=>toggleWorkContent(work)}
-                        />
+                        />:<span className='scope-status'>僅顯示列表，禁止閱讀全文</span>}
                       </div>;
                     }}
                   />

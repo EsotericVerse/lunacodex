@@ -5,8 +5,10 @@ import {Capacitor} from '@capacitor/core';
 // Web: use the unified DB-side analytics entry, not a full article scan.
 // Local Scope SQL has not been provisioned; native-only reads remain disabled.
 export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
-  const [{forEachAllRowsPage,selectRows},{defaultScopeData},{dbPublicClient}]=await Promise.all([
-    import('../db/db-query.mjs'),import('../scope/scope-data'),import('../db/db-client.mjs')
+  const [{forEachAllRowsPage},{defaultScopeData},{dbPublicClient},
+    {readAllAnchorFeature}]=await Promise.all([
+    import('../db/db-query.mjs'),import('../scope/scope-data'),import('../db/db-client.mjs'),
+    import('../model/feature-transaction-client.mjs')
   ]);
   const scope=defaultScopeData(scopeId);
   if(!scope)return {rows:[],anchors:[]};
@@ -20,16 +22,11 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
     let anchors=[];
     if(['lo3rwang','lrunes'].includes(scopeId)){
       // Query the physical Anchor directly. Legacy *_trace views are retired.
-      const pageSize=500;
-      for(let offset=0;;offset+=pageSize){
-        const {rows}=await selectRows(scope.anchor,{
-          columns:'uid,title',filters:[{column:'type',operator:'eq',value:'point'}],
-          orders:[{column:'title',ascending:true}],
-          limit:pageSize,offset
-        });
-        anchors.push(...rows.map(row=>({uid:row.uid,title:row.title})));
-        if(rows.length<pageSize)break;
-      }
+      const rows=await readAllAnchorFeature({
+        scope:scopeId,family:'space',types:['point']
+      });
+      anchors=rows.map(row=>({uid:row.uid,title:row.title}))
+        .sort((a,b)=>String(a.title).localeCompare(String(b.title)));
     }
     return {rows:data,anchors};
   }

@@ -51,7 +51,7 @@ async function scopedDatabase(scopeid,env,waitUntil,databasePort=null){
 }
 // Private MCP conversations and old PR development records must never leak
 // from a public Galaxy read even if a historical Boolean was set incorrectly.
-const publicSite=sql`( ${sql.ref('site')} is null or lower(${sql.ref('site')}) not in (${sql.join(['mcp','github'])}) )`;
+const publicSite=sql`( ${sql.ref('site')} is null or lower(${sql.ref('site')}) <> 'github' )`;
 
 export async function searchMemory(args={},env={},{waitUntil,databasePort=null}={}){
   if(args.user_requested!==true)
@@ -73,7 +73,7 @@ export async function searchMemory(args={},env={},{waitUntil,databasePort=null}=
   const columnLike=column=>sql`${spec.fold?sql`lower(${sql.ref(column)})`:sql.ref(column)} like ${spec.pattern} escape '!'`;
   const rows=await db.selectFrom(table)
     .select(galaxyReadColumns('GalaxyList'))
-    .where('search','=',true).where(publicSite)
+    .where('search','=',true).where('list','=',true).where(publicSite)
     .where(eb=>eb.or([columnLike('title'),columnLike('content')]))
     .orderBy('date','desc').orderBy('createtime','desc')
     .limit(limit).offset(offset).execute();
@@ -99,7 +99,8 @@ export async function readMemory(args={},env={},{waitUntil,databasePort=null}={}
   try{
   const rows=await db.selectFrom(table)
     .select(galaxyReadColumns('GalaxyUidRead'))
-    .where('uid','=',uid).where('list','=',true).where(publicSite)
+    .where('uid','=',uid).where('list','=',true)
+    .where('extract','=',true).where(publicSite)
     .limit(1).execute();
   if(!rows.length)return {found:false,scopeid,uid,visibility:'public'};
   const row=rows[0],content=String(row.content||'');

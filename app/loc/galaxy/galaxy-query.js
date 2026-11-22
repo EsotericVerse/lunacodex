@@ -14,6 +14,7 @@ import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCou
 import {dbAuthClient,readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
 import {cachedRead} from '../db/semi-dynamic-cache.mjs';
 import {readGalaxyFeature} from './feature-transaction-client.mjs';
+import {readGalaxyRecords,readAnchorFeature} from '../model/feature-transaction-client.mjs';
 import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import {portableContainsTerm} from '../providers/portable-search.mjs';
@@ -219,8 +220,10 @@ export async function selectGalaxyContent(scope,uid,{authenticated=false,dbId=''
   // A single-article read uses the complete GalaxyUidRead projection. The
   // caller may still consume only `content`, but relation/anchor context is
   // no longer silently lost at this boundary.
-  return selectRowById(current.galaxy,{idColumn:'uid',id,
-    columns:galaxyUidReadColumns().join(','),authenticated,expectedDbId:dbId});
+  if(dbId)throw Error('Qualified external database reads need the authorized source');
+  const data=await readGalaxyRecords({scope:current.id,view:'detail',uids:[id]},
+    {editor:authenticated});
+  return data.rows[0]||null;
 }
 
 async function relatedArticleTitlesFor(scope,row,{includeHidden=false,dbId=''}={}){
@@ -230,14 +233,9 @@ async function relatedArticleTitlesFor(scope,row,{includeHidden=false,dbId=''}={
   const batches=[];
   for(let i=0;i<ids.length;i+=50)batches.push(ids.slice(i,i+50));
   const pages=await mapBounded(batches,3,async batch=>{
-    const {rows=[]}=await selectRows(scope.galaxy,{
-      columns:galaxyListColumns().join(','),
-      filters:[{column:'uid',operator:'in',value:batch},
-        ...(!includeHidden?[articlePermissionFilter(scope,'list')]:[])],
-      orFilter:'',
-      limit:batch.length,
-      authenticated:includeHidden,expectedDbId:dbId
-    });
+    if(dbId)throw Error('Qualified external database reads need the authorized source');
+    const {rows}=await readGalaxyRecords({scope:scope.id,view:'list',uids:batch},
+      {editor:includeHidden});
     return rows;
   });
   return Object.fromEntries(pages.flat().map(item=>[String(item.uid),String(item.title||'').trim()]));
@@ -294,10 +292,9 @@ async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
     // Trace reader projects native attr.point/attr.path without relying on
     // removed trace_type, anchor_list or route_list physical columns.
     const [pointPage,maps]=await Promise.all([
-      selectRows('silver.'+scope.id+'_anchor',{columns:'uid,type,title',
-        filters:[{column:'uid',operator:'eq',value:placeId},
-          {column:'type',operator:'eq',value:'point'}],
-        limit:1,authenticated}),
+      readAnchorFeature({scope:scope.id,family:'space',
+        types:['point'],uids:[placeId],limit:1},{editor:authenticated})
+        .then(data=>({rows:data.rows})),
       readTraceMapIndex(scope.id,{includeHidden:authenticated})
     ]);
     const place=pointPage.rows[0]||null;
@@ -329,15 +326,10 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
   if(!id)return null;
   // One exact UID SELECT loads the selected article through GalaxyUidRead;
   // list paths stay on GalaxyList and never read article content.
-  const {rows:articleRows}=await selectRows(current.galaxy,{
-    // GalaxyUidRead is the article detail projection. The separate attr
-    // flags are fetched only as the existing visibility guard's input.
-    columns:galaxyUidReadWithPolicyColumns().join(','),
-    filters:[{column:'uid',operator:'eq',value:id},
-      ...(!includeHidden?[articlePermissionFilter(current,'list')]:[])],
-    orFilter:'',
-    limit:1,authenticated:includeHidden,expectedDbId:dbId
-  });
+  if(dbId)throw Error('Qualified external database reads need the authorized source');
+  const {rows:articleRows}=await readGalaxyRecords({
+    scope:current.id,view:'detail',uids:[id]
+  },{editor:includeHidden});
   const row=articleRows[0]||null;
   if(!row||(!includeHidden&&galaxyAble(row).list===false))return null;
   const placeId=String(row.place_id||'').trim();
@@ -516,31 +508,41 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
   })];
 }
 
-function genericScopeProviders(scope,{includeHiddenText=false,contentType='',sourceFilter='',sourceTaxonomy=null}={}){
+// Public Search uses the fixed GalaxySearch model, never a browser-supplied
+// table, projection, OR-AST or SQL predicate. All results are GalaxyList rows.
+function genericScopeProviders(scope,{contentType='',sourceFilter='',sourceTaxonomy=null}={}){
   const selection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
-  if(selection.kind==='none')return [];
-  const current=scopeOf(scope);
-  const kindFilters=[
-    ...(contentType==='lyrics_work'?[{column:'site',operator:'ilike',value:'suno'}]:[]),
-    ...(contentType==='text_work'?[{column:'site',operator:'neq',value:'suno'}]:[])
-  ];
-  const textFilters=includeHiddenText
-    ?kindFilters
-    :publicContentFilters([searchPermissionFilter(current),...kindFilters]);
-  // Search rows are still article lists: content is searched server-side but
-  // the returned shape is the same GalaxyList projection.
-  const textColumns=galaxyListColumns();
-  // Search uses only the article service: Galaxy.content. Anchor is
-  // resolved through article relationships, never queried as a reverse index.
-  if(contentType&&!['galaxy','lyrics_work','text_work'].includes(contentType))
+  if(selection.kind==='none'||contentType&&!['galaxy','lyrics_work','text_work'].includes(contentType))
     return [];
-  const article=makeProvider({
-    id:current.id+':article-content',table:current.galaxy,
-    source:current.id+' 文章',scope:current,idColumn:'uid',
-    columns:textColumns,searchFields:['content'],dateColumn:dayColumn(current.galaxy),
-    filters:textFilters,sourceClause:sourceNameClause(selection),authenticated:includeHiddenText
-  });
-  return [article];
+  const current=scopeOf(scope);
+  const source=current.id+' 文章',id=current.id+':article-content';
+  return [Object.freeze({
+    id,
+    async search(value,{cursor=0,startDate='',endDate='',and=[],nor=[],
+      limit=DEFAULT_LIST_BATCH_SIZE,browse=false,signal=null,sortDirection='asc'}={}){
+      const offset=Math.max(0,Math.floor(Number(cursor)||0));
+      const names=(selection.names||[]).filter(Boolean);
+      const sources=selection.kind==='names'?names:
+        contentType==='lyrics_work'?['suno']:undefined;
+      const excludedSources=selection.kind==='others'?names:
+        contentType==='text_work'?['suno']:undefined;
+      if(sources?.length>80||excludedSources?.length>80)
+        throw Error('來源分類超出固定模型的批次上限');
+      const {data}=await readGalaxyFeature({
+        feature:'search',scope:current.id,
+        startDate:startDate||undefined,endDate:endDate||undefined,
+        text:browse?undefined:String(value||'').trim()||undefined,
+        requiredTerms:and.length?and:undefined,
+        excludedTerms:nor.length?nor:undefined,
+        sources,excludedSources,result:'articles',offset,
+        limit:Math.max(1,Math.min(100,Math.floor(Number(limit)||DEFAULT_LIST_BATCH_SIZE))),
+        sortDirection:sortDirection==='desc'?'desc':'asc',signal
+      });
+      const rows=(data.rows||[]).map(row=>recordFor(row,source,id,current,current.galaxy));
+      return {rows,hasMore:data.hasMore===true,
+        nextCursor:data.nextCursor?.offset??null,totalCount:null,dataSource:'primary'};
+    }
+  })];
 }
 
 function normalizeSearch(value){
@@ -609,9 +611,27 @@ export async function searchGalaxyRows(scopes,query,{
   const safeLimit=Math.max(1,Math.min(DEFAULT_LIST_BATCH_SIZE,Math.floor(Number(limit)||DEFAULT_LIST_BATCH_SIZE)));
   const scopeList=(Array.isArray(scopes)?scopes:[]).filter(scope=>scope?.id);
   const hiddenScopes=new Set((Array.isArray(hiddenScopeIds)?hiddenScopeIds:[]).map(value=>String(value||'').trim()).filter(Boolean));
-  const scopeProviders=scopeList.map(scope=>managementOnly
-    ?managementArticleProviders(scope,{contentType,sourceFilter,sourceTaxonomy,placeOnly})
-    :genericScopeProviders(scope,{includeHiddenText:hiddenScopes.has(scope.id),contentType,sourceFilter,sourceTaxonomy}));
+  // A manager's hidden Scope uses LOC Native's authenticated search action.
+  // Public Search never inherits a browser-declared "include hidden" switch.
+  if(managementOnly)return searchAuthorizedGalaxyRows(scopeList,q,{
+    limit:safeLimit,cursor,startDate,endDate,contentType,sourceFilter,
+    sourceTaxonomy,placeOnly,signal,sortDirection
+  });
+  const scopeProviders=scopeList.map(scope=>hiddenScopes.has(scope.id)
+    ?[Object.freeze({
+      id:scope.id+':private-galaxy',
+      async search(value,options={}){
+        const result=await searchAuthorizedGalaxyRows([scope],value,{
+          limit:options.limit,startDate:options.startDate,endDate:options.endDate,
+          cursor:options.cursor?{stage:1,offset:options.cursor}:null,
+          contentType,sourceFilter,sourceTaxonomy,placeOnly,
+          signal:options.signal,sortDirection:options.sortDirection
+        });
+        return {...result,nextCursor:result.nextCursor?.offset??null,
+          dataSource:'verified'};
+      }
+    })]
+    :genericScopeProviders(scope,{contentType,sourceFilter,sourceTaxonomy}));
   // Search is article-led: one Galaxy.content provider per Scope, with
   // Anchor relationships available only after choosing an article.
   const providers=scopeProviders.flat();
@@ -632,6 +652,10 @@ export async function hydrateGalaxySearchRows(entries=[],scopes=[],hiddenScopeId
   const identity=(scopeId,dbId,uid)=>JSON.stringify([scopeId,dbId,uid]);
   for(const entry of items){
     const row=entry?.row;
+    // The fixed GalaxySearch article model already returned its complete
+    // lightweight metadata. Never issue a second SELECT for the same record.
+    if(row&&Object.hasOwn(row,'site')&&Object.hasOwn(row,'title')&&
+      Object.hasOwn(row,'list'))continue;
     const uid=String(row?.uid||'').trim();
     const scope=scopeMap.get(row?.scope_id);
     if(!uid||!scope?.galaxy)continue;
@@ -644,13 +668,9 @@ export async function hydrateGalaxySearchRows(entries=[],scopes=[],hiddenScopeId
   await mapBounded([...batches.values()],3,async({scope,dbId,ids})=>{
     const keys=[...ids];
     if(keys.length>DEFAULT_LIST_BATCH_SIZE)throw new Error('Search page exceeds bounded UID limit');
-    const {rows}=await selectRows(scope.galaxy,{
-      columns:galaxyListColumns().join(','),
-      filters:[{column:'uid',operator:'in',value:keys}],
-      limit:keys.length,
-      authenticated:privateScopes.has(scope.id),
-      expectedDbId:dbId,signal
-    });
+    if(dbId)throw Error('External qualified record reads need an authorized database source');
+    const {rows}=await readGalaxyRecords({scope:scope.id,view:'list',uids:keys},
+      {editor:privateScopes.has(scope.id),signal});
     for(const row of rows||[])metadata.set(identity(scope.id,dbId,row.uid),row);
   });
   return items.map(entry=>{

@@ -134,7 +134,8 @@ function toResult(row,source,scopeId,copy=UI_COPY){
   const editResourceId=resourceId;
   const editableField=resourceType==='galaxy'?'content':resourceType==='media_anchor'?'description':'';
   const isScopeCard=Boolean(row.scope_card);
-  const href=isScopeCard?scopeHref(scope):(row.url||row.href||row.suno_url||'');
+  const href=isScopeCard?scopeHref(scope):
+    isGalaxy&&row.extract!==true?'':(row.url||row.href||row.suno_url||'');
   return {
     key:globalUid?'galaxy:'+globalUid:
       identity?[scope,dbId,source,identity].join(':'):[source,scope,dbId,title].join('-'),
@@ -170,7 +171,7 @@ function toResult(row,source,scopeId,copy=UI_COPY){
       ?'galaxy:'+(globalUid||scope+':'+dbId+':'+resourceId)
       :(resourceType==='media_anchor'&&resourceId?'media:'+scope+':'+dbId+':'+resourceId:
         'result:'+scope+':'+dbId+':'+(identity||title))),
-    links:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='media_anchor'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
+    links:isGalaxy&&row.extract!==true?[]:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='media_anchor'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
     destinations:[]
   };
 }

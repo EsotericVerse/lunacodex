@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {handleNamedPublicTransaction} from '../app/loc/server/public-named-transactions.mjs';
 import {handleLocSelfPermissions} from '../app/loc/permissions/loc-permissions-server.mjs';
 import {LOC_OWNER_EMAIL} from '../app/loc/permissions/loc-business-grants.mjs';
+import {parseGalaxyRecordTransaction,executeGalaxyRecordTransaction} from '../app/loc/model/galaxy-record-transactions.mjs';
+import {galaxyAble} from '../app/loc/model/galaxy-able.mjs';
+import {readFileSync} from 'node:fs';
 
 const origin='https://loc.lo3rwang.cc';
 const req=(body,path='/api/loc-public-query')=>new Request(origin+path,{
@@ -74,4 +77,41 @@ test('permissions return only Session self-projection without SQL',async()=>{
   const blocked=await handleLocSelfPermissions(cross,{
     verifySession:async()=>({email:LOC_OWNER_EMAIL})});
   assert.equal(blocked.status,403);
+});
+
+test('MCP defaults are listable and nonextractable; all eight flags stay independent',()=>{
+  const attrs=galaxyAble({site:'mcp'});
+  assert.equal(Object.keys(attrs).length,8);
+  assert.equal(attrs.list,true);
+  assert.equal(attrs.extract,false);
+  assert.equal(attrs.search,true);
+  assert.equal(attrs.culture,true);
+  assert.equal(galaxyAble({site:'mcp',list:false,extract:false}).list,false);
+  assert.equal(galaxyAble({site:'mcp',list:true,extract:true}).extract,true);
+});
+test('public UID article detail has an enforced SQL list+extract predicate',async()=>{
+  const seen=[];
+  const query={select(){return this},where(...args){seen.push(args);return this},
+    async execute(){return []}};
+  const trx={selectFrom(table){assert.equal(table,'silver.lo3rwang_galaxy');return query}};
+  const detail=parseGalaxyRecordTransaction({kind:'transaction',operation:'galaxy-records',
+    scope:'lo3rwang',view:'detail',uids:['AAAA0001']});
+  await executeGalaxyRecordTransaction(trx,detail);
+  assert.ok(seen.some(args=>args[0]==='list'&&args[1]==='='&&args[2]===true));
+  assert.ok(seen.some(args=>args[0]==='extract'&&args[1]==='='&&args[2]===true));
+  const before=seen.length;
+  await executeGalaxyRecordTransaction(trx,{...detail,view:'list'});
+  assert.ok(!seen.slice(before).some(args=>args[0]==='extract'));
+  seen.length=0;
+  await executeGalaxyRecordTransaction(trx,{...detail,mode:'editor'});
+  assert.ok(!seen.some(args=>args[0]==='extract'));
+});
+test('public reading protects content even with direct UID and no database RLS',()=>{
+  const model=readFileSync(new URL('../app/loc/model/galaxy-record-transactions.mjs',
+    import.meta.url),'utf8');
+  const mcp=readFileSync(new URL('../app/loc/mcp/galaxy-read.mjs',
+    import.meta.url),'utf8');
+  assert.match(model,/query\.where\('extract','=',true\)/);
+  assert.match(mcp,/\.where\('extract','=',true\)/);
+  assert.doesNotMatch(mcp,/sql\`[^]*lower.*'mcp','github'/);
 });

@@ -10,8 +10,9 @@ const request=body=>new Request('https://loc.lo3rwang.cc/api/loc-public-query',{
   method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify(body)});
 
-test('four fixed Galaxy feature flags match the ZModel contracts',()=>{
-  assert.deepEqual(Object.keys(GALAXY_FEATURE_MODELS),['culture','statics','search','trace']);
+test('eight fixed Galaxy feature flags match the ZModel contracts',()=>{
+  assert.deepEqual(Object.keys(GALAXY_FEATURE_MODELS),
+    ['culture','statics','search','trace','list','keyword','extract','others']);
   assert.equal(GALAXY_FEATURE_MODELS.statics.flag,'statics');
 });
 test('no arbitrary SQL, relation, column or filter passes the transaction boundary',async()=>{
@@ -76,4 +77,15 @@ test('the daily-source model returns source groups and daily total in one query'
     {day:'2026-11-22',kind:'source',category:'vocus',item_count:2},
     {day:'2026-11-22',kind:'total',category:'文字作品',item_count:5}
   ]);
+});
+
+test('every Galaxy flag is a typed model; articles require the independent list gate',()=>{
+  for(const flag of ['culture','statics','search','trace','list','keyword','extract','others']){
+    const parsed=parseGalaxyFeatureTransaction({...base,feature:flag});
+    assert.equal(parsed.feature,flag);
+  }
+  for(const view of ['articles','uids']){
+    const parsed=parseGalaxyFeatureTransaction({...base,feature:'others',result:view});
+    assert.equal(parsed.limit,100);
+  }
 });

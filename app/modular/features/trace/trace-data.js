@@ -32,6 +32,7 @@ export const traceAllAnchorsKey=(scopeId,{nativeOnly=false,includeHidden=false}=
 const VALID_ID=/^[A-Za-z0-9]{8}$/;
 const TRACE_TYPES=ANCHOR_TYPE_GROUPS.space;
 const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
+import {readAnchorFeature,readAllAnchorFeature} from '../../../loc/model/feature-transaction-client.mjs';
 const physicalPoint=id=>dbAuthClient.schema('silver').from(id+'_anchor');
 const pointAttr=({address,longitude,latitude})=>{
   const coords=coordinateArray(longitude,latitude),attr={};
@@ -113,19 +114,13 @@ function readRow(row,scope){
 }
 async function readPages(id,{filter=null,types=null,limit=null,includeHidden=false}={}){
   if(id==='loc')return [];
-  const readClient=includeHidden?dbAuthClient:dbPublicClient;
   const selectedTypes=types|| (filter?[filter==='space_anchor'?'point':filter]:TRACE_TYPES);
-  const rows=[],size=750;
-  for(let offset=0;;offset+=size){
-    const take=Math.min(size,limit===null?size:limit-offset);
-    if(take<=0)break;
-    const batch=checked(await readClient.schema('silver').from(id+'_anchor')
-      .select(ANCHOR_COLUMNS).in('type',selectedTypes).order('title',{ascending:true})
-      .range(offset,offset+take-1),'空間 Anchor 讀取')||[];
-    rows.push(...batch.map(row=>projectUnified(row,id)));
-    if(batch.length<take||limit!==null&&rows.length>=limit)break;
-  }
-  return rows;
+  const rows=await readAllAnchorFeature({
+    scope:id,family:'space',types:selectedTypes,editor:includeHidden
+  });
+  const sorted=rows.map(row=>projectUnified(row,id))
+    .sort((a,b)=>String(a.title||'').localeCompare(String(b.title||'')));
+  return limit===null?sorted:sorted.slice(0,limit);
 }
 export async function readTraceData(scopeId,{includeHidden=false}={}){
   const id=idScope(scopeId),rows=await readPages(id,{includeHidden});
@@ -148,10 +143,12 @@ export async function readCurrentTraceAnchors(scopeId,anchorUids=[],{includeHidd
     .map(uid=>String(uid||'').trim()).filter(uid=>VALID_ID.test(uid)))];
   if(!ids.length)return [];
   if(ids.length>800)throw Error('地點數量超過上限');
-  const readClient=includeHidden?dbAuthClient:dbPublicClient;
-  const rows=(checked(await readClient.schema('silver').from(id+'_anchor')
-    .select(ANCHOR_COLUMNS).eq('type','point').in('uid',ids).limit(900),
-    '空間地點讀取')||[]).map(row=>projectUnified(row,id));
+  const pages=await mapBounded(Array.from({length:Math.ceil(ids.length/100)},
+    (_,index)=>ids.slice(index*100,index*100+100)),3,
+    async uids=>(await readAnchorFeature({
+      scope:id,family:'space',types:['point'],uids,limit:100
+    },{editor:includeHidden})).rows);
+  const rows=pages.flat().map(row=>projectUnified(row,id));
   const byId=new Map(rows.map(row=>[row.uid,row]));
   return ids.map(uid=>byId.get(uid)).filter(Boolean);
 }
@@ -173,8 +170,9 @@ export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
   }),'搜尋地點標題')||[];
   const ids=data.map(row=>row.uid).filter(uid=>VALID_ID.test(String(uid)));
   if(!ids.length)return [];
-  const allowed=checked(await dbPublicClient.schema('silver').from(id+'_anchor')
-    .select(ANCHOR_COLUMNS).eq('type','point').in('uid',ids),'公開地點權限檢查')||[];
+  const allowed=(await readAnchorFeature({
+    scope:id,family:'space',types:['point'],uids:ids.slice(0,100),limit:100
+  },{editor:true})).rows;
   const byUid=new Map(allowed.map(row=>[row.uid,row]));
   return ids.map(uid=>byUid.get(uid)).filter(Boolean).map(row=>projectUnified(row,id));
 }
