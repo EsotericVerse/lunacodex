@@ -20,7 +20,6 @@ const DAY_MS=86400000;
 export const DIMENSION_FILTERS=Object.freeze([
   {value:'all',label:'全部'},
   {value:'source',label:'作品來源'},
-  {value:'media',label:'多媒體'},
   {value:'keyword',label:'關鍵詞'}
 ]);
 export const DIMENSIONS=Object.freeze([
@@ -28,8 +27,6 @@ export const DIMENSIONS=Object.freeze([
   {kind:'source_rollup',label:'作品／個人分類'},
   {kind:'group',label:'作品分類'},
   {kind:'others_subgroup',label:'個人分類'},
-  {kind:'media_category',label:'音樂／圖片／影片'},
-  {kind:'media',label:'多媒體來源'},
   {kind:'keyword_all',label:'全部關鍵詞'},
   {kind:'keyword_group',label:'關鍵詞群組'},
   {kind:'keyword_group_items',label:'群組內關鍵詞'},
@@ -37,19 +34,10 @@ export const DIMENSIONS=Object.freeze([
 ]);
 export const LANE_FAMILIES=Object.freeze([
   {id:'source',label:'作品來源',kinds:['source_rollup','source','group','others_subgroup']},
-  {id:'media',label:'多媒體',kinds:['media_category','media']},
   {id:'keyword',label:'關鍵詞',kinds:['keyword_all','keyword_group','keyword_group_items','keyword_item']}
 ]);
 const dimensionForKind=kind=>LANE_FAMILIES.find(item=>item.kinds.includes(kind))?.id||'source';
 const metricId=(kind,value)=>kind+String.fromCharCode(0)+value;
-export function mediaTypeFamily(raw){
-  const value=String(raw||'').trim().toLowerCase();
-  if(/(?:music|audio|sound|song|suno|mp3|wav|m4a|flac|音樂|歌曲|聲音)/.test(value))return 'music';
-  if(/(?:image|photo|picture|pic|jpg|jpeg|png|webp|gif|圖片|相片|照片|影像)/.test(value))return 'image';
-  if(/(?:video|movie|film|reel|youtube|mp4|影片|視頻|影視)/.test(value))return 'video';
-  return '';
-}
-const MEDIA_GROUP_NAMES={music:'音樂',image:'圖片',video:'影片'};
 const dateOnly=v=>String(v||'').slice(0,10);
 function canonicalBucket(day,unit){
   const date=new Date(day+'T00:00:00Z');
@@ -128,13 +116,12 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const availableKinds=useMemo(()=>{
     const kinds=[
       ...(rows.some(row=>row.kind==='source'&&Number(row.item_count)>0)?['source']:[]),
-      ...(rows.some(row=>row.kind==='media'&&Number(row.item_count)>0)?['media']:[]),
       ...(keywordTabAvailable?['keyword']:[])
     ];
     return kinds.length?[...kinds,'all']:[];
   },[rows,keywordTabAvailable]);
   const maximumLanes=Math.min(8,Math.max(0,
-    rows.filter(row=>Number(row.item_count)>0).length+
+    rows.filter(row=>row.kind==='source'&&Number(row.item_count)>0).length+
     (keywords.data?.runeTotals||[]).filter(row=>Number(row.document_count)>0).length));
   const lanes=Math.min(numberOfLanes,Math.max(2,maximumLanes));
   const shownKinds=Array.from({length:lanes},(_,index)=>
@@ -217,16 +204,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       {id:metricId('source_rollup','personal'),kind:'source_rollup',
         name:'個人分類',total:personalTotal}
     ].filter(item=>item.total>0);
-    const mediaTotals=new Map();
-    for(const row of rows){
-      if(row.kind!=='media')continue;
-      const family=mediaTypeFamily(row.category)||'other';
-      mediaTotals.set(family,(mediaTotals.get(family)||0)+(Number(row.item_count)||0));
-    }
-    const mediaGroups=[...mediaTotals].filter(([,total])=>total>0)
-      .map(([id,total])=>({id:metricId('media_category',id),
-        kind:'media_category',name:MEDIA_GROUP_NAMES[id]||'其他媒體',family:id,total}));
-    return [...rollups,...groups,...basic,...others,...mediaGroups,
+    return [...rollups,...groups,...basic,...others,
       ...keywordAll,...keywordGroups,...keywordGroupsItems,...keywordItems];
   },[rows,catalog.data,keywords.data,othersConfig.data,keywordItemGroup,keywordTabAvailable]);
   const candidatesForLane=index=>categoryList.filter(item=>
@@ -292,9 +270,6 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
         }else if(personal==='unclassified'){
           ids.push('others_subgroup'+String.fromCharCode(0)+'unclassified');
         }
-      }else if(row.kind==='media'){
-        const family=mediaTypeFamily(row.category)||'other';
-        ids.push('media_category'+String.fromCharCode(0)+family);
       }
       for(const id of ids)add(day,id,Number(row.item_count)||0);
     }
@@ -380,10 +355,6 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
               {name:l.personalCategory,item:categoryList.find(c=>c.id===metricId('source_rollup','personal')),items:personals},
               {name:l.uncategorized,item:null,items:unclassified}
             ].filter(group=>group.item||group.items.length);
-            const mediaGroups=categoryList.filter(item=>item.kind==='media_category')
-              .sort((a,b)=>['music','image','video','other'].indexOf(a.family)-['music','image','video','other'].indexOf(b.family))
-              .map(group=>({name:group.family==='music'?l.music:group.family==='image'?l.image:group.family==='video'?l.video:l.otherMedia,item:group,items:categoryList.filter(item=>
-                item.kind==='media'&&(mediaTypeFamily(item.raw)||'other')===group.family)}));
             const groupTabs=categoryList.filter(item=>item.kind==='keyword_group')
               .map(group=>({name:group.name,item:group,
                 items:categoryList.filter(item=>
@@ -391,7 +362,6 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
             const allKeywords=categoryList.find(item=>item.kind==='keyword_all');
             const groups=comparisonMetricGroups(kind,{
               source:sourceGroups,
-              media:mediaGroups,
               keyword:[
                 ...(allKeywords?[{name:l.allKeywords,item:allKeywords,items:[]}]:[]),
                 ...groupTabs
