@@ -34,7 +34,7 @@ test('fixed media Anchor query counts once and returns ordered page in same tran
   assert.equal(data.rows.length,1);
   assert.deepEqual(used.tables,['silver.lo3rwang_anchor']);
   assert.ok(used.where.some(args=>args[0]==='createtime'&&args[1]==='>='));
-  assert.ok(used.where.some(args=>args[0]==='createtime'&&args[1]==='<=')));
+  assert.ok(used.where.some(args=>args[0]==='createtime'&&args[1]==='<='));
   assert.ok(used.where.some(args=>args[0]==='invisible'&&args[2]===false));
   assert.deepEqual(used.sort[0],['createtime','desc']);
   assert.deepEqual(used.offset,[10]);
