@@ -8,7 +8,7 @@ import {readLocAccess} from '../../app/loc/permissions/loc_access.mjs';
 import {
   readKeywordClasses,readKeywordStatistics,readKeywordCatalog,readKeywordDaily,
   suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope,
-  readKeywordAnalysisCompletion,saveKeywordItem,deleteKeywordItem,synchronizeKeywordLibrary,setKeywordClassShare,
+  readKeywordAnalysisCompletion,saveKeywordItem,deleteKeywordItem,setKeywordClassShare,
   readKeywordWorkspace
 } from '../../app/loc/keywords/sql-service.mjs';
 import {queryAnchorArticles} from '../../app/loc/keywords/anchor-search.mjs';
@@ -17,7 +17,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const ATTEMPT=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const OPERATIONS=new Set(['analyze','analyzeStatus','reset','classes','catalog','summary','stats','suggest',
-  'anchorSearch','saveItem','deleteItem','syncLibrary','setClassShare','workspace']);
+  'anchorSearch','saveItem','deleteItem','setClassShare','workspace']);
 function respond(data,status=200){
   return new Response(JSON.stringify(data),{
     status,headers:{'content-type':'application/json; charset=utf-8',
@@ -69,7 +69,7 @@ export async function onRequestPost(context){
     // A short Keyword write owns its own SQL Transaction. Resolve its ONE
     // api.manage grant inside that transaction, not in an earlier connection
     // lease. Long analysis remains explicitly checkpointed/batched.
-    const singleWrite=['reset','saveItem','deleteItem','syncLibrary','setClassShare']
+    const singleWrite=['reset','saveItem','deleteItem','setClassShare']
       .includes(operation);
     const verifyScope=async trx=>{
       const rights=await readLocAccess(trx,claims.email,{
@@ -109,7 +109,7 @@ export async function onRequestPost(context){
       if(operation==='analyzeStatus'){
         if(!owner)error('Scope Keyword management permission required',403);
         result=await readKeywordAnalysisCompletion(db,scope,args.classUid,args.attemptId);
-      }else if(['analyze','reset','saveItem','deleteItem','syncLibrary','setClassShare'].includes(operation)){
+      }else if(['analyze','reset','saveItem','deleteItem','setClassShare'].includes(operation)){
         if(!singleWrite&&!owner)error('Scope Keyword management permission required',403);
         const authorizeTransaction=async trx=>{
           if(singleWrite&&!await verifyScope(trx))
@@ -187,7 +187,6 @@ export async function onRequestPost(context){
           result=await deleteKeywordItem(db,scope,args.itemUid,{authorizeTransaction});
         else if(operation==='setClassShare')
           result=await setKeywordClassShare(db,scope,args.classUid,args.enabled,{authorizeTransaction});
-        else result=await synchronizeKeywordLibrary(db,scope,{authorizeTransaction});
       }else if(operation==='anchorSearch'){
         result=await queryAnchorArticles(db,{scopeId:scope,
           uid:String(args.uid||''),type:String(args.type||''),owner,
