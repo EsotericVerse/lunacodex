@@ -206,6 +206,14 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
     class_enable:{type:'Boolean',optional:true}}
 });
 
+// A FromAnchor is the terminal SiteAnchor discriminator. The physical
+// payload still stores uid:[] (and ZModel accepts that legacy shape), but a
+// nonempty list cannot silently become an unmodeled fifth Source level.
+export function assertSiteAnchorLeaf(type,attr){
+  if(type==='from'&&Array.isArray(attr?.uid)&&attr.uid.length>0)
+    throw new TypeError('LOC FromAnchor is a terminal Source node; attr.uid must be empty');
+}
+
 // TREE MODEL is a separate relationship layer over typed/composite Models.
 // Parents/children are real Anchor UIDs, never matching titles or Galaxy UIDs.
 // Keyword and Site are directed hierarchies; Time/Space allow shared children
@@ -277,7 +285,9 @@ export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
     const uid=String(row?.uid||'');
     if(!UID.test(uid)||nodes.has(uid))
       throw new Error('Invalid or repeated Anchor UID: '+uid);
-    nodes.set(uid,{uid,type,title:String(row?.title||''),attr:attrOf(row)});
+    const attr=attrOf(row);
+    if(family==='source')assertSiteAnchorLeaf(type,attr);
+    nodes.set(uid,{uid,type,title:String(row?.title||''),attr});
   }
   const unresolved=[],relations=[];
   for(const node of nodes.values()){
