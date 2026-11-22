@@ -44,6 +44,22 @@ function tableName(value){
   if(!match)reject('Invalid managed relation');
   return match[1];
 }
+// Galaxy.media_link is the stored external URL list, never an Anchor UID list.
+// Validate even privileged raw managed writes, not only import/UI callers.
+function validateGalaxyMediaLinks(table,operation,rows,values){
+  if(!/^[a-z][a-z0-9]{0,14}_galaxy$/.test(table))return;
+  const candidates=['insert','upsert','update_batch'].includes(operation)
+    ?rows:operation==='update'?[values]:[];
+  for(const row of candidates){
+    if(!row||!Object.hasOwn(row,'media_link'))continue;
+    const urls=row.media_link;
+    if(urls===null)continue;
+    if(!Array.isArray(urls)||urls.length>100||
+      urls.some(url=>typeof url!=='string'||url.length>8192||
+        !/^https?:\/\/[^\\s]+$/i.test(url)||!URL.canParse(url)))
+      reject('Galaxy.media_link only accepts public HTTP(S) URLs');
+  }
+}
 function validateRows(value){
   const issue=managedRowsIssue(value);
   if(issue)reject(issue==='batch'?'Invalid managed rows':'Invalid managed row');
@@ -209,6 +225,8 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     if(operation==='update'&&Object.hasOwn(values,'domain'))
       Object.assign(values,validateLocRegistryDomain(values));
   }
+  validateGalaxyMediaLinks(table,operation,
+    operation==='update_batch'?payload.p_rows:rows,values);
   await authorizeRelation(trx,table,operation,values,filters,rows);
   if(operation==='append_media_link'){
     // A purpose-only Galaxy/MediaAnchor link, not arbitrary SQL mutation.
