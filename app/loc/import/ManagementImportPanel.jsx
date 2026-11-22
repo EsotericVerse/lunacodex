@@ -247,9 +247,13 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     ref_id:String(value('ref_id')||'').trim()||null,
     url:visualGalaxyRow?publicVisualUrl(rawUrl):
       !isArchiveMediaUrl(rawUrl)&&!importMapUrlCoordinates(rawUrl)?rawUrl||null:null,
-    ...(mediaRecords.some(item=>/^https?:\/\//i.test(String(item.url||'')))
-      ?{media_link:[...new Set(mediaRecords.map(item=>String(item.url||''))
-        .filter(url=>/^https?:\/\//i.test(url)))]}:{}),
+    ...(mediaRecords.some(item=>/^https?:\/\//i.test(String(item.url||''))&&
+      String(item.url||'').trim()!==(visualGalaxyRow?publicVisualUrl(rawUrl):
+        !isArchiveMediaUrl(rawUrl)&&!importMapUrlCoordinates(rawUrl)?rawUrl||null:null))
+      ?{media_link:[...new Set(mediaRecords.map(item=>String(item.url||'').trim())
+        .filter(url=>/^https?:\/\//i.test(url)&&
+          url!==(visualGalaxyRow?publicVisualUrl(rawUrl):
+            !isArchiveMediaUrl(rawUrl)&&!importMapUrlCoordinates(rawUrl)?rawUrl||null:null)))]}:{}),
     site:String(selectedSource||'').trim()
   };
   return {record,mediaRecords,mediaRefs,error:'',warning:mediaWarning};
@@ -511,12 +515,12 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         linkSizer.observe(count,Date.now()-started,characters);
       };
       onProgress?.({stage:'讀取文章媒體連結',completed:0,total:linkedUids.length});
-      await readExistingByIds(galaxy,'uid,media_link','uid',linkedUids,
+      await readExistingByIds(galaxy,'uid,url,media_link','uid',linkedUids,
         t('uiExtra.importUI.mediaLinkReadFailed'),async page=>{
           for(const row of page){
             const uid=String(row.uid||'').trim();
             const prior=Array.isArray(row.media_link)?row.media_link:[];
-            const delta=planImportMediaUrlLinks(prior,related.get(uid)||[]);
+            const delta=planImportMediaUrlLinks(prior,related.get(uid)||[],row.url);
             if(delta.patches.length){
               const update={uid,...delta.changes};
               const bytes=linkSizer.byteSize(update);
