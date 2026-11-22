@@ -1,3 +1,4 @@
+import {HEAVY_INITIAL_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Item-driven LOC keyword classification. No Pattern posting or persisted article UID list.
 import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
 import {keywordScanText} from './content-filter.mjs';
@@ -116,19 +117,23 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
 }
 export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   readMetadataPage,readContent,finalize,onCheckpoint=null,onProgress=()=>{},
-  resume=null,pageSize=256,timeBudgetMs=null,now=()=>Date.now(),minChars=0}={}){
+  resume=null,pageSize=HEAVY_INITIAL_ROWS,timeBudgetMs=null,now=()=>Date.now(),minChars=0}={}){
   const a=createItemCountAccumulator(items,groups,resume,{minChars});
   const valid=resume?.scanMode==='item_count_v1'&&resume.fingerprint===a.fingerprint&&
     Object.hasOwn(resume,'cursor');
   let cursor=valid?resume.cursor:null,scanned=valid?count(resume.scanned):0;
   const started=now();
+  const sizer=createTextAdaptiveRows({initial:pageSize});
+  let lastCheckpoint=scanned;
   for(;;){
-    const page=await readMetadataPage({cursor,limit:pageSize});
-    if(!page||!Array.isArray(page.rows)||page.rows.length>pageSize||
+    const requested=sizer.size;
+    const page=await readMetadataPage({cursor,limit:requested});
+    if(!page||!Array.isArray(page.rows)||page.rows.length>requested||
       !Object.hasOwn(page,'nextCursor'))throw Error('Invalid Item scan page');
     if(!page.rows.length)break;
     cursor=page.nextCursor;scanned+=page.rows.length;
     const ids=page.rows.filter(row=>row.keyword!==false).map(row=>String(row.uid));
+    let pageChars=0;
     if(ids.length){
       const docs=await readContent(ids);
       if(!Array.isArray(docs)||docs.length!==ids.length)
@@ -136,9 +141,17 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
       const byUid=new Map(docs.map(row=>[String(row.uid),row]));
       if(byUid.size!==ids.length||ids.some(id=>!byUid.has(id)))
         throw Error('Incomplete Item scan article page');
-      a.absorb(ids.map(id=>byUid.get(id)));
+      const ordered=ids.map(id=>byUid.get(id));
+      pageChars=ordered.reduce((sum,row)=>sum+
+        String(row?.title??'').length+String(row?.content??'').length,0);
+      a.absorb(ordered);
     }
     a.state.scanned=scanned;
+    sizer.observe(page.rows.length,pageChars);
+    if(onCheckpoint&&timeBudgetMs===null&&scanned-lastCheckpoint>=8192){
+      await onCheckpoint({...a.state,cursor});
+      lastCheckpoint=scanned;
+    }
     onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed});
     if(onCheckpoint&&timeBudgetMs!==null&&now()-started>timeBudgetMs*0.65){
       await onCheckpoint({...a.state,cursor});
@@ -156,10 +169,12 @@ export async function readItemKeywordProjection(db,scope,{items,groups,start='',
   source='',places=null,owner=true,minChars=0,onRow=null}={}){
   const a=createItemCountAccumulator(items,groups,null,{minChars});
   let after='';
+  const sizer=createTextAdaptiveRows();
   for(;;){
+    const requested=sizer.size;
     let q=db.selectFrom('silver.'+scope+'_galaxy')
       .select(['uid','title','content','keyword','date','site','place_id','createtime'])
-      .orderBy('uid','asc').limit(256);
+      .orderBy('uid','asc').limit(requested);
     if(after)q=q.where('uid','>',after);
     if(start)q=q.where('date','>=',start);
     if(end)q=q.where('date','<=',end);
@@ -170,7 +185,10 @@ export async function readItemKeywordProjection(db,scope,{items,groups,start='',
     if(!rows.length)break;
     after=String(rows.at(-1).uid);
     a.state.scanned+=rows.length;a.absorb(rows,onRow);
-    if(rows.length<256)break;
+    const chars=rows.reduce((sum,row)=>sum+
+      String(row?.title??'').length+String(row?.content??'').length,0);
+    sizer.observe(rows.length,chars);
+    if(rows.length<requested)break;
   }
   return {totals:a.totals(),daily:a.daily()};
 }
