@@ -526,7 +526,8 @@ async function keywordPatternStatistics(trx,args){
   const owner=await canLocAccess(trx,'scope',scope);
   await sql`reset role`.execute(trx);
   const config=await trx.selectFrom('silver.'+scope)
-    .select('keyword_meta').where('id','=',scope).executeTakeFirst();
+    .select(['keyword_meta','keyword_min_chars'])
+    .where('id','=',scope).executeTakeFirst();
   if(!owner&&config?.keyword_meta?.class_shares?.[classUid]!==true)
     reject('Keyword Class not shared or authorized',403);
   const table='silver.'+scope+'_anchor';
