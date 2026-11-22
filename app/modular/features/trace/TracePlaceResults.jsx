@@ -28,13 +28,13 @@ function TraceWork({row,scope,timeLabel=''}){
   const [opened,setOpened]=useState(false);
   const detail=useAsyncResource({
     queryKey:['trace-work-uid',scope?.id,row.uid],
-    enabled:opened&&Boolean(scope?.galaxy&&row.uid),
+    enabled:opened&&row.extract===true&&Boolean(scope?.galaxy&&row.uid),
     queryFn:()=>selectGalaxyIdentity(scope,row.uid),
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const article=opened?detail.data:null;
   return <Article uid={row.uid} title={row.title||'未命名文章'}
-    articleHref={galaxyIdentityHref(scope?.id,row.uid)}
+    articleHref={row.extract===true?galaxyIdentityHref(scope?.id,row.uid):''}
     detailReading={Boolean(article)}
     relationLinks={article?galaxyRelationLinks(scope?.id,article):[]}
     relatedMedia={article?.related_media||[]}
@@ -51,11 +51,13 @@ function TraceWork({row,scope,timeLabel=''}){
     links={article?.links||[]}
     editOnCardClick={false}>
     {timeLabel?<p className="scope-status">{timeLabel}</p>:null}
+    {row.extract===true?<>
     <WorkFullText open={opened} loading={opened&&detail.isPending}
       error={detail.error?String(detail.error.message||detail.error):''}
       content={String(article?.content||'')} showToggle={false}/>
     <button type="button" className="loc-button" aria-expanded={opened}
       onClick={()=>setOpened(value=>!value)}>{opened?'收合文章':'閱讀文章'}</button>
+    </>:<span className='scope-status'>僅顯示列表，禁止閱讀全文</span>}
   </Article>;
 }
 
