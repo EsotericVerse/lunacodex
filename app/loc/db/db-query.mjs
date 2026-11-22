@@ -1,6 +1,7 @@
 'use client';
 
 import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
+import {MAX_ROWS} from '../query/query-batch-size.mjs';
 import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
 import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
@@ -206,7 +207,7 @@ export async function selectRows(table,{
   filters=[],
   orFilter='',
   orders=[],
-  limit=20,
+  limit=MAX_ROWS,
   offset=0,
   count=null,
   source='auto',
@@ -216,7 +217,7 @@ export async function selectRows(table,{
 }={}){
   if(!String(columns||'').trim()||String(columns).trim()==='*')throw new Error('DB SELECT requires explicit columns');
   // An explicit LIMIT controls only this request; never clamp it to a global Max Rows.
-  const safeLimit=Math.max(1,Math.floor(Number(limit)||20));
+  const safeLimit=Math.max(1,Math.floor(Number(limit)||MAX_ROWS));
   const safeOffset=Math.max(0,Math.floor(Number(offset)||0));
   warnOversizedFilters(table,filters);
   const request=async()=>{
