@@ -20,7 +20,7 @@ import {useScopeRuntime} from '../use-scope-runtime';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {FeaturePage} from '../ui';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
-import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
+import {sourceOutlineOptions} from '../../loc/source/keyword-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
 import {usePassiveSessionAccount} from '../../loc/auth/use-account';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
@@ -530,9 +530,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         <select className="scope-select" aria-label="來源分類" value={activeSourceSelection}
           onChange={event=>setSourceGroup(event.target.value)}>
           <option value="">全部來源</option>
-          {sourceKeywordOptions(sourceCatalog.data).map(source=>
+          {sourceOutlineOptions(sourceCatalog.data).map(source=>
             <option key={source.code} value={source.code}>
-              {source.domain?source.domain+' / ':''}{source.label}
+              {'　'.repeat(source.level)}{source.label}
             </option>)}
           <option value="others">未分類</option>
         </select>
