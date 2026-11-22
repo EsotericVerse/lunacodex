@@ -1,12 +1,11 @@
 // Shared, deterministic own-Scope intersection model.
-// Source, media, and total counters are independent dimensions.
-// A record's source and total counts must never be summed.
+// Galaxy.site is the sole article-source dimension.
+// No independent MediaAnchor statistics dimension.
 const DAY_RE=/^\d{4}-\d{2}-\d{2}$/;
 
 export const OWN_STAT_DIMENSIONS=Object.freeze([
   {kind:'source',label:'原始作品來源'},
-  {kind:'media',label:'多媒體類型'},
-  {kind:'total',label:'文字／多媒體總量'}
+  {kind:'total',label:'全部作品'}
 ]);
 
 const sourceLabel=value=>{
@@ -19,7 +18,7 @@ const sourceLabel=value=>{
   return raw;
 };
 
-export function aggregateOwnScopeStatistics(textRows=[],mediaRows=[]){
+export function aggregateOwnScopeStatistics(textRows=[]){
   const result=new Map();
   function add(day,kind,category){
     if(!DAY_RE.test(day))return;
@@ -31,12 +30,6 @@ export function aggregateOwnScopeStatistics(textRows=[],mediaRows=[]){
     if(!DAY_RE.test(day))continue;
     add(day,'source',String(row?.site||'').trim());
     add(day,'total','文字作品');
-  }
-  for(const row of Array.isArray(mediaRows)?mediaRows:[]){
-    const day=String(row?.createtime||'').slice(0,10);
-    if(!DAY_RE.test(day))continue;
-    add(day,'media',String(row?.type||'').trim());
-    add(day,'total','多媒體');
   }
   return [...result.entries()].map(([token,item_count])=>{
     const [kind,category,day]=token.split('\u0000');
@@ -56,9 +49,7 @@ export function ownScopeCategoryCatalog(rows=[]){
   }
   return [...counters.entries()].map(([id,total])=>{
     const [kind,raw]=id.split('\u0000');
-    const name=kind==='source'?sourceLabel(raw)
-      :kind==='media'?(raw||'未分類多媒體')
-      :raw;
+    const name=kind==='source'?sourceLabel(raw):raw;
     return {id,kind,raw,name,total};
   }).sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name));
 }
