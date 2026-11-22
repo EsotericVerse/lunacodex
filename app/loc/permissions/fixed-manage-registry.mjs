@@ -2,40 +2,32 @@
 // One JS definition for the four built-in Registry identities.  These are
 // public contact / routing / display settings, never credentials or tokens.
 // Do not use this unverified public projection as a login/session assertion.
+// Legacy SQL columns caches/note are intentionally omitted: they are not
+// fixed Scope identity, routing, or permission fields.
 // Dynamic Scope creation and runtime setting writes still use live SQL.
 export const FIXED_MANAGE_ROWS=Object.freeze([
   Object.freeze({
     id:'admin',email:'sopa2306@gmail.com',domain:null,directory:null,
     parent_scope_id:null,active:false,sort_order:-100,manage_role:'admin',
-    galaxy_table:'galaxy',anchor_table:'anchor',
-    caches:Object.freeze({
-      io_limits:Object.freeze({}),
-      cache_mode:'cache',
-      isr_domains:Object.freeze([
-        Object.freeze({id:'cloudflare',label:'Cloudflare',origin:'https://isr.lo3rwang.cc'}),
-        Object.freeze({id:'vercel',label:'Vercel',origin:'https://moon-runes-pwa.vercel.app'})
-      ]),
-      cache_provider:'cloudflare'
-    }),
-    note:''
+    galaxy_table:'galaxy',anchor_table:'anchor'
   }),
   Object.freeze({
     id:'loc',email:'sopa2306@gmail.com',domain:'loc.lo3rwang.cc',
     directory:null,parent_scope_id:null,active:true,sort_order:0,
-    manage_role:'group',galaxy_table:'galaxy',anchor_table:'anchor',
-    caches:Object.freeze({}),note:null
+    manage_role:'group',galaxy_table:'galaxy',anchor_table:'anchor'
+
   }),
   Object.freeze({
     id:'lo3rwang',email:'sopa2306@gmail.com',domain:null,
     directory:'/lo3rwang',parent_scope_id:'loc',active:true,sort_order:10,
-    manage_role:'scope',galaxy_table:'galaxy',anchor_table:'anchor',
-    caches:Object.freeze({}),note:null
+    manage_role:'scope',galaxy_table:'galaxy',anchor_table:'anchor'
+
   }),
   Object.freeze({
     id:'lrunes',email:'sopa2306@gmail.com',domain:'lrunes.lo3rwang.cc',
     directory:null,parent_scope_id:'loc',active:true,sort_order:10,
-    manage_role:'scope',galaxy_table:'galaxy',anchor_table:'anchor',
-    caches:Object.freeze({}),note:null
+    manage_role:'scope',galaxy_table:'galaxy',anchor_table:'anchor'
+
   })
 ]);
 export const FIXED_MANAGE_BY_ID=new Map(FIXED_MANAGE_ROWS.map(row=>[row.id,row]));
