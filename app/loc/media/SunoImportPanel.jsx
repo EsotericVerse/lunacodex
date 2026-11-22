@@ -71,7 +71,8 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           uid:lyricsUid,
           title,content:lyrics,createtime,
           source_id:sourceId,target_id:normalizeRelationIds(draft.target_id),ref_id:styleUid||draft.ref_id.trim()||null,
-          url:draft.url.trim()||null,site:'suno',media_link:[mediaUid],
+          url:draft.url.trim()||null,site:'suno',
+          ...(draft.url.trim()?{media_link:[draft.url.trim()]}:{}),
           statics:true,culture:true,search:true,trace:true,list:true,keyword:true,others:true,extract:true
         }]});
       }
