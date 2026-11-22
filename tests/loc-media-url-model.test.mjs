@@ -31,6 +31,8 @@ test('Article detail explicitly selects the plain physical URL array',()=>{
   assert.match(gallery,/media_link'\s*\]\)/);
   const trace=source('app/modular/features/trace/TracePlaceResults.jsx');
   assert.match(trace,/row\.attr\?\.url/);
-  assert.match(trace,/operator:'overlaps',value:mediaUrls/);
+  assert.match(trace,/mediaUrls,result:'articles'/);
+  const feature=source('app/loc/model/galaxy-feature-transactions.mjs');
+  assert.match(feature,/where\('media_link','&&',model\.mediaUrls\)/);
   assert.doesNotMatch(trace,/operator:'overlaps',value:mediaIds/);
 });
