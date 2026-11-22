@@ -39,7 +39,6 @@ import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.m
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
-const MEDIA_LABELS=Object.freeze({image:'圖片',video:'影片',rune:'符文',suno:'音樂'});
 const STAT_TYPES=['total','source','keywords','place','media'];
 const STAT_TYPE_KEYS=Object.freeze({
   total:'statistics.totalSource',
@@ -322,16 +321,31 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryKey:['statistics-category-daily',scopeId,rankingType,queryRange.startDate,queryRange.endDate],
     enabled:placeOrMediaChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
     queryFn:async({signal})=>{
+      if(rankingType==='media'){
+        const [{mediaSiteSources,mediaSiteDailyRows},{readGalaxyFeature}]=await Promise.all([
+          import('../../loc/statistics/media-site-statistics.mjs'),
+          import('../../loc/galaxy/feature-transaction-client.mjs')
+        ]);
+        const sources=mediaSiteSources();
+        if(!sources.length)return [];
+        // Galaxy.statics and Galaxy.site determine media categories. The
+        // SiteAnchor hierarchy defines which platforms are multimedia.
+        // media_link and MediaAnchor are never queried for this chart.
+        const {data}=await readGalaxyFeature({
+          feature:'statics',scope:scopeId,
+          startDate:queryRange.startDate,endDate:queryRange.endDate,
+          sources,result:'daily-sources',signal
+        });
+        return mediaSiteDailyRows(data.rows);
+      }
       const {dbPublicClient}=await import('../../loc/db/db-client.mjs');
-      // Reuse Trace's location GROUP BY and Culture's typed MediaAnchor
-      // GROUP BY. Both return daily counts, not Galaxy content or media blobs.
       const {data,error}=await dbPublicClient.schema('silver').analytics({
-        p_scope_id:scopeId,p_view:rankingType==='place'?'trace_places':'lane_daily',
+        p_scope_id:scopeId,p_view:'trace_places',
         p_start:queryRange.startDate,p_end:queryRange.endDate,signal,
-        p_options:rankingType==='media'?{media:true,mediaTypeGroups:true}:{}
+        p_options:{}
       });
       if(error)throw error;
-      if(!Array.isArray(data))throw new Error('Invalid statistics category rows');
+      if(!Array.isArray(data))throw new Error('Invalid place statistics');
       return data;
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
@@ -370,7 +384,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const adminSourceReady=Boolean(adminSource);
   const resolvedAdminSource=adminSource||{rows:[],series:[],distribution:[],total:0};
   // Render selected Place or Media categories through the same Statistics
-  // chart models; default to the 12 most frequent places or four Media types.
+  // chart models; default to the 12 most frequent places or four media sources.
   const categoryWindow=useMemo(()=>rowsInWindow(categoryDaily.data||[],queryRange),
     [categoryDaily.data,queryRange.startDate,queryRange.endDate,queryRange.bucket]);
   const categoryCatalog=useMemo(()=>facetTotals(categoryWindow.rows),[categoryWindow.rows]);
@@ -381,10 +395,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const categoryTrend=useMemo(()=>facetTrend(categoryWindow.rows,categoryWindow,displayedCategories),
     [categoryWindow.rows,categoryWindow.startDate,categoryWindow.endDate,categoryWindow.bucket,displayedCategories]);
   const categorySeries=useMemo(()=>displayedCategories.map((term,index)=>({
-    key:'category_'+index,label:rankingType==='media'?MEDIA_LABELS[term]||term:term
+    key:'category_'+index,label:term
   })),[displayedCategories,rankingType]);
   const categoryDistribution=useMemo(()=>displayedCategories.map(term=>({
-    name:rankingType==='media'?MEDIA_LABELS[term]||term:term,
+    name:term,
     value:categoryCatalog.find(row=>row.term===term)?.item_count||0
   })),[displayedCategories,categoryCatalog,rankingType]);
   const basicTrend=totalChart?totalTrend:placeOrMediaChart?categoryTrend:resolvedAdminSource.rows;
@@ -423,7 +437,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const categorySummary={
     total:categoryCatalog.reduce((sum,row)=>sum+Number(row.item_count||0),0),
     sources:displayedCategories.map(term=>({
-      term:rankingType==='media'?MEDIA_LABELS[term]||term:term,
+      term,
       item_count:categoryCatalog.find(row=>row.term===term)?.item_count||0
     })),
     startDate:queryRange.startDate,endDate:queryRange.endDate

@@ -59,7 +59,9 @@ export function parseGalaxyFeatureTransaction(raw){
   const parsed=input.safeParse(raw);
   if(!parsed.success)throw Object.assign(Error('Invalid Galaxy feature model'),{httpStatus:400});
   const value=parsed.data;
-  if(!published.has(value.scope)||
+  if(!published.has(value.scope)&&!(value.scope==='loc'&&
+      value.feature==='statics'&&value.result==='daily-sources'&&
+      value.sources?.length>0)||
     value.startDate!==undefined&&!validDate(value.startDate)||
     value.endDate!==undefined&&!validDate(value.endDate)||
     value.startDate&&value.endDate&&value.startDate>value.endDate||
@@ -91,8 +93,9 @@ function baseQuery(trx,model){
   const selector=model.category;
   if(selector?.type==='source')q=q.where('site','=',selector.value);
   if(selector?.type==='place')q=q.where('place_id','=',selector.value);
-  if(model.sources)q=q.where(eb.fn('lower',['site']),'in',
-    model.sources.map(name=>name.toLowerCase()));
+  if(model.sources)q=q.where(eb=>eb(
+    eb.fn('lower',['site']),'in',model.sources.map(name=>name.toLowerCase())
+  ));
   if(model.excludedSources)q=q.where(eb=>eb.or([
     eb('site','is',null),
     eb(eb.fn('lower',['site']),'not in',
@@ -131,6 +134,27 @@ function baseQuery(trx,model){
   return q;
 }
 export async function executeGalaxyFeatureTransaction(trx,model){
+  if(model.scope==='loc'){
+    // LOC-wide media statistics: one HTTP request and ONE transaction.
+    // Registered/public Scope identifiers come only from the published JS
+    // registry, never the request or api.manage.
+    const sums=new Map();
+    for(const scope of published){
+      const result=await executeGalaxyFeatureTransaction(trx,{...model,scope});
+      for(const row of result.rows){
+        if(row.kind!=='source')continue;
+        const key=row.day+'\u0000'+row.category;
+        sums.set(key,(sums.get(key)||0)+Number(row.item_count||0));
+      }
+    }
+    const rows=[...sums].map(([key,item_count])=>{
+      const split=key.indexOf('\u0000');
+      return {day:key.slice(0,split),kind:'source',
+        category:key.slice(split+1),item_count};
+    }).sort((a,b)=>a.day.localeCompare(b.day)||
+      a.category.localeCompare(b.category));
+    return {rows};
+  }
   const q=baseQuery(trx,model);
   if(model.result==='earliest'){
     const row=await q.select(eb=>eb.fn.min('date').as('earliest')).executeTakeFirst();
