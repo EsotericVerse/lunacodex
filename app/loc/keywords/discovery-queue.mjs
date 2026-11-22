@@ -16,7 +16,7 @@ const MAX_PAGE_ROWS=20000;
 // Main uses a smaller calibration read; keep the one-row floor for huge articles.
 const INITIAL_PAGE_ROWS=HEAVY_INITIAL_ROWS;
 const TARGET_QUEUE_BYTES=2*1024*1024;
-const WORKER_BATCH_ROWS=768;
+const WORKER_BATCH_ROWS=HEAVY_INITIAL_ROWS;
 const WORKER_BATCH_BYTES=256*1024;
 const LOW_WATER_RATIO=0.2;
 const batchEnvelope=z.strictObject({
@@ -42,6 +42,8 @@ export class KeywordDiscoveryQueue{
       initial:INITIAL_PAGE_ROWS,maximum:MAX_PAGE_ROWS,
       targetChars:TEXT_SCAN_TARGET_CHARS
     });
+    this.workerSizer=createTextAdaptiveRows({initial:WORKER_BATCH_ROWS,
+      maximum:HEAVY_QUERY_ROWS,targetChars:128*1024});
     this.meta={pageRows:this.sizer.size,averageRowBytes:0,acceptedPages:0};
   }
   get readLimit(){return this.meta.pageRows}
@@ -78,12 +80,14 @@ export class KeywordDiscoveryQueue{
     if(!this.remaining)return [];
     const from=this.cursor;
     let end=from,bytes=0;
-    while(end<this.rows.length&&end-from<WORKER_BATCH_ROWS){
+    while(end<this.rows.length&&end-from<this.workerSizer.size){
       const size=rowBytes(this.rows[end]);
       if(end>from&&bytes+size>WORKER_BATCH_BYTES)break;
       bytes+=size;end++;
     }
     const batch=this.rows.slice(from,end);
+    this.workerSizer.observe(batch.length,batch.reduce((sum,row)=>sum+
+      String(row?.title??'').length+String(row?.content??'').length,0));
     this.cursor=end;
     if(this.cursor===this.size){
       // Release the complete original page as soon as the last slice leaves.
