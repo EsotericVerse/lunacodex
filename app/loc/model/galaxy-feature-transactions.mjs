@@ -66,8 +66,8 @@ function baseQuery(trx,model){
     // PostgreSQL ILIKE escapes wildcard characters with a backslash.
     // The parameter is bound by Kysely; it never supplies SQL syntax.
     const literal=selector.value.replace(/[\\%_]/g,character=>'\\'+character);
-    q=q.where('keyword','=',true).where('content','is not',null)
-      .where('content','ilike','%'+literal+'%');
+    if(model.feature!=='search')q=q.where('keyword','=',true);
+    q=q.where('content','is not',null).where('content','ilike','%'+literal+'%');
   }
   // Listing is independently governed by Galaxy.list. Aggregates use
   // the requested feature flag, not the article-list visibility flag.
