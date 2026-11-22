@@ -37,7 +37,7 @@ import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportD
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
 import {publicVisualUrl,visualGalaxyCandidates} from './visual-galaxy.mjs';
 import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
-import {MAX_ROWS,urlSafeInBatches} from '../query/query-batch-size.mjs';
+import {urlSafeInBatches} from '../query/query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content/content-policy';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
@@ -583,11 +583,13 @@ async function syncImportedVisualGalaxies({
         trace:false,list:false,keyword:false,extract:false,others:false})
     });
   }
-  let created=0;
-  for(let i=0;i<inserts.length;i+=MAX_ROWS){
-    const batch=inserts.slice(i,i+MAX_ROWS);
+  let created=0,processed=0,pending=[],pendingBytes=0;
+  const imageSizer=createImportBatchSizer();
+  const flushImageBatch=async()=>{
+    if(!pending.length)return;
+    const batch=pending,started=Date.now();
     const result=await insertImportBatches(batch,{
-      batchSize:MAX_ROWS,
+      batchSize:imageSizer.size,
       verifyUidConflict:async uid=>{
         const {data,error}=await dbAuthRelation(galaxy).select('uid').eq('uid',uid).limit(1);
         if(error)throw Error('圖片／影片 UID 比對失敗：'+error.message);
@@ -595,10 +597,20 @@ async function syncImportedVisualGalaxies({
       },
       writeBatch:rows=>insertImportRows(galaxy,rows)
     });
-    created+=result.inserted;
-    conflicts+=result.conflicts;
-    onProgress?.({stage:'新增圖片／影片 Galaxy',completed:i+batch.length,total:inserts.length});
+    created+=result.inserted;conflicts+=result.conflicts;
+    processed+=batch.length;pending=[];pendingBytes=0;
+    imageSizer.observe(batch.length,Date.now()-started);
+    onProgress?.({stage:'新增圖片／影片 Galaxy',completed:processed,total:inserts.length});
+  };
+  for(const row of inserts){
+    const bytes=imageSizer.byteSize(row);
+    if(imageSizer.shouldFlush(pending.length,pendingBytes,bytes))
+      await flushImageBatch();
+    pending.push(row);pendingBytes+=bytes;
+    if(imageSizer.shouldFlush(pending.length,pendingBytes))
+      await flushImageBatch();
   }
+  await flushImageBatch();
   return {created,existing,conflicts};
 }
 
