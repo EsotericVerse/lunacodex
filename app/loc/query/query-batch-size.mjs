@@ -14,6 +14,8 @@ export const SQL_BATCH_POLICY=Object.freeze({
   heavyStartRows:256,
   heavyMaxRows:10000,
   timeAnchorMaxRows:20000,
+  keywordDiscoveryMaxRows:20000,
+  keywordDiscoveryTargetBytes:2*1024*1024,
   textTargetChars:1024*1024,
   keywordWorkerTargetChars:128*1024,
   keywordWorkerTargetBytes:256*1024,
@@ -29,6 +31,8 @@ export const ARTICLE_UID_PAGE_ROWS=SQL_BATCH_POLICY.articleUidRows;
 export const HEAVY_INITIAL_ROWS=SQL_BATCH_POLICY.heavyStartRows;
 export const HEAVY_QUERY_ROWS=SQL_BATCH_POLICY.heavyMaxRows;
 export const TIME_ANCHOR_MAX_PAGE_ROWS=SQL_BATCH_POLICY.timeAnchorMaxRows;
+export const KEYWORD_DISCOVERY_MAX_ROWS=SQL_BATCH_POLICY.keywordDiscoveryMaxRows;
+export const KEYWORD_DISCOVERY_TARGET_BYTES=SQL_BATCH_POLICY.keywordDiscoveryTargetBytes;
 export const TEXT_SCAN_TARGET_CHARS=SQL_BATCH_POLICY.textTargetChars;
 export const KEYWORD_WORKER_TARGET_CHARS=SQL_BATCH_POLICY.keywordWorkerTargetChars;
 export const KEYWORD_WORKER_TARGET_BYTES=SQL_BATCH_POLICY.keywordWorkerTargetBytes;
