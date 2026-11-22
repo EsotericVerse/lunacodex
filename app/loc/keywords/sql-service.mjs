@@ -537,11 +537,3 @@ export async function setKeywordClassShare(db,scope,classUid,enabled,{
   });
 }
 
-// Existing authorized management transaction owns Keyword Item writes.
-// Pattern reconciliation is retired; do not create index rows or article lists.
-export async function synchronizeKeywordLibraryInTransaction(){
-  return {created:0,linked:0,removed:0};
-}
-export async function synchronizeKeywordLibrary(){
-  return {created:0,linked:0,removed:0};
-}
