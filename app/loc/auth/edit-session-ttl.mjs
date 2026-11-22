@@ -42,6 +42,19 @@ export function clearEditorSession(storage){
   try{storage?.removeItem(KEY);}catch{}
 }
 
+// A temporary permissions endpoint failure must revoke the stored role
+// projection, NOT the two-hour editor Session itself. Preserve its original
+// startedAt/lastActivityAt/locked fields; only a genuine sign-out, identity
+// replacement, or authoritative 401 should delete the whole Session.
+export function clearEditorManagement(storage){
+  try{
+    const value=JSON.parse(storage?.getItem(KEY)||'null');
+    if(!value||typeof value!=='object'||!Object.hasOwn(value,'management'))return;
+    const {management:discarded,...session}=value;
+    storage?.setItem(KEY,JSON.stringify(session));
+  }catch{}
+}
+
 // The existing editor Session also carries the last *server-verified*
 // management presentation snapshot. This is a browser UI hint ONLY:
 // private reads and writes still authorize against LOC Auth / database.
