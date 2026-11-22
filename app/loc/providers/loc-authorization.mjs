@@ -2,6 +2,8 @@
 // the user; the single ZModel-backed loc_access projection grants resources.
 import {hasLocAccess} from '../permissions/loc_access.mjs';
 import {LocAccessRowSchema} from '../permissions/loc-access-schema.mjs';
+import {FIXED_MANAGE_ROWS} from '../permissions/fixed-manage-registry.mjs';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 
 const sessions=new WeakMap();
 const SUBJECT=/^[A-Za-z0-9_-]{1,128}$/;
@@ -38,11 +40,12 @@ export async function locAccessRows(db,type,id=null){
   }];
   const state=sessions.get(db);
   if(state?.role!=='authenticated')return [];
-  const rows=await db.selectFrom('api.manage as m')
-    .leftJoin('silver.loc as s','s.id','m.id')
-    .select(['m.id','m.email','m.manage_role','m.active',
-      'm.galaxy_table','m.anchor_table','s.birthday as birthday'])
-    .where(db.fn('lower',['m.email']),'=',state.email).execute();
+  // Self/Scope role metadata is the same published JS, not a second Registry
+  // query (including on a cold or unavailable SQL connection).
+  const rows=FIXED_MANAGE_ROWS
+    .filter(row=>String(row.email||'').trim().toLowerCase()===state.email)
+    .map(row=>({...row,
+      birthday:PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[row.id]||null}));
   return rows.flatMap(row=>{
     const parsed=LocAccessRowSchema.safeParse({
       id:row?.id,email:String(row?.email||'').trim().toLowerCase(),
