@@ -12,6 +12,27 @@ import {useQueryClient} from '../../packages/zenstack/client-queries';
 // and every write still passes through its existing database authorization.
 const EditDockContext=createContext(null);
 
+// The stale-chunk recovery helper runs outside React. Keep the live edit
+// state visible to it without persisting form data, credentials or drafts.
+function markEditorActive(active){
+  try{
+    const root=window.document?.documentElement;
+    if(!root)return;
+    if(active)root.dataset.locEditing='true';
+    else delete root.dataset.locEditing;
+  }catch{/* Document may be unavailable during root-layout failure. */}
+}
+function logCleanupFailure(failure){
+  // onFailure hooks may carry SQL/internal context: do not log raw errors.
+  const scrub=value=>{
+    const text=String(value??'');
+    return /^[A-Za-z0-9_.-]{1,64}$/.test(text)?text:null;
+  };
+  console.error('[LOC edit-dock] onFailure cleanup failed',{
+    type:scrub(failure?.name)||'Error',code:scrub(failure?.code)
+  });
+}
+
 export function EditDockProvider({children,scopeId}){
   const router=useRouter();
   const pathname=usePathname();
@@ -63,6 +84,7 @@ export function EditDockProvider({children,scopeId}){
     operationTimer.current=null;
     operationEpoch.current++;
     committing.current=false;
+    markEditorActive(false);
     registeredEditors.current.clear();
     currentEditor.current=null;
   },[]);
@@ -82,12 +104,14 @@ export function EditDockProvider({children,scopeId}){
       try{if(!touchEditorSession(window.sessionStorage))return false}
       catch{return false}
     }
+    markEditorActive(true);
     setEditing(true);
     setCanManageGlobal(Boolean(globalManage));
     setNotice('');
     return true;
   },[scopeId]);
   const end=useCallback(()=>{
+    markEditorActive(false);
     releaseOperation();
     clearEditor();
     setEditing(false);
@@ -218,7 +242,10 @@ export function EditDockProvider({children,scopeId}){
           }
         }catch(error){
           for(const plan of prepared){
-            try{await plan.onFailure?.(error);}catch{}
+            // Preserve the original transaction failure and log only safe
+            // metadata from a secondary cleanup failure.
+            try{await plan.onFailure?.(error);}
+            catch(cleanup){logCleanupFailure(cleanup);}
           }
           throw error;
         }
@@ -227,7 +254,10 @@ export function EditDockProvider({children,scopeId}){
           if(operations.length)await transactionWrites(operations);
         }catch(error){
           for(const plan of prepared){
-            try{await plan.onFailure?.(error);}catch{}
+            // Preserve the original transaction failure and log only safe
+            // metadata from a secondary cleanup failure.
+            try{await plan.onFailure?.(error);}
+            catch(cleanup){logCleanupFailure(cleanup);}
           }
           throw error;
         }
