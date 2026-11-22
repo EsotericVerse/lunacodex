@@ -616,12 +616,12 @@ export async function selectCultureArticleListPage(scope,{
         {column:'uid',ascending:true}],
       limit:pageSize+1,offset:pageOffset,signal
     })
-    :{rows:(await readGalaxyFeature({
+    :await readGalaxyFeature({
       feature:'culture',scope:scopeId,startDate:start,endDate:end,
       sources:selectedSources.length?selectedSources.filter(Boolean):undefined,
       result:'articles',sortDirection:sortDirection==='asc'?'asc':'desc',
       limit:pageSize,offset:pageOffset,signal
-    })).data.rows};
+    }).then(response=>response.data);
   const rows=response.rows||[];
   const normalized=rows.slice(0,pageSize).map(row=>{
     const hidden=scopeId==='local'?row.able?.list===false:row.list===false;
@@ -631,10 +631,11 @@ export async function selectCultureArticleListPage(scope,{
       title:hidden?'本文已隱藏':String(row.title||''),
       date:hidden?'':String(row.date||row.createtime||'').slice(0,10),
       createtime:hidden?'':row.createtime,
-      hidden,list:!hidden
+      hidden,list:!hidden,extract:scopeId==='local'
+        ?row.able?.extract===true:row.extract===true
     };
   });
-  const hasMore=rows.length>pageSize;
+  const hasMore=scopeId==='local'?rows.length>pageSize:response.hasMore===true;
   return {
     rows:normalized,hasMore,
     nextCursor:hasMore?{offset:pageOffset+normalized.length}:null,
