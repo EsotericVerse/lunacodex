@@ -158,7 +158,7 @@ export function createKyselyPublicClient({
       redirect:'error',
       headers:useContent?{accept:'application/json'}:
         {accept:'application/json','content-type':'application/json'},
-      ...(useContent?{}:{body:JSON.stringify({kind:'analytics',args:{
+      ...(useContent?{}:{body:JSON.stringify({kind:'transaction',operation:'analytics',args:{
         p_scope_id:scope,p_view:view,p_start:start||null,p_end:end||null,
         p_options:args.p_options||{}
       }})}),
@@ -185,9 +185,10 @@ export function createKyselyPublicClient({
     const work=async()=>{
     const requestSignal=AbortSignal.any([transientReadSignal(),AbortSignal.timeout(9000)]);
     const {response,payload}=await publicReadFetch('/api/loc-public-query',{
-      method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
+      method:'POST',credentials:name==='search_scope_trace_place_names'?'include':'omit',
+      cache:'no-store',redirect:'error',
       headers:{accept:'application/json','content-type':'application/json'},
-      body:JSON.stringify({kind:'public-action',name,args})
+      body:JSON.stringify({kind:'transaction',operation:'action',name,args})
     },requestSignal);
     if(!response.ok){
       const error=new Error('LOC public action failed (HTTP '+response.status+
