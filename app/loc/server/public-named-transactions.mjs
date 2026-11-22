@@ -40,7 +40,7 @@ function normalize(body){
     'view','uids','family','types','order',
     'sources','excludedSources','placeIds','text','requiredTerms',
     'excludedTerms','mediaUrls','offset','sortDirection','includeTotal',
-    'startDate','endDate'])||
+    'startDate','endDate','orderByDate'])||
     body.kind!=='transaction')throw bad();
   if(body.operation==='time-anchors'){
     if(!KEYS(body,['kind','operation','scope','mode','cursor','limit']))throw bad();
