@@ -1,53 +1,37 @@
-// Presentation-only TimeAnchor hierarchy for every Time record list.
-// Era.attr.period -> Period; Period.attr.uid -> Date. Never infer a parent
-// from calendar overlap or materialize placeholder Anchor UIDs.
-const uid=row=>String(row?.uid||'').trim();
-const ids=row=>Array.isArray(row?.anchor_ids)?[...new Set(row.anchor_ids.map(String))]:[];
-const title=row=>String(row?.title||row?.uid||'未命名紀錄');
-const day=row=>String(row?.address||row?.attr?.date||'').slice(0,10);
-const option=(row,group='')=>({
-  value:uid(row),
-  label:(row.type==='anchor'&&day(row)?day(row)+'｜':'')+title(row),
-  ...(group?{group}:{})
-});
+// Read-only TimeAnchor tree projection for the existing authorized editor rows.
+// Era.attr.period -> Period.attr.uid -> Date. Edges are saved Anchor UIDs,
+// not inferred from their dates, titles, or position in a sorted result.
+// No placeholder UIDs, SQL relations, or extra queries are introduced.
+const id=row=>String(row?.uid||'').trim();
+const links=(row,key)=>{
+  const source=Array.isArray(row?.anchor_ids)?row.anchor_ids:row?.attr?.[key];
+  return Array.isArray(source)?[...new Set(source.map(String).filter(Boolean))]:[];
+};
+const kind=row=>row?.type==='date'?'anchor':row?.type;
 
-export function timeRecordHierarchyOptions(rows=[],type='anchor'){
+export function timeRecordHierarchy(rows=[]){
   const all=Array.isArray(rows)?rows:[];
-  const eras=all.filter(row=>row.type==='era'&&uid(row));
-  const periods=all.filter(row=>row.type==='period'&&uid(row));
-  const dates=all.filter(row=>(row.type==='anchor'||row.type==='date')&&uid(row));
-  const byPeriod=new Map(periods.map(row=>[uid(row),row]));
-  const byDate=new Map(dates.map(row=>[uid(row),row]));
-  const linkedPeriods=new Set(),linkedDates=new Set();
-  const choices=[];
-  if(type==='era')return eras.map(row=>option(row));
-  const renderPeriod=(period,era)=>{
-    const section=era?'時代：'+title(era):'未分類時代';
-    if(type==='period')choices.push(option(period,section));
-    else if(type==='anchor'){
-      const path=section+'／時期：'+title(period);
-      for(const id of ids(period)){
-        const row=byDate.get(id);
-        if(!row)continue;
-        linkedDates.add(id);
-        choices.push(option(row,path));
-      }
-    }
+  const eras=all.filter(row=>kind(row)==='era'&&id(row));
+  const periods=all.filter(row=>kind(row)==='period'&&id(row));
+  const dates=all.filter(row=>kind(row)==='anchor'&&id(row));
+  const periodByUid=new Map(periods.map(row=>[id(row),row]));
+  const dateByUid=new Map(dates.map(row=>[id(row),row]));
+  const assignedPeriods=new Set();
+  const assignedDates=new Set();
+  const periodBranch=row=>{
+    const dates=links(row,'uid').map(uid=>dateByUid.get(uid)).filter(Boolean);
+    dates.forEach(point=>assignedDates.add(id(point)));
+    return {row,dates};
   };
-  for(const era of eras){
-    const seen=new Set();
-    for(const id of ids(era)){
-      const period=byPeriod.get(id);
-      if(!period||seen.has(id))continue;
-      seen.add(id);linkedPeriods.add(id);
-      renderPeriod(period,era);
-    }
-  }
-  for(const period of periods)
-    if(!linkedPeriods.has(uid(period)))renderPeriod(period,null);
-  if(type==='anchor')
-    for(const row of dates)
-      if(!linkedDates.has(uid(row)))
-        choices.push(option(row,'未分類定錨點'));
-  return choices;
+  const groups=eras.map(era=>{
+    const children=links(era,'period').map(uid=>periodByUid.get(uid)).filter(Boolean);
+    children.forEach(period=>assignedPeriods.add(id(period)));
+    return {row:era,periods:children.map(periodBranch)};
+  });
+  // Shared Periods/Dates may legitimately appear in multiple branches:
+  // do not duplicate their persisted records or misclassify them as orphans.
+  const unclassifiedPeriods=periods
+    .filter(row=>!assignedPeriods.has(id(row))).map(periodBranch);
+  const unclassifiedDates=dates.filter(row=>!assignedDates.has(id(row)));
+  return {eras:groups,unclassifiedPeriods,unclassifiedDates};
 }
