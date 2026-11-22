@@ -58,3 +58,22 @@ test('one feature transaction includes audited request model and scope',async()=
   assert.deepEqual(observed.levels,['repeatable read']);
   assert.equal(observed.transactions,1);
 });
+
+test('the daily-source model returns source groups and daily total in one query',async()=>{
+  const rows=[{date:'2026-11-22',site:'vocus',count:2},
+    {date:'2026-11-22',site:'suno',count:3}];
+  let queries=0;
+  const builder={select(){return this},where(){return this},
+    groupBy(){return this},orderBy(){return this},
+    async execute(){queries++;return rows}};
+  const trx={selectFrom(){return builder}};
+  const data=await executeGalaxyFeatureTransaction(trx,{
+    ...parseGalaxyFeatureTransaction({...base,result:'daily-sources'})
+  });
+  assert.equal(queries,1);
+  assert.deepEqual(data.rows,[
+    {day:'2026-11-22',kind:'source',category:'suno',item_count:3},
+    {day:'2026-11-22',kind:'source',category:'vocus',item_count:2},
+    {day:'2026-11-22',kind:'total',category:'文字作品',item_count:5}
+  ]);
+});

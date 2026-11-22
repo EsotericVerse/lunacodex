@@ -30,7 +30,7 @@ const input=z.object({
   scope:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
   startDate:date,endDate:date,
   category:category.optional(),
-  result:z.enum(['count','daily','sources','uids']),
+  result:z.enum(['count','daily','daily-sources','sources','uids']),
   cursor:z.string().regex(/^[A-Za-z0-9]{8}$/).optional(),
   limit:z.number().int().min(1).max(100).optional()
 }).strict();
@@ -90,6 +90,29 @@ export async function executeGalaxyFeatureTransaction(trx,model){
     return {rows:rows.map(row=>({day:row.date instanceof Date
       ?row.date.toISOString().slice(0,10):String(row.date).slice(0,10),
       count:Number(row.count||0)}))};
+  }
+  if(model.result==='daily-sources'){
+    // One grouped SQL result supplies both per-source and per-day totals;
+    // no second COUNT or source taxonomy query is needed.
+    const rows=await q.select(['date','site'])
+      .select(eb=>eb.fn.countAll().as('count'))
+      .groupBy(['date','site']).orderBy('date','asc').orderBy('site','asc')
+      .execute();
+    const totalByDay=new Map(),entries=[];
+    for(const row of rows){
+      const day=row.date instanceof Date?row.date.toISOString().slice(0,10):
+        String(row.date).slice(0,10);
+      const category=String(row.site||'').trim();
+      const count=Number(row.count||0);
+      entries.push({day,kind:'source',category,item_count:count});
+      totalByDay.set(day,(totalByDay.get(day)||0)+count);
+    }
+    entries.push(...[...totalByDay].map(([day,item_count])=>({
+      day,kind:'total',category:'文字作品',item_count
+    })));
+    entries.sort((a,b)=>a.day.localeCompare(b.day)||a.kind.localeCompare(b.kind)||
+      a.category.localeCompare(b.category));
+    return {rows:entries};
   }
   if(model.result==='sources'){
     const rows=await q.select('site').select(eb=>eb.fn.countAll().as('count'))
