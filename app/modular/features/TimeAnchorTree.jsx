@@ -34,10 +34,10 @@ export default function TimeAnchorTree({rows=[],value='',disabled=false,onSelect
       <span>{title(row)}</span>
     </button>
   </li>;
-  const periodItem=branch=>{
+  const periodItem=(branch,showAll=false)=>{
     const row=branch.row,id=uid(row),ownMatch=matching(row);
-    const filtered=needle&&!ownMatch?branch.dates.filter(matching):branch.dates;
-    if(needle&&!ownMatch&&!filtered.length)return null;
+    const filtered=needle&&!ownMatch&&!showAll?branch.dates.filter(matching):branch.dates;
+    if(needle&&!ownMatch&&!showAll&&!filtered.length)return null;
     const expanded=Boolean(needle)||openPeriods.has(id);
     return <li key={id} className="loc-time-tree-period">
       <div className="loc-time-tree-heading">
@@ -87,7 +87,7 @@ export default function TimeAnchorTree({rows=[],value='',disabled=false,onSelect
             {edit(row)}
           </div>
           {expanded?<ul className="loc-time-tree-children">
-            {periods.length?periods.map(periodItem):
+            {periods.length?periods.map(period=>periodItem(period,ownMatch)):
               <li className="scope-status">此時代沒有已連結的期間</li>}
           </ul>:null}
         </li>;
@@ -107,7 +107,7 @@ export default function TimeAnchorTree({rows=[],value='',disabled=false,onSelect
           {needle||openUnclassified?<ul className="loc-time-tree-children">
             {unclassifiedPeriods.length?<li>
               <div className="loc-time-tree-subheading">未分類期間（無所屬時代）</div>
-              <ul>{unclassifiedPeriods.map(periodItem)}</ul>
+              <ul>{unclassifiedPeriods.map(period=>periodItem(period))}</ul>
             </li>:null}
             {unclassifiedDates.length?<li>
               <div className="loc-time-tree-subheading">未分類定錨點（無所屬期間）</div>
