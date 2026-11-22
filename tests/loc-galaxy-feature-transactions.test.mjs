@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {parseGalaxyFeatureTransaction,executeGalaxyFeatureTransaction,
   GALAXY_FEATURE_MODELS} from '../app/loc/model/galaxy-feature-transactions.mjs';
 import {handleNamedPublicTransaction} from '../app/loc/server/public-named-transactions.mjs';
