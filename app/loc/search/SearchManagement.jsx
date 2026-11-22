@@ -5,19 +5,20 @@ import dynamic from 'next/dynamic';
 import {useSearchParams} from 'next/navigation';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
+import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
 import {useVerifiedManagementGrants} from '../management/ManagementAccess';
 import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
-const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks'),{loading:()=>null});
-const ManagementArticlePublisher=dynamic(()=>import('../management/ManagementArticlePublisher'),{loading:()=>null});
-const ManagementMediaWorkspace=dynamic(()=>import('../media/ManagementMediaWorkspace'),{loading:()=>null});
-const ManagementContentTarget=dynamic(()=>import('../management/ManagementContentTarget'),{loading:()=>null});
-const ManagementImportPanel=dynamic(()=>import('../import/ManagementImportPanel'),{loading:()=>null});
-const ScopeSettingsPanel=dynamic(()=>import('../scope/ScopeSettingsPanel'),{loading:()=>null});
-const ScopeGroupAccessPanel=dynamic(()=>import('../scope/ScopeGroupAccessPanel'),{loading:()=>null});
+const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks').catch(recoverChunkOnce),{loading:()=>null});
+const ManagementArticlePublisher=dynamic(()=>import('../management/ManagementArticlePublisher').catch(recoverChunkOnce),{loading:()=>null});
+const ManagementMediaWorkspace=dynamic(()=>import('../media/ManagementMediaWorkspace').catch(recoverChunkOnce),{loading:()=>null});
+const ManagementContentTarget=dynamic(()=>import('../management/ManagementContentTarget').catch(recoverChunkOnce),{loading:()=>null});
+const ManagementImportPanel=dynamic(()=>import('../import/ManagementImportPanel').catch(recoverChunkOnce),{loading:()=>null});
+const ScopeSettingsPanel=dynamic(()=>import('../scope/ScopeSettingsPanel').catch(recoverChunkOnce),{loading:()=>null});
+const ScopeGroupAccessPanel=dynamic(()=>import('../scope/ScopeGroupAccessPanel').catch(recoverChunkOnce),{loading:()=>null});
 
 // Article Control sections share one Scope ownership and authorization boundary. Moving a panel
 // never changes its Scope ownership, database tables or authorizer.
