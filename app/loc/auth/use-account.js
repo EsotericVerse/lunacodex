@@ -8,7 +8,7 @@ import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthori
 import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {shouldInvalidateManagementForAuthEvent} from './account-event-guard.mjs';
-import {editorSessionStatus,readEditorManagement,saveEditorManagement,clearEditorSession} from './edit-session-ttl.mjs';
+import {editorSessionStatus,readEditorManagement,saveEditorManagement,clearEditorManagement,clearEditorSession} from './edit-session-ttl.mjs';
 import {invalidateAccountPrivateReads} from '../db/semi-dynamic-cache.mjs';
 
 const normalizeAuthEmail=value=>String(value||'').trim().toLowerCase();
