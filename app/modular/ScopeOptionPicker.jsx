@@ -24,6 +24,15 @@ export default function ScopeOptionPicker({id,options=[],value='',onChange,
     visible.unshift(selected);
   if(value&&!selected)
     visible.unshift({value,label:'原選項已失效'});
+  // Optgroup is a presentation-only parent: choices remain their real UIDs.
+  // No flat sibling list when the caller supplied a saved hierarchy.
+  const sections=[];
+  for(const option of visible){
+    const group=String(option.group||'');
+    const previous=sections.at(-1);
+    if(previous&&previous.group===group)previous.items.push(option);
+    else sections.push({group,items:[option]});
+  }
   return <div className="loc-scope-option-picker">
     <input id={inputId} type="search" autoComplete="off" value={input}
       disabled={disabled} placeholder={'篩選已授權'+placeholder}
@@ -37,9 +46,15 @@ export default function ScopeOptionPicker({id,options=[],value='',onChange,
         if(onChange(event.target.value)!==false)setInput('');
       }}>
       <option value="" disabled={!allowClear}>{placeholder}</option>
-      {visible.map(option=><option key={option.value} value={option.value}>
-        {option.label}
-      </option>)}
+      {sections.map((section,index)=>section.group
+        ?<optgroup key={section.group+':'+index} label={section.group}>
+          {section.items.map(option=><option key={option.value} value={option.value}>
+            {option.label}
+          </option>)}
+        </optgroup>
+        :section.items.map(option=><option key={option.value} value={option.value}>
+          {option.label}
+        </option>))}
     </select>
     {term&&matches.length===0?<small className="scope-status">{noOptionsMessage}</small>:null}
     {matches.length>MAX_VISIBLE?<small className="scope-status">
