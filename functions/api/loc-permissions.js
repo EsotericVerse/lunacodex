@@ -1,9 +1,9 @@
 import {verifiedLocWebsiteSession} from '../../app/loc/auth/verified-session.mjs';
-import {readLocAccess} from '../../app/loc/permissions/loc_access.mjs';
+import {readLocAccess,publishedLocAccess} from '../../app/loc/permissions/loc_access.mjs';
 import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../../app/loc/mcp/native-kysely.mjs';
 
-// The website checks LOC Auth's Session, then reads one policy-enforced
-// api.manage ZModel projection. No second role registry or query loop.
+// A verified LOC Auth identity uses the published JS role registry first.
+// A known identity never opens Neon just to check management permission.
 export async function onRequestGet({request,env,waitUntil}){
   const response=(body,status=200)=>new Response(JSON.stringify(body),{
     status,headers:{'content-type':'application/json','cache-control':'no-store'}
@@ -12,6 +12,10 @@ export async function onRequestGet({request,env,waitUntil}){
   let releaseAbort=()=>{};
   try{
     const session=await verifiedLocWebsiteSession(request);
+    const published=publishedLocAccess(session.email,{website:true});
+    if(published.found)
+      return response({...published.rights,email:session.email,subject:session.userId});
+    // Only an identity not represented in published JS can reach SQL.
     port=await directMcpKysely(env,'',{waitUntil});
     releaseAbort=bindLocRequestAbort(port,request.signal);
     const result=await readLocAccess(port.db,session.email,{
