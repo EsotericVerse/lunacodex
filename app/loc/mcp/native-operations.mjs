@@ -1,3 +1,4 @@
+import {NATIVE_WRITE_MAX_BYTES} from '../query/query-batch-size.mjs';
 // Dedicated Galaxy/short-import business operations inside the existing LOC
 // Pages backend. This is NOT a generic SQL endpoint: no caller-provided SQL,
 // relation, database alias, connection URL, or query AST is accepted.
@@ -29,7 +30,7 @@ const AUTH='https://auth.lo3rwang.cc';
 const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
-const MAX_BYTES=700000;
+const MAX_BYTES=NATIVE_WRITE_MAX_BYTES;
 const PUBLISHED_MANAGE_FIELDS=new Set([
   'email','manage_role','active','galaxy_table','anchor_table',
   'domain','directory','parent_scope_id','sort_order'
