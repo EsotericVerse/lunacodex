@@ -8,6 +8,8 @@ import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../mcp/native-kysely.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
+import {parseGalaxyFeatureTransaction,executeGalaxyFeatureTransaction} from '../model/galaxy-feature-transactions.mjs';
+import {checkSearchQos} from '../providers/search-qos.mjs';
 
 const HEADERS={'content-type':'application/json; charset=utf-8',
   'cache-control':'no-store','x-content-type-options':'nosniff'};
@@ -42,6 +44,7 @@ function normalize(body){
       throw bad();
     return {operation:'time-anchors',scope,mode,cursor,limit};
   }
+  if(body.operation==='galaxy-feature')return parseGalaxyFeatureTransaction(body);
   if(body.operation==='analytics'){
     if(!KEYS(body,['kind','operation','args'])||!OBJECT(body.args)||
       typeof body.args.p_view!=='string')throw bad();
@@ -84,6 +87,49 @@ export async function handleNamedPublicTransaction(request,env={},{
       scopeId(operation.args.p_scope_id)}
     catch{return respond({error:'Unavailable Scope'},400)}
     if(!canEdit(session,scope))return respond({error:'LOC Scope not authorized'},403);
+  }
+  if(operation.operation==='galaxy-feature'){
+    // Parse and validate the fixed model before any SQL connection.
+    if(operation.category?.type==='keyword'){
+      const ip=request.headers.get('cf-connecting-ip');
+      if(ip){
+        const check=checkSearchQos(ip);
+        if(!check.allowed)return new Response(JSON.stringify({
+          error:'Galaxy keyword request rate limited',code:'SEARCH_RATE_LIMIT'
+        }),{status:429,headers:{...HEADERS,
+          'retry-after':String(Math.max(1,Math.ceil(check.retryAfterMs/1000)))}});
+      }
+    }
+    let port=null,unbind=()=>{};
+    const started=Date.now();
+    const ray=String(request.headers.get('cf-ray')||'').slice(0,80);
+    const modelName={culture:'GalaxyCulture',statics:'GalaxyStatistics',
+      search:'GalaxySearch',trace:'GalaxyTrace'}[operation.feature];
+    const receipt={requestedBy:operation.feature,model:modelName,
+      scope:operation.scope,result:operation.result,ray:ray||null};
+    let status=200;
+    try{
+      const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
+      if(!primary)throw Error('LOC database unavailable');
+      port=await database(env,primary.target_id,{waitUntil});
+      unbind=bindLocRequestAbort(port,request.signal);
+      if(!port?.db||port.engine!=='postgres')throw Error('LOC PostgreSQL unavailable');
+      const data=await port.db.transaction().setIsolationLevel('repeatable read')
+        .execute(trx=>executeGalaxyFeatureTransaction(trx,operation));
+      return respond({data,transaction:receipt});
+    }catch(error){
+      status=503;
+      console.error('[LOC Galaxy feature failed]',{...receipt,
+        code:String(error?.code||'FAILED').slice(0,40)});
+      return respond({error:'LOC Galaxy feature transaction unavailable',
+        transaction:receipt},status);
+    }finally{
+      console.info('[LOC Galaxy feature transaction]',{
+        ...receipt,status,elapsedMs:Date.now()-started});
+      unbind();
+      try{await closeLocDatabase(port)}
+      catch{console.error('[LOC Galaxy feature] connection cleanup failed')}
+    }
   }
   if(operation.operation!=='time-anchors'){
     // Bridge only fixed, already-validated names to existing feature
