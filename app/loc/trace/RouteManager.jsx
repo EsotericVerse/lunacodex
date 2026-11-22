@@ -92,19 +92,24 @@ export default function TraceRouteManager({scopeId,mode='all'}){
   const visibleRecords=typedRecords.filter(row=>row.title.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
   const savedHierarchy=useMemo(()=>traceRouteHierarchy(records,owner),[index.data,owner]);
   const displayRecords=useMemo(()=>{
-    if(mode!=='all')return visibleRecords.map(row=>({row,key:row.uid,depth:0}));
+    if(mode==='trace')return visibleRecords.map(row=>({row,key:row.uid,depth:0}));
     const matched=new Set(visibleRecords.map(row=>row.uid));
     const entries=[];
     for(const group of savedHierarchy.groups){
       if(!matched.has(group.trace.uid)&&!group.paths.some(row=>matched.has(row.uid)))continue;
-      entries.push({row:group.trace,key:group.trace.uid,depth:0});
+      if(mode==='path')entries.push({row:null,key:'trace:'+group.trace.uid,
+        label:group.trace.title||group.trace.uid});
+      else entries.push({row:group.trace,key:group.trace.uid,depth:0});
       for(const route of group.paths){
         if(matched.has(group.trace.uid)||matched.has(route.uid))
           entries.push({row:route,key:group.trace.uid+':'+route.uid,depth:1});
       }
     }
-    for(const route of savedHierarchy.orphans)if(matched.has(route.uid))
-      entries.push({row:route,key:route.uid,depth:0});
+    const orphans=savedHierarchy.orphans.filter(row=>matched.has(row.uid));
+    if(orphans.length){
+      entries.push({row:null,key:'unclassified:path',label:'未分類路徑'});
+      for(const route of orphans)entries.push({row:route,key:route.uid,depth:1});
+    }
     return entries;
   },[mode,visibleRecords,savedHierarchy]);
   const current=typedRecords.find(row=>row.uid===selectedUid)
@@ -327,8 +332,10 @@ export default function TraceRouteManager({scopeId,mode='all'}){
       </div>
     </details>
     <div className="loc-trace-saved-maps">
-      {displayRecords.map(({row,key,depth})=><div className="loc-trace-saved-map" key={key}
-        style={depth?{marginInlineStart:'1.5rem'}:undefined}>
+      {displayRecords.map(({row,key,depth,label})=>!row
+        ?<h4 key={key} className="scope-source-tree-universe">{label}</h4>
+        :<div className="loc-trace-saved-map" key={key}
+          style={depth?{marginInlineStart:'1.5rem'}:undefined}>
         <label className="scope-status"><input type="checkbox" disabled={busy||!own}
           checked={bulkSelected.includes(row.uid)}
           onChange={e=>setBulkSelected(ids=>e.target.checked?[...ids.filter(id=>id!==row.uid),row.uid]:ids.filter(id=>id!==row.uid))}/>
