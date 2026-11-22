@@ -8,7 +8,7 @@ import {publishedManagedScope} from './published-managed-scope.mjs';
 import {provisionScopeNative,manageScopeRegistryNative,deleteScopeNative}
   from './kysely-scope-lifecycle.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
-  modeledBooleanColumns,zmodelRegistryJoin,verifyModeledSqlFields}
+  modeledBooleanColumns,verifyModeledSqlFields}
   from '../../../packages/zenstack/model-column-guard.mjs';
 import {managedRowsIssue,managedUpdateValuesValid,managedFiltersValid,
   MANAGED_FILTER_SQL} from '../../../packages/zenstack/sql-input-shape.mjs';
@@ -831,12 +831,17 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const group=validScope(args.p_group_id);
     if(!await canLocAccess(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
-    const rows=await zmodelRegistryJoin(trx)
-      .select(['m.id as id','l.display_name as display_name',
-        'm.parent_scope_id as parent_scope_id','m.active as active',
-        'm.sort_order as sort_order'])
-      .where('m.parent_scope_id','=',group).where('m.manage_role','=','scope')
-      .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
+    const members=FIXED_MANAGE_ROWS.filter(row=>
+      row.parent_scope_id===group&&row.manage_role==='scope'&&row.active===true);
+    if(!members.length)return {data:[],count:null};
+    const summaries=await trx.selectFrom('silver.loc')
+      .select(['id','display_name'])
+      .where('id','in',members.map(row=>row.id)).execute();
+    const titles=new Map(summaries.map(row=>[row.id,row.display_name]));
+    const rows=members.map(row=>({id:row.id,
+      display_name:titles.get(row.id)||row.id,parent_scope_id:row.parent_scope_id,
+      active:row.active,sort_order:row.sort_order}))
+      .sort((a,b)=>a.sort_order-b.sort_order||a.id.localeCompare(b.id));
     return {data:rows,count:null};
   }
   if(name==='update_group_member_name'){
@@ -847,11 +852,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     if(!await canLocAccess(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
     const fixed=fixedManageScope(member);
-    const parent=fixed ?
-      fixed.parent_scope_id===group&&fixed.manage_role==='scope'?fixed:null:
-      await trx.selectFrom('api.manage').select('id')
-        .where('id','=',member).where('parent_scope_id','=',group)
-        .where('manage_role','=','scope').executeTakeFirst();
+    const parent=fixed?.parent_scope_id===group&&fixed.manage_role==='scope'
+      &&fixed.active===true?fixed:null;
     if(!parent)reject('Scope is outside this Group',403);
     const updated=await trx.updateTable('silver.'+member)
       .set({display_name:title,updated_at:sql`now()`})
@@ -1170,10 +1172,8 @@ async function importSharedKeywordClass(trx,args){
   // The target Scope grant is explicitly verified by scopedWrite / LOC access.
   await scopedWrite(trx,to);
   const fixedSource=publishedManagedScope(from);
-  const sourceRegistry=fixedSource?.manage_role==='scope'?fixedSource:
-    fixedSource?null:await trx.selectFrom('api.manage')
-      .select('id').where('id','=',from).where('manage_role','=','scope')
-      .where('active','=',true).executeTakeFirst();
+  const sourceRegistry=fixedSource?.manage_role==='scope'&&fixedSource.active===true
+    ?fixedSource:null;
   if(!sourceRegistry)reject('Source Scope unavailable');
   const sourceConfig=await trx.selectFrom('silver.'+from).select('keyword_meta')
     .where('id','=',from).executeTakeFirst();
