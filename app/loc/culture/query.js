@@ -50,6 +50,12 @@ export async function selectCultureTimeRows(scope,birthday=''){
   // Collect every Time Anchor/period/era. Internal transport pagination does
   // not cap the historical timeline or borrow the old Data API Max Rows limit.
   const rows=(await readAllTimeAnchorTransactions(scopeId)).map(projectTimeAnchor);
+  return projectScopeTimeRecords(scopeId,rows);
+}
+
+// Public and protected editor reads must project the SAME typed Time Anchors.
+// The editor already has all records; reuse them, never issue a second SQL read.
+export function projectScopeTimeRecords(scopeId,rows=[]){
   const anchors=rows.filter(row=>row.type==='anchor');
   const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
   const normalize=(row,type,eventMap)=>{
@@ -386,8 +392,9 @@ export async function selectScopeCultureManagementData(scopeId,{signal=null}={})
   const scope=published?defaultScopeData(id):null;
   if(!scope||id==='loc')throw Error('找不到 Scope 時間編輯資料設定');
   const editorRows=await readManagedTimeRecords(scope.time,{signal});
-  const parts=cultureParts(editorRows,scope.id);
-  const openRange=openPeriodRangeFromRows(scope.id,editorRows);
+  const projected=projectScopeTimeRecords(scope.id,editorRows);
+  const parts=cultureParts(projected,scope.id);
+  const openRange=openPeriodRangeFromRows(scope.id,projected);
   return {
     scopeId:id,scope,editorRows,
     eras:{eras:parts.eras},periods:parts.periods,
