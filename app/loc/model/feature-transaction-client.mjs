@@ -25,10 +25,12 @@ export const readGalaxyRecords=(params,options={})=>
 export const readAnchorFeature=(params,options={})=>
   readFixedOperation('anchor-feature',params,{...options,
     editor:options.editor===true});
-export async function readAllAnchorFeature({scope,family,types,signal=null,editor=false}={}){
+export async function readAllAnchorFeature({scope,family,types,startDate,endDate,
+  signal=null,editor=false}={}){
   const rows=[],seen=new Set();let cursor;
   for(;;){
-    const data=await readAnchorFeature({scope,family,types,cursor,limit:1000},
+    const data=await readAnchorFeature({scope,family,types,startDate,endDate,
+      cursor,limit:1000},
       {signal,editor});
     for(const row of data.rows||[]){
       const uid=String(row.uid||'');

@@ -735,25 +735,32 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
   // Keep both totals in the cursor so subsequent pages never repeat COUNTs.
   const hasCursorCounts=Number.isSafeInteger(cursor?.galaxyCount)&&Number.isSafeInteger(cursor?.mediaCount);
   const [galaxyResult,mediaResult]=await Promise.all([
-    includeGalaxy?selectRows(scope.galaxy,{
-      columns:galaxyReadColumns('GalaxyList').join(','),
-      filters:galaxyFilters,
-      orders:[...(scope.id==='local'?[]:[{column:'date',ascending}]),
-        {column:'createtime',ascending},{column:'uid',ascending:true}],
-      limit:pageSize,
-      offset:galaxyOffset,
-      maxLimit:pageSize,
-      count:hasCursorCounts?null:'exact'
-    }):Promise.resolve({rows:[],count:0}),
-    includeMedia?selectRows(scope.anchor,{
-      columns:'uid,createtime',
-      filters:mediaFilters,
-      orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
-      limit:pageSize,
-      offset:mediaOffset,
-      maxLimit:pageSize,
-      count:hasCursorCounts?null:'exact'
-    }):Promise.resolve({rows:[],count:0})
+    !includeGalaxy?Promise.resolve({rows:[],count:0}):
+      scopeId==='local'?selectRows(scope.galaxy,{
+        columns:galaxyReadColumns('GalaxyList').join(','),
+        filters:galaxyFilters,
+        orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
+        limit:pageSize,offset:galaxyOffset,maxLimit:pageSize,
+        count:hasCursorCounts?null:'exact'
+      }):readGalaxyFeature({
+        feature:articlePermission,scope:scopeId,
+        startDate:startDate||undefined,endDate:endDate||undefined,
+        sources:rawSources.length?rawSources.filter(Boolean):undefined,
+        result:'articles',orderByDate:true,sortDirection:ascending?'asc':'desc',
+        limit:pageSize,offset:galaxyOffset,includeTotal:!hasCursorCounts
+      }).then(response=>({...response.data,count:response.data.totalCount})),
+    !includeMedia?Promise.resolve({rows:[],count:0}):
+      scopeId==='local'?selectRows(scope.anchor,{
+        columns:'uid,createtime',filters:mediaFilters,
+        orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
+        limit:pageSize,offset:mediaOffset,maxLimit:pageSize,
+        count:hasCursorCounts?null:'exact'
+      }):readAnchorFeature({
+        scope:scopeId,family:'media',types:selectedMedia,
+        startDate:startDate||undefined,endDate:endDate||undefined,
+        order:'createtime',sortDirection:ascending?'asc':'desc',
+        limit:pageSize,offset:mediaOffset,includeTotal:!hasCursorCounts
+      }).then(data=>({...data,count:data.totalCount}))
   ]);
   // Fall back only if a provider does not return the requested exact count.
   const [galaxyCount,mediaCount]=await Promise.all([
@@ -820,13 +827,16 @@ export async function selectScopePeriodWorkDetails(scope,{items=[]}={}){
   // Do not SELECT those article UIDs again just to obtain the title.
   const mediaIds=[...new Set(source.filter(row=>row?.entry_type==='media_metadata')
     .map(row=>String(row?.uid||row?.entry_id||'').trim()).filter(Boolean))];
-  const mediaResult=mediaIds.length?await selectRows(scope.anchor,{
-    columns:MEDIA_ANCHOR_COLUMNS,
-    filters:[{column:'uid',operator:'in',value:mediaIds},
-      {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
-      {column:'invisible',operator:'eq',value:false}],
-    limit:mediaIds.length
-  }):{rows:[]};
+  const mediaResult=!mediaIds.length?{rows:[]}:
+    scopeId==='local'?await selectRows(scope.anchor,{
+      columns:MEDIA_ANCHOR_COLUMNS,
+      filters:[{column:'uid',operator:'in',value:mediaIds},
+        {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
+        {column:'invisible',operator:'eq',value:false}],
+      limit:mediaIds.length
+    }):await readAnchorFeature({
+      scope:scopeId,family:'media',uids:mediaIds,limit:mediaIds.length
+    });
   const galaxyById=new Map(source.filter(row=>row.entry_type==='work').map(row=>[String(row.uid),{
     key:'galaxy:'+row.uid,
     uid:row.uid,
