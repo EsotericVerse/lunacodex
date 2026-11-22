@@ -1,3 +1,4 @@
+import {MAX_ROWS} from '../query/query-batch-size.mjs';
 import {parseImportCreatedTime} from './batch.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {planImportDateTitleDelta,planImportDateCreate} from './point-date-immer.mjs';
@@ -93,7 +94,7 @@ export function createImportDateIndex(){
 }
 
 export async function prepareImportTimeAnchors(records,{
-  scopeId,timeTable,relation,pageSize=750,onProgress,anchorSnapshot=null,
+  scopeId,timeTable,relation,pageSize=MAX_ROWS,onProgress,anchorSnapshot=null,
 }={}){
   const entries=importCheckinDayEntries(records);
   const entryByDate=new Map(entries.map(item=>[item.date,item]));
