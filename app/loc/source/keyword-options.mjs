@@ -21,7 +21,11 @@ export function sourceKeywordOptions(taxonomy){
 // label or an inferred Source hierarchy. Statistics keeps its existing
 // Domain/From-only selectors above.
 export function sourceOutlineOptions(taxonomy){
-  return (taxonomy?.tree||[]).map(node=>({
+  const rootOrder=new Map([['Words',0],['Mutlimedia',1],['PastBy',2]]);
+  const rank=node=>rootOrder.get(node.universe||node.title)??100;
+  // Stable sort reorders ONLY the three Universe subtrees; each stored UID
+  // child order stays unchanged within its own ancestor.
+  return [...(taxonomy?.tree||[])].sort((a,b)=>rank(a)-rank(b)).map(node=>({
     key:node.root+':'+node.uid,code:node.uid,
     root:node.root,type:node.type,label:node.title,
     level:Math.max(0,(node.path||[]).length-1),
