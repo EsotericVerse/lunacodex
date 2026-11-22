@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {buildEraRiver} from '../app/loc/culture/time-trace-river.mjs';
 import {traceRouteHierarchy} from '../app/modular/features/trace/trace-route-hierarchy.mjs';
+import {touchEditorSession,editorSessionStatus,saveEditorManagement,readEditorManagement,
+  clearEditorManagement,clearEditorSession} from '../app/loc/auth/edit-session-ttl.mjs';
 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -25,21 +27,45 @@ test('management section change abandons the old editors and transient reads',()
   assert.match(dock,/registeredEditors\.current\.clear\(\)/);
 });
 
-test('homepage six-key navigation retires old reads before full-document managers',()=>{
+test('homepage six-key hard navigation does not clear live page or editor Session',()=>{
   const dock=source('app/modular/edit-dock.jsx');
   const resources=source('packages/zenstack/client-queries.js');
-  // A static management entrypoint has no React route-key transition.
+  // Hard navigation unloads its document naturally. An eager global flush
+  // erases the live homepage if the next HTML entrypoint is slow to load.
   assert.match(dock,/const documentExit=url\.origin/);
-  assert.match(dock,/isManagementHref\(url\.href\)/);
-  assert.match(dock,/releaseTransientPageResources\(\{documentExit\}\);[\s\S]*?window\.location\.assign\(url\.href\)/);
-  assert.match(dock,/releaseTransientPageResources\(\{documentExit:true\}\);[\s\S]*?window\.location\.assign\(destination\.href\)/);
-  assert.match(resources,/export function releaseTransientPageResources\(\{documentExit=false\}=\{\}\)/);
-  assert.match(resources,/cancelTransientReads\(\);\s*abortInflight\(\);/);
-  assert.match(resources,/if\(!documentExit&&retryBootstrap\.size\)/,
-    'full-document exit must not queue bootstrap re-reads on old page');
-  // Navigation cleanup is explicitly not a write or a Session revocation.
+  assert.match(dock,/if\(documentExit\)\{\s*window\.location\.assign\(url\.href\)/);
+  assert.match(dock,/window\.location\.assign\(destination\.href\)/);
   const navigate=dock.slice(dock.indexOf('const navigate='),dock.indexOf('const complete='));
-  assert.doesNotMatch(navigate,/transactionWrites\(|clearEditorSession\(/);
+  assert.doesNotMatch(navigate,/releaseTransientPageResources\(|transactionWrites\(|clearEditorSession\(/);
+  const discard=dock.slice(dock.indexOf('const discard='),dock.indexOf('const switchTo='));
+  assert.doesNotMatch(discard,/releaseTransientPageResources\(|transactionWrites\(|clearEditorSession\(/);
+  assert.match(resources,/export function releaseTransientPageResources\(\)/);
+  assert.match(resources,/cancelTransientReads\(\);\s*abortInflight\(\);/);
+  assert.match(resources,/if\(retryBootstrap\.size\)queueMicrotask/,
+    'SPA route cleanups must still revive observed shared Bootstrap');
+});
+
+test('transient management verification failure removes grants but preserves the session clock',()=>{
+  const values=new Map(),storage={
+    getItem:key=>values.get(key)||null,
+    setItem:(key,val)=>values.set(key,val),
+    removeItem:key=>values.delete(key)
+  };
+  const now=1700000000000;
+  assert.equal(touchEditorSession(storage,now),true);
+  assert.equal(saveEditorManagement(storage,{user:{id:'user',email:'user@example.org'},
+    roles:[],grants:[]},now+500),true);
+  const before=editorSessionStatus(storage,now+1000);
+  assert.ok(readEditorManagement(storage,now+1000));
+  clearEditorManagement(storage);
+  assert.deepEqual(editorSessionStatus(storage,now+1000),before);
+  assert.equal(readEditorManagement(storage,now+1000),null);
+  assert.equal(touchEditorSession(storage,now+1000),true);
+  const account=source('app/loc/auth/use-account.js');
+  assert.match(account,/clearEditorManagement\(window\.sessionStorage\)/);
+  assert.match(account,/if\(error\?\.status===401\)\{\s*if\(typeof window!==['"]undefined['"]\)clearEditorSession/);
+  clearEditorSession(storage);
+  assert.equal(storage.getItem('loc-editor-session-v1'),null);
 });
 
 test('Culture orders Era > Period > Date anchors, then the next Era',()=>{
