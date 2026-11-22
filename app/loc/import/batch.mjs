@@ -409,27 +409,38 @@ export function estimateImportStageMinutes({completed=0,total=0,elapsedMs=0}={})
   return {underMinute:remainingMs<60000,minutes:Math.max(1,Math.ceil(remainingMs/60000))};
 }
 
-export function validImportBatchSize(){return MAX_ROWS;}
+export function validImportBatchSize(){return HEAVY_QUERY_ROWS;}
 
 export async function writeImportBatches(records,{writeBatch,onProgress}={}){
   if(!Array.isArray(records))throw new Error('匯入批次資料必須是陣列。');
   if(typeof writeBatch!=='function')throw new Error('匯入寫入函式不存在。');
-  const size=MAX_ROWS;
+  const sizer=createImportBatchSizer();
   const total=records.length;
-  let completed=0;
-  for(let offset=0;offset<total;offset+=size){
-    const batch=records.slice(offset,offset+size);
+  let completed=0,batches=0;
+  while(completed<total){
+    const batch=[];
+    let bytes=0;
+    for(let index=completed;index<total;index++){
+      const row=records[index],nextBytes=sizer.byteSize(row);
+      if(sizer.shouldFlush(batch.length,bytes,nextBytes))break;
+      batch.push(row);bytes+=nextBytes;
+      if(sizer.shouldFlush(batch.length,bytes))break;
+    }
+    if(!batch.length)throw new Error('匯入批次大小無效。');
+    const started=Date.now();
     try{
-      const result=await writeBatch(batch,{offset,total});
-      if(result&&Number.isInteger(result.count)&&result.count!==batch.length){
+      const result=await writeBatch(batch,{offset:completed,total});
+      if(result&&Number.isInteger(result.count)&&result.count!==batch.length)
         throw new Error('寫入筆數不符：預期 '+batch.length+' 筆，實際 '+result.count+' 筆');
-      }
     }catch(error){
       const detail=String(error?.message||error||'未知錯誤');
-      throw new Error('第 '+(Math.floor(offset/size)+1)+' 批失敗；已確認完成 '+completed+'／'+total+' 筆。'+detail+'。重新執行前會再次比對已存在 UID。');
+      throw new Error('第 '+(batches+1)+' 批失敗；已確認完成 '+completed+
+        '／'+total+' 筆。'+detail+'。重新執行前會再次比對已存在 UID。');
     }
-    completed+=batch.length;
-    onProgress?.({completed,total,percent:Math.round(completed/Math.max(1,total)*100),batch:Math.floor(offset/size)+1,batches:Math.ceil(total/size)});
+    completed+=batch.length;batches++;
+    sizer.observe(batch.length,Date.now()-started);
+    onProgress?.({completed,total,percent:Math.round(completed/Math.max(1,total)*100),
+      batch:batches,batches:Math.max(batches,Math.ceil(total/sizer.size))});
   }
-  return {completed,total,batches:Math.ceil(total/size)};
+  return {completed,total,batches};
 }
