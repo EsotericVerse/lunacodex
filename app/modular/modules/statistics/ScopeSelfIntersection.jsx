@@ -6,12 +6,12 @@ import UiText,{useUiText} from '../../../i18n/UiText';
 import {useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy/galaxy-query';
-import {assignedSource} from '../../../loc/statistics/member-intersection-model.mjs';
 import {semanticStatisticChartTypes,chartTypeGroups} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
-import {ownScopeCategoryCatalog} from '../../../loc/statistics/source-intersection.mjs';
+import {sourceStatisticsTree} from '../../../loc/statistics/source-tree-measures.mjs';
+import SourceTreePicker from './SourceTreePicker';
 import {comparisonMetricGroups,selectedComparisonMetricGroup,firstAvailableGroupMetric} from './statistics-compare-options.mjs';
 
 const DAY_MS=86400000;
@@ -23,17 +23,15 @@ export const DIMENSION_FILTERS=Object.freeze([
   {value:'keyword',label:'關鍵詞'}
 ]);
 export const DIMENSIONS=Object.freeze([
-  {kind:'source',label:'原始作品來源'},
-  {kind:'source_rollup',label:'作品／個人分類'},
-  {kind:'group',label:'作品分類'},
-  {kind:'others_subgroup',label:'個人分類'},
+  {kind:'source_tree',label:'來源階層'},
+  {kind:'source_unclassified',label:'未分類來源'},
   {kind:'keyword_all',label:'全部關鍵詞'},
   {kind:'keyword_group',label:'關鍵詞群組'},
   {kind:'keyword_group_items',label:'群組內關鍵詞'},
   {kind:'keyword_item',label:'關鍵詞項目'}
 ]);
 export const LANE_FAMILIES=Object.freeze([
-  {id:'source',label:'作品來源',kinds:['source_rollup','source','group','others_subgroup']},
+  {id:'source',label:'作品來源',kinds:['source_tree','source_unclassified']},
   {id:'keyword',label:'關鍵詞',kinds:['keyword_all','keyword_group','keyword_group_items','keyword_item']}
 ]);
 const dimensionForKind=kind=>LANE_FAMILIES.find(item=>item.kinds.includes(kind))?.id||'source';
@@ -80,28 +78,10 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     return readPublicSourceTaxonomy();
   });
   const catalog=sharedCatalog||localCatalog;
-  const othersConfig=useAsyncResource({
-    queryKey:['scope-others-source-summary',scope?.id],
-    enabled:valid,
-    queryFn:async()=>{
-      const {publishedSourceTaxonomy}=await import('../../published-source-taxonomy.js');
-      const published=publishedSourceTaxonomy(scope.id);
-      if(published)return {groups:published.groups||[],aliases:published.groupAliases||[]};
-      const {readPublicSourceTaxonomy}=await import('../../../loc/source/catalog-public.mjs');
-      const list=await readPublicSourceTaxonomy(scope.id);
-      return {groups:list.groups||[],aliases:list.groupAliases||[]};
-    }
-  });
-  const othersActive=useMemo(()=>new Map((othersConfig.data?.groups||[])
-    .filter(row=>row.enabled!==false).map(row=>[row.group_code,row.display_name])),[othersConfig.data]);
-  const othersAliases=useMemo(()=>new Map((othersConfig.data?.aliases||[])
-    .map(row=>[String(row.source_key||'').trim().toLowerCase(),row.group_code])),[othersConfig.data]);
-  const resolveOthers=(source)=>{
-    const group=othersAliases.get(String(source||'').trim().toLowerCase())||'';
-    if(group&&othersActive.has(group))return group;
-    return assignedSource(source,catalog.data?.aliases||[],catalog.data?.categories||[])==='unclassified'
-      ?'unclassified':'';
-  };
+  // The only Source dimension is Galaxy.site mapped through loc_anchor.
+  // Mutlimedia is a Universe in the SAME Source tree, not a second counter.
+  const sourceModel=useMemo(
+    ()=>sourceStatisticsTree(rows,catalog.data||{}),[rows,catalog.data]);
   // Read the already-stored keyword summary only when this panel is expanded.
   const keywords=useAsyncResource({
     queryKey:['own-scope-keyword-summary',scope?.id,classUid,start,end],
@@ -121,7 +101,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     return kinds.length?[...kinds,'all']:[];
   },[rows,keywordTabAvailable]);
   const maximumLanes=Math.min(8,Math.max(0,
-    rows.filter(row=>row.kind==='source'&&Number(row.item_count)>0).length+
+    sourceModel.metrics.filter(item=>item.total>0).length+
     (keywords.data?.runeTotals||[]).filter(row=>Number(row.document_count)>0).length));
   const lanes=Math.min(numberOfLanes,Math.max(2,maximumLanes));
   const shownKinds=Array.from({length:lanes},(_,index)=>
@@ -150,18 +130,6 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     .map(item=>[String(item.uid),String(item.group_uid)])),
   [keywordCatalog.data]);
   const categoryList=useMemo(()=>{
-    const known=catalog.data?.categories||[],aliases=catalog.data?.aliases||[];
-    const basic=ownScopeCategoryCatalog(rows);
-    const grouped=new Map();
-    for(const row of rows){
-      if(row.kind!=='source')continue;
-      const id=assignedSource(row.category,aliases,known);
-      if(id==='unclassified'||othersActive.has(id))continue;
-      grouped.set(id,(grouped.get(id)||0)+(Number(row.item_count)||0));
-    }
-    const groups=[...grouped].filter(([,total])=>total>0).map(([id,total])=>({
-      id:metricId('group',id),kind:'group',name:known.find(x=>x.category_code===id)?.display_name||id,total
-    }));
     const analysis=keywords.data?.statisticsEnabled?keywords.data:null;
     const keywordGroups=(analysis?.groupTotals||[])
       .filter(row=>Number(row.document_count||0)>0)
@@ -177,39 +145,16 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       .map(group=>({id:metricId('keyword_group_items',group.uid),
         kind:'keyword_group_items',group_uid:group.uid,name:'群組內關鍵詞',total:0}));
     const keywordAll=keywordTabAvailable?[{
-      id:metricId('keyword_all','all'),kind:'keyword_all',
-      name:'全部關鍵詞',total:0
+      id:metricId('keyword_all','all'),kind:'keyword_all',name:'全部關鍵詞',total:0
     }]:[];
-    const othersCounts=new Map();
-    for(const row of rows){
-      if(row.kind!=='source')continue;
-      const group=resolveOthers(row.category);
-      if(group)othersCounts.set(group,(othersCounts.get(group)||0)+(Number(row.item_count)||0));
-    }
-    const others=[...othersCounts].filter(([,count])=>count>0).map(([id,total])=>({
-      id:metricId('others_subgroup',id),kind:'others_subgroup',
-      name:id==='unclassified'?'未分類':othersActive.get(id)||id,total
-    }));
-    let systemTotal=0,personalTotal=0;
-    for(const row of rows){
-      if(row.kind!=='source')continue;
-      const amount=Number(row.item_count)||0;
-      const personal=resolveOthers(row.category);
-      if(personal&&personal!=='unclassified')personalTotal+=amount;
-      else if(!personal&&assignedSource(row.category,aliases,known)!=='unclassified')systemTotal+=amount;
-    }
-    const rollups=[
-      {id:metricId('source_rollup','system'),kind:'source_rollup',
-        name:'作品分類',total:systemTotal},
-      {id:metricId('source_rollup','personal'),kind:'source_rollup',
-        name:'個人分類',total:personalTotal}
-    ].filter(item=>item.total>0);
-    return [...rollups,...groups,...basic,...others,
-      ...keywordAll,...keywordGroups,...keywordGroupsItems,...keywordItems];
-  },[rows,catalog.data,keywords.data,othersConfig.data,keywordItemGroup,keywordTabAvailable]);
+    return [...sourceModel.metrics,...keywordAll,...keywordGroups,
+      ...keywordGroupsItems,...keywordItems];
+  },[sourceModel,keywords.data,keywordItemGroup,keywordTabAvailable]);
   const candidatesForLane=index=>categoryList.filter(item=>
     (shownKinds[index]==='all'||dimensionForKind(item.kind)===shownKinds[index])&&
-    !['group','others_subgroup','total'].includes(item.kind));
+    (item.total>0||['keyword_all','keyword_group_items'].includes(item.kind)))
+    .sort((a,b)=>(b.kind==='source_tree'?b.level:0)-
+      (a.kind==='source_tree'?a.level:0));
   const chosen=Array.from({length:lanes},(_,index)=>{
     const candidates=candidatesForLane(index);
     const id=selected[index];
@@ -256,22 +201,9 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     };
     for(const row of rows){
       const day=dateOnly(row.day);
-      const rawId=String(row.kind)+'\u0000'+String(row.category||'');
-      const ids=[rawId];
-      if(row.kind==='source'){
-        const assigned=assignedSource(row.category,catalog.data?.aliases||[],catalog.data?.categories||[]);
-        const personal=resolveOthers(row.category);
-        if(personal&&personal!=='unclassified'){
-          ids.push('others_subgroup'+String.fromCharCode(0)+personal);
-          ids.push('source_rollup'+String.fromCharCode(0)+'personal');
-        }else if(!personal&&assigned!=='unclassified'){
-          ids.push('group\u0000'+assigned);
-          ids.push('source_rollup'+String.fromCharCode(0)+'system');
-        }else if(personal==='unclassified'){
-          ids.push('others_subgroup'+String.fromCharCode(0)+'unclassified');
-        }
-      }
-      for(const id of ids)add(day,id,Number(row.item_count)||0);
+      if(row.kind==='source')
+        for(const id of sourceModel.metricIdsForSite(row.category))
+          add(day,id,Number(row.item_count)||0);
     }
     // One Class per article. The existing summary already aggregates by day.
     for(const row of keywords.data?.classifications||[]){
@@ -308,7 +240,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
         value:chart.reduce((n,bucket)=>n+Number(bucket[category.id]||0),0)
       }))
     };
-  },[rows,categories.map(c=>c.id).join(String.fromCharCode(0)),start,end,unit,valid,catalog.data,othersConfig.data,keywords.data,keywordItems.data,selectedKeywordItems,keywordItemGroup]);
+  },[rows,categories.map(c=>c.id).join(String.fromCharCode(0)),start,end,unit,valid,sourceModel,keywords.data,keywordItems.data,selectedKeywordItems,keywordItemGroup]);
   const series=categories.map(c=>({key:c.id,label:c.name}));
   const enough=maximumLanes>=2&&categories.length===lanes;
   const availableCharts=semanticStatisticChartTypes({purpose:'comparison',rows:calculated.chart,series,distribution:calculated.totals});
@@ -317,10 +249,9 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
 
   return <section className="scope-stat-section scope-self-intersection" aria-label={t('uiExtra.statisticsView.selfIntersectionTitle')}>
     <h3><UiText id="uiExtra.statisticsView.selfIntersectionTitle"/></h3>
-      {query.isPending||keywords.isPending||othersConfig.isPending?<p className="scope-status">{l.readingSources}</p>:null}
+      {query.isPending||keywords.isPending?<p className="scope-status">{l.readingSources}</p>:null}
       {query.error||catalog.error?<p className="scope-status scope-error">{String(query.error?.message||catalog.error?.message||l.readFailed)}</p>:null}
       {keywords.error?<p className="scope-status scope-error">關鍵詞分佈載入失敗：{String(keywords.error?.message||keywords.error)}</p>:null}
-      {othersConfig.error?<p className="scope-status scope-error">{t('uiExtra.statisticsView.othersLoadFailed',{error:String(othersConfig.error?.message||othersConfig.error)})}</p>:null}
       {!query.isPending&&!catalog.isPending&&!query.error&&!catalog.error?<div className="scope-self-intersection-content">
         <div className="scope-stat-controls">
           <label><span><FieldText text="比較組數"/></span>
@@ -345,23 +276,12 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                 const next=[...selection];next[index]='';return next;
               });
             };
-            const sourceItems=categoryList.filter(item=>item.kind==='source');
-            const systems=sourceItems.filter(item=>
-              !resolveOthers(item.raw)&&assignedSource(item.raw,catalog.data?.aliases||[],catalog.data?.categories||[])!=='unclassified');
-            const personals=sourceItems.filter(item=>resolveOthers(item.raw)&&resolveOthers(item.raw)!=='unclassified');
-            const unclassified=sourceItems.filter(item=>resolveOthers(item.raw)==='unclassified');
-            const sourceGroups=[
-              {name:l.systemCategory,item:categoryList.find(c=>c.id===metricId('source_rollup','system')),items:systems},
-              {name:l.personalCategory,item:categoryList.find(c=>c.id===metricId('source_rollup','personal')),items:personals},
-              {name:l.uncategorized,item:null,items:unclassified}
-            ].filter(group=>group.item||group.items.length);
             const groupTabs=categoryList.filter(item=>item.kind==='keyword_group')
               .map(group=>({name:group.name,item:group,
                 items:categoryList.filter(item=>
                   (item.kind==='keyword_group_items'||item.kind==='keyword_item')&&item.group_uid===group.uid)}));
             const allKeywords=categoryList.find(item=>item.kind==='keyword_all');
             const groups=comparisonMetricGroups(kind,{
-              source:sourceGroups,
               keyword:[
                 ...(allKeywords?[{name:l.allKeywords,item:allKeywords,items:[]}]:[]),
                 ...groupTabs
@@ -378,12 +298,16 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                 {DIMENSION_FILTERS.filter(tab=>tab.value==='all'?availableKinds.length>0:availableKinds.includes(tab.value)).map(tab=>
                   <button type="button" className="scope-self-stat-tab" key={tab.value}
                     aria-pressed={kind===tab.value} onClick={()=>switchKind(tab.value)}>
-                    {tab.value==='all'?'全部':tab.value==='source'?l.sourceTab:tab.value==='media'?l.mediaTab:l.keywordTab}
+                    {tab.value==='all'?'全部':tab.value==='source'?l.sourceTab:l.keywordTab}
                   </button>)}
               </div>
               <div className="scope-self-intersection-category-groups">
-                <label className="scope-self-stat-picker"><span>類別</span>
-                  <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 類別'}
+                {(kind==='source'||kind==='all')?<SourceTreePicker
+                  metrics={sourceModel.metrics} value={chosenId} takenIds={takenByOther}
+                  onChange={selectMetric}
+                  label={l.comparisonItem+' '+(index+1)+' 來源階層'}/>:null}
+                {(kind==='keyword'||kind==='all')?<label className="scope-self-stat-picker"><span>關鍵詞類別</span>
+                  <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 關鍵詞類別'}
                     value={currentGroup?.key||''}
                     onChange={event=>{
                       const target=groups.find(group=>group.key===event.target.value);
@@ -394,9 +318,9 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                     {groups.map(group=><option key={group.key} value={group.key}
                       disabled={!firstAvailableGroupMetric(group,takenByOther)}>{group.name}</option>)}
                   </select>
-                </label>
-                <label className="scope-self-stat-picker"><span>項目</span>
-                  <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 項目'}
+                </label>:null}
+                {(kind==='keyword'||kind==='all')?<label className="scope-self-stat-picker"><span>關鍵詞項目</span>
+                  <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 關鍵詞項目'}
                     value={selectedGroupMetrics.some(item=>item.id===chosenId)?chosenId:''}
                     disabled={!selectedGroupMetrics.length}
                     onChange={event=>selectMetric(event.target.value)}>
@@ -404,13 +328,13 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                     {selectedGroupMetrics.map(item=><option key={item.id} value={item.id}
                       disabled={takenByOther.has(item.id)}>{item.kind==='keyword_group_items'?l.groupItems:item.name}</option>)}
                   </select>
-                </label>
+                </label>:null}
                 {kind==='keyword'||kind==='all'?keywordCatalog.isPending
                   ?<p className="scope-status" role="status">正在讀取組內項目…</p>:null:null}
                 {(kind==='keyword'||kind==='all')&&keywordCatalog.error?<p role="alert" className="scope-status scope-error">
                   組內關鍵詞讀取失敗：{String(keywordCatalog.error?.message||keywordCatalog.error)}
                 </p>:null}
-                {!groups.length?<p className="scope-status">{l.noSelectableSource}</p>:null}
+                {(kind==='keyword'||kind==='all')&&!groups.length?<p className="scope-status">{l.noSelectableSource}</p>:null}
               </div>
             </section>;
           })}
