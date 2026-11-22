@@ -1,7 +1,8 @@
 // Exact UID-selected Anchor navigation only; never autocomplete identifiers.
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
-import {SCOPE_PATTERN_POSTING_KEY,SCOPE_PATTERN_INDEX_VERSION} from './anchor-index.mjs';
+import {readItemKeywordProjection} from './item-count-analysis.mjs';
+import {keywordScanText} from './content-filter.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -48,8 +49,7 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
   const patterns=new Set();
   for(const itemId of visible)
     for(const uid of kids(byUid.get(itemId)))patterns.add(uid);
-  const indexed=meta.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION
-    ?new Set(Object.keys(meta.pattern_scans||{})):new Set();
+  const indexed=new Set();
   return {items:visible,patterns,indexed,published:settings?.search===true};
 }
 
@@ -81,28 +81,58 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
     if(settings?.search!==true)err('This Scope does not publish Search',403);
   }
   const current=attrs(anchor),galaxy=sourceTable(scope);
-  let ids=[];
-  if(type==='pattern'||type==='item'){
-    const patternIds=type==='pattern'?[uid]:kids(anchor);
-    if(patternIds.length){
-      const patterns=await db.selectFrom(anchorTable(scope))
-        .select(['uid','attr']).where('type','=','pattern')
-        .where('uid','in',patternIds).execute();
-      for(const row of patterns){
-        // Pattern postings alone contain Galaxy article UIDs.
-        const list=attrs(row)[SCOPE_PATTERN_POSTING_KEY]||[];
-        if(!Array.isArray(list)||list.some(id=>!UID.test(id)))
-          err('Invalid Scope Pattern postings',503);
-        ids.push(...list);
-      }
-    }
-    ids=[...new Set(ids)];
-  }
-  if((['pattern','item'].includes(type)&&!ids.length)||
-     (type==='date'&&!/^\d{4}-\d{2}-\d{2}$/.test(String(current.date||''))))
+  if(type==='date'&&!/^\d{4}-\d{2}-\d{2}$/.test(String(current.date||'')))
     return {rows:[],hasMore:false,nextOffset:null};
-  if(type==='pattern'||type==='item'){
-    if(ids.length>60000)err('Pattern posting list exceeds safe SQL parameter limit',413);
+  // Item/Pattern navigation evaluates authored Item rules on demand.
+  // The only article UIDs held here are transient page-local candidates.
+  if(type==='item'||type==='pattern'){
+    const visible=await accessibleKeywordAnchors(db,scope,owner);
+    const itemRows=await db.selectFrom(anchorTable(scope))
+      .select(['uid','title','attr']).where('type','=','item')
+      .where('uid','in',[...visible.items]).execute();
+    const groups=await db.selectFrom(anchorTable(scope))
+      .select(['uid','title','attr']).where('type','=','group').execute();
+    const groupMap=new Map(groups.map(g=>[g.uid,g]));
+    const itemToGroup=new Map();
+    for(const group of groups)for(const itemUid of kids(group))
+      if(visible.items.has(itemUid))itemToGroup.set(itemUid,group.uid);
+    const items=itemRows.filter(item=>itemToGroup.has(item.uid)).map(item=>({
+      uid:item.uid,item_name:String(item.title||''),
+      keywords:Array.isArray(attrs(item).keyword)?attrs(item).keyword:[],
+      group_uid:itemToGroup.get(item.uid)
+    }));
+    const selectedWord=String(anchor.title||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');
+    const found=[];
+    await readItemKeywordProjection(db,scope,{
+      items,groups:groups.map(g=>({uid:g.uid,title:g.title})),
+      start:startDate,end:endDate,owner,
+      source:sourceFilter.startsWith('source:')?sourceFilter.slice(7):'',
+      onRow:(doc,result)=>{
+        if(type==='item'&&!result.hits.has(uid))return;
+        if(type==='pattern'&&!keywordScanText(doc).normalize('NFKC')
+          .toLocaleLowerCase('zh-Hant').includes(selectedWord))return;
+        if(contentType==='lyrics_work'&&doc.site!=='suno')return;
+        if(contentType==='text_work'&&doc.site==='suno')return;
+        found.push({uid:doc.uid,createtime:doc.createtime});
+      }
+    });
+    const sorted=found.sort((a,b)=>{
+      const aa=String(a.createtime||''),bb=String(b.createtime||'');
+      return (sortDirection==='asc'?aa.localeCompare(bb):bb.localeCompare(aa))||
+        a.uid.localeCompare(b.uid);
+    });
+    const selected=sorted.slice(offset,offset+limit).map(row=>row.uid);
+    if(!selected.length)return {rows:[],hasMore:false,nextOffset:null};
+    const cols=galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor')
+      .filter((col,index,all)=>all.indexOf(col)===index);
+    let q=db.selectFrom(galaxy).select(cols).where('uid','in',selected);
+    if(!owner)q=q.where('search','=',true);
+    const rows=await q.execute(),byId=new Map(rows.map(row=>[String(row.uid),row]));
+    const articleRows=selected.map(id=>byId.get(id)).filter(Boolean);
+    const hasMore=sorted.length>offset+limit;
+    return {rows:articleRows.map(row=>({row:{...row,scope_id:scope,__table:galaxy},
+      source:String(row.site||scope)})),hasMore,
+      nextOffset:hasMore?offset+limit:null};
   }
   // Keyword navigation returns an article list plus its anchor context; both
   // halves come from the shared Galaxy projections rather than a local list.
@@ -112,7 +142,7 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
   if(!owner)q=q.where('search','=',true);
   if(type==='date')q=q.where('date','=',current.date);
   if(type==='point')q=q.where('place_id','=',uid);
-  if(type==='pattern'||type==='item')q=q.where('uid','in',ids);
+
   if(startDate)q=q.where('date','>=',startDate);
   if(endDate)q=q.where('date','<=',endDate);
   if(contentType==='lyrics_work')q=q.where('site','=','suno');

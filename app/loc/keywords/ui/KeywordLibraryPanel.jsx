@@ -11,7 +11,6 @@ import ManagementSectionNav from '../../../modular/ManagementSectionNav';
 import ActivityMotion from '../../../modular/ActivityMotion';
 import FlowProgress from '../../../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from '../class-state.mjs';
-import {SCOPE_PATTERN_INDEX_VERSION} from '../anchor-index.mjs';
 import {classSkipArticleWords} from '../class-exceptions.mjs';
 
 const LazyKeywordNetworkEditor=lazy(()=>import('./KeywordNetworkEditor'));
@@ -44,9 +43,6 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
   const queryClient=useQueryClient();
   const [rows,setRows]=useState([]);
-  const [patternNodes,setPatternNodes]=useState(new Map());
-  const [patternRead,setPatternRead]=useState({itemUid:'',loading:false,error:''});
-  const [readRevision,setReadRevision]=useState(0);
   const [config,setConfig]=useState({});
   const [savedConfig,setSavedConfig]=useState({});
   const [editor,setEditor]=useState(null);
@@ -111,7 +107,6 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const activeGroup=tree.index.get(chosen.group);
   const items=childrenOf(tree,activeGroup?.uid);
   const selected=tree.index.get(chosen.item)||activeGroup||activeClass||null;
-  const selectedSourceRow=rows.find(row=>row.uid===selected?.uid);
   const draft=editor?.node||null;
   const classShareEnabled=uid=>{
     if(!uid)return false;
@@ -133,13 +128,10 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const load=useCallback(async(preferredUid='')=>{
     if(!canEdit)return;
     setLoading(true);setError('');
-    setPatternNodes(new Map());
     try{
       const [found,settings]=await Promise.all([
         (async()=>{
-          // The initial tree needs only Category/Class/Group/Item.
-          // Pattern posting rows can be numerous; fetch only the selected Item's
-          // referenced Pattern summaries when that Item is actually opened.
+          // Item.authoritative rules: no Pattern index fetch is needed.
           const owned=[],size=250;
           for(let offset=0;;offset+=size){
             const {data,error}=await dbAuthRelation(table)
@@ -161,13 +153,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
         ).eq('id',scopeId).limit(1)
       ]);
       if(settings.error)throw settings.error;
-      const records=(found.rows||[]).map(row=>{
-          if(row.type!=='item')return {...row,uid_lists:[]};
-          const references=Array.isArray(row.attr?.uid)?row.attr.uid:[];
-          // Item.keyword already carries its authored words; older linked
-          // Pattern labels are merged lazily before an Item can be edited.
-          return {...row,patternUids:references,uid_lists:[]};
-        }),index=indexKeywordTree(records);
+      const records=(found.rows||[]).map(row=>({...row,uid_lists:[]})),
+        index=indexKeywordTree(records);
       const first=index.roots[0];
       const firstClass=[...index.index.values()].find(row=>row.type==='class');
       const current=index.index.get(preferredUid);
@@ -178,7 +165,6 @@ export default function KeywordLibraryPanel({scopeId,account}){
       let node=target;
       while(node){lineage[node.type]=node.uid;node=parentOf(index,node.uid);}
       setRows(records);setConfig(settings.data?.[0]||{});setSavedConfig(settings.data?.[0]||{});
-      setReadRevision(value=>value+1);
       setChosen({category:lineage.category||first?.uid||'',
         class:lineage.class||(target?.type==='category'?childrenOf(index,target.uid)[0]?.uid:'')||firstClass?.uid||'',
         group:lineage.group||'',item:lineage.item||''});
@@ -189,53 +175,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   },[canEdit,table,configTable,scopeId]);
 
   useEffect(()=>{load();},[load]);
-  const selectedPatternRefKey=Array.isArray(selectedSourceRow?.patternUids)
-    ?selectedSourceRow.patternUids.join('|'):'';
-  useEffect(()=>{
-    const itemUid=String(chosen.item||'');
-    const references=selectedPatternRefKey
-      ?[...new Set(selectedPatternRefKey.split('|').filter(Boolean))]:[];
-    if(!canEdit||loading||workspace!=='manual'||!itemUid||!references.length){
-      setPatternRead({itemUid:'',loading:false,error:''});
-      return undefined;
-    }
-    let active=true;
-    const controller=new AbortController();
-    setPatternRead({itemUid,loading:true,error:''});
-    void (async()=>{
-      const results=[];
-      // Bounded by the existing IN-filter budget; this never walks the
-      // Scope's entire Pattern relation on management-page entry.
-      for(let i=0;i<references.length;i+=100){
-        const batch=references.slice(i,i+100);
-        const {data,error}=await dbAuthRelation(table)
-          .select('uid,type,title,num')
-          .eq('type','pattern').in('uid',batch).limit(batch.length)
-          .abortSignal(controller.signal);
-        if(error)throw new Error(error.message||'Pattern 關聯讀取失敗');
-        results.push(...(data||[]));
-      }
-      if(!active)return;
-      const summaries=new Map(results.map(row=>[row.uid,{
-        ...row,name:String(row.title||'')
-      }]));
-      const names=references.map(uid=>summaries.get(uid)?.name).filter(Boolean);
-      setPatternNodes(summaries);
-      setRows(current=>current.map(row=>{
-        if(row.uid!==itemUid)return row;
-        const derived=names.filter(word=>
-          word.normalize('NFKC').toLocaleLowerCase('zh-Hant')!==
-          String(row.name||'').normalize('NFKC').toLocaleLowerCase('zh-Hant'));
-        return {...row,lists:[...new Set([...(row.lists||[]),...derived])]};
-      }));
-      setPatternRead({itemUid,loading:false,error:''});
-    })().catch(error=>{
-      if(!active)return;
-      setPatternRead({itemUid,loading:false,
-        error:String(error?.message||'Pattern 關聯讀取失敗')});
-    });
-    return ()=>{active=false;controller.abort();};
-  },[canEdit,loading,workspace,table,chosen.item,selectedPatternRefKey,readRevision]);
+  // The editor uses authored Item.keyword directly.
   useEffect(()=>{
     discoveryAbort.current?.abort();
     setDiscovery(null);
@@ -701,22 +641,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </label>;
         })}
       </div>
-      {selected?.type==='item'&&patternRead.itemUid===selected.uid&&patternRead.loading
-        ?<p className="scope-status" role="status">正在讀取選定 Item 的 Pattern 關聯…</p>:null}
-      {selected?.type==='item'&&patternRead.itemUid===selected.uid&&patternRead.error
-        ?<p className="scope-status scope-error" role="alert">{patternRead.error}</p>:null}
-      {selected?.type==='item'&&Array.isArray(selectedSourceRow?.patternUids)&&selectedSourceRow?.patternUids.length
-         ?<div className="scope-search-active-filters" aria-label="Item 關聯 Pattern">
-           {selectedSourceRow.patternUids.map(uid=>patternNodes.get(uid)).filter(Boolean).map(row=>
-             <span key={row.uid} className="scope-search-chip">
-               {row.name} · {config.keyword_meta?.pattern_index_version===SCOPE_PATTERN_INDEX_VERSION&&config.keyword_meta?.pattern_scans?.[
-                 String(row.name||'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
-               ]?Number(row.num||0).toLocaleString()+' 篇':'待解析'}
-             </span>)}
-         </div>:null}
        {selected?<div className="scope-preview-links">
-        <button className="loc-button" type="button" disabled={busy||(selected.type==='item'&&Boolean(selectedSourceRow?.patternUids?.length)&&
-          (patternRead.itemUid!==selected.uid||patternRead.loading||Boolean(patternRead.error)))}
+        <button className="loc-button" type="button" disabled={busy}
           onClick={()=>edit(selected)}>編輯「{selected.name}」</button>
         <span className="scope-status">{LABEL[selected.type]}：{selected.lists.length}{selected.type==='item'?' 個判斷詞':' 筆'}</span>
       </div>:null}
