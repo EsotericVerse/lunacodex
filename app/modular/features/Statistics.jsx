@@ -39,7 +39,7 @@ import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.m
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 
 const CHART_TYPES=STAT_VISUAL_TYPES;
-const STAT_TYPES=['total','source','keywords','place','media'];
+const STAT_TYPES=['total','source','keywords','place'];
 const STAT_TYPE_KEYS=Object.freeze({
   total:'statistics.totalSource',
   source:'uiExtra.statisticsUI.sourceGroup',
@@ -145,7 +145,7 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
   // field only when Source is active, avoiding duplicate long dropdowns.
   const requested=String(navigation.rankingType||'');
   const active=types.includes(requested)?requested:
-    (['media_type','media_platform','media_style'].includes(requested)?'media':types[0]||'');
+    (['media_type','media_platform','media_style','media'].includes(requested)?'source':types[0]||'');
   if(!types.length)return null;
   return <label>
     <span>{UI_COPY.statistics.item}</span>
@@ -164,7 +164,6 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
         <option value="keywords">{t(STAT_TYPE_KEYS.keywords)}</option>
       </optgroup>:null}
       {types.includes('place')?<optgroup label="地點"><option value="place">地點</option></optgroup>:null}
-      {types.includes('media')?<optgroup label="多媒體"><option value="media">多媒體</option></optgroup>:null}
     </select>
   </label>;
 }
@@ -174,12 +173,12 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const t=useUiText();
   const requested=String(navigation.rankingType||'');
   const rankingType=types.includes(requested)?requested:
-    (['media_type','media_platform','media_style'].includes(requested)||navigation.statTab==='media'
-      ?'media':['keywords','styles'].includes(navigation.statTab)?'keywords':types[0]||'');
+    (['media_type','media_platform','media_style','media'].includes(requested)||navigation.statTab==='media'
+      ?'source':['keywords','styles'].includes(navigation.statTab)?'keywords':types[0]||'');
   // Total remains the light landing. Other dimensions are independent,
   // selected-only scoped reads; never reinterpret Media/Place as Keywords.
   const keywordDimension=rankingType==='keywords';
-  const categoryChart=rankingType==='place'||rankingType==='media';
+  const categoryChart=rankingType==='place';
   const deviceTimeUnit=useDefaultTimeUnit();
   const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
   const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
@@ -259,7 +258,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const activeSourceSelection=rankingType==='source'?sourceGroup:'';
   const totalChart=rankingType==='total'&&Boolean(targetScopes.length);
   const sourceChart=rankingType==='source'&&Boolean(targetScopes.length);
-  const placeOrMediaChart=categoryChart&&Boolean(targetScopes.length);
+  const placeChart=categoryChart&&Boolean(targetScopes.length);
   // Statistics landing reads ONLY grouped daily Galaxy totals; it never
   // requests SourceAnchor taxonomy, site grouping or an article list.
   const observedEnd=queryRange.endDate<queryEndDate?queryRange.endDate:queryEndDate;
@@ -319,25 +318,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     data:overview.data?.rows,dataUpdatedAt:overview.dataUpdatedAt};
   const categoryDaily=useAsyncResource({
     queryKey:['statistics-category-daily',scopeId,rankingType,queryRange.startDate,queryRange.endDate],
-    enabled:placeOrMediaChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
+    enabled:placeChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
     queryFn:async({signal})=>{
-      if(rankingType==='media'){
-        const [{mediaSiteSources,mediaSiteDailyRows},{readGalaxyFeature}]=await Promise.all([
-          import('../../loc/statistics/media-site-statistics.mjs'),
-          import('../../loc/galaxy/feature-transaction-client.mjs')
-        ]);
-        const sources=mediaSiteSources();
-        if(!sources.length)return [];
-        // Galaxy.statics and Galaxy.site determine media categories. The
-        // SiteAnchor hierarchy defines which platforms are multimedia.
-        // media_link and MediaAnchor are never queried for this chart.
-        const {data}=await readGalaxyFeature({
-          feature:'statics',scope:scopeId,
-          startDate:queryRange.startDate,endDate:queryRange.endDate,
-          sources,result:'daily-sources',signal
-        });
-        return mediaSiteDailyRows(data.rows);
-      }
       const {dbPublicClient}=await import('../../loc/db/db-client.mjs');
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scopeId,p_view:'trace_places',
@@ -383,14 +365,14 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryRange.startDate,queryRange.endDate,queryRange.bucket,activeSourceSelection]);
   const adminSourceReady=Boolean(adminSource);
   const resolvedAdminSource=adminSource||{rows:[],series:[],distribution:[],total:0};
-  // Render selected Place or Media categories through the same Statistics
-  // chart models; default to the 12 most frequent places or four media sources.
+  // Place is a separate geographical dimension. All multimedia platforms
+  // are already represented in the unified Galaxy.site source taxonomy.
   const categoryWindow=useMemo(()=>rowsInWindow(categoryDaily.data||[],queryRange),
     [categoryDaily.data,queryRange.startDate,queryRange.endDate,queryRange.bucket]);
   const categoryCatalog=useMemo(()=>facetTotals(categoryWindow.rows),[categoryWindow.rows]);
   const selectedCategory=categoryCatalog.find(row=>row.term===categoryChoice);
   const displayedCategories=useMemo(()=>selectedCategory?[selectedCategory.term]:
-    categoryCatalog.slice(0,rankingType==='place'?12:4).map(row=>row.term),
+    categoryCatalog.slice(0,12).map(row=>row.term),
     [categoryCatalog,selectedCategory,rankingType]);
   const categoryTrend=useMemo(()=>facetTrend(categoryWindow.rows,categoryWindow,displayedCategories),
     [categoryWindow.rows,categoryWindow.startDate,categoryWindow.endDate,categoryWindow.bucket,displayedCategories]);
@@ -401,9 +383,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     name:term,
     value:categoryCatalog.find(row=>row.term===term)?.item_count||0
   })),[displayedCategories,categoryCatalog,rankingType]);
-  const basicTrend=totalChart?totalTrend:placeOrMediaChart?categoryTrend:resolvedAdminSource.rows;
-  const basicSeries=totalChart?[]:placeOrMediaChart?categorySeries:resolvedAdminSource.series;
-  const basicDistribution=totalChart?[]:placeOrMediaChart?categoryDistribution:resolvedAdminSource.distribution;
+  const basicTrend=totalChart?totalTrend:placeChart?categoryTrend:resolvedAdminSource.rows;
+  const basicSeries=totalChart?[]:placeChart?categorySeries:resolvedAdminSource.series;
+  const basicDistribution=totalChart?[]:placeChart?categoryDistribution:resolvedAdminSource.distribution;
   // One grouped source-name index for the active chart, not one full scan
   // per category. Rebuild it only when the selected source dataset changes.
   const sourceNamesByCategory=useMemo(()=>{
@@ -442,8 +424,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     })),
     startDate:queryRange.startDate,endDate:queryRange.endDate
   };
-  const displaySummary=placeOrMediaChart?categorySummary:sourceSummary;
-  const chartPurpose=totalChart?'total':sourceChart?'source':categoryChart?rankingType:'total';
+  const displaySummary=placeChart?categorySummary:sourceSummary;
+  const chartPurpose=totalChart?'total':sourceChart?'source':categoryChart?'place':'total';
   const optionsForCurrent=semanticStatisticChartTypes({
     purpose:chartPurpose,rows:basicTrend,series:basicSeries,distribution:basicDistribution,
     totalKey:totalChart?'total':''
@@ -492,20 +474,20 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const showTotalOverview=totalChart&&!totalDaily.isPending&&!totalDaily.error&&Boolean(totalDaily.data);
   const categoryPending=sourceChart?(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady):categoryDaily.isPending;
   const categoryError=sourceChart?(sourceRows.error||sourceCatalog.error):categoryDaily.error;
-  const showCategoryOverview=(sourceChart||placeOrMediaChart)&&!categoryPending&&!categoryError
+  const showCategoryOverview=(sourceChart||placeChart)&&!categoryPending&&!categoryError
     &&(sourceChart?adminSourceReady:Boolean(categoryDaily.data));
   return <section className="scope-stat-section statistics-dashboard">
     <div className={'scope-stat-controls statistics-dashboard__filters'+
       (showTotalOverview?' statistics-dashboard__filters--summary':'')}>
       <div className="statistics-dashboard__filter-fields">
       <StatisticTypeSelect scopeId={scopeId} navigation={navigation} types={types}/>
-      {placeOrMediaChart?<label>
-        <span>{rankingType==='place'?'地點':'多媒體類型'}</span>
-        <select className="scope-select" aria-label={rankingType==='place'?'地點':'多媒體類型'}
+      {placeChart?<label>
+        <span>地點</span>
+        <select className="scope-select" aria-label="地點"
           value={selectedCategory?.term||''} onChange={event=>setCategoryChoice(event.target.value)}>
-          <option value="">{rankingType==='place'?'常見地點':'全部類型'}</option>
+          <option value="">常見地點</option>
           {categoryCatalog.map(row=><option key={row.term} value={row.term}>
-            {rankingType==='media'?MEDIA_LABELS[row.term]||row.term:row.term}
+            {row.term}
           </option>)}
         </select>
       </label>:null}
@@ -558,7 +540,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {periodQuery.error?<span className="scope-status scope-error">
         時期範圍無法載入，仍可使用自選時間：{featureDataErrorMessage(periodQuery.error,UI_COPY)}
       </span>:null}
-      {(sourceChart||placeOrMediaChart)?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
+      {(sourceChart||placeChart)?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
         {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
   {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
 </optgroup>:null}
@@ -610,16 +592,16 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         </section>}
       </StatisticsDetails>
     </>:null}
-    {(sourceChart||placeOrMediaChart)&&categoryPending&&!categoryError?<div className="scope-stat-data-pending">
+    {(sourceChart||placeChart)&&categoryPending&&!categoryError?<div className="scope-stat-data-pending">
       <p className="scope-status" role="status">統計中請稍後 <ActivityMotion kind="numbers"/></p>
     </div>:null}
-    {(sourceChart||placeOrMediaChart)&&categoryError?<p className="scope-status scope-error">{featureDataErrorMessage(categoryError,UI_COPY)}</p>:null}
+    {(sourceChart||placeChart)&&categoryError?<p className="scope-status scope-error">{featureDataErrorMessage(categoryError,UI_COPY)}</p>:null}
     {showCategoryOverview?<>
       <StatisticsDashboardKpis label={t('uiExtra.statisticsView.dashboardTitle')} items={[
         {key:'records',label:t('uiExtra.statisticsView.dashboardRecords'),value:displaySummary.total.toLocaleString()},
-        {key:'categories',label:t('uiExtra.statisticsView.dashboardCategoryCount'),value:(placeOrMediaChart?categoryCatalog.length:displaySummary.sources.length).toLocaleString()},
+        {key:'categories',label:t('uiExtra.statisticsView.dashboardCategoryCount'),value:(placeChart?categoryCatalog.length:displaySummary.sources.length).toLocaleString()},
         {key:'active',label:t('uiExtra.statisticsView.dashboardActiveBuckets'),
-          value:basicTrend.filter(row=>(placeOrMediaChart
+          value:basicTrend.filter(row=>(placeChart
             ?basicSeries.reduce((sum,field)=>sum+(Number(row[field.key])||0),0)
             :Number(row.total))>0).length.toLocaleString()}
       ]}/>
