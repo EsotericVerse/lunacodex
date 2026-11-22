@@ -129,7 +129,10 @@ export function planExistingImportUidUpdate(existing,incoming,{
       if(draft.place_id!==id)draft.place_id=id;
     }
   });
-  return {changes:changedFields(next,patches),patches};
+  const changes=changedFields(next,patches);
+  if(Object.hasOwn(changes,'media_link')&&!changes.media_link.length)
+    changes.media_link=null;
+  return {changes,patches};
 }
 
 // A Point already selected by the import UID index only needs a tiny
@@ -147,19 +150,22 @@ export function planImportPointUidLink(previousUid,nextUid){
 // Galaxy.media_link is a URL list, not MediaAnchor foreign keys.
 // Only attach actual HTTPS/HTTP public links. The Anchor UID remains its
 // separate, typed record identity and is never written to the Galaxy array.
-export function planImportMediaUrlLinks(prior=[],additions=[]){
+export function planImportMediaUrlLinks(prior=[],additions=[],articleUrl=null){
   if(!Array.isArray(prior))throw new TypeError('媒體 URL 清單不是陣列');
   const mediaUrl=value=>{
     const link=String(value||'').trim();
     if(!/^https?:\/\//i.test(link))throw new TypeError('Galaxy.media_link 僅接受公開網址');
     return link;
   };
-  const known=new Set(prior.map(mediaUrl));
+  const permalink=String(articleUrl||'').trim();
+  const cleaned=prior.map(mediaUrl).filter(link=>link!==permalink);
+  const known=new Set(cleaned);
   const before={media_link:[...prior]};
   const [next,patches]=produceWithPatches(before,draft=>{
+    if(cleaned.length!==draft.media_link.length)draft.media_link=cleaned;
     for(const raw of additions){
       const link=mediaUrl(raw);
-      if(known.has(link))continue;
+      if(link===permalink||known.has(link))continue;
       known.add(link);
       draft.media_link.push(link);
     }
