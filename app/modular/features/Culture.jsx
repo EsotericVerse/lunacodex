@@ -41,7 +41,7 @@ import {deleteRows,insertRows,updateRows} from '../../loc/db/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db/db-query.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
-import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
+import {sourceOutlineOptions} from '../../loc/source/keyword-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
 import {buildCultureSourceTreeLanes,rollupCultureSourceDays} from '../../loc/culture/source-tree-lanes.mjs';
 import {useAccount} from '../../loc/auth/use-account';
@@ -464,7 +464,7 @@ export default function Culture(){
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const sourceTaxonomy=sourceTaxonomyQuery.data;
-  const sourceStyleOptions=useMemo(()=>sourceKeywordOptions(sourceTaxonomy),[sourceTaxonomy]);
+  const sourceStyleOptions=useMemo(()=>sourceOutlineOptions(sourceTaxonomy),[sourceTaxonomy]);
   const stagedSourceRiver=Boolean(sourceTaxonomy)&&!isAggregateScope&&scopeId!=='local';
   // The expanded items are saved loc_anchor UIDs; root family codes here
   // are only an internal daily-aggregate query filter, never a UI level.
@@ -647,7 +647,7 @@ export default function Culture(){
     const exact=groupedSources.find(item=>item.key===selectedRiverGroup);
     if(exact)return exact;
     const option=sourceStyleOptions.find(item=>item.key===selectedRiverGroup);
-    if(option?.type==='domain'){
+    if(option){
       const descendants=new Set((sourceTaxonomy?.tree||[])
         .filter(node=>node.path.includes(option.code)).map(node=>node.uid));
       const members=groupedSources.filter(group=>
@@ -1066,7 +1066,7 @@ export default function Culture(){
       const id='source:'+(node.uid||'unassigned');
       const order=index+1;
       const label=numberedLabel(node.label,node.item_count);
-      const kind=node.selectable?'source_group':'source_total';
+      const kind=node.level>0&&node.selectable?'source_group':'source_total';
       groups.push({
         id:'dual:'+id,label,order,depth:node.level,
         className:node.level===0?'scope-dual-river-root':'scope-dual-river-child',
@@ -1610,7 +1610,11 @@ export default function Culture(){
                             setWorksOpen(false);
                             const ancestorUids=(sourceTaxonomy?.tree||[])
                               .find(node=>node.uid===choice.code)?.path?.slice(0,-1)||[];
-                            setOpenCultureRoots(current=>[...new Set([...current,...ancestorUids])]);
+                            const hasChildren=(sourceTaxonomy?.tree||[])
+                              .some(node=>node.parentUid===choice.code);
+                            setOpenCultureRoots(current=>[...new Set([
+                              ...current,...ancestorUids,...(hasChildren?[choice.code]:[])
+                            ])]);
                           }else if(!next.startsWith('source:')){
                             setStyleFilter(next);
                             if(next==='none')setSelectedRiverGroup('');
@@ -1624,7 +1628,7 @@ export default function Culture(){
                         </optgroup>
                         {sourceStyleOptions.length?<optgroup label='來源'>
                           {sourceStyleOptions.map(item=><option key={item.key} value={'source:'+item.key}>
-                            {item.domain?item.domain+' / ':''}{item.label}
+                            {'\u00a0\u00a0\u00a0'.repeat(item.level)}{item.label}
                           </option>)}
                         </optgroup>:null}
                       </select>
