@@ -9,7 +9,7 @@ import physicalContract from './schema-contract.mjs';
 import {modelNameForSql} from './model-column-guard.mjs';
 import {zodValidationAdapter} from './kysera-validation-adapter.mjs';
 import {ANCHOR_GROUP_MODEL_NAMES,ANCHOR_TYPE_GROUP_FIELDS,ANCHOR_TYPE_GROUPS,
-  PERSISTED_ANCHOR_TYPES}
+  PERSISTED_ANCHOR_TYPES,assertSiteAnchorLeaf}
   from './anchor-hierarchy.mjs';
 
 const modelFactory=createSchemaFactory(schema);
@@ -68,6 +68,9 @@ function validateAnchorPayload(type,attr){
   const payload=type==='pattern'?{postings:attr}:attr;
   const parsed=entry.validator.safeParse({[entry.field]:payload});
   if(parsed.success){
+    // Enforce terminal Source semantics in both reads and writes. ZModel
+    // permits the existing empty uid:[] field on the physical From payload.
+    assertSiteAnchorLeaf(type,attr);
     // ZenStack does not express a String | String[] union. Keep Json in the
     // declared payload and validate the original representation, not a copy.
     if(type==='point'&&attr&&typeof attr==='object'&&Object.hasOwn(attr,'location')){
