@@ -230,7 +230,7 @@ export function managementHeroCopy(rows,slot){
 }
 
 // The three single-image features (see comment above): exactly one
-// silver.loc_blocks page_name="scope_<feature>" row, never a "group_" row.
+// silver.loc_anchor type="scope_<feature>" row, never a "group_" row.
 export const SINGLE_SLOT_FEATURE_HERO_IDS=Object.freeze(['admin','manage','setting']);
 export function shouldUseSingleFeatureHeroImage(featureId){
   return SINGLE_SLOT_FEATURE_HERO_IDS.includes(String(featureId||''));

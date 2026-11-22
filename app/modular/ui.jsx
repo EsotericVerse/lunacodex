@@ -11,32 +11,7 @@ import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
-import {selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
-import groupHero_culture from './published-blocks/loc/group_culture.js';
-import scopeHero_culture from './published-blocks/loc/scope_culture.js';
-import groupHero_statics from './published-blocks/loc/group_statics.js';
-import scopeHero_statics from './published-blocks/loc/scope_statics.js';
-import groupHero_trace from './published-blocks/loc/group_trace.js';
-import scopeHero_trace from './published-blocks/loc/scope_trace.js';
-import groupHero_search from './published-blocks/loc/group_search.js';
-import scopeHero_search from './published-blocks/loc/scope_search.js';
-import groupHero_admin from './published-blocks/loc/group_admin.js';
-import scopeHero_admin from './published-blocks/loc/scope_admin.js';
-import groupHero_manage from './published-blocks/loc/group_manage.js';
-import scopeHero_manage from './published-blocks/loc/scope_manage.js';
-import groupHero_setting from './published-blocks/loc/group_setting.js';
-import scopeHero_setting from './published-blocks/loc/scope_setting.js';
-// Public feature Heroes are already published build-time data, not a second
-// runtime request. Both server HTML and client hydration render the same copy.
-const PUBLISHED_HERO_ROWS=Object.freeze({
-  culture:[...groupHero_culture,...scopeHero_culture],
-  statics:[...groupHero_statics,...scopeHero_statics],
-  trace:[...groupHero_trace,...scopeHero_trace],
-  search:[...groupHero_search,...scopeHero_search],
-  admin:[...groupHero_admin,...scopeHero_admin],
-  manage:[...groupHero_manage,...scopeHero_manage],
-  setting:[...groupHero_setting,...scopeHero_setting]
-});
+import {selectScopeBlocks,selectLiveScopeBlocks,hero_block} from '../loc/scope/scope-data';
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
@@ -90,9 +65,15 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   // Static release snapshot renders immediately, on the server and on the
   // client. Do not first paint fallback legacy copy and then re-read the Hero.
   // Management mode keeps its independent authoritative editing reads below.
-  const publishedRows=PUBLISHED_HERO_ROWS[featureId]||[];
-  const groupHeroRows=publishedRows.filter(row=>row.page_name===groupHeroPage);
-  const scopeHeroRows=publishedRows.filter(row=>row.page_name===scopeHeroPage);
+  // Both feature Hero rows use ONE fixed, read-only transaction. Do not
+  // render an old published JS snapshot first and overwrite it on hydration.
+  const heroQuery=useAsyncResource(['loc-live-feature-hero',featureId],
+    ()=>hero_block([groupHeroPage,scopeHeroPage]),{
+      enabled:!managementMode&&hasFeatureHero
+    });
+  const publicHeroRows=heroQuery.data||[];
+  const groupHeroRows=publicHeroRows.filter(row=>row.page_name===groupHeroPage);
+  const scopeHeroRows=publicHeroRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   // Management Hero and the editor use the same mounted query key when
@@ -120,7 +101,11 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const publicFeature=!managementMode&&['culture','statics','search','trace'].includes(featureId)?featureId:'';
   return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
     <section className="scope-page">
-      <header className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
+      <header className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:'live'}>
+        {!managementMode&&hasFeatureHero&&heroQuery.isPending
+          ?<p className="scope-status" role="status">正在載入頁面標題…</p>:null}
+        {!managementMode&&hasFeatureHero&&heroQuery.isError
+          ?<p className="scope-status scope-error" role="alert">頁面標題讀取失敗</p>:null}
         <FeatureHeroContent
           scopeId={scopeId}
           eyebrow={shared?.eyebrow||''}

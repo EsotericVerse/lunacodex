@@ -2,7 +2,6 @@
 
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {invalidatePublicScopeMetadata,selectScopeRegistry,selectScopeBlocks} from '../scope/scope-data';
-import {hasPublishedBlocks,loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {selectThemeRegistry,themeUiId} from '../preferences/theme-data';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 
@@ -40,7 +39,7 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
         row.scope_id===id&&row.active!==false)?.config||null)
       :Promise.resolve(null),
     id&&id!=='admin'
-      ?(hasPublishedBlocks(id,page)?loadPublishedBlocks(id,page):selectScopeBlocks(id,page))
+      ?selectScopeBlocks(id,page)
       :Promise.resolve([])
   ]);
   return {

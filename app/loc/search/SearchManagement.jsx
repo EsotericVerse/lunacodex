@@ -126,8 +126,8 @@ export default function SearchManagement(){
           ?<ManagementContentTarget scopeId={scopeId} mode="article" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='media'
           ?<ManagementContentTarget scopeId={scopeId} mode="media" globalAdmin/>:null}
-        {isLocAdmin&&activeSection==='trace'?<ScopeEditableBlocks key={scopeId+'-trace'}
-          scopeId={scopeId} page="trace"
+        {isLocAdmin&&activeSection==='trace'?<ScopeEditableBlocks key={scopeId+'-governance'}
+          scopeId={scopeId} page="governance"
           className="loc-grid two trace-grid trace-grid-loc"
           headingLevel={2} allowDelete authorizedByParent startInEditMode explicitEditButton/>:null}
         {activeSection==='groupAccess'&&!groupAuthorized

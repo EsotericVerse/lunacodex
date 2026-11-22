@@ -337,11 +337,13 @@ export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[a-z0-9_-]+$/.test(name))return [];
-  // Even an intentionally EMPTY published page is complete presentation
-  // data. Don't probe SQL for freshness on ordinary navigation. The editor
-  // uses selectLiveScopeBlocks() and never consumes this release snapshot.
+  // Editable home content and LOC presentation Blocks must reflect the
+  // committed database row on every newly mounted page, not an older release
+  // snapshot. Theme and authorization stay in published JS.
+  // This uses the already-existing fixed block_list / hero_block endpoint.
+  if(id==='loc'||name==='index')return selectLiveScopeBlocks(id,name);
+  // Other Scope presentation pages keep their own published contract.
   if(hasPublishedBlocks(id,name))return loadPublishedBlocks(id,name);
-  // An as-yet-unpublished page retains its existing on-demand SQL fallback.
   return getOrLoadScopedRead(blockRelation(id),['page','blocks',name],
     ()=>selectLiveScopeBlocks(id,name));
 }
