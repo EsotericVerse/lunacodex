@@ -11,32 +11,8 @@ import {UI_COPY} from '../i18n/ui-copy';
 import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
-import {selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
-import groupHero_culture from './published-blocks/loc/group_culture.js';
-import scopeHero_culture from './published-blocks/loc/scope_culture.js';
-import groupHero_statics from './published-blocks/loc/group_statics.js';
-import scopeHero_statics from './published-blocks/loc/scope_statics.js';
-import groupHero_trace from './published-blocks/loc/group_trace.js';
-import scopeHero_trace from './published-blocks/loc/scope_trace.js';
-import groupHero_search from './published-blocks/loc/group_search.js';
-import scopeHero_search from './published-blocks/loc/scope_search.js';
-import groupHero_admin from './published-blocks/loc/group_admin.js';
-import scopeHero_admin from './published-blocks/loc/scope_admin.js';
-import groupHero_manage from './published-blocks/loc/group_manage.js';
-import scopeHero_manage from './published-blocks/loc/scope_manage.js';
-import groupHero_setting from './published-blocks/loc/group_setting.js';
-import scopeHero_setting from './published-blocks/loc/scope_setting.js';
-// Public feature Heroes are already published build-time data, not a second
-// runtime request. Both server HTML and client hydration render the same copy.
-const PUBLISHED_HERO_ROWS=Object.freeze({
-  culture:[...groupHero_culture,...scopeHero_culture],
-  statics:[...groupHero_statics,...scopeHero_statics],
-  trace:[...groupHero_trace,...scopeHero_trace],
-  search:[...groupHero_search,...scopeHero_search],
-  admin:[...groupHero_admin,...scopeHero_admin],
-  manage:[...groupHero_manage,...scopeHero_manage],
-  setting:[...groupHero_setting,...scopeHero_setting]
-});
+import {hero_block,selectScopeBlocks,selectLiveScopeBlocks} from '../loc/scope/scope-data';
+// Public Hero is live Blocks data, not part of the Theme/registry JS snapshot.
 import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
@@ -82,17 +58,17 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const artworkId=managementMode?'manage':featureId;
   const heroClassName='loc-card scope-hero scope-feature-hero'+(HomeBlock.FEATURE_HERO_ORDER[artworkId]?' scope-feature-hero--artwork scope-feature-hero--'+artworkId:'');
   const hasFeatureHero=Boolean(HomeBlock.FEATURE_HERO_ORDER[featureId]);
-  // Public Heroes (including Admin/Settings landing pages) read published
-  // presentation assets. Only an explicitly opened management workspace uses
-  // live authoring data; no Auth or SQL is needed to render a public Hero.
+  // Public Hero text and image come from the same current LOC Blocks.
+  // A CSS Theme change must never select an older Block publication.
   const groupHeroPage=HomeBlock.featureHeroPageFor(featureId);
   const scopeHeroPage='scope_'+featureId;
-  // Static release snapshot renders immediately, on the server and on the
-  // client. Do not first paint fallback legacy copy and then re-read the Hero.
-  // Management mode keeps its independent authoritative editing reads below.
-  const publishedRows=PUBLISHED_HERO_ROWS[featureId]||[];
-  const groupHeroRows=publishedRows.filter(row=>row.page_name===groupHeroPage);
-  const scopeHeroRows=publishedRows.filter(row=>row.page_name===scopeHeroPage);
+  const publicHeroQuery=useAsyncResource(['loc-public-feature-hero',featureId],
+    ()=>hero_block([groupHeroPage,scopeHeroPage]),{
+      enabled:!managementMode&&hasFeatureHero
+    });
+  const publicHeroRows=Array.isArray(publicHeroQuery.data)?publicHeroQuery.data:[];
+  const groupHeroRows=publicHeroRows.filter(row=>row.page_name===groupHeroPage);
+  const scopeHeroRows=publicHeroRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   // Management Hero and the editor use the same mounted query key when
@@ -120,15 +96,24 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const publicFeature=!managementMode&&['culture','statics','search','trace'].includes(featureId)?featureId:'';
   return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
     <section className="scope-page">
-      <header className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
-        <FeatureHeroContent
-          scopeId={scopeId}
-          eyebrow={shared?.eyebrow||''}
-          title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
-          subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
-          description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
-          rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
-        />
+      <header className={heroClassName} style={heroStyle}
+        aria-busy={!managementMode&&publicHeroQuery.isPending||undefined}
+        data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
+        {!managementMode&&publicHeroQuery.isPending
+          ?<div className='scope-culture-density-loading' role='status' aria-live='polite'>
+            <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+            <span>正在載入頁面介紹…</span>
+          </div>
+          :!managementMode&&publicHeroQuery.isError
+            ?<p className='scope-status scope-error' role='alert'>頁面介紹暫時無法讀取，請重新載入。</p>
+            :<FeatureHeroContent
+              scopeId={scopeId}
+              eyebrow={shared?.eyebrow||''}
+              title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
+              subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
+              description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
+              rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
+            />}
       </header>
       <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
         {children}
