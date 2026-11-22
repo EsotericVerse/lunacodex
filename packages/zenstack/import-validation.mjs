@@ -67,7 +67,25 @@ function validateAnchorPayload(type,attr){
   // surrounding group model still enforces the discriminator field.
   const payload=type==='pattern'?{postings:attr}:attr;
   const parsed=entry.validator.safeParse({[entry.field]:payload});
-  if(parsed.success)return;
+  if(parsed.success){
+    // ZenStack does not express a String | String[] union. Keep Json in the
+    // declared payload and validate the original representation, not a copy.
+    if(type==='point'&&attr&&typeof attr==='object'&&Object.hasOwn(attr,'location')){
+      const location=attr.location;
+      if(location!==null&&typeof location!=='string'&&
+         (!Array.isArray(location)||location.some(label=>typeof label!=='string')))
+        throw new TypeError('LOC PointAnchor location must be text or text aliases');
+    }
+    // Per-Scope counts are cached statistics, not the physical Anchor.num.
+    if(ANCHOR_TYPE_GROUPS.source.includes(type)&&attr&&typeof attr==='object'&&
+       Object.hasOwn(attr,'counts')){
+      const counts=attr.counts;
+      if(!counts||typeof counts!=='object'||Array.isArray(counts)||
+         Object.values(counts).some(n=>!Number.isSafeInteger(n)||n<0))
+        throw new TypeError('LOC SiteAnchor counts must contain nonnegative integers');
+    }
+    return;
+  }
   const issue=parsed.error.issues[0];
   const field=issue?.path?.join('.')||'(attr)';
   throw new TypeError('LOC Anchor ZModel payload 驗證失敗：'+field+
