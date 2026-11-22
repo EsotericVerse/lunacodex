@@ -1,4 +1,4 @@
-// One plain model for ISR place counts used by Culture and Statistics.
+// One plain model for live place counts used by Culture and Statistics.
 // Galaxy.location is a text check-in, not an inferred visit or mandatory
 // trace anchor. Keep names verbatim; do not invent a classification hierarchy.
 const dateKey=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||'').slice(0,10))
