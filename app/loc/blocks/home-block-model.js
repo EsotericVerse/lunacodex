@@ -216,7 +216,13 @@ export function managementHeroSlot(pathname='',scopeId='',editing=false,featureI
     else if(parts.includes('manage'))key='spatial';
     else if(parts.includes('keywords'))key='keywords';
   }
-  return MANAGEMENT_HERO_SLOTS.find(slot=>slot.key===key)||null;
+  const slot=MANAGEMENT_HERO_SLOTS.find(item=>item.key===key)||null;
+  // /search/manage is Article Control, not a Search landing page. The first
+  // paint and the fully loaded workspace must use the same Hero identity.
+  // Keep its existing editable ScopeAdvSearch content page unchanged.
+  if(slot&&!loc&&parts.includes('search')&&parts.includes('manage'))
+    return {...slot,label:'文章管理',englishTitle:'Article Management'};
+  return slot;
 }
 export function managementHeroCopy(rows,slot){
   if(!slot)return null;
