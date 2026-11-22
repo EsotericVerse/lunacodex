@@ -89,6 +89,14 @@ test('request cancellation closes active connection and refuses future acquisiti
   assert.equal(client.closed,1);
   await assert.rejects(pool.connect(),/already closed/);
 });
+test('Keyword streamed analysis awaits cancelled SQL ownership cleanup',()=>{
+  const handler=readFileSync(new URL('../functions/api/keywords.js',import.meta.url),'utf8');
+  assert.match(handler,/cancel\(\)\{return entry\?\.pool\?\.abort\?\.\(\);\}/,
+    'ReadableStream cancellation must return its pool-close Promise');
+  assert.match(handler,/finally\{[\s\S]*?await closeLocDatabase\(entry\)/,
+    'stream completion/failure must close the SQL owner');
+});
+
 test('a failed connection attempt releases its socket before propagating failure',async()=>{
   class FailingClient extends TestSqlClient{
     async connect(){throw Error('simulated database unavailable');}
