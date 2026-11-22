@@ -1,84 +1,16 @@
-// Single LOC business-access projection. LOC Auth verifies identity; the
-// existing physical api.manage Registry and its fixed ZenStack Manage model
-// define roles. This is not a new table, token issuer, or SQL endpoint.
-// LOC Web owns these grants; LOC Auth identity must never be treated as a Web role.
-import {ZenStackClient} from '@zenstackhq/orm';
-import {PolicyPlugin} from '@zenstackhq/plugin-policy';
-import {fixedPolicyReader} from '../../../packages/zenstack/policy-runtime.mjs';
+// LOC Auth establishes identity; fixed JS Manage rows supply all business
+// grants. Never issue a role lookup SQL query or a separate permission HTTP
+// request. The caller must authenticate before using these results for writes.
 import {locRolePrincipal,LOC_ROLE_LEVEL} from '../../../packages/zenstack/role-hierarchy.mjs';
-import {LocAccessRowSchema} from './loc-access-schema.mjs';
+import {loc_access,publishedLocAccess,LOC_OWNER_EMAIL} from './loc-business-grants.mjs';
+export {loc_access,publishedLocAccess,LOC_OWNER_EMAIL} from './loc-business-grants.mjs';
 
-export const LOC_OWNER_EMAIL='sopa2306@gmail.com';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
-const empty=()=>({canWrite:false,canManage:false,grants:[],roles:[]});
-const normalizedEmail=value=>String(value||'').trim().toLowerCase();
 
-// Pure ZModel-derived Zod projection. An unpublished virtual System Admin
-// record remains a website-owner role; it never publishes an /admin Scope.
-// MCP and every other inactive Scope/Group record remain ungranted.
-export function loc_access(email,rows=[],{website=false}={}){
-  const verified=normalizedEmail(email);
-  if(!verified||!Array.isArray(rows))
-    return empty();
-  const eligible=[];
-  for(const row of rows){
-    const virtualAdmin=website&&verified===LOC_OWNER_EMAIL&&row?.id==='admin'&&
-      row?.manage_role==='admin'&&row?.active===false;
-    if(row?.active!==true&&!virtualAdmin)continue;
-    const parsed=LocAccessRowSchema.safeParse({
-      id:String(row?.id||''),
-      email:normalizedEmail(row?.email),
-      manage_role:String(row?.manage_role||'').trim().toLowerCase(),
-      active:row?.active
-    });
-    if(parsed.success&&parsed.data.email===verified)eligible.push(parsed.data);
-  }
-  if(!eligible.length)return empty();
-  const admin=eligible.some(row=>row.manage_role==='admin');
-  const grants=new Set(admin?['global:manage']:[]);
-  for(const row of eligible){
-    grants.add(row.id+':manage');
-    // Role-qualified grants preserve the ZModel level, not just resource ID.
-    if(row.manage_role==='group'||row.manage_role==='scope')
-      grants.add(row.manage_role+':'+row.id+':manage');
-    grants.add(row.id+':write');
-    grants.add(row.id+':read');
-  }
-  return {canWrite:true,canManage:admin,grants:[...grants],
-    roles:eligible.map(row=>({id:row.id,email:verified,role:row.manage_role}))};
-}
-
-// Shared trusted read: PostgreSQL uses ZenStack's actual Manage delegate and
-// PolicyPlugin over the existing Kysely dialect. Dialects without a supported
-// ZenStack provider retain the bounded portable Kysely SELECT; no new pool,
-// SQL migration, polling or duplicate role read is created.
-export async function readLocAccess(db,email,{dialect,engine='postgres',website=false,transactional=false}={}){
-  if(!db||typeof db.selectFrom!=='function')
-    throw new Error('LOC permission database unavailable');
-  const verified=normalizedEmail(email);
-  if(!verified)return empty();
-  // Website PostgreSQL authorization must use the ZModel PolicyPlugin;
-  // never silently downgrade to an unchecked SQL read on a missing dialect.
-  if(website&&engine==='postgres'&&!dialect)
-    throw new Error('LOC website ZModel policy dialect unavailable');
-  const columns=['id','email','manage_role','active'];
-  // A managed Save reads the SAME Registry projection inside the owning
-  // Kysely transaction so its permission snapshot and all writes share one
-  // connection. This is server-only; loc_access still derives grants strictly
-  // from the verified email and modeled Manage row projection.
-  const rows=engine==='postgres'&&dialect&&!transactional
-    ?await fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin})
-      .manage.findMany({
-        where:{email:verified,...(website?{}:{active:true})},
-        select:{id:true,email:true,manage_role:true,active:true}
-      })
-    :await (()=>{
-      let query=db.selectFrom('api.manage').select(columns)
-        .where(db.fn('lower',['email']),'=',verified);
-      if(!website)query=query.where('active','=',true);
-      return query.execute();
-    })();
-  return loc_access(verified,rows,{website});
+// Preserve the existing call signature for transaction-bound consumers.
+// Neither a DB outage nor an unpublished Registry row can override fixed JS.
+export async function readLocAccess(_db,email,{website=false}={}){
+  return publishedLocAccess(email,{website});
 }
 
 // Existing trusted Gateway grants are projected into the SAME ZModel
