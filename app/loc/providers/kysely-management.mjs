@@ -1,3 +1,4 @@
+import {TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
 // CURRENT management pipeline: verified LOC Web grant -> physical Kysely
 // transaction -> ZModel field/policy checks -> typed Tree/Model validation.
 // Historical RPC/legacy payload helpers are not independent authorities;
@@ -545,7 +546,7 @@ const anchorImportPageArgsSchema=z.strictObject({
     .max(PERSISTED_ANCHOR_TYPES.length)
     .refine(values=>new Set(values).size===values.length),
   p_after_uid:z.string().regex(UID).nullable().optional(),
-  p_limit:z.number().int().min(1).max(750)
+  p_limit:z.number().int().min(1).max(TIME_ANCHOR_MAX_PAGE_ROWS)
 });
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
