@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {publishedSourceTaxonomy} from '../app/modular/published-source-taxonomy.js';
-import {sourceOutlineOptions} from '../app/loc/source/keyword-options.mjs';
+import {sourceOutlineOptions,sourceEditorOutlineOptions} from '../app/loc/source/keyword-options.mjs';
+import {PUBLISHED_SOURCE_ANCHORS} from '../app/modular/published-source-taxonomy.js';
 import {buildCultureSourceTreeLanes,rollupCultureSourceDays}
   from '../app/loc/culture/source-tree-lanes.mjs';
 
@@ -109,4 +110,31 @@ test('Culture UI respects ancestor expansion and uses each UID as a separate tim
   assert.match(culture,/depth:node\.level/);
   assert.doesNotMatch(culture,/const onlyChild=|id:'dual:root:'\+parent\.id/);
   assert.match(timeline,/button\.style\.paddingInlineStart=depth/);
+});
+
+test('Culture, Statistics and protected Source editor use one UID-based outline',()=>{
+  const culture=read('app/modular/features/Culture.jsx');
+  const statistics=read('app/modular/features/Statistics.jsx');
+  const editor=read('app/loc/source/SourceCategoryEditor.jsx');
+  assert.match(culture,/sourceOutlineOptions\(sourceTaxonomy\)/);
+  assert.match(statistics,/sourceOutlineOptions\(sourceCatalog\.data\)/);
+  assert.match(editor,/sourceEditorOutlineOptions\(nodes\)/);
+  assert.match(editor,/sourceOutline\.filter\(row=>row\.path\[0\]===root\.code\)/);
+  assert.doesNotMatch(statistics,/source\.domain\?source\.domain/);
+  assert.doesNotMatch(editor,/children\(root\.uid\)\.flatMap/);
+  const source=read('app/loc/source/keyword-options.mjs');
+  assert.match(source,/sourceTaxonomyFromAnchors\(anchorRows,\{includeHidden:true\}\)/);
+});
+
+test('protected Source editor preserves hidden saved UID nodes; public projection does not',async()=>{
+  const target=PUBLISHED_SOURCE_ANCHORS.find(row=>row.type==='from'&&row.title==='Vocus');
+  const modified=PUBLISHED_SOURCE_ANCHORS.map(row=>row.uid===target.uid?{...row,invisible:true}:row);
+  const editor=sourceEditorOutlineOptions(modified);
+  assert.equal(editor.length,30);
+  assert.deepEqual(editor.filter(row=>row.path.includes(target.uid)).map(row=>[row.label,row.level]),[['Vocus',3]]);
+  assert.equal(editor.find(row=>row.code===target.uid)?.path.length,4);
+  // The public tree hides invisible nodes without changing the persisted UID.
+  const {sourceTaxonomyFromAnchors}=await import('../app/loc/source/classification.mjs');
+  const guest=sourceOutlineOptions(sourceTaxonomyFromAnchors(modified));
+  assert.ok(!guest.some(row=>row.code===target.uid));
 });
