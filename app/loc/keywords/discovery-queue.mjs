@@ -1,5 +1,5 @@
 import {produce} from 'immer';
-import {HEAVY_INITIAL_ROWS,TEXT_SCAN_TARGET_CHARS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
+import {HEAVY_INITIAL_ROWS,TEXT_SCAN_TARGET_CHARS,KEYWORD_WORKER_TARGET_CHARS,KEYWORD_WORKER_TARGET_BYTES,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 import * as z from 'zod';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
@@ -10,14 +10,14 @@ const MIN_PAGE_ROWS=1;
 // Only a ceiling on one SQL page fetch; the Worker still consumes it in its
 // own WORKER_BATCH_ROWS/BYTES slices below, so raising this does not change
 // how much a single Worker batch has to process at once.
-const MAX_PAGE_ROWS=20000;
+const MAX_PAGE_ROWS=TIME_ANCHOR_MAX_PAGE_ROWS;
 // A modest first probe, then immediately grow for short articles; no
 // additional SQL or content-length probe is needed.
 // Main uses a smaller calibration read; keep the one-row floor for huge articles.
 const INITIAL_PAGE_ROWS=HEAVY_INITIAL_ROWS;
 const TARGET_QUEUE_BYTES=2*1024*1024;
 const WORKER_BATCH_ROWS=HEAVY_INITIAL_ROWS;
-const WORKER_BATCH_BYTES=256*1024;
+const WORKER_BATCH_BYTES=KEYWORD_WORKER_TARGET_BYTES;
 const LOW_WATER_RATIO=0.2;
 const batchEnvelope=z.strictObject({
   requested:z.number().int().min(MIN_PAGE_ROWS).max(MAX_PAGE_ROWS),
@@ -43,7 +43,7 @@ export class KeywordDiscoveryQueue{
       targetChars:TEXT_SCAN_TARGET_CHARS
     });
     this.workerSizer=createTextAdaptiveRows({initial:WORKER_BATCH_ROWS,
-      maximum:HEAVY_QUERY_ROWS,targetChars:128*1024});
+      maximum:MAX_PAGE_ROWS,targetChars:KEYWORD_WORKER_TARGET_CHARS});
     this.meta={pageRows:this.sizer.size,averageRowBytes:0,acceptedPages:0};
   }
   get readLimit(){return this.meta.pageRows}
