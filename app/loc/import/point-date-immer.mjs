@@ -13,13 +13,6 @@ function checkedUid(uid){
     throw Error('匯入 Point／Date 包含無效 UID：'+String(uid));
   return uid;
 }
-function toVisitTimes(values=[]){
-  if(!Array.isArray(values))throw TypeError('Point.times 不是陣列');
-  return [...new Set(values.map(value=>
-    typeof value==='number'?value:Date.parse(String(value??'')))
-    .filter(Number.isFinite))].sort((a,b)=>a-b)
-    .map(value=>new Date(value).toISOString());
-}
 function deltaFields(next,patches){
   const fields=new Set(patches.map(patch=>patch.path[0]));
   return Object.fromEntries([...fields].map(field=>[field,next[field]]));
@@ -60,26 +53,6 @@ export function planImportDateCreate({uid,date,title,description,createtime=null
     if(createtime)draft.createtime=createtime;
   });
   return {row,patches};
-}
-
-// Point.attr.times and Point.createtime only. Preserve original coordinates,
-// aliases and all other attr members in the SQL writer's guarded merge.
-export function planImportPointVisitDelta({uid,attr,createtime=null,visits=[]}={}){
-  checkedUid(uid);
-  if(!attr||typeof attr!=='object'||Array.isArray(attr))
-    throw TypeError('Point 原始 attr 無效');
-  const current=toVisitTimes(attr.times??[]);
-  const arrivals=toVisitTimes(visits);
-  const initial={times:current,createtime:createtime||null};
-  const [next,patches]=produceWithPatches(initial,draft=>{
-    const merged=toVisitTimes([...draft.times,...arrivals]);
-    if(merged.length!==draft.times.length||
-        merged.some((time,index)=>time!==draft.times[index]))
-      draft.times=merged;
-    if(!draft.createtime&&merged.length)draft.createtime=merged[0];
-  });
-  return {uid,changes:deltaFields(next,patches),patches,
-    added:next.times.length-current.length};
 }
 
 // Only the legacy date-title backfill is mutable on a reimport. The Date
