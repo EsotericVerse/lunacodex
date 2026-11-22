@@ -67,8 +67,7 @@ export function sourceTaxonomyFromAnchors(rows=[],{includeHidden=false}={}){
     const domain=complete&&level>=2?path[2]?.title||'':'';
     const entry={uid:row.uid,type:row.type,title:row.title,
       parentUid:parents.at(-1)?.uid||null,root,universe,galaxy,domain,
-      orphanType:complete?null:SOURCE_LEVELS[path[0]===row?level:
-        SOURCE_LEVELS.indexOf(path[0].type)]||row.type,
+      orphanType:complete?null:path[0].type,
       level,path:path.map(item=>item.uid)};
     tree.push(entry);
     if((row.type==='from'||row.type==='domain')&&complete){
