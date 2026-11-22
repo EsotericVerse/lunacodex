@@ -21,6 +21,7 @@ test('MediaAnchor append retains existing URL links under a row lock',()=>{
   assert.match(block,/forUpdate\(\)\.executeTakeFirst\(\)/);
   assert.match(block,/const url=String\(linked\.attr\?\.url\|\|''\)\.trim\(\)/);
   assert.match(block,/const next=\[\.\.\.prior,url\]/);
+  assert.match(block,/url===String\(article\.url\|\|''\)\.trim\(\)/);
   assert.doesNotMatch(block,/media_link:\[values\.media_uid\]/);
   assert.match(block,/ANCHOR_TYPE_GROUPS\.media/);
   assert.match(block,/numUpdatedRows/);
@@ -31,9 +32,10 @@ test('Only the website can request a media link append in the managed SQL envelo
   assert.match(native,/'append_media_link'\]\.includes\(entry\.p_operation\)/);
 });
 
-test('Suno writes public URLs to Galaxy media_link',()=>{
+test('Suno keeps its public permalink only in Galaxy.url',()=>{
   const src=file('../app/loc/media/SunoImportPanel.jsx');
-  assert.match(src,/media_link:\[draft\.url\.trim\(\)\]/);
+  assert.match(src,/url:draft\.url\.trim\(\)\|\|null/);
+  assert.doesNotMatch(src,/media_link:\[draft\.url\.trim\(\)\]/);
   assert.doesNotMatch(src,/media_link:\[mediaUid\]/);
 });
 
