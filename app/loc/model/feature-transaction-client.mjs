@@ -1,3 +1,4 @@
+import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Named fixed record/Anchor projections. All variable values are validated
 // by the server against published Scope and ZModel model families.
 async function readFixedOperation(operation,params,{signal=null,editor=false}={}){
@@ -28,9 +29,10 @@ export const readAnchorFeature=(params,options={})=>
 export async function readAllAnchorFeature({scope,family,types,startDate,endDate,
   signal=null,editor=false}={}){
   const rows=[],seen=new Set();let cursor;
+  const batch=createTextAdaptiveRows({initial:MAX_ROWS,maximum:TIME_ANCHOR_MAX_PAGE_ROWS});
   for(;;){
     const data=await readAnchorFeature({scope,family,types,startDate,endDate,
-      cursor,limit:1000},
+      cursor,limit:batch.size},
       {signal,editor});
     for(const row of data.rows||[]){
       const uid=String(row.uid||'');
@@ -38,6 +40,7 @@ export async function readAllAnchorFeature({scope,family,types,startDate,endDate
       seen.add(uid);rows.push(row);
     }
     if(!data.nextCursor)return rows;
+    batch.observe(data.rows.length,data.rows.reduce((n,row)=>n+JSON.stringify(row).length,0));
     if(data.nextCursor===cursor||!data.rows?.length)throw Error('Invalid Anchor continuation');
     cursor=data.nextCursor;
   }
