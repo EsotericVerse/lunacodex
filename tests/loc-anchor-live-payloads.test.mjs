@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {assertZModelAnchorFeatureRows} from '../packages/zenstack/import-validation.mjs';
 import {schema} from '../packages/zenstack/schema.mjs';
+import {parseAnchorFeatureTransaction} from '../app/loc/model/anchor-feature-transactions.mjs';
 
 const anchor=(type,attr,uid='AAAA0001')=>({uid,type,attr,invisible:false,num:0});
 
@@ -52,4 +53,16 @@ test('culture never renders an HTTP 503 as an empty SiteAnchor taxonomy',()=>{
   assert.doesNotMatch(code,/setCatalog\(\{categories:\[\],aliases:\[\],tree:\[\],roots:\[\]\}\)/);
   assert.match(code,/setCatalog\(null\);/);
   assert.match(code,/!catalogLoading&&!catalogError/);
+});
+
+test('source taxonomy is LOC-global only, never a Scope anchor source',()=>{
+  const body={kind:'transaction',operation:'anchor-feature',
+    family:'source',scope:'loc',result:'rows'};
+  assert.equal(parseAnchorFeatureTransaction(body).family,'source');
+  assert.throws(()=>parseAnchorFeatureTransaction({...body,scope:'lo3rwang'}),
+    /Invalid Anchor feature selection/);
+  assert.throws(()=>parseAnchorFeatureTransaction({...body,scope:'lrunes'}),
+    /Invalid Anchor feature selection/);
+  assert.throws(()=>parseAnchorFeatureTransaction({...body,scope:'loc',family:'time'}),
+    /Invalid Anchor feature selection/);
 });
