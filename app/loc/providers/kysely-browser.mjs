@@ -1,3 +1,4 @@
+import {MAX_ROWS} from '../query/query-batch-size.mjs';
 // One browser transport for LOC public reads. The existing Pages Function
 // executes every bounded SELECT with the server-owned Kysely SQL dialect.
 // LOC OAuth delegation is still mandatory for all mutations.
@@ -104,7 +105,7 @@ export function createKyselyPublicClient({
       q.table==='loc_user'&&typeof readPrivate==='function'){
       // The existing personal endpoint has its own pagination contract.
       // Do not send an absent native LIMIT as an invalid personal request.
-      if(q.rowLimit===null)q.rowLimit=q.cardinality?1:2048;
+      if(q.rowLimit===null)q.rowLimit=q.cardinality?1:MAX_ROWS;
       return readPrivate(q);
     }
     if(q.dbId)throw Error('Selected SQL database requires signed LOC delegation');
