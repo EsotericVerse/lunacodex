@@ -55,17 +55,23 @@ export function sourceTaxonomyFromAnchors(rows=[],{includeHidden=false}={}){
   const aliasCandidates=new Map();
   const walk=(row,parents=[],root='system')=>{
     if(visited.has(row.uid))return;
-    visited.add(row.uid);
     const level=SOURCE_LEVELS.indexOf(row.type);
-    if(parents.length!==level)return;
+    if(level<0||parents.length&&SOURCE_LEVELS.indexOf(parents.at(-1).type)!==level-1)return;
+    visited.add(row.uid);
     const path=[...parents,row];
-    const universe=path[0]?.title||'',galaxy=path[1]?.title||'',
-      domain=path[2]?.title||'';
+    // No fabricated Universe/Galaxy/Domain for an orphan. A missing ancestor
+    // creates a presentation-only 未分類 section; saved UID edges are unchanged.
+    const complete=path.length===level+1&&path[0]?.type==='universe';
+    const universe=complete?path[0]?.title||'':'';
+    const galaxy=complete&&level>=1?path[1]?.title||'':'';
+    const domain=complete&&level>=2?path[2]?.title||'':'';
     const entry={uid:row.uid,type:row.type,title:row.title,
       parentUid:parents.at(-1)?.uid||null,root,universe,galaxy,domain,
-      path:path.map(item=>item.uid)};
+      orphanType:complete?null:SOURCE_LEVELS[path[0]===row?level:
+        SOURCE_LEVELS.indexOf(path[0].type)]||row.type,
+      level,path:path.map(item=>item.uid)};
     tree.push(entry);
-    if(row.type==='from'||row.type==='domain'){
+    if((row.type==='from'||row.type==='domain')&&complete){
       categories.push({category_code:row.uid,display_name:row.title,
         enabled:true,type:row.type,root,universe,galaxy,
         domain:row.type==='from'?domain:row.title,
@@ -83,6 +89,13 @@ export function sourceTaxonomyFromAnchors(rows=[],{includeHidden=false}={}){
     }
   };
   for(const root of roots)walk(root,[],sourceRoot(root.title));
+  // Disconnected saved nodes must remain visible. Walk each missing-parent
+  // branch once, from its real highest available node, in level order.
+  // These rows are not assigned synthetic parent IDs or source aliases.
+  for(let level=1;level<SOURCE_LEVELS.length;level++)
+    for(const row of nodes)
+      if(row.type===SOURCE_LEVELS[level]&&!visited.has(row.uid))
+        walk(row,[],'unclassified');
   const aliases=[],conflicts=[];
   for(const [key,candidates] of [...aliasCandidates].sort(([a],[b])=>a.localeCompare(b))){
     if(candidates.size===1){
