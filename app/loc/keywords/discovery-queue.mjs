@@ -1,4 +1,5 @@
 import {produce} from 'immer';
+import {HEAVY_INITIAL_ROWS,TEXT_SCAN_TARGET_CHARS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 import * as z from 'zod';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
@@ -13,7 +14,7 @@ const MAX_PAGE_ROWS=20000;
 // A modest first probe, then immediately grow for short articles; no
 // additional SQL or content-length probe is needed.
 // Main uses a smaller calibration read; keep the one-row floor for huge articles.
-const INITIAL_PAGE_ROWS=256;
+const INITIAL_PAGE_ROWS=HEAVY_INITIAL_ROWS;
 const TARGET_QUEUE_BYTES=2*1024*1024;
 const WORKER_BATCH_ROWS=768;
 const WORKER_BATCH_BYTES=256*1024;
@@ -30,7 +31,6 @@ for(const field of ['uid','content','createtime','date']){
   if(!GALAXY_READ_COLUMNS.has(field))
     throw new Error('Galaxy ZModel discovery projection missing '+field);
 }
-const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 const rowBytes=row=>String(row?.content??'').length*2+192;
 
 export class KeywordDiscoveryQueue{
@@ -38,7 +38,11 @@ export class KeywordDiscoveryQueue{
     this.rows=null;
     this.cursor=0;
     this.size=0;
-    this.meta={pageRows:INITIAL_PAGE_ROWS,averageRowBytes:0,acceptedPages:0};
+    this.sizer=createTextAdaptiveRows({
+      initial:INITIAL_PAGE_ROWS,maximum:MAX_PAGE_ROWS,
+      targetChars:TEXT_SCAN_TARGET_CHARS
+    });
+    this.meta={pageRows:this.sizer.size,averageRowBytes:0,acceptedPages:0};
   }
   get readLimit(){return this.meta.pageRows}
   get remaining(){return this.rows?this.rows.length-this.cursor:0}
@@ -60,14 +64,14 @@ export class KeywordDiscoveryQueue{
     // require a 1-row page, while short articles can fill thousands of rows.
     // Grow by at most 2x; shrink immediately when article size spikes.
     const measured=bytes/rows.length;
+    const characters=rows.reduce((sum,row)=>sum+
+      String(row?.title??'').length+String(row?.content??'').length,0);
+    const nextRows=this.sizer.observe(rows.length,characters);
     this.meta=produce(this.meta,draft=>{
       draft.averageRowBytes=draft.acceptedPages===0||measured>draft.averageRowBytes
         ?measured:draft.averageRowBytes*0.65+measured*0.35;
       draft.acceptedPages++;
-      const wanted=Math.max(1,Math.floor(
-        TARGET_QUEUE_BYTES/Math.max(192,draft.averageRowBytes)));
-      draft.pageRows=clamp(wanted,MIN_PAGE_ROWS,
-        Math.min(MAX_PAGE_ROWS,draft.pageRows*2));
+      draft.pageRows=nextRows;
     });
   }
   take(){
