@@ -133,6 +133,17 @@ test('Space comparisons use statics=true without changing ordinary Trace territo
   assert.match(sql,/statisticsOnly:options.statisticsOnly===true/);
 });
 
+test('public analytics accepts statisticsOnly only for territory and only as boolean',()=>{
+  const source=readFileSync(new URL('../app/loc/server/public-named-transactions.mjs',
+    import.meta.url),'utf8');
+  assert.match(source,/'withPoints','statisticsOnly'\]\)/);
+  assert.match(source,/if\(options\.statisticsOnly!==undefined&&/);
+  assert.match(source,/view!=='trace_territory'\|\|typeof options\.statisticsOnly!=='boolean'/);
+  const ui=readFileSync(new URL('../app/modular/modules/statistics/ScopeSelfIntersection.jsx',
+    import.meta.url),'utf8');
+  assert.match(ui,/p_options:\{withPoints:false,statisticsOnly:true\}/);
+});
+
 test('all four families are present in the cascading metric picker',()=>{
   const mk=(name,id)=>({name,id});
   const groups=comparisonMetricGroups('all',{
