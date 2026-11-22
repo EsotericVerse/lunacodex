@@ -39,7 +39,8 @@ function normalize(body){
     'feature','startDate','endDate','category','result',
     'view','uids','family','types','order',
     'sources','excludedSources','placeIds','text','requiredTerms',
-    'excludedTerms','mediaUrls','offset','sortDirection','includeTotal'])||
+    'excludedTerms','mediaUrls','offset','sortDirection','includeTotal',
+    'startDate','endDate','orderByDate'])||
     body.kind!=='transaction')throw bad();
   if(body.operation==='time-anchors'){
     if(!KEYS(body,['kind','operation','scope','mode','cursor','limit']))throw bad();

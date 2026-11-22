@@ -48,7 +48,7 @@ const input=z.object({
   result:z.enum(['count','daily','daily-sources','sources','uids','articles','earliest']),
   cursor:UID.optional(),offset:z.number().int().min(0).max(10000).optional(),
   sortDirection:z.enum(['asc','desc']).optional(),
-  includeTotal:z.boolean().optional(),
+  includeTotal:z.boolean().optional(),orderByDate:z.boolean().optional(),
   limit:z.number().int().min(1).max(100).optional()
 }).strict();
 function validDate(s){
@@ -67,6 +67,7 @@ export function parseGalaxyFeatureTransaction(raw){
     (value.offset!==undefined&&value.result!=='articles')||
     (value.sortDirection!==undefined&&value.result!=='articles')||
     (value.includeTotal!==undefined&&value.result!=='articles')||
+    (value.orderByDate!==undefined&&value.result!=='articles')||
     (value.limit!==undefined&&!['uids','articles'].includes(value.result))||
     (value.text||value.requiredTerms||value.excludedTerms)&&value.feature!=='search'||
     value.placeIds&&value.category?.type==='place'||
@@ -180,7 +181,8 @@ export async function executeGalaxyFeatureTransaction(trx,model){
         .executeTakeFirst())?.count||0):null;
     const limit=model.limit,offset=model.offset||0;
     let list=q.select(galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor'));
-    if(model.feature!=='culture')list=list.orderBy('date',model.sortDirection||'desc');
+    if(model.feature!=='culture'||model.orderByDate===true)
+      list=list.orderBy('date',model.sortDirection||'desc');
     const rows=await list.orderBy('createtime',model.sortDirection||'desc')
       .orderBy('uid','asc').limit(limit+1).offset(offset).execute();
     return {rows:rows.slice(0,limit),hasMore:rows.length>limit,
