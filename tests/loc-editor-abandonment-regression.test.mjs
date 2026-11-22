@@ -25,6 +25,23 @@ test('management section change abandons the old editors and transient reads',()
   assert.match(dock,/registeredEditors\.current\.clear\(\)/);
 });
 
+test('homepage six-key navigation retires old reads before full-document managers',()=>{
+  const dock=source('app/modular/edit-dock.jsx');
+  const resources=source('packages/zenstack/client-queries.js');
+  // A static management entrypoint has no React route-key transition.
+  assert.match(dock,/const documentExit=url\.origin/);
+  assert.match(dock,/isManagementHref\(url\.href\)/);
+  assert.match(dock,/releaseTransientPageResources\(\{documentExit\}\);[\s\S]*?window\.location\.assign\(url\.href\)/);
+  assert.match(dock,/releaseTransientPageResources\(\{documentExit:true\}\);[\s\S]*?window\.location\.assign\(destination\.href\)/);
+  assert.match(resources,/export function releaseTransientPageResources\(\{documentExit=false\}=\{\}\)/);
+  assert.match(resources,/cancelTransientReads\(\);\s*abortInflight\(\);/);
+  assert.match(resources,/if\(!documentExit&&retryBootstrap\.size\)/,
+    'full-document exit must not queue bootstrap re-reads on old page');
+  // Navigation cleanup is explicitly not a write or a Session revocation.
+  const navigate=dock.slice(dock.indexOf('const navigate='),dock.indexOf('const complete='));
+  assert.doesNotMatch(navigate,/transactionWrites\(|clearEditorSession\(/);
+});
+
 test('Culture orders Era > Period > Date anchors, then the next Era',()=>{
   const scope='lo3rwang',a='AAAA0001',b='BBBB0001';
   const records=[
