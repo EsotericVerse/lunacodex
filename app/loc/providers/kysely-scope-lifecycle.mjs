@@ -6,6 +6,7 @@
 // with global:manage may reach these functions.
 import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';
+import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {synchronizeKeywordLibraryInTransaction} from '../keywords/sql-service.mjs';
 
@@ -139,6 +140,11 @@ export async function manageScopeRegistryNative(trx,args){
   const current=registered(rows,id);
   if(operation==='create_group'&&current)reject('Scope ID already exists',409);
   if(operation==='update'&&!current)reject('Scope Registry row not found',404);
+  // Deactivation affects JS grants. Do not commit the revocation while the
+  // published release still grants access to the same identity.
+  if(operation==='update'&&values.active===false&&
+     fixedManageScope(id)?.active===true)
+    reject('Deactivate this Scope in published JS before SQL update',409);
   if(operation==='update'&&(
     id==='admin'||!['group','scope'].includes(current.manage_role)))
     reject('System Scope Registry cannot be edited',403);
@@ -176,6 +182,16 @@ export async function manageScopeRegistryNative(trx,args){
     :requestedSort;
   if(!Number.isSafeInteger(sort)||sort<0)
     reject('Invalid Scope sort order');
+  // A change to any published role/routing field must be released in JS
+  // before it can be reflected by the management database.
+  const published=fixedManageScope(id);
+  if(operation==='update'&&published&&(
+    published.active!==active||
+    published.domain!==target.domain||
+    published.directory!==target.directory||
+    published.parent_scope_id!==(id==='loc'?null:parent)||
+    published.sort_order!==sort))
+    reject('Publish matching JS Scope routing before Registry update',409);
   const fields={...target,parent_scope_id:id==='loc'?null:parent,
     active,sort_order:sort};
   if(operation==='create_group'){
