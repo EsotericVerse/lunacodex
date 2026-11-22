@@ -1,0 +1,193 @@
+// Item-driven LOC keyword classification. No Pattern posting or persisted article UID list.
+import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
+import {keywordScanText} from './content-filter.mjs';
+import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
+const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
+const count=x=>Math.max(0,Number(x)||0);
+const object=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
+const mapOf=(keys,values)=>Object.fromEntries(keys.map(k=>[k,count(object(values)[k])]));
+const dayOf=x=>x instanceof Date?x.toISOString().slice(0,10):String(x||'').slice(0,10);
+export const itemLiterals=item=>[item.item_name,...(Array.isArray(item.keywords)?item.keywords:[])
+  .filter(x=>typeof x==='string'&&!parseRuneKeywordRuleSentence(x).rules.length)]
+  .map(x=>String(x||'').trim()).filter(Boolean);
+export const itemScope=tree=>({items:tree.items,groups:tree.groups.map(x=>({uid:x.uid,title:x.title}))});
+export function itemKeywordSuggestions(items=[],query=''){
+  const prefix=norm(query),map=new Map();
+  for(const item of items)for(const label of itemLiterals(item)){
+    const key=norm(label);
+    if(key.startsWith(prefix)&&!map.has(key))map.set(key,{pattern:label,count:0});
+  }
+  return [...map.values()].sort((a,b)=>a.pattern.localeCompare(b.pattern));
+}
+export function createItemCountAccumulator(items=[],groups=[],resume=null,{minChars=0}={}){
+  const catalog=items.map((item,i)=>({
+    item_no:i+1,item_name:item.item_name,class_group:item.group_uid,
+    keywords:item.keywords,order_no:i+1,class_enable:true
+  }));
+  const classify=createKeywordDocumentClassifier(catalog);
+  const itemIds=items.map(x=>x.uid),groupIds=groups.map(x=>x.uid);
+  const fingerprint=JSON.stringify({catalog,groupIds,minChars});
+  const saved=resume?.scanMode==='item_count_v1'&&resume.fingerprint===fingerprint
+    ?resume:null;
+  const state={scanMode:'item_count_v1',fingerprint,
+    scanned:count(saved?.scanned),parsed:count(saved?.parsed),
+    matchedDocuments:count(saved?.matchedDocuments),
+    itemMatches:count(saved?.itemMatches),occurrences:count(saved?.occurrences),
+    itemCounts:mapOf(itemIds,saved?.itemCounts),itemDocuments:mapOf(itemIds,saved?.itemDocuments),
+    groupCounts:mapOf(groupIds,saved?.groupCounts),
+    groupDocuments:mapOf(groupIds,saved?.groupDocuments)};
+  const byDay=new Map(),groupOrder=new Map(groupIds.map((uid,i)=>[uid,i]));
+  const fallback=groups.find(g=>items.some(i=>i.group_uid===g.uid&&i.item_name==='德'))?.uid||'';
+  function absorb(rows=[],callback=null){
+    const docs=rows.filter(row=>row.keyword!==false&&
+      Array.from(keywordScanText(row).replace(/\s/gu,'')).length>minChars);
+    if(!docs.length)return;
+    const classifications=classify(docs).classifications||[];
+    if(classifications.length!==docs.length)throw Error('Incomplete Item classifier result');
+    for(let i=0;i<docs.length;i++){
+      const doc=docs[i],result=classifications[i],hits=new Map();
+      state.parsed++;
+      for(const hit of result.rune_counts||[]){
+        const item=items[Number(hit.rune_id)-1];
+        if(!item)throw Error('Unknown Item rule result');
+        const times=count(hit.count);
+        if(!times)continue;
+        state.itemCounts[item.uid]+=times;
+        state.itemDocuments[item.uid]++;
+        state.itemMatches++;state.occurrences+=times;
+        hits.set(item.uid,times);
+      }
+      if(hits.size)state.matchedDocuments++;
+      const tied=(result.tied_groups||[]).filter(id=>groupOrder.has(id));
+      let group=String(result.classification_group||'');
+      if(tied.length>1)group=[...tied].sort((a,b)=>
+        state.groupCounts[a]-state.groupCounts[b]||groupOrder.get(a)-groupOrder.get(b))[0];
+      else if(tied.length===1)group=tied[0];
+      else if(!groupOrder.has(group))group=fallback;
+      if(groupOrder.has(group)){
+        state.groupCounts[group]++;
+        if(hits.size)state.groupDocuments[group]++;
+      }
+      const day=dayOf(doc.date);
+      if(/^\d{4}-\d{2}-\d{2}$/.test(day)&&hits.size){
+        const bucket=byDay.get(day)||{documents:0,itemHits:{},itemDocs:{},groups:{}};
+        bucket.documents++;
+        for(const [uid,times] of hits){
+          bucket.itemHits[uid]=(bucket.itemHits[uid]||0)+times;
+          bucket.itemDocs[uid]=(bucket.itemDocs[uid]||0)+1;
+        }
+        if(groupOrder.has(group))bucket.groups[group]=(bucket.groups[group]||0)+1;
+        byDay.set(day,bucket);
+      }
+      callback?.(doc,{hits,group,matched:Boolean(hits.size)});
+    }
+  }
+  function totals(){return {
+    analyzedDocuments:state.scanned,parsedDocuments:state.parsed,
+    matchedDocuments:state.matchedDocuments,itemMatches:state.itemMatches,
+    occurrences:state.occurrences,itemCounts:{...state.itemCounts},
+    itemDocuments:{...state.itemDocuments},groupCounts:{...state.groupCounts},
+    groupDocuments:{...state.groupDocuments}
+  };}
+  function daily(){
+    const rows=[{kind:'eligible',item_key:null,group_uid:null,day:'',
+      hit_count:state.matchedDocuments,document_count:state.matchedDocuments}];
+    for(const item of items)rows.push({kind:'item',item_key:item.uid,group_uid:item.group_uid,
+      day:'',hit_count:state.itemCounts[item.uid],
+      document_count:state.itemDocuments[item.uid]});
+    for(const [day,b] of [...byDay].sort((a,b)=>a[0].localeCompare(b[0]))){
+      rows.push({kind:'keyword_all_day',item_key:null,group_uid:null,day,
+        hit_count:b.documents,document_count:b.documents});
+      for(const group of groups)if(b.groups[group.uid]){
+        const n=b.groups[group.uid];
+        rows.push({kind:'class_day',item_key:null,group_uid:group.uid,day,
+          hit_count:n,document_count:n});
+        rows.push({kind:'group_items_day',item_key:null,group_uid:group.uid,day,
+          hit_count:n,document_count:n});
+      }
+      for(const item of items)if(b.itemDocs[item.uid])
+        rows.push({kind:'item_day',item_key:item.uid,group_uid:item.group_uid,day,
+          hit_count:b.itemHits[item.uid],document_count:b.itemDocs[item.uid]});
+    }
+    return rows;
+  }
+  return {state,fingerprint,absorb,totals,daily};
+}
+export async function analyzeItemKeywordCounts({items,groups,expectedCount,
+  readMetadataPage,readContent,finalize,onCheckpoint=null,onProgress=()=>{},
+  resume=null,pageSize=256,timeBudgetMs=null,now=()=>Date.now(),minChars=0}={}){
+  const a=createItemCountAccumulator(items,groups,resume,{minChars});
+  const valid=resume?.scanMode==='item_count_v1'&&resume.fingerprint===a.fingerprint&&
+    Object.hasOwn(resume,'cursor');
+  let cursor=valid?resume.cursor:null,scanned=valid?count(resume.scanned):0;
+  const started=now();
+  for(;;){
+    const page=await readMetadataPage({cursor,limit:pageSize});
+    if(!page||!Array.isArray(page.rows)||page.rows.length>pageSize||
+      !Object.hasOwn(page,'nextCursor'))throw Error('Invalid Item scan page');
+    if(!page.rows.length)break;
+    cursor=page.nextCursor;scanned+=page.rows.length;
+    const ids=page.rows.filter(row=>row.keyword!==false).map(row=>String(row.uid));
+    if(ids.length){
+      const docs=await readContent(ids);
+      const actual=new Set(docs.map(row=>String(row.uid)));
+      if(!Array.isArray(docs)||actual.size!==ids.length||
+        ids.some(id=>!actual.has(id))||docs.length!==ids.length)
+        throw Error('Incomplete Item scan article page');
+      a.absorb(docs);
+    }
+    a.state.scanned=scanned;
+    onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed});
+    if(onCheckpoint&&timeBudgetMs!==null&&now()-started>timeBudgetMs*0.65){
+      await onCheckpoint({...a.state,cursor});
+      return {incomplete:true,scanned,parsed:a.state.parsed};
+    }
+  }
+  if(expectedCount!==null&&scanned<expectedCount)
+    throw Error('Item scan ended before all Galaxy rows');
+  const result=a.totals();
+  await finalize(result);
+  onProgress({phase:'completed',completed:scanned,parsed:a.state.parsed});
+  return result;
+}
+export async function readItemKeywordProjection(db,scope,{items,groups,start='',end='',
+  source='',places=null,owner=true,minChars=0,onRow=null}={}){
+  const a=createItemCountAccumulator(items,groups,null,{minChars});
+  let after='';
+  for(;;){
+    let q=db.selectFrom('silver.'+scope+'_galaxy')
+      .select(['uid','title','content','keyword','date','site','place_id'])
+      .orderBy('uid','asc').limit(256);
+    if(after)q=q.where('uid','>',after);
+    if(start)q=q.where('date','>=',start);
+    if(end)q=q.where('date','<=',end);
+    if(source)q=q.where('site','=',source);
+    if(Array.isArray(places)&&places.length)q=q.where('place_id','in',places);
+    if(!owner)q=q.where('search','=',true);
+    const rows=await q.execute();
+    if(!rows.length)break;
+    after=String(rows.at(-1).uid);
+    a.state.scanned+=rows.length;a.absorb(rows,onRow);
+    if(rows.length<256)break;
+  }
+  return {totals:a.totals(),daily:a.daily()};
+}
+export function itemKeywordStatistics(items,groups,totals){
+  const hits=items.reduce((sum,i)=>sum+count(totals.itemCounts?.[i.uid]),0);
+  const itemRows=items.map(item=>{
+    const n=count(totals.itemCounts?.[item.uid]);
+    return {uid:item.uid,group_uid:item.group_uid,name:item.item_name,
+      hit_count:n,document_count:count(totals.itemDocuments?.[item.uid]),
+      ratio:hits?100*n/hits:0,words:itemLiterals(item).map(word=>({
+        pattern:word,count:0,indexed:false,ratio:0}))};
+  });
+  const groupRows=groups.map(g=>{
+    const n=itemRows.filter(i=>i.group_uid===g.uid).reduce((s,i)=>s+i.hit_count,0);
+    return {uid:g.uid,name:String(g.title||''),hit_count:n,
+      document_count:count(totals.groupDocuments?.[g.uid]),
+      ratio:hits?100*n/hits:0};
+  });
+  return {groups:groupRows,items:itemRows,total_hits:hits,
+    document_count:count(totals.matchedDocuments),
+    group_document_counts:object(totals.groupDocuments),missing_patterns:[]};
+}
