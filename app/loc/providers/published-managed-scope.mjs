@@ -1,5 +1,5 @@
-// Fixed api.manage Scope projection. All twelve columns are authored in
-// fixed-manage-registry.mjs, including the public contact email and caches.
+// Fixed api.manage Scope projection. Ten active registry columns are authored in
+// fixed-manage-registry.mjs, including the public contact email.
 // The independently published routes must agree before a built-in table is
 // accepted. Authorization still uses the verified LOC identity and grants.
 import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
