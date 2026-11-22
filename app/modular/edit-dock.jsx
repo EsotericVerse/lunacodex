@@ -218,7 +218,10 @@ export function EditDockProvider({children,scopeId}){
           }
         }catch(error){
           for(const plan of prepared){
-            try{await plan.onFailure?.(error);}catch{}
+            // The original failure still propagates; a failing cleanup hook is
+            // logged so it is not lost behind it.
+            try{await plan.onFailure?.(error);}
+            catch(cleanup){console.error('[LOC edit-dock] onFailure cleanup failed',cleanup);}
           }
           throw error;
         }
@@ -227,7 +230,10 @@ export function EditDockProvider({children,scopeId}){
           if(operations.length)await transactionWrites(operations);
         }catch(error){
           for(const plan of prepared){
-            try{await plan.onFailure?.(error);}catch{}
+            // The original failure still propagates; a failing cleanup hook is
+            // logged so it is not lost behind it.
+            try{await plan.onFailure?.(error);}
+            catch(cleanup){console.error('[LOC edit-dock] onFailure cleanup failed',cleanup);}
           }
           throw error;
         }
