@@ -62,6 +62,13 @@ type LocAnchorLink {
 // envelope; these values select the semantic ZModel payload below. Their
 // article-side carrier mapping is date/createtime, location/place_id,
 // media_link, keyword and site respectively; no extra relation is created.
+// IMPORTANT: Galaxy.site is a source name; Galaxy.site_id is the ORIGINAL
+// platform's post/media ID (arbitrary text), NEVER a silver.loc_anchor.uid.
+// Galaxy.uid is the LOC article UID. silver.loc_anchor.attr.uid contains only
+// eight-character Source Anchor child UIDs for the four-level source tree.
+// Galaxy.media_link is an array of actual media URL strings, NOT media IDs,
+// Anchor UID references, or a new MediaAnchor relation. Galaxy.url is the
+// article/source permalink; do not conflate it with media_link.
 // Physical type is singular image/rune/suno; semantic MediaAnchor fields may be plural.
 // "anniversary" (also misspelled "aniversary" in old notes) is virtual, not a stored type.
 // External CMS / conversation SOURCE ZModels. Nonpersistent projections only.
@@ -376,6 +383,8 @@ type CategoryAnchor {
     uid String[]?
 }
 type FromAnchor {
+    // The existing physical From.attr.uid is []; From is terminal, never
+    // another parent. The shared UID graph and typed validator enforce this.
     uid String[]?
     // Per-Scope cached article totals, independent of physical Anchor.num.
     counts Json?
@@ -437,10 +446,12 @@ type KeywordAnchor {
 // Site hierarchy: universe (all) > galaxy (group) > domain (collection) > from (one site).
 // Hierarchy links in attr.uid always refer to Anchor UIDs, not Galaxy article UIDs.
 type SiteAnchor {
-    from FromAnchor?
-    domain DomainAnchor?
-    galaxy GalaxyAnchor?
+    // Hierarchy: Universe -> Galaxy -> Domain -> From (one Galaxy.site).
+    // Each subtype still occupies one existing silver.loc_anchor row.
     universe UniverseAnchor?
+    galaxy GalaxyAnchor?
+    domain DomainAnchor?
+    from FromAnchor?
 }
 
 // The 66-card rune catalogue is a separate semantic projection. Its physical
@@ -606,8 +617,10 @@ model Lo3rwang {
     @@allow('read', true)
 }
 
-// LOC-wide source keyword anchors. Hierarchy is represented by attr.uid (child UIDs),
-// never by title. attr.counts stores per-Scope cached article counts.
+// LOC-wide Source Anchors. Only loc_anchor.attr.uid stores Source Anchor child
+// UIDs (Universe > Galaxy > Domain > From); never derive these relationships
+// from Galaxy.site_id, which is the original platform's post/media identifier.
+// attr.counts stores per-Scope cached article counts.
 // Physical schema matches Lo3rwangAnchor; source-specific CHECK constraints live in SQL.
 model LocAnchor {
     uid                          String      @id @db.Char(8)
@@ -664,10 +677,15 @@ model Lo3rwangGalaxy {
     source_id                    String?     @db.Char(8)
     target_id                    String[]    @db.Text
     ref_id                       String?     @db.Char(8)
+    // site: literal source/platform name, not the native post identifier.
     site                         String?     @db.Text
     place_id                     String?     @db.Char(8)
+    // media_link: real media URL strings (not Anchor UIDs or media IDs).
+    // url above is the article permalink; media_link may hold multiple URLs.
     media_link                   String[]    @db.VarChar
     date                         DateTime?   @db.Date
+    // site_id: source-native post/media ID, NOT loc_anchor.uid or Galaxy.uid.
+    // Keep the upstream ID unchanged for reimport/deduplication.
     site_id                      String?     @db.Text
     culture                      Boolean?     @default(false)
     trace                        Boolean?     @default(false)
@@ -790,10 +808,15 @@ model LrunesGalaxy {
     source_id                    String?     @db.Char(8)
     target_id                    String[]    @db.Text
     ref_id                       String?     @db.Char(8)
+    // site: literal source/platform name, not the native post identifier.
     site                         String?     @db.Text
     place_id                     String?     @db.Char(8)
+    // media_link: real media URL strings (not Anchor UIDs or media IDs).
+    // url above is the article permalink; media_link may hold multiple URLs.
     media_link                   String[]    @db.VarChar
     date                         DateTime?   @db.Date
+    // site_id: source-native post/media ID, NOT loc_anchor.uid or Galaxy.uid.
+    // Keep the upstream ID unchanged for reimport/deduplication.
     site_id                      String?     @db.Text
     statics                      Boolean?     @default(false)
     culture                      Boolean?     @default(false)

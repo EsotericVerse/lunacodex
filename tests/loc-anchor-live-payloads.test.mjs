@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {assertZModelAnchorFeatureRows} from '../packages/zenstack/import-validation.mjs';
 import {schema} from '../packages/zenstack/schema.mjs';
 import {parseAnchorFeatureTransaction} from '../app/loc/model/anchor-feature-transactions.mjs';
+import {indexZModelAnchorHierarchy,nextZModelAnchorType} from '../packages/zenstack/anchor-hierarchy.mjs';
 
 const anchor=(type,attr,uid='AAAA0001')=>({uid,type,attr,invisible:false,num:0});
 
@@ -19,6 +20,33 @@ test('persisted SiteAnchor count caches are accepted without redefining num',()=
     anchor('domain',{uid:[],counts:{lo3rwang:'999'}})
   ]),/counts/);
   assert.equal(rows[0].num,0);
+});
+
+test('SiteAnchor ZModel applies exact Universe > Galaxy > Domain > From links',()=>{
+  assert.deepEqual(Object.keys(schema.typeDefs.SiteAnchor.fields),
+    ['universe','galaxy','domain','from']);
+  assert.equal(nextZModelAnchorType('source','universe'),'galaxy');
+  assert.equal(nextZModelAnchorType('source','galaxy'),'domain');
+  assert.equal(nextZModelAnchorType('source','domain'),'from');
+  assert.equal(nextZModelAnchorType('source','from'),null);
+  const rows=[
+    anchor('universe',{uid:['BBBB0002']},'AAAA0001'),
+    anchor('galaxy',{uid:['CCCC0003']},'BBBB0002'),
+    anchor('domain',{uid:['DDDD0004']},'CCCC0003'),
+    anchor('from',{uid:[],counts:{lo3rwang:0,lrunes:0}},'DDDD0004')
+  ];
+  assert.equal(assertZModelAnchorFeatureRows(rows),rows);
+  const tree=indexZModelAnchorHierarchy(rows,{family:'source',strict:true});
+  assert.deepEqual(tree.roots,['AAAA0001']);
+  assert.deepEqual(tree.descendants('AAAA0001'),{
+    uids:['AAAA0001','BBBB0002','CCCC0003','DDDD0004'],missing:[],complete:true
+  });
+  assert.throws(()=>assertZModelAnchorFeatureRows([
+    anchor('from',{uid:['EEEE0005']})
+  ]),/FromAnchor.*terminal/);
+  assert.throws(()=>indexZModelAnchorHierarchy([
+    anchor('from',{uid:['EEEE0005']})
+  ],{family:'source'}),/FromAnchor.*terminal/);
 });
 
 test('PointAnchor preserves stored text or text aliases without coercion',()=>{

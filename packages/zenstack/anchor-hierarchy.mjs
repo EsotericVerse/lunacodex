@@ -107,6 +107,11 @@ export function mediaAnchorRecord(values={}){
 // these are the corresponding *article carrier* fields on <scope>_galaxy.
 // Keeping this map explicit prevents a semantic ZModel from being mistaken
 // for a new SQL table or from silently choosing a different physical field.
+// 'source' intentionally maps to Galaxy.site (the platform NAME), not
+// Galaxy.site_id (the upstream post/media ID) or silver.loc_anchor.uid
+// (the eight-character source-tree Anchor UID). Those IDs are unrelated.
+// 'media' maps to Galaxy.media_link, which contains real URL strings;
+// it is NOT a MediaAnchor UID edge. Galaxy.url is the article permalink.
 export const ANCHOR_GROUP_GALAXY_FIELDS=Object.freeze({
   time:Object.freeze(['date','createtime']),
   space:Object.freeze(['location','place_id']),
@@ -189,8 +194,8 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
   KeywordAnchor:{pattern:{type:'PatternAnchor',optional:true},item:{type:'ItemAnchor',optional:true},
     group:{type:'GroupAnchor',optional:true},class:{type:'ClassAnchor',optional:true},
     category:{type:'CategoryAnchor',optional:true}},
-  SiteAnchor:{from:{type:'FromAnchor',optional:true},domain:{type:'DomainAnchor',optional:true},
-    galaxy:{type:'GalaxyAnchor',optional:true},universe:{type:'UniverseAnchor',optional:true}},
+  SiteAnchor:{universe:{type:'UniverseAnchor',optional:true},galaxy:{type:'GalaxyAnchor',optional:true},
+    domain:{type:'DomainAnchor',optional:true},from:{type:'FromAnchor',optional:true}},
   LRunes66:{rune_id:{type:'Int'},rune_name:{type:'String',optional:true},
     english_name:{type:'String',optional:true},totem:{type:'String',optional:true},
     group_name:{type:'String',optional:true},moon_phase:{type:'Int',optional:true},
@@ -205,6 +210,14 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
     ritual_advice:{type:'String',optional:true},harmony_advice:{type:'String',optional:true},
     class_enable:{type:'Boolean',optional:true}}
 });
+
+// A FromAnchor is the terminal SiteAnchor discriminator. The physical
+// payload still stores uid:[] (and ZModel accepts that legacy shape), but a
+// nonempty list cannot silently become an unmodeled fifth Source level.
+export function assertSiteAnchorLeaf(type,attr){
+  if(type==='from'&&Array.isArray(attr?.uid)&&attr.uid.length>0)
+    throw new TypeError('LOC FromAnchor is a terminal Source node; attr.uid must be empty');
+}
 
 // TREE MODEL is a separate relationship layer over typed/composite Models.
 // Parents/children are real Anchor UIDs, never matching titles or Galaxy UIDs.
@@ -277,7 +290,9 @@ export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
     const uid=String(row?.uid||'');
     if(!UID.test(uid)||nodes.has(uid))
       throw new Error('Invalid or repeated Anchor UID: '+uid);
-    nodes.set(uid,{uid,type,title:String(row?.title||''),attr:attrOf(row)});
+    const attr=attrOf(row);
+    if(family==='source')assertSiteAnchorLeaf(type,attr);
+    nodes.set(uid,{uid,type,title:String(row?.title||''),attr});
   }
   const unresolved=[],relations=[];
   for(const node of nodes.values()){
