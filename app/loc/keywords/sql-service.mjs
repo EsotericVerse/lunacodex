@@ -1,3 +1,4 @@
+import {HEAVY_INITIAL_ROWS} from '../query/query-batch-size.mjs';
 // LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
 // Anchor.num owns aggregate counts. No Pattern index or Galaxy UID postings.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
@@ -47,13 +48,9 @@ const galaxyListMetadataColumns=Object.freeze([
 ]);
 const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
   .filter(column=>['uid','title','content','keyword'].includes(column)));
-// Cloudflare Pages Functions kills a request around its own CPU/wall-clock
-// budget; this is the only genuinely fixed, external number in the whole
-// resumable-scan design — every other knob (page size, checkpoint cadence)
-// reacts to measured state. analyzeIncrementalKeywordPatterns checkpoints at
-// 80% of this, leaving headroom to actually write the checkpoint before a
-// hard kill. Lower this if the platform's real ceiling turns out tighter.
-const KEYWORD_ANALYSIS_TIME_BUDGET_MS=20000;
+// Normal scans do not intentionally stop at a fixed 20-second window.
+// Item scan retains periodic durable checkpoints only for actual failures.
+// Cloudflare execution limits remain external and require production testing.
 
 const removeLegacyKeywordHitCache=value=>{
   const {uidlists,articles,hits,total,...links}=value||{};
@@ -339,7 +336,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   const result=await analyzeItemKeywordCounts({
     ...itemScope(tree),expectedCount,readMetadataPage:reader,
     minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
-    pageSize:256,resume,timeBudgetMs:KEYWORD_ANALYSIS_TIME_BUDGET_MS,
+    pageSize:HEAVY_INITIAL_ROWS,resume,timeBudgetMs:null,
     readContent:uids=>db.selectFrom(galaxyName(scope))
       .select([...galaxyUidContentColumns,'date'])
       .where('uid','in',uids).execute(),
