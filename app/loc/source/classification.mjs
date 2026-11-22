@@ -37,11 +37,12 @@ const sourceRoot=title=>{
  * The DB query is handled by the existing public ZModel reader; this creates
  * no foreign keys, persistent aliases, extra tables, or article-side changes.
  */
-export function sourceTaxonomyFromAnchors(rows=[]){
+export function sourceTaxonomyFromAnchors(rows=[],{includeHidden=false}={}){
   const allowed=new Set(SOURCE_LEVELS);
   const nodes=(Array.isArray(rows)?rows:[]).filter(row=>
     allowed.has(row?.type)&&typeof row?.uid==='string'&&row.uid&&
-    typeof row?.title==='string'&&row.title.trim()&&row.invisible!==true);
+    typeof row?.title==='string'&&row.title.trim()&&
+    (includeHidden||row.invisible!==true));
   const byUid=new Map(nodes.map(row=>[row.uid,row]));
   // Validate links and read typed children from the existing ZModel hierarchy.
   // Partial published lists may omit hidden descendants; unresolved IDs are not inferred.
