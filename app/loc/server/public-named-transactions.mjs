@@ -33,7 +33,8 @@ function scopeId(value){
   return id;
 }
 function normalize(body){
-  if(!KEYS(body,['kind','operation','scope','mode','cursor','limit','args','name'])||
+  if(!KEYS(body,['kind','operation','scope','mode','cursor','limit','args','name',
+    'feature','startDate','endDate','category','result'])||
     body.kind!=='transaction')throw bad();
   if(body.operation==='time-anchors'){
     if(!KEYS(body,['kind','operation','scope','mode','cursor','limit']))throw bad();
