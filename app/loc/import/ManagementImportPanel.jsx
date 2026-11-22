@@ -447,11 +447,11 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         pendingMediaUids.clear();
         mediaSizer.observe(count,Date.now()-started);
       };
-      function attach(uid,id){
-        if(!uid||!id)return;
+      function attach(uid,url){
+        const mediaUrl=String(url||'').trim();
+        if(!uid||!/^https?:\/\//i.test(mediaUrl))return;
         if(!related.has(uid))related.set(uid,new Set());
-        const mediaUrl=String(id||'').trim();
-        if(/^https?:\/\//i.test(mediaUrl))related.get(uid).add(mediaUrl);
+        related.get(uid).add(mediaUrl);
       }
       for(const item of normalized){
         const uid=knownArticleIds.get(item.record?.uid);
