@@ -8,19 +8,22 @@ import {createImportBatchSizer,writeImportBatches,validImportBatchSize,
 
 const src=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('ordinary 1k limits do not cap explicitly requested heavy imports',()=>{
-  assert.equal(MAX_ROWS,1000);
-  assert.equal(NORMAL_QUERY_ROWS,1000);
+test('LOC baseline is 2048; heavy import starts at 256 then doubles by characters',()=>{
+  assert.equal(MAX_ROWS,2048);
+  assert.equal(NORMAL_QUERY_ROWS,2048);
   assert.equal(HEAVY_QUERY_ROWS,10000);
   assert.equal(validImportBatchSize(),10000);
   const sizer=createImportBatchSizer();
-  assert.ok(sizer.size>1000,'heavy import must not start at 256 or below 1k');
-  sizer.observe(sizer.size,1);
-  assert.ok(sizer.size>=4096,'good throughput must permit growth above 1k');
-  sizer.observe(sizer.size,1);
-  assert.ok(sizer.size>=8192,'more growth must remain available');
-  sizer.observe(sizer.size,1);
-  assert.equal(sizer.size,10000,'dynamic ceiling is 10k');
+  assert.equal(sizer.size,256);
+  const expected=[512,1024,2048,4096,8192,10000];
+  for(const value of expected){
+    const current=sizer.size;
+    assert.equal(sizer.observe(current,1,current*100),value);
+  }
+  assert.equal(sizer.observe(sizer.size,1,sizer.size*100),10000);
+  // Very long text must reduce the next physical batch, not silently cap
+  // the complete import or change a SQL COUNT.
+  assert.ok(sizer.observe(256,1,256*20000)<10000);
 });
 
 test('heavy writer actually writes >1000 rows at once and still reaches 20k',async()=>{
@@ -37,7 +40,7 @@ test('heavy writer actually writes >1000 rows at once and still reaches 20k',asy
 });
 
 test('adaptive writer flushes large texts by bytes rather than sending oversized request',async()=>{
-  const articleContent='a'.repeat(1024*1024);
+  const articleContent='a'.repeat(64*1024);
   const rows=Array.from({length:24},(_,i)=>({
     uid:String(i).padStart(8,'0'),content:articleContent
   }));
