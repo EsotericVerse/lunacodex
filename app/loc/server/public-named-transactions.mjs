@@ -4,6 +4,7 @@ import {executeKyselyAnalytics,executePortableKyselyAnalytics} from '../provider
 import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {assertZModelAnchorFeatureRows} from '../../../packages/zenstack/import-validation.mjs';
 import {publishedLocAccess} from '../permissions/loc-business-grants.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
@@ -284,7 +285,7 @@ export async function handleNamedPublicTransaction(request,env={},{
         if(operation.mode==='public')query=query.where('invisible','=',false);
         if(operation.cursor)query=query.where('uid','>',operation.cursor);
         const rows=await query.execute();
-        const page=rows.slice(0,operation.limit);
+        const page=assertZModelAnchorFeatureRows(rows.slice(0,operation.limit));
         return {data:page,nextCursor:rows.length>operation.limit
           ?String(page.at(-1).uid):null};
       });
