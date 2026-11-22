@@ -20,7 +20,7 @@ import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-model
 
 const GALAXY_PERMISSION_LABELS=Object.freeze({
   statics:'統計',culture:'文化',search:'搜尋',trace:'痕跡',list:'文章列表',
-  keyword:'關鍵詞',extract:'允許閱讀全文',others:'其他'
+  keyword:'關鍵詞',extract:'搜尋片段',others:'其他'
 });
 
 const datetimeLocal=value=>{
@@ -251,7 +251,7 @@ export default function ManagementArticlePublisher({scopeId}){
           <fieldset className="scope-publisher-panel" style={{border:0,padding:0}}>
             <legend>文章八項權限</legend>
             {privateGalaxySource({site:draft.source,site_id:draft.site_id,title:draft.title})
-              ?<p className="scope-status">PR 開發紀錄保持私人。MCP 可顯示列表（list），並以 extract 控制能否閱讀全文。</p>:null}
+              ?<p className="scope-status">MCP 與 PR 開發紀錄保持私人，不可啟用公開旗標。</p>:null}
             {GALAXY_ABLE_KEYS.map(key=><label className="scope-setting-toggle" key={key}>
               <input type="checkbox" checked={draft.permissions?.[key]===true}
                 disabled={privateGalaxySource({site:draft.source,site_id:draft.site_id,title:draft.title})}

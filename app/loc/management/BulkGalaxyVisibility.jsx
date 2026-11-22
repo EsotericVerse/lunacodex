@@ -7,7 +7,7 @@ import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 
 const FIELDS=Object.freeze([
   ['statics','統計'],['culture','文化'],['search','搜尋'],['trace','痕跡'],
-  ['list','文章列表'],['keyword','關鍵詞'],['extract','允許閱讀全文'],['others','其他']
+  ['list','文章列表'],['keyword','關鍵詞'],['extract','搜尋片段'],['others','其他']
 ]);
 const EMPTY=()=>Object.fromEntries(FIELDS.map(([key])=>[key,'keep']));
 export default function BulkGalaxyVisibility({scopeId}){
