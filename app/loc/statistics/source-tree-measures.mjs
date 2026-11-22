@@ -70,15 +70,23 @@ export function sourceIntersectionOutline(metrics=[]){
     siblings.push(node);
     children.set(node.parentUid,siblings);
   }
-  return nodes.filter(node=>node.type==='universe'&&!node.parentUid)
+  const withDomains=galaxy=>({...galaxy,
+    domains:(children.get(galaxy.uid)||[]).filter(node=>node.type==='domain')});
+  const groups=nodes.filter(node=>node.type==='universe'&&!node.parentUid)
     .map(universe=>({
       uid:universe.uid,name:universe.name,
       galaxies:(children.get(universe.uid)||[])
-        .filter(node=>node.type==='galaxy')
-        .map(galaxy=>({
-          ...galaxy,
-          domains:(children.get(galaxy.uid)||[])
-            .filter(node=>node.type==='domain')
-        }))
+        .filter(node=>node.type==='galaxy').map(withDomains),
+      domains:[]
     }));
+  // An absent Universe or Galaxy is NOT a reason to drop its child. Keep
+  // separate unmatched-level sections, without manufacturing an Anchor UID.
+  const orphanGalaxies=nodes.filter(node=>node.type==='galaxy'&&
+    node.path?.length===1).map(withDomains);
+  const orphanDomains=nodes.filter(node=>node.type==='domain'&&
+    node.path?.length===1);
+  if(orphanGalaxies.length||orphanDomains.length)
+    groups.push({uid:'__unclassified__',name:'未分類',
+      galaxies:orphanGalaxies,domains:orphanDomains});
+  return groups;
 }
