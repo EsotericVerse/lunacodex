@@ -1,3 +1,5 @@
+import {sourceTaxonomyFromAnchors} from './classification.mjs';
+
 // Source selectors share LocAnchor's authoritative Universe/Galaxy/Domain/From
 // hierarchy. Category codes are the existing case-sensitive Anchor UIDs.
 export function sourceKeywordOptions(taxonomy){
@@ -31,4 +33,10 @@ export function sourceOutlineOptions(taxonomy){
     level:Math.max(0,(node.path||[]).length-1),
     path:node.path||[]
   }));
+}
+
+// The protected Source editor must also list invisible nodes so that an
+// administrator can restore or manage them. Public readers keep hiding them.
+export function sourceEditorOutlineOptions(anchorRows=[]){
+  return sourceOutlineOptions(sourceTaxonomyFromAnchors(anchorRows,{includeHidden:true}));
 }
