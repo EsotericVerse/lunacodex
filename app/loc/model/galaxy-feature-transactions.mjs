@@ -10,7 +10,11 @@ export const GALAXY_FEATURE_MODELS=Object.freeze({
   culture:Object.freeze({flag:'culture',name:'GalaxyCulture'}),
   statics:Object.freeze({flag:'statics',name:'GalaxyStatistics'}),
   search:Object.freeze({flag:'search',name:'GalaxySearch'}),
-  trace:Object.freeze({flag:'trace',name:'GalaxyTrace'})
+  trace:Object.freeze({flag:'trace',name:'GalaxyTrace'}),
+  list:Object.freeze({flag:'list',name:'GalaxyList'}),
+  keyword:Object.freeze({flag:'keyword',name:'GalaxyKeyword'}),
+  extract:Object.freeze({flag:'extract',name:'GalaxyExtract'}),
+  others:Object.freeze({flag:'others',name:'GalaxyOthers'})
 });
 const published=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&
   row.scope_id!=='loc'&&row.scope_id!=='admin').map(row=>row.scope_id));
@@ -30,7 +34,7 @@ const category=z.discriminatedUnion('type',[
 ]);
 const input=z.object({
   kind:z.literal('transaction'),operation:z.literal('galaxy-feature'),
-  feature:z.enum(['culture','statics','search','trace']),
+  feature:z.enum(['culture','statics','search','trace','list','keyword','extract','others']),
   scope:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
   startDate:date.optional(),endDate:date.optional(),category:category.optional(),
   sources:z.array(source).min(1).max(80).optional(),
@@ -117,6 +121,7 @@ function baseQuery(trx,model){
     q=q.where('content','ilike',pattern(term));
   for(const term of model.excludedTerms||[])
     q=q.where('content','not ilike',pattern(term));
+  if(model.feature==='extract')q=q.where('list','=',true);
   if(['uids','articles'].includes(model.result)){
     q=q.where('list','=',true);
     if(model.feature==='search')q=q.where('content','is not',null)
