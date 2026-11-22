@@ -72,15 +72,6 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
           ...(validDate(until)&&until>from?{end_date:until}:{}),
           title:trace.title||'時代',display_label:trace.title||'時代'});
       }
-      const points=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
-      for(const anchor of points){
-        const pointUid=text(anchor.uid);
-        items.push({id:groupId+':date:'+pointUid,uid:pointUid,scope_id:scope,
-          entry_type:'anchor',group_key:groupId,group_label:trace.title||'時代',
-          group_order:order,start_date:text(anchor.start_date).slice(0,10),
-          title:anchor.title||pointUid,display_label:'●',
-          class_name:'scope-time-original-anchor'});
-      }
       if(!isExpanded)continue;
       const seen=new Set();
       for(const [position,eventId] of list(trace.anchor_ids).map(text).entries()){
@@ -105,6 +96,18 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
             title:event.title||'期間',display_label:event.title||'期間',
             era_uid:uid,period_uid:eventId});
         }
+      }
+      const points=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
+      const dateGroup=groupId+':anchors';
+      if(points.length)groups.push({id:dateGroup,label:'　定錨點',
+        order:order+9000,className:'scope-time-trace-child'});
+      for(const anchor of points){
+        const pointUid=text(anchor.uid);
+        items.push({id:groupId+':date:'+pointUid,uid:pointUid,scope_id:scope,
+          entry_type:'anchor',group_key:dateGroup,group_label:'定錨點',
+          group_order:order+9000,start_date:text(anchor.start_date).slice(0,10),
+          title:anchor.title||pointUid,display_label:'●',
+          class_name:'scope-time-original-anchor'});
       }
     }
     // Every Scope has a final unclassified lane on the management river.
@@ -157,20 +160,6 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     const traceAnchors=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
     for(const anchor of traceAnchors)assigned.add(scope+':'+text(anchor.uid));
     if(!isExpanded)continue;
-    const anchorGroup='trace-anchors:'+scope+':'+id;
-    if(traceAnchors.length)groups.push({id:anchorGroup,label:'定錨點',
-      order:traceIndex*10000+1,className:'scope-time-trace-child'});
-    for(const anchor of traceAnchors){
-      const anchorId=text(anchor.uid),title=text(anchor.title)||anchorId;
-      items.push({id:groupId+':anchor:'+anchorId,
-        uid:anchorId,scope_id:scope,entry_type:'anchor',
-        group_key:anchorGroup,group_label:'定錨點',
-        group_order:traceIndex*10000+1,
-        start_date:text(anchor.start_date).slice(0,10),
-        display_label:'●',title,
-        class_name:'scope-time-original-anchor',
-        description:anchor.summary||anchor.description||''});
-    }
     const seenEvents=new Set();
     for(const [position,eventId] of eventIds.entries()){
       // A repeated link is a single event, not duplicated work/density.
@@ -219,6 +208,20 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
             group_order:traceIndex*10000+position+2});
         }
       }
+    }
+    const anchorGroup='trace-anchors:'+scope+':'+id;
+    if(traceAnchors.length)groups.push({id:anchorGroup,label:'定錨點',
+      order:traceIndex*10000+9000,className:'scope-time-trace-child'});
+    for(const anchor of traceAnchors){
+      const anchorId=text(anchor.uid),title=text(anchor.title)||anchorId;
+      items.push({id:groupId+':anchor:'+anchorId,
+        uid:anchorId,scope_id:scope,entry_type:'anchor',
+        group_key:anchorGroup,group_label:'定錨點',
+        group_order:traceIndex*10000+9000,
+        start_date:text(anchor.start_date).slice(0,10),
+        display_label:'●',title,
+        class_name:'scope-time-original-anchor',
+        description:anchor.summary||anchor.description||''});
     }
   }
   const unassigned=datedAnchors.filter(anchor=>
