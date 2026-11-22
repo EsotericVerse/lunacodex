@@ -1,3 +1,4 @@
+import {TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
 'use client';
 
 
@@ -350,12 +351,12 @@ async function readManagedTimeRecords(table,{signal=null}={}){
   if(!match)throw Error('TimeAnchor physical relation required');
   const scope=match[1];
   const collected=[],seen=new Set();
-  let afterUid='',pageRows=Math.min(2000,DB_QUERY_BATCH_SIZE);
+  let afterUid='',pageRows=DB_QUERY_BATCH_SIZE;
   let averageBytes=0,totalBytes=0;
   for(;;){
     if(signal?.aborted){const error=new Error('Time read cancelled');error.name='AbortError';throw error;}
     const result=await readTimeAnchorTransaction(scope,{
-      mode:'editor',cursor:afterUid,limit:Math.min(2000,pageRows),signal
+      mode:'editor',cursor:afterUid,limit:Math.min(TIME_ANCHOR_MAX_PAGE_ROWS,pageRows),signal
     });
     const rows=result.rows;
     if(!Array.isArray(rows)||rows.length>pageRows)
@@ -378,7 +379,7 @@ async function readManagedTimeRecords(table,{signal=null}={}){
     const measured=pageBytes/Math.max(1,rows.length);
     averageBytes=averageBytes===0||measured>averageBytes
       ?measured:averageBytes*.7+measured*.3;
-    pageRows=Math.max(1,Math.min(DB_QUERY_BATCH_SIZE*4,pageRows*2,
+    pageRows=Math.max(1,Math.min(TIME_ANCHOR_MAX_PAGE_ROWS,pageRows*2,
       Math.floor(TARGET_MANAGED_TIME_PAGE_BYTES/Math.max(128,averageBytes))));
   }
 }
