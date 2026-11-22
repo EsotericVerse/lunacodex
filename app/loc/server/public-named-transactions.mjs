@@ -83,10 +83,11 @@ function normalize(body){
       options.placeIds.some(uid=>!UID.test(String(uid||'')))))throw bad();
     if(options.withPoints!==undefined&&
       (view!=='trace_territory'||typeof options.withPoints!=='boolean'))throw bad();
-    // Only the four-dimensional Statistics territory projection may opt into
-    // Galaxy.statics; reject this flag on every unrelated analytics view.
+    // Trace and Statistics remain independent Galaxy switches. Only the
+    // Statistics place/territory projections may require both at once.
     if(options.statisticsOnly!==undefined&&
-      (view!=='trace_territory'||typeof options.statisticsOnly!=='boolean'))throw bad();
+      (!['trace_places','trace_territory'].includes(view)||
+       typeof options.statisticsOnly!=='boolean'))throw bad();
     if(options.offset!==undefined&&(!Number.isSafeInteger(options.offset)||
       options.offset<0||options.offset>100000))throw bad();
     for(const name of ['classUid','source','site','platform','exact'])
