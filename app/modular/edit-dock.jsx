@@ -6,7 +6,7 @@ import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents,transactionWrites} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
-import {useQueryClient} from '../../packages/zenstack/client-queries';
+import {useQueryClient,releaseTransientPageResources} from '../../packages/zenstack/client-queries';
 
 // UI only: a Scope's permission is checked before entering edit mode,
 // and every write still passes through its existing database authorization.
@@ -185,8 +185,14 @@ export function EditDockProvider({children,scopeId}){
     // Static management exports need a real HTML entrypoint, not an App Router
     // RSC transition: Cloudflare Pages does not serve that dynamic RSC request.
     // Only the edit-session timestamp is stored, never form input or drafts.
-    if(url.origin!==window.location.origin||/\/index\.html$/i.test(url.pathname)||
-      isManagementHref(url.href)){
+    const documentExit=url.origin!==window.location.origin||
+      /\/index\.html$/i.test(url.pathname)||isManagementHref(url.href);
+    // The six-key Dock may leave the homepage for a *static HTML* manager.
+    // PageResourceBoundary only sees SPA route-key changes and cannot abort
+    // outgoing reads before a full-document navigation. Do it explicitly,
+    // without touching Session, grants, or any explicit write operation.
+    releaseTransientPageResources({documentExit});
+    if(documentExit){
       window.location.assign(url.href);
     }else{
       if(history==='push')router.push(url.pathname+url.search+url.hash,{scroll});
@@ -312,7 +318,9 @@ export function EditDockProvider({children,scopeId}){
     if(!target)return;
     const destination=new URL(String(target),window.location.href);
     end();
-    // Static management entrypoints use real HTML navigation.
+    // Discard has the same old-page cleanup guarantee as six-key switches.
+    // Do not re-fetch public bootstrap on the document being discarded.
+    releaseTransientPageResources({documentExit:true});
     window.location.assign(destination.href);
   },[end]);
   const switchTo=useCallback((target,{history='replace',scroll=true}={})=>{
