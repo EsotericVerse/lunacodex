@@ -13,16 +13,10 @@ export function assignedSource(value,aliases=[],categories=[]){
   return found?.category_code||'others';
 }
 export function availableMemberMeasures(datasets=[],categories=[]){
-  const media=new Set();
-  for(const rows of datasets)for(const row of rows||[]){
-    if(row.kind==='media'&&row.category)media.add(lower(row.category));
-  }
   return [
     {id:'total',name:'全部作品'},
     {id:'text',name:'文字作品'},
-    {id:'multimedia',name:'多媒體'},
     ...categories.filter(x=>x.enabled!==false).map(row=>({id:'source:'+row.category_code,name:'作品分類 · '+row.display_name})),
-    ...[...media].sort().map(id=>({id:'media:'+id,name:'多媒體類型 · '+id})),
   ];
 }
 function measureRows(rows=[],metric,categories,aliases){
@@ -35,9 +29,7 @@ function measureRows(rows=[],metric,categories,aliases){
     let include=false;
     if(metric==='total')include=row.kind==='total';
     else if(metric==='text')include=row.kind==='total'&&row.category==='文字作品';
-    else if(metric==='multimedia')include=row.kind==='total'&&row.category==='多媒體';
     else if(metric.startsWith('source:'))include=row.kind==='source'&&assignedSource(row.category,aliases,categories)===metric.slice(7);
-    else if(metric.startsWith('media:'))include=row.kind==='media'&&lower(row.category)===metric.slice(6);
     if(include)counts.set(day,(counts.get(day)||0)+count);
   }
   return counts;
