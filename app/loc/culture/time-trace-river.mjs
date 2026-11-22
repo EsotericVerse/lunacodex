@@ -50,16 +50,23 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     });
   };
   if(editorOnly){
-    // Match the public Culture first river: one era lane (with actual date
-    // anchors), nested period lanes only after the era's (+) is opened.
-    // Keep the original record UID for selecting an item to edit.
-    for(const [traceIndex,trace] of traces.entries()){
+    // Management uses the same collapsed Era hierarchy as public Culture.
+    // A collapsed Era may paint its own interval, but MUST NOT instantiate
+    // every Period/Date lane. Each Period expands its dates independently.
+    // All rows come from the existing authorized snapshot: no extra SQL.
+    let groupOrder=0;
+    const addGroup=group=>{
+      const ordered={...group,order:groupOrder++};
+      groups.push(ordered);
+      return ordered.order;
+    };
+    const assignedToPeriod=new Set();
+    for(const trace of traces){
       const scope=text(trace.scope_id),uid=text(trace.uid);
       const groupId='trace:'+scope+':'+uid;
       const isExpanded=expanded.has(groupId);
-      const order=traceIndex*10000;
-      groups.push({id:groupId,label:text(trace.title)||'時代 '+uid,
-        collapsible:true,expanded:isExpanded,order,
+      const eraOrder=addGroup({id:groupId,label:text(trace.title)||'時代 '+uid,
+        collapsible:true,expanded:isExpanded,
         className:'scope-time-trace-parent'});
       const spans=list(trace.ranges).length?trace.ranges:[trace];
       for(const [segment,range] of spans.entries()){
@@ -68,33 +75,25 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
         if(!validDate(from)||range?.invalid)continue;
         items.push({id:groupId+':era:'+segment,uid,scope_id:scope,
           entry_type:'era',group_key:groupId,group_label:trace.title||'時代',
-          group_order:order,start_date:from,
+          group_order:eraOrder,start_date:from,
           ...(validDate(until)&&until>from?{end_date:until}:{}),
           title:trace.title||'時代',display_label:trace.title||'時代'});
       }
-      const points=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
-      const addDateAnchors=()=>{
-        const dateGroup=groupId+':anchors';
-        if(points.length)groups.push({id:dateGroup,label:'　定錨點',
-          order:order+9000,className:'scope-time-trace-child'});
-        for(const anchor of points){
-          const pointUid=text(anchor.uid);
-          items.push({id:groupId+':date:'+pointUid,uid:pointUid,scope_id:scope,
-            entry_type:'anchor',group_key:dateGroup,group_label:'定錨點',
-            group_order:order+9000,start_date:text(anchor.start_date).slice(0,10),
-            title:anchor.title||pointUid,display_label:'●',
-            class_name:'scope-time-original-anchor'});
-        }
-        };
-      if(!isExpanded){addDateAnchors();continue;}
-      const seen=new Set();
-      for(const [position,eventId] of list(trace.anchor_ids).map(text).entries()){
-        if(!eventId||seen.has(eventId))continue;
-        seen.add(eventId);
+      const seenPeriods=new Set();
+      for(const eventId of list(trace.anchor_ids).map(text)){
+        if(!eventId||seenPeriods.has(eventId))continue;
+        seenPeriods.add(eventId);
         const event=events.get(scope+':'+eventId);
+        // Determine membership without rendering the collapsed child nodes.
+        // One real Date can belong to multiple saved Periods and Eras.
+        const eventPoints=event?datedAnchors.filter(anchor=>withinTrace(anchor,event)):[];
+        for(const point of eventPoints)assignedToPeriod.add(text(point.scope_id)+':'+text(point.uid));
+        if(!isExpanded)continue;
         const periodGroup=groupId+':period:'+eventId;
-        groups.push({id:periodGroup,order:order+position+1,
-          label:'　'+(event?.title||'期間 '+eventId),
+        const periodExpanded=expanded.has(periodGroup);
+        const periodOrder=addGroup({id:periodGroup,
+          label:'期間｜'+(event?.title||'失效期間 '+eventId),
+          collapsible:Boolean(event),expanded:periodExpanded,depth:1,
           className:'scope-time-trace-child'});
         if(!event)continue;
         const ranges=list(event.ranges).length?event.ranges:[event];
@@ -104,37 +103,53 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
           if(!validDate(from)||range?.invalid)continue;
           items.push({id:periodGroup+':'+segment,uid:eventId,scope_id:scope,
             entry_type:'period',group_key:periodGroup,
-            group_label:event.title||'期間',group_order:order+position+1,
+            group_label:event.title||'期間',group_order:periodOrder,
             start_date:from,
             ...(validDate(until)&&until>from?{end_date:until}:{}),
             title:event.title||'期間',display_label:event.title||'期間',
             era_uid:uid,period_uid:eventId});
         }
+        if(!periodExpanded||!eventPoints.length)continue;
+        const dateGroup=periodGroup+':dates';
+        const dateOrder=addGroup({id:dateGroup,label:'定錨點',depth:2,
+          className:'scope-time-trace-child'});
+        for(const anchor of eventPoints){
+          const pointUid=text(anchor.uid);
+          items.push({id:dateGroup+':'+pointUid,uid:pointUid,scope_id:scope,
+            entry_type:'anchor',group_key:dateGroup,group_label:'定錨點',
+            group_order:dateOrder,start_date:text(anchor.start_date).slice(0,10),
+            title:anchor.title||pointUid,display_label:'●',
+            era_uid:uid,period_uid:eventId,
+            class_name:'scope-time-original-anchor'});
+        }
       }
-      addDateAnchors();
     }
-    // Every Scope has a final unclassified lane on the management river.
-    // Date anchors outside all Era ranges remain selectable/editable.
+    // Only dates without any actual linked Era -> Period membership belong
+    // at the very end. Keep their records available, but do not render the
+    // entire unclassified list until the visitor opens it.
     const unassigned=datedAnchors.filter(anchor=>
-      !traces.some(trace=>withinTrace(anchor,trace)));
-    const scopeIds=[...new Set([text(scopeId),...source.map(row=>text(row?.scope_id)).filter(Boolean),
+      !assignedToPeriod.has(text(anchor.scope_id)+':'+text(anchor.uid)));
+    const scopes=[...new Set([text(scopeId),...source.map(row=>text(row?.scope_id)).filter(Boolean),
       ...unassigned.map(anchor=>text(anchor.scope_id))].filter(Boolean))];
-    for(const [index,scope] of scopeIds.entries()){
+    for(const scope of scopes){
       const groupId='time-undefined:'+scope;
-      groups.push({id:groupId,label:'未定義',order:(traces.length+1)*10000+index,
+      const isExpanded=expanded.has(groupId);
+      const order=addGroup({id:groupId,label:'未歸屬定錨點',
+        collapsible:true,expanded:isExpanded,
         className:'scope-time-anchor-parent'});
+      if(!isExpanded)continue;
       for(const anchor of unassigned.filter(row=>text(row.scope_id)===scope)){
         const uid=text(anchor.uid);
         items.push({id:groupId+':'+uid,uid,scope_id:scope,
-          entry_type:'anchor',group_key:groupId,group_label:'未定義',
-          group_order:(traces.length+1)*10000+index,
-          start_date:text(anchor.start_date).slice(0,10),
+          entry_type:'anchor',group_key:groupId,group_label:'未歸屬定錨點',
+          group_order:order,start_date:text(anchor.start_date).slice(0,10),
           title:anchor.title||uid,display_label:'●',
           class_name:'scope-time-original-anchor'});
       }
     }
     return {items,groups};
   }
+
   for(const [traceIndex,trace] of traces.entries()){
     const scope=text(trace.scope_id),id=text(trace.uid);
     const groupId='trace:'+scope+':'+id;
