@@ -81,7 +81,7 @@ const KeywordSettings=dynamic(()=>import('../modular/features/KeywordSettings'),
 const Culture=dynamic(()=>import('../modular/features/Culture'),{loading:featureLoading('culture')});
 const CulturePublic=dynamic(()=>import('./views/CulturePublicReader'),{loading:featureLoading('culture')});
 const Search=dynamic(()=>import('../modular/features/Search').catch(recoverChunkOnce),{loading:featureLoading('search')});
-const SearchManagement=dynamic(()=>import('./search/SearchManagement'),{loading:featureLoading('search')});
+const SearchManagement=dynamic(()=>import('./search/SearchManagement').catch(recoverChunkOnce),{loading:featureLoading('search')});
 const Trace=dynamic(()=>import('../modular/features/Trace'),{loading:featureLoading('trace')});
 const RunesHomeView=dynamic(()=>import('./views/LrsPortalView'),{loading});
 const ManagementView=dynamic(()=>import('./scope/ScopeManagement').catch(recoverChunkOnce),{loading:featureLoading('manage')});
