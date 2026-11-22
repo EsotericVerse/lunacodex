@@ -62,6 +62,8 @@ export default function SourceTreePicker({
     <p className="scope-status">依 Universe 分組，選擇 Galaxy 或展開 Domain。</p>
     <ul>{sourceGroups.map(universe=><li className="scope-source-tree-node" key={universe.uid}>
       <h4 className="scope-source-tree-universe">{universe.name}</h4>
+      {universe.uid==='__unclassified__'&&universe.galaxies.length
+        ?<strong className="scope-source-tree-subgroup">未分類 Galaxy</strong>:null}
       <ul>{universe.galaxies.map(galaxy=><li className="scope-source-tree-node" key={galaxy.uid}>
         {buttonFor(galaxy)}
         {galaxy.domains.length?<details
@@ -74,6 +76,11 @@ export default function SourceTreePicker({
           </li>)}</ul>
         </details>:null}
       </li>)}</ul>
+      {universe.domains?.length?<div className="scope-source-tree-subgroup">
+        <strong>未分類 Domain</strong>
+        <ul>{universe.domains.map(domain=><li key={domain.uid}
+          className="scope-source-tree-node">{buttonFor(domain)}</li>)}</ul>
+      </div>:null}
     </li>)}</ul>
   </section>;
   return <section className="scope-source-tree-picker" aria-label={label}>
