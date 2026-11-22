@@ -149,67 +149,38 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     .filter(item=>item.class_enable!==false&&String(item.group_uid||''))
     .map(item=>[String(item.uid),String(item.group_uid)])),
   [keywordCatalog.data]);
+  const sourceMetrics=useMemo(()=>sourceIntersectionMetrics(catalog.data||{}),
+    [catalog.data]);
+  const timeMetrics=useMemo(()=>timeIntersectionMetrics(timeAnchors.data||[]),
+    [timeAnchors.data]);
+  const spaceMetrics=useMemo(()=>spaceIntersectionMetrics(spaceAnchors.data||[]),
+    [spaceAnchors.data]);
+  const hierarchyMetrics=useMemo(()=>[...timeMetrics,...spaceMetrics,...sourceMetrics],
+    [timeMetrics,spaceMetrics,sourceMetrics]);
+  const hierarchyCounts=useMemo(()=>fourDimensionDailyCounts({
+    selected:hierarchyMetrics,sourceRows:rows,
+    taxonomy:catalog.data||{},placeRows:territory.data||[]
+  }),[hierarchyMetrics,rows,catalog.data,territory.data]);
   const categoryList=useMemo(()=>{
-    const known=catalog.data?.categories||[],aliases=catalog.data?.aliases||[];
-    const basic=ownScopeCategoryCatalog(rows);
-    const grouped=new Map();
-    for(const row of rows){
-      if(row.kind!=='source')continue;
-      const id=assignedSource(row.category,aliases,known);
-      if(id==='unclassified'||othersActive.has(id))continue;
-      grouped.set(id,(grouped.get(id)||0)+(Number(row.item_count)||0));
-    }
-    const groups=[...grouped].filter(([,total])=>total>0).map(([id,total])=>({
-      id:metricId('group',id),kind:'group',name:known.find(x=>x.category_code===id)?.display_name||id,total
+    const metrics=hierarchyMetrics.map(item=>({
+      ...item,total:[...(hierarchyCounts.get(item.id)?.values()||[])]
+        .reduce((sum,n)=>sum+Number(n||0),0)
     }));
     const analysis=keywords.data?.statisticsEnabled?keywords.data:null;
-    const keywordGroups=(analysis?.groupTotals||[])
-      .filter(row=>Number(row.document_count||0)>0)
-      .map(row=>({id:metricId('keyword_group',row.group_uid),uid:String(row.group_uid),kind:'keyword_group',
-        group:String(row.group||'').trim(),name:String(row.group||'').trim(),total:Number(row.document_count)||0}));
-    const keywordItems=(analysis?.runeTotals||[])
-      .filter(row=>Number(row.document_count||0)>0)
-      .map(row=>({id:metricId('keyword_item',row.uid),kind:'keyword_item',
-        group_uid:keywordItemGroup.get(String(row.uid))||'',
-        name:String(row.label||row.uid),total:Number(row.document_count)||0}));
-    const keywordGroupsItems=keywordGroups.filter(group=>
-      keywordItems.some(item=>item.group_uid===group.uid))
-      .map(group=>({id:metricId('keyword_group_items',group.uid),
-        kind:'keyword_group_items',group_uid:group.uid,name:'群組內關鍵詞',total:0}));
-    const keywordAll=keywordTabAvailable?[{
-      id:metricId('keyword_all','all'),kind:'keyword_all',
-      name:'全部關鍵詞',total:0
-    }]:[];
-    const othersCounts=new Map();
-    for(const row of rows){
-      if(row.kind!=='source')continue;
-      const group=resolveOthers(row.category);
-      if(group)othersCounts.set(group,(othersCounts.get(group)||0)+(Number(row.item_count)||0));
-    }
-    const others=[...othersCounts].filter(([,count])=>count>0).map(([id,total])=>({
-      id:metricId('others_subgroup',id),kind:'others_subgroup',
-      name:id==='unclassified'?'未分類':othersActive.get(id)||id,total
+    const groups=(analysis?.groupTotals||[]).map(row=>({
+      id:metricId('keyword_group',row.group_uid),kind:'keyword_group',
+      uid:String(row.group_uid),name:String(row.group||row.group_uid),
+      total:Number(row.document_count)||0
     }));
-    let systemTotal=0,personalTotal=0;
-    for(const row of rows){
-      if(row.kind!=='source')continue;
-      const amount=Number(row.item_count)||0;
-      const personal=resolveOthers(row.category);
-      if(personal&&personal!=='unclassified')personalTotal+=amount;
-      else if(!personal&&assignedSource(row.category,aliases,known)!=='unclassified')systemTotal+=amount;
-    }
-    const rollups=[
-      {id:metricId('source_rollup','system'),kind:'source_rollup',
-        name:'作品分類',total:systemTotal},
-      {id:metricId('source_rollup','personal'),kind:'source_rollup',
-        name:'個人分類',total:personalTotal}
-    ].filter(item=>item.total>0);
-    return [...rollups,...groups,...basic,...others,
-      ...keywordAll,...keywordGroups,...keywordGroupsItems,...keywordItems];
-  },[rows,catalog.data,keywords.data,othersConfig.data,keywordItemGroup,keywordTabAvailable]);
+    const items=(analysis?.runeTotals||[]).map(row=>({
+      id:metricId('keyword_item',row.uid),kind:'keyword_item',
+      group_uid:keywordItemGroup.get(String(row.uid))||'',
+      name:String(row.label||row.uid),total:Number(row.document_count)||0
+    }));
+    return [...metrics,...groups,...items];
+  },[hierarchyMetrics,hierarchyCounts,keywords.data,keywordItemGroup]);
   const candidatesForLane=index=>categoryList.filter(item=>
-    (shownKinds[index]==='all'||dimensionForKind(item.kind)===shownKinds[index])&&
-    !['group','others_subgroup','total'].includes(item.kind));
+    dimensionForKind(item.kind)===shownKinds[index]);
   const chosen=Array.from({length:lanes},(_,index)=>{
     const candidates=candidatesForLane(index);
     const id=selected[index];
@@ -225,7 +196,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     return output;
   });
   const categories=selection.map(id=>categoryList.find(c=>c.id===id)).filter(Boolean);
-  const selectedKeywordItems=categories.some(item=>['keyword_all','keyword_group_items','keyword_item'].includes(item.kind));
+  const selectedKeywordItems=categories.some(item=>item.kind==='keyword_item');
   // Item-by-day data are not in the summary RPC. Load saved attributes only
   // when an item is actually selected, without reading or analyzing article bodies.
   const keywordItems=useAsyncResource({
@@ -254,39 +225,20 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       active.add(id);
       activeDays.set(day,active);
     };
-    for(const row of rows){
-      const day=dateOnly(row.day);
-      const rawId=String(row.kind)+'\u0000'+String(row.category||'');
-      const ids=[rawId];
-      if(row.kind==='source'){
-        const assigned=assignedSource(row.category,catalog.data?.aliases||[],catalog.data?.categories||[]);
-        const personal=resolveOthers(row.category);
-        if(personal&&personal!=='unclassified'){
-          ids.push('others_subgroup'+String.fromCharCode(0)+personal);
-          ids.push('source_rollup'+String.fromCharCode(0)+'personal');
-        }else if(!personal&&assigned!=='unclassified'){
-          ids.push('group\u0000'+assigned);
-          ids.push('source_rollup'+String.fromCharCode(0)+'system');
-        }else if(personal==='unclassified'){
-          ids.push('others_subgroup'+String.fromCharCode(0)+'unclassified');
-        }
-      }
-      for(const id of ids)add(day,id,Number(row.item_count)||0);
-    }
+    // The one selected hierarchy metric owns its counts; a child never adds
+    // another copy to its parent lane. Shared dates are intersections, not
+    // evidence that the same article matched multiple independent metrics.
+    for(const [id,byDay] of hierarchyCounts)
+      for(const [day,count] of byDay)add(day,id,count);
     // One Class per article. The existing summary already aggregates by day.
     for(const row of keywords.data?.classifications||[]){
       add(dateOnly(row.date),'keyword_group'+String.fromCharCode(0)+row.group_uid,Number(row.count)||0);
     }
     if(selectedKeywordItems){
       for(const row of keywordItems.data||[]){
-        const day=dateOnly(row.day);
-        const count=Number(row.document_count)||0;
-        if(row.kind==='keyword_all_day')
-          add(day,metricId('keyword_all','all'),count);
-        else if(row.kind==='item_day')
-          add(day,metricId('keyword_item',String(row.item_key)),count);
-        else if(row.kind==='group_items_day')
-          add(day,metricId('keyword_group_items',String(row.group_uid)),count);
+        if(row.kind==='item_day')
+          add(dateOnly(row.day),metricId('keyword_item',String(row.item_key)),
+            Number(row.document_count)||0);
       }
     }
     const chart=[];
@@ -308,7 +260,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
         value:chart.reduce((n,bucket)=>n+Number(bucket[category.id]||0),0)
       }))
     };
-  },[rows,categories.map(c=>c.id).join(String.fromCharCode(0)),start,end,unit,valid,catalog.data,othersConfig.data,keywords.data,keywordItems.data,selectedKeywordItems,keywordItemGroup]);
+  },[hierarchyCounts,categories.map(c=>c.id).join(String.fromCharCode(0)),
+    start,end,unit,valid,keywords.data,keywordItems.data,selectedKeywordItems]);
   const series=categories.map(c=>({key:c.id,label:c.name}));
   const enough=maximumLanes>=2&&categories.length===lanes;
   const availableCharts=semanticStatisticChartTypes({purpose:'comparison',rows:calculated.chart,series,distribution:calculated.totals});
