@@ -41,8 +41,9 @@ import {deleteRows,insertRows,updateRows} from '../../loc/db/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db/db-query.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
-import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
+import {sourceOutlineOptions} from '../../loc/source/outline-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
+import {buildCultureSourceTreeLanes,rollupCultureSourceDays} from '../../loc/culture/source-tree-lanes.mjs';
 import {useAccount} from '../../loc/auth/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
@@ -463,9 +464,12 @@ export default function Culture(){
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const sourceTaxonomy=sourceTaxonomyQuery.data;
-  const sourceStyleOptions=useMemo(()=>sourceKeywordOptions(sourceTaxonomy),[sourceTaxonomy]);
+  const sourceStyleOptions=useMemo(()=>sourceOutlineOptions(sourceTaxonomy),[sourceTaxonomy]);
   const stagedSourceRiver=Boolean(sourceTaxonomy)&&!isAggregateScope&&scopeId!=='local';
-  const expandedSourceRoots=['system','custom','media'].filter(id=>openCultureRoots.includes(id));
+  // The expanded items are saved loc_anchor UIDs; root family codes here
+  // are only an internal daily-aggregate query filter, never a UI level.
+  const expandedSourceRoots=(sourceTaxonomy?.roots||[])
+    .filter(row=>openCultureRoots.includes(row.uid)).map(row=>row.root);
   // Retrieve one bounded daily aggregate per selected period. Reuse it when
   // expanding a group, so a UI interaction never starts a second SQL job.
   const sourceRootQuery=useAsyncResource({
@@ -558,28 +562,6 @@ export default function Culture(){
     setKeywordDrillSource('');
     setKeywordDrillGroup('');
   },[scopeId]);
-  // Second-river source choices come from the exact Scope source snapshot.
-  // These must be available before choosing a keyword style.
-  const keywordSourceOptions=useMemo(()=>sourceRootQuery.data?.groups||sourceSnapshotQuery.data?.groups||[],[sourceRootQuery.data,sourceSnapshotQuery.data]);
-  // All source facets, including Music/Video, follow the same Anchor
-  // Universe tree; there is no standalone 'media-type source' selector.
-  const sourceOptionGroups=useMemo(()=>{
-    const taxonomy=sourceTaxonomy||{categories:[],aliases:[],roots:[]};
-    const categories=new Map(taxonomy.categories.map(row=>[row.category_code,row]));
-    const labels=new Map((taxonomy.roots||[]).map(row=>[row.root,row.title]));
-    const grouped=new Map();
-    for(const item of keywordSourceOptions){
-      const code=assignedSource(item.site,taxonomy.aliases,taxonomy.categories);
-      const root=categories.get(code)?.root||'custom';
-      if(!grouped.has(root))grouped.set(root,[]);
-      grouped.get(root).push(item);
-    }
-    return [...grouped].map(([root,items])=>({
-      label:labels.get(root)||root,
-      items:[...items].sort((x,y)=>String(x.display_label||'')
-        .localeCompare(String(y.display_label||''),locale))
-    }));
-  },[keywordSourceOptions,sourceTaxonomy,locale]);
   const keywordGroupOptions=useMemo(()=>Object.entries(styleQuery.data?.keywordMeta?.classes||{})
     .map(([id,name])=>({id,label:String(name||'').trim()}))
     .filter(item=>item.label),
@@ -643,7 +625,7 @@ export default function Culture(){
     const exact=groupedSources.find(item=>item.key===selectedRiverGroup);
     if(exact)return exact;
     const option=sourceStyleOptions.find(item=>item.key===selectedRiverGroup);
-    if(option?.type==='domain'){
+    if(option){
       const descendants=new Set((sourceTaxonomy?.tree||[])
         .filter(node=>node.path.includes(option.code)).map(node=>node.uid));
       const members=groupedSources.filter(group=>
@@ -1027,107 +1009,63 @@ export default function Culture(){
       };
     });
   },[riverAnalysis.suggestions,riverAnalysis.totalCount,selectedVirtualAnchorDates,classificationWindowStart,classificationWindowEnd,l,locale]);
-  // Three true parent lanes always exist; children are mounted inside the same
-  // vis-timeline chart only when their parent is expanded.
+  // The source river renders the *actual* four-level loc_anchor UID tree.
+  // A single child still occupies its own row; no Universe/Galaxy/Domain/From
+  // level is silently flattened into a site name.
   const showKeywordRiver=styleFilter==='rune66';
   const cultureRiver=useMemo(()=>{
-    const sourceRootLabels=new Map((sourceTaxonomy?.roots||[])
-      .map(node=>[node.root,node.title]));
-    const roots=[
-      {id:'system',label:sourceRootLabels.get('system')||l.system,order:0},
-      {id:'custom',label:sourceRootLabels.get('custom')||l.custom,order:300},
-      {id:'media',label:sourceRootLabels.get('media')||l.media,order:600}
-    ];
-    const bySource=new Map();
-    for(const group of groupedSources){
-      for(const name of group.sites)bySource.set(name,group);
-    }
-    // Children (expanded lanes) still draw the real per-day river, built
-    // from secondRiverBuckets, which only has data once a lane is expanded.
-    const subtotals=new Map();
-    const add=(map,key,count)=>map.set(key,(map.get(key)||0)+count);
-    for(const item of secondRiverBuckets){
-      const raw=String(item.category||''),day=String(item.start_date||'').slice(0,10);
-      if(!day)continue;
-      const group=bySource.get(raw);
-      const parent=group?.root||'custom';
-      const child=group?.key||parent+':unclassified';
-      const count=Number(item.item_count)||0;
-      add(subtotals,child+'\u0000'+day,count);
-    }
-    const childMaximum=(()=>{
-      const result=new Map();
-      for(const [key,n] of subtotals){
-        const code=key.slice(0,key.indexOf('\u0000'));
-        result.set(code,Math.max(result.get(code)||0,n));
-      }
-      return result;
-    })();
-    const childCounts=(()=>{
-      const counts=new Map();
-      for(const [key,count] of subtotals){
-        if(!Number.isFinite(count)||count<=0)continue;
-        const code=key.slice(0,key.indexOf('\u0000'));
-        counts.set(code,(counts.get(code)||0)+count);
-      }
-      return counts;
-    })();
-    // Root (collapsed) lanes: one flat bar sized by this source's share of
-    // the period total -- built straight from groupedSources, which already
-    // carries the window-total item_count (from the totals-only RPC for a
-    // staged scope, or from the full per-day snapshot otherwise). No per-day
-    // data is read just to size a collapsed lane.
-    const rootCounts=new Map();
-    for(const group of groupedSources)rootCounts.set(group.root,(rootCounts.get(group.root)||0)+(Number(group.item_count)||0));
-    const periodTotal=[...rootCounts.values()].reduce((sum,n)=>sum+n,0)||1;
+    const hierarchy=buildCultureSourceTreeLanes(
+      sourceTaxonomy,groupedSources,openCultureRoots);
+    const {days,maximum}=rollupCultureSourceDays(
+      secondRiverBuckets,groupedSources,sourceTaxonomy);
+    const periodTotal=hierarchy.total||1;
     const numberedLabel=(label,count)=>label+'（'+count.toLocaleString(locale)+'）';
-    const dayRow=(id,day,count,label,order,max,kind)=>({
+    const dayRow=(id,day,count,label,order,max,kind,sourceKey)=>({
       id:'dual:'+id+':'+day,entry_id:'dual:'+id+':'+day,
       entry_type:kind,group_key:'dual:'+id,group_label:label,group_order:order,
       start_date:day,end_date:nextRiverDay(day),item_count:count,
       density_ratio:count/Math.max(1,max),display_label:'',
+      source_group_code:sourceKey,
       title:day+' · '+label+' · '+count.toLocaleString(locale)
     });
-    const flatRow=(id,count,label,order,kind)=>({
+    const flatRow=(id,count,label,order,kind,sourceKey)=>({
       id:'dual:'+id+':flat',entry_id:'dual:'+id+':flat',
       entry_type:kind,group_key:'dual:'+id,group_label:label,group_order:order,
       start_date:classificationWindowStart,end_date:nextRiverDay(classificationWindowEnd),
       item_count:count,density_ratio:count/periodTotal,display_label:'',
+      source_group_code:sourceKey,
       title:label+' · '+count.toLocaleString(locale)+' / '+periodTotal.toLocaleString(locale)
     });
     const items=[],groups=[];
-    const activeChildren=new Set(groupedSources.filter(group=>group.item_count>0).map(group=>group.key));
-    const activeRoots=new Set([...rootCounts].filter(([,count])=>count>0).map(([key])=>key));
-    for(const parent of roots){
-      // Hide zero-count parent lanes in the requested interval entirely.
-      const parentCount=rootCounts.get(parent.id)||0;
-      if(!activeRoots.has(parent.id)||parentCount<=0)continue;
-      const members=groupedSources.filter(g=>g.root===parent.id&&activeChildren.has(g.key))
-        .sort((a,b)=>a.label.localeCompare(b.label,locale));
-      const expanded=openCultureRoots.includes(parent.id);
-      const onlyChild=members.length===1?members[0]:null;
-      // A lone child *is* the visible river: do not draw its parent's
-      // identical total and force an unnecessary second lane on expansion.
-      const label=onlyChild?.label||parent.label;
-      groups.push({id:'dual:root:'+parent.id,label:numberedLabel(label,parentCount),order:parent.order,
-        className:'scope-dual-river-root',collapsible:members.length!==1,
-        selectable:Boolean(onlyChild),sourceKey:onlyChild?.key||'',expanded});
-      items.push(flatRow('root:'+parent.id,parentCount,label,parent.order,'source_total'));
-      // A lone populated child is already represented by the parent lane.
-      if(!expanded||onlyChild||!sourceSnapshotQuery.data)continue;
-      members.forEach((group,index)=>{
-        const count=childCounts.get(group.key)||0;
-        // After expansion, use the actual loaded date buckets. Empty children
-        // must not create left-side labels or selectable blank lanes.
-        if(count<=0)return;
-        const id='dual:child:'+group.key;
-        groups.push({id,label:numberedLabel(group.label,count),order:parent.order+index+1,
-          className:'scope-dual-river-child',selectable:true,sourceKey:group.key});
-        for(const [key,count] of subtotals){
-          const [code,day]=key.split('\u0000');
-          if(code===group.key&&count>0)items.push({...dayRow('child:'+group.key,day,count,group.label,parent.order+index+1,childMaximum.get(group.key),'source_group'),source_group_code:group.key});
-        }
+    const activeRoots=new Set(hierarchy.visible
+      .filter(node=>node.level===0&&node.item_count>0)
+      .map(node=>node.uid||'unassigned'));
+    for(const [index,node] of hierarchy.visible.entries()){
+      const id='source:'+(node.uid||'unassigned');
+      const order=index+1;
+      const label=numberedLabel(node.label,node.item_count);
+      const kind=node.level>0&&node.selectable?'source_group':'source_total';
+      groups.push({
+        id:'dual:'+id,label,order,depth:node.level,
+        className:node.level===0?'scope-dual-river-root':'scope-dual-river-child',
+        collapsible:node.collapsible,selectable:node.selectable,
+        sourceKey:node.sourceKey,expanded:node.expanded
       });
+      // The primary row is a window-total (never an extra SQL query).
+      // After expanding a Universe, reuse its already-loaded daily buckets
+      // on individual source children, keeping parent UID rows intact.
+      let dayCount=0;
+      if(node.level>0&&sourceSnapshotQuery.data&&node.item_count>0){
+        for(const [key,count] of days){
+          const [uid,day]=key.split('\u0000');
+          if(uid!==node.uid||count<=0)continue;
+          dayCount++;
+          items.push(dayRow(id,day,count,node.label,order,
+            maximum.get(uid),kind,node.sourceKey));
+        }
+      }
+      if(dayCount===0)items.push(flatRow(id,node.item_count,node.label,
+        order,kind,node.sourceKey));
     }
     // "建議定錨點" is a permanent lane/track, exactly like the source-category
     // lanes above -- it must stay on the chart whenever there is underlying
@@ -1176,7 +1114,7 @@ export default function Culture(){
       }
     }
     return {items,groups,hasSourceData:activeRoots.size>0};
-  },[sourceTaxonomy,groupedSources,secondRiverBuckets,openCultureRoots,sourceSnapshotQuery.data,virtualAnchorItems,showKeywordRiver,keywordDrillItems,keywordGroupOptions,keywordDrillGroup,l,locale,classificationWindowStart,classificationWindowEnd,styleFilter,densityInputBuckets,anchorSuggestOpen]);
+  },[sourceTaxonomy,groupedSources,secondRiverBuckets,openCultureRoots,sourceSnapshotQuery.data,virtualAnchorItems,showKeywordRiver,keywordDrillItems,keywordGroupOptions,l,locale,classificationWindowStart,classificationWindowEnd,styleFilter,densityInputBuckets,anchorSuggestOpen]);
   const focusedCandidate=riverAnalysis.suggestions.find(item=>item.date===focusedAnchorDate);
   const anchorInsight=focusedCandidate?{
     date:focusedCandidate.date,before:Number(focusedCandidate.beforeCount)||0,
@@ -1198,10 +1136,12 @@ export default function Culture(){
         setKeywordDrillGroup(current=>current===groupId?'':groupId);
       return;
     }
-    if(!id.startsWith('dual:root:'))return;
-    const root=id.slice('dual:root:'.length);
-    setOpenCultureRoots(current=>current.includes(root)
-      ?current.filter(value=>value!==root):[...current,root]);
+    if(!id.startsWith('dual:source:'))return;
+    const uid=id.slice('dual:source:'.length);
+    // Only a saved SiteAnchor UID with actual children can be expanded.
+    if(!(sourceTaxonomy?.tree||[]).some(node=>node.uid===uid))return;
+    setOpenCultureRoots(current=>current.includes(uid)
+      ?current.filter(value=>value!==uid):[...current,uid]);
   };
   const selectCultureRiverGroup=id=>{
     const key=cultureRiver.groups.find(group=>group.id===id)?.sourceKey
@@ -1646,8 +1586,13 @@ export default function Culture(){
                             setSelectedRiverGroup(choice.key);
                             setSelectedCategory('');
                             setWorksOpen(false);
-                            setOpenCultureRoots(current=>current.includes(choice.root)
-                              ?current:[...current,choice.root]);
+                            const ancestorUids=(sourceTaxonomy?.tree||[])
+                              .find(node=>node.uid===choice.code)?.path?.slice(0,-1)||[];
+                            const hasChildren=(sourceTaxonomy?.tree||[])
+                              .some(node=>node.parentUid===choice.code);
+                            setOpenCultureRoots(current=>[...new Set([
+                              ...current,...ancestorUids,...(hasChildren?[choice.code]:[])
+                            ])]);
                           }else if(!next.startsWith('source:')){
                             setStyleFilter(next);
                             if(next==='none')setSelectedRiverGroup('');
@@ -1661,7 +1606,7 @@ export default function Culture(){
                         </optgroup>
                         {sourceStyleOptions.length?<optgroup label='來源'>
                           {sourceStyleOptions.map(item=><option key={item.key} value={'source:'+item.key}>
-                            {item.domain?item.domain+' / ':''}{item.label}
+                            {'\u00a0\u00a0\u00a0'.repeat(item.level)}{item.label}
                           </option>)}
                         </optgroup>:null}
                       </select>
