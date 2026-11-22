@@ -14,6 +14,7 @@ import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCou
 import {dbAuthClient,readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
 import {cachedRead} from '../db/semi-dynamic-cache.mjs';
 import {readGalaxyFeature} from './feature-transaction-client.mjs';
+import {readGalaxyRecords,readAnchorFeature} from '../model/feature-transaction-client.mjs';
 import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import {portableContainsTerm} from '../providers/portable-search.mjs';
@@ -219,8 +220,10 @@ export async function selectGalaxyContent(scope,uid,{authenticated=false,dbId=''
   // A single-article read uses the complete GalaxyUidRead projection. The
   // caller may still consume only `content`, but relation/anchor context is
   // no longer silently lost at this boundary.
-  return selectRowById(current.galaxy,{idColumn:'uid',id,
-    columns:galaxyUidReadColumns().join(','),authenticated,expectedDbId:dbId});
+  if(dbId)throw Error('Qualified external database reads need the authorized source');
+  const data=await readGalaxyRecords({scope:current.id,view:'detail',uids:[id]},
+    {editor:authenticated});
+  return data.rows[0]||null;
 }
 
 async function relatedArticleTitlesFor(scope,row,{includeHidden=false,dbId=''}={}){
@@ -230,14 +233,9 @@ async function relatedArticleTitlesFor(scope,row,{includeHidden=false,dbId=''}={
   const batches=[];
   for(let i=0;i<ids.length;i+=50)batches.push(ids.slice(i,i+50));
   const pages=await mapBounded(batches,3,async batch=>{
-    const {rows=[]}=await selectRows(scope.galaxy,{
-      columns:galaxyListColumns().join(','),
-      filters:[{column:'uid',operator:'in',value:batch},
-        ...(!includeHidden?[articlePermissionFilter(scope,'list')]:[])],
-      orFilter:'',
-      limit:batch.length,
-      authenticated:includeHidden,expectedDbId:dbId
-    });
+    if(dbId)throw Error('Qualified external database reads need the authorized source');
+    const {rows}=await readGalaxyRecords({scope:scope.id,view:'list',uids:batch},
+      {editor:includeHidden});
     return rows;
   });
   return Object.fromEntries(pages.flat().map(item=>[String(item.uid),String(item.title||'').trim()]));
@@ -294,10 +292,9 @@ async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
     // Trace reader projects native attr.point/attr.path without relying on
     // removed trace_type, anchor_list or route_list physical columns.
     const [pointPage,maps]=await Promise.all([
-      selectRows('silver.'+scope.id+'_anchor',{columns:'uid,type,title',
-        filters:[{column:'uid',operator:'eq',value:placeId},
-          {column:'type',operator:'eq',value:'point'}],
-        limit:1,authenticated}),
+      readAnchorFeature({scope:scope.id,family:'space',
+        types:['point'],uids:[placeId],limit:1},{editor:authenticated})
+        .then(data=>({rows:data.rows})),
       readTraceMapIndex(scope.id,{includeHidden:authenticated})
     ]);
     const place=pointPage.rows[0]||null;
@@ -329,15 +326,10 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
   if(!id)return null;
   // One exact UID SELECT loads the selected article through GalaxyUidRead;
   // list paths stay on GalaxyList and never read article content.
-  const {rows:articleRows}=await selectRows(current.galaxy,{
-    // GalaxyUidRead is the article detail projection. The separate attr
-    // flags are fetched only as the existing visibility guard's input.
-    columns:galaxyUidReadWithPolicyColumns().join(','),
-    filters:[{column:'uid',operator:'eq',value:id},
-      ...(!includeHidden?[articlePermissionFilter(current,'list')]:[])],
-    orFilter:'',
-    limit:1,authenticated:includeHidden,expectedDbId:dbId
-  });
+  if(dbId)throw Error('Qualified external database reads need the authorized source');
+  const {rows:articleRows}=await readGalaxyRecords({
+    scope:current.id,view:'detail',uids:[id]
+  },{editor:includeHidden});
   const row=articleRows[0]||null;
   if(!row||(!includeHidden&&galaxyAble(row).list===false))return null;
   const placeId=String(row.place_id||'').trim();

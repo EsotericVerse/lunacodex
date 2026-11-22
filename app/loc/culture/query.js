@@ -14,6 +14,8 @@ import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {readTimeAnchorTransaction,readAllTimeAnchorTransactions} from './time-anchor-transaction.mjs';
+import {readGalaxyFeature} from '../galaxy/feature-transaction-client.mjs';
+import {readAnchorFeature} from '../model/feature-transaction-client.mjs';
 
 
 
@@ -607,16 +609,20 @@ export async function selectCultureArticleListPage(scope,{
   // Fetch one lookahead row rather than a full COUNT(*) on every page.
   // Only the current 100 articles are retained/rendered; the 101st row is
   // merely a hasMore signal and is discarded before returning.
-  const {rows=[]}=await selectRows(scope.galaxy,{
-    // Every non-local article list has the same GalaxyList shape. The local
-    // compatibility table still exposes its legacy `able` JSON envelope.
-    columns:scopeId==='local'?'uid,title,createtime,site,able':galaxyReadColumns('GalaxyList').join(','),
-    filters,
-    // Deterministic order keeps historical pages stable when dates tie.
-    orders:[{column:'createtime',ascending:sortDirection==='asc'},
-      {column:'uid',ascending:true}],
-    limit:pageSize+1,offset:pageOffset,signal
-  });
+  const response=scopeId==='local'
+    ?await selectRows(scope.galaxy,{
+      columns:'uid,title,createtime,site,able',filters,
+      orders:[{column:'createtime',ascending:sortDirection==='asc'},
+        {column:'uid',ascending:true}],
+      limit:pageSize+1,offset:pageOffset,signal
+    })
+    :{rows:(await readGalaxyFeature({
+      feature:'culture',scope:scopeId,startDate:start,endDate:end,
+      sources:selectedSources.length?selectedSources.filter(Boolean):undefined,
+      result:'articles',sortDirection:sortDirection==='asc'?'asc':'desc',
+      limit:pageSize,offset:pageOffset,signal
+    })).data.rows};
+  const rows=response.rows||[];
   const normalized=rows.slice(0,pageSize).map(row=>{
     const hidden=scopeId==='local'?row.able?.list===false:row.list===false;
     return {
