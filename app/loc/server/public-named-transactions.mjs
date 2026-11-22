@@ -26,7 +26,7 @@ const ANALYTICS=new Set(['culture_list','trace_places','trace_territory',
   'trace_daily','trace_keywords','lane_daily','shared_classes','search_summary',
   'keyword_catalog','keyword_summary']);
 const ANALYTICS_OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site',
-  'offset','media','mediaTypeGroups','platform','exact','withPoints']);
+  'offset','platform','exact','withPoints']);
 const ACTION_ARGS=Object.freeze({
   block_list:['p_scope_id'],hero_block:['p_type'],
   read_scope_page_copy:['p_scope_id'],
@@ -83,10 +83,6 @@ function normalize(body){
       options.placeIds.some(uid=>!UID.test(String(uid||'')))))throw bad();
     if(options.withPoints!==undefined&&
       (view!=='trace_territory'||typeof options.withPoints!=='boolean'))throw bad();
-    if(options.media!==undefined&&typeof options.media!=='boolean')throw bad();
-    if(options.mediaTypeGroups!==undefined&&
-      (view!=='lane_daily'||options.media!==true||
-        typeof options.mediaTypeGroups!=='boolean'))throw bad();
     if(options.offset!==undefined&&(!Number.isSafeInteger(options.offset)||
       options.offset<0||options.offset>100000))throw bad();
     for(const name of ['classUid','source','site','platform','exact'])
