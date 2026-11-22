@@ -1,6 +1,6 @@
 // One format contract for JSON Import and Source Refresh. No database authority lives here.
 // Archive size limits are configuration, not proof of successful large-file import E2E.
-import {MAX_ROWS,HEAVY_INITIAL_ROWS,HEAVY_QUERY_ROWS,createTextAdaptiveRows,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
+import {MAX_ROWS,HEAVY_INITIAL_ROWS,HEAVY_QUERY_ROWS,IMPORT_WRITE_TARGET_BYTES,createTextAdaptiveRows,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
 import {sourceImportModel} from '../../../packages/zenstack/import-source-models.mjs';
@@ -353,7 +353,7 @@ export function extractImportCreatedAt(value,depth=0){
 // The existing Native managed-write request envelope is 700 KB; this smaller
 // transport payload target leaves room for the operation's JSON wrapper and
 // ZModel normalization. 10k rows is only a ceiling, not a forced SQL LIMIT.
-export const IMPORT_PAYLOAD_TARGET_BYTES=480000;
+export const IMPORT_PAYLOAD_TARGET_BYTES=IMPORT_WRITE_TARGET_BYTES;
 const importRowJson=row=>JSON.stringify(row);
 const importRowBytes=row=>new TextEncoder().encode(importRowJson(row)).byteLength;
 const importBatchCharacters=rows=>rows.reduce((sum,row)=>sum+importRowJson(row).length,0);
