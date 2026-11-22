@@ -69,6 +69,9 @@ export default function CultureTimelineEditor({
   const [draft,setDraft]=useState(()=>blank(defaultType));
   const [selectedId,setSelectedId]=useState('');
   const [browseType,setBrowseType]=useState(defaultType);
+  // Bulk visibility is independently typed; the hierarchical browser never
+  // forces users to change editor drafts just to manage a different tier.
+  const [bulkType,setBulkType]=useState('era');
   const [busy,setBusy]=useState(false);
   const [visibilitySelection,setVisibilitySelection]=useState([]);
   const [visibilityBusy,setVisibilityBusy]=useState(false);
@@ -463,16 +466,25 @@ export default function CultureTimelineEditor({
     </div>:null}
     {query.isPending?<p className="scope-status" role="status">{copy.uiExtra.dataErrors.loading}</p>:null}
     <details className="scope-card">
-      <summary>大量隱藏／公開{displayType[browseType]}（已選 {visibilitySelection.length} 筆）</summary>
+      <summary>大量隱藏／公開時間紀錄（已選 {visibilitySelection.length} 筆）</summary>
       <div className="scope-stat-controls">
-        <button type="button" className="loc-button" disabled={visibilityBusy} onClick={()=>setVisibilitySelection(rows.filter(row=>row.type===browseType).map(row=>row.uid))}>全部勾選</button>
+        <label>管理層級
+          <select className="scope-select" value={bulkType}
+            disabled={visibilityBusy} onChange={event=>{
+              setBulkType(event.target.value);setVisibilitySelection([]);
+            }}>
+            {TYPE_TABS.map(type=><option key={type} value={type}>{displayType[type]}</option>)}
+          </select>
+        </label>
+        <button type="button" className="loc-button" disabled={visibilityBusy}
+          onClick={()=>setVisibilitySelection(rows.filter(row=>row.type===bulkType).map(row=>row.uid))}>全部勾選</button>
         <button type="button" className="loc-button" disabled={visibilityBusy} onClick={()=>setVisibilitySelection([])}>清除勾選</button>
 
         <button type="button" className="loc-button" disabled={visibilityBusy||!visibilitySelection.length} onClick={()=>bulkSetVisibility(true)}>大量隱藏</button>
         <button type="button" className="loc-button" disabled={visibilityBusy||!visibilitySelection.length} onClick={()=>bulkSetVisibility(false)}>大量公開</button>
       </div>
       <div style={{maxHeight:'16rem',overflow:'auto'}}>
-        {rows.filter(row=>row.type===browseType).map(row=><label key={row.uid} style={{display:'block'}}>
+        {rows.filter(row=>row.type===bulkType).map(row=><label key={row.uid} style={{display:'block'}}>
           <input type="checkbox" checked={visibilitySelection.includes(row.uid)} disabled={visibilityBusy}
             onChange={e=>setVisibilitySelection(ids=>e.target.checked?[...ids.filter(uid=>uid!==row.uid),row.uid]:ids.filter(uid=>uid!==row.uid))}/>
           {displayType[row.type]}｜{row.title} · {row.uid}
