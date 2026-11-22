@@ -72,7 +72,21 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
           ...(validDate(until)&&until>from?{end_date:until}:{}),
           title:trace.title||'時代',display_label:trace.title||'時代'});
       }
-      if(!isExpanded)continue;
+      const points=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
+      const addDateAnchors=()=>{
+        const dateGroup=groupId+':anchors';
+        if(points.length)groups.push({id:dateGroup,label:'　定錨點',
+          order:order+9000,className:'scope-time-trace-child'});
+        for(const anchor of points){
+          const pointUid=text(anchor.uid);
+          items.push({id:groupId+':date:'+pointUid,uid:pointUid,scope_id:scope,
+            entry_type:'anchor',group_key:dateGroup,group_label:'定錨點',
+            group_order:order+9000,start_date:text(anchor.start_date).slice(0,10),
+            title:anchor.title||pointUid,display_label:'●',
+            class_name:'scope-time-original-anchor'});
+        }
+        };
+      if(!isExpanded){addDateAnchors();continue;}
       const seen=new Set();
       for(const [position,eventId] of list(trace.anchor_ids).map(text).entries()){
         if(!eventId||seen.has(eventId))continue;
@@ -97,18 +111,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
             era_uid:uid,period_uid:eventId});
         }
       }
-      const points=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
-      const dateGroup=groupId+':anchors';
-      if(points.length)groups.push({id:dateGroup,label:'　定錨點',
-        order:order+9000,className:'scope-time-trace-child'});
-      for(const anchor of points){
-        const pointUid=text(anchor.uid);
-        items.push({id:groupId+':date:'+pointUid,uid:pointUid,scope_id:scope,
-          entry_type:'anchor',group_key:dateGroup,group_label:'定錨點',
-          group_order:order+9000,start_date:text(anchor.start_date).slice(0,10),
-          title:anchor.title||pointUid,display_label:'●',
-          class_name:'scope-time-original-anchor'});
-      }
+      addDateAnchors();
     }
     // Every Scope has a final unclassified lane on the management river.
     // Date anchors outside all Era ranges remain selectable/editable.
