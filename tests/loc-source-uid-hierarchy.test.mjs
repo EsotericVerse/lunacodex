@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {publishedSourceTaxonomy} from '../app/modular/published-source-taxonomy.js';
-import {sourceOutlineOptions,sourceEditorOutlineOptions} from '../app/loc/source/keyword-options.mjs';
+import {sourceOutlineOptions,sourceEditorOutlineOptions} from '../app/loc/source/outline-options.mjs';
 import {PUBLISHED_SOURCE_ANCHORS} from '../app/modular/published-source-taxonomy.js';
 import {buildCultureSourceTreeLanes,rollupCultureSourceDays}
   from '../app/loc/culture/source-tree-lanes.mjs';
