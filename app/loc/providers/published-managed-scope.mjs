@@ -1,6 +1,8 @@
-// Server-safe projection of LOC's explicitly published Scope routing.
-// Only the stable physical table mapping comes from this JS snapshot.
-// User authorization is independently verified against the signed identity.
+// Fixed api.manage Scope projection. All twelve columns are authored in
+// fixed-manage-registry.mjs, including the public contact email and caches.
+// The independently published routes must agree before a built-in table is
+// accepted. Authorization still uses the verified LOC identity and grants.
+import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 
@@ -13,23 +15,21 @@ const inconsistent=()=>Object.assign(
   {httpStatus:409}
 );
 
-// Standard published scopes never look up api.manage for their table names.
-// Unlisted custom scopes retain the existing transaction-bound SQL fallback.
 export function publishedManagedScope(scope){
   if(!ID.test(String(scope||'')))return null;
+  const fixed=fixedManageScope(scope);
+  if(!fixed)return null;
+  if(fixed.id==='admin')return null;
   const route=ROUTES.get(scope),publication=PUBLISHED.get(scope);
-  if(!route&&!publication)return null;
-  if(!route||!publication||
-    route.active!==true||publication.active!==true||
+  if(!route||!publication||fixed.active!==true||
+    route.active!==fixed.active||publication.active!==fixed.active||
+    route.domain!==fixed.domain||route.directory!==fixed.directory||
+    publication.domain!==fixed.domain||publication.directory!==fixed.directory||
+    publication.parent_scope_id!==fixed.parent_scope_id||
+    publication.sort_order!==fixed.sort_order||
+    publication.scope_kind!==fixed.manage_role||
     route.config?.id!==scope||
-    !['scope','group'].includes(publication.scope_kind)||
-    (publication.scope_kind==='scope'&&!route.directory&&!route.domain))
+    !['scope','group'].includes(fixed.manage_role))
     throw inconsistent();
-  const config=route.config||{};
-  if(Object.hasOwn(config,'galaxy_table')||Object.hasOwn(config,'anchor_table'))
-    throw inconsistent();
-  return Object.freeze({
-    id:scope,manage_role:publication.scope_kind,active:true,
-    galaxy_table:'galaxy',anchor_table:'anchor'
-  });
+  return fixed;
 }
