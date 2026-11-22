@@ -2,6 +2,7 @@
 // The 19 persisted types come from ZModel; this importer consumes Point/Date
 // together without creating a parallel Anchor table or a semantic PK.
 import {ANCHOR_TYPE_PROJECTIONS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 import {dbAuthClient,dbAuthRelation} from '../db/db-client.mjs';
 import {createImportPlaceIndex} from './place-anchors.mjs';
 import {createImportDateIndex} from './time-anchors.mjs';
@@ -26,8 +27,8 @@ async function authorizedAnchorPage({scopeId,afterUid,limit,types=TYPES}){
 // This is an import-only read optimization; it does not weaken Scope auth.
 async function authorizedPointUidRows({scopeId,uids}){
   const table='silver.'+scopeId+'_anchor',rows=[];
-  for(let offset=0;offset<uids.length;offset+=200){
-    const chunk=uids.slice(offset,offset+200);
+  for(let offset=0;offset<uids.length;offset+=MAX_ROWS){
+    const chunk=uids.slice(offset,offset+MAX_ROWS);
     const {data,error}=await dbAuthRelation(table)
       .select('uid,type,title,attr,createtime').in('uid',chunk).eq('type','point');
     if(error)throw Error('Point UID 主鍵核對失敗：'+(error.message||error));
@@ -42,13 +43,13 @@ async function authorizedPointUidRows({scopeId,uids}){
 }
 
 export async function readImportPointDateAnchors({
-  scopeId,pageSize=750,onProgress,readPage=authorizedAnchorPage,
+  scopeId,pageSize=MAX_ROWS,onProgress,readPage=authorizedAnchorPage,
   pointUids=null,readPointUids=authorizedPointUidRows
 }={}){
   if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scopeId||''))||
       scopeId==='local'||scopeId==='loc'||typeof readPage!=='function')
     throw Error('共用 Anchor 讀取來源無效');
-  if(!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>750)
+  if(!Number.isSafeInteger(pageSize)||pageSize<1||pageSize>TIME_ANCHOR_MAX_PAGE_ROWS)
     throw Error('共用 Anchor 分頁大小無效');
   if(pointUids!==null&&(!Array.isArray(pointUids)||
       pointUids.some(uid=>typeof uid!=='string'||!/^[A-Za-z0-9]{8}$/.test(uid))||
@@ -60,10 +61,12 @@ export async function readImportPointDateAnchors({
   const place=createImportPlaceIndex(),time=createImportDateIndex();
   const seen=new Set();
   let afterUid=null,completed=0;
+  const sizer=createTextAdaptiveRows({initial:pageSize,maximum:TIME_ANCHOR_MAX_PAGE_ROWS});
   onProgress?.({phase:requestedPointUids===null?'讀取 Point／Date 共用定錨索引':'讀取 Date 定錨及指定 Point UID',completed:0,total:0});
   for(;;){
-    const rows=await readPage({scopeId,afterUid,limit:pageSize,types});
-    if(!Array.isArray(rows)||rows.length>pageSize)
+    const requested=sizer.size;
+    const rows=await readPage({scopeId,afterUid,limit:requested,types});
+    if(!Array.isArray(rows)||rows.length>requested)
       throw Error('共用 Anchor SELECT 回傳格式錯誤');
     for(const row of rows){
       const uid=String(row?.uid||'');
@@ -78,8 +81,9 @@ export async function readImportPointDateAnchors({
       else throw Error('共用 Anchor SELECT 型別不符：'+String(row.type));
     }
     completed+=rows.length;
+    if(rows.length)sizer.observe(rows.length,rows.reduce((sum,row)=>sum+JSON.stringify(row).length,0));
     onProgress?.({phase:'讀取 Point／Date 共用定錨索引',completed,total:0});
-    if(rows.length<pageSize)break;
+    if(rows.length<requested)break;
   }
   if(requestedPointUids?.length){
     const points=await readPointUids({scopeId,uids:requestedPointUids});
