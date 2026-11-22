@@ -38,7 +38,8 @@ function normalize(body){
   if(!KEYS(body,['kind','operation','scope','mode','cursor','limit','args','name',
     'feature','startDate','endDate','category','result',
     'view','uids','family','types','order',
-    'sources','placeIds','text','offset','sortDirection','includeTotal'])||
+    'sources','excludedSources','placeIds','text','requiredTerms',
+    'excludedTerms','offset','sortDirection','includeTotal'])||
     body.kind!=='transaction')throw bad();
   if(body.operation==='time-anchors'){
     if(!KEYS(body,['kind','operation','scope','mode','cursor','limit']))throw bad();
