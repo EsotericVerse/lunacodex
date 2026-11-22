@@ -237,7 +237,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       for(const row of list){
         const size=encoder.encode(JSON.stringify(row)).length+1;
         if(size>maxChunkBytes)throw Error('單筆文章更新超出批次傳輸限制');
-        if(pending.length>=MAX_ROWS||bytes+size>maxChunkBytes)await flush();
+        if(pending.length>=HEAVY_QUERY_ROWS||bytes+size>maxChunkBytes)await flush();
         pending.push(row);bytes+=size;
       }
       await flush();
@@ -270,7 +270,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function readOwnedKeywordNodes(table){
-    const rows=[],size=500;
+    const rows=[],size=MAX_ROWS;
     for(let offset=0;;offset+=size){
       const {data,error}=await dbAuthRelation(table)
         .select('uid,type,title,description,attr,num').in('type',['category','class','group','item'])
