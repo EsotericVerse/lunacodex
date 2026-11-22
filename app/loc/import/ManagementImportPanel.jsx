@@ -426,12 +426,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         mediaConflicts.push({type:record.type||null,url:record.url||null,
           uid:record.uid||null,saved_uids:[...uids].sort()});
       };
-      // Galaxy.media_link contains URLs, never MediaAnchor UIDs. A URL-less
-      // attachment is a standalone Anchor: it cannot be treated as a saved
-      // article relation or deduplicated by guessing the article's UID.
-      const existingRuneByArticle=new Map(),existingOwnerMediaByKey=new Map();
-      const ambiguousRunes=new Map(),ambiguousEvidence=new Map();
-      const mediaEvidenceKey=()=>'';
+      // URL-less media stay standalone; no inferred article UID relationship.
       const createMedia=[],pendingMediaUids=new Set(),related=new Map(),seenMedia=new Set(),resolvedIds=new Map();
       const mediaSizer=createImportBatchSizer();
       let created=0;
@@ -466,21 +461,6 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         const record={...raw};delete record.__article_uid;
         if(String(record.location||'').trim()&&!owner)
           throw new Error('未連結文章的媒體地點無法儲存到 MediaAnchor；請先建立文章／LocationAnchor。');
-        const runeDedupKey=record.type==='rune'&&!record.uid&&!record.url&&owner&&record.description
-          ?JSON.stringify([owner,String(record.description)]):'';
-        if(runeDedupKey&&ambiguousRunes.has(runeDedupKey)){
-          reportMediaConflict('rune:'+runeDedupKey,record,ambiguousRunes.get(runeDedupKey));
-          continue;
-        }
-        const existingRuneUid=runeDedupKey?existingRuneByArticle.get(runeDedupKey):null;
-        if(existingRuneUid){attach(owner,existingRuneUid);continue;}
-        const evidenceKey=!record.uid&&!record.url?mediaEvidenceKey(record,owner):'';
-        if(evidenceKey&&ambiguousEvidence.has(evidenceKey)){
-          reportMediaConflict('evidence:'+evidenceKey,record,ambiguousEvidence.get(evidenceKey));
-          continue;
-        }
-        const storedEvidenceUid=evidenceKey?existingOwnerMediaByKey.get(evidenceKey):null;
-        if(storedEvidenceUid){attach(owner,storedEvidenceUid);continue;}
         const key=mediaKey(record);
         // UID is authoritative if it exists; URL+type or article evidence
         // cannot select one among several persisted MediaAnchor UIDs.
@@ -504,8 +484,6 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         const mediaId=record.uid||createUid8();
         if(!mediaId)throw new Error(t('uiExtra.importUI.mediaUuidUnavailable'));
         record.uid=mediaId;
-        if(runeDedupKey)existingRuneByArticle.set(runeDedupKey,String(mediaId));
-        if(evidenceKey)existingOwnerMediaByKey.set(evidenceKey,String(mediaId));
         createMedia.push(record);pendingMediaUids.add(String(mediaId));
         if(key)byKey.set(key,record);byId.set(mediaId,record);
         if(record.url)attach(owner,record.url);
