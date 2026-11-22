@@ -33,10 +33,13 @@ const input=z.object({
   scope:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
   startDate:date.optional(),endDate:date.optional(),category:category.optional(),
   sources:z.array(source).min(1).max(80).optional(),
+  excludedSources:z.array(source).min(1).max(80).optional(),
   placeIds:z.array(UID).min(1).max(80).optional(),
   // Search expression supports ordinary terms, quoted phrases, OR, exclusions.
   text:z.string().trim().min(1).max(160).optional(),
-  result:z.enum(['count','daily','daily-sources','sources','uids','articles']),
+  requiredTerms:z.array(z.string().trim().min(1).max(80)).max(8).optional(),
+  excludedTerms:z.array(z.string().trim().min(1).max(80)).max(8).optional(),
+  result:z.enum(['count','daily','daily-sources','sources','uids','articles','earliest']),
   cursor:UID.optional(),offset:z.number().int().min(0).max(10000).optional(),
   sortDirection:z.enum(['asc','desc']).optional(),
   includeTotal:z.boolean().optional(),
@@ -59,7 +62,7 @@ export function parseGalaxyFeatureTransaction(raw){
     (value.sortDirection!==undefined&&value.result!=='articles')||
     (value.includeTotal!==undefined&&value.result!=='articles')||
     (value.limit!==undefined&&!['uids','articles'].includes(value.result))||
-    value.text&&value.feature!=='search'||
+    (value.text||value.requiredTerms||value.excludedTerms)&&value.feature!=='search'||
     value.placeIds&&value.category?.type==='place')
     throw Object.assign(Error('Invalid Galaxy feature parameters'),{httpStatus:400});
   return {...value,limit:['uids','articles'].includes(value.result)?value.limit||100:undefined};
@@ -80,7 +83,13 @@ function baseQuery(trx,model){
   const selector=model.category;
   if(selector?.type==='source')q=q.where('site','=',selector.value);
   if(selector?.type==='place')q=q.where('place_id','=',selector.value);
-  if(model.sources)q=q.where('site','in',model.sources);
+  if(model.sources)q=q.where(eb.fn('lower',['site']),'in',
+    model.sources.map(name=>name.toLowerCase()));
+  if(model.excludedSources)q=q.where(eb=>eb.or([
+    eb('site','is',null),
+    eb(eb.fn('lower',['site']),'not in',
+      model.excludedSources.map(name=>name.toLowerCase()))
+  ]));
   if(model.placeIds)q=q.where('place_id','in',model.placeIds);
   if(selector?.type==='keyword'){
     if(model.feature!=='search')q=q.where('keyword','=',true);
@@ -100,6 +109,10 @@ function baseQuery(trx,model){
     for(const term of parsed.excludes)
       q=q.where('content','not ilike',pattern(term));
   }
+  for(const term of model.requiredTerms||[])
+    q=q.where('content','ilike',pattern(term));
+  for(const term of model.excludedTerms||[])
+    q=q.where('content','not ilike',pattern(term));
   if(['uids','articles'].includes(model.result)){
     q=q.where('list','=',true);
     if(model.feature==='search')q=q.where('content','is not',null)
@@ -109,6 +122,10 @@ function baseQuery(trx,model){
 }
 export async function executeGalaxyFeatureTransaction(trx,model){
   const q=baseQuery(trx,model);
+  if(model.result==='earliest'){
+    const row=await q.select(eb=>eb.fn.min('date').as('earliest')).executeTakeFirst();
+    return {earliest:row?.earliest||null};
+  }
   if(model.result==='count'){
     const row=await q.select(eb=>eb.fn.countAll().as('total')).executeTakeFirst();
     return {total:Number(row?.total||0)};
@@ -153,8 +170,9 @@ export async function executeGalaxyFeatureTransaction(trx,model){
       ?Number((await q.select(eb=>eb.fn.countAll().as('count'))
         .executeTakeFirst())?.count||0):null;
     const limit=model.limit,offset=model.offset||0;
-    const rows=await q.select(galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor'))
-      .orderBy('createtime',model.sortDirection||'desc')
+    let list=q.select(galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor'));
+    if(model.feature!=='culture')list=list.orderBy('date',model.sortDirection||'desc');
+    const rows=await list.orderBy('createtime',model.sortDirection||'desc')
       .orderBy('uid','asc').limit(limit+1).offset(offset).execute();
     return {rows:rows.slice(0,limit),hasMore:rows.length>limit,
       nextCursor:rows.length>limit?{offset:offset+limit}:null,totalCount:total};
