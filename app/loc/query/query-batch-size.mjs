@@ -3,18 +3,39 @@ const MiB=1048576;
 export const IO_LIMIT_CEILINGS=Object.freeze({
   archiveMiB:1024,jsonMiB:50,documentMiB:128,timelineMiB:200
 });
-// Physical row transport only. Never use this value as a COUNT(*) limit
-// or as the total number of Anchor/Keyword/Galaxy records in a collection.
-export const MAX_ROWS=2048;
-export const NORMAL_QUERY_ROWS=MAX_ROWS;
-export const DB_QUERY_BATCH_SIZE=MAX_ROWS;
-export const ARTICLE_UID_PAGE_ROWS=100;
-// Large text jobs begin with calibration and double based on *observed text
-// length*, not SQL COUNT, UI list size, or the number of browser connections.
-export const HEAVY_INITIAL_ROWS=256;
-export const HEAVY_QUERY_ROWS=10000;
-export const TIME_ANCHOR_MAX_PAGE_ROWS=20000;
-export const TEXT_SCAN_TARGET_CHARS=1024*1024;
+// The shared LOC SQL row/transport policy for PostgreSQL, MySQL and T-SQL.
+// SQL COUNT(*) is a separate unpaged aggregate: NEVER use any row/page setting
+// to constrain COUNT, and NEVER treat a page size as a collection-size limit.
+// Physical transport limits apply to returned records; driver-specific SQL
+// bind-parameter ceilings remain in their respective dialect adapters.
+export const SQL_BATCH_POLICY=Object.freeze({
+  returnRows:2048,
+  articleUidRows:100,
+  heavyStartRows:256,
+  heavyMaxRows:10000,
+  timeAnchorMaxRows:20000,
+  textTargetChars:1024*1024,
+  keywordWorkerTargetChars:128*1024,
+  keywordWorkerTargetBytes:256*1024,
+  importWriteTargetBytes:480000,
+  nativeWriteMaxBytes:700000,
+  timeAnchorTargetBytes:2*1024*1024,
+  timeAnchorEditorMaxBytes:32*1024*1024
+});
+export const MAX_ROWS=SQL_BATCH_POLICY.returnRows;
+export const NORMAL_QUERY_ROWS=SQL_BATCH_POLICY.returnRows;
+export const DB_QUERY_BATCH_SIZE=SQL_BATCH_POLICY.returnRows;
+export const ARTICLE_UID_PAGE_ROWS=SQL_BATCH_POLICY.articleUidRows;
+export const HEAVY_INITIAL_ROWS=SQL_BATCH_POLICY.heavyStartRows;
+export const HEAVY_QUERY_ROWS=SQL_BATCH_POLICY.heavyMaxRows;
+export const TIME_ANCHOR_MAX_PAGE_ROWS=SQL_BATCH_POLICY.timeAnchorMaxRows;
+export const TEXT_SCAN_TARGET_CHARS=SQL_BATCH_POLICY.textTargetChars;
+export const KEYWORD_WORKER_TARGET_CHARS=SQL_BATCH_POLICY.keywordWorkerTargetChars;
+export const KEYWORD_WORKER_TARGET_BYTES=SQL_BATCH_POLICY.keywordWorkerTargetBytes;
+export const IMPORT_WRITE_TARGET_BYTES=SQL_BATCH_POLICY.importWriteTargetBytes;
+export const NATIVE_WRITE_MAX_BYTES=SQL_BATCH_POLICY.nativeWriteMaxBytes;
+export const TIME_ANCHOR_TARGET_BYTES=SQL_BATCH_POLICY.timeAnchorTargetBytes;
+export const TIME_ANCHOR_EDITOR_MAX_BYTES=SQL_BATCH_POLICY.timeAnchorEditorMaxBytes;
 export const clampRows=(n,min,max)=>Math.max(min,Math.min(max,n));
 export function createTextAdaptiveRows({
   initial=HEAVY_INITIAL_ROWS,maximum=HEAVY_QUERY_ROWS,
