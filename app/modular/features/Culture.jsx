@@ -1683,7 +1683,7 @@ export default function Culture(){
                         onChange={event=>setKeywordCustomEnd(event.target.value)}/></label>
                     </>:null}
                   </div>
-                  {usesSourceRiver&&riverRangeLoading?<span className='scope-status' role='status'>{UI_COPY.common.loading}</span>:null}
+                  {usesSourceRiver&&riverRangeLoading?<CultureTimeLoading label={UI_COPY.common.loading}/>:null}
                   {riverAnalysis.error?<span className='scope-status scope-error' role='status'>{riverAnalysis.error}</span>:null}
                 </div>
                 {styleFilter==='rune66'?<section className='scope-culture-style-filter'>
