@@ -115,3 +115,81 @@ test('public reading protects content even with direct UID and no database RLS',
   assert.match(mcp,/\.where\('extract','=',true\)/);
   assert.doesNotMatch(mcp,/sql\`[^]*lower.*'mcp','github'/);
 });
+
+
+test('MySQL and MSSQL public analytics share one repeatable-read Scope snapshot',async()=>{
+  for(const engine of ['mysql','mssql']){
+    const observed={begins:0,isolation:[],queries:[],introspections:0};
+    const namespace=engine==='mysql'?'locdb':'dbo';
+    const trx={
+      introspection:{async getTables(){
+        observed.introspections++;
+        return ['lo3rwang_galaxy','lrunes_galaxy'].map(name=>({name,schema:namespace}));
+      }},
+      selectFrom(table){
+        observed.queries.push(table);
+        return {
+          select(){return this},
+          async executeTakeFirst(){
+            return {article_count:2,word_count:20,
+              first_date:'2026-01-01',last_date:'2026-11-22'};
+          }
+        };
+      }
+    };
+    const database=async()=>({
+      engine,namespace,
+      db:{
+        transaction(){observed.begins++;return {
+          setIsolationLevel(level){observed.isolation.push(level);return this},
+          async execute(callback){return callback(trx)}
+        }},
+        async destroy(){}
+      },
+      pool:{async end(){}}
+    });
+    const response=await handleNamedPublicTransaction(req({
+      kind:'transaction',operation:'analytics',args:{
+        p_scope_id:'loc',p_view:'search_summary',
+        p_options:{scopeIds:['lo3rwang','lrunes']}
+      }
+    }),{},{database});
+    assert.equal(response.status,200,engine);
+    const result=await response.json();
+    assert.equal(result.data.rows.length,2,engine);
+    assert.equal(observed.begins,1,engine);
+    assert.deepEqual(observed.isolation,['repeatable read'],engine);
+    assert.equal(observed.introspections,1,engine);
+    assert.equal(observed.queries.length,2,engine);
+  }
+});
+
+test('MySQL and MSSQL public Blocks actions also use repeatable-read',async()=>{
+  for(const engine of ['mysql','mssql']){
+    const observed={isolation:[],transactions:0,tables:[]};
+    const query={
+      select(){return this},where(){return this},orderBy(){return this},
+      async execute(){return []}
+    };
+    const trx={
+      selectFrom(table){observed.tables.push(table);return query}
+    };
+    const database=async()=>({
+      engine,namespace:engine==='mysql'?'locdb':'dbo',
+      db:{transaction(){observed.transactions++;return {
+        setIsolationLevel(value){observed.isolation.push(value);return this},
+        async execute(callback){return callback(trx)}
+      }},async destroy(){}},
+      pool:{async end(){}}
+    });
+    const response=await handleNamedPublicTransaction(req({
+      kind:'transaction',operation:'action',
+      name:'block_list',args:{p_scope_id:'lo3rwang'}
+    }),{},{database});
+    assert.equal(response.status,200,engine);
+    assert.deepEqual((await response.json()).data,[]);
+    assert.equal(observed.transactions,1,engine);
+    assert.deepEqual(observed.isolation,['repeatable read'],engine);
+    assert.equal(observed.tables.length,1,engine);
+  }
+});

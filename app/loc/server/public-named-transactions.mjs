@@ -237,18 +237,20 @@ export async function handleNamedPublicTransaction(request,env={},{
         throw Error('LOC database unavailable');
       const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
       const ids=[...published];
-      const output=port.engine==='postgres'
-        ?await port.db.transaction().setIsolationLevel('repeatable read').execute(trx=>
-          operation.operation==='analytics'
+      // A single snapshot for ALL dialects. Portable views such as
+      // search_summary and loc iterate across Scopes: without a transaction
+      // those SELECTs could observe different concurrent commits.
+      const output=await port.db.transaction().setIsolationLevel('repeatable read')
+        .execute(trx=>port.engine==='postgres'
+          ?operation.operation==='analytics'
             ?executeKyselyAnalytics(trx,{args:operation.args},{
               role:'anon',publishedScopeIds:ids.filter(id=>id!=='loc')})
             :executeKyselyPublicAction(trx,{name:operation.name,args:operation.args},{
-              engine:port.engine,namespace,publishedScopeIds:ids}))
-        :operation.operation==='analytics'
-          ?await executePortableKyselyAnalytics(port.db,{args:operation.args},{
-            engine:port.engine,namespace,role:'anon'})
-          :await port.db.transaction().execute(trx=>
-            executeKyselyPublicAction(trx,{name:operation.name,args:operation.args},{
+              engine:port.engine,namespace,publishedScopeIds:ids})
+          :operation.operation==='analytics'
+            ?executePortableKyselyAnalytics(trx,{args:operation.args},{
+              engine:port.engine,namespace,role:'anon'})
+            :executeKyselyPublicAction(trx,{name:operation.name,args:operation.args},{
               engine:port.engine,namespace,publishedScopeIds:ids}));
       return respond({data:output.data,count:output.count??null});
     }catch(error){
