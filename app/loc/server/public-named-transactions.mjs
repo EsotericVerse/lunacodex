@@ -1,6 +1,7 @@
 // Only fixed feature operations may cross this public entry. The existing
 // legacy generic SELECT executor is NOT directly exposed as an HTTP route.
-import {handleNativePublicQuery} from './native-public-query.mjs';
+import {executeKyselyAnalytics,executePortableKyselyAnalytics} from '../providers/kysely-analytics.mjs';
+import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {publishedLocAccess} from '../permissions/loc-business-grants.mjs';
@@ -20,6 +21,16 @@ const published=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false).map(ro
 const UID=/^[A-Za-z0-9]{8}$/;
 const ACTIONS=new Set(['block_list','hero_block','read_scope_page_copy',
   'search_scope_trace_place_names']);
+const ANALYTICS=new Set(['culture_list','trace_places','trace_territory',
+  'trace_daily','trace_keywords','lane_daily','shared_classes','search_summary',
+  'keyword_catalog','keyword_summary']);
+const ANALYTICS_OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site',
+  'offset','media','mediaTypeGroups','platform','exact','withPoints']);
+const ACTION_ARGS=Object.freeze({
+  block_list:['p_scope_id'],hero_block:['p_type'],
+  read_scope_page_copy:['p_scope_id'],
+  search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
+});
 const OBJECT=value=>Boolean(value)&&typeof value==='object'&&!Array.isArray(value);
 const KEYS=(value,allowed)=>OBJECT(value)&&Object.keys(value).every(key=>allowed.includes(key));
 const bad=()=>Object.assign(new Error('Invalid named LOC transaction'),{httpStatus:400});
@@ -55,15 +66,49 @@ function normalize(body){
   if(body.operation==='galaxy-records')return parseGalaxyRecordTransaction(body);
   if(body.operation==='anchor-feature')return parseAnchorFeatureTransaction(body);
   if(body.operation==='analytics'){
-    if(!KEYS(body,['kind','operation','args'])||!OBJECT(body.args)||
-      typeof body.args.p_view!=='string')throw bad();
-    // The existing fixed analytics validator checks all named selectors and
-    // published Scopes before it opens SQL; no projection/table is accepted.
-    return {operation:'analytics',args:body.args};
+    if(!KEYS(body,['kind','operation','args'])||!OBJECT(body.args))throw bad();
+    const args=body.args,view=String(args.p_view||'');
+    const scope=String(args.p_scope_id||'');
+    const options=args.p_options??{};
+    if(!KEYS(args,['p_scope_id','p_view','p_start','p_end','p_options'])||
+      !ANALYTICS.has(view)||!published.has(scope)||
+      (view==='search_summary')!==(scope==='loc')||
+      !KEYS(options,[...ANALYTICS_OPTIONS]))throw bad();
+    if(options.scopeIds!==undefined&&(!Array.isArray(options.scopeIds)||
+      options.scopeIds.length>100||
+      options.scopeIds.some(id=>id==='loc'||!published.has(id))))throw bad();
+    if(options.placeIds!==undefined&&(!Array.isArray(options.placeIds)||
+      options.placeIds.length>80||
+      options.placeIds.some(uid=>!UID.test(String(uid||'')))))throw bad();
+    if(options.withPoints!==undefined&&
+      (view!=='trace_territory'||typeof options.withPoints!=='boolean'))throw bad();
+    if(options.media!==undefined&&typeof options.media!=='boolean')throw bad();
+    if(options.mediaTypeGroups!==undefined&&
+      (view!=='lane_daily'||options.media!==true||
+        typeof options.mediaTypeGroups!=='boolean'))throw bad();
+    if(options.offset!==undefined&&(!Number.isSafeInteger(options.offset)||
+      options.offset<0||options.offset>100000))throw bad();
+    for(const name of ['classUid','source','site','platform','exact'])
+      if(options[name]!==undefined&&options[name]!==null&&
+        (typeof options[name]!=='string'||options[name].length>120))throw bad();
+    for(const name of ['p_start','p_end']){
+      const day=args[name];
+      if(day!=null&&day!==''&&(typeof day!=='string'||
+        !/^\d{4}-\d{2}-\d{2}$/.test(day)))throw bad();
+    }
+    return {operation:'analytics',args};
   }
   if(body.operation==='action'){
     if(!KEYS(body,['kind','operation','name','args'])||
-      !ACTIONS.has(body.name)||!OBJECT(body.args))throw bad();
+      !ACTIONS.has(body.name)||!OBJECT(body.args)|| 
+      !KEYS(body.args,ACTION_ARGS[body.name]))throw bad();
+    if(body.name==='hero_block'){
+      const names=Array.isArray(body.args.p_type)?body.args.p_type:[body.args.p_type];
+      if(names.length<1||names.length>2||new Set(names).size!==names.length||
+        names.some(name=>typeof name!=='string'||
+          !/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(name)||
+          ['from','domain','galaxy','universe','index','governance'].includes(name)))throw bad();
+    }else if(!published.has(String(body.args.p_scope_id||'')))throw bad();
     return {operation:'action',name:body.name,args:body.args};
   }
   throw bad();
@@ -182,15 +227,43 @@ export async function handleNamedPublicTransaction(request,env={},{
       catch{console.error('[LOC Galaxy feature] connection cleanup failed')}
     }
   }
-  if(operation.operation!=='time-anchors'){
-    // Bridge only fixed, already-validated names to existing feature
-    // executors. Generic schema/table/columns/filters cannot reach them.
-    const body=operation.operation==='analytics'
-      ?{kind:'analytics',args:operation.args}
-      :{kind:'public-action',name:operation.name,args:operation.args};
-    const delegated=new Request(request.url,{method:'POST',headers:request.headers,
-      body:JSON.stringify(body),signal:request.signal});
-    return handleNativePublicQuery(delegated,env,{database,waitUntil});
+  if(operation.operation==='analytics'||operation.operation==='action'){
+    // Execute only hardcoded feature models in this request's own DB
+    // transaction. Never bridge to the removed arbitrary SELECT executor.
+    let port=null,unbind=()=>{};
+    try{
+      const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
+      if(!primary)throw Error('LOC database unavailable');
+      port=await database(env,primary.target_id,{waitUntil});
+      unbind=bindLocRequestAbort(port,request.signal);
+      if(!port?.db||!['postgres','mysql','mssql'].includes(port.engine))
+        throw Error('LOC database unavailable');
+      const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
+      const ids=[...published];
+      const output=port.engine==='postgres'
+        ?await port.db.transaction().setIsolationLevel('repeatable read').execute(trx=>
+          operation.operation==='analytics'
+            ?executeKyselyAnalytics(trx,{args:operation.args},{
+              role:'anon',publishedScopeIds:ids.filter(id=>id!=='loc')})
+            :executeKyselyPublicAction(trx,{name:operation.name,args:operation.args},{
+              engine:port.engine,namespace,publishedScopeIds:ids}))
+        :operation.operation==='analytics'
+          ?await executePortableKyselyAnalytics(port.db,{args:operation.args},{
+            engine:port.engine,namespace,role:'anon'})
+          :await port.db.transaction().execute(trx=>
+            executeKyselyPublicAction(trx,{name:operation.name,args:operation.args},{
+              engine:port.engine,namespace,publishedScopeIds:ids}));
+      return respond({data:output.data,count:output.count??null});
+    }catch(error){
+      console.error('[LOC named feature transaction]',{
+        feature:operation.operation,code:String(error?.code||'FAILED').slice(0,40)});
+      return respond({error:'Named LOC feature transaction unavailable'},
+        error.httpStatus||503);
+    }finally{
+      unbind();
+      try{await closeLocDatabase(port)}
+      catch{console.error('[LOC named feature] connection cleanup failed')}
+    }
   }
   let port=null,unbind=()=>{};
   try{
