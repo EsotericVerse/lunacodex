@@ -10,8 +10,9 @@ const request=body=>new Request('https://loc.lo3rwang.cc/api/loc-public-query',{
   method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify(body)});
 
-test('four fixed Galaxy feature flags match the ZModel contracts',()=>{
-  assert.deepEqual(Object.keys(GALAXY_FEATURE_MODELS),['culture','statics','search','trace']);
+test('eight fixed Galaxy feature flags match the ZModel contracts',()=>{
+  assert.deepEqual(Object.keys(GALAXY_FEATURE_MODELS),
+    ['culture','statics','search','trace','list','keyword','extract','others']);
   assert.equal(GALAXY_FEATURE_MODELS.statics.flag,'statics');
 });
 test('no arbitrary SQL, relation, column or filter passes the transaction boundary',async()=>{
