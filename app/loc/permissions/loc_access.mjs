@@ -7,8 +7,9 @@ import {PolicyPlugin} from '@zenstackhq/plugin-policy';
 import {fixedPolicyReader} from '../../../packages/zenstack/policy-runtime.mjs';
 import {locRolePrincipal,LOC_ROLE_LEVEL} from '../../../packages/zenstack/role-hierarchy.mjs';
 import {LocAccessRowSchema} from './loc-access-schema.mjs';
+import {FIXED_MANAGE_ROWS} from './fixed-manage-registry.mjs';
 
-export const LOC_OWNER_EMAIL='sopa2306@gmail.com';
+export const LOC_OWNER_EMAIL=FIXED_MANAGE_ROWS.find(row=>row.manage_role==='admin')?.email||'';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const empty=()=>({canWrite:false,canManage:false,grants:[],roles:[]});
 const normalizedEmail=value=>String(value||'').trim().toLowerCase();
@@ -48,24 +49,29 @@ export function loc_access(email,rows=[],{website=false}={}){
     roles:eligible.map(row=>({id:row.id,email:verified,role:row.manage_role}))};
 }
 
-// Shared trusted read: PostgreSQL uses ZenStack's actual Manage delegate and
-// PolicyPlugin over the existing Kysely dialect. Dialects without a supported
-// ZenStack provider retain the bounded portable Kysely SELECT; no new pool,
-// SQL migration, polling or duplicate role read is created.
+// The published JS Registry is the PRIMARY business permission source.
+// The caller must first verify LOC Auth identity; neither an email supplied by
+// a browser nor this public JS file is an authentication credential.
+// A verified identity present in JS never issues a Registry SQL query.
+export function publishedLocAccess(email,{website=false}={}){
+  const verified=normalizedEmail(email);
+  if(!verified)return {found:false,rights:empty()};
+  const rows=FIXED_MANAGE_ROWS.filter(row=>normalizedEmail(row.email)===verified);
+  return {found:rows.length>0,rights:loc_access(verified,rows,{website})};
+}
+
+// SQL is reserved for identities not represented by the published JS snapshot.
+// No DB connection or SQL dialect is required for a published identity, even
+// when that identity is authorizing a separate, already-open write transaction.
 export async function readLocAccess(db,email,{dialect,engine='postgres',website=false,transactional=false}={}){
-  if(!db||typeof db.selectFrom!=='function')
-    throw new Error('LOC permission database unavailable');
   const verified=normalizedEmail(email);
   if(!verified)return empty();
-  // Website PostgreSQL authorization must use the ZModel PolicyPlugin;
-  // never silently downgrade to an unchecked SQL read on a missing dialect.
-  if(website&&engine==='postgres'&&!dialect)
+  const published=publishedLocAccess(verified,{website});
+  if(published.found)return published.rights;
+  if(!db||typeof db.selectFrom!=='function')
+    throw new Error('LOC permission database unavailable');
+  if(website&&engine==='postgres'&&!dialect&&!transactional)
     throw new Error('LOC website ZModel policy dialect unavailable');
-  const columns=['id','email','manage_role','active'];
-  // A managed Save reads the SAME Registry projection inside the owning
-  // Kysely transaction so its permission snapshot and all writes share one
-  // connection. This is server-only; loc_access still derives grants strictly
-  // from the verified email and modeled Manage row projection.
   const rows=engine==='postgres'&&dialect&&!transactional
     ?await fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin})
       .manage.findMany({
@@ -73,12 +79,16 @@ export async function readLocAccess(db,email,{dialect,engine='postgres',website=
         select:{id:true,email:true,manage_role:true,active:true}
       })
     :await (()=>{
-      let query=db.selectFrom('api.manage').select(columns)
+      let query=db.selectFrom('api.manage')
+        .select(['id','email','manage_role','active'])
         .where(db.fn('lower',['email']),'=',verified);
       if(!website)query=query.where('active','=',true);
       return query.execute();
     })();
-  return loc_access(verified,rows,{website});
+  // JS-listed rows are authoritative; an unlisted database row must never
+  // override a published identity with the same Scope ID.
+  return loc_access(verified,rows.filter(row=>
+    !FIXED_MANAGE_ROWS.some(entry=>entry.id===row.id)),{website});
 }
 
 // Existing trusted Gateway grants are projected into the SAME ZModel
