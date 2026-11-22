@@ -119,7 +119,7 @@ async function readPages(id,{filter=null,types=null,limit=null,includeHidden=fal
     scope:id,family:'space',types:selectedTypes,editor:includeHidden
   });
   const sorted=rows.map(row=>projectUnified(row,id))
-    .sort((a,b)=>String(a.title||'').localeCompare(String(b.title||''));
+    .sort((a,b)=>String(a.title||'').localeCompare(String(b.title||'')));
   return limit===null?sorted:sorted.slice(0,limit);
 }
 export async function readTraceData(scopeId,{includeHidden=false}={}){

@@ -87,8 +87,8 @@ export async function handleNamedPublicTransaction(request,env={},{
   // Session. Identity is verified once; grants are calculated from JS, not SQL.
   if(['galaxy-records','anchor-feature'].includes(operation.operation)&&
      operation.mode==='editor'||
-     if(operation.operation==='time-anchors'&&operation.mode==='editor'||
-     operation.operation==='action'&&operation.name==='search_scope_trace_place_names'){
+     (operation.operation==='time-anchors'&&operation.mode==='editor'||
+     operation.operation==='action'&&operation.name==='search_scope_trace_place_names')){
     let session;
     try{session=await verifySession(request)}
     catch(error){return respond({error:'LOC Session unavailable'},error.httpStatus||503)}
