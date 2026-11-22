@@ -562,28 +562,6 @@ export default function Culture(){
     setKeywordDrillSource('');
     setKeywordDrillGroup('');
   },[scopeId]);
-  // Second-river source choices come from the exact Scope source snapshot.
-  // These must be available before choosing a keyword style.
-  const keywordSourceOptions=useMemo(()=>sourceRootQuery.data?.groups||sourceSnapshotQuery.data?.groups||[],[sourceRootQuery.data,sourceSnapshotQuery.data]);
-  // All source facets, including Music/Video, follow the same Anchor
-  // Universe tree; there is no standalone 'media-type source' selector.
-  const sourceOptionGroups=useMemo(()=>{
-    const taxonomy=sourceTaxonomy||{categories:[],aliases:[],roots:[]};
-    const categories=new Map(taxonomy.categories.map(row=>[row.category_code,row]));
-    const labels=new Map((taxonomy.roots||[]).map(row=>[row.root,row.title]));
-    const grouped=new Map();
-    for(const item of keywordSourceOptions){
-      const code=assignedSource(item.site,taxonomy.aliases,taxonomy.categories);
-      const root=categories.get(code)?.root||'custom';
-      if(!grouped.has(root))grouped.set(root,[]);
-      grouped.get(root).push(item);
-    }
-    return [...grouped].map(([root,items])=>({
-      label:labels.get(root)||root,
-      items:[...items].sort((x,y)=>String(x.display_label||'')
-        .localeCompare(String(y.display_label||''),locale))
-    }));
-  },[keywordSourceOptions,sourceTaxonomy,locale]);
   const keywordGroupOptions=useMemo(()=>Object.entries(styleQuery.data?.keywordMeta?.classes||{})
     .map(([id,name])=>({id,label:String(name||'').trim()}))
     .filter(item=>item.label),
