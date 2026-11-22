@@ -73,7 +73,13 @@ export function parseGalaxyFeatureTransaction(raw){
     (value.limit!==undefined&&!['uids','articles'].includes(value.result))||
     (value.text||value.requiredTerms||value.excludedTerms)&&value.feature!=='search'||
     value.placeIds&&value.category?.type==='place'||
-    value.mediaUrls&&value.feature!=='trace')
+    value.mediaUrls&&value.feature!=='trace'||
+    // Public Search only exposes text in title/content. Other features retain
+    // their own internal exact Source/Place selectors.
+    value.feature==='search'&&(
+      value.sources!==undefined||value.excludedSources!==undefined||
+      value.placeIds!==undefined||
+      ['source','place'].includes(value.category?.type)))
     throw Object.assign(Error('Invalid Galaxy feature parameters'),{httpStatus:400});
   return {...value,limit:['uids','articles'].includes(value.result)?value.limit||100:undefined};
 }
@@ -107,29 +113,38 @@ function baseQuery(trx,model){
     if(model.feature!=='search')q=q.where('keyword','=',true);
     q=q.where('content','is not',null).where('content','ilike',pattern(selector.value));
   }
+  // Each search term matches only article title OR body content. Never treat
+  // site/location/metadata as searchable text, even with direct API calls.
+  const textMatch=(eb,term)=>eb.or([
+    eb('title','ilike',pattern(term)),
+    eb('content','ilike',pattern(term))
+  ]);
+  const textExclude=(eb,term)=>eb.and(['title','content'].map(column=>
+    eb.or([eb(column,'is',null),eb(column,'not ilike',pattern(term))])));
   if(model.text){
     const parsed=parseSearchQuery(model.text);
     if(!parsed.groups.length&&parsed.excludes.length===0)
       throw Object.assign(Error('Empty Search terms'),{httpStatus:400});
     if(parsed.groups.length>6||parsed.groups.some(group=>group.length>8)||
-      parsed.excludes.length>8)
+       parsed.excludes.length>8)
       throw Object.assign(Error('Search term budget exceeded'),{httpStatus:400});
-    q=q.where('content','is not',null).where('content','!=','');
     if(parsed.groups.length)
       q=q.where(eb=>eb.or(parsed.groups.map(group=>eb.and(
-        group.map(term=>eb('content','ilike',pattern(term)))))));
+        group.map(term=>textMatch(eb,term))))));
     for(const term of parsed.excludes)
-      q=q.where('content','not ilike',pattern(term));
+      q=q.where(eb=>textExclude(eb,term));
   }
   for(const term of model.requiredTerms||[])
-    q=q.where('content','ilike',pattern(term));
+    q=q.where(eb=>textMatch(eb,term));
   for(const term of model.excludedTerms||[])
-    q=q.where('content','not ilike',pattern(term));
+    q=q.where(eb=>textExclude(eb,term));
   if(model.feature==='extract')q=q.where('list','=',true);
   if(['uids','articles'].includes(model.result)){
     q=q.where('list','=',true);
-    if(model.feature==='search')q=q.where('content','is not',null)
-      .where('content','!=','');
+    if(model.feature==='search')
+      q=q.where(eb=>eb.or([
+        eb('title','is not',null),eb('content','is not',null)
+      ]));
   }
   return q;
 }

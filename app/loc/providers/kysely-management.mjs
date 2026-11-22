@@ -476,14 +476,25 @@ async function searchPrivateGalaxy(trx,args,claims){
     reject('Invalid private Search terms');
   if(sourceMode==='names'&&!sources.length)return {data:{rows:[],hasMore:false,nextCursor:null},count:0};
   await sql`reset role`.execute(trx);
-  const field=placeOnly?'location':'content';
+  // Ordinary Search queries both title and body. The separate verified
+  // management place-fill workflow may intentionally search location.
+  const matchTerm=(eb,term)=>placeOnly
+    ?eb('location','ilike',privateSearchLike(term))
+    :eb.or([
+      eb('title','ilike',privateSearchLike(term)),
+      eb('content','ilike',privateSearchLike(term))
+    ]);
   let query=trx.selectFrom('silver.'+scope+'_galaxy')
     .select(PRIVATE_SEARCH_COLUMNS);
   query=query.where(eb=>eb.or(parsedTerms.groups.map(group=>
-    eb.and(group.map(term=>eb(field,'ilike',privateSearchLike(term))))
+    eb.and(group.map(term=>matchTerm(eb,term)))
   )));
-  for(const term of parsedTerms.excludes)
-    query=query.where(field,'not ilike',privateSearchLike(term));
+  for(const term of parsedTerms.excludes){
+    if(placeOnly)query=query.where('location','not ilike',privateSearchLike(term));
+    else query=query.where(eb=>eb.and(['title','content'].map(column=>
+      eb.or([eb(column,'is',null),
+        eb(column,'not ilike',privateSearchLike(term))]))));
+  }
   if(start)query=query.where('date','>=',start);
   if(end)query=query.where('date','<=',end);
   if(contentType==='lyrics_work')query=query.where('site','ilike','suno');

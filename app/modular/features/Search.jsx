@@ -230,11 +230,15 @@ function prioritizeStyleTagResults(rows=[]){
 
 
 function searchHref(scopeId,query,filters={}){
-  const href=featureNavigationHref(scopeId,'search',filters.placeOnly?{place:query}:{q:query});
+  const href=featureNavigationHref(scopeId,'search',
+    filters.management===true&&filters.placeOnly?{place:query}:{q:query});
   const params=new URLSearchParams();
   for(const [key,value] of Object.entries({
-    type:filters.contentType,source:filters.sourceFilter,
-    from:filters.startDate,to:filters.endDate,scope:filters.scopeFilter
+    // User-facing text Search never accepts source/type/place selectors.
+    type:filters.management===true?filters.contentType:null,
+    source:filters.management===true?filters.sourceFilter:null,
+    from:filters.startDate,to:filters.endDate,
+    scope:filters.management===true?filters.scopeFilter:null
   })){
     if(value)params.set(key,value);
   }
@@ -287,13 +291,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const [bulkBusy,setBulkBusy]=useState(false);
   const [bulkNotice,setBulkNotice]=useState('');
   const [advancedOpen,setAdvancedOpen]=useState(false);
-  const [advancedTab,setAdvancedTab]=useState('type');
+  const [advancedTab,setAdvancedTab]=useState('time');
   const [contentType,setContentType]=useState('');
   const [sourceFilter,setSourceFilter]=useState('');
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['statistics-source-taxonomy'],
     queryFn:selectSourceTaxonomy,
-    enabled:advancedOpen&&advancedTab==='source'||sourceFilter.startsWith('category:'),
+    enabled:managementMode&&
+      (advancedOpen&&advancedTab==='source'||sourceFilter.startsWith('category:')),
   });
   const [scopeFilter,setScopeFilter]=useState('');
   const [startDate,setStartDate]=useState('');
@@ -424,9 +429,15 @@ export default function Search({managementMode:legacyManagementRoute=false}){
 
   async function executeSearch(rawQuery,cursor=null,{append=false,browse=false,overrideOptions=null}={}){
     const q=String(rawQuery||'').trim();
-    const options=append&&activeSearchOptionsRef.current
+    const requested=append&&activeSearchOptionsRef.current
       ?activeSearchOptionsRef.current
-      :(overrideOptions||{contentType,sourceFilter,startDate,endDate,scopeFilter:managementMode?scopeFilter:'',placeOnly,browse,sortDirection:articleSort});
+      :(overrideOptions||{contentType,sourceFilter,startDate,endDate,
+        scopeFilter:managementMode?scopeFilter:'',placeOnly,browse,sortDirection:articleSort});
+    // Browser history / legacy deep links are not allowed to opt guest Search
+    // into site, location, type or Scope-column searching.
+    const options=managementMode?requested:
+      (!requested.contentType&&!requested.sourceFilter&&!requested.placeOnly&&!requested.scopeFilter
+        ?requested:{...requested,contentType:'',sourceFilter:'',placeOnly:false,scopeFilter:''});
     if(!q&&!options.browse)return;
     // Avoid sending rapid repeated full-text requests at all; pagination and
     // explicit article lists remain unaffected by search cooldown.
@@ -695,14 +706,15 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const identity=String(searchParams?.get('identity')||'').trim();
     const media=String(searchParams?.get('media')||'').trim();
     if(media){setQuery('');executeMediaIdentity(media);return;}
-    const place=String(searchParams?.get('place')||'').trim();
-    const fillPlace=String(searchParams?.get('fill_place')||place||'').trim();
+    const place=managementMode?String(searchParams?.get('place')||'').trim():'';
+    const fillPlace=managementMode
+      ?String(searchParams?.get('fill_place')||place||'').trim():'';
     if(fillPlace)setBulkPlace(fillPlace);
     const value=String(searchParams?.get('q')||'').trim();
     if(identity){setQuery('');executeIdentity(identity);return;}
     const filters={
-      contentType:String(searchParams?.get('type')||''),
-      sourceFilter:String(searchParams?.get('source')||''),
+      contentType:managementMode?String(searchParams?.get('type')||''):'',
+      sourceFilter:managementMode?String(searchParams?.get('source')||''):'',
       startDate:String(searchParams?.get('from')||''),
       endDate:String(searchParams?.get('to')||''),
       scopeFilter:managementMode?String(searchParams?.get('scope')||''):''
@@ -945,13 +957,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
   const chips=[
     scopeId==='loc'&&managementMode&&scopeFilter&&scopeLabel(scopeFilter),
-    contentType&&filterTypes.find(([value])=>value===contentType)?.[1],
-    sourceFilter&&filterSources.find(([value])=>value===sourceFilter)?.[1],
+    managementMode&&contentType&&filterTypes.find(([value])=>value===contentType)?.[1],
+    managementMode&&sourceFilter&&filterSources.find(([value])=>value===sourceFilter)?.[1],
     startDate&&t('uiExtra.searchUI.startDate')+': '+startDate,
     endDate&&t('uiExtra.searchUI.endDate')+': '+endDate,
   ].filter(Boolean);
   function workspaceSearchHref(term,filters={}){
-    const href=searchHref(scopeId,term,filters);
+    const href=searchHref(scopeId,term,{...filters,management:managementMode});
     if(!managementMode)return href;
     const normal=new URL(href);
     const manager=new URL(scopeHref(scopeId,'search/manage'));
@@ -1192,7 +1204,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {!managementMode?<section className="scope-search-workspace" aria-label={t('uiExtra.searchUI.searchWorkspace')}>
       <form className="scope-search-form" onSubmit={runSearch}>
         {!managementMode?<label htmlFor="scope-search-query">{UI_COPY.search.textPromptLabel}</label>:null}
-        {searchInput('scope-search-query','搜尋全文或公開關鍵詞')}
+        {searchInput('scope-search-query','搜尋文章標題或內容')}
         <button type="submit" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}>{UI_COPY.nav.search}</button>
         {managementMode?<button type="button" className="loc-button" disabled={scopeId==='loc'&&!scopesQuery.isSuccess}
           onClick={()=>{
@@ -1219,10 +1231,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         </div>
       </div>
       {!managementMode&&results.length>0&&matchedQueryRef.current?<div className="scope-search-suggestions" aria-label="延伸搜尋">
-        <span className="scope-status">延伸搜尋（保留原本的時間與來源條件）</span>
+        <span className="scope-status">延伸搜尋（保留原本的時間範圍）</span>
         <div className="scope-search-active-filters">
-          {contentType!=='text_work'?<button type="button" className="loc-button"
-            onClick={()=>followSearchSuggestion(matchedQueryRef.current,{contentType:'text_work',placeOnly:false})}>搜尋文字作品</button>:null}
           <button type="button" className="loc-button"
             onClick={()=>{setAdvancedOpen(true);setAdvancedTab('time');}}>限定時間</button>
         </div>
@@ -1265,16 +1275,16 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         </div>
         {advancedOpen?<div id="scope-search-filter-panel" className="scope-search-filter-panel">
           <div role="group" className="scope-search-filter-tabs" aria-label={t('uiExtra.searchUI.advancedFilters')}>
-            {['type','source','time'].map(tab=><button type="button" key={tab} aria-pressed={advancedTab===tab} className={advancedTab===tab?'is-active':''} onClick={()=>setAdvancedTab(tab)}>{t('uiExtra.searchUI.filter'+tab[0].toUpperCase()+tab.slice(1))}</button>)}
+            {(managementMode?['type','source','time']:['time']).map(tab=><button type="button" key={tab} aria-pressed={advancedTab===tab} className={advancedTab===tab?'is-active':''} onClick={()=>setAdvancedTab(tab)}>{t('uiExtra.searchUI.filter'+tab[0].toUpperCase()+tab.slice(1))}</button>)}
           </div>
-          {advancedTab==='type'?<div className="scope-search-filter-body">
+          {managementMode&&advancedTab==='type'?<div className="scope-search-filter-body">
             <label htmlFor="scope-search-content-type">{t('uiExtra.searchUI.filterType')}</label>
             <select id="scope-search-content-type" value={contentType} onChange={event=>updateSearchFilter(setContentType,event.target.value)}>
               {filterTypes.map(([value,label])=><option key={value} value={value}>{label}</option>)}
             </select>
             <button type="button" className="loc-button" onClick={browseSelectedType}>{t('uiExtra.searchUI.browseType')}</button>
           </div>:null}
-          {advancedTab==='source'?<div className="scope-search-filter-body">
+          {managementMode&&advancedTab==='source'?<div className="scope-search-filter-body">
             <label htmlFor="scope-search-source">{t('uiExtra.searchUI.filterSource')}</label>
             <select id="scope-search-source" value={sourceFilter}
               disabled={sourceTaxonomyQuery.isPending||sourceTaxonomyQuery.isError}
