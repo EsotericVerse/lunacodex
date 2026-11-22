@@ -8,10 +8,10 @@ import {useEditDock} from '../edit-dock';
 import {transactionWrites} from '../../loc/db/db-client.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/culture/anniversary.mjs';
-import {timeRecordHierarchyOptions} from '../../loc/culture/time-record-hierarchy-options.mjs';
+import TimeAnchorTree from './TimeAnchorTree';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture/anchor-bulk.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import ManagementSectionNav from '../ManagementSectionNav';
+
 const LazyBlockNoteEditor=lazy(()=>import('../../loc/editor/BlockNoteEditor'));
 function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
 
@@ -134,8 +134,7 @@ export default function CultureTimelineEditor({
   },[all,anchors,eventChoices]);
   // Searchable options retain the saved Era -> Period -> Date hierarchy.
   // Detached Periods/Dates live in explicit 未分類 sections, not the top level.
-  const recordOptions=useMemo(()=>
-    timeRecordHierarchyOptions(rows,browseType),[rows,browseType]);
+
   const selectRow=id=>{
     const row=all.find(item=>String(item.uid)===String(id));
     if(!row)return;
@@ -193,14 +192,10 @@ export default function CultureTimelineEditor({
     setTracePairs([]);setPairFrom(null);setPairTo(null);setOrganizedDates([]);
   };
   const reset=()=>{startNew(browseType);onClose?.();};
-  const switchBrowseType=type=>{
-    if(type===browseType)return;
-    if(dockActions.current.isDirty()&&!window.confirm('切換類型會捨棄尚未儲存的修改，確定繼續？'))return;
+  const newRecord=type=>{
+    if(dockActions.current.isDirty()&&
+      !window.confirm('新增紀錄會捨棄尚未儲存的修改，確定繼續？'))return false;
     startNew(type);setVisibilitySelection([]);onClose?.();
-  };
-  const beginNew=()=>{
-    if(dockActions.current.isDirty()&&!window.confirm('新增紀錄會捨棄尚未儲存的修改，確定繼續？'))return false;
-    startNew(browseType);onClose?.();
     return true;
   };
   const change=(key,value)=>setDraft(row=>({...row,[key]:value}));
@@ -441,23 +436,12 @@ export default function CultureTimelineEditor({
     </header>
     {query.error?<p className="scope-status scope-error" role="alert">{query.error.message}</p>:null}
     <div className="scope-culture-record-browser">
-      <ManagementSectionNav id="time-kind-sections" title="時間紀錄類型"
-        panelId="time-kind-panel" value={browseType}
-        items={TYPE_TABS.map(type=>({
-          value:type,label:displayType[type]+' · '+all.filter(row=>row.type===type).length
-        }))}
-        onChange={next=>{if(!busy)switchBrowseType(next);}}/>
-      <div id="time-kind-panel" className="scope-culture-record-browser-row">
-        <div className="scope-culture-record-browser-select">
-          <label htmlFor="culture-record-search">現有{displayType[browseType]}（依名稱搜尋）</label>
-          <ScopeOptionPicker id="culture-record-search" options={recordOptions}
-            disabled={query.isPending||busy} resetKey={browseType} value={selectedId}
-            onChange={id=>id?selectRow(id):beginNew()}
-            placeholder={'搜尋'+displayType[browseType]+'名稱'}
-            noOptionsMessage={recordOptions.length?'沒有符合項目':'此類型尚無紀錄'}/>
-        </div>
-        <button type="button" className="loc-button"
-          disabled={busy} onClick={beginNew}>＋ 新增{displayType[browseType]}</button>
+      <TimeAnchorTree rows={rows} value={selectedId}
+        disabled={busy||query.isPending} onSelect={selectRow}/>
+      <div className="scope-culture-record-browser-row">
+        {TYPE_TABS.map(type=><button key={type} type="button" className="loc-button"
+          disabled={busy||query.isPending}
+          onClick={()=>newRecord(type)}>＋ 新增{displayType[type]}</button>)}
         {browseType==='anchor'?<button type="button" className="loc-button" disabled={busy}
           onClick={()=>setAnnualOpen(v=>!v)}>＋ 建議紀念日</button>:null}
       </div>
