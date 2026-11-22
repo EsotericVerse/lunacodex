@@ -1,6 +1,6 @@
 // One format contract for JSON Import and Source Refresh. No database authority lives here.
 // Archive size limits are configuration, not proof of successful large-file import E2E.
-import {MAX_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
+import {MAX_ROWS,HEAVY_QUERY_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
 import {sourceImportModel} from '../../../packages/zenstack/import-source-models.mjs';
@@ -349,24 +349,37 @@ export function extractImportCreatedAt(value,depth=0){
   }
   return null;
 }
-// Adjust import write size by observed throughput while keeping requests bounded.
+// Only explicitly initiated imports use the heavy 10k *ceiling*.
+// Adapt the real request size to measured throughput and serialized bytes.
+// Small articles can fill thousands of rows; long articles flush by bytes.
+// This never raises routine read limits or alters the persisted ZModel schema.
+export const IMPORT_PAYLOAD_TARGET_BYTES=8*1024*1024;
+const importRowBytes=row=>new TextEncoder().encode(JSON.stringify(row)).byteLength;
 export function createImportBatchSizer({
-  initial=256,minimum=128,maximum=1200
+  initial=2048,minimum=128,maximum=HEAVY_QUERY_ROWS,
+  maxPayloadBytes=IMPORT_PAYLOAD_TARGET_BYTES
 }={}){
-  const ceiling=Math.min(MAX_ROWS,maximum);
-  const floor=Math.min(ceiling,minimum);
+  const ceiling=Math.min(HEAVY_QUERY_ROWS,Math.max(1,maximum));
+  const floor=Math.min(ceiling,Math.max(1,minimum));
   let size=Math.min(ceiling,Math.max(floor,initial));
   let previousRate=0;
   return {
     get size(){return size;},
+    get maxBytes(){return maxPayloadBytes;},
+    byteSize:importRowBytes,
+    // Decide BEFORE appending the next row; even an oversized single row
+    // remains atomic and is validated/rejected by the existing writer.
+    shouldFlush(count,bytes,nextBytes=0){
+      return count>0&&(count>=size||
+        bytes+nextBytes>maxPayloadBytes);
+    },
     observe(rows,elapsedMs){
       if(!rows||!Number.isFinite(elapsedMs)||elapsedMs<0)return size;
       const rate=rows/Math.max(1,elapsedMs);
-      if(!previousRate||rate>previousRate*1.08){
+      if(!previousRate||rate>previousRate*1.08)
         size=Math.min(ceiling,size*2);
-      }else if(rate<previousRate*0.8){
+      else if(rate<previousRate*0.8)
         size=Math.max(floor,Math.floor(size/2));
-      }
       previousRate=rate;
       return size;
     }
