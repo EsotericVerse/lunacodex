@@ -89,10 +89,11 @@ async function fetchManagementAccount(queryClient){
     // Preserve the verified identity for retry but deny editor access.
     clearAuthorization();
     invalidateAccountPrivateReads();
-    // An explicit verification failure invalidates the stored UI projection,
-    // including transient 502/503. Do not rehydrate stale grants on the next
-    // page after the live authorization endpoint has failed.
-    if(typeof window!=='undefined')clearEditorSession(window.sessionStorage);
+    // A failed live verification must revoke the cached role projection;
+    // a transient 502/503/429 is NOT a sign-out. Preserve the existing
+    // editor Session clock so the user can re-verify without losing it.
+    // A true 401 still revokes the entire editing Session below.
+    if(typeof window!=='undefined')clearEditorManagement(window.sessionStorage);
     scopeMetadata=[];
     authUserId='';
     authEmail='';
