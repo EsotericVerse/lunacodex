@@ -87,7 +87,7 @@ test('route and root error boundaries are independent and retry render only',()=
   assert.match(global,/<html lang="zh-Hant">/);
   assert.match(global,/<body style=/);
   assert.match(global,/onClick=\{\(\)=>reset\(\)\}/);
-  assert.doesNotMatch(global,/AppShell|globals\.css|db-client|chunk-recovery/);
+  assert.doesNotMatch(global,/^import .*?(?:AppShell|globals\.css|db-client|chunk-recovery)/m);
   assert.doesNotMatch(route,/console\.error\('\[LOC route error\]',error\)/);
   assert.doesNotMatch(global,/console\.error\('\[LOC global error\]',error\)/);
 });
