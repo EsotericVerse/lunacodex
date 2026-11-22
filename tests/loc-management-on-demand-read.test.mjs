@@ -9,9 +9,12 @@ test('keyword management reads only authored Item words; no Pattern posting read
   const source=read('app/loc/keywords/ui/KeywordLibraryPanel.jsx');
   const load=source.slice(source.indexOf('  const load=useCallback('),
     source.indexOf('  useEffect(()=>{load();},[load]);'));
-  assert.match(load,/\.in\('type',\['category','class','group','item'\]\)/);
-  assert.doesNotMatch(load,/\.in\('type',\[[^\]]*'pattern'/);
-  assert.match(load,/\.order\('uid',\{ascending:true\}\)/);
+  assert.match(load,/keywordService\('workspace',\{scopeId,cursor,limit:250\}\)/);
+  assert.doesNotMatch(load,/dbAuthRelation\(table\)\.select/);
+  const server=read('app/loc/keywords/sql-service.mjs');
+  assert.match(server,/where\('type','in',\['category','class','group','item'\]\)/);
+  assert.doesNotMatch(server,/where\('type','in',\[[^\]]*'pattern'/);
+  assert.match(server,/orderBy\('uid','asc'\)/);
   assert.doesNotMatch(source,/\.eq\('type','pattern'\)/);
   assert.doesNotMatch(source,/setPatternRead|selectedPatternRefKey|pattern_index_version/);
   // Item words come directly from attr.keyword, not a second query.

@@ -38,5 +38,6 @@ test('Keyword workspace reads fixed UID-ordered Anchor and Scope config',async()
   assert.deepEqual(used.tables,['silver.lo3rwang_anchor','silver.lo3rwang']);
   assert.deepEqual(used.limits,[251]);
   assert.ok(used.where.some(v=>v[0]==='type'&&v[1]==='in'));
-  assert.throws(()=>readKeywordWorkspace(trx,'lo3rwang',{limit:500}),/./);
+  await assert.rejects(readKeywordWorkspace(trx,'lo3rwang',{limit:500}),
+    /Invalid Keyword editor page size/);
 });
