@@ -161,20 +161,23 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       const articleOffset=Number(pageParam?.articleOffset)||0;
       const mediaLimit=80;
       const {rows:mediaPage}=await selectRows(scope.anchor,{
-        columns:'uid',
+        columns:'uid,attr',
         filters:[{column:'type',operator:'eq',value:selectedMediaType},
           {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
           {column:'invisible',operator:'eq',value:false}],
         orders:[{column:'type',ascending:true},{column:'uid',ascending:true}],
         limit:mediaLimit,maxLimit:mediaLimit,offset:mediaOffset,signal
       });
-      const mediaIds=mediaPage.map(row=>String(row.uid||'').trim()).filter(Boolean);
-      if(!mediaIds.length)return {rows:[],nextCursor:null};
+      // Galaxy.media_link stores URLs, not MediaAnchor UIDs.
+      const mediaUrls=[...new Set(mediaPage.map(row=>String(row.attr?.url||'').trim())
+        .filter(url=>/^https?:\\/\\//i.test(url)))];
+      if(!mediaUrls.length)return {rows:[],nextCursor:
+        mediaPage.length===mediaLimit?{mediaOffset:mediaOffset+mediaLimit,articleOffset:0}:null};
       const {rows}=await selectRows(scope.galaxy,{
         columns:galaxyReadColumnsFor('GalaxyList').join(','),
         filters:[
           ...traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter,allPlacedArticles}),
-          {column:'media_link',operator:'overlaps',value:mediaIds}
+          {column:'media_link',operator:'overlaps',value:mediaUrls}
         ],
         orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
             {column:'uid',ascending:true}],
