@@ -10,6 +10,10 @@ import {useAccount} from '../auth/use-account';
 import {useEditDock} from '../../modular/edit-dock';
 
 const EMPTY={theme:'system-default'};
+function broadcastTheme(type,scopeId,themeId=''){
+  if(typeof window==='undefined')return;
+  window.dispatchEvent(new CustomEvent(type,{detail:{scopeId,themeId}}));
+}
 
 export default function ScopeSettingsPanel({scopeId}){
   useUiSection('uiExtra.scopeSettings');
@@ -31,6 +35,8 @@ export default function ScopeSettingsPanel({scopeId}){
       const theme=row?.theme||'system-default';
       setSavedTheme(theme);
       setDraft({theme});
+      // This authorized editing read reflects the committed DB value.
+      broadcastTheme('loc-scope-theme-committed',scopeId,theme);
     }).catch(error=>{
       if(active)setMessage(error?.message||uiT('uiExtra.scopeSettings.loadFailed'));
     }).finally(()=>{if(active)setLoading(false);});
@@ -46,9 +52,15 @@ export default function ScopeSettingsPanel({scopeId}){
       isBusy:()=>dockActions.current.isBusy()
     });
   },[editDock?.active,editDock?.scopeId,editDock?.register,scopeId,account.role]);
+  // Leaving the editor discards its temporary palette; no draft persistence.
+  // Hooks must run before access-controlled early returns.
+  useEffect(()=>()=>broadcastTheme('loc-scope-theme-preview-clear',scopeId),[scopeId]);
   if(!account.canLocAccessSync('scope',scopeId))return null;
   const table=account.scopeDataFor(scopeId)?.config;
-  const change=(key,value)=>setDraft(current=>({...current,[key]:value}));
+  const change=(key,value)=>{
+    setDraft(current=>({...current,[key]:value}));
+    if(key==='theme')broadcastTheme('loc-scope-theme-preview',scopeId,value);
+  };
 
   function prepareThemeTransaction(){
     if(busy||loading)throw Error('主題資料尚未就緒');
@@ -63,8 +75,7 @@ export default function ScopeSettingsPanel({scopeId}){
         // Do not open another SQL connection simply to SELECT the new value.
         setSavedTheme(nextTheme);
         invalidatePublicScopeMetadata();
-        if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent(
-          'loc-scope-theme-saved',{detail:{scopeId,themeId:nextTheme}}));
+        broadcastTheme('loc-scope-theme-saved',scopeId,nextTheme);
         setMessage(uiT('uiExtra.scopeSettings.saved'));
       },
       onFailure:error=>setMessage(error?.message||uiT('uiExtra.scopeSettings.saveFailed'))
@@ -102,6 +113,7 @@ export default function ScopeSettingsPanel({scopeId}){
           </select>
         </label>
       </div>
+      <p className="scope-status">即時預覽配色；未儲存離開此編輯頁面會還原。</p>
 
       {message?<p className="scope-status" role="status">{message}</p>:null}
     </div>:null}

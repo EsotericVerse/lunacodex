@@ -108,6 +108,27 @@ function nextThemeChangeDelay(date=new Date()){
 // management entry navigation without caching SQL, Session or private data.
 const USER_THEME_SESSION_KEY='loc-user-theme-selection-v1';
 const LAST_ACTIVE_THEME_KEY='loc-active-theme-id-v1';
+// The public JS registry is immutable until explicit publication. An
+// authorized management read/Save can immediately override only this
+// browser Session; no ordinary visitor performs a Theme SQL read.
+const COMMITTED_SCOPE_THEME_KEY='loc-committed-scope-theme-v1';
+function readCommittedScopeTheme(scopeId){
+  try{
+    const map=JSON.parse(window.sessionStorage.getItem(COMMITTED_SCOPE_THEME_KEY)||'{}');
+    const value=String(map?.[scopeId]||'');
+    return value===SYSTEM_THEME_ID||THEME_SLOTS.some(slot=>slot.id===value)?value:'';
+  }catch{return '';}
+}
+function rememberCommittedScopeTheme(scopeId,themeId){
+  const valid=themeId===SYSTEM_THEME_ID||THEME_SLOTS.some(slot=>slot.id===themeId);
+  if(!valid)return;
+  try{
+    const map=JSON.parse(window.sessionStorage.getItem(COMMITTED_SCOPE_THEME_KEY)||'{}');
+    map[scopeId]=themeId;
+    window.sessionStorage.setItem(COMMITTED_SCOPE_THEME_KEY,JSON.stringify(map));
+  }catch{}
+}
+
 function readLastActiveTheme(){
   try{
     const candidate=String(window.sessionStorage.getItem(LAST_ACTIVE_THEME_KEY)||'');
@@ -148,26 +169,59 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // Published route metadata is already available synchronously and prevents
   // the palette from falling back to day/night while Bootstrap is re-reading.
   const publishedTheme=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.theme;
-  const configuredTheme=configEnabled?String(publishedTheme||'').trim():'';
+  const [committedScopeTheme,setCommittedScopeTheme]=useState(()=>({scopeId,themeId:readCommittedScopeTheme(scopeId)}));
+  const [themePreview,setThemePreview]=useState({scopeId,themeId:''});
+  const committedId=committedScopeTheme.scopeId===scopeId?committedScopeTheme.themeId:'';
+  const configuredTheme=configEnabled?(committedId||String(publishedTheme||'').trim()):'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
   const [selection,setSelection]=useState(()=>({scopeId,themeId:readUserTheme(scopeId)}));
   // Decorative local feedback only when a person selects a different option.
   // Theme persistence and actual palette application remain untouched.
   const [accentPulse,setAccentPulse]=useState(0);
   const [now,setNow]=useState(()=>new Date());
-  // Applying a saved Scope default must also clear any temporary footer choice.
-  // Otherwise the local preview can mask a successful database update.
+  // Management emits a temporary preview on selection. Abandoning the
+  // editor removes it. Only a committed editor read/Save updates the local
+  // runtime default; CSS is always the same published theme-N.css artifact.
   useEffect(()=>{
-    const onSaved=event=>{
-      if(event?.detail?.scopeId===scopeId){rememberUserTheme(scopeId,SYSTEM_THEME_ID);setSelection({scopeId,themeId:SYSTEM_THEME_ID});}
+    const forScope=event=>event?.detail?.scopeId===scopeId;
+    const onPreview=event=>{
+      if(forScope(event))setThemePreview({scopeId,themeId:String(event.detail.themeId||'')});
     };
+    const onClear=event=>{
+      if(forScope(event))setThemePreview({scopeId,themeId:''});
+    };
+    const onCommitted=event=>{
+      if(!forScope(event))return;
+      const themeId=String(event.detail.themeId||'');
+      if(themeId!==SYSTEM_THEME_ID&&!THEME_SLOTS.some(slot=>slot.id===themeId))return;
+      rememberCommittedScopeTheme(scopeId,themeId);
+      setCommittedScopeTheme({scopeId,themeId});
+    };
+    const onSaved=event=>{
+      if(!forScope(event))return;
+      onCommitted(event);
+      rememberUserTheme(scopeId,SYSTEM_THEME_ID);
+      setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+      setThemePreview({scopeId,themeId:''});
+    };
+    window.addEventListener('loc-scope-theme-preview',onPreview);
+    window.addEventListener('loc-scope-theme-preview-clear',onClear);
+    window.addEventListener('loc-scope-theme-committed',onCommitted);
     window.addEventListener('loc-scope-theme-saved',onSaved);
-    return()=>window.removeEventListener('loc-scope-theme-saved',onSaved);
+    return()=>{
+      window.removeEventListener('loc-scope-theme-preview',onPreview);
+      window.removeEventListener('loc-scope-theme-preview-clear',onClear);
+      window.removeEventListener('loc-scope-theme-committed',onCommitted);
+      window.removeEventListener('loc-scope-theme-saved',onSaved);
+    };
   },[scopeId]);
   const selectedThemeId=selection.scopeId===scopeId?selection.themeId:SYSTEM_THEME_ID;
   const systemDefaultThemeId=fixedDefaultThemeId||configuredDefaultThemeId||
     (scopeId==='admin'?readLastActiveTheme():'')||automaticThemeId(now);
-  const effectiveThemeId=selectedThemeId===SYSTEM_THEME_ID?systemDefaultThemeId:selectedThemeId;
+  const temporaryPreview=themePreview.scopeId===scopeId?themePreview.themeId:'';
+  const effectiveThemeId=temporaryPreview===SYSTEM_THEME_ID?systemDefaultThemeId:
+    THEME_SLOTS.some(slot=>slot.id===temporaryPreview)?temporaryPreview:
+      selectedThemeId===SYSTEM_THEME_ID?systemDefaultThemeId:selectedThemeId;
   // Published CSS owns the complete public palette. No Theme JSON import is
   // needed on ordinary Scope navigation.
   const themeChoices=THEME_SLOTS.map(item=>({id:item.id,label:item.label}));
@@ -196,6 +250,8 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     // Switching Scope preserves each Scope's own explicitly chosen palette.
     // Entering /manage must never silently reset that choice to system.
     setSelection({scopeId,themeId:readUserTheme(scopeId)});
+    setCommittedScopeTheme({scopeId,themeId:readCommittedScopeTheme(scopeId)});
+    setThemePreview({scopeId,themeId:''});
     setAccentPulse(0);
   },[scopeId]);
 
