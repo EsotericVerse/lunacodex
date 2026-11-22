@@ -101,8 +101,6 @@ export function createKyselyPublicClient({
   async function read(q){
     // Pre-queued public reads and actual browser fetch use the same route epoch.
     q.signal=transientReadSignal(q.signal);
-    if(q.schema==='silver'&&q.table==='loc_user')
-      throw Error('Retired personal preference relation is unavailable');
     if(q.dbId)throw Error('Selected SQL database requires signed LOC delegation');
     if(q.signal?.aborted){const error=new Error('Request cancelled');
       error.name='AbortError';throw error;}
