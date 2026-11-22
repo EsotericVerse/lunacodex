@@ -157,8 +157,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     [timeAnchors.data]);
   const spaceMetrics=useMemo(()=>spaceIntersectionMetrics(spaceAnchors.data||[]),
     [spaceAnchors.data]);
-  // Preserve the existing single Source-tree engine. Universe/From remain
-  // visible to its picker but are not selectable in comparisons.
+  // Keep the single Source-tree engine. Universe is a grouping heading;
+  // From contributes to rollups but is not shown or selectable in comparisons.
   const sourceMetrics=useMemo(()=>sourceModel.metrics.filter(item=>
     item.kind==='source_tree'&&['galaxy','domain'].includes(item.type)),
   [sourceModel]);
