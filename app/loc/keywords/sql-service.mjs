@@ -5,7 +5,8 @@ import {analyzeItemKeywordCounts,readItemKeywordProjection,
   itemKeywordStatistics,itemKeywordSuggestions,itemScope} from './item-count-analysis.mjs';
 import {createIndexedDateKeywordReader} from './article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass,
-  readKeywordScanProgress,writeKeywordScanProgress} from './class-state.mjs';
+  readKeywordScanProgress,writeKeywordScanProgress,
+  keywordClassEpoch,bumpKeywordClassEpoch} from './class-state.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -245,7 +246,21 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
   return [...found.values()].sort((a,b)=>a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
-async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',expectedCount=null){
+// PostgreSQL row lock makes Reset, Checkpoint and Finalize linearizable.
+// The lock is acquired BEFORE any per-Item writes; no stale background job
+// may republish counters after a successful reset.
+async function lockedKeywordMetadata(trx,scope,classUid,expectedEpoch){
+  const row=await trx.selectFrom(configName(scope))
+    .select('keyword_meta').where('id','=',scope).forUpdate().executeTakeFirst();
+  if(!row)fail('Keyword Scope not configured',404);
+  const meta=attr({attr:row.keyword_meta});
+  if(keywordClassEpoch(meta,classUid)!==expectedEpoch)
+    fail('Keyword analysis invalidated by reset; start a new analysis',409);
+  return meta;
+}
+
+async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',expectedCount=null,expectedEpoch=0){
+  const old=await lockedKeywordMetadata(trx,scope,classUid,expectedEpoch);
   if(expectedCount!==null){
     const latest=await trx.selectFrom(galaxyName(scope))
       .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
@@ -271,8 +286,7 @@ async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',exp
       .where('uid','=',row.uid).executeTakeFirst();
     if(Number(result?.numUpdatedRows||0)!==1)fail('Item count write incomplete',409);
   }
-  const cfg=await configuration(trx,scope),now=new Date().toISOString();
-  const old=attr({attr:cfg.keyword_meta});
+  const now=new Date().toISOString();
   const {pattern_index_version,pattern_scans,scan_progress,...rest}=old;
   const {itemCounts,groupCounts,...smallCounts}=counts;
   const completed=completeKeywordClass(rest,classUid,{
@@ -284,9 +298,8 @@ async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',exp
   }).where('id','=',scope).execute();
 }
 
-async function persistScanProgress(trx,scope,classUid,progress){
-  const cfg=await configuration(trx,scope);
-  const meta=attr({attr:cfg.keyword_meta});
+async function persistScanProgress(trx,scope,classUid,progress,expectedEpoch){
+  const meta=await lockedKeywordMetadata(trx,scope,classUid,expectedEpoch);
   await trx.updateTable(configName(scope))
     .set({keyword_meta:JSON.stringify(writeKeywordScanProgress(meta,classUid,progress))})
     .where('id','=',scope).execute();
@@ -299,6 +312,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   checkScope(scope);checkClass(classUid);
   const cfg=await configuration(db,scope),tree=await classTree(db,scope,classUid);
   const meta=attr({attr:cfg.keyword_meta});
+  const expectedEpoch=keywordClassEpoch(meta,classUid);
   const resume=readKeywordScanProgress(meta,classUid);
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
@@ -331,7 +345,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       .where('uid','in',uids).execute(),
     onCheckpoint:async progress=>db.transaction().execute(async trx=>{
       await authorizeTransaction(trx);
-      await persistScanProgress(trx,scope,classUid,progress);
+      await persistScanProgress(trx,scope,classUid,progress,expectedEpoch);
     }),
     onProgress:({phase,completed=0,parsed=0})=>onProgress({
       phase,total:expectedCount,completed,parsed,
@@ -341,7 +355,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     }),
     finalize:async counts=>db.transaction().execute(async trx=>{
       await authorizeTransaction(trx);
-      await persistItemCounts(trx,scope,classUid,tree,counts,attemptId,expectedCount);
+      await persistItemCounts(trx,scope,classUid,tree,counts,attemptId,expectedCount,expectedEpoch);
     })
   });
   if(result.incomplete)return {incomplete:true,total:expectedCount,
@@ -378,13 +392,17 @@ export async function resetKeywordScope(db,scope,classUid,{
   checkScope(scope);checkClass(classUid);
   return db.transaction().execute(async trx=>{
     await authorizeTransaction(trx);
+    const cfg=await trx.selectFrom(configName(scope))
+      .select('keyword_meta').where('id','=',scope).forUpdate().executeTakeFirst();
+    if(!cfg)fail('Keyword Scope not configured',404);
     const tree=await classTree(trx,scope,classUid);
     const ids=[tree.root.uid,...tree.groups.map(x=>x.uid),...tree.items.map(x=>x.uid)];
     const changed=await trx.updateTable(anchorName(scope)).set({num:0n})
       .where('uid','in',ids).executeTakeFirst();
-    const cfg=await configuration(trx,scope);
-    const meta=writeKeywordScanProgress(
-      invalidateKeywordClass(cfg.keyword_meta,classUid),classUid,null);
+    const previous=attr({attr:cfg.keyword_meta});
+    const meta=bumpKeywordClassEpoch(
+      writeKeywordScanProgress(invalidateKeywordClass(previous,classUid),classUid,null),
+      classUid);
     await trx.updateTable(configName(scope)).set({
       keyword_meta:JSON.stringify(meta),staticstime:null,
       updated_at:new Date().toISOString()
