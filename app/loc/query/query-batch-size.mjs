@@ -3,12 +3,12 @@ const MiB=1048576;
 export const IO_LIMIT_CEILINGS=Object.freeze({
   archiveMiB:1024,jsonMiB:50,documentMiB:128,timelineMiB:200
 });
-// Import/write operations preserve their existing 1,000-row batches.
+// Ordinary URL-safe IN lookups and non-heavy writes retain their 1k limit.
+// Explicit import writes use HEAVY_QUERY_ROWS and a byte-aware sizer instead.
 export const MAX_ROWS=1000;
-// Per-request SQL result budgets. 10k applies ONLY to explicitly started
-// large operations (keyword reanalysis, discovery, import reads); it is NOT a
-// Neon/PostgREST/MCP global setting or a demand to hold 10k full bodies.
-// Existing 1,000-row write transaction boundaries remain unchanged.
+// Per-operation row ceilings, not a Neon/PostgREST/MCP global setting.
+// Heavy import *writes* can use up to 10k, bounded by actual request bytes.
+// Ordinary reads/writes still have their own explicit contracts.
 export const NORMAL_QUERY_ROWS=1000;
 export const HEAVY_QUERY_ROWS=10000;
 // Internal read transport chunk only: total SELECT/COUNT results are never capped.
