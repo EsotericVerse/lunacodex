@@ -3,7 +3,9 @@ import {portableRelation} from './sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {sql} from 'kysely';
-import {zmodelRegistryJoin,zmodelGalaxyPointJoin} from '../../../packages/zenstack/model-column-guard.mjs';
+import {zmodelGalaxyPointJoin} from '../../../packages/zenstack/model-column-guard.mjs';
+import {FIXED_MANAGE_ROWS} from '../permissions/fixed-manage-registry.mjs';
+import {publishedManagedScope} from './published-managed-scope.mjs';
 import {readItemKeywordProjection,itemKeywordStatistics,itemScope} from '../keywords/item-count-analysis.mjs';
 import {sourceTaxonomyFromAnchors} from '../source/classification.mjs';
 
@@ -27,13 +29,12 @@ function dateOnly(value){
 function scopeId(value){const id=String(value||'').trim().toLowerCase();
   if(!SCOPE.test(id))reject('Invalid statistics Scope');return id;
 }
-async function registry(trx,scope){
-  const row=await zmodelRegistryJoin(trx)
-    .select(['m.id as id','m.manage_role as manage_role','m.active as active',
-      'l.display_name as display_name','m.anchor_table as anchor_table',
-      'm.galaxy_table as galaxy_table','m.sort_order as sort_order'])
-    .where('m.id','=',scope).executeTakeFirst();
-  if(!row||row.manage_role!=='scope'||row.active!==true)reject('Unknown statistics Scope');
+function registry(_trx,scope){
+  // The authored JS publication is the only authority for Scope routing.
+  // Statistics never need a join against api.manage.
+  const row=publishedManagedScope(scope);
+  if(!row||row.manage_role!=='scope'||row.active!==true)
+    reject('Unknown statistics Scope');
   return row;
 }
 function safeName(value,fallback){const name=String(value||fallback);
@@ -116,12 +117,12 @@ async function searchSummary(trx,options,{publishedScopeIds=null}={}){
   // Keep its membership contract and never require api.manage for anonymous
   // Search. PG-only UNION ALL batches independent Scope configuration tables,
   // avoiding one SQL round trip per Scope without merging their permissions.
-  const allowed=publishedScopeIds===null
-    ?new Set((await trx.selectFrom('api.manage').select('id')
-      .where('id','in',requested).where('manage_role','=','scope')
-      .where('active','=',true).execute()).map(row=>row.id))
-    :new Set(publishedScopeIds);
-  const scopeIds=requested.filter(scope=>allowed.has(scope));
+  const selected=new Set(publishedScopeIds===null?requested:publishedScopeIds);
+  const scopeIds=requested.filter(scope=>{
+    if(!selected.has(scope))return false;
+    const published=publishedManagedScope(scope);
+    return published?.manage_role==='scope'&&published.active===true;
+  });
   const statusByScope=new Map();
   for(let i=0;i<scopeIds.length;i+=20){
     const selected=scopeIds.slice(i,i+20);
@@ -464,11 +465,14 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   }
   if(mode==='loc'){
     if(scope!=='loc')reject('Invalid LOC statistics Scope');
-    const groups=await zmodelRegistryJoin(trx)
-      .select(['m.id as id','l.display_name as display_name',
-        'm.galaxy_table as galaxy_table'])
-      .where('m.manage_role','=','scope').where('m.active','=',true)
-      .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
+    const groups=FIXED_MANAGE_ROWS.filter(row=>
+      row.manage_role==='scope'&&row.active===true&&
+      publishedManagedScope(row.id)?.active===true)
+      .sort((a,b)=>a.sort_order-b.sort_order||a.id.localeCompare(b.id));
+    const titles=groups.length?await trx.selectFrom('silver.loc')
+      .select(['id','display_name'])
+      .where('id','in',groups.map(group=>group.id)).execute():[];
+    const displayNames=new Map(titles.map(row=>[row.id,row.display_name]));
     const scopes=[],rows=[];let first=null;
     for(const group of groups){
       if(!SCOPE.test(group.id))continue;
@@ -478,7 +482,8 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
       // existence probe or implicit join is allowed on the overview path.
       const relation=await sql`select to_regclass(${'silver.'+group.id+'_'+galaxy}) is not null as galaxy_exists`.execute(trx);
       if(!relation.rows[0]?.galaxy_exists)continue;
-      scopes.push({scope_id:group.id,display_name:group.display_name});
+      scopes.push({scope_id:group.id,
+        display_name:displayNames.get(group.id)||group.id});
       const summary=await dailyStats(trx,group.id,start,end,false,
         {withEarliest:true,totalsOnly:true});
       rows.push(...summary.rows.map(r=>({scope_id:group.id,

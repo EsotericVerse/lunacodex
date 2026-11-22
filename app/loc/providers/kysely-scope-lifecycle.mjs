@@ -6,6 +6,7 @@
 // with global:manage may reach these functions.
 import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';
+import {FIXED_MANAGE_ROWS,fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {synchronizeKeywordLibraryInTransaction} from '../keywords/sql-service.mjs';
 
@@ -30,10 +31,6 @@ function checkReservedRoute(target,before=null){
     target.domain!==before?.domain)
     reject('Scope domain conflicts with an existing service',409);
 }
-const REGISTRY_FIELDS=['m.id as id','l.display_name as display_name',
-  'm.email as email','m.domain as domain','m.directory as directory',
-  'm.parent_scope_id as parent_scope_id','m.manage_role as manage_role',
-  'm.active as active','m.sort_order as sort_order'];
 const EDIT_FIELDS=new Set(['display_name','domain','directory',
   'parent_scope_id','active','sort_order']);
 
@@ -84,12 +81,11 @@ function checkRouteUnique(rows,{domain,directory},except=''){
     directory&&String(row.directory||'').toLowerCase()===directory)))
     reject('Scope Domain or Directory is already registered',409);
 }
-async function registryRows(trx){
-  // Serializable is selected by the caller. Lock the existing Registry
-  // records as well, so re-parenting cannot race with another deletion.
-  return trx.selectFrom('api.manage as m')
-    .leftJoin('silver.loc as l','l.id','m.id')
-    .select(REGISTRY_FIELDS).orderBy('m.id','asc').forUpdate('m').execute();
+function registryRows(){
+  // Read the published JS role/routing snapshot. Database constraints and
+  // the caller's serializable transaction remain responsible for safe writes.
+  // No api.manage SQL lookup belongs on the authorization/read path.
+  return FIXED_MANAGE_ROWS.map(row=>({...row,display_name:row.id}));
 }
 function requireGlobal(trx){
   if(!canLocAccess(trx,'global'))
@@ -135,10 +131,15 @@ export async function manageScopeRegistryNative(trx,args){
   const id=scopeId(args.p_scope_id);
   const values=ensureObject(args.p_values);
   assertAllowedUpdate(values);
-  const rows=await registryRows(trx);
+  const rows=registryRows();
   const current=registered(rows,id);
   if(operation==='create_group'&&current)reject('Scope ID already exists',409);
   if(operation==='update'&&!current)reject('Scope Registry row not found',404);
+  // Deactivation affects JS grants. Do not commit the revocation while the
+  // published release still grants access to the same identity.
+  if(operation==='update'&&values.active===false&&
+     fixedManageScope(id)?.active===true)
+    reject('Deactivate this Scope in published JS before SQL update',409);
   if(operation==='update'&&(
     id==='admin'||!['group','scope'].includes(current.manage_role)))
     reject('System Scope Registry cannot be edited',403);
@@ -176,6 +177,16 @@ export async function manageScopeRegistryNative(trx,args){
     :requestedSort;
   if(!Number.isSafeInteger(sort)||sort<0)
     reject('Invalid Scope sort order');
+  // A change to any published role/routing field must be released in JS
+  // before it can be reflected by the management database.
+  const published=fixedManageScope(id);
+  if(operation==='update'&&published&&(
+    published.active!==active||
+    published.domain!==target.domain||
+    published.directory!==target.directory||
+    published.parent_scope_id!==(id==='loc'?null:parent)||
+    published.sort_order!==sort))
+    reject('Publish matching JS Scope routing before Registry update',409);
   const fields={...target,parent_scope_id:id==='loc'?null:parent,
     active,sort_order:sort};
   if(operation==='create_group'){
@@ -262,7 +273,7 @@ export async function provisionScopeNative(trx,args){
   if(birthday!=null&&!/^\d{4}-\d{2}-\d{2}$/.test(String(birthday)))
     reject('Invalid birthday');
   const copyKeywords=args.p_copy_keywords!==false;
-  const rows=await registryRows(trx);
+  const rows=registryRows();
   if(registered(rows,scope))reject('Scope already exists',409);
   parentGroup(rows,parent);checkRouteUnique(rows,target);
   if(ROOT_PATHS.has(scope))reject('Scope ID conflicts with an existing route',409);
@@ -322,7 +333,7 @@ export async function deleteScopeNative(trx,args){
   requireGlobal(trx);
   const scope=scopeId(args.p_scope_id);
   if(BUILTIN.has(scope))reject('Built-in LOC Scope cannot be deleted',403);
-  const rows=await registryRows(trx);
+  const rows=registryRows();
   const current=registered(rows,scope);
   if(!current||current.manage_role!=='scope')
     reject('Only an existing non-system Scope may be deleted',404);

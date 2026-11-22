@@ -6,6 +6,7 @@ import {FeaturePage} from '../ui';
 import ScopeLink from '../ScopeLink';
 import {featureNavigationHref} from '../routing/feature-navigation';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
+import {traceRouteHierarchy} from './trace/trace-route-hierarchy.mjs';
 import {
   readTraceMapIndex,readCurrentTraceAnchors,traceMapIndexKey,traceMemberUids
 } from './trace/trace-data';
@@ -17,10 +18,11 @@ const TraceMap=dynamic(()=>import('./trace/TraceMap'),{
   ssr:false,loading:()=> <p className="scope-status" role="status">正在載入痕跡地圖…</p>
 });
 const routeKey=row=>String(row.source_scope||'')+':'+String(row.uid||'');
-const routeLabel=row=>row.trace_type==='trace'?'痕跡圖':'路線圖';
+const EMPTY_ROUTES=Object.freeze([]);
 
 export default function LocTracePreview(){
-  const [selectedKey,setSelectedKey]=useState('');
+  const [selectedTraceKey,setSelectedTraceKey]=useState('');
+  const [selectedPathKey,setSelectedPathKey]=useState('');
   // The LOC index delegates to published member Scopes only. It reads
   // path/trace definitions from their own Scope storage, never LOC's Point table.
   const index=useAsyncResource({
@@ -31,14 +33,20 @@ export default function LocTracePreview(){
   const routes=useMemo(()=>(index.data||[]).filter(row=>
     ['path','trace'].includes(row.trace_type)&&row.source_scope&&row.uid),
     [index.data]);
-  const selected=useMemo(()=>routes.find(row=>routeKey(row)===selectedKey)
-    ||routes[0]||null,[routes,selectedKey]);
-  const referencedRoutes=useMemo(()=>{
-    if(selected?.trace_type!=='trace')return [];
-    const memberIds=new Set(selected.route_list?.routes||[]);
-    return routes.filter(row=>row.trace_type==='path'&&
-      row.source_scope===selected.source_scope&&memberIds.has(row.uid));
-  },[routes,selected]);
+  // Hierarchy comes from persisted Trace.attr.path links, never location
+  // proximity. First select a Trace, then a Path belonging to that Trace.
+  const hierarchy=useMemo(()=>traceRouteHierarchy(routes),[routes]);
+  const traceOptions=useMemo(()=>[
+    ...hierarchy.groups.map(group=>({key:routeKey(group.trace),label:group.trace.source_scope+' · '+group.trace.title})),
+    ...(hierarchy.orphans.length?[{key:'__standalone__',label:'未歸屬路線圖'}]:[])
+  ],[hierarchy]);
+  const activeTraceKey=traceOptions.some(row=>row.key===selectedTraceKey)
+    ?selectedTraceKey:traceOptions[0]?.key||'';
+  const currentGroup=hierarchy.groups.find(group=>routeKey(group.trace)===activeTraceKey)||null;
+  const routeOptions=currentGroup?.paths||hierarchy.orphans;
+  const activePath=routeOptions.find(row=>routeKey(row)===selectedPathKey)||null;
+  const selected=activePath||(currentGroup?.trace||routeOptions[0]||null);
+  const referencedRoutes=currentGroup?.trace===selected?currentGroup.paths:EMPTY_ROUTES;
   const memberIds=useMemo(()=>[...new Set([
     ...traceMemberUids(selected),...referencedRoutes.flatMap(traceMemberUids)
   ])],[selected,referencedRoutes]);
@@ -62,11 +70,22 @@ export default function LocTracePreview(){
       {!index.isPending&&!index.error&&!routes.length?
         <p className="scope-status">目前沒有已開放的痕跡圖或路線圖。</p>:null}
       {routes.length?<div className="scope-stat-controls">
-        <label>已公開的路線／痕跡
-          <select className="scope-select" value={selected?routeKey(selected):''}
-            onChange={event=>setSelectedKey(event.target.value)}>
-            {routes.map(row=><option key={routeKey(row)} value={routeKey(row)}>
-              {row.source_scope} · {routeLabel(row)} · {row.title||row.uid}
+        <label>痕跡圖
+          <select className="scope-select" aria-label="痕跡圖選擇"
+            value={activeTraceKey} onChange={event=>{
+              setSelectedTraceKey(event.target.value);
+              setSelectedPathKey('');
+            }}>
+            {traceOptions.map(row=><option key={row.key} value={row.key}>{row.label}</option>)}
+          </select>
+        </label>
+        <label>路徑圖
+          <select className="scope-select" aria-label="所屬路徑圖選擇"
+            value={activePath?routeKey(activePath):currentGroup?'__overview__':selected?routeKey(selected):''}
+            onChange={event=>setSelectedPathKey(event.target.value==='__overview__'?'':event.target.value)}>
+            {currentGroup?<option value="__overview__">整個痕跡圖</option>:null}
+            {routeOptions.map(row=><option key={routeKey(row)} value={routeKey(row)}>
+              {row.title||row.uid}
             </option>)}
           </select>
         </label>

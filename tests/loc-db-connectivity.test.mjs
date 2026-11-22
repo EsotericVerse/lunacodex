@@ -370,7 +370,8 @@ test('import special Galaxy fields share one native typed update batch',()=>{
   assert.doesNotMatch(block,/Promise\.all\(/);
   assert.doesNotMatch(block,/start\+=6/);
   assert.match(block,/maxChunkBytes=480000/);
-  assert.match(writer,/const transactionRegistry=new WeakMap\(\)/);
+  assert.match(writer,/return publishedManagedScope\(scope\);/);
+  assert.doesNotMatch(writer,/selectFrom\('api\.manage'\)/);
   assert.match(writer,/const registry=await registeredScope\(trx,scope\)/);
   for(const key of ['location','site_id','ref_id','source_id','target_id'])
     assert.ok(writer.includes("'"+key+"'"),'missing approved Galaxy batch field '+key);

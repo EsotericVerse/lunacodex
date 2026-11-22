@@ -3,6 +3,7 @@
 import {z} from 'zod';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {assertZModelAnchorFeatureRows} from '../../../packages/zenstack/import-validation.mjs';
 const scopes=new Set(SCOPE_ROUTE_INDEX.filter(x=>x.active!==false).map(x=>x.scope_id));
 const UID=z.string().regex(/^[A-Za-z0-9]{8}$/);
 const DAY=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -70,7 +71,7 @@ export async function executeAnchorFeatureTransaction(trx,model){
   ]).orderBy(model.order,direction);
   if(model.order!=='uid')page=page.orderBy('uid','asc');
   const rows=await page.limit(model.limit+1).offset(model.offset||0).execute();
-  const visible=rows.slice(0,model.limit);
+  const visible=assertZModelAnchorFeatureRows(rows.slice(0,model.limit));
   return {rows:visible,hasMore:rows.length>model.limit,totalCount,
     nextCursor:rows.length>model.limit&&visible.length&&
       model.order==='uid'&&direction==='asc'

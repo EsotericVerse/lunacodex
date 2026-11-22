@@ -68,8 +68,8 @@ export async function hero_block(trx,specificValue,options={}){
 
 export async function executeKyselyPublicAction(trx,body,{engine='postgres',namespace='silver',publishedScopeIds=null}={}){
   const portable=engine!=='postgres';
-  const table=name=>portable?portableRelation(name,engine,namespace):
-    name==='manage'?'api.manage':'silver.'+name;
+  const table=name=>portable?portableRelation(name,engine,namespace):'silver.'+name;
+  const activeScopeIds=publishedScopeIds??SCOPE_ROUTE_INDEX.filter(row=>row.active!==false).map(row=>row.scope_id);
   const action=String(body?.name||'');
   if(action==='block_list'||action==='hero_block'){
     const args=body?.args||{};
@@ -79,7 +79,7 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
     if(!portable)await sql`reset role`.execute(trx);
     if(action==='block_list'){
       const scope=id(args.p_scope_id);
-      if(publishedScopeIds!==null&&!publishedScopeIds.includes(scope))
+      if(!activeScopeIds.includes(scope))
         throw Object.assign(new Error('Unpublished Scope'),{httpStatus:403});
       return {data:await block_list(trx,scope,{engine,namespace}),count:null};
     }
@@ -100,21 +100,11 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   const has=name=>engine==='mysql'?mysqlNames.has(name):
     available.has((portable?namespace:'silver')+'.'+name)||
     portable&&available.has('.'+name);
-  const scopedGalaxies=[...new Set(metadata
-    .filter(row=>row.name.endsWith('_galaxy')&&
-      (engine==='mysql'||!portable||!row.schema||row.schema===namespace))
-    .map(row=>row.name.slice(0,-'_galaxy'.length)))]
-    .filter(value=>scopePattern.test(value)&&has(value+'_anchor'));
   // The old public RPCs were SECURITY DEFINER. We return only their
   // pre-approved public result shape; callers cannot choose relations/SQL.
   if(!portable)await sql`reset role`.execute(trx);
   if(name==='read_scope_page_copy'){
-    if(!has('manage')&&publishedScopeIds===null)return {data:[],count:null};
-    const allowed=publishedScopeIds!==null
-      ?publishedScopeIds.includes(scope)?{id:scope}:null
-      :await trx.selectFrom(table('manage'))
-        .select('id').where('id','=',scope)
-        .where('manage_role','=','scope').where('active','=',true).executeTakeFirst();
+    const allowed=activeScopeIds.includes(scope);
     const record=allowed&&has('loc')
       ?await trx.selectFrom(table('loc')).select(['title_tw','desc_tw'])
         .where('id','=',scope).executeTakeFirst():null;
@@ -125,11 +115,7 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   if(name==='search_scope_trace_place_names'){
     const term=String(args.p_term||'').trim().slice(0,100);
     const limit=args.p_limit===undefined?8:Math.max(1,Math.min(8,Number(args.p_limit)||8));
-    const registered=publishedScopeIds!==null
-      ?publishedScopeIds.includes(scope)
-      :has('manage')?Boolean(await trx.selectFrom(table('manage')).select('id')
-        .where('id','=',scope).where('manage_role','=','scope')
-        .where('active','=',true).executeTakeFirst()):portable;
+    const registered=activeScopeIds.includes(scope);
     if(!term||scope==='loc'||!registered||!has(scope+'_anchor'))return {data:[],count:null};
     if(portable){
       // Bounded Kysely pages preserve alias search without vendor-specific JSON RPC.
@@ -173,26 +159,12 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
   }
   let page=String(args.p_page_name||'index').trim().toLowerCase();
   if(!/^[a-z0-9_-]+$/.test(page))page='index';
-  // An external LOC installation needs only a Galaxy and Anchor per Scope.
-  // Do not require a provider-specific registry or stored procedures.
-  if(portable&&!has('manage')){
-    const registry=scopedGalaxies.map(id=>({
-      scope_id:id,display_name:id,scope_kind:'scope',domain:null,directory:null,
-      parent_scope_id:'loc',active:true,sort_order:0
-    }));
-    return {data:{scope_id:scope,page_name:page,config:null,blocks:[],
-      registry,page_copy:[],theme_list:[],themes:[]},count:null};
-  }
-  const members=publishedScopeIds!==null
-    ?SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&publishedScopeIds.includes(row.scope_id))
-      .map((row,sort_order)=>({id:row.scope_id,
-        manage_role:row.scope_id==='loc'?'group':'scope',active:true,sort_order,
-        domain:row.domain||null,directory:row.directory||null,
-        parent_scope_id:row.scope_id==='loc'?null:'loc'}))
-    :await trx.selectFrom(table('manage'))
-      .select(['id','manage_role','active','sort_order',
-        'domain','directory','parent_scope_id'])
-      .orderBy('sort_order','asc').orderBy('id','asc').execute();
+  const members=SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&
+    activeScopeIds.includes(row.scope_id))
+    .map((row,sort_order)=>({id:row.scope_id,
+      manage_role:row.scope_id==='loc'?'group':'scope',active:true,sort_order,
+      domain:row.domain||null,directory:row.directory||null,
+      parent_scope_id:row.scope_id==='loc'?null:'loc'}));
   const groupRows=has('loc')?await trx.selectFrom(table('loc'))
     .select(['id','display_name','title_tw','desc_tw','birthday']).execute():[];
   const groupMap=new Map(groupRows.map(row=>[row.id,row]));
@@ -235,8 +207,8 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
         .orderBy('block_order','asc').execute();
     }
   }
-  const root=await trx.selectFrom(table('loc')).select('theme')
-    .where('id','=','loc').executeTakeFirst();
+  const root=has('loc')?await trx.selectFrom(table('loc')).select('theme')
+    .where('id','=','loc').executeTakeFirst():null;
   const rawTheme=typeof root?.theme==='string'?JSON.parse(root.theme):root?.theme;
   const themes=Array.isArray(rawTheme)?rawTheme:[];
   const themeList=themes.map(x=>({theme_id:x.theme_id,theme_name:x.theme_name,
