@@ -6,6 +6,7 @@ import {transactionWrites,dbAuthClient} from '../db/db-client.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {sourceEditorOutlineOptions} from './keyword-options.mjs';
 import {useEditDockForm} from '../../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
@@ -14,7 +15,6 @@ function KeywordNetworkEditor(props){return <Suspense fallback={null}><LazyKeywo
 const LazyBlockNoteEditor=lazy(()=>import('../editor/BlockNoteEditor'));
 function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
 const TABLE='silver.loc_anchor';
-const TYPES=['universe','galaxy','domain','from'];
 const EMPTY_COUNTS={lo3rwang:0,lrunes:0};
 const normalized=rows=>(rows||[]).map(row=>{
   // PostgreSQL Json is an object; portable SQL clients may supply JSON text.
@@ -155,7 +155,8 @@ export function AdminSourceCategories(){
     }catch(e){setError(String(e.message||e));}
     finally{setBusy(false);}
   };
-  const roots=nodes.filter(row=>row.type==='universe');
+  const sourceOutline=useMemo(()=>sourceEditorOutlineOptions(nodes),[nodes]);
+  const roots=sourceOutline.filter(row=>row.level===0);
   return <section className="loc-card scope-feature-card scope-keyword-management">
     <h2>文章來源</h2>
     <p className="scope-status">選取圖上節點編輯來源；儲存使用下方六鍵。</p>
@@ -177,10 +178,10 @@ export function AdminSourceCategories(){
               else if(canChangeNode()){setSelected('');setDraft(null);}
             }}>
               <option value="">選擇來源</option>
-              {roots.map(root=><optgroup key={root.uid} label={root.title}>
-                {[root,...children(root.uid).flatMap(g=>[g,...children(g.uid).flatMap(d=>[d,...children(d.uid)])])]
-                  .map(row=><option key={row.uid} value={row.uid}>
-                    {TYPES.indexOf(row.type)?'　'.repeat(TYPES.indexOf(row.type)):''}{row.title}
+              {roots.map(root=><optgroup key={root.code} label={root.label}>
+                {sourceOutline.filter(row=>row.path[0]===root.code)
+                  .map(row=><option key={row.code} value={row.code}>
+                    {'　'.repeat(row.level)}{row.label}
                   </option>)}
               </optgroup>)}
             </select>
