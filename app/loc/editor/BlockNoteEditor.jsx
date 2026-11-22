@@ -7,11 +7,12 @@ import {useUiSection} from '../../i18n/ui-locale';
 import {useUiText} from '../../i18n/UiText';
 import {blocksToPlainText,looksLikeMarkdown,normalizeBlocks,plainTextToBlocks} from './blocknote-content.mjs';
 import ScopeLink from '../../modular/ScopeLink';
+import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 
 // BlockNote itself is browser-only; keep this as the single public editor entrypoint.
-const BlockNoteCanvas=dynamic(()=>import('./BlockNoteEditorClient'),{
+const BlockNoteCanvas=dynamic(()=>import('./BlockNoteEditorClient').catch(recoverChunkOnce),{
   ssr:false,
-  loading:()=>null
+  loading:()=> <p className="scope-status" role="status">正在載入文字編輯器…</p>
 });
 
 export default function BlockNoteEditor({
