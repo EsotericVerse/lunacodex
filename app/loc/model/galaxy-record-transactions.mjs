@@ -21,7 +21,7 @@ export function parseGalaxyRecordTransaction(body){
     throw Object.assign(Error('Invalid Galaxy UID model'),{httpStatus:400});
   return parsed.data;
 }
-const PRIVATE_SITES=['mcp','github','messenger','chatgpt','claude','gemini',
+const PRIVATE_SITES=['github','messenger','chatgpt','claude','gemini',
   'whatsapp','telegram','discord','line','wechat','teams','copilot','grok'];
 export async function executeGalaxyRecordTransaction(trx,body){
   const columns=body.view==='list'
@@ -30,11 +30,15 @@ export async function executeGalaxyRecordTransaction(trx,body){
       'media_link','site_id'])];
   let query=trx.selectFrom('silver.'+body.scope+'_galaxy')
     .select(columns).where('uid','in',body.uids);
-  if(body.mode==='public')
+  if(body.mode==='public'){
     query=query.where('list','=',true).where(eb=>eb.or([
       eb('site','is',null),
       eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)
     ]));
+    // Public details require BOTH list and extract. A guessed UID, direct
+    // route or other caller cannot bypass the same database predicate.
+    if(body.view==='detail')query=query.where('extract','=',true);
+  }
   const rows=await query.execute();
   const found=new Map(rows.map(row=>[String(row.uid),row]));
   return {rows:body.uids.map(uid=>found.get(uid)).filter(Boolean)};
