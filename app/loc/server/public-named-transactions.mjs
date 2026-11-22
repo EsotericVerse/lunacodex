@@ -104,10 +104,20 @@ export async function handleNamedPublicTransaction(request,env={},{
     let port=null,unbind=()=>{};
     const started=Date.now();
     const ray=String(request.headers.get('cf-ray')||'').slice(0,80);
+    // Referrer is best-effort navigation diagnostics, never an authorization
+    // claim. Only a same-origin path is retained; no cookies or query string.
+    let requestPath=null;
+    try{
+      const ref=request.headers.get('referer');
+      const page=ref?new URL(ref):null;
+      if(page&&page.origin===new URL(request.url).origin)
+        requestPath=page.pathname.slice(0,160);
+    }catch{}
     const modelName={culture:'GalaxyCulture',statics:'GalaxyStatistics',
       search:'GalaxySearch',trace:'GalaxyTrace'}[operation.feature];
     const receipt={requestedBy:operation.feature,model:modelName,
-      scope:operation.scope,result:operation.result,ray:ray||null};
+      scope:operation.scope,result:operation.result,ray:ray||null,
+      requestPath};
     let status=200;
     try{
       const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
