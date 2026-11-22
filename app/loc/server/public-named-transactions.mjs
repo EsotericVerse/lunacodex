@@ -8,7 +8,7 @@ import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../mcp/native-kysely.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
-import {parseGalaxyFeatureTransaction,executeGalaxyFeatureTransaction} from '../model/galaxy-feature-transactions.mjs';
+import {parseGalaxyFeatureTransaction,executeGalaxyFeatureTransaction,GALAXY_FEATURE_MODELS} from '../model/galaxy-feature-transactions.mjs';
 import {checkSearchQos} from '../providers/search-qos.mjs';
 import {parseGalaxyRecordTransaction,executeGalaxyRecordTransaction} from '../model/galaxy-record-transactions.mjs';
 import {parseAnchorFeatureTransaction,executeAnchorFeatureTransaction} from '../model/anchor-feature-transactions.mjs';
@@ -153,8 +153,7 @@ export async function handleNamedPublicTransaction(request,env={},{
       if(page&&page.origin===new URL(request.url).origin)
         requestPath=page.pathname.slice(0,160);
     }catch{}
-    const modelName={culture:'GalaxyCulture',statics:'GalaxyStatistics',
-      search:'GalaxySearch',trace:'GalaxyTrace'}[operation.feature];
+    const modelName=GALAXY_FEATURE_MODELS[operation.feature].name;
     const receipt={requestedBy:operation.feature,model:modelName,
       scope:operation.scope,result:operation.result,ray:ray||null,
       requestPath};
