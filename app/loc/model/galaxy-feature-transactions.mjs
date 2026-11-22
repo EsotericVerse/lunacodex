@@ -1,3 +1,4 @@
+import {ARTICLE_UID_PAGE_ROWS} from '../query/query-batch-size.mjs';
 // Four fixed Galaxy feature models. Query structure and physical relation are
 // selected only by this server module, never by a browser SQL expression.
 import {z} from 'zod';
@@ -49,7 +50,7 @@ const input=z.object({
   cursor:UID.optional(),offset:z.number().int().min(0).max(10000).optional(),
   sortDirection:z.enum(['asc','desc']).optional(),
   includeTotal:z.boolean().optional(),orderByDate:z.boolean().optional(),
-  limit:z.number().int().min(1).max(100).optional()
+  limit:z.number().int().min(1).max(ARTICLE_UID_PAGE_ROWS).optional()
 }).strict();
 function validDate(s){
   const v=new Date(s+'T00:00:00Z');
@@ -81,7 +82,7 @@ export function parseGalaxyFeatureTransaction(raw){
       value.placeIds!==undefined||
       ['source','place'].includes(value.category?.type)))
     throw Object.assign(Error('Invalid Galaxy feature parameters'),{httpStatus:400});
-  return {...value,limit:['uids','articles'].includes(value.result)?value.limit||100:undefined};
+  return {...value,limit:['uids','articles'].includes(value.result)?value.limit||ARTICLE_UID_PAGE_ROWS:undefined};
 }
 const PRIVATE_SITES=Object.freeze(['messenger','chatgpt','claude','gemini',
   'msn','whatsapp','telegram','discord','line','wechat','teams','copilot',
