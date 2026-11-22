@@ -119,8 +119,6 @@ async function registeredScope(trx,scope){
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'||table==='loc_anchor'){
-    if(table==='loc'&&(Object.hasOwn(values||{},'ArticleTag')||rows.some(row=>Object.hasOwn(row,'ArticleTag'))))
-      reject('LOC ArticleTag is fixed and cannot be configured',403);
     if(!await canLocAccess(trx,'global'))reject('Global management permission required',403);
     return;
   }
