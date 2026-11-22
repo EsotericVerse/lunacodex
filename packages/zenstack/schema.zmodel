@@ -512,8 +512,6 @@ type GalaxyUidRead {
     content String?
     createtime DateTime?
     url String?
-    // URL list stored on the Galaxy row, not a MediaAnchor UID relation.
-    media_link String[]?
     relation GalaxyUidRelation?
     anchor GalaxyUidAnchor?
 }
