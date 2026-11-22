@@ -4,6 +4,7 @@ import {lazy,Suspense} from 'react';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
 import {planTraceVisibilityUids} from './visibility-plan.mjs';
+import {traceRouteHierarchy} from '../../modular/features/trace/trace-route-hierarchy.mjs';
 import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {useAccount} from '../auth/use-account';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
@@ -89,6 +90,23 @@ export default function TraceRouteManager({scopeId,mode='all'}){
   ),[index.data,owner]);
   const typedRecords=records.filter(row=>mode==='all'||row.trace_type===mode);
   const visibleRecords=typedRecords.filter(row=>row.title.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()));
+  const savedHierarchy=useMemo(()=>traceRouteHierarchy(records,owner),[index.data,owner]);
+  const displayRecords=useMemo(()=>{
+    if(mode!=='all')return visibleRecords.map(row=>({row,key:row.uid,depth:0}));
+    const matched=new Set(visibleRecords.map(row=>row.uid));
+    const entries=[];
+    for(const group of savedHierarchy.groups){
+      if(!matched.has(group.trace.uid)&&!group.paths.some(row=>matched.has(row.uid)))continue;
+      entries.push({row:group.trace,key:group.trace.uid,depth:0});
+      for(const route of group.paths){
+        if(matched.has(group.trace.uid)||matched.has(route.uid))
+          entries.push({row:route,key:group.trace.uid+':'+route.uid,depth:1});
+      }
+    }
+    for(const route of savedHierarchy.orphans)if(matched.has(route.uid))
+      entries.push({row:route,key:route.uid,depth:0});
+    return entries;
+  },[mode,visibleRecords,savedHierarchy]);
   const current=typedRecords.find(row=>row.uid===selectedUid)
     ||chooseDefaultTraceRoute(typedRecords,owner,readDefaultTraceRoute(owner));
   const currentRouteMembers=current?.trace_type==='trace'
@@ -309,14 +327,15 @@ export default function TraceRouteManager({scopeId,mode='all'}){
       </div>
     </details>
     <div className="loc-trace-saved-maps">
-      {visibleRecords.map(row=><div className="loc-trace-saved-map" key={row.uid}>
+      {displayRecords.map(({row,key,depth})=><div className="loc-trace-saved-map" key={key}
+        style={depth?{marginInlineStart:'1.5rem'}:undefined}>
         <label className="scope-status"><input type="checkbox" disabled={busy||!own}
           checked={bulkSelected.includes(row.uid)}
           onChange={e=>setBulkSelected(ids=>e.target.checked?[...ids.filter(id=>id!==row.uid),row.uid]:ids.filter(id=>id!==row.uid))}/>
           勾選</label>
         <button type="button" className="loc-trace-saved-map-summary"
           onClick={()=>{if(allowLeave()){setSelectedUid(row.uid);setShowMap(true);setEditorOpen(false);clear();}}}>
-          <span>{row.title}{Boolean(row.invisible)?'（已設定隱藏）':''}</span>
+          <span>{row.trace_type==='trace'?'痕跡圖｜':'路線圖｜'}{row.title}{Boolean(row.invisible)?'（已設定隱藏）':''}</span>
           <span className="scope-status">{row.trace_type==='path'?'路線 · '+row.anchor_list.length+' 站':'痕跡 · '+(row.route_list?.segments?.length||0)+' 段'}</span>
         </button>
         {current?.uid===row.uid?<div className="scope-stat-controls">

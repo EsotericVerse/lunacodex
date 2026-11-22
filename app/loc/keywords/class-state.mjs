@@ -59,3 +59,19 @@ export function writeKeywordScanProgress(meta={},classUid='',progress=null){
   else scan_progress[classUid]=progress;
   return {...source,scan_progress};
 }
+
+// A reset generation belongs to each Class, not to the entire Scope.
+// Existing jobs without a stored generation are generation zero.
+export function keywordClassEpoch(meta={},classUid=''){
+  if(!UID.test(classUid))throw new Error('Invalid Keywords Class UID');
+  const raw=meta?.analysis_epochs?.[classUid];
+  const epoch=Number(raw??0);
+  if(!Number.isSafeInteger(epoch)||epoch<0)
+    throw new Error('Invalid Keywords analysis generation');
+  return epoch;
+}
+export function bumpKeywordClassEpoch(meta={},classUid=''){
+  const epoch=keywordClassEpoch(meta,classUid);
+  if(epoch>=Number.MAX_SAFE_INTEGER)throw new Error('Keyword generation exhausted');
+  return {...meta,analysis_epochs:{...(meta?.analysis_epochs||{}),[classUid]:epoch+1}};
+}

@@ -20,6 +20,7 @@ import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
 import {buildEraRiver} from '../../loc/culture/time-trace-river.mjs';
+import {cultureEraPeriodHierarchy} from '../../loc/culture/era-period-hierarchy.mjs';
 import {buildLocCultureScopePreview} from '../../loc/culture/loc-scope-preview.mjs';
 import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-anchor-ranges.mjs';
 
@@ -79,7 +80,7 @@ function periodRange(rows=[],scope='',allTime=UI_COPY.culture.allTime){
   };
 }
 function periodKey(item){
-  return String(item?.period||item?.era_id||item?.id||'').trim();
+  return String(item?.period||item?.era_id||item?.event_id||item?.uid||item?.id||'').trim();
 }
 function classLabel(value){
   const text=String(value||'').trim();
@@ -256,6 +257,7 @@ export default function Culture(){
   const [keywordDrillSource,setKeywordDrillSource]=useState('');
   const [keywordDrillGroup,setKeywordDrillGroup]=useState('');
   const [keywordPeriodKey,setKeywordPeriodKey]=useState('year');
+  const [keywordEraKey,setKeywordEraKey]=useState('year');
   const [keywordCustomStart,setKeywordCustomStart]=useState('');
   const [keywordCustomEnd,setKeywordCustomEnd]=useState('');
   const [selectedVirtualAnchorDates,setSelectedVirtualAnchorDates]=useState([]);
@@ -294,6 +296,7 @@ export default function Culture(){
     setExpandedLocScopes([]);
     setSelectedPeriodKey('year');
     setKeywordPeriodKey('year');
+    setKeywordEraKey('year');
     setKeywordCustomStart('');
     setKeywordCustomEnd('');
     setOpenCultureRoots([]);
@@ -341,6 +344,14 @@ export default function Culture(){
     (query.data?.timelineItems||[]).filter(item=>item.scope_id===scopeId)),
   [primaryPeriods,query.data?.timelineItems,scopeId]);
   const closestPeriod=primaryPeriods.find(item=>periodKey(item)===structurePreference.preferredKey)||null;
+  const secondRiverHierarchy=useMemo(()=>cultureEraPeriodHierarchy(
+    primaryPeriods,query.data?.timelineItems||[],scopeId
+  ),[primaryPeriods,query.data?.timelineItems,scopeId]);
+  const activeSecondEra=secondRiverHierarchy.groups.find(group=>
+    periodKey(group.era)===keywordEraKey)||null;
+  const activeSecondPeriods=keywordEraKey==='__unassigned__'
+    ?secondRiverHierarchy.unassigned:(activeSecondEra?.periods||[]);
+
   // Articles may exist even when no formal Period has been created. Use an
   // ordinary bounded date window; never treat an empty Time table as invalid.
   const defaultYearPeriod=useMemo(()=>({
@@ -376,7 +387,8 @@ export default function Culture(){
     keywordPeriodKey==='all'?allTimePeriod
     :keywordPeriodKey==='latest'?(closestPeriod||selectedWorkPeriod||allTimePeriod)
     :keywordPeriodKey==='current'?(selectedWorkPeriod||allTimePeriod)
-    :primaryPeriods.find(period=>periodKey(period)===keywordPeriodKey)||closestPeriod||selectedWorkPeriod;
+    :activeSecondPeriods.find(period=>periodKey(period)===keywordPeriodKey)
+      ||primaryPeriods.find(period=>periodKey(period)===keywordPeriodKey)||closestPeriod||selectedWorkPeriod;
   const keywordWindowStart=keywordPeriodKey==='custom'
     ?keywordCustomStart:String(keywordPeriod?.start_date||'').slice(0,10);
   const keywordWindowEnd=keywordPeriodKey==='custom'
@@ -424,6 +436,7 @@ export default function Culture(){
       appliedDateNavigationRef.current=navigationKey;
       setSelectedPeriodKey(periodKey(matched));
       setStructureWindowKey(periodKey(matched));
+      setKeywordEraKey(periodKey(matched));
       setKeywordPeriodKey(periodKey(matched));
     }
   },[scopeId,isAggregateScope,requestedWindowStart,requestedWindowEnd,requestedPeriodUid,primaryPeriods]);
@@ -1566,9 +1579,9 @@ export default function Culture(){
                   <h3>{UI_COPY.culture.classificationRiver}｜{classificationPeriodLabel}</h3>
                   <div className='scope-culture-river-selectors'>
                     <div className='scope-culture-time-picker'>
-                      <label>
-                        <select className='scope-select' aria-label={l.period}
-                          value={keywordPeriodKey} onChange={event=>{
+                      <label><span>時代</span>
+                        <select className='scope-select' aria-label='第二條河道時代選擇'
+                          value={keywordEraKey} onChange={event=>{
                             const next=event.target.value;
                             if(next==='custom'){
                               if(!keywordCustomStart)setKeywordCustomStart(keywordWindowStart);
@@ -1579,16 +1592,40 @@ export default function Culture(){
                               ['culture-river-root',classificationScope]
                             ]});
                             setWorksOpen(false);
-                            setKeywordPeriodKey(next);
-
+                            setKeywordEraKey(next);
+                            setKeywordPeriodKey(next==='__unassigned__'?'all':next);
                           }}>
                           <option value='year'>{DEFAULT_YEAR_WINDOW.label}</option>
                           <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'未設定時代'}</option>
-                           <option value='all'>{primaryPeriods.length?l.allTimeTraces:'本年度（未設定時代）'}</option>
-                           {primaryPeriods.map(item=><option key={periodKey(item)} value={periodKey(item)}>{localizedLabelOf(item,0)}</option>)}
-                           <option value='custom'>{l.customPeriod}</option>
+                          <option value='all'>{primaryPeriods.length?l.allTimeTraces:'本年度（未設定時代）'}</option>
+                          {secondRiverHierarchy.groups.map(group=><option
+                            key={periodKey(group.era)} value={periodKey(group.era)}>
+                            {localizedLabelOf(group.era,0)}
+                          </option>)}
+                          {secondRiverHierarchy.unassigned.length?<option value='__unassigned__'>未歸屬時代的期間</option>:null}
+                          <option value='custom'>{l.customPeriod}</option>
                         </select>
                       </label>
+                      {activeSecondEra||keywordEraKey==='__unassigned__'?<label>
+                        <span>期間</span>
+                        <select className='scope-select' aria-label='第二條河道期間選擇'
+                          value={activeSecondPeriods.some(row=>periodKey(row)===keywordPeriodKey)
+                            ?keywordPeriodKey:'__era__'}
+                          onChange={event=>{
+                            prepareTransientResourceAction('period',{queryKeys:[
+                              ['culture-article-list',classificationScope],
+                              ['culture-river-root',classificationScope]
+                            ]});
+                            setWorksOpen(false);
+                            setKeywordPeriodKey(event.target.value==='__era__'
+                              ?(activeSecondEra?periodKey(activeSecondEra.era):'all')
+                              :event.target.value);
+                          }}>
+                          <option value='__era__'>{activeSecondEra?'整個時代':'全部未歸屬期間'}</option>
+                          {activeSecondPeriods.map(period=><option key={periodKey(period)}
+                            value={periodKey(period)}>{localizedLabelOf(period,0)}</option>)}
+                        </select>
+                      </label>:null}
                     </div>
                     <label><span>文章選項</span>
                       <select className='scope-select' aria-label='文章選項'

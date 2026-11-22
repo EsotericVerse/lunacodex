@@ -22,7 +22,7 @@ export class KeywordAnalysisUnconfirmedError extends Error {
 
 export async function keywordService(operation,args={},options={}){
   if(!['analyze','analyzeStatus','reset','classes','catalog','summary','stats','suggest',
-      'anchorSearch','saveItem','deleteItem','syncLibrary','setClassShare'].includes(operation))
+      'anchorSearch','saveItem','deleteItem','syncLibrary','setClassShare','workspace'].includes(operation))
     throw Error('Unsupported Keyword operation');
   if(!args||typeof args!=='object'||Array.isArray(args))
     throw Error('Invalid Keyword request');
