@@ -62,14 +62,23 @@ test('management Era lanes retain all dated anchors and unclassified dates',()=>
     ...dates
   ];
   const group='trace:'+scope+':ERAA0001';
-  const river=buildEraRiver(entries,[],{editorOnly:true,scopeId:scope});
-  assert.ok(river.groups.some(item=>item.id===group));
-  assert.deepEqual(river.items.filter(item=>item.entry_type==='anchor')
-    .map(item=>item.uid).sort(),dates.map(item=>item.uid).sort());
-  assert.equal(river.items.find(item=>item.uid==='AAAA0003').group_key,
-    'time-undefined:'+scope);
-  const expanded=buildEraRiver(entries,[group],{editorOnly:true,scopeId:scope});
-  assert.ok(expanded.groups.some(item=>item.id===group+':period:PERA0001'));
+  const periodGroup=group+':period:PERA0001';
+  const unassigned='time-undefined:'+scope;
+  const collapsed=buildEraRiver(entries,[],{editorOnly:true,scopeId:scope});
+  assert.deepEqual(collapsed.groups.map(row=>row.id),[group,unassigned]);
+  assert.equal(collapsed.items.filter(item=>item.entry_type==='anchor').length,0,
+    'collapsed Era and unassigned lane must not render every Date');
+  const eraOpen=buildEraRiver(entries,[group],{editorOnly:true,scopeId:scope});
+  assert.ok(eraOpen.groups.some(item=>item.id===periodGroup));
+  assert.equal(eraOpen.items.filter(item=>item.entry_type==='anchor').length,0,
+    'collapsed Period must not render its Date children');
+  const periodOpen=buildEraRiver(entries,[group,periodGroup],{editorOnly:true,scopeId:scope});
+  assert.deepEqual(periodOpen.items.filter(item=>item.entry_type==='anchor')
+    .map(item=>item.uid).sort(),['AAAA0001','AAAA0002']);
+  assert.ok(periodOpen.groups.find(item=>item.id===periodGroup+':dates').order
+    <periodOpen.groups.find(item=>item.id===unassigned).order);
+  const unrelated=buildEraRiver(entries,[unassigned],{editorOnly:true,scopeId:scope});
+  assert.equal(unrelated.items.find(item=>item.uid==='AAAA0003').group_key,unassigned);
 });
 
 test('time management route mounts its own view even if Edit Dock was remounted',()=>{
