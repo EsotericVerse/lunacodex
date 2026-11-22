@@ -104,7 +104,7 @@ export function createKyselyPublicClient({
       q.table==='loc_user'&&typeof readPrivate==='function'){
       // The existing personal endpoint has its own pagination contract.
       // Do not send an absent native LIMIT as an invalid personal request.
-      if(q.rowLimit===null)q.rowLimit=q.cardinality?1:5000;
+      if(q.rowLimit===null)q.rowLimit=q.cardinality?1:2048;
       return readPrivate(q);
     }
     if(q.dbId)throw Error('Selected SQL database requires signed LOC delegation');
