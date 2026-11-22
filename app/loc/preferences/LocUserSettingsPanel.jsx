@@ -21,7 +21,6 @@ const FIELDS=Object.freeze([
     {key:'list',title:'featureListTitle',checkbox:true}
   ]},
   {key:'statics',title:'staticsSettings',fields:[
-    {key:'display',title:'staticsDisplay',options:[['source','prefSourceDefault']]},
     {key:'unit',title:'staticsUnit',options:[['day','prefDayDefault'],['week','prefWeek'],['month','prefMonth'],['year','prefYear']]},
     {key:'sort',title:'staticsSort',options:[['desc','prefLatestDefault'],['asc','prefOldest']]},
     {key:'list',title:'featureListTitle',checkbox:true}
