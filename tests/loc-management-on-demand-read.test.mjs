@@ -65,3 +65,10 @@ test('management Era lanes retain all dated anchors and unclassified dates',()=>
   const expanded=buildEraRiver(entries,[group],{editorOnly:true,scopeId:scope});
   assert.ok(expanded.groups.some(item=>item.id===group+':period:PERA0001'));
 });
+
+test('time management route mounts its own view even if Edit Dock was remounted',()=>{
+  const src=read('app/modular/features/Culture.jsx');
+  assert.match(src,/const onTimeManageRoute=pathname\.endsWith\('\/culture\/manage'\)/);
+  assert.match(src,/const isTimeEditingView=onTimeManageRoute\|\|/);
+  assert.match(src,/editorAuthorized=Boolean\(account\.user&&account\.canLocAccessSync/);
+});
