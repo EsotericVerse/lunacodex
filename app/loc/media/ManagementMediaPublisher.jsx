@@ -76,6 +76,9 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
       createtime:mediaIso(draft.createtime)||new Date().toISOString()
     });
     const operations=[{p_table:anchor,p_operation:'insert',p_rows:[record]}];
+    // A URL-less MediaAnchor is allowed, but has no URL for Galaxy.media_link.
+    if(galaxyLink&&!/^https?:\/\//i.test(String(record.attr?.url||'')))
+      throw Error('附加媒體至文章需要有效公開網址；無網址的 MediaAnchor 可獨立儲存。');
     if(galaxyLink){
       if(!scope.galaxy)throw Error('文章 Scope 資料表尚未就緒');
       operations.push({p_table:scope.galaxy,p_operation:'append_media_link',
