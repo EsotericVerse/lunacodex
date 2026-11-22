@@ -26,7 +26,7 @@ import {facebookPostPlace} from '../archive/geo-objects.mjs';
 import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCreatedAt,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
 import {importTimeRangeWindow,filterImportAnalysisByTime} from './time-range.mjs';
 import {finalizeImportCreatedTimes,importCalendarDay} from './unique-createtime.mjs';
-import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './place-anchors.mjs';
+import {prepareImportPlaceAnchors,importedPlaceId} from './place-anchors.mjs';
 import {prepareImportTimeAnchors} from './time-anchors.mjs';
 import {readImportPointDateAnchors} from './anchor-read.mjs';
 import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
@@ -1165,18 +1165,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         onProgress:p=>setProgress({stage:p.phase,completed:p.completed,total:p.total||0,
           percent:p.total?Math.round(100*p.completed/p.total):null})
       });
-      const visits=candidates.flatMap(place=>{
-        const uid=importedPlaceId({incoming:place,byName:result.byName,byCoordinate:result.byCoordinate});
-        return uid?(place.__importVisitTimes||[]).map(time=>({uid,time})):[];
-      });
-      const saved=await recordImportPlaceVisits(visits,{
-        relation:dbAuthRelation,table:result.table,timesByUid:result.timesByUid,
-        createtimeByUid:result.createtimeByUid,attrsByUid:result.attrsByUid
-      });
       setStatus('獨立 Facebook 打卡已匯入：空間定錨新增 '+result.created.toLocaleString()+
         '、沿用 '+result.reused.toLocaleString()+'；日期定錨新增 '+
         dates.created.toLocaleString()+'、沿用 '+dates.reused.toLocaleString()+
-        '；'+'Point 造訪時間新增 '+saved.added.toLocaleString()+
         '。沒有新增 Galaxy 文章；缺少原始座標的地點不會捏造座標。'+
         importAnchorConflictSummary(result,dates));
     }catch(error){setStatus('Trace 地點儲存失敗：'+String(error?.message||error));}
@@ -1184,7 +1175,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   }
   async function restoreExistingAnchors(){
     if(busy||nativeLocal||scopeId==='loc')return;
-    if(!window.confirm('補齊既有文章的空間定錨、日期定錨與地點關聯，將同一 Point 的全部已知造訪時間去重彙整至 attr.times，並在 createtime 為空時補入最早來源時間；不新增或刪除文章、不覆寫既有建立時間。確定執行？'))return;
+    if(!window.confirm('補齊既有文章的空間定錨、日期定錨與地點關聯；不新增或刪除文章、不覆寫原始建立時間。確定執行？'))return;
     setBusy(true);setStatus('');
     const show=p=>{
       try{touchEditorSession(window.sessionStorage);}catch{}
@@ -1202,8 +1193,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         result.places.created.toLocaleString()+'、沿用 '+result.places.reused.toLocaleString()+
         '；日期定錨新增 '+result.dates.created.toLocaleString()+'、沿用 '+
         result.dates.reused.toLocaleString()+'；文章地點關聯補齊 '+
-        result.linked.toLocaleString()+'，'+'Point 造訪時間新增 '+result.visits.toLocaleString()+
-        '，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。'+
+        result.linked.toLocaleString()+'，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。'+
         importAnchorConflictSummary(result.places,result.dates));
     }catch(error){
       setStatus('既有打卡定錨修復失敗；已完成的部分可能已寫入，重新執行會沿用既有資料。原始錯誤：'+String(error?.message||error));
@@ -1636,7 +1626,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       });
       const knownArticleIds=new Map();
       let updated=0,checkedExisting=0;
-      const placeVisits=[],missingPointUids=new Set();
+      const missingPointUids=new Set();
       const updateSizer=createImportBatchSizer();
       const checkpointBatch=(phase,confirmed,total,inserted=0,conflicts=0)=>{
         const receipt=writeImportCheckpoint(checkpointStorage(),{
@@ -1681,11 +1671,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         // no title/name/coordinate lookup is necessary for a saved link.
         const storedPointUid=String(existing.place_id||'');
         const savedPointExists=storedPointUid&&
-          anchorSnapshot?.place?.timesByUid.has(storedPointUid);
+          anchorSnapshot?.place?.knownPointUids.has(storedPointUid);
         if(storedPointUid&&anchorSnapshot&&!savedPointExists)
           missingPointUids.add(storedPointUid);
-        const visitUid=savedPointExists?storedPointUid:restoredPlace;
-        if(visitUid&&record.createtime)placeVisits.push({uid:visitUid,time:record.createtime});
         if(Object.keys(changes).length)
           updateQueue.push({uid:String(existing.uid),...changes});
         checkedExisting++;
@@ -1699,7 +1687,6 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const result={inserted:0,conflicts:0,insertedUids:new Set(),conflictedUids:new Set()};
       const insertSizer=createImportBatchSizer();
       let payload=[],newArticleProcessed=0;
-      const newArticleVisits=[];
       const flushNewArticles=async()=>{
         if(!payload.length)return;
         const count=payload.length,started=Date.now();
@@ -1735,28 +1722,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           __importPlaceUrl:unusedPlaceUrl,__importCheckin:unusedCheckin,
           __importTimeSource:unusedTimeSource,
           ...article}=record;
-        if(placeUid)newArticleVisits.push({articleUid:String(record.uid),uid:placeUid,time:record.createtime});
         payload.push(placeUid?{...article,place_id:placeUid}:article);
         if(payload.length>=insertSizer.size)await flushNewArticles();
       }
       await flushNewArticles();
-      const savedVisits=[
-        ...placeVisits,
-        ...newArticleVisits.filter(visit=>result.insertedUids.has(visit.articleUid)),
-        ...geoAnchorRecords.flatMap(place=>{
-          const uid=importedPlaceId({incoming:place,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
-          return uid?(place.__importVisitTimes||[]).map(time=>({uid,time})):[];
-        })
-      ];
-      let recordedVisits=0;
-      if(savedVisits.length){
-        showProgress('核對 Point 造訪時間');
-        const visitResult=await recordImportPlaceVisits(savedVisits,{
-          relation:dbAuthRelation,table:placeAnchors.table,timesByUid:placeAnchors.timesByUid,
-          createtimeByUid:placeAnchors.createtimeByUid,attrsByUid:placeAnchors.attrsByUid
-        });
-        recordedVisits=visitResult.added;
-      }
       duplicateCount+=result.conflicts;
       for(const uid of result.insertedUids)knownArticleIds.set(uid,uid);
       for(const record of analyzed.valid){
@@ -1841,7 +1810,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         images.existing.toLocaleString()+' 筆'+
         (images.conflicts?'，重複關聯待確認 '+images.conflicts.toLocaleString()+' 筆':'')+'。'+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
-        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，'+'Point 造訪時間新增 '+recordedVisits.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+
+        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+
         (missingPointUids.size?'；發現 '+missingPointUids.size.toLocaleString()+' 個既有 place_id 在 Point UID 索引中不存在，未依 location 重建或改指向其他地點。UID：'+[...missingPointUids].slice(0,5).join(',')+(missingPointUids.size>5?' 等':'')+'。':'')+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
@@ -1993,7 +1962,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     {!nativeLocal&&scopeId!=='loc'?<details className="scope-import-maintenance">
       <summary>既有地點與日期定錨修復</summary>
       <div className="scope-import-maintenance-content">
-        <p className="scope-status">已匯入文章若有地點，可補齊空間與日期定錨、文章地點關聯，依 place_id 彙整不同 location 的造訪時間至 Point.attr.times（去重排序），並補齊缺少的 createtime。原始文章仍保留在 Galaxy；不新增文章或覆寫既有 Point 建立時間。</p>
+        <p className="scope-status">已匯入文章若有地點，可補齊空間與日期定錨、文章地點關聯，以 place_id 保留已知 Point 關聯，不依 location 文字重配既有 UID。原始文章及其 createtime 保留在 Galaxy；不新增文章或覆寫 Point。</p>
         <button type="button" className="loc-button" disabled={busy} onClick={restoreExistingAnchors}>
           {busy?'正在檢查地點關聯…':'補齊既有文章的地點與日期定錨'}
         </button>
