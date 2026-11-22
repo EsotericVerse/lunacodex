@@ -356,3 +356,21 @@ test('every multi-statement MCP public read verifies grants in its own transacti
   assert.match(source,/borrowed:true,inTransaction:true/);
   assert.match(source,/return runMcp\(trx\)/);
 });
+
+test('import special Galaxy fields share one native typed update batch',()=>{
+  const contract=readFileSync(new URL('../app/loc/db/db-contract.mjs',import.meta.url),'utf8');
+  const writer=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  const begin=contract.indexOf('async function updateImportRowsUnchecked(');
+  const end=contract.indexOf('async function deleteRowsUnchecked(',begin);
+  const block=contract.slice(begin,end);
+  assert.match(block,/p_operation:'update_batch'/);
+  assert.doesNotMatch(block,/Promise\.all\(/);
+  assert.doesNotMatch(block,/start\+=6/);
+  assert.match(block,/maxChunkBytes=480000/);
+  assert.match(writer,/const transactionRegistry=new WeakMap\(\)/);
+  assert.match(writer,/const registry=await registeredScope\(trx,scope\)/);
+  for(const key of ['location','site_id','ref_id','source_id','target_id'])
+    assert.ok(writer.includes("'"+key+"'"),'missing approved Galaxy batch field '+key);
+  assert.match(native,/'update_batch','append_media_link'/);
+});
