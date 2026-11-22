@@ -29,7 +29,7 @@ function laneDayText(row,index,lane,l){
   return count.toLocaleString()+l.recordUnit+((Number(row?.ratios?.[index])||0)*100).toFixed(1)+'%';
 }
 function laneColumnLabel(lane,l){
-  return l.mediaColumn;
+  return '來源文章數量';
 }
 function defaultLane(scopeId,source){return {scopeId,source,exact:''};}
 function LanePicker({label,lane,scopes,onChange}){
