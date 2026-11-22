@@ -22,7 +22,7 @@ export function summarizeCultureRiverRoots(rows=[],taxonomy={}){
     const key='source:'+category;
     const group=groups.get(key)||{
       category_key:key,category_type:'source',site:category,
-      display_label:category,item_count:0,sites:[category],media_types:[]
+      display_label:category,item_count:0,sites:[category]
     };
     group.item_count+=count;groups.set(key,group);
     const bucketKey=root+'\u0000'+day;
@@ -48,7 +48,7 @@ export function buildCultureRiverRootTotals({text=[]}={},taxonomy={}){
     const key='source:'+category;
     const group=groups.get(key)||{
       category_key:key,category_type:'source',site:category,
-      display_label:category,item_count:0,sites:[category],media_types:[]
+      display_label:category,item_count:0,sites:[category]
     };
     group.item_count+=count;groups.set(key,group);
   }
