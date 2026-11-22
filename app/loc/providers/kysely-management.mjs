@@ -1126,26 +1126,6 @@ async function mergeScopePoints(trx,args,{authorizedScope=''}={}){
       typeof raw==='string'?[raw]:[];
     return [p.title,...stored];
   }).filter(t=>typeof t==='string'&&t.trim()).map(t=>t.trim()))].sort();
-  // A merged place_id can have many historical location spellings. Preserve
-  // every timestamp in both Points and their linked Galaxy articles before
-  // the original place_id references are rewritten.
-  const galaxyRef=sql.ref(galaxy);
-  const allUids=[keep,...removed];
-  const sources=await sql`select coalesce(jsonb_agg(t.ts order by t.ts),'[]'::jsonb) as times
-    from (
-      select distinct ts from (
-        select x.value as ts from ${ref} a
-          cross join lateral jsonb_array_elements_text(
-            case when jsonb_typeof(a.attr->'times')='array'
-              then a.attr->'times' else '[]'::jsonb end) x(value)
-          where a.type='point' and a.uid=any(${allUids}::text[])
-        union all
-        select to_char(g.createtime at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as ts
-          from ${galaxyRef} g where g.place_id=any(${allUids}::text[])
-            and g.createtime is not null
-      ) x where ts is not null and ts<>''
-    ) t`.execute(trx);
-  const mergedTimes=sources.rows[0]?.times||[];
   // Both route and article links must move before source points are deleted.
   await sql`update ${ref} a set attr=jsonb_set(a.attr,'{point}',
     (select coalesce(jsonb_agg(case when x.value=any(${removed}::text[])
@@ -1158,9 +1138,10 @@ async function mergeScopePoints(trx,args,{authorizedScope=''}={}){
   const galaxyResult=await trx.updateTable(galaxy)
     .set({place_id:keep}).where('place_id','in',removed).executeTakeFirst();
   const keepResult=await trx.updateTable(anchor)
-    .set({attr:sql`jsonb_set(
-      jsonb_set(attr,'{location}',${JSON.stringify(aliases)}::jsonb,true),
-      '{times}',${JSON.stringify(mergedTimes)}::jsonb,true)`})
+    // Point stores location aliases only. Time follows the linked articles;
+    // retire any legacy attr.times on the kept Point instead of recomputing it.
+    .set({attr:sql`jsonb_set(coalesce(attr,'{}'::jsonb)-'times',
+      '{location}',${JSON.stringify(aliases)}::jsonb,true)`})
     .where('uid','=',keep).where('type','=','point').executeTakeFirst();
   if(Number(keepResult?.numUpdatedRows||0)!==1)reject('Kept Point not updated');
   const deleted=await trx.deleteFrom(anchor)
