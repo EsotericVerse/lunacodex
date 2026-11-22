@@ -30,7 +30,7 @@ const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','mcp-authorize','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action','personal-read','personal-write']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
@@ -179,7 +179,20 @@ export async function handleNativeLocOperation(request,env={},{
     if(host===MCP_HOST&&writeKinds.has(body.kind)&&
        !claims.delegatedScopes?.includes('loc:import'))
       throw refusal('LOC MCP write delegation scope required',403);
-    // Write permission is checked after opening the business database.
+    // Business grants are a published JS snapshot, not a SELECT and not a
+    // separate permission API. Fail closed *before* opening any SQL client.
+    // Personal operations remain bound to their verified website Session.
+    if(body.kind!=='personal-read'&&body.kind!=='personal-write'){
+      if(operationKind==='short-import')importPhase='permission';
+      const rights=host===MCP_HOST
+        ?await loadMcpLocAccess(null,claims.email)
+        :await readLocAccess(null,claims.email,{website:true});
+      claims.me=rights.canWrite;
+      claims.grants=rights.grants;
+      if(writeKinds.has(body.kind)&&!rights.canWrite)
+        throw refusal('LOC write permission denied',403);
+    }
+    // Authorization is resolved from LOC's published JS before DB connection.
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
     // extension import path and MCP append/sync. OAuth never changes this.
@@ -216,35 +229,6 @@ export async function handleNativeLocOperation(request,env={},{
     // A normal Search toggle never asks for edit grants. Only when a search
     // is submitted does OAuth establish the owner and loc_user opt into a
     // private read; only then may the business Scope eligibility be checked.
-    // Extension imports and direct MCP operations share the same role-based
-    // Gateway gate. Website editor grants retain their existing separate policy.
-    // Each request performs one active api.manage lookup, never a second probe.
-    if(operationKind==='short-import')importPhase='permission';
-    // Managed batches resolve their one authorization snapshot inside the
-    // SAME transaction as all of their writes, not in a preceding query.
-    const isManagedBatch=['managed-transaction','managed-write','managed-action',
-      'mcp-conversation','mcp-scope-status','mcp-sync','mcp-append',
-      'mcp-public-read','mcp-article-stat','mcp-read','mcp-search']
-      .includes(body.kind);
-    let permission=null;
-    if(!isManagedBatch){
-      permission=host===MCP_HOST
-        ?await loadMcpLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine})
-        :await readLocAccess(selected.db,claims.email,{dialect:selected.dialect,engine:selected.engine,website:true});
-      claims.me=permission.canWrite;
-      claims.grants=permission.grants;
-      if(writeKinds.has(body.kind)&&!permission.canWrite)
-        throw refusal('LOC write permission denied',403);
-    }
-    // These fixed MCP operations are business data; no Authority-owned
-    // custom Scope grants, token service, or SQL profile endpoint is involved.
-    // LAS asks LOC to resolve its existing active api.manage eligibility. 
-    // This is a read-only check, not a new grant or role registry.
-    if(body.kind==='mcp-authorize'){
-      if(host!==MCP_HOST)throw refusal('MCP authorization only',404);
-      if(!permission.roles?.length)throw refusal('LOC MCP role not granted',403);
-      return reply({data:{authorized:true}});
-    }
     // Galaxy data and statistics remain owned by LOC. LAS only maps request
     // envelopes and forwards a verified OAuth bearer to these fixed operations.
     if(body.kind==='mcp-public-read'){
@@ -291,27 +275,6 @@ export async function handleNativeLocOperation(request,env={},{
         return executeLocConversation(trx,body,claims);
       });
       return reply({data:result});
-    }
-    if(body.kind==='mcp-scope-status'){
-      if(host!==MCP_HOST)throw refusal('MCP Scope endpoint only',404);
-      if(!/^[a-z][a-z0-9]{0,14}$/.test(body.scopeid))
-        throw refusal('Invalid Scope',400);
-      const data=await selected.db.transaction().execute(async trx=>{
-        const rights=await loadMcpLocAccess(trx,claims.email,{
-          dialect:selected.dialect,engine:selected.engine,transactional:true});
-        claims.me=rights.canWrite;claims.grants=rights.grants;
-        const allowed=rights.grants.includes('global:manage')||
-          rights.grants.includes(body.scopeid+':read');
-        if(!allowed)throw refusal('LOC Scope permission required',403);
-        const row=await trx.selectFrom('api.manage')
-          .select(['id','manage_role','active','galaxy_table','anchor_table'])
-          .where('id','=',body.scopeid).executeTakeFirst();
-        return {scopeid:body.scopeid,active:row?.active===true,
-          role:row?.manage_role||'',database:'主要資料庫連線',readable:true,
-          writable:rights.grants.includes('global:manage')||
-            rights.grants.includes(body.scopeid+':write')};
-      });
-      return reply({data});
     }
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
