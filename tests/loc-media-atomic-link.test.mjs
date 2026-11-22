@@ -36,3 +36,25 @@ test('Suno writes public URLs to Galaxy media_link',()=>{
   assert.match(src,/media_link:\[draft\.url\.trim\(\)\]/);
   assert.doesNotMatch(src,/media_link:\[mediaUid\]/);
 });
+
+test('all Galaxy media_link writes require actual URLs, not Anchor UIDs',()=>{
+  const native=file('../app/loc/providers/kysely-management.mjs');
+  assert.match(native,/function validateGalaxyMediaLinks\(/);
+  assert.match(native,/validateGalaxyMediaLinks\(table,operation/);
+  assert.match(native,/Galaxy\.media_link only accepts public HTTP\(S\) URLs/);
+  const importer=file('../app/loc/import/ManagementImportPanel.jsx');
+  assert.match(importer,/planImportMediaUrlLinks\(/);
+  assert.doesNotMatch(importer,/planImportMediaUidLinks\(/);
+  const reader=file('../app/loc/galaxy/galaxy-query.js');
+  assert.match(reader,/function mediaUrlsOf\(/);
+  assert.doesNotMatch(reader,/mediaRowsFor\(/);
+});
+test('Point merge does not scan Galaxy timestamps or recreate attr.times',()=>{
+  const src=file('../app/loc/providers/kysely-management.mjs');
+  const begin=src.indexOf('async function mergeScopePoints(');
+  const end=src.indexOf('async function importSharedKeywordClass(',begin);
+  assert.ok(begin>=0&&end>begin);
+  const block=src.slice(begin,end);
+  assert.doesNotMatch(block,/mergedTimes|jsonb_agg\(t\.ts|attr->'times'/);
+  assert.match(block,/coalesce\(attr,'\{\}'::jsonb\)-'times'/);
+});
