@@ -324,7 +324,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scopeId,p_view:'trace_places',
         p_start:queryRange.startDate,p_end:queryRange.endDate,signal,
-        p_options:{}
+        // Statistics' place view must satisfy both independent feature flags.
+        // Ordinary Trace views keep their own trace-only read semantics.
+        p_options:{statisticsOnly:true}
       });
       if(error)throw error;
       if(!Array.isArray(data))throw new Error('Invalid place statistics');
