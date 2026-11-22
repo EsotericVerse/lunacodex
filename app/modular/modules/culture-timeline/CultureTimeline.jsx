@@ -616,6 +616,10 @@ export default function CultureTimeline({
       </select>
     </label>:null}
     {chartError?<p className='scope-status' role='alert'><FieldText text="河道已有統計資料，但圖表沒有正常繪製；以下保留日期與筆數清單。"/></p>:null}
+    {!ready&&!chartError?<div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
+      <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+      <span>正在繪製時間長河…</span>
+    </div>:null}
     <div className='scope-river-reveal-shell'>
       <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
       {/* An independent curtain reveals the river from left to right after
