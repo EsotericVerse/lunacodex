@@ -296,11 +296,12 @@ export async function handleNativePublicQuery(request,env={},{
       selected.namespace||(selected.engine==='postgres'?'silver':'dbo'));
     if(action){
       stage='public-action';
-      const output=await executeKyselyPublicAction(selected.db,action,{
-        engine:selected.engine,namespace:selected.namespace||
-          (selected.engine==='postgres'?'silver':'dbo'),
-        publishedScopeIds:[...SCOPE]
-      });
+      const output=await selected.db.transaction().setIsolationLevel('repeatable read')
+        .execute(trx=>executeKyselyPublicAction(trx,action,{
+          engine:selected.engine,namespace:selected.namespace||
+            (selected.engine==='postgres'?'silver':'dbo'),
+          publishedScopeIds:[...SCOPE]
+        }));
       return respond({data:output.data,count:output.count??null});
     }
     if(analytics){

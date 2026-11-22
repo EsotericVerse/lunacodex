@@ -44,12 +44,14 @@ test('trusted role self projection reads only published JS, including birthday',
   assert.ok(rows.some(row=>row.id==='loc'&&row.birthday));
 });
 
-test('all standalone management-permission and anonymous generic SELECT routes are absent',()=>{
+test('self-only JS grants and named transactions are enabled without a generic SELECT route',()=>{
   const routes=JSON.parse(source('public/_routes.json'));
-  assert.ok(!routes.include.includes('/api/loc-permissions'));
-  assert.ok(!routes.include.includes('/api/loc-public-query'));
-  const files=new URL('../functions/api/loc-permissions.js',import.meta.url);
-  assert.throws(()=>readFileSync(files,'utf8'),/ENOENT/);
+  assert.ok(routes.include.includes('/api/loc-permissions'));
+  assert.ok(routes.include.includes('/api/loc-public-query'));
+  assert.match(source('functions/api/loc-permissions.js'),/handleLocSelfPermissions/);
+  assert.match(source('functions/api/loc-public-query.js'),/handleNamedPublicTransaction/);
+  assert.doesNotMatch(source('app/loc/server/public-named-transactions.mjs'),
+    /req\.schema|req\.table|body\.columns|body\.filters|body\.sql/);
   assert.doesNotMatch(source('app/loc/auth/editor-grants.mjs'),/\/api\/loc-permissions|fetchImpl/);
   assert.doesNotMatch(source('app/loc/permissions/loc_access.mjs'),/selectFrom\('api\.manage'\)/);
   assert.doesNotMatch(source('app/loc/providers/loc-authorization.mjs'),/selectFrom\('api\.manage/);

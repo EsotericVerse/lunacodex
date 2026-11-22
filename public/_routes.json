@@ -6,7 +6,9 @@
     "/api/loc-native",
     "/api/las-native",
     "/api/loc-auth-connectivity",
-    "/api/keywords"
+    "/api/keywords",
+    "/api/loc-public-query",
+    "/api/loc-permissions"
   ],
   "exclude": []
 }

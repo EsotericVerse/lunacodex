@@ -13,6 +13,7 @@ import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.j
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-anchor-ranges.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {readTimeAnchorTransaction,readAllTimeAnchorTransactions} from './time-anchor-transaction.mjs';
 
 
 
@@ -46,12 +47,7 @@ export async function selectCultureTimeRows(scope,birthday=''){
   if(!scopeId||!table)throw new Error('Scope data 未解析');
   // Collect every Time Anchor/period/era. Internal transport pagination does
   // not cap the historical timeline or borrow the old Data API Max Rows limit.
-  const result=await selectAllRows(table,{
-    columns:TIME_COLUMNS,
-    filters:[{column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.time}],
-    orders:[{column:'uid',ascending:true}]
-  });
-  const rows=(result.rows||[]).map(projectTimeAnchor);
+  const rows=(await readAllTimeAnchorTransactions(scopeId)).map(projectTimeAnchor);
   const anchors=rows.filter(row=>row.type==='anchor');
   const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
   const normalize=(row,type,eventMap)=>{
@@ -342,18 +338,18 @@ const TARGET_MANAGED_TIME_PAGE_BYTES=2*1024*1024;
 // A one-year camera is only a viewport, never a SQL date filter. This is a
 // single authorized read flow with bounded transport pages, no extra COUNT.
 async function readManagedTimeRecords(table,{signal=null}={}){
+  const match=/^silver\.([a-z][a-z0-9]{0,14})_anchor$/.exec(String(table||''));
+  if(!match)throw Error('TimeAnchor physical relation required');
+  const scope=match[1];
   const collected=[],seen=new Set();
   let afterUid='',pageRows=Math.min(2000,DB_QUERY_BATCH_SIZE);
   let averageBytes=0,totalBytes=0;
   for(;;){
     if(signal?.aborted){const error=new Error('Time read cancelled');error.name='AbortError';throw error;}
-    const filters=[{column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.time}];
-    if(afterUid)filters.push({column:'uid',operator:'gt',value:afterUid});
-    const {rows=[]}=await selectRows(table,{
-      columns:MANAGED_TIME_COLUMNS,filters,
-      orders:[{column:'uid',ascending:true}],
-      limit:pageRows,authenticated:true,signal
+    const result=await readTimeAnchorTransaction(scope,{
+      mode:'editor',cursor:afterUid,limit:Math.min(2000,pageRows),signal
     });
+    const rows=result.rows;
     if(!Array.isArray(rows)||rows.length>pageRows)
       throw Error('時間紀錄分頁回傳不完整，已停止編輯');
     let pageBytes=0;
@@ -367,8 +363,10 @@ async function readManagedTimeRecords(table,{signal=null}={}){
         throw Error('時間紀錄超出編輯器記憶體預算，未載入不完整清單');
       collected.push(projectTimeAnchor(row));
     }
-    if(rows.length<pageRows)return collected;
-    afterUid=String(rows.at(-1).uid);
+    if(!result.nextCursor)return collected;
+    if(result.nextCursor===afterUid||!rows.length)
+      throw Error('Invalid TimeAnchor transaction continuation');
+    afterUid=result.nextCursor;
     const measured=pageBytes/Math.max(1,rows.length);
     averageBytes=averageBytes===0||measured>averageBytes
       ?measured:averageBytes*.7+measured*.3;
