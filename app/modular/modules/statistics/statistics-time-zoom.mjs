@@ -1,7 +1,7 @@
 // The LOC / LunaRunes statistics timeframe is controlled exclusively by +/-.
 // Default to the last calendar year; never request more than one year at once.
 // Automatic week/month buckets are presentation only.
-// One page-size contract for both the visual Rune ranking and media facets.
+// One page-size contract for Rune rankings and other comparisons.
 export const RUNE_RANKING_PAGE_SIZE=8;
 export const OTHER_RANKING_PAGE_SIZE=10;
 const MS_PER_DAY=86_400_000;
@@ -164,17 +164,16 @@ export function availableStatisticChartTypes({rows=[],series=[],distribution=[],
 
 
 // Recharts is a presentation engine, not a reason to offer every chart for
-// every metric. Geography and multimedia are categorical keyword dimensions:
-// overlapping keyword/media hits must never be presented as parts of a pie.
+// every metric. Geography and keyword matches are potentially overlapping dimensions:
+// these hits must not be presented as parts of a pie.
 // Keep this pure: all callers use their existing bounded analytics response.
 export const STATISTIC_CHART_PURPOSES=Object.freeze({
   total:Object.freeze(['line','composed','area','bar']),
   source:Object.freeze(['line','stacked','bar','area','pie','treemap']),
   // A work may refer to multiple places: counts are not exclusive slices.
   place:Object.freeze(['bar','line','area']),
-  // Keyword and media hits can overlap, so stacking misstates their sum.
+  // Keyword hits can overlap, so stacking misstates their sum.
   keyword:Object.freeze(['bar','line','area']),
-  media:Object.freeze(['bar','line','area']),
   // Different comparison lanes are not additive partitions.
   comparison:Object.freeze(['line','bar','scatter'])
 });
@@ -186,7 +185,6 @@ export const STATISTIC_DEFAULT_CHART=Object.freeze({
   source:'line',
   place:'bar',
   keyword:'bar',
-  media:'bar',
   comparison:'line'
 });
 
@@ -204,7 +202,7 @@ export function semanticStatisticChartTypes({
   const possible=new Map(availableStatisticChartTypes({rows,series,distribution,totalKey}));
   const categories=normalizeDistribution(distribution,rows,nonemptySeries(rows,series));
   // Too many pie slices conceal the ranking. A Treemap remains available
-  // for exclusive source categories; never for overlapping keyword/media.
+  // for exclusive source categories; never for overlapping keywords.
   return preferred.filter(type=>possible.has(type)&&
     !(type==='pie'&&categories.length>6))
     .map(type=>[type,possible.get(type)]);
