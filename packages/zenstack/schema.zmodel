@@ -319,7 +319,7 @@ type PointAnchor {
     longitude Float?
     latitude Float?
     location String?
-    times String[]?
+
 }
 type PathAnchor {
     point String[]?

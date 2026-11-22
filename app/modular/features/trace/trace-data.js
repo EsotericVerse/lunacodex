@@ -33,18 +33,10 @@ const VALID_ID=/^[A-Za-z0-9]{8}$/;
 const TRACE_TYPES=ANCHOR_TYPE_GROUPS.space;
 const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
 const physicalPoint=id=>dbAuthClient.schema('silver').from(id+'_anchor');
-const pointVisitTimes=values=>{
-  const input=Array.isArray(values)?values:[];
-  const timestamps=input.map(value=>Date.parse(String(value||'')));
-  if(timestamps.some(stamp=>!Number.isFinite(stamp)))
-    throw Error('Point 造訪時間必須是有效的時間戳');
-  return [...new Set(timestamps)].sort((a,b)=>a-b).map(value=>new Date(value).toISOString());
-};
-const pointAttr=({address,longitude,latitude,times=[]})=>{
+const pointAttr=({address,longitude,latitude})=>{
   const coords=coordinateArray(longitude,latitude),attr={};
   if(coords){attr.longitude=coords[0];attr.latitude=coords[1];}
   if(postalText(address))attr.location=postalText(address);
-  if(times.length)attr.times=pointVisitTimes(times);
   return attr;
 };
 // Present the typed LocationAnchor row to the existing map widgets. Only the
@@ -66,7 +58,6 @@ const projectUnified=(row,id)=>{
   const address=typeof attr.location==='string'?attr.location:'';
   return readRow({...row,type,trace_type:type,
     address:coordinates,anchor_list:row.type==='point'?[]:point,
-    times:Array.isArray(attr.times)?attr.times:[],
     route_list:{routes:path,segments,postal_address:address}},id);
 };
 const normalizedInvisible=value=>{if(typeof value==='boolean')return value;if(value===0||value===1)return Boolean(value);throw Error('隱藏設定必須是 0 或 1');};
@@ -209,11 +200,11 @@ export async function inspectTraceAnchorBeforeWrite({scopeId,anchor,excludeUid='
     anchors.filter(row=>row.uid!==excludeUid));
   return {reuse:null,matches}; // Never merge spatial identities without explicit approval.
 }
-export async function addTraceAnchor({scopeId,title,description='',address='',longitude,latitude,times=[],invisible=false}){
+export async function addTraceAnchor({scopeId,title,description='',address='',longitude,latitude,invisible=false}){
   const id=writableScope(scopeId);
   const row={uid:allocateAnchorUid(),type:'point',title:nonempty(title,'地點標題'),
     description:descriptionText(description),invisible:normalizedInvisible(invisible),
-    attr:pointAttr({address,longitude,latitude,times})};
+    attr:pointAttr({address,longitude,latitude})};
   return checked(await physicalPoint(id).insert(row).select('uid').single(),'新增空間定錨點');
 }
 export async function updateTraceAnchor({scopeId,uid,title,description='',address='',longitude,latitude,invisible=false}){
@@ -235,7 +226,7 @@ export async function updateTraceAnchor({scopeId,uid,title,description='',addres
     description:descriptionText(description),invisible:normalizedInvisible(invisible),attr})
     .eq('uid',selected).eq('type','point').select('uid').single(),'更新空間定錨點');
 }
-// Bulk rename preserves every Trace UID, coordinate, timestamp and route reference.
+// Bulk rename preserves every Trace UID, coordinate and route reference.
 // It changes title only; the caller explicitly selects a reviewed canonical spelling.
 // A large rename is one HTTP envelope and one database commit, not one
 // committed write per UI chunk. Exact UID cardinality prevents partial Save.
@@ -271,7 +262,7 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
     if(seen.has(key)){skipped++;continue;}
     seen.add(key);
     inserts.push({title,description:descriptionText(place.description||''),
-      address,postal_address:postalText(place.address||''),times:Array.isArray(place.times)?place.times:[]});
+      address,postal_address:postalText(place.address||'')});
   }
   const allocated=new Set();
   const rows=inserts.map(place=>{
@@ -280,7 +271,7 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
     return {uid,type:'point',title:place.title,
       description:place.description,invisible:false,
       attr:pointAttr({address:place.postal_address,
-        longitude:place.address?.[0],latitude:place.address?.[1],times:place.times})};
+        longitude:place.address?.[0],latitude:place.address?.[1]})};
   });
   if(rows.length)await transactionWrites([{
     p_table:'silver.'+id+'_anchor',p_operation:'insert',p_rows:rows

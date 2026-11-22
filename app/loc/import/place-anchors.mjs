@@ -1,6 +1,6 @@
 import {importGeoKey} from './geocoordinates.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
-import {planImportPointVisitDelta,planImportPointCreate} from './point-date-immer.mjs';
+import {planImportPointCreate} from './point-date-immer.mjs';
 
 // An exact coordinate identifies an existing Trace location even if the
 // original place label differs. Without GPS, only unambiguous names are used.
@@ -22,18 +22,15 @@ export const importPlaceNameKey=nameKey;
 // This is a semantic lookup, not a new database PK or a second Anchor table.
 export function createImportPlaceIndex(){
   const existingByCoordinate=new Map(),existingByName=new Map();
-  const timesByUid=new Map(),createtimeByUid=new Map(),attrsByUid=new Map();
+  const knownPointUids=new Set();
   const accept=anchor=>{
     if(anchor?.type!=='point')throw Error('Point Anchor 索引型別不符');
     const name=nameKey(anchor?.title),uid=String(anchor?.uid||'');
     if(!VALID_UID.test(uid))return;
     const coordinates=importGeoKey(anchor?.attr);
-    // An exact Point UID can be referenced by many differently named
-    // Galaxy.location values. Keep its PK in the index even if its label or
-    // coordinates are blank; those fields must not decide PK existence.
-    timesByUid.set(uid,Array.isArray(anchor.attr?.times)?anchor.attr.times:[]);
-    attrsByUid.set(uid,anchor.attr||{});
-    createtimeByUid.set(uid,String(anchor.createtime||'')||null);
+    // A place_id is authoritative even without a location label or GPS.
+    // No time-list data is read or stored in the Point index.
+    knownPointUids.add(uid);
     if(!name&&!coordinates)return;
     const saved={uid,coordinates};
     if(name){
@@ -45,7 +42,7 @@ export function createImportPlaceIndex(){
       existingByCoordinate.get(coordinates).push(saved);
     }
   };
-  return {accept,existingByCoordinate,existingByName,timesByUid,createtimeByUid,attrsByUid};
+  return {accept,existingByCoordinate,existingByName,knownPointUids};
 }
 
 function incomingLocations(records){
@@ -81,14 +78,12 @@ export async function prepareImportPlaceAnchors(records,{
   const {names,missing}=incomingLocations(records);
   const byCoordinate=new Map(),byName=new Map();
   const unavailable=()=>{
-    // Even when every imported article already has place_id, its verified
-    // Point PK is still needed to append visit times. Return the shared
-    // UID-index state instead of dropping it with the empty name list.
+    // Even when every imported article already has place_id, return the
+    // shared UID index so verified links can be retained without a name scan.
     const indexed=anchorSnapshot?.scopeId===scopeId?anchorSnapshot.place:null;
     return {byCoordinate,byName,created:0,reused:0,conflicts:[],
       skipped:missing+names.size,unmatchedCoordinates:names.size,
-      ...(indexed?{timesByUid:indexed.timesByUid,attrsByUid:indexed.attrsByUid,
-        createtimeByUid:indexed.createtimeByUid,table:anchorSnapshot.table}:{})};
+      ...(indexed?{knownPointUids:indexed.knownPointUids,table:anchorSnapshot.table}:{})};
   };
   if((!names.size&&!scanExistingOnEmpty)||scopeId==='local'||scopeId==='loc'||!scopeId)
     return unavailable();
@@ -100,7 +95,7 @@ export async function prepareImportPlaceAnchors(records,{
        typeof anchorSnapshot.place?.accept!=='function'))
     throw Error('空間定錨共用索引 Scope 不符');
   const index=anchorSnapshot?.place||createImportPlaceIndex();
-  const {existingByCoordinate,existingByName,timesByUid,createtimeByUid,attrsByUid}=index;
+  const {existingByCoordinate,existingByName,knownPointUids}=index;
   if(!anchorSnapshot){
     onProgress?.({phase:'讀取現有空間定錨',completed:0,total:0});
     for(let offset=0;;offset+=pageSize){
@@ -204,9 +199,7 @@ export async function prepareImportPlaceAnchors(records,{
         throw Error('新增空間定錨名稱、座標或 UID 不符；重新執行將核對已寫入的定錨');
       seen.add(uid);
       register(place,uid);
-      timesByUid.set(uid,[]);
-      attrsByUid.set(uid,anchor.attr||{});
-      createtimeByUid.set(uid,place.createtime===null?null:new Date(place.createtime).toISOString());
+      knownPointUids.add(uid);
       created++;
     }
     if(seen.size!==chunk.length)throw Error('新增空間定錨回傳缺少部分座標');
@@ -217,7 +210,7 @@ export async function prepareImportPlaceAnchors(records,{
     if(uid){register(alias,uid);reused++;}
   }
   const unmatchedCoordinates=names.size-reused-created;
-  return {byCoordinate,byName,created,reused,timesByUid,attrsByUid,createtimeByUid,table,
+  return {byCoordinate,byName,created,reused,knownPointUids,table,
     skipped:missing+unmatchedCoordinates,unmatchedCoordinates,conflicts};
 }
 export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
@@ -227,161 +220,4 @@ export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
   const coordinates=importGeoKey(incoming?.__importCoordinates);
   const uid=coordinates?byCoordinate?.get(coordinates):byName?.get(name);
   return VALID_UID.test(String(uid||''))?uid:null;
-}
-
-// Point.attr.times stores each distinct original check-in instant for a
-// geographic identity; createtime remains its independent provenance timestamp.
-// Legacy Trace keeps the same deduplicated timestamp list in its times column.
-// Bound each UID's independent write with limited concurrency.
-const PLACE_VISIT_WRITE_CONCURRENCY=6;
-const PLACE_VISIT_WRITE_TIMEOUT_MS=45000;
-export async function recordImportPlaceVisits(visits,{relation,table,timesByUid,attrsByUid,createtimeByUid,onProgress}={}){
-  if(!Array.isArray(visits)||!visits.length){
-    onProgress?.({phase:'補齊定錨打卡時間',completed:0,total:0});
-    return {updated:0,added:0};
-  }
-  // Point visits are keyed by UID, not the original spelling of location.
-  // The same place_id can collect many location aliases and visit times.
-  const unified=/^silver\.[a-z][a-z0-9]{0,14}_anchor$/.test(String(table||''));
-  if(typeof relation!=='function'||!table)throw Error('定錨打卡時間寫入設定不存在');
-  const byUid=new Map();
-  for(const visit of visits||[]){
-    const uid=String(visit?.uid||'');
-    const stamp=Date.parse(String(visit?.time??''));
-    if(!VALID_UID.test(uid)||!Number.isFinite(stamp))continue;
-    if(!byUid.has(uid))byUid.set(uid,new Set());
-    byUid.get(uid).add(stamp);
-  }
-  if(unified){
-    // Every linked Galaxy article contributes its exact source timestamp,
-    // even when location strings differ but place_id points to the same UID.
-    // No per-article UID list is stored in Point.
-    const pending=[];
-    for(const [uid,stamps] of byUid){
-      // Never send a whole-attr replacement without the original Point state:
-      // that would erase saved coordinate and location aliases.
-      if(!attrsByUid?.has(uid))
-        throw Error('Point 原始 attr 不存在；停止補寫以避免覆蓋地點與座標');
-      const original=attrsByUid.get(uid)||{};
-      const visits=[...stamps];
-      const plan=planImportPointVisitDelta({uid,attr:original,
-        createtime:createtimeByUid?.get(uid),visits});
-      if(!plan.patches.length)continue;
-      pending.push({uid,original,visits});
-    }
-    const phase='補齊 Point 造訪時間',total=pending.length;
-    onProgress?.({phase,completed:0,total});
-    let cursor=0,completed=0,updated=0,added=0,firstError=null;
-    const progressStep=Math.max(1,Math.ceil(total/50));
-    const worker=async()=>{
-      while(cursor<total&&!firstError){
-        const item=pending[cursor++];
-        try{
-          const {uid,visits}=item;
-          let {original}=item;
-          let written=false;
-          for(let attempt=0;attempt<3&&!written;attempt++){
-            // Replan only after a verified optimistic-CAS conflict, using
-            // the latest Point attr. Immer touches times / createtime only.
-            const plan=planImportPointVisitDelta({uid,attr:original,
-              createtime:createtimeByUid?.get(uid),visits});
-            if(!plan.patches.length){written=true;break;}
-            const values={};
-            if(Object.hasOwn(plan.changes,'times'))
-              values.attr={...original,times:plan.changes.times};
-            if(Object.hasOwn(plan.changes,'createtime'))
-              values.createtime=plan.changes.createtime;
-            let request=relation(table).update(values)
-              .eq('uid',uid).eq('type','point').eq('attr',original);
-            // A concurrent writer may have filled createtime without touching
-            // attr. Never overwrite that independent provenance timestamp.
-            if(Object.hasOwn(values,'createtime'))request=request.is('createtime',null);
-            request=request.select('uid');
-            if(typeof request.abortSignal==='function'&&
-              typeof AbortSignal!=='undefined'&&typeof AbortSignal.timeout==='function')
-              request=request.abortSignal(AbortSignal.timeout(PLACE_VISIT_WRITE_TIMEOUT_MS));
-            const {data,error}=await request;
-            if(error)throw Error(error.message||String(error));
-            if(!Array.isArray(data))throw Error('Point 造訪時間更新缺少回傳資料');
-            if(data.length){
-              updated++;added+=plan.added;written=true;
-              if(values.attr){
-                timesByUid?.set(uid,plan.changes.times);
-                attrsByUid?.set(uid,values.attr);
-              }
-              if(values.createtime)createtimeByUid?.set(uid,values.createtime);
-            }else{
-              // Concurrent rename/merge may have changed attr; refetch and
-              // re-run Immer against the new snapshot, preserving its aliases.
-              const {data:latest,error:readError}=await relation(table)
-                .select('uid,attr,createtime').eq('uid',uid).eq('type','point').maybeSingle();
-              if(readError)throw Error(readError.message||String(readError));
-              if(!latest)throw Error('Point 在寫入期間已被移除');
-              original=latest.attr||{};
-              createtimeByUid?.set(uid,String(latest.createtime||'')||null);
-            }
-          }
-          if(!written)throw Error('Point 造訪時間並行更新衝突，請重新執行');
-          completed++;
-          if(completed%progressStep===0||completed===total)
-            onProgress?.({phase,completed,total});
-        }catch(error){if(!firstError)firstError=error;}
-      }
-    };
-    await Promise.all(Array.from({length:Math.min(PLACE_VISIT_WRITE_CONCURRENCY,total)},()=>worker()));
-    if(firstError)throw Error('補齊 Point 造訪時間中斷（已處理 '+completed+'/'+total+
-      ' 個定錨）；已完成部分不會回滾，可重新執行。原因：'+
-      String(firstError?.message||firstError));
-    return {updated,added};
-  }
-  // Assemble one update per real anchor before writing. Existing timestamps
-  // are never removed, and repeated runs skip already persisted instants.
-  const pending=[];
-  for(const [uid,incoming] of byUid){
-    const saved=new Set();
-    for(const when of timesByUid?.get(uid)||[]){
-      const stamp=Date.parse(String(when||''));
-      if(Number.isFinite(stamp))saved.add(stamp);
-    }
-    const fresh=[...incoming].filter(stamp=>!saved.has(stamp));
-    if(!fresh.length)continue;
-    const merged=[...new Set([...saved,...fresh])].sort((a,b)=>a-b)
-      .map(stamp=>new Date(stamp).toISOString());
-    pending.push({uid,merged,added:fresh.length});
-  }
-  const total=pending.length,phase='補齊定錨打卡時間';
-  onProgress?.({phase,completed:0,total});
-  if(!total)return {updated:0,added:0};
-
-  let cursor=0,completed=0,updated=0,added=0,firstError=null;
-  const progressStep=Math.max(1,Math.ceil(total/50));
-  const worker=async()=>{
-    while(cursor<total&&!firstError){
-      const {uid,merged,added:delta}=pending[cursor++];
-      try{
-        let request=relation(table).update({times:merged})
-          .eq('uid',uid).eq('trace_type','space_anchor');
-        // An aborted request is reported as a partial write failure. Re-run
-        // after checking status: the next scan reads actual persisted times.
-        if(typeof request.abortSignal==='function'&&
-          typeof AbortSignal!=='undefined'&&typeof AbortSignal.timeout==='function')
-          request=request.abortSignal(AbortSignal.timeout(PLACE_VISIT_WRITE_TIMEOUT_MS));
-        const {error}=await request;
-        if(error)throw Error(error.message||String(error));
-        timesByUid?.set(uid,merged);
-        updated++;added+=delta;
-        completed++;
-        if(completed%progressStep===0||completed===total)
-          onProgress?.({phase,completed,total});
-      }catch(error){
-        if(!firstError)firstError=error;
-      }
-    }
-  };
-  await Promise.all(Array.from({length:Math.min(PLACE_VISIT_WRITE_CONCURRENCY,total)},
-    ()=>worker()));
-  if(firstError)throw Error('補齊打卡時間中斷（已完成 '+completed+'/'+total+
-    ' 個定錨）；已完成部分不會回滾，重新執行會先比對去重。原因：'+
-    String(firstError?.message||firstError));
-  return {updated,added};
 }

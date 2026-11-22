@@ -65,7 +65,6 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const [chartType,setChartType]=useState('bar');
   const defaultTimeUnit=useDefaultTimeUnit();
   const viewUnit=defaultTimeUnit==='auto'?'month':defaultTimeUnit;
-  const [showAllVisits,setShowAllVisits]=useState(false);
   const name=String(place?.title||'').trim();
   const isMap=place?.trace_type==='path'||place?.trace_type==='trace';
   const targetScope=String(place?.source_scope||scopeId||'').trim();
@@ -299,39 +298,6 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       places:[...places].sort((a,b)=>b[1]-a[1]),
       total:[...places.values()].reduce((total,n)=>total+n,0)};
   },[summary.data,placesKey,placeLabels,viewUnit]);
-  // Each spatial anchor has its own times[]; a multi-day route does not mean
-  // each stop was visited continuously throughout that route.
-  // Use saved times, never inferred timestamps from the route or article period.
-  const visits=useMemo(()=>{
-    const stops=isMap
-      ?(place?.anchor_list||[]).flat(Infinity).map(uid=>anchors.find(a=>a.uid===uid&&a.source_scope===targetScope)).filter(Boolean)
-      :(place?[place]:[]);
-    return stops.flatMap((stop,stopIndex)=>(Array.isArray(stop.times)?stop.times:[])
-      .flatMap((when,visitIndex)=>{
-        const timestamp=Date.parse(String(when||''));
-        if(!Number.isFinite(timestamp))return [];
-        const exact=new Date(timestamp);
-        return [{
-          id:stop.uid+':'+stopIndex+':'+visitIndex,uid:stop.uid,
-          title:String(stop.title||''),when:exact.toISOString(),
-          label:exact.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',
-            month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false})+'（臺灣時間）'
-        }];
-      }))
-      .sort((a,b)=>a.when.localeCompare(b.when));
-  },[isMap,place,anchors,targetScope]);
-  const visibleVisits=useMemo(()=>visits.filter(visit=>{
-    // The contents of the favorite frame share one date filter, including
-    // independently recorded visit timestamps (which are not article dates).
-    const day=new Date(Date.parse(visit.when)+8*3600000).toISOString().slice(0,10);
-    return (!startDate||day>=startDate)&&(!endDate||day<=endDate);
-  }),[visits,startDate,endDate]);
-  const visitRiver=useMemo(()=>visibleVisits.map(visit=>({
-    id:'trace-visit:'+visit.id,entry_id:'trace-visit:'+visit.id,
-    entry_type:'spatial_visit',group_key:'trace-visits',group_label:'實際造訪時間',
-    group_order:0,start_date:visit.when,
-    title:visit.title+' · '+visit.label
-  })),[visibleVisits]);
   const listTotal=selectedMediaType?(mediaFiltered.data?mediaRows.length:null):
     (list.data?.pages?.length?rows.length:null);
   // Only client-side aggregation changes. Original article and visit dates stay exact.
@@ -345,8 +311,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       title:key+' · '+count+' 篇有打卡地點的文章'
     }));
   },[verified.periods,name,viewUnit]);
-  const riverItems=useMemo(()=>[...(sourceFilter||selectedMediaType?[]:visitRiver),...riverRows],
-    [sourceFilter,selectedMediaType,visitRiver,riverRows]);
+
   const chartRows=useMemo(()=>verified.periods.map(row=>({
     period:row.key.replace('-', '/'),start_date:row.startDate,value:row.count
   })),[verified.periods]);
@@ -369,22 +334,6 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
           :(summary.data?verified.total+' 篇符合條件的打卡文章':'數值圖表')}
       </span>
     </header>
-    {tab!=='articles'&&!sourceFilter&&!selectedMediaType?<div className="loc-trace-visit-times" aria-label="空間定錨點造訪時間">
-      <p className="scope-status">
-        {visibleVisits.length?'已保存 '+visibleVisits.length+' 次具體造訪時間；各站獨立記錄。'
-          :'目前沒有可確認的造訪時刻；不會以整趟旅程起訖日期代替各站時間。'}
-      </p>
-      {visibleVisits.length?<p className="scope-status">時間統一換算為臺灣時區顯示；境外地點的當地時間，須另依原始時區或航班文件確認。</p>:null}
-      {visibleVisits.length?<ol className="loc-trace-selection-order">
-        {(showAllVisits?visibleVisits:visibleVisits.slice(0,12)).map(visit=><li key={visit.id}>
-          <span>{visit.label} · {visit.title}</span>
-        </li>)}
-      </ol>:null}
-      {visibleVisits.length>12?<button className="loc-button" type="button"
-        onClick={()=>setShowAllVisits(value=>!value)}>
-        {showAllVisits?'收合造訪時間':'顯示全部 '+visibleVisits.length+' 次造訪時間'}
-      </button>:null}
-    </div>:null}
     {tab==='articles'?<label className="scope-stat-controls">文章排列
       <select className="scope-select" value={sort} onChange={event=>setSort(event.target.value)}>
         <option value="desc">最新的優先</option>
@@ -419,16 +368,13 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       <button type="button" className="loc-button" onClick={()=>mediaFiltered.fetchNextPage()}
         disabled={mediaFiltered.isFetchingNextPage}>繼續讀取下一頁</button>
     </p>:null}
-    {tab==='timeline'&&(summary.data||(!sourceFilter&&!selectedMediaType&&visibleVisits.length>0))?<div className="loc-trace-works-timeline" aria-label="按真實造訪時間排列的時間長河">
-      {riverItems.length?<CultureTimeline items={riverItems}
-        extraGroups={[
-          ...(!sourceFilter&&!selectedMediaType&&visitRiver.length?[{id:'trace-visits',label:'實際造訪時間',order:0,selectable:false}]:[]),
-          ...(riverRows.length?[{id:'trace-density',label:'文章月份密度',order:1,selectable:false}]:[])
-        ]}
+    {tab==='timeline'&&summary.data?<div className="loc-trace-works-timeline" aria-label="地點文章日期分布時間長河">
+      {riverRows.length?<CultureTimeline items={riverRows}
+        extraGroups={[{id:'trace-density',label:'文章月份密度',order:1,selectable:false}]}
         labelOf={()=>''} mode="source" heightVariant="double"
-        windowStart={!sourceFilter&&!selectedMediaType&&visitRiver.length?'':startDate} windowEnd={!sourceFilter&&!selectedMediaType&&visitRiver.length?'':endDate}
+        windowStart={startDate} windowEnd={endDate}
       />:<p className="scope-status">目前沒有可顯示的時間資料。</p>}
-      <p className="scope-status">造訪點只採用每個空間錨點 times[] 中的原始時間；文章密度是獨立河道，不推定造訪或停留。</p>
+      <p className="scope-status">依 Galaxy.place_id 與文章日期統計；不將文章建立時間推定為實際造訪。</p>
     </div>:null}
     {tab==='statistics'&&!selectedMediaType&&keywordGroups.isPending?
       <p className="scope-status">正在讀取這些地點的關鍵詞分組統計…</p>:null}
