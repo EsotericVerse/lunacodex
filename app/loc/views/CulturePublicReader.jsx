@@ -240,7 +240,8 @@ export default function CulturePublicReader(){
   const [daily,setDaily]=useState(NO_ITEMS);
   const [densityLoading,setDensityLoading]=useState(false);
   const [densityReadyKey,setDensityReadyKey]=useState('');
-  const [catalog,setCatalog]=useState({categories:[],aliases:[],tree:[],roots:[]});
+  const [catalog,setCatalog]=useState(null);
+  const [catalogLoading,setCatalogLoading]=useState(true);
   const [error,setError]=useState('');
   const [catalogError,setCatalogError]=useState('');
   const [loading,setLoading]=useState(true);
@@ -280,18 +281,21 @@ export default function CulturePublicReader(){
   useEffect(()=>()=>{articleAbortRef.current?.abort();sequence.current++;fullSequence.current++;},[]);
   useEffect(()=>{
     let cancelled=false;
-    setLoading(true);setError('');setCatalogError('');setAnchors([]);
+    setLoading(true);setError('');setCatalogError('');setCatalog(null);
+    setCatalogLoading(true);setAnchors([]);
     // A SiteAnchor taxonomy failure must NEVER blank the independent
     // TimeAnchor river. These are separate, non-joined ZModel reads.
     analytics(scopeId,'culture_anchors',null,null)
       .then(time=>{if(!cancelled){setAnchors(time);setLoading(false);}})
       .catch(reason=>{if(!cancelled){setError(String(reason?.message||reason));setLoading(false);}});
     readPublicSourceTaxonomy()
-      .then(types=>{if(!cancelled)setCatalog(types);})
+      .then(types=>{if(!cancelled){setCatalog(types);setCatalogError('');}})
       .catch(reason=>{if(!cancelled){
-        setCatalog({categories:[],aliases:[],tree:[],roots:[]});
+        // A failed request is NOT an empty taxonomy.
+        setCatalog(null);
         setCatalogError(String(reason?.message||reason));
-      }});
+      }})
+      .finally(()=>{if(!cancelled)setCatalogLoading(false);});
     return()=>{cancelled=true};
   },[scopeId]);
   useEffect(()=>{
@@ -396,7 +400,8 @@ export default function CulturePublicReader(){
   const densityRiver=useMemo(()=>{
     const base=densityMode==='keyword'
       ?sourceModel(keywordDaily,null,expandedSources,rangeStart,rangeEnd)
-      :sourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd);
+      :catalog?sourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd)
+        :{items:[],groups:[],sites:[]};
     const candidateLane={
       id:'root:anchor-suggestions',label:anchorSuggestionsOpen
         ?'建議定錨點（'+suggestionAnalysis.suggestions.length+'）':'建議定錨點',
@@ -548,6 +553,8 @@ export default function CulturePublicReader(){
           </label>:null}
         </div>
         {!validRange?<p className='scope-status scope-error' role='alert'>請選擇有效的起訖日期。</p>:null}
+        {catalogLoading&&densityMode==='source'?<p className='scope-status' role='status'>
+          正在載入來源分類…</p>:null}
         {catalogError&&densityMode==='source'?<p className='scope-status scope-error' role='alert'>
           來源分類暫時無法載入：{catalogError}</p>:null}
         {keywordError?<p className='scope-status scope-error' role='alert'>{keywordError}</p>:null}
@@ -556,7 +563,8 @@ export default function CulturePublicReader(){
           <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
           <span>正在整理時間河道的每日密度…</span>
         </div>:null}
-        {!riverPending?<div className='scope-culture-double-river scope-public-culture-river'>
+        {!riverPending&&(densityMode!=='source'||(!catalogLoading&&!catalogError))?
+          <div className='scope-culture-double-river scope-public-culture-river'>
         <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
           focus={NO_FOCUS} mode='source' heightVariant='double' naturalSourceHeight
           windowStart={rangeStart} windowEnd={rangeEnd} fixedMin={rangeStart} fixedMax={rangeEnd}

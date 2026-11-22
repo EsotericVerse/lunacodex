@@ -8,13 +8,12 @@ import {
 // One server-side GROUP BY: the database counts per Taipei day and returns
 // at most one row per day, so no row-level paging is needed.
 async function selectLaneDailyGrouped({scope,spec,range}){
-  const media=spec.source.startsWith('media:');
-  const platform=spec.source.startsWith('galaxy:')&&spec.source!=='galaxy:exact'
-    ?spec.source.slice('galaxy:'.length):null;
+  const platform=['galaxy:facebook','galaxy:threads','galaxy:instagram']
+    .includes(spec.source)?spec.source.slice('galaxy:'.length):null;
   const {data,error}=await dbPublicClient.schema('silver').analytics({
     p_scope_id:scope.id,p_view:'lane_daily',
     p_start:range.startDate,p_end:range.endDate,
-    p_options:{media,platform,exact:spec.source.endsWith(':exact')?spec.exact:null}
+    p_options:{platform,exact:spec.source.endsWith(':exact')?spec.exact:null}
   });
   if(error)throw error;
   if(!Array.isArray(data))throw new Error('Invalid lane daily response');

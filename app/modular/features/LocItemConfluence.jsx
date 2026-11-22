@@ -51,11 +51,11 @@ function LanePicker({label,lane,scopes,onChange}){
       <label><span>{l.laneItem}</span>
         <select className="scope-select" value={sourceOptions.some(item=>item.value===lane.source)?lane.source:'galaxy:all'}
           onChange={event=>onChange({...lane,source:event.target.value,exact:''})}>
-          {sourceOptions.map(option=><option key={option.value} value={option.value}>{l[({ 'galaxy:facebook':'galaxyFacebook','galaxy:threads':'galaxyThreads','galaxy:instagram':'galaxyInstagram','galaxy:all':'galaxyAll','galaxy:exact':'galaxyExact','media:all':'mediaAll','media:exact':'mediaExact'})[option.value]]||option.label}</option>)}
+          {sourceOptions.map(option=><option key={option.value} value={option.value}>{l[({ 'galaxy:facebook':'galaxyFacebook','galaxy:threads':'galaxyThreads','galaxy:instagram':'galaxyInstagram','galaxy:all':'galaxyAll','galaxy:exact':'galaxyExact'})[option.value]]||option.label}</option>)}
         </select>
       </label>
       {lane.source.endsWith(':exact')?<label><span>{l.exactType}</span>
-        <input className="scope-input" value={lane.exact} maxLength={100} placeholder={lane.source.startsWith('media:')?'媒體類型':'site'}
+        <input className="scope-input" value={lane.exact} maxLength={100} placeholder="site"
           onChange={event=>onChange({...lane,exact:event.target.value})}/>
       </label>:null}
     </div>
@@ -88,8 +88,8 @@ export default function LocItemConfluence(){
   const labels=useMemo(()=>[laneA,laneB].map(lane=>{
     const label=itemLaneDescription(lane);
     const option=ITEM_LANE_OPTIONS.find(item=>item.value===lane.source);
-    const keys={'galaxy:facebook':'galaxyFacebook','galaxy:threads':'galaxyThreads','galaxy:instagram':'galaxyInstagram','galaxy:all':'galaxyAll','galaxy:exact':'galaxyExact','media:all':'mediaAll','media:exact':'mediaExact'};
-    return String(lane.scopeId||'')+' · '+(lane.source.endsWith(':exact')?(lane.source.startsWith('media:')?l.mediaLabel:l.textLabel)+String(lane.exact||''):(l[keys[option?.value]]||label||l.unselected));
+    const keys={'galaxy:facebook':'galaxyFacebook','galaxy:threads':'galaxyThreads','galaxy:instagram':'galaxyInstagram','galaxy:all':'galaxyAll','galaxy:exact':'galaxyExact'};
+    return String(lane.scopeId||'')+' · '+(lane.source.endsWith(':exact')?l.textLabel+String(lane.exact||''):(l[keys[option?.value]]||label||l.unselected));
   }),[laneA,laneB,l]);
   const daily=useMemo(()=>valid&&query.data?buildItemConfluenceDaily({
     startDate:range.startDate,endDate:range.endDate,lanes:[laneA,laneB],series:query.data

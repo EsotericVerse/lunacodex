@@ -7,9 +7,7 @@ export const ITEM_LANE_OPTIONS=Object.freeze([
   {value:'galaxy:threads',label:'文字 · Threads'},
   {value:'galaxy:instagram',label:'文字 · Instagram／Reels'},
   {value:'galaxy:all',label:'文字 · 全部來源'},
-  {value:'galaxy:exact',label:'文字 · 指定 site'},
-  {value:'media:all',label:'媒體 · 全部類型'},
-  {value:'media:exact',label:'媒體 · 指定類型'}
+  {value:'galaxy:exact',label:'文字 · 指定 site'}
 ]);
 export function itemConfluenceDate(value){
   const day=String(value||'').slice(0,10);
@@ -45,13 +43,13 @@ export function validateItemLane(lane,scopes){
   if(!ITEM_LANE_OPTIONS.some(option=>option.value===source))
     return {valid:false,reason:'請選擇有效的河道項目。'};
   if(source.endsWith(':exact')&&(!exact||exact.length>100))
-    return {valid:false,reason:'請輸入有效的來源／媒體類型（最多 100 字）。'};
+    return {valid:false,reason:'請輸入有效的來源 site（最多 100 字）。'};
   return {valid:true,scopeId,source,exact};
 }
 export function itemLaneDescription(lane){
   const option=ITEM_LANE_OPTIONS.find(item=>item.value===lane?.source);
   return String(lane?.scopeId||'')+' · '+(lane?.source?.endsWith(':exact')
-    ?(String(lane?.source||'').startsWith('media:')?'媒體 · ':'文字 · ')+String(lane?.exact||'')
+    ?'來源 · '+String(lane?.exact||'')
     :option?.label||'未選擇');
 }
 

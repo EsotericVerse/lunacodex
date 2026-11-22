@@ -1,6 +1,6 @@
 // The group/item selectors are presentation-only. They reuse the existing
 // statistics metrics and never alter the source, Class, or keyword contracts.
-const FAMILIES=Object.freeze(['source','media','keyword']);
+const FAMILIES=Object.freeze(['source','keyword']);
 
 export function comparisonMetricGroups(dimension,byFamily={}){
   return FAMILIES.filter(family=>dimension==='all'||dimension===family)
