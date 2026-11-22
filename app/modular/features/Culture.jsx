@@ -48,11 +48,6 @@ import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
 const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
 
-function editorRiverYearWindow(){
-  // The timeline starts at the configured default year. Do not silently
-  // navigate to the first/last anchor after completing the data read.
-  return {start:DEFAULT_YEAR_WINDOW.startDate,end:DEFAULT_YEAR_WINDOW.endDate};
-}
 function isInteractiveTarget(target){
   return Boolean(target?.closest?.('a,button,input,select,textarea,summary,[role="button"],[contenteditable="true"]'));
 }
@@ -731,7 +726,6 @@ export default function Culture(){
   const editorEraRiver=useMemo(()=>
     buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
     [timelineItems,expandedEditorEraIds,scopeId]);
-  const editorRiverWindow=useMemo(editorRiverYearWindow,[]);
   const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
     current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
   const toggleTimeTrace=groupId=>{
@@ -755,6 +749,9 @@ export default function Culture(){
     const last=dates.at(-1)||DEFAULT_YEAR_WINDOW.endDate;
     return {start,end:last>start?last:nextRiverDay(start)};
   },[timelineItems]);
+  // Management displays the same complete historical Time graph as Culture;
+  // the current calendar year is not a filter or the initial editor camera.
+  const editorRiverWindow=structureDateBounds;
   const currentStructureStart=activeStructureKey==='all'?structureDateBounds.start
     :String(currentStructurePeriod?.start_date||'').slice(0,10);
   // A trace stops at its final real anchor; no virtual today endpoint.
