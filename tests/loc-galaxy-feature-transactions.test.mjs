@@ -89,3 +89,82 @@ test('every Galaxy flag is a typed model; articles require the independent list 
     assert.equal(parsed.limit,100);
   }
 });
+
+
+test('public Search rejects site, source, and place selectors before opening SQL',async()=>{
+  const requestBase={
+    kind:'transaction',operation:'galaxy-feature',scope:'lo3rwang',
+    feature:'search',text:'星光',result:'articles'
+  };
+  const selectors=[
+    {category:{type:'source',value:'Suno'}},
+    {category:{type:'place',value:'AAAA0001'}},
+    {sources:['Facebook']},{excludedSources:['Vocus']},
+    {placeIds:['AAAA0001']}
+  ];
+  for(const extra of selectors){
+    const body={...requestBase,...extra};
+    assert.throws(()=>parseGalaxyFeatureTransaction(body));
+    const response=await handleNamedPublicTransaction(request(body),{},{
+      database:()=>{throw Error('Disallowed Search must not open SQL')}
+    });
+    assert.equal(response.status,400);
+  }
+  assert.equal(parseGalaxyFeatureTransaction({
+    ...requestBase,startDate:'2026-01-01',endDate:'2026-11-22'
+  }).feature,'search');
+});
+
+test('public Search matches title OR content, with no user-chosen metadata field',async()=>{
+  const observed=[];
+  const eb=(column,operator,value)=>({column,operator,value});
+  eb.or=items=>({operation:'or',items});
+  eb.and=items=>({operation:'and',items});
+  eb.fn=(name,fields)=>({fn:name,fields});
+  const builder={
+    where(column,operator,value){
+      observed.push(typeof column==='function'?column(eb):{column,operator,value});
+      return this;
+    },
+    select(){return this},orderBy(){return this},limit(){return this},
+    offset(){return this},
+    async execute(){return [{
+      uid:'AAAA0001',title:'星光',content:null,site:'Vocus',list:true
+    }]}
+  };
+  const model=parseGalaxyFeatureTransaction({
+    kind:'transaction',operation:'galaxy-feature',
+    scope:'lo3rwang',feature:'search',text:'星光',
+    excludedTerms:['失落'],result:'articles'
+  });
+  const result=await executeGalaxyFeatureTransaction({
+    selectFrom(table){
+      assert.equal(table,'silver.lo3rwang_galaxy');
+      return builder;
+    }
+  },model);
+  assert.equal(result.rows.length,1);
+  assert.equal(result.rows[0].title,'星光');
+  const clauses=JSON.stringify(observed);
+  assert.match(clauses,/"column":"title","operator":"ilike","value":"%星光%"/);
+  assert.match(clauses,/"column":"content","operator":"ilike","value":"%星光%"/);
+  assert.match(clauses,/"column":"title","operator":"not ilike","value":"%失落%"/);
+  assert.match(clauses,/"column":"content","operator":"not ilike","value":"%失落%"/);
+  assert.doesNotMatch(clauses,/"column":"location"/);
+  assert.doesNotMatch(clauses,/"column":"place_id"/);
+});
+
+test('guest Search UI does not expose site, place or content-type selection',()=>{
+  const ui=readFileSync(new URL('../app/modular/features/Search.jsx',import.meta.url),'utf8');
+  const provider=readFileSync(new URL('../app/loc/galaxy/galaxy-query.js',import.meta.url),'utf8');
+  assert.match(ui,/managementMode\?\['type','source','time'\]:\['time'\]/);
+  assert.match(ui,/managementMode&&advancedTab==='source'/);
+  assert.match(ui,/managementMode&&advancedTab==='type'/);
+  assert.match(ui,/搜尋文章標題或內容/);
+  const start=provider.indexOf('function genericScopeProviders(scope)');
+  const end=provider.indexOf('function normalizeSearch',start);
+  assert.ok(start>=0&&end>start);
+  const guestProvider=provider.slice(start,end);
+  assert.doesNotMatch(guestProvider,/sourceFilter|sourceTaxonomy|excludedSources|placeIds|contentType/);
+  assert.match(guestProvider,/feature:'search'/);
+});
