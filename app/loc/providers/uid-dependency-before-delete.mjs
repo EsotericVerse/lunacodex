@@ -1,5 +1,4 @@
 import {planUidDependencyRepair,UID_DEPENDENT_ANCHOR_FIELDS} from './uid-dependency-immer.mjs';
-import {SCOPE_PATTERN_POSTING_KEY} from '../keywords/anchor-index.mjs';
 import {sql} from 'kysely';
 import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
@@ -74,9 +73,8 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
   const galaxyColumns=kind==='galaxy'
     ?['uid','source_id','target_id','ref_id']
     :deletedType==='point'?['uid','place_id']:[];
-  const parentFields=kind==='galaxy'
-    ?{pattern:SCOPE_PATTERN_POSTING_KEY}
-    :UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
+  // Galaxy articles are not stored in Pattern: there are no posting links to repair.
+  const parentFields=kind==='galaxy'?{}:UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
   const parentTypes=Object.keys(parentFields);
   let galaxyRows=[],anchorRows=[];
   // One narrow SELECT per physical table, only rows mentioning the exact UID.

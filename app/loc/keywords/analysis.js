@@ -42,10 +42,10 @@ export async function selectActiveKeywordClassName(scopeId=''){
 export async function selectAvailableKeywordClasses(scopeId){
   return keywordService('classes',{scopeId:normalizeScopeId(scopeId)});
 }
-// Browser only asks the verified server to run the indexed word analysis.
+// Browser asks the verified server to compute Item-rule aggregate counts.
 // A whole Scope's article table rarely finishes inside one HTTP request's
-// time budget: the server checkpoints its progress (never the live Pattern
-// index — see sql-service.mjs) and reports {incomplete:true}, asking for
+// time budget: the server checkpoints counters (never Pattern postings)
+ // and reports {incomplete:true}, asking for
 // the same Class to be analyzed again to continue from exactly that point.
 // This loop is what makes "再打一次就接著掃" automatic instead of requiring
 // the user to click 重新分析 repeatedly; it never retries a failed write,

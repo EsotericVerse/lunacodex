@@ -8,7 +8,7 @@ import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from '
 
 // Database contract transports physical Galaxy/Anchor rows. Keyword Tree
 // adapters may expose legacy lists for editor compatibility; new persistent
-// relationships are child Anchor UIDs, with Galaxy postings on Pattern only.
+// relationships are child Anchor UIDs; Pattern stores no article postings.
 // Do not revive retired Item/Group hit caches or build separate Keyword tables.
 // Keyword read, write and reset use the shared MaxRows.
 export {MAX_ROWS as KEYWORD_CLASSIFICATION_BATCH_SIZE,MAX_ROWS as KEYWORD_CLASSIFICATION_WRITE_BATCH_SIZE,MAX_ROWS as KEYWORD_CLASSIFICATION_WRITE_PAUSE_INTERVAL};

@@ -24,29 +24,6 @@ export const ANCHOR_TYPE_GROUPS=Object.freeze({
 // Shared physical MediaAnchor contract. No Galaxy Media SQL relation exists.
 // Consumer projections are kept here beside the frozen ZModel type vocabulary.
 export const MEDIA_ANCHOR_COLUMNS='uid,type,title,description,createtime,attr,invisible';
-// Only Pattern postings contain Galaxy article UIDs; other hierarchy attr.uid links Anchor UIDs.
-// Physical Anchor.num is UID-list cardinality, never an article-hit counter or display order.
-// Existing Item/Group attr.total carries cached hit totals.
-// Dynamic posting field in physical Pattern.attr. A virtual ZModel record
-// exposes it as articleUids without creating a second SQL relation.
-export const KEYWORD_PATTERN_POSTINGS_KEY='63ade525';
-export function keywordPatternRecord(row={}){
-  const uid=String(row.uid||''),literal=String(row.title||'');
-  const count=Number(row.num??0);
-  if(!UID.test(uid)||!literal.trim()||!Number.isSafeInteger(count)||count<0)
-    throw new TypeError('Invalid KeywordPatternRecord physical UID/literal/count');
-  let articleUids=[];
-  if(Object.hasOwn(row,'attr')){
-    const raw=typeof row.attr==='string'?JSON.parse(row.attr):row.attr??{};
-    if(!raw||typeof raw!=='object'||Array.isArray(raw))
-      throw new TypeError('Invalid KeywordPatternRecord attr JSON');
-    articleUids=raw[KEYWORD_PATTERN_POSTINGS_KEY]??[];
-    if(!Array.isArray(articleUids)||articleUids.some(id=>!UID.test(id))||
-       new Set(articleUids).size!==articleUids.length||articleUids.length!==count)
-      throw new TypeError('Invalid KeywordPatternRecord posting UID/count');
-  }
-  return {uid,literal,count,articleUids};
-}
 export function canonicalMediaAnchorType(hint='',url=''){
   const type=String(hint||'').trim().toLowerCase();
   const link=String(url||'').trim().toLowerCase();
@@ -128,13 +105,13 @@ export const PERSISTED_ANCHOR_TYPES=Object.freeze(Object.values(ANCHOR_TYPE_GROU
 export const VIRTUAL_ANCHOR_TYPES=Object.freeze(['anniversary','aniversary']);
 // All physical Anchor.num values count UID references from the typed payload.
 // The LOC Block uidlist may start with a numeric layout marker: that marker
-// is NOT a UID. Pattern postings are Galaxy UIDs under the existing fixed key.
+// is NOT a UID. Pattern is a terminal word node with no child UIDs.
 export function anchorUidListCount(type,storedAttr={}){
   const attr=typeof storedAttr==='string'?JSON.parse(storedAttr):storedAttr??{};
   if(!attr||typeof attr!=='object'||Array.isArray(attr))
     throw new TypeError('Invalid Anchor attr for UID counting');
   const count=key=>Array.isArray(attr[key])?attr[key].length:0;
-  if(type==='pattern')return count(KEYWORD_PATTERN_POSTINGS_KEY);
+  if(type==='pattern')return 0;
   if(type==='trace')return count('path')+count('point');
   if(type==='path')return count('point');
   if(type==='era')return count('period');
@@ -149,12 +126,12 @@ export function anchorUidListCount(type,storedAttr={}){
 // ZModel value types for the JSON payload carried by each discriminator. They
 // are semantic projections, not extra SQL tables. Optional lists are valid in
 // a value type because the nullable-list limitation only applies to physical
-// SQL columns. Pattern postings remain dynamic JSON keyed by database UID.
+// SQL columns. Pattern does not persist article UID postings.
 export const ANCHOR_TYPE_MODEL_NAMES=Object.freeze({
   date:'DateAnchor',period:'PeriodAnchor',era:'EraAnchor',
   point:'PointAnchor',path:'PathAnchor',trace:'TraceAnchor',
   image:'ImageAnchor',video:'VideoAnchor',rune:'RuneAnchor',suno:'SunoAnchor',
-  pattern:'PatternAnchor',item:'ItemAnchor',group:'GroupAnchor',
+  pattern:null,item:'ItemAnchor',group:'GroupAnchor',
   class:'ClassAnchor',category:'CategoryAnchor',
   from:'FromAnchor',domain:'DomainAnchor',galaxy:'GalaxyAnchor',universe:'UniverseAnchor'
 });
@@ -192,9 +169,6 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
   VideoAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
   RuneAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
   SunoAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
-  PatternAnchor:{postings:{type:'Json',optional:true}},
-  KeywordPatternRecord:{uid:{type:'String'},literal:{type:'String'},
-    count:{type:'Int'},articleUids:{type:'String',array:true}},
   ItemAnchor:{keyword:{type:'String',array:true,optional:true},uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
   GroupAnchor:{uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
   ClassAnchor:{uid:{type:'String',array:true,optional:true},
@@ -211,7 +185,7 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
     trace:{type:'TraceAnchor',optional:true}},
   MediaAnchor:{images:{type:'ImageAnchor',optional:true},video:{type:'VideoAnchor',optional:true},
     suno:{type:'SunoAnchor',optional:true},runes:{type:'RuneAnchor',optional:true}},
-  KeywordAnchor:{pattern:{type:'PatternAnchor',optional:true},item:{type:'ItemAnchor',optional:true},
+  KeywordAnchor:{pattern:{type:'Json',optional:true},item:{type:'ItemAnchor',optional:true},
     group:{type:'GroupAnchor',optional:true},class:{type:'ClassAnchor',optional:true},
     category:{type:'CategoryAnchor',optional:true}},
   SiteAnchor:{universe:{type:'UniverseAnchor',optional:true},galaxy:{type:'GalaxyAnchor',optional:true},

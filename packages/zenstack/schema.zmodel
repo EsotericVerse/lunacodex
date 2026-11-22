@@ -351,18 +351,6 @@ type SunoAnchor {
     url String?
     date String?
 }
-// The typed Pattern row is a nonphysical projection of one Scope Anchor.
-// UID is the identity; literal is text, and articleUids come from attr's
-// posting key. This definition does not add a SQL table or rename columns.
-type KeywordPatternRecord {
-    uid String
-    literal String
-    count Int
-    articleUids String[]
-}
-type PatternAnchor {
-    postings Json?
-}
 type ItemAnchor {
     keyword String[]?
     uid String[]?
@@ -435,9 +423,9 @@ type MediaAnchor {
 }
 // Keyword hierarchy: category > class > group > item > pattern.
 // Class is the subject; Group groups Items; Item links Pattern Anchor UIDs.
-// Pattern alone holds Galaxy UID posting lists (physical num = article count).
+// Pattern is a vocabulary-only Anchor; no full-text article postings.
 type KeywordAnchor {
-    pattern PatternAnchor?
+    pattern Json?
     item ItemAnchor?
     group GroupAnchor?
     class ClassAnchor?

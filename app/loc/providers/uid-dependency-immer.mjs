@@ -1,6 +1,5 @@
 import {produce} from 'immer';
 import {PERSISTED_ANCHOR_TYPES,anchorUidListCount} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {SCOPE_PATTERN_POSTING_KEY} from '../keywords/anchor-index.mjs';
 
 // An exact UID is an identity; location, date and site are source values,
 // never replacement UIDs. Do not infer identities from titles or dates.
@@ -116,16 +115,6 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
     mark(anchorSeen,id);
     if(!isGalaxy&&id===uid)continue;
     const original=attrOf(row);
-    if(isGalaxy){
-      if(row.type!=='pattern'||!hasUid(original[SCOPE_PATTERN_POSTING_KEY],uid))continue;
-      const next=produce(original,draft=>{
-        draft[SCOPE_PATTERN_POSTING_KEY]=withoutUid(draft[SCOPE_PATTERN_POSTING_KEY],uid);
-      });
-      anchorUpdates.push({uid:id,type:'pattern',
-        values:{attr:next,num:BigInt(next[SCOPE_PATTERN_POSTING_KEY].length)},
-        expected:{attr:original}});
-      continue;
-    }
     const field=parentFields[String(row.type||'')];
     if(!field||!hasUid(original[field],uid))continue;
     const next=produce(original,draft=>{

@@ -2,6 +2,7 @@ import {PUBLISHED_SEARCH_PATTERNS} from '../../modular/published-search-patterns
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const ID=/^[A-Za-z0-9]{8}$/;
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
+// Literal substring matching only, without translation or cross-language mapping.
 // Local, bounded lookup: never probe a database, UID, or article title.
 export function publicPatternSuggestions(scopeIds,raw){
   if(!Array.isArray(scopeIds)||scopeIds.length>50||typeof raw!=='string'||raw.length>120)return [];

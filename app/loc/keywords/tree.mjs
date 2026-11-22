@@ -2,10 +2,9 @@ import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hier
 // Current Keyword Tree Model: category > class > group > item > pattern.
 // Typed/composite models define node payloads; anchor-hierarchy.mjs validates
 // UID edges; this module adapts them for editor/catalog consumers.
-// Only Pattern.attr postings hold Galaxy article UIDs (Pattern.num = count).
+// Pattern is a terminal vocabulary node (attr={}, num=0).
 // Item.attr.uid links Pattern Anchor UIDs; Item.keyword carries word labels.
-// Older "literal keyword strings" and Group/Item uid_lists are compatibility
-// data shapes, NOT the persisted search/index architecture.
+// No full-text index or Pattern-to-Galaxy article UID postings are persisted.
 // Parent lists contain child UIDs, not names. No class_id, group_id, item_no.
 // Only the canonical eight-character Anchor UID exists in the current ZModel.
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -18,7 +17,7 @@ const array=value=>{
 };
 // COMPATIBILITY-ONLY reader for old uid_lists payloads (array, articles, hits).
 // It does NOT define a new physical JSONB column or an authoritative hit index.
-// New code must use Pattern posting UIDs and ZModel graph links; do not restore
+// New code uses authored Item rules and Anchor UID links; do not restore
 // Item/Group article-list storage merely because this decoder still exists.
 export function keywordUidListData(type,value){
   const raw=typeof value==='string'?(()=>{try{return JSON.parse(value)}catch{return value}})():value;
@@ -27,7 +26,7 @@ export function keywordUidListData(type,value){
     if(type==='group'&&Array.isArray(raw.articles))return [...raw.articles];
     if(type==='item'&&Array.isArray(raw.hits))return [...raw.hits];
     // Legacy adapter can reconstruct in-memory {uid,times}; never persist as the
-// new Item/Group index. The authoritative distinct count is Pattern.num.
+// new Item/Group index. Cached article totals live in Item/Group.attr.total.
     // Reconstruct legacy hit objects in memory only for existing consumers.
     if(['group','item'].includes(type)&&Array.isArray(raw.uidlists))
       return type==='item'?raw.uidlists.map(uid=>({uid,times:1})):raw.uidlists;
@@ -66,7 +65,7 @@ export function normalizeKeywordTreeRow(row){
   const compact=row?.uid_lists&&typeof row.uid_lists==='object'&&!Array.isArray(row.uid_lists)
     &&Array.isArray(row.uid_lists.uidlists);
   // Old compatibility summaries may supply computed totals, but not index data.
-  // Physical Keyword hit counts live only in Pattern.num; Item/Group totals are
+  // Physical Anchor.num counts UID references; Item/Group hit totals are
   // derived presentation values and must not be written as another hit cache.
   const projected=Number(row?.total);
   const total=Number.isSafeInteger(projected)&&projected>=0&&row?.total!=null

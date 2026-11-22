@@ -46,10 +46,8 @@ const validators=new Map();
 const selectValidators=new Map();
 const scopedGalaxy=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
 const char8Uid=/^[A-Za-z0-9]{8}$/;
-// Anchor.attr validation is derived from the same ZModel value types that
-// describe the semantic discriminator. Pattern is the one intentional
-// exception: its stored JSON object is a dynamic database-UID posting map,
-// so it is wrapped in the PatternAnchor.postings Json field for validation.
+// Anchor.attr validation derives from ZModel. Pattern is a vocabulary-only
+// terminal node: title stores the word, attr is empty, and num is zero.
 const anchorTypeGroups=Object.fromEntries(Object.entries(ANCHOR_TYPE_GROUPS)
   .flatMap(([group,types])=>types.map(type=>[type,group])));
 const anchorPayloadValidators=new Map(PERSISTED_ANCHOR_TYPES.map(type=>{
@@ -63,10 +61,13 @@ const anchorPayloadValidators=new Map(PERSISTED_ANCHOR_TYPES.map(type=>{
 function validateAnchorPayload(type,attr){
   const entry=anchorPayloadValidators.get(String(type||''));
   if(!entry||attr===undefined)return;
-  // Pattern postings stay in their existing dynamic object shape, but the
-  // surrounding group model still enforces the discriminator field.
-  const payload=type==='pattern'?{postings:attr}:attr;
-  const parsed=entry.validator.safeParse({[entry.field]:payload});
+  if(type==='pattern'){
+    if(!attr||typeof attr!=='object'||Array.isArray(attr)||
+        Object.keys(attr).length!==0)
+      throw new TypeError('Pattern.attr must be empty: no article UID postings');
+    return;
+  }
+  const parsed=entry.validator.safeParse({[entry.field]:attr});
   if(parsed.success){
     // Enforce terminal Source semantics in both reads and writes. ZModel
     // permits the existing empty uid:[] field on the physical From payload.

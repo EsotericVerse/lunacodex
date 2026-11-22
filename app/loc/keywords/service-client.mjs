@@ -31,10 +31,8 @@ export async function keywordService(operation,args={},options={}){
     throw Error('Invalid Keyword Scope');
   const write=['analyze','reset','saveItem','deleteItem','setClassShare'].includes(operation);
   const committed=result=>{
-    // /api/keywords writes Anchor/Pattern directly, outside managedWrite.
-    // PR #1759 checkpoints incomplete analysis across HTTP requests WITHOUT
-    // publishing the Pattern index. Keep existing Anchor snapshots until a
-    // completed analyze receipt or another confirmed Keyword mutation.
+    // /api/keywords writes Item/Group count snapshots directly.
+    // Incomplete checkpoints never contain article UID postings.
     const confirmedWrite=write&&!(operation==='analyze'&&result?.incomplete===true);
     if(confirmedWrite||(operation==='analyzeStatus'&&result?.completed))
       invalidateScopedReadCache('silver.'+scope+'_anchor');
@@ -42,7 +40,7 @@ export async function keywordService(operation,args={},options={}){
   };
   const readSignal=options?.signal||null;
   const stream=operation==='analyze'&&typeof options?.onProgress==='function';
-  // A completion receipt is committed with the Pattern transaction, so a
+  // A completion receipt is committed with the Item count transaction, so a
   // severed HTTP stream can be checked without rerunning authorized writes.
   const attemptId=stream?crypto.randomUUID():null;
   const requestArgs=attemptId?{...args,attemptId}:args;

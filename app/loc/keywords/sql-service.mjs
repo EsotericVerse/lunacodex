@@ -4,7 +4,7 @@ import {HEAVY_INITIAL_ROWS} from '../query/query-batch-size.mjs';
 // cached article hit count. Class completion remains in Scope keyword_meta.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {analyzeItemKeywordCounts,readItemKeywordProjection,
-  itemKeywordStatistics,itemKeywordSuggestions,itemScope} from './item-count-analysis.mjs';
+  itemKeywordStatistics,itemScope} from './item-count-analysis.mjs';
 import {createIndexedDateKeywordReader} from './article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass,
   readKeywordScanProgress,writeKeywordScanProgress,
@@ -40,9 +40,8 @@ const terms=item=>[String(item.item_name||''),...(Array.isArray(item.keywords)?i
 const anchorName=scope=>'silver.'+checkScope(scope)+'_anchor';
 const galaxyName=scope=>'silver.'+checkScope(scope)+'_galaxy';
 const configName=scope=>'silver.'+checkScope(scope);
-// The first Pattern-index scan touches every Galaxy UID. Its date reader
-// needs only five physical fields; never transfer GalaxyList's presentation
-// title, site or six unrelated feature flags across ~50k metadata records.
+// Item-rule aggregate analysis reads Gallery metadata by date/UID only;
+// no Pattern-to-Galaxy article UID postings or full-text index are created.
 const galaxyListMetadataColumns=Object.freeze([
   ...galaxyReadColumns('GalaxyList')
     .filter(name=>['uid','date','keyword'].includes(name))
@@ -231,17 +230,19 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
   const found=new Map();
   for(const scope of new Set(scopeIds)){
     if(!ownerScopes.has(scope))continue;
+    // A literal autocomplete lookup on Pattern.title. No language translation,
+    // English/Chinese mapping, Galaxy content scan, or article UID index.
     const rows=await db.selectFrom(anchorName(scope))
-      .select(['uid','title','attr']).where('type','=','item').execute();
-    for(const word of itemKeywordSuggestions(rows.map(row=>({
-      item_name:String(row.title||''),
-      keywords:Array.isArray(attr(row).keyword)?attr(row).keyword:[]
-    })),prefix)){
-      const key=norm(word.pattern);
-      if(!found.has(key))found.set(key,word);
+      .select(['uid','title']).where('type','=','pattern').execute();
+    for(const row of rows){
+      const literal=String(row.title||'').trim(),key=norm(literal);
+      if(!key.includes(prefix)||!literal)continue;
+      if(!found.has(key))found.set(key,{pattern:literal,count:0});
     }
   }
-  return [...found.values()].sort((a,b)=>a.pattern.localeCompare(b.pattern)).slice(0,10);
+  return [...found.values()].sort((a,b)=>
+    Number(norm(b.pattern).startsWith(prefix))-Number(norm(a.pattern).startsWith(prefix))||
+    a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
 // PostgreSQL row lock makes Reset, Checkpoint and Finalize linearizable.
@@ -458,7 +459,7 @@ async function invalidateKeywordTreeClass(trx,scope,classUid){
 // The Item editor's single authorized transaction saves its word list,
 // maintains Group membership and reconciles all Pattern UID references.
 // Legacy Item.keyword remains as temporary input to old style readers;
-// the actual postings are exclusively on Pattern Anchor rows.
+// Pattern vocabulary nodes hold no Galaxy article UID postings.
 export async function saveKeywordItem(db,scope,values,{
   authorizeTransaction=()=>{}
 }={}){

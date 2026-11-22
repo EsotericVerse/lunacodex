@@ -3,7 +3,7 @@ import {indexKeywordTree} from './tree.mjs';
 // LEGACY REPORT ADAPTER, not the current Keyword Tree Model or write contract.
 // Its Group.uid_lists and Item.{uid,times} shapes are compatibility input to
 // older report consumers, NOT persisted Anchor posting lists. Current source
-// of truth: Pattern.attr (Galaxy article UIDs) + Pattern.num, connected through
+// of truth: Item rules and cached Item/Group.attr.total, connected through
 // Item/Group/Class/Category Anchor UIDs by anchor-hierarchy.mjs.
 // Do not create/update Group or Item hit lists for new Statistics/Culture work.
 export function keywordTreeCatalog(rows,classUid){

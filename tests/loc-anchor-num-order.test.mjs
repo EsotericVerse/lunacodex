@@ -16,7 +16,7 @@ test('num counts the UID references in each semantic Anchor payload',()=>{
   assert.equal(anchorUidListCount('period',{uid:['AAAA0001']}),1);
   assert.equal(anchorUidListCount('era',{period:['AAAA0001','BBBB0002']}),2);
   assert.equal(anchorUidListCount('trace',{path:['AAAA0001'],point:['BBBB0002','CCCC0003']}),3);
-  assert.equal(anchorUidListCount('pattern',{'63ade525':['AAAA0001']}),1);
+  assert.equal(anchorUidListCount('pattern',{}),0);
   assert.equal(anchorUidListCount('from',{uid:[],counts:{lo3rwang:123}}),0);
   assert.equal(anchorUidListCount('index',{order:2,uidlist:[3,{uid:'AAAA0001'}]}),1);
   assert.equal(anchorUidListCount('date',{date:'2026-11-23'}),0);
