@@ -298,12 +298,16 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                 {DIMENSION_FILTERS.filter(tab=>tab.value==='all'?availableKinds.length>0:availableKinds.includes(tab.value)).map(tab=>
                   <button type="button" className="scope-self-stat-tab" key={tab.value}
                     aria-pressed={kind===tab.value} onClick={()=>switchKind(tab.value)}>
-                    {tab.value==='all'?'全部':tab.value==='source'?l.sourceTab:tab.value==='media'?l.mediaTab:l.keywordTab}
+                    {tab.value==='all'?'全部':tab.value==='source'?l.sourceTab:l.keywordTab}
                   </button>)}
               </div>
               <div className="scope-self-intersection-category-groups">
-                <label className="scope-self-stat-picker"><span>類別</span>
-                  <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 類別'}
+                {(kind==='source'||kind==='all')?<SourceTreePicker
+                  metrics={sourceModel.metrics} value={chosenId} takenIds={takenByOther}
+                  onChange={selectMetric}
+                  label={l.comparisonItem+' '+(index+1)+' 來源階層'}/>:null}
+                {(kind==='keyword'||kind==='all')?<label className="scope-self-stat-picker"><span>關鍵詞類別</span>
+                  <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 關鍵詞類別'}
                     value={currentGroup?.key||''}
                     onChange={event=>{
                       const target=groups.find(group=>group.key===event.target.value);
@@ -314,9 +318,9 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                     {groups.map(group=><option key={group.key} value={group.key}
                       disabled={!firstAvailableGroupMetric(group,takenByOther)}>{group.name}</option>)}
                   </select>
-                </label>
-                <label className="scope-self-stat-picker"><span>項目</span>
-                  <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 項目'}
+                </label>:null}
+                {(kind==='keyword'||kind==='all')?<label className="scope-self-stat-picker"><span>關鍵詞項目</span>
+                  <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 關鍵詞項目'}
                     value={selectedGroupMetrics.some(item=>item.id===chosenId)?chosenId:''}
                     disabled={!selectedGroupMetrics.length}
                     onChange={event=>selectMetric(event.target.value)}>
@@ -324,13 +328,13 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                     {selectedGroupMetrics.map(item=><option key={item.id} value={item.id}
                       disabled={takenByOther.has(item.id)}>{item.kind==='keyword_group_items'?l.groupItems:item.name}</option>)}
                   </select>
-                </label>
+                </label>:null}
                 {kind==='keyword'||kind==='all'?keywordCatalog.isPending
                   ?<p className="scope-status" role="status">正在讀取組內項目…</p>:null:null}
                 {(kind==='keyword'||kind==='all')&&keywordCatalog.error?<p role="alert" className="scope-status scope-error">
                   組內關鍵詞讀取失敗：{String(keywordCatalog.error?.message||keywordCatalog.error)}
                 </p>:null}
-                {!groups.length?<p className="scope-status">{l.noSelectableSource}</p>:null}
+                {(kind==='keyword'||kind==='all')&&!groups.length?<p className="scope-status">{l.noSelectableSource}</p>:null}
               </div>
             </section>;
           })}
