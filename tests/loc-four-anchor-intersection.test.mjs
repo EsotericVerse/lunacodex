@@ -37,7 +37,7 @@ test('intersection dimensions permit only the two requested non-leaf levels',()=
   assert.deepEqual(INTERSECTION_FAMILIES.map(x=>[x.value,x.types]),[
     ['time',['era','period']],['space',['trace','path']],
     ['keyword',['keyword_group','keyword_item']],
-    ['source',['source_galaxy','source_domain']]
+    ['source',['source_tree']]
   ]);
   const code=readFileSync(new URL('../app/modular/modules/statistics/ScopeSelfIntersection.jsx',import.meta.url),'utf8');
   assert.match(code,/timeAnchors=useAsyncResource/);
@@ -47,6 +47,8 @@ test('intersection dimensions permit only the two requested non-leaf levels',()=
   assert.match(code,/family:'space'/);
   assert.match(code,/p_view:'trace_territory'/);
   assert.doesNotMatch(code,/source_rollup|others_subgroup|keyword_all|keyword_group_items/);
+  assert.match(code,/SourceTreePicker/);
+  assert.match(code,/selectableTypes=\{\['galaxy','domain'\]\}/);
   assert.doesNotMatch(code,/kind:'from'|kind:'point'|kind:'date'/);
 });
 
@@ -99,7 +101,8 @@ test('Trace counts linked Path points and direct points once per real place/day/
 test('one SiteAnchor rollup includes multimedia but offers only Galaxy/Domain',()=>{
   const taxonomy=publishedSourceTaxonomy(),nodes=sourceIntersectionMetrics(taxonomy);
   assert.ok(nodes.length>0);
-  assert.ok(nodes.every(node=>['source_galaxy','source_domain'].includes(node.kind)));
+  assert.ok(nodes.every(node=>node.kind==='source_tree'&&
+    ['galaxy','domain'].includes(node.type)));
   assert.ok(!nodes.some(node=>['Facebook','Suno','Youtube','Spotify'].includes(node.name)));
   const byName=new Map(nodes.map(node=>[node.name,node]));
   const counts=fourDimensionDailyCounts({
@@ -116,7 +119,7 @@ test('one SiteAnchor rollup includes multimedia but offers only Galaxy/Domain',(
   assert.equal(dayCount(counts,byName.get('CMS'),'2026-01-15'),5);
   assert.equal(dayCount(counts,byName.get('Music'),'2026-01-15'),1);
   assert.equal(dayCount(counts,byName.get('Stream'),'2026-01-15'),1);
-  assert.equal(byName.has('Mutlimedia'),false); // Universe is not selectable
+  assert.equal(byName.has('Mutlimedia'),false); // Universe is navigation only
   assert.equal(byName.has('Yesterday'),true); // PastBy > SeeYou > Yesterday
 });
 
