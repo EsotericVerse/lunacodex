@@ -107,6 +107,11 @@ export function mediaAnchorRecord(values={}){
 // these are the corresponding *article carrier* fields on <scope>_galaxy.
 // Keeping this map explicit prevents a semantic ZModel from being mistaken
 // for a new SQL table or from silently choosing a different physical field.
+// 'source' intentionally maps to Galaxy.site (the platform NAME), not
+// Galaxy.site_id (the upstream post/media ID) or silver.loc_anchor.uid
+// (the eight-character source-tree Anchor UID). Those IDs are unrelated.
+// 'media' maps to Galaxy.media_link, which contains real URL strings;
+// it is NOT a MediaAnchor UID edge. Galaxy.url is the article permalink.
 export const ANCHOR_GROUP_GALAXY_FIELDS=Object.freeze({
   time:Object.freeze(['date','createtime']),
   space:Object.freeze(['location','place_id']),
