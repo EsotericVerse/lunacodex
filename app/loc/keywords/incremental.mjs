@@ -1,16 +1,15 @@
 import {keywordScanText} from './content-filter.mjs';
+import {HEAVY_INITIAL_ROWS,HEAVY_QUERY_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const keyOf=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
-const TARGET_PAGE_MS=650;
-const quantile=(ordered,fraction)=>ordered[Math.floor((ordered.length-1)*fraction)];
 
 // Keep the existing caller contract during the full-scan cutover. A selected
 // Class is only a completion/permission handle: it does NOT classify words or
 // influence which Pattern literals match which Galaxy articles.
 export async function analyzeIncrementalKeywordPatterns({
-  scopeId,classUid,existingPatterns=[],pageSize=1000,expectedCount=null,
+  scopeId,classUid,existingPatterns=[],pageSize=HEAVY_INITIAL_ROWS,expectedCount=null,
   readMetadataPage,readContent,writePatterns,finalize,onProgress=()=>{},
   resume=null,onCheckpoint=null,timeBudgetMs=null,now=()=>Date.now()
 }={}){
@@ -58,20 +57,15 @@ export async function analyzeIncrementalKeywordPatterns({
   let scanned=continuing?resume.scanned:0,parsed=continuing?resume.parsed:0;
   let cursor=continuing?resume.cursor:null;
   const invocationStart=now();
-  // A small first page is a calibration sample, not a processing ceiling.
-  // Subsequent sizes follow measured per-row cost and the upper quartile
-  // of recent pages, not an owner-supplied fixed Regex/Immer percentage.
+  // A 256-row calibration is shared with Item analysis and Keyword discovery.
+  // The *actual article text length* controls subsequent powers-of-two row
+  // sizes; elapsed time never turns growth into +256/+300 linear increments.
   const carriedSize=continuing&&Number.isSafeInteger(resume.currentPageSize)&&
-    resume.currentPageSize>0?resume.currentPageSize:Math.min(pageSize,128);
-  const previousRowMs=continuing&&resume.lastPageMs>0&&resume.lastPageSize>0
-    ?resume.lastPageMs/resume.lastPageSize:null;
-  // Keep the calibrated read size, but derate it if its actual measured
-  // latency would consume too much of a new request's time budget.
-  let currentPageSize=previousRowMs!==null&&timeBudgetMs!==null
-    ?Math.max(1,Math.min(carriedSize,Math.floor(timeBudgetMs*0.4/previousRowMs)))
-    :carriedSize;
-  const rowMs=[];
-  if(previousRowMs!==null)rowMs.push(previousRowMs);
+    resume.currentPageSize>0?resume.currentPageSize:pageSize;
+  const sizer=createTextAdaptiveRows({
+    initial:carriedSize,maximum:HEAVY_QUERY_ROWS
+  });
+  let currentPageSize=sizer.size;
   let lastPageMs=continuing?resume.lastPageMs||null:null;
   let lastPageSize=continuing?resume.lastPageSize||null:null;
   async function checkpoint(){
@@ -101,6 +95,7 @@ export async function analyzeIncrementalKeywordPatterns({
       if(row.keyword!==false)ids.add(uid);
     }
 
+    let pageCharacters=0;
     if(ids.size){
       const bodies=await readContent([...ids]);
       const wanted=ids,seen=new Set();
@@ -111,6 +106,7 @@ export async function analyzeIncrementalKeywordPatterns({
         if(!wanted.has(uid)||seen.has(uid))
           throw new Error('Galaxy content read duplicated or wrong UID');
         seen.add(uid);
+        pageCharacters+=String(body?.title??'').length+String(body?.content??'').length;
         if(body.keyword===false)continue;
         const text=keyOf(keywordScanText(body));
         if(!text)continue;
@@ -124,16 +120,10 @@ export async function analyzeIncrementalKeywordPatterns({
     const elapsed=Math.max(1,now()-started);
     lastPageMs=elapsed;
     lastPageSize=read.rows.length;
-    rowMs.push(elapsed/read.rows.length);
-    if(rowMs.length>11)rowMs.shift();
-    const sorted=[...rowMs].sort((a,b)=>a-b);
-    const upperQuartile=quantile(sorted,0.75);
-    let wanted=Math.max(1,Math.round(TARGET_PAGE_MS/upperQuartile));
-    if(timeBudgetMs!==null){
-      const remaining=Math.max(1,timeBudgetMs-(now()-invocationStart));
-      wanted=Math.min(wanted,Math.max(1,Math.floor(remaining*0.4/upperQuartile)));
-    }
-    currentPageSize=Math.max(1,Math.min(wanted,currentPageSize*2));
+    // Short articles: 256 -> 512 -> 1024 -> 2048 ... (max 10,000).
+    // Long/mixed article bodies: reduce the next page according to its
+    // measured character footprint. COUNT remains an independent aggregate.
+    currentPageSize=sizer.observe(read.rows.length,pageCharacters);
     if(onCheckpoint&&timeBudgetMs!==null&&
       now()-invocationStart>timeBudgetMs*0.65){
       // No partial Pattern/num publication. Only the resume bookmark is saved.
