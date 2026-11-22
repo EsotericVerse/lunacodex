@@ -233,11 +233,11 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     const url=String(linked.attr?.url||'').trim();
     if(!/^https?:\/\//i.test(url))
       reject('Only public MediaAnchor URLs may be linked to Galaxy.media_link',400);
-    const article=await trx.selectFrom(galaxy).select('media_link')
+    const article=await trx.selectFrom(galaxy).select(['url','media_link'])
       .where('uid','=',values.article_uid).forUpdate().executeTakeFirst();
     if(!article)reject('Linked Galaxy article does not exist',409);
     const prior=Array.isArray(article.media_link)?article.media_link:[];
-    if(prior.includes(url))return {data:{count:0}};
+    if(prior.includes(url)||url===String(article.url||'').trim())return {data:{count:0}};
     // The article is row-locked within the same transaction that inserts the
     // MediaAnchor. Galaxy.media_link is a URL[]; Anchor UIDs never enter it.
     const next=[...prior,url];
