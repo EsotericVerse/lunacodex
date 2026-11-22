@@ -8,7 +8,6 @@ import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';
 import {FIXED_MANAGE_ROWS,fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
-import {synchronizeKeywordLibraryInTransaction} from '../keywords/sql-service.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -298,6 +297,7 @@ export async function provisionScopeNative(trx,args){
   if(copyKeywords){
     const copied=await copyDefaultKeywordClass(trx,scope);
     classUid=copied.classUid;keywordCount=copied.items;
+    if(keywordCount<1)reject('Scope Keyword Item copy incomplete',409);
   }
   await trx.insertInto('silver.'+scope).values({
     id:scope,display_name:name,theme,locale,
@@ -316,17 +316,11 @@ export async function provisionScopeNative(trx,args){
     sort_order:sort,manage_role:'scope',
     galaxy_table:'galaxy',anchor_table:'anchor'
   }).execute();
-  // Pattern is the authoritative Keyword ZModel index. Copying only Item
-  // labels would leave the new Scope with broken Item -> Pattern UID edges.
-  // Reconcile the 67 literal Items before the SAME COMMIT as Registry/DDL.
-  const indexed=copyKeywords
-    ?await synchronizeKeywordLibraryInTransaction(trx,scope):null;
-  if(copyKeywords&&(!indexed||indexed.created<1))
-    reject('Scope Keyword Pattern index incomplete',409);
+  // Class -> Group -> Item records and their UID relationships were
+  // copied in this same Registry/DDL transaction. No Pattern index exists.
   return receipt(scope,name,target,{
     parent_scope_id:parent,keyword_rows:keywordCount,
-    keyword_class_uid:classUid,
-    keyword_patterns:indexed?.created??0,locale,created:true});
+    keyword_class_uid:classUid,locale,created:true});
 }
 
 export async function deleteScopeNative(trx,args){

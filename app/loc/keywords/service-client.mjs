@@ -22,14 +22,14 @@ export class KeywordAnalysisUnconfirmedError extends Error {
 
 export async function keywordService(operation,args={},options={}){
   if(!['analyze','analyzeStatus','reset','classes','catalog','summary','stats','suggest',
-      'anchorSearch','saveItem','deleteItem','syncLibrary','setClassShare','workspace'].includes(operation))
+      'anchorSearch','saveItem','deleteItem','setClassShare','workspace'].includes(operation))
     throw Error('Unsupported Keyword operation');
   if(!args||typeof args!=='object'||Array.isArray(args))
     throw Error('Invalid Keyword request');
   const scope=String(args.scopeId||'');
   if(!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
-  const write=['analyze','reset','saveItem','deleteItem','syncLibrary','setClassShare'].includes(operation);
+  const write=['analyze','reset','saveItem','deleteItem','setClassShare'].includes(operation);
   const committed=result=>{
     // /api/keywords writes Anchor/Pattern directly, outside managedWrite.
     // PR #1759 checkpoints incomplete analysis across HTTP requests WITHOUT

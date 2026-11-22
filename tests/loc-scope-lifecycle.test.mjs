@@ -160,8 +160,14 @@ test('Scope lifecycle uses serializable website Session and no legacy RPC',()=>{
   assert.doesNotMatch(lifecycle,/silver\.manage\(|api\.(?:provision_scope|delete_scope|manage_scope_registry)\(/);
   assert.doesNotMatch(lifecycle,/selectFrom\(['"]api\.manage/);
   assert.doesNotMatch(lifecycle,/enable row level security|create policy|grant select/i);
-  assert.match(lifecycle,/synchronizeKeywordLibraryInTransaction\(trx,scope\)/);
-  assert.match(lifecycle,/keyword_patterns:indexed\?\.created/);
+  // Scope provisioning must copy the actual linked Category/Class/Group/Item
+  // records, fail if that copy has no Items, and never demand a retired index.
+  assert.match(lifecycle,/await copyDefaultKeywordClass\(trx,scope\)/);
+  assert.match(lifecycle,/if\(keywordCount<1\)reject\('Scope Keyword Item copy incomplete',409\)/);
+  assert.match(lifecycle,/await trx\.insertInto\('silver\.'\+target\+'_anchor'\)/);
+  assert.match(lifecycle,/keyword_rows:keywordCount/);
+  assert.match(lifecycle,/keyword_class_uid:classUid/);
+  assert.doesNotMatch(lifecycle,/synchronizeKeywordLibrary|keyword_patterns/);
   assert.match(admin,/locale:normalizeUiLocale\(scopeDraft\.locale\)/);
   assert.doesNotMatch(admin,/keyword_rows\)!==66/);
 });
