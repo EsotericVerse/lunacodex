@@ -240,20 +240,38 @@ test('Suno, article, theme, TimeRiver and Search editors expose complete Save pl
   const culture=readFileSync(new URL(files[3][0],import.meta.url),'utf8');
   assert.match(culture,/p_expected_count:ids\.length/);
 });
-test('Keyword subtree deletion includes a single transactional Pattern reconciliation',()=>{
+test('Keyword subtree deletion performs real Anchor/Config changes in one transaction',()=>{
   const editor=readFileSync(new URL('../app/loc/keywords/ui/KeywordLibraryPanel.jsx',import.meta.url),'utf8');
-  const sql=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  assert.match(editor,/transactionWrites\(operations,\{keywordSyncScope:scopeId\}\)/);
-  assert.match(sql,/synchronizeKeywordLibraryInTransaction\(trx,keywordSyncScope\)/);
-  assert.match(sql,/if\(!await canLocAccess\(trx,'scope',keywordSyncScope\)\)/);
-  assert.match(sql,/p_expected_count/);
+  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
   const contract=readFileSync(new URL('../app/loc/db/db-contract.mjs',import.meta.url),'utf8');
+  assert.match(editor,/await transactionWrites\(operations\);/);
+  assert.match(editor,/operations\.push\(\{\.\.\.deletion,p_expected_count:1\}\)/);
+  assert.match(editor,/current_keyword_class_uid:nextUid,staticstime:null,keyword_meta/);
+  assert.match(native,/selected\.db\.transaction\(\)\.execute\(async trx=>/);
+  assert.match(native,/expected!==affected/);
+  assert.match(native,/if\(body\.keywordSyncScope\)/);
+  assert.doesNotMatch(native,/synchronizeKeywordLibraryInTransaction/);
+  assert.doesNotMatch(editor,/keywordSyncScope/);
   const copyStart=contract.indexOf('async function copyKeywordLibraryClass(');
   const copyEnd=contract.indexOf('async function copyRune66KeywordClassUnchecked(',copyStart);
   assert.ok(copyStart>=0&&copyEnd>copyStart);
   const copy=contract.slice(copyStart,copyEnd);
   assert.match(copy,/await transactionWrites\(operations\)/);
   assert.doesNotMatch(copy,/await writeKeywordLibraryItem\(/);
+});
+
+test('retired Keyword sync is rejected by client and API before database access',async()=>{
+  const {keywordService}=await import('../app/loc/keywords/service-client.mjs');
+  await assert.rejects(keywordService('syncLibrary',{scopeId:'lo3rwang'}),
+    /Unsupported Keyword operation/);
+  const {onRequestPost}=await import('../functions/api/keywords.js');
+  const req=new Request('https://loc.lo3rwang.cc/api/keywords',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({operation:'syncLibrary',args:{scopeId:'lo3rwang'}})
+  });
+  const response=await onRequestPost({request:req,env:{}});
+  assert.equal(response.status,400);
+  assert.match((await response.json()).error,/Unknown Keyword operation/);
 });
 
 test('keyword sharing uses one locked read-modify-write transaction and fails closed',async()=>{
