@@ -1,2 +1,2 @@
-// Public loc/group_setting Blocks; this module loads only when its page is requested.
-export default [{"uid":"2B6F33D2","scope":"loc","page_name":"group_setting","block_text":"\u003cp>個人\u003cstrong>設定資料\u003c/strong>相關功能。\u003c/p>","block_image":null,"block_order":1,"block_title":"個人設定","block_entity":[],"block_eyebrow":"Setting","block_subtitle":""}];
+// Public loc/group_setting Blocks. One-time snapshot from authoritative Neon database.
+export default [{"uid":"2B6F33D2","scope":"loc","page_name":"group_setting","block_text":"\u003cp>個人\u003cstrong>設定資料\u003c/strong>相關功能。\u003c/p>","block_image":"{\"url\": \"https://loc.lo3rwang.cc/pics/local-setting.jpg\", \"source\": \"custom\"}","block_order":1,"block_title":"個人設定","block_entity":[],"block_eyebrow":"Setting","block_subtitle":""}];
