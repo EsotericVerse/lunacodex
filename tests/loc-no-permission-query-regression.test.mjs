@@ -15,10 +15,9 @@ test('MCP business role checks never open SQL or read api.manage',async()=>{
   assert.doesNotMatch(read('app/loc/mcp/access-roles.mjs'),/directMcpKysely|closeLocDatabase|selectFrom/);
 });
 
-test('MCP authorization and scope status finish before opening a database',()=>{
+test('no standalone permission or Scope status HTTP operations survive',()=>{
   const native=read('app/loc/mcp/native-operations.mjs');
-  assert.ok(native.indexOf("body.kind==='mcp-authorize'||body.kind==='mcp-scope-status'")<
-    native.indexOf('selected=await database('));
+  assert.doesNotMatch(native,/'mcp-authorize'|'mcp-scope-status'/);
   assert.doesNotMatch(native,/selectFrom\('api\.manage'\)/);
   const managed=read('app/loc/providers/kysely-management.mjs');
   assert.doesNotMatch(managed,/selectFrom\('api\.manage'\)/);
