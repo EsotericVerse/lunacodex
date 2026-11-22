@@ -5,6 +5,12 @@ export const IO_LIMIT_CEILINGS=Object.freeze({
 });
 // Import/write operations preserve their existing 1,000-row batches.
 export const MAX_ROWS=1000;
+// Per-request SQL result budgets. 10k applies ONLY to explicitly started
+// large operations (keyword reanalysis, discovery, import reads); it is NOT a
+// Neon/PostgREST/MCP global setting or a demand to hold 10k full bodies.
+// Existing 1,000-row write transaction boundaries remain unchanged.
+export const NORMAL_QUERY_ROWS=1000;
+export const HEAVY_QUERY_ROWS=10000;
 // Internal read transport chunk only: total SELECT/COUNT results are never capped.
 export const DB_QUERY_BATCH_SIZE=5000;
 export let MAX_ARCHIVE_BYTES=IO_LIMIT_CEILINGS.archiveMiB*MiB;
