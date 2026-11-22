@@ -496,10 +496,10 @@ function managementArticleProviders(scope,{contentType='',sourceFilter='',source
 
 // Public Search uses the fixed GalaxySearch model, never a browser-supplied
 // table, projection, OR-AST or SQL predicate. All results are GalaxyList rows.
-function genericScopeProviders(scope,{contentType='',sourceFilter='',sourceTaxonomy=null}={}){
-  const selection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
-  if(selection.kind==='none'||contentType&&!['galaxy','lyrics_work','text_work'].includes(contentType))
-    return [];
+function genericScopeProviders(scope){
+  // Guest Search is intentionally title/content-only, with optional dates.
+  // Site classification belongs to the shared loc_anchor source statistics;
+  // location belongs to Trace and authorized management, not guest Search.
   const current=scopeOf(scope);
   const source=current.id+' 文章',id=current.id+':article-content';
   return [Object.freeze({
@@ -507,20 +507,13 @@ function genericScopeProviders(scope,{contentType='',sourceFilter='',sourceTaxon
     async search(value,{cursor=0,startDate='',endDate='',and=[],nor=[],
       limit=DEFAULT_LIST_BATCH_SIZE,browse=false,signal=null,sortDirection='asc'}={}){
       const offset=Math.max(0,Math.floor(Number(cursor)||0));
-      const names=(selection.names||[]).filter(Boolean);
-      const sources=selection.kind==='names'?names:
-        contentType==='lyrics_work'?['suno']:undefined;
-      const excludedSources=selection.kind==='others'?names:
-        contentType==='text_work'?['suno']:undefined;
-      if(sources?.length>80||excludedSources?.length>80)
-        throw Error('來源分類超出固定模型的批次上限');
       const {data}=await readGalaxyFeature({
         feature:'search',scope:current.id,
         startDate:startDate||undefined,endDate:endDate||undefined,
         text:browse?undefined:String(value||'').trim()||undefined,
         requiredTerms:and.length?and:undefined,
         excludedTerms:nor.length?nor:undefined,
-        sources,excludedSources,result:'articles',offset,
+        result:'articles',offset,
         limit:Math.max(1,Math.min(100,Math.floor(Number(limit)||DEFAULT_LIST_BATCH_SIZE))),
         sortDirection:sortDirection==='desc'?'desc':'asc',signal
       });
@@ -617,7 +610,7 @@ export async function searchGalaxyRows(scopes,query,{
           dataSource:'verified'};
       }
     })]
-    :genericScopeProviders(scope,{contentType,sourceFilter,sourceTaxonomy}));
+    :genericScopeProviders(scope));
   // Search is article-led: one Galaxy.content provider per Scope, with
   // Anchor relationships available only after choosing an article.
   const providers=scopeProviders.flat();
