@@ -33,7 +33,8 @@ export function timeRecordHierarchy(rows=[]){
     const dated=points.map(point=>({row:point,start:rowDay(point)||'9999-12-31'}))
       .sort(chronological);
     return {row,dates:dated.map(x=>x.row),
-      start:dated[0]?.start||rowDay(row)||'9999-12-31'};
+      start:dated.find(item=>item.start!=='9999-12-31')?.start||
+        rowDay(row)||'9999-12-31'};
   };
   const groups=eras.map(era=>{
     const seen=new Set();
@@ -42,7 +43,8 @@ export function timeRecordHierarchy(rows=[]){
     children.forEach(period=>assignedPeriods.add(id(period)));
     const periodBranches=children.map(periodBranch).sort(chronological);
     return {row:era,periods:periodBranches,
-      start:periodBranches[0]?.start||rowDay(era)||'9999-12-31'};
+      start:periodBranches.find(item=>item.start!=='9999-12-31')?.start||
+        rowDay(era)||'9999-12-31'};
   }).sort(chronological);
   // A missing parent leaves its child visible under the appropriate
   // unclassified group. Shared legitimate children are not orphaned.
