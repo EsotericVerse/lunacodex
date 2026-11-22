@@ -6,8 +6,6 @@ import {buildCultureRiverRootPayload,buildCultureRiverRootTotals,selectCultureRi
   from '../app/loc/culture/river-roots.mjs';
 import {availableMemberMeasures}
   from '../app/loc/statistics/member-intersection-model.mjs';
-import {normalizeLocUser,validateLocUserField}
-  from '../app/loc/preferences/loc-user-store.mjs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const fixture={
@@ -39,14 +37,6 @@ test('cross-member statistics no longer offer independent media metrics',()=>{
     {kind:'source',category:'Suno',item_count:3}
   ]]);
   assert.equal(metrics.some(metric=>metric.id==='multimedia'||metric.id.startsWith('media:')),false);
-});
-
-test('historic media_type preference normalizes to source; cannot be saved again',()=>{
-  const current=normalizeLocUser({statics:{display:'media_type'}});
-  assert.equal(current.statics.display,'source');
-  assert.throws(()=>validateLocUserField('statics',{
-    ...current.statics,display:'media_type'
-  }),/不符合允許/);
 });
 
 test('deprecated media statistics modules are absent',()=>{

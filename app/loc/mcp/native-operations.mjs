@@ -19,7 +19,6 @@ import {articleDistribution} from './article-distribution.mjs';
 import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
-import {executeLocPersonal} from '../providers/kysely-personal.mjs';
 import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from './native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
@@ -53,7 +52,7 @@ function requirePublishedManageWrite(payload){
   }
 }
 
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action','personal-read','personal-write']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
@@ -176,7 +175,7 @@ export async function handleNativeLocOperation(request,env={},{
     // The website exposes only short-import and the fixed-model managed
     // write. MCP business operations remain restricted to the dedicated
     // MCP hostname and their own audience.
-    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-transaction'&&body.kind!=='managed-action'&&body.kind!=='personal-read'&&body.kind!=='personal-write')
+    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-transaction'&&body.kind!=='managed-action')
       throw refusal('Not found',404);
     // The LOC administrator creates and removes SQL Scopes only through
     // the verified Web Session. Do not expose DDL through MCP OAuth delegates.
@@ -205,19 +204,16 @@ export async function handleNativeLocOperation(request,env={},{
     if(body.kind==='managed-write')requirePublishedManageWrite(body.payload);
     if(body.kind==='managed-transaction')
       for(const item of body.operations||[])requirePublishedManageWrite(item);
-    // Business grants are a published JS snapshot, not a SELECT and not a
-    // separate permission API. Fail closed *before* opening any SQL client.
-    // Personal operations remain bound to their verified website Session.
-    if(body.kind!=='personal-read'&&body.kind!=='personal-write'){
-      if(operationKind==='short-import')importPhase='permission';
-      const rights=host===MCP_HOST
-        ?await loadMcpLocAccess(null,claims.email)
-        :await readLocAccess(null,claims.email,{website:true});
-      claims.me=rights.canWrite;
-      claims.grants=rights.grants;
-      if(writeKinds.has(body.kind)&&!rights.canWrite)
-        throw refusal('LOC write permission denied',403);
-    }
+    // Business grants come from the published JS snapshot, not SQL.
+    // Fail closed before opening any database connection.
+    if(operationKind==='short-import')importPhase='permission';
+    const rights=host===MCP_HOST
+      ?await loadMcpLocAccess(null,claims.email)
+      :await readLocAccess(null,claims.email,{website:true});
+    claims.me=rights.canWrite;
+    claims.grants=rights.grants;
+    if(writeKinds.has(body.kind)&&!rights.canWrite)
+      throw refusal('LOC write permission denied',403);
     // Authorization is resolved from LOC's published JS before DB connection.
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
@@ -227,10 +223,9 @@ export async function handleNativeLocOperation(request,env={},{
     const primaryId=DATABASE_ACCESS_LIST.find(item=>item.selected===true)?.target_id;
     if(writesToSelectedDatabase&&claims.db_target&&claims.db_target!==primaryId)
       throw refusal('External database connections are read only',403);
-    // Personal preferences and Admin settings always use LOC's control
-    // database. A user's selected external database is for their Scope data,
-    // never for silver.loc_user / api.manage.
-    const control=['personal-read','personal-write','managed-write','managed-transaction','managed-action']
+    // Management actions use LOC's control database; selected external
+    // connections are only for permitted Scope data operations.
+    const control=['managed-write','managed-transaction','managed-action']
       .includes(body.kind);
     const externalTarget=claims.db_target&&claims.db_target!==primaryId
       ?claims.db_target:'';
@@ -241,20 +236,8 @@ export async function handleNativeLocOperation(request,env={},{
     releaseAbort=bindLocRequestAbort(selected,request.signal);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
-    // Personal preferences are self-service under the verified website Session.
-    // The signed subject is bound to owner_id by executeLocPersonal; no
-    // api.manage role lookup or editor delegation is required for this path.
-    if(body.kind==='personal-read'||body.kind==='personal-write'){
-      if(host!==WEB_HOST)throw refusal('Personal records belong to the LOC website',404);
-      if(selected.tableName||selected.engine!=='postgres')
-        throw refusal('LOC personal database connection unavailable',503);
-      const row=await selected.db.transaction().execute(trx=>
-        executeLocPersonal(trx,claims,body));
-      return reply({data:row});
-    }
-    // A normal Search toggle never asks for edit grants. Only when a search
-    // is submitted does OAuth establish the owner and loc_user opt into a
-    // private read; only then may the business Scope eligibility be checked.
+    // Private Search is a website-only management action requiring a verified
+    // Session and Scope grants; a client-side switch grants nothing.
     // Galaxy data and statistics remain owned by LOC. LAS only maps request
     // envelopes and forwards a verified OAuth bearer to these fixed operations.
     if(body.kind==='mcp-public-read'){
@@ -427,13 +410,8 @@ export async function handleNativeLocOperation(request,env={},{
         if(body.kind==='managed-action'){
           if(selected.engine!=='postgres')
             throw refusal('This LOC management action needs a portable implementation',503);
-          if(body.name==='search_galaxy_private'){
-            if(host!==WEB_HOST)throw refusal('Search is website-only',404);
-            const preference=await trx.selectFrom('silver.loc_user')
-              .select('search').where('owner_id','=',claims.sub).executeTakeFirst();
-            if(preference?.search?.list!==true)
-              throw refusal('Manager search preference disabled',403);
-          }
+          if(body.name==='search_galaxy_private'&&host!==WEB_HOST)
+            throw refusal('Search is website-only',404);
           return (await executeManagedKyselyAction(trx,body,claims)).data;
         }
         const payload=body.payload||{};

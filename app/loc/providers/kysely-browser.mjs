@@ -73,7 +73,7 @@ class Query {
   then(ok,fail){return (this.operation==='select'?this.read(this):this.mutate(this)).then(ok,fail)}
 }
 export function createKyselyPublicClient({
-  role='anon',fetch:fetchImpl=globalThis.fetch,readPrivate=null,mutate=null
+  role='anon',fetch:fetchImpl=globalThis.fetch,mutate=null
 }={}){
   if(typeof fetchImpl!=='function')throw Error('LOC Kysely fetch is unavailable');
   const transportId=++nextPublicTransportId;
@@ -101,13 +101,8 @@ export function createKyselyPublicClient({
   async function read(q){
     // Pre-queued public reads and actual browser fetch use the same route epoch.
     q.signal=transientReadSignal(q.signal);
-    if(role==='authenticated'&&q.schema==='silver'&&
-      q.table==='loc_user'&&typeof readPrivate==='function'){
-      // The existing personal endpoint has its own pagination contract.
-      // Do not send an absent native LIMIT as an invalid personal request.
-      if(q.rowLimit===null)q.rowLimit=q.cardinality?1:MAX_ROWS;
-      return readPrivate(q);
-    }
+    if(q.schema==='silver'&&q.table==='loc_user')
+      throw Error('Retired personal preference relation is unavailable');
     if(q.dbId)throw Error('Selected SQL database requires signed LOC delegation');
     if(q.signal?.aborted){const error=new Error('Request cancelled');
       error.name='AbortError';throw error;}
@@ -216,9 +211,6 @@ export function createKyselyPublicClient({
     const count=Number(result?.data?.count??result?.count??0);
     if(!Number.isSafeInteger(count)||count<0)throw Error('Invalid LOC write receipt');
     if(!q.returning||!count)return {data:[],error:null,count};
-    if(q.schema==='silver'&&q.table==='loc_user'&&
-      Array.isArray(result?.data?.rows))
-      return {data:result.data.rows,error:null,count};
     if(q.operation==='delete')return {data:[],error:null,count};
     const idField=['uid','record_id','id'].find(field=>
       rows.length&&rows.every(row=>row[field]!==undefined&&row[field]!==null));

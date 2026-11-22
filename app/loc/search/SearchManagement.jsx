@@ -48,7 +48,7 @@ export default function SearchManagement(){
   const account=useVerifiedManagementGrants();
   const searchParams=useSearchParams();
   const isLocAdmin=scopeId==='loc';
-  // Personal preferences belong to the last Settings tab, not Article Control.
+  // Scope editing uses verified management grants, not a personal setting.
   // Preserve old bookmarks without mounting the retired Scope classification editor.
   useEffect(()=>{
     if(isLocAdmin||searchParams?.get('section')!=='others')return;

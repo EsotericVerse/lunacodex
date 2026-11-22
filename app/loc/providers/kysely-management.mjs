@@ -473,16 +473,11 @@ function privateSearchLike(value){
   return '%'+String(value).replace(/[\\%_]/g,char=>'\\'+char)+'%';
 }
 async function searchPrivateGalaxy(trx,args,claims){
-  // A Search manager preference is not an ACL or editor grant. Only the
-  // server-verified OAuth principal's own loc_user row may opt into this
-  // read-only path, and the existing Scope eligibility remains mandatory.
+  // Website-only read requires a verified LOC Session and the
+  // existing Scope manage grant. No personal preference authorizes access.
   if(claims?.provider!=='loc'||claims?.role!=='authenticated'||
     !/^[A-Za-z0-9_-]{8,128}$/.test(String(claims.sub||'')))
     reject('Verified search session required',403);
-  const preferences=await trx.selectFrom('silver.loc_user')
-    .select('search').where('owner_id','=',claims.sub).executeTakeFirst();
-  if(preferences?.search?.list!==true)
-    reject('Manager search preference disabled',403);
   const parsed=privateSearchSchema.safeParse(args);
   if(!parsed.success)reject('Invalid private Search request');
   const {p_scope_id:scope,p_query:raw,p_offset:offset,p_limit:limit,

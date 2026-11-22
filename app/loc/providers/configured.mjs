@@ -8,7 +8,6 @@ import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-
 import {invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
-const PERSONAL=new Set(['silver.loc_user']);
 // Only confirmed read actions participate in management-page cancellation.
 // Mutations/import writes are never aborted by a navigation reset.
 const READ_ACTIONS=new Set([
@@ -35,8 +34,7 @@ export function createConfiguredAdapter({
   async function operation(kind,scopeid='',fields={}){
     // The same authenticated endpoint serves reads and writes. Only known
     // reads can inherit the active page's abort signal; never cancel a write.
-    const readOnly=kind==='personal-read'||
-      (kind==='managed-action'&&READ_ACTIONS.has(String(fields.name||'')));
+    const readOnly=kind==='managed-action'&&READ_ACTIONS.has(String(fields.name||''));
     const signal=readOnly
       ?AbortSignal.any([transientReadSignal(),AbortSignal.timeout(30000)])
       :AbortSignal.timeout(30000);
@@ -72,26 +70,6 @@ export function createConfiguredAdapter({
       invalidateCachedReadPrefix('scope-aggregate:');
     return result;
   }
-  const nativePersonal=async(kind,payload)=>{
-    const response=await operation(kind,'',{payload});
-    return {data:response?.data||{},error:null};
-  };
-  const privateRead=async query=>{
-    const result=await nativePersonal('personal-read',{
-      p_table:query.schema+'.'+query.table,p_operation:'select',
-      p_columns:query.columns,
-      p_filters:query.filters.map(f=>({
-        column:f.column,operator:f.op,value:f.value,negate:f.negate
-      })),
-      p_orders:query.orders,p_limit:query.rowLimit,
-      p_offset:query.offset,p_head:query.head
-    });
-    const rows=Array.isArray(result.data.data)?result.data.data:[];
-    if(query.cardinality==='single'&&rows.length!==1)
-      throw Error('Expected exactly one personal record');
-    return {data:query.head?null:query.cardinality?rows[0]||null:rows,
-      error:null,count:result.data.count??null,status:200};
-  };
   const managedAction=async(name,args={})=>{
     // Label the envelope with the Scope this action belongs to. Authorization
     // still comes from the signed claim, and each handler revalidates its own
@@ -135,11 +113,7 @@ export function createConfiguredAdapter({
     return {data:result?.data,error:null};
   };
   const authenticatedClient=createKyselyPublicClient({
-    role:'authenticated',fetch:fetchImpl,readPrivate:privateRead,
-    mutate:payload=>PERSONAL.has(payload.p_table)
-      ?nativePersonal('personal-write',payload).then(result=>({
-        data:{count:result.data.count,rows:result.data.data},error:null
-      })):managedWrite(payload)
+    role:'authenticated',fetch:fetchImpl,mutate:managedWrite
   });
   const shortImport=async(scopeid,batch)=>{
     if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scopeid||'')))

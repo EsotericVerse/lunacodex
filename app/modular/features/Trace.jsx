@@ -11,7 +11,6 @@ import {useUiSection} from '../../i18n/ui-locale';
 const TEXT='uiExtra.traceUI.';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../loc/query/bounded-parallel.mjs';
-import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 import {annualGaugeGroups,annualGaugeValues} from './trace/trace-annual-gauges.mjs';
@@ -54,7 +53,6 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const translate=useUiText();
   const t=key=>translate(TEXT+key);
   const supported=TRACE_SCOPES.includes(scopeId);
-  const {settings:userSettings,active:userActive}=useLocFeatureSettings('trace');
   const [selectedPlace,setSelectedPlace]=useState(null);
   // Annual territory is the default; route/index data loads only after choosing the classic map.
   const [mapMode,setMapMode]=useState('territory');
@@ -386,7 +384,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
         {reportTab?<TracePlaceResults key={reportPlace.source_scope+':'+reportPlace.uid} place={reportPlace}
           anchors={spatialData?.anchors||[]} maps={spatialData?.maps||[]} scopeId={reportScopeId}
           tab={reportTab} sourceName={sourceName} mediaType={mediaType} dateRange={dateRange}
-          timeMode={userActive?userSettings.time:'none'} defaultSort={userActive?userSettings.sort:'desc'}/>:null}
+          timeMode='none' defaultSort='desc'/>:null}
 
       </div>:null}
     </TraceMap>}

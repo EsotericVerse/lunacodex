@@ -4,7 +4,6 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 
 import {useEffect,useMemo,useState} from 'react';
-import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
@@ -180,8 +179,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const keywordDimension=rankingType==='keywords';
   const categoryChart=rankingType==='place';
   const deviceTimeUnit=useDefaultTimeUnit();
-  const {settings:userSettings,active:userActive}=useLocFeatureSettings('statics');
-  const defaultTimeUnit=userActive?userSettings.unit:deviceTimeUnit;
+  const defaultTimeUnit=deviceTimeUnit;
   const [chartType,setChartType]=useState('auto');
   const [zoomLevel,setZoomLevel]=useState(0);
   const [foldBlank,setFoldBlank]=useState(true);
@@ -699,7 +697,7 @@ export default function Statistics(){
   const searchParams=useSearchParams();
   const navigation=useMemo(()=>readFeatureNavigation(searchParams),[searchParams]);
   // The landing page is always total-only, including for existing users
-  // whose legacy loc_user.statics.display was 'source'.
+  // whose retired personal statistics preference selected 'source'.
   const activeNavigation=navigation;
   return <FeaturePage featureId="statics">
     <section className="loc-card scope-feature-card">

@@ -6,8 +6,6 @@ import {translateUiField,UI_COPY} from '../../i18n/ui-copy';
 import {useUiCopy,useUiLocale,useUiSection} from '../../i18n/ui-locale';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
-import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
-import {cultureDensityByUnit,simpleTimeRiver} from '../../loc/preferences/loc-feature-preferences.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useAsyncInfiniteResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
@@ -215,9 +213,6 @@ export default function Culture(){
   const localizedLabelOf=useMemo(()=> (item,index)=>labelOf(item,index,UI_COPY.format.period(index+1)),[UI_COPY]);
   const {locale}=useUiLocale();
   const {scopeId,scope}=useScopeRuntime();
-  const {settings:userSettings,active:userActive}=useLocFeatureSettings('culture');
-  // A list editor is offered only after the user opts in; authorization stays on Edit.
-  const adminListRequested=Boolean(userActive&&userSettings.list===true);
   const [worksOpen,setWorksOpen]=useState(false);
   const searchParams=useSearchParams();
   const editDock=useEditDock();
@@ -230,6 +225,9 @@ export default function Culture(){
     pathname.endsWith('/culture/manage/');
   const isTimeEditingView=onTimeManageRoute||
     (canUseScopeEditor&&searchParams?.get('edit')==='1');
+  // Only the explicit editing route/dock exposes editing; server permissions
+  // are still verified when the user opens an editor and when writing.
+  const adminListRequested=Boolean(isTimeEditingView||canUseScopeEditor);
   // Public Culture does not load management grants; editing must verify them.
   const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor});
   const [locCultureView,setLocCultureView]=useState('period');
@@ -257,7 +255,6 @@ export default function Culture(){
   const periodSelectionScopeRef=useRef('');
   const [selectedCategory,setSelectedCategory]=useState('');
   const [articleSort,setArticleSort]=useState('desc');
-  useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
   const [styleFilter,setStyleFilter]=useState('none');
   // Media sites are already included in the unified SiteAnchor source river.
@@ -314,11 +311,6 @@ export default function Culture(){
     setFocusedAnchorDate('');
     setStructureWindowKey('');
   },[scopeId]);
-  // The saved homepage display is an initial choice, not a background analysis.
-  useEffect(()=>{
-    setStyleFilter(userActive&&userSettings.display==='keywords'?'rune66':'none');
-  },[scopeId,userActive,userSettings.display]);
-
   const isAggregateScope=Boolean(scope?.aggregateChildren);
   // LOC's first Time River never queries per-day article/media density.
   // On-demand second-river data uses the shared ZenStack query client.
@@ -714,21 +706,8 @@ export default function Culture(){
       ?structureWindowKey:'all';
   const eraRiver=useMemo(()=>{
     const classified=buildEraRiver(timelineItems,expandedEraIds,{scopeId});
-    if(!userActive||userSettings.time==='era')return classified;
-    const simplified=simpleTimeRiver(timelineItems,userSettings.time);
-    const undefinedGroups=classified.groups.filter(group=>String(group.id).startsWith('time-undefined:'));
-    const undefinedIds=new Set(undefinedGroups.map(group=>group.id));
-    const undefinedItems=classified.items.filter(item=>undefinedIds.has(item.group_key));
-    const undefinedUids=new Set(undefinedItems.map(item=>String(item.uid)));
-    // Alternate time modes keep their selected grouping, but never suppress
-    // the permanent bottom unclassified lane or duplicate its DateAnchors.
-    const items=simplified.items.filter(item=>
-      item.entry_type!=='anchor'||!undefinedUids.has(String(item.uid)));
-    const offset=1000000;
-    return {items:[...items,...undefinedItems],
-      groups:[...simplified.groups,...undefinedGroups.map((group,index)=>({
-        ...group,order:offset+index}))]};
-  },[timelineItems,expandedEraIds,userActive,userSettings.time,scopeId]);
+    return classified;
+  },[timelineItems,expandedEraIds,scopeId]);
   const editorEraRiver=useMemo(()=>
     buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
     [timelineItems,expandedEditorEraIds,scopeId]);
@@ -961,9 +940,7 @@ export default function Culture(){
     sourceSnapshotQuery.data?.buckets||[]
   ).filter(item=>!keywordDrillSource||String(item.category||'')===keywordDrillSource),
   [sourceSnapshotQuery.data,keywordDrillSource]);
-  const secondRiverBuckets=useMemo(()=>
-    cultureDensityByUnit(classificationBuckets,userActive?userSettings.unit:'day'),
-    [classificationBuckets,userActive,userSettings.unit]);
+  const secondRiverBuckets=classificationBuckets; // Daily river; no stored personal unit.
   // Anchor-suggestion density analysis only has data once a lane is expanded
   // (secondRiverBuckets is empty until then): suggestions are never computed
   // just from opening the Culture page.

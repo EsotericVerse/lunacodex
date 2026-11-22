@@ -11,7 +11,7 @@ export default function FeatureSettingsPage({embedded=false,dashboard=false,acco
   const pathname=usePathname()||'';
   const settingsHref=pathname.startsWith('/local/')?'/local/settings/':'/settings/';
   // The cosmetic switch is session-local and defaults off. Entering Settings
-  // must not query silver.loc_user just to render this toggle; authorization
+  // must not query personal preference SQL just to render this toggle; authorization
   // still occurs only when a protected editor is actually entered.
   const {enabled,setEnabled}=useSearchManagerSwitch();
   const controls=<section className="loc-card scope-settings-dashboard__filter" aria-label="控制選項">

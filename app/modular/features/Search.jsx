@@ -13,7 +13,7 @@ import {publicPatternSuggestions} from '../../loc/search/public-pattern-suggesti
 import {blockNoteSuggestionItems} from '../../loc/editor/blocknote-suggestions.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 
-import {dbAuthClient,dbPublicClient,deleteRows,transactionWrites,getAccountSession} from '../../loc/db/db-client.mjs';
+import {dbAuthClient,dbPublicClient,deleteRows,transactionWrites} from '../../loc/db/db-client.mjs';
 import {useAccount,readVerifiedManagementEntry} from '../../loc/auth/use-account';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
 import ScopeLink from '../ScopeLink';
@@ -25,9 +25,7 @@ function Article(props){return <Suspense fallback={null}><LazyArticle {...props}
 const LazyGalaxyInterNetBranches=lazy(()=>import('../GalaxyInterNetBranches'));
 function GalaxyInterNetBranches(props){return <Suspense fallback={null}><LazyGalaxyInterNetBranches {...props}/></Suspense>;}
 import {useScopeRuntime} from '../use-scope-runtime';
-import useLocFeatureSettings from '../../loc/preferences/use-loc-feature-settings';
 import {useSearchManagerSwitch} from '../../loc/preferences/use-search-manager-switch';
-import {loadOrCreateLocUser,saveLocUserField,LOC_USER_DEFAULTS} from '../../loc/preferences/loc-user-store.mjs';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {timeUnitBucket,localTodayKey} from '../../loc/preferences/default-time-unit.mjs';
 import {useEditDock} from '../edit-dock';
@@ -256,14 +254,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const t=useUiText();
   const defaultTimeUnit=useDefaultTimeUnit();
   const {scopeId,scope}=useScopeRuntime();
-  const {settings:userSettings,active:userActive}=useLocFeatureSettings('search');
-  // The setting is a visual switch, never a role or grant. The ordinary
-  // Search reads published search-enabled articles; list visibility controls
-  // whether their title is shown in the search results, not editor access.
-  const adminListRequested=Boolean(legacyManagementRoute&&userActive&&userSettings.list===true);
-  const {enabled:adminSearchRequested,explicit:adminSwitchExplicit}=useSearchManagerSwitch({
-    defaultValue:userSettings.list===true,preferenceReady:userActive
-  });
+  // Explicit management route plus verified Scope grant controls editing.
+  // The independent session-only switch never grants database access.
+  const adminListRequested=Boolean(legacyManagementRoute);
+  const {enabled:adminSearchRequested}=useSearchManagerSwitch();
   const [privateResultMode,setPrivateResultMode]=useState(false);
   const editDock=useEditDock();
   const publicScopeEditing=Boolean(editDock?.active&&editDock.scopeId===scopeId&&scopeId!=='loc');
@@ -307,7 +301,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const activeSearchOptionsRef=useRef(null);
   const [results,setResults]=useState([]);
   const [articleSort,setArticleSort]=useState('desc');
-  useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   const [status,setStatus]=useState(UI_COPY.search.start);
   const [error,setError]=useState('');
   const [loadMoreError,setLoadMoreError]=useState('');
@@ -507,32 +500,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       setStatus('搜尋中請稍後');
     }
     try{
-      // The switch did not check permissions or request a grant. On Search
-      // submission only, identify an OAuth session for the user's preference.
-      // Public search still requires Galaxy.search=true, regardless of list.
-      let managerAtSearch=false;
-      if(adminSearchActive||adminSwitchExplicit){
-        // Cache-first: reuse the already verified browser edit Session when
-        // available. Only a public Search without that identity asks LOC Auth.
-        // The preference toggle itself performs no permission query or grant.
-        const current=readVerifiedManagementEntry();
-        const session=current?.user?{user:current.user,oauth:{email:current.user.email}}
-          :account.user&&account.email&&!account.loading&&!account.permissionLoading
-            ?{user:account.user,oauth:{email:account.email}}
-            :await getAccountSession().catch(()=>null);
-        if(session?.user&&session?.oauth){
-          managerAtSearch=adminSearchActive;
-          try{
-            const user=await loadOrCreateLocUser();
-            if(user.search?.list!==adminSearchActive)
-              await saveLocUserField(user.uid,'search',{
-                ...LOC_USER_DEFAULTS.search,...user.search,list:adminSearchActive
-              });
-          }catch{
-            // A personal preference write failure cannot block public Search.
-          }
-        }
-      }
+      // Public Search never performs a preference write or a private read.
+      // Signed management actions remain available only on management routes.
       if(id!==searchId.current)return;
       // The category is a semantic database filter, not a literal
       // site. Fetch the same cached taxonomy before searching.
@@ -573,7 +542,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // A new page replaces the previous 100 results; the cursor, not an
       // ever-growing browser array, carries the position through the search.
       setResults(pageResults.slice(0,pageSize));
-      setPrivateResultMode(managerAtSearch||managementMode);
+      setPrivateResultMode(managementMode);
       setHasMore(Boolean(search.hasMore));
       setNextCursor(search.nextCursor??null);
       const partial=(search.failures?.length)?t('uiExtra.searchUI.partialExtendedData'):'';
