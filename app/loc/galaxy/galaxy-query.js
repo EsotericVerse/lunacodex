@@ -21,7 +21,10 @@ import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection,MEDIA_ANCHOR_COLUMNS} from '../
 const galaxyListColumns=()=>galaxyReadColumns('GalaxyList');
 const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
 const galaxyUidReadWithPolicyColumns=()=>unique([
-  ...galaxyUidReadColumns(),...galaxyReadColumns('GalaxyAttr')
+  ...galaxyUidReadColumns(),...galaxyReadColumns('GalaxyAttr'),
+  // media_link is a physical Galaxy URL[]; select it explicitly when showing
+  // article links, never treat it as a semantic ZModel Anchor relation.
+  'media_link'
 ]);
 const articlePermissionFilter=(_scope,name)=>({
   column:name,operator:'eq',value:true

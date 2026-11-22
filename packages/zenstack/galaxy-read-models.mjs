@@ -21,9 +21,9 @@ export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
     source_id:optional('String'),target_id:optional('String',true),
     ref_id:optional('String')
   }),
-  // GalaxyUidAnchor links pre-indexed media/place/date/site, not duplicate body text.
+  // GalaxyUidAnchor tracks location/time/site; media_link is plain URL data.
   GalaxyUidAnchor:Object.freeze({
-    media_link:optional('String',true),place_id:optional('String'),
+    place_id:optional('String'),
     location:optional('String'),date:optional('DateTime'),site:optional('String')
   }),
   // GalaxyList: uid/title/createtime/date/site plus the nested GalaxyAttr flags.
