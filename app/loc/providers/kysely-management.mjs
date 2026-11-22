@@ -3,6 +3,8 @@
 // Historical RPC/legacy payload helpers are not independent authorities;
 // Tree Models do not grant access, run SQL, or create additional relations.
 import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
+import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
+import {publishedManagedScope} from './published-managed-scope.mjs';
 import {provisionScopeNative,manageScopeRegistryNative,deleteScopeNative}
   from './kysely-scope-lifecycle.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
@@ -103,6 +105,10 @@ export function managedPrimaryKeyColumns(table,modelName=''){
 // to api.manage invalidates it before any subsequent operation in that trx.
 const transactionRegistry=new WeakMap();
 async function registeredScope(trx,scope){
+  // Built-in Scope table names are fixed public JS data: zero Registry SQL.
+  // Unpublished custom Scopes continue to use transactional SQL lookup.
+  const fixed=publishedManagedScope(scope);
+  if(fixed)return fixed;
   let cache=transactionRegistry.get(trx);
   if(!cache){cache=new Map();transactionRegistry.set(trx,cache);}
   if(!cache.has(scope)){
@@ -253,7 +259,8 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     schema:namespace,table,
     values:galaxyValidated||anchorBlockValidated?null:modelValues,filters
   });
-  // The signed identity is checked against api.manage above. Only then
+  // The signed identity and current access grants were verified before this
+  // operation; fixed table names come from the JS Registry. Only then
   // does the existing trusted Kysely connection execute the mutation.
   // This does not introduce a database Auth API or a separate SQL Gateway.
   await sql`reset role`.execute(trx);
@@ -362,8 +369,7 @@ async function bulkUpdateGalaxyFlags(trx,args){
     reject('Private MCP and GitHub sources cannot be publicly enabled',403);
   if(!await canLocAccess(trx,'scope',scope))reject('Scope management permission required',403);
   // Reuse the Scope Registry. Do not trust user-supplied SQL relation names.
-  const registry=await trx.selectFrom('api.manage').select(['manage_role','galaxy_table'])
-    .where('id','=',scope).executeTakeFirst();
+  const registry=await registeredScope(trx,scope);
   if(!['scope','admin'].includes(registry?.manage_role)||registry.galaxy_table!=='galaxy')
     reject('Scope Galaxy mapping unavailable',403);
   const table=sql.ref('silver.'+scope+'_galaxy');
@@ -453,9 +459,7 @@ async function searchPrivateGalaxy(trx,args,claims){
     p_place_only:placeOnly}=parsed.data;
   if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
     reject('Private Search Scope access denied',403);
-  const registry=await trx.selectFrom('api.manage')
-    .select(['manage_role','galaxy_table','active'])
-    .where('id','=',scope).executeTakeFirst();
+  const registry=await registeredScope(trx,scope);
   if(registry?.manage_role!=='scope'||registry.active!==true||registry.galaxy_table!=='galaxy')
     reject('Private Search Scope unavailable',403);
   if(start&&end&&start>end)reject('Invalid private Search time range');
@@ -832,9 +836,12 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     if(!title||title.length>120)reject('Group member name must contain 1–120 characters');
     if(!await canLocAccess(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
-    const parent=await trx.selectFrom('api.manage').select('id')
-      .where('id','=',member).where('parent_scope_id','=',group)
-      .where('manage_role','=','scope').executeTakeFirst();
+    const fixed=fixedManageScope(member);
+    const parent=fixed ?
+      fixed.parent_scope_id===group&&fixed.manage_role==='scope'?fixed:null:
+      await trx.selectFrom('api.manage').select('id')
+        .where('id','=',member).where('parent_scope_id','=',group)
+        .where('manage_role','=','scope').executeTakeFirst();
     if(!parent)reject('Scope is outside this Group',403);
     const updated=await trx.updateTable('silver.'+member)
       .set({display_name:title,updated_at:sql`now()`})
@@ -1198,9 +1205,11 @@ async function importSharedKeywordClass(trx,args){
   if(from===to)reject('Source and target Scopes must differ');
   // The target Scope grant is explicitly verified by scopedWrite / LOC access.
   await scopedWrite(trx,to);
-  const sourceRegistry=await trx.selectFrom('api.manage')
-    .select('id').where('id','=',from).where('manage_role','=','scope')
-    .where('active','=',true).executeTakeFirst();
+  const fixedSource=publishedManagedScope(from);
+  const sourceRegistry=fixedSource?.manage_role==='scope'?fixedSource:
+    fixedSource?null:await trx.selectFrom('api.manage')
+      .select('id').where('id','=',from).where('manage_role','=','scope')
+      .where('active','=',true).executeTakeFirst();
   if(!sourceRegistry)reject('Source Scope unavailable');
   const sourceConfig=await trx.selectFrom('silver.'+from).select('keyword_meta')
     .where('id','=',from).executeTakeFirst();
