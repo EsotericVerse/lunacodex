@@ -35,7 +35,7 @@ const input=z.object({
   startDate:date.optional(),endDate:date.optional(),category:category.optional(),
   sources:z.array(source).min(1).max(80).optional(),
   excludedSources:z.array(source).min(1).max(80).optional(),
-  placeIds:z.array(PLACE_ID).min(1).max(80).optional(),
+  placeIds:z.array(PLACE_ID).min(1).max(800).optional(),
   mediaUrls:z.array(z.string().url().max(1024)).min(1).max(80).optional(),
   // Search expression supports ordinary terms, quoted phrases, OR, exclusions.
   text:z.string().trim().min(1).max(160).optional(),
