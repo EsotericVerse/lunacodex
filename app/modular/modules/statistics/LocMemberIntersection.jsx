@@ -27,7 +27,7 @@ export default function LocMemberIntersection({
   // The caller supplies Scope IDs and display names from the existing registry result.
   const names=useMemo(()=>new Map(scopes.map(row=>[row.id,row.label||row.id])),[scopes]);
   const available=scopes.map(scope=>({id:scope.id,label:names.get(scope.id)||scope.id,scope}));
-  // Each Scope is compared only by its own totals and media types; source groups are never merged across Scopes.
+  // Each Scope is compared through its own article totals and Galaxy.site sources.
   const allows=(person,metric)=>!metric.startsWith('source:');
   const lanes=Array.from({length:laneCount},(_,index)=>{
     const candidate=choices[index]||{};
