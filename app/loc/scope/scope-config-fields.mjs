@@ -21,9 +21,3 @@ export function scopeFeaturePatch(id,config){
     scopeFeatureName(key),scopeFeatureEnabled(config,key)
   ]));
 }
-// Source names now come from Scope Anchor From nodes. LOC's system entries
-// remain the explicitly managed group-level ArticleTag catalogue.
-export function scopeSourceNames(row){
-  const value=row?.sourceNames??row?.ArticleTag;
-  return Array.isArray(value)?value:[];
-}
