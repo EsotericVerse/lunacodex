@@ -124,7 +124,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       const {dbPublicClient}=await import('../../../loc/db/db-client.mjs');
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scope.id,p_view:'trace_territory',
-        p_start:start,p_end:end,p_options:{withPoints:false},signal
+        p_start:start,p_end:end,p_options:{withPoints:false,statisticsOnly:true},signal
       });
       if(error)throw error;
       if(!Array.isArray(data))throw Error('Invalid territory statistics');
