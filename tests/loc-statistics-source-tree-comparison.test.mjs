@@ -84,7 +84,12 @@ test('multi-item comparison UI selects Source using real nested UID branches',()
   const source=code('app/modular/modules/statistics/ScopeSelfIntersection.jsx');
   const picker=code('app/modular/modules/statistics/SourceTreePicker.jsx');
   assert.match(source,/sourceStatisticsTree\(rows,catalog\.data\|\|\{\}\)/);
-  assert.match(source,/sourceModel\.metricIdsForSite\(row\.category\)/);
+  // The daily SiteAnchor rollup was extracted into the shared four-family
+  // aggregation model; the original sourceStatisticsTree remains the only
+  // source of platform UID ancestry.
+  const intersection=code('app/loc/statistics/four-anchor-intersection.mjs');
+  assert.match(intersection,/canonicalSource\.metricIdsForSite\(row\.category\)/);
+  assert.match(intersection,/sourceModel\|\|sourceStatisticsTree\(sourceRows,taxonomy\)/);
   assert.match(source,/<SourceTreePicker/);
   assert.match(picker,/<details/);
   assert.match(picker,/<summary>/);
