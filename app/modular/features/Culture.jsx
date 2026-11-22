@@ -41,7 +41,7 @@ import {deleteRows,insertRows,updateRows} from '../../loc/db/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db/db-query.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
-import {sourceOutlineOptions} from '../../loc/source/keyword-options.mjs';
+import {sourceOutlineOptions} from '../../loc/source/outline-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
 import {buildCultureSourceTreeLanes,rollupCultureSourceDays} from '../../loc/culture/source-tree-lanes.mjs';
 import {useAccount} from '../../loc/auth/use-account';
