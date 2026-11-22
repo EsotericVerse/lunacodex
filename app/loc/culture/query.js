@@ -497,7 +497,6 @@ export async function selectScopePeriodSourceSnapshot(scope,{startDate='',endDat
         display_label:category,
         item_count:0,
         sites:[],
-        media_types:[]
       });
     }
     return groupMap.get(category);
@@ -533,8 +532,7 @@ export async function selectScopePeriodSourceSnapshot(scope,{startDate='',endDat
     ...group,
     first_date:firstDates.get(group.site)||null,
     last_date:lastDates.get(group.site)||null,
-    sites:[...new Set(group.sites)],
-    media_types:[...new Set(group.media_types)]
+    sites:[...new Set(group.sites)]
   })).filter(group=>group.item_count>0&&group.first_date&&group.last_date)
     .sort((a,b)=>b.item_count-a.item_count||a.site.localeCompare(b.site));
 
