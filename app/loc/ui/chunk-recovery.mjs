@@ -15,8 +15,14 @@ export function recoverChunkOnce(error,{
   try{last=Number(browser.sessionStorage.getItem(key)||0);}
   catch{throw error;}
   if(last&&now-last<RELOAD_WINDOW_MS)throw error;
-  const editing=new URLSearchParams(browser.location.search||'').get('edit')==='1';
-  if(editing&&!browser.confirm('新版頁面的模組載入失敗，需要重新整理。尚未儲存的編輯內容可能遺失，要重新整理嗎？'))throw error;
+  // On Scope homepages EditDock can be active without the ?edit=1 URL
+  // parameter. Use its live document marker before any automatic refresh.
+  const editing=new URLSearchParams(browser.location.search||'').get('edit')==='1'||
+    browser.document?.documentElement?.dataset?.locEditing==='true';
+  if(editing&&(
+    typeof browser.confirm!=='function'||
+    !browser.confirm('新版頁面的模組載入失敗，需要重新整理。尚未儲存的編輯內容可能遺失，要重新整理嗎？')
+  ))throw error;
   try{browser.sessionStorage.setItem(key,String(now));}
   catch{throw error;}
   browser.location.reload();
