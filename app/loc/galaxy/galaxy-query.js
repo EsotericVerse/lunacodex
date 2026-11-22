@@ -835,15 +835,20 @@ async function selectScopeDensityRowsRaw(scopes,{startDate='',endDate=''}={}){
 // without loading the full corpus or inventing a historical year ceiling.
 export async function selectFirstScopeStatisticsDate(scope){
   const current=scopeOf(scope);
+  if(current.id!=='local'){
+    const {data}=await readGalaxyFeature({
+      feature:'statics',scope:current.id,result:'earliest'
+    });
+    const day=String(data.earliest||'').slice(0,10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(day)?day:'';
+  }
   const text=await selectRows(current.galaxy,{
     columns:dayColumn(current.galaxy),
     filters:publicContentFilters([articlePermissionFilter(current,'culture')]),
     orders:[{column:dayColumn(current.galaxy),ascending:true,nullsFirst:false}],
     limit:1
   });
-  const dates=(text.rows||[]).map(row=>String(row[dayColumn(current.galaxy)]||'').slice(0,10))
-    .filter(day=>/^\d{4}-\d{2}-\d{2}$/.test(day));
-  return dates[0]||'';
+  return String(text.rows?.[0]?.[dayColumn(current.galaxy)]||'').slice(0,10);
 }
 
 // One request per chart. The database returns the earliest date, the exact daily

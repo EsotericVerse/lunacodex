@@ -35,6 +35,7 @@ import {scopeHref} from '../routing/scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../routing/feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search/query.mjs';
+import {readGalaxyRecords,readAnchorFeature} from '../../loc/model/feature-transaction-client.mjs';
 import {locGlobalUid} from '../../../packages/zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -82,11 +83,24 @@ function canManageSearchScope(account,scopeId){
 }
 
 async function selectPublicEditableRow(table,idColumn,id,columns,{authenticated=false}={}){
-  const {rows=[]}=await selectRows(table,{
-    columns,
-    filters:[{column:idColumn,operator:'eq',value:String(id)}],
-    limit:1,authenticated
-  });
+  if(idColumn!=='uid'||!authenticated)throw Error('Authenticated UID required');
+  const galaxy=/^silver\.([a-z][a-z0-9]{0,14})_galaxy$/.exec(String(table||''));
+  if(galaxy&&galaxy[1]!=='local'){
+    const {rows}=await readGalaxyRecords({scope:galaxy[1],
+      view:'detail',uids:[String(id)]},{editor:true});
+    return rows[0]||null;
+  }
+  const anchor=/^silver\.([a-z][a-z0-9]{0,14})_anchor$/.exec(String(table||''));
+  if(anchor&&anchor[1]!=='local'){
+    const {rows}=await readAnchorFeature({scope:anchor[1],
+      family:'media',uids:[String(id)],limit:1},{editor:true});
+    return rows[0]||null;
+  }
+  if(!/^silver\.local_(?:galaxy|anchor)$/.test(String(table||'')))
+    throw Error('Unsupported LOC editor relation');
+  const {rows=[]}=await selectRows(table,{columns,
+    filters:[{column:'uid',operator:'eq',value:String(id)}],
+    limit:1,authenticated});
   return rows[0]||null;
 }
 
