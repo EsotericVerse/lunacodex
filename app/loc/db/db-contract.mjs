@@ -1,6 +1,6 @@
 import {flashMessage} from '../notifications/flash-message.js';
 import {assertPlainGalaxyAttributes} from '../content/content-policy.js';
-import {DB_QUERY_BATCH_SIZE,MAX_ROWS,HEAVY_QUERY_ROWS} from '../query/query-batch-size.mjs';
+import {DB_QUERY_BATCH_SIZE,MAX_ROWS,HEAVY_QUERY_ROWS,ARTICLE_UID_PAGE_ROWS,IMPORT_WRITE_TARGET_BYTES} from '../query/query-batch-size.mjs';
 import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from '../auth/authorization-runtime.mjs';
 import {assertEditorSession} from '../auth/edit-session-ttl.mjs';
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
@@ -221,7 +221,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     // handles ordinary and special Galaxy fields in ONE PostgreSQL statement.
     // Bound the serialized payload below LOC Native's 700k request limit.
     // Never retry a batch whose COMMIT receipt may already have been lost.
-    const maxChunkBytes=480000;
+    const maxChunkBytes=IMPORT_WRITE_TARGET_BYTES;
     const encoder=new TextEncoder();
     let pending=[],bytes=0,count=0,committed=0;
     const flush=async()=>{
@@ -605,5 +605,5 @@ export function queryBatchSize(){
 }
 
 // List UI loading knobs (merged from the former list-loading-contract.mjs).
-export const DEFAULT_LIST_BATCH_SIZE=100;
+export const DEFAULT_LIST_BATCH_SIZE=ARTICLE_UID_PAGE_ROWS;
 export const LIST_LOAD_COOLDOWN_MS=1500;
