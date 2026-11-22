@@ -58,7 +58,6 @@ function anchorModel(rows,start,end,expanded){
   const dates=all.filter(row=>row.type==='date').map(row=>({
     ...row,date:datePart(attributes(row).date)
   })).filter(row=>row.date);
-  const eras=all.filter(row=>row.type==='era');
   const periodRange=row=>{
     const attr=attributes(row);
     const from=list(attr.date||attr.dates).map(datePart).filter(Boolean);
@@ -67,6 +66,20 @@ function anchorModel(rows,start,end,expanded){
     const allDates=[...from,...links].sort();
     return {start:allDates[0]||'',end:allDates[allDates.length-1]||''};
   };
+  // The transport may return TimeAnchor rows by UID. Era/Period group
+  // positions instead follow the earliest genuine linked DateAnchor.
+  // UIDs are stable tie-breakers only, never chronological indicators.
+  const eraStart=era=>{
+    const attr=attributes(era);
+    const periodDates=list(attr.period).map(id=>byUid.get(String(id)))
+      .filter(row=>row?.type==='period')
+      .map(row=>periodRange(row).start).filter(Boolean);
+    const ownDates=list(attr.date||attr.dates).map(datePart).filter(Boolean);
+    return [...periodDates,...ownDates].sort()[0]||'9999-12-31';
+  };
+  const eras=all.filter(row=>row.type==='era').sort((a,b)=>
+    eraStart(a).localeCompare(eraStart(b))||
+    String(a.uid).localeCompare(String(b.uid)));
   // The first river is an era tree: collapsed rows contain only eras.
   // Date anchors belong to their eras, never to a separate sidebar lane.
   const groups=[],items=[],eraWindows=[];
@@ -75,7 +88,11 @@ function anchorModel(rows,start,end,expanded){
     const periodUids=list(attr.period).map(String)
       .filter(id=>/^[A-Za-z0-9]{8}$/.test(id));
     const refs=periodUids.map(id=>byUid.get(id))
-      .filter(item=>item?.type==='period');
+      .filter(item=>item?.type==='period')
+      .sort((a,b)=>
+        (periodRange(a).start||'9999-12-31')
+          .localeCompare(periodRange(b).start||'9999-12-31')||
+        String(a.uid).localeCompare(String(b.uid)));
     const expandedEra=expanded.includes(uid);
     groups.push({id:'era:'+uid,label:era.title||'時代',
       collapsible:true,expanded:expandedEra,order:groups.length});
