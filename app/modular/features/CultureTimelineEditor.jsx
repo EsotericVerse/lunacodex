@@ -8,6 +8,7 @@ import {useEditDock} from '../edit-dock';
 import {transactionWrites} from '../../loc/db/db-client.mjs';
 import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/culture/anniversary.mjs';
+import {timeRecordHierarchyOptions} from '../../loc/culture/time-record-hierarchy-options.mjs';
 import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture/anchor-bulk.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import ManagementSectionNav from '../ManagementSectionNav';
@@ -131,10 +132,10 @@ export default function CultureTimelineEditor({
     }));
     return [...all].sort((a,b)=>(positions.get(a.uid)||'').localeCompare(positions.get(b.uid)||''));
   },[all,anchors,eventChoices]);
-  const recordOptions=useMemo(()=>rows.filter(row=>row.type===browseType).map(row=>({
-    value:String(row.uid),
-    label:(row.type==='anchor'&&day(row.address)?day(row.address)+'｜':'')+String(row.title||'未命名紀錄')
-  })),[rows,browseType]);
+  // Searchable options retain the saved Era -> Period -> Date hierarchy.
+  // Detached Periods/Dates live in explicit 未分類 sections, not the top level.
+  const recordOptions=useMemo(()=>
+    timeRecordHierarchyOptions(rows,browseType),[rows,browseType]);
   const selectRow=id=>{
     const row=all.find(item=>String(item.uid)===String(id));
     if(!row)return;
