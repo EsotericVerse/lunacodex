@@ -2,7 +2,7 @@
 // Its grants remain restricted to active records: virtual Admin is web-only.
 import {directMcpKysely,closeLocDatabase} from './native-kysely.mjs';
 import {z} from 'zod';
-import {readLocAccess} from '../permissions/loc_access.mjs';
+import {readLocAccess,publishedLocAccess} from '../permissions/loc_access.mjs';
 
 const AUTH_USERINFO='https://auth.lo3rwang.cc/api/auth/oauth2/userinfo';
 const VerifiedEmail=z.email();
@@ -15,8 +15,8 @@ function denial(message,httpStatus){
   return Object.assign(new Error(message),{httpStatus});
 }
 
-// One bounded role SELECT, shared by MCP/Extension and website. No extra
-// activeMcpRows Kysely implementation or separate grant builder.
+// LAS owns MCP. This LOC-side identity helper shares the published JS
+// business-role projection; only identities absent from JS need SQL.
 export async function loadMcpLocAccess(db,email,{dialect,engine,transactional=false}={}){
   const rights=await readLocAccess(db,email,{dialect,engine,transactional});
   if(!rights.roles.length)throw denial('LOC MCP role not granted',403);
@@ -30,15 +30,19 @@ export async function authorizeMcpRole(email,env={},{
   if(!VerifiedEmail.safeParse(verified).success)
     throw denial('Verified LOC identity required',401);
   let permissions,port=null;
-  try{
-    port=await database(env,'',{waitUntil});
-    permissions=await readLocAccess(port.db,verified,{
-      dialect:port.dialect,engine:port.engine});
-  }catch{
-    throw denial('LOC MCP role service unavailable',503);
-  }finally{
-    // Standalone OAuth authorizer owns this request's SQL connection.
-    await closeLocDatabase(port);
+  const published=publishedLocAccess(verified);
+  if(published.found){
+    permissions=published.rights;
+  }else{
+    try{
+      port=await database(env,'',{waitUntil});
+      permissions=await readLocAccess(port.db,verified,{
+        dialect:port.dialect,engine:port.engine});
+    }catch{
+      throw denial('LOC role service unavailable',503);
+    }finally{
+      await closeLocDatabase(port);
+    }
   }
   if(!permissions.roles.length)throw denial('LOC MCP role not granted',403);
   return {email:verified,roles:permissions.roles.map(({id,role})=>({id,role})),
