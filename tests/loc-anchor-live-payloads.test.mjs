@@ -23,6 +23,8 @@ test('persisted SiteAnchor count caches are accepted without redefining num',()=
 });
 
 test('SiteAnchor ZModel applies exact Universe > Galaxy > Domain > From links',()=>{
+  assert.deepEqual(Object.keys(schema.typeDefs.SiteAnchor.fields),
+    ['universe','galaxy','domain','from']);
   assert.equal(nextZModelAnchorType('source','universe'),'galaxy');
   assert.equal(nextZModelAnchorType('source','galaxy'),'domain');
   assert.equal(nextZModelAnchorType('source','domain'),'from');
