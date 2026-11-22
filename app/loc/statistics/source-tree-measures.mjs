@@ -13,7 +13,8 @@ export function sourceStatisticsTree(rows=[],taxonomy={}){
   const outline=sourceOutlineOptions(taxonomy);
   const byUid=new Map((taxonomy?.tree||[]).map(node=>[node.uid,node]));
   // Only an unambiguous published From (site) can identify a Galaxy.site.
-  // Domain/Galaxy/Universe IDs are SELECTABLE rollups, not site identities.
+  // Domain/Galaxy/Universe are derived rollups, not site identities;
+  // only Galaxy/Domain are selectable in the intersection picker.
   const fromAliases=new Map((taxonomy?.aliases||[])
     .filter(alias=>byUid.get(alias.category_code)?.type==='from')
     .map(alias=>[norm(alias.source_key),alias.category_code]));
