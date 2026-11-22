@@ -1,5 +1,5 @@
 import {produce} from 'immer';
-import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {PERSISTED_ANCHOR_TYPES,anchorUidListCount} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {SCOPE_PATTERN_POSTING_KEY} from '../keywords/anchor-index.mjs';
 
 // An exact UID is an identity; location, date and site are source values,
@@ -147,7 +147,9 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
     if(row.type==='trace'&&field==='point'&&next.point.length===0&&
       (!Array.isArray(next.path)||next.path.length===0))
       throw new Error('Cannot delete Point: the dependent Trace would have no segments or routes');
-    anchorUpdates.push({uid:id,type:row.type,values:{attr:next},expected:{attr:original}});
+    anchorUpdates.push({uid:id,type:row.type,
+      values:{attr:next,num:BigInt(anchorUidListCount(row.type,next))},
+      expected:{attr:original}});
   }
   return {deletedUid:uid,deletedTable,deletedType,galaxyUpdates,anchorUpdates,
     affected:galaxyUpdates.length+anchorUpdates.length};

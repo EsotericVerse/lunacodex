@@ -57,13 +57,15 @@ for(const row of routes){
     const loc=id==='loc';
     const {data:page,error:blocksError}=await db.from(loc?'loc_anchor':id+'_blocks')
       .select(loc?'uid,type,title,description,invisible,attr,num':cols)
-      .order(loc?'num':'block_order').order('uid').range(start,end);
+      .order(loc?'uid':'block_order').range(start,end);
     if(blocksError)throw Error('Blocks unavailable for '+id+': '+blocksError.message);
     blocks.push(...(loc?(page||[])
       .filter(row=>isLocBlockPage(row.type)&&row.invisible===false)
       .map(locAnchorToBlock):(page||[])));
     if(!page||page.length<end-start+1)break;
   }
+  blocks.sort((a,b)=>String(a.page_name).localeCompare(String(b.page_name))||
+    Number(a.block_order)-Number(b.block_order)||String(a.uid).localeCompare(String(b.uid)));
   for(const block of blocks){
     // Existing LOC Governance Blocks publish on the renamed Trace page,
     // without altering their persisted type or creating a second source.

@@ -233,9 +233,9 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals
   let totals=new Map(),groupTotals=new Map();
   if(withTotals){
     const stored=await trx.selectFrom(anchor)
-      .select(['uid','num']).where('uid','in',descriptions.map(i=>i.uid)
+      .select(['uid','attr']).where('uid','in',descriptions.map(i=>i.uid)
         .concat(ordered.map(g=>g.uid))).execute();
-    const byUid=new Map(stored.map(row=>[row.uid,Number(row.num)||0]));
+    const byUid=new Map(stored.map(row=>[row.uid,Number(attr(row).total)||0]));
     totals=new Map(descriptions.map(i=>[i.uid,byUid.get(i.uid)||0]));
     groupTotals=new Map(ordered.map(g=>[g.uid,byUid.get(g.uid)||0]));
   }

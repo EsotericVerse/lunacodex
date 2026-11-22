@@ -718,7 +718,8 @@ model Loc {
 
 // Semantic ZModel projection; LOC Blocks are stored in LocAnchor, not a second table.
 // uid=uid, page_name=type, block_title=title, block_text=description,
-// block_order=num, remaining fields live in attr (uidlist/eyebrow/subtitle/image).
+// block_order=attr.order; physical num counts UID references, not display order.
+// Remaining fields live in attr (uidlist/eyebrow/subtitle/image).
 type LocBlocks {
     uid String
     page_name String

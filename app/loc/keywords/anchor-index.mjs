@@ -152,7 +152,7 @@ export async function ensureScopePatternLibrary(trx,scope){
       active.add(pattern.uid);
     }
     if(JSON.stringify(previous)!==JSON.stringify(uids)){
-      updates.push({uid:item.uid,attr:JSON.stringify({...a,uid:uids})});
+      updates.push({uid:item.uid,attr:JSON.stringify({...a,uid:uids}),num:uids.length});
     }
   }
   const orphan=rows.filter(row=>!active.has(row.uid)).map(row=>row.uid);
@@ -163,8 +163,9 @@ export async function ensureScopePatternLibrary(trx,scope){
     await trx.insertInto(table).values(created.slice(i,i+100)).execute();
   for(let i=0;i<updates.length;i+=100)
     await trx.insertInto(table).values(updates.slice(i,i+100).map(row=>
-      ({uid:row.uid,type:'item',attr:row.attr})))
-      .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({attr:eb.ref('excluded.attr')})))
+      ({uid:row.uid,type:'item',attr:row.attr,num:row.num})))
+      .onConflict(oc=>oc.column('uid').doUpdateSet(eb=>({
+        attr:eb.ref('excluded.attr'),num:eb.ref('excluded.num')})))
       .execute();
   return {patterns:[...old.values()].filter(row=>active.has(row.uid)),
     created:created.length,linked:updates.length,removed:orphan.length};

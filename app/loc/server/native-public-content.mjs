@@ -254,12 +254,12 @@ export async function handleNativePublicContent(request,env={},{
                 name[0].toLowerCase()+name.slice(1)].findMany({
                   where:{type:{in:types},invisible:false},
                   select:Object.fromEntries(LOC_BLOCK_ANCHOR_FIELDS.map(field=>[field,true])),
-                  orderBy:{num:'asc'}
+                  orderBy:{uid:'asc'}
                 }))
           :query.selectFrom(relation('loc_anchor'))
               .select(LOC_BLOCK_ANCHOR_FIELDS)
               .where('type','in',types).where('invisible','=',false)
-              .orderBy('num','asc').execute();
+              .orderBy('uid','asc').execute();
       };
     }
     if(kind==='hero_block')

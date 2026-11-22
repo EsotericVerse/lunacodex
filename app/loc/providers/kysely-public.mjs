@@ -36,7 +36,7 @@ async function readLocBlockAnchors(trx,types,{
   return trx.selectFrom(blockRelation('loc_anchor',engine,namespace))
     .select(LOC_BLOCK_ANCHOR_FIELDS)
     .where('type','in',types).where('invisible','=',false)
-    .orderBy('num','asc').execute();
+    .orderBy('uid','asc').execute();
 }
 export async function block_list(trx,scopeId,options={}){
   const scope=id(scopeId);

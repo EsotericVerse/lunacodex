@@ -25,7 +25,8 @@ export const ANCHOR_TYPE_GROUPS=Object.freeze({
 // Consumer projections are kept here beside the frozen ZModel type vocabulary.
 export const MEDIA_ANCHOR_COLUMNS='uid,type,title,description,createtime,attr,invisible';
 // Only Pattern postings contain Galaxy article UIDs; other hierarchy attr.uid links Anchor UIDs.
-// A Pattern's physical num equals its distinct Galaxy UID posting count; do not cache hits on Item.
+// Physical Anchor.num is UID-list cardinality, never an article-hit counter or display order.
+// Existing Item/Group attr.total carries cached hit totals.
 // Dynamic posting field in physical Pattern.attr. A virtual ZModel record
 // exposes it as articleUids without creating a second SQL relation.
 export const KEYWORD_PATTERN_POSTINGS_KEY='63ade525';
@@ -125,6 +126,25 @@ export const PERSISTED_ANCHOR_TYPES=Object.freeze(Object.values(ANCHOR_TYPE_GROU
 // Anniversary is a derived editor suggestion. It is deliberately not a
 // persisted discriminator and therefore is not included above.
 export const VIRTUAL_ANCHOR_TYPES=Object.freeze(['anniversary','aniversary']);
+// All physical Anchor.num values count UID references from the typed payload.
+// The LOC Block uidlist may start with a numeric layout marker: that marker
+// is NOT a UID. Pattern postings are Galaxy UIDs under the existing fixed key.
+export function anchorUidListCount(type,storedAttr={}){
+  const attr=typeof storedAttr==='string'?JSON.parse(storedAttr):storedAttr??{};
+  if(!attr||typeof attr!=='object'||Array.isArray(attr))
+    throw new TypeError('Invalid Anchor attr for UID counting');
+  const count=key=>Array.isArray(attr[key])?attr[key].length:0;
+  if(type==='pattern')return count(KEYWORD_PATTERN_POSTINGS_KEY);
+  if(type==='trace')return count('path')+count('point');
+  if(type==='path')return count('point');
+  if(type==='era')return count('period');
+  if(['period','category','class','group','item','universe','galaxy','domain','from']
+      .includes(type))return count('uid');
+  if(PERSISTED_ANCHOR_TYPES.includes(type))return 0;
+  return Array.isArray(attr.uidlist)?attr.uidlist.filter(value=>
+    UID.test(typeof value==='string'?value:String(value?.uid||''))).length:0;
+}
+
 
 // ZModel value types for the JSON payload carried by each discriminator. They
 // are semantic projections, not extra SQL tables. Optional lists are valid in

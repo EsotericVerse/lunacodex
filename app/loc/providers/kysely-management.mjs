@@ -21,7 +21,7 @@ import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {saveTracePageInTransaction} from './kysely-trace-page.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
-import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
+import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection,anchorUidListCount}
   from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import * as z from 'zod';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
@@ -266,6 +266,31 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     schema:namespace,table,
     values:galaxyValidated||anchorBlockValidated?null:modelValues,filters
   });
+  // Physical Anchor.num follows the typed UID list, not a caller-supplied
+  // Keyword count or LOC Block order. Derive it inside the same transaction.
+  const isAnchor=table==='loc_anchor'||/_anchor$/.test(table);
+  if(isAnchor&&['insert','upsert'].includes(operation)){
+    for(const row of rows){
+      if(row.attr!==undefined){
+        if(!row.type)reject('Anchor type required for UID count');
+        row.num=anchorUidListCount(row.type,row.attr);
+      }else if(Object.hasOwn(row,'num'))reject('Anchor.num requires attr');
+    }
+  }
+  if(isAnchor&&operation==='update'){
+    if(Object.hasOwn(values,'num')&&!Object.hasOwn(values,'attr')&&
+        !Object.hasOwn(values,'type'))
+      reject('Anchor.num cannot be changed independently');
+    if(Object.hasOwn(values,'attr')||Object.hasOwn(values,'type')){
+      const targets=await withFilters(trx.selectFrom('silver.'+table)
+        .select(['uid','type','attr']),filters).execute();
+      const sizes=targets.map(row=>anchorUidListCount(values.type||row.type,
+        Object.hasOwn(values,'attr')?values.attr:row.attr));
+      if(new Set(sizes).size>1)
+        reject('Anchor update spans different UID-list sizes');
+      if(sizes.length)values.num=sizes[0];
+    }
+  }
   // The signed identity and current access grants were verified before this
   // operation; fixed table names come from the JS Registry. Only then
   // does the existing trusted Kysely connection execute the mutation.
@@ -614,9 +639,10 @@ async function keywordPatternStatistics(trx,args){
     });
     totals=result.totals;
   }else{
-    const n=await trx.selectFrom(table).select(['uid','num'])
+    const n=await trx.selectFrom(table).select(['uid','attr'])
       .where('uid','in',[classUid,...groupUids,...itemUids]).execute();
-    const byUid=new Map(n.map(row=>[row.uid,Number(row.num)||0]));
+    const byUid=new Map(n.map(row=>[row.uid,
+      Number((typeof row.attr==='string'?JSON.parse(row.attr):row.attr)?.total)||0]));
     const receipt=config?.keyword_meta?.by_class?.[classUid]||{};
     totals={...receipt,
       itemCounts:Object.fromEntries(items.map(item=>[item.uid,byUid.get(item.uid)||0])),
@@ -893,8 +919,33 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   await sql`reset role`.execute(trx);
   const loc=scope==='loc';
   const relation=loc?'silver.loc_anchor':'silver.'+scope+'_blocks';
-  const pageField=loc?'type':'page_name',orderField=loc?'num':'block_order';
+  const pageField=loc?'type':'page_name',orderField='block_order';
   await sql`select pg_advisory_xact_lock(hashtext(${scope}),hashtext(${page}))`.execute(trx);
+  if(loc){
+    // Swap only attr.order in the exact locked LOC page, never Anchor.num.
+    const nodes=await trx.selectFrom(relation).select(['uid','attr'])
+      .where('type','=',page).forUpdate().execute();
+    const orderOf=row=>{
+      const a=typeof row.attr==='string'?JSON.parse(row.attr):row.attr||{};
+      const n=Number(a.order);
+      if(!Number.isSafeInteger(n)||n<1)reject('Invalid LOC Block attr.order');
+      return n;
+    };
+    const ordered=nodes.sort((a,b)=>orderOf(a)-orderOf(b)||
+      String(a.uid).localeCompare(String(b.uid)));
+    const index=ordered.findIndex(row=>row.uid===uid);
+    if(index<0)reject('Block not found on this page');
+    const next=ordered[index+direction];
+    if(!next)reject('Block is already at the page boundary');
+    const before=orderOf(ordered[index]),after=orderOf(next);
+    const result=await sql`update ${sql.ref(relation)}
+      set attr=jsonb_set(attr,'{order}',
+      to_jsonb(case when uid=${uid} then ${after} else ${before} end),true)
+      where type=${page} and uid in (${uid},${next.uid})`.execute(trx);
+    if(Number(result.numAffectedRows||0)!==2)reject('Block order update incomplete');
+    return {data:{uid,block_order:after,neighbor_uid:next.uid,
+      neighbor_order:before},count:null};
+  }
   const original=await trx.selectFrom(relation).select(['uid',orderField])
     .where('uid','=',uid).where(pageField,'=',page).executeTakeFirst();
   if(!original)reject('Block not found on this page');

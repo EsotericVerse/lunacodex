@@ -107,9 +107,10 @@ export function AdminSourceCategories(){
       operations.push({p_table:TABLE,p_operation:'insert',
         p_rows:[{uid,type:draft.type,title,
           description:draft.description||null,
-          attr:{uid:[],counts:{...EMPTY_COUNTS}}}]});
+          attr:{uid:[],counts:{...EMPTY_COUNTS}},num:0}]});
       if(parent)operations.push({p_table:TABLE,p_operation:'update',
-        p_values:{attr:{...parent.attr,uid:[...parent.attr.uid,uid]}},
+        p_values:{attr:{...parent.attr,uid:[...parent.attr.uid,uid]},
+          num:parent.attr.uid.length+1},
         p_filters:[{column:'uid',operator:'eq',value:parent.uid}]});
     }
     setError('');setNotice('');
@@ -145,7 +146,8 @@ export function AdminSourceCategories(){
       const operations=[];
       if(parent)operations.push({p_table:TABLE,p_operation:'update',
         p_values:{attr:{...parent.attr,
-          uid:parent.attr.uid.filter(uid=>uid!==current.uid)}},
+          uid:parent.attr.uid.filter(uid=>uid!==current.uid)},
+          num:parent.attr.uid.filter(uid=>uid!==current.uid).length},
         p_filters:[{column:'uid',operator:'eq',value:parent.uid}]});
       operations.push({p_table:TABLE,p_operation:'delete',
         p_filters:[{column:'uid',operator:'eq',value:current.uid}]});

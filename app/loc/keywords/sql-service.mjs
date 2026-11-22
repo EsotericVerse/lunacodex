@@ -1,6 +1,7 @@
 import {HEAVY_INITIAL_ROWS} from '../query/query-batch-size.mjs';
 // LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
-// Anchor.num owns aggregate counts. No Pattern index or Galaxy UID postings.
+// Anchor.num is UID-list cardinality; Item/Group.attr.total is the existing
+// cached article hit count. Class completion remains in Scope keyword_meta.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {analyzeItemKeywordCounts,readItemKeywordProjection,
   itemKeywordStatistics,itemKeywordSuggestions,itemScope} from './item-count-analysis.mjs';
@@ -159,11 +160,11 @@ export async function readKeywordStatistics(db,scope,classUid,{
     counts=result.totals;daily=result.daily;
   }else{
     const rows=await db.selectFrom(anchorName(scope))
-      .select(['uid','num']).where('uid','in',[
+      .select(['uid','attr']).where('uid','in',[
         tree.root.uid,...tree.groups.map(row=>row.uid),
         ...tree.items.map(row=>row.uid)
       ]).execute();
-    const byUid=new Map(rows.map(row=>[row.uid,Number(row.num)||0]));
+    const byUid=new Map(rows.map(row=>[row.uid,Number(attr(row).total)||0]));
     counts={
       ...receipt,
       itemCounts:Object.fromEntries(tree.items.map(item=>[item.uid,byUid.get(item.uid)||0])),
@@ -182,7 +183,7 @@ export async function readKeywordStatistics(db,scope,classUid,{
 }
 
 export async function readKeywordCatalog(db,scope,classUid,{owner=false}={}){
-  // Reuse the same Item/Group tree; counts come from Anchor.num.
+  // Reuse the same Item/Group tree; hit counts come from existing attr.total.
   const {_tree:tree,...stats}=await readKeywordStatistics(db,scope,classUid,{
     owner,_returnTree:true
   });
@@ -271,15 +272,18 @@ async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',exp
     fail('Item rules changed during analysis; rerun',409);
   const updates=[
     ...current.items.map(item=>({uid:item.uid,
-      num:Math.max(0,Number(counts.itemCounts?.[item.uid])||0)})),
+      total:Math.max(0,Number(counts.itemCounts?.[item.uid])||0)})),
     ...current.groups.map(group=>({uid:group.uid,
-      num:Math.max(0,Number(counts.groupCounts?.[group.uid])||0)})),
-    {uid:classUid,num:Math.max(0,Number(counts.matchedDocuments)||0)}
+      total:Math.max(0,Number(counts.groupCounts?.[group.uid])||0)}))
   ];
-  // One authorized transaction updates counters and completion receipt.
-  // Each row is keyed by its existing UID: no second table or article postings.
+  // Preserve the UID hierarchy and num while updating cached article counts.
+  const originals=await trx.selectFrom(anchorName(scope)).select(['uid','attr'])
+    .where('uid','in',updates.map(row=>row.uid)).forUpdate().execute();
+  if(originals.length!==updates.length)fail('Keyword count targets changed',409);
+  const byUid=new Map(originals.map(row=>[row.uid,attr(row)]));
   for(const row of updates){
-    const result=await trx.updateTable(anchorName(scope)).set({num:BigInt(row.num)})
+    const result=await trx.updateTable(anchorName(scope))
+      .set({attr:JSON.stringify({...byUid.get(row.uid),total:row.total})})
       .where('uid','=',row.uid).executeTakeFirst();
     if(Number(result?.numUpdatedRows||0)!==1)fail('Item count write incomplete',409);
   }
@@ -393,9 +397,18 @@ export async function resetKeywordScope(db,scope,classUid,{
       .select('keyword_meta').where('id','=',scope).forUpdate().executeTakeFirst();
     if(!cfg)fail('Keyword Scope not configured',404);
     const tree=await classTree(trx,scope,classUid);
-    const ids=[tree.root.uid,...tree.groups.map(x=>x.uid),...tree.items.map(x=>x.uid)];
-    const changed=await trx.updateTable(anchorName(scope)).set({num:0n})
-      .where('uid','in',ids).executeTakeFirst();
+    const ids=[...tree.groups.map(x=>x.uid),...tree.items.map(x=>x.uid)];
+    // Reset only article count snapshots: preserve structural UID cardinality.
+    const originals=await trx.selectFrom(anchorName(scope)).select(['uid','attr'])
+      .where('uid','in',ids).forUpdate().execute();
+    if(originals.length!==ids.length)fail('Keyword reset targets changed',409);
+    let changed=0;
+    for(const row of originals){
+      const result=await trx.updateTable(anchorName(scope))
+        .set({attr:JSON.stringify({...attr(row),total:0})})
+        .where('uid','=',row.uid).executeTakeFirst();
+      changed+=Number(result?.numUpdatedRows||0);
+    }
     const previous=attr({attr:cfg.keyword_meta});
     const meta=bumpKeywordClassEpoch(
       writeKeywordScanProgress(invalidateKeywordClass(previous,classUid),classUid,null),
@@ -404,7 +417,7 @@ export async function resetKeywordScope(db,scope,classUid,{
       keyword_meta:JSON.stringify(meta),staticstime:null,
       updated_at:new Date().toISOString()
     }).where('id','=',scope).execute();
-    return {count:Number(changed?.numUpdatedRows||0),retainedShared:0};
+    return {count:changed,retainedShared:0};
   });
 }
 

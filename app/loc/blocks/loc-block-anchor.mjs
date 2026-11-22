@@ -1,4 +1,4 @@
-import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {PERSISTED_ANCHOR_TYPES,anchorUidListCount} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 
 // CURRENT LOC presentation adapter: reusable Block fields are projected over
 // existing loc_anchor rows. This does not reinstate a physical loc_blocks table
@@ -10,7 +10,8 @@ import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarch
 // Blocks: uid / page_name / block_title / block_text / false / metadata / now / block_order.
 // Physical Anchor envelope: uid/type/title/description/invisible/attr/createtime/num.
 // LOC projection: page_name->type, block_title->title, block_text->description,
-// block_order->num; block_entity->attr.uidlist, block_eyebrow->attr.eyebrow,
+// block_order->attr.order; num counts child UIDs in attr.uidlist.
+// block_entity->attr.uidlist, block_eyebrow->attr.eyebrow,
 // block_subtitle->attr.subtitle, block_image->attr.image.
 // "block_eybow" in old notes is a typo; the current physical field is block_eyebrow.
 export const LOC_BLOCK_ANCHOR_FIELDS=Object.freeze([
@@ -30,8 +31,8 @@ function attrOf(row){
 }
 export function locBlockToAnchor(row){
   if(!isLocBlockPage(row?.page_name))throw new TypeError('Invalid LOC Block page');
-  const num=Number(row?.block_order);
-  if(!Number.isSafeInteger(num)||num<1)throw new TypeError('Invalid LOC Block order');
+  const order=Number(row?.block_order);
+  if(!Number.isSafeInteger(order)||order<1)throw new TypeError('Invalid LOC Block order');
   if(!/^[A-Za-z0-9]{8}$/.test(String(row?.uid||'')))
     throw new TypeError('Invalid LOC Block UID');
   const uidlist=row?.block_entity??[];
@@ -40,9 +41,9 @@ export function locBlockToAnchor(row){
   return {
     uid:String(row.uid),type:row.page_name,
     title:String(row.block_title??''),description:String(row.block_text??''),
-    invisible:false,num,
+    invisible:false,num:anchorUidListCount(row.page_name,{uidlist}),
     attr:{
-      uidlist,eyebrow:String(row.block_eyebrow??''),
+      order,uidlist,eyebrow:String(row.block_eyebrow??''),
       subtitle:String(row.block_subtitle??''),
       image:row.block_image==null?null:String(row.block_image)
     }
@@ -55,7 +56,7 @@ export function locAnchorToBlock(row){
   return {
     uid:String(row.uid??'').trim(),page_name:String(row.type??''),
     block_title:String(row.title??''),block_text:String(row.description??''),
-    block_order:Number(row.num??0),block_entity:Array.isArray(attr.uidlist)?attr.uidlist:[],
+    block_order:Number(attr.order??0),block_entity:Array.isArray(attr.uidlist)?attr.uidlist:[],
     block_eyebrow:String(attr.eyebrow??''),
     block_subtitle:String(attr.subtitle??''),
     block_image:attr.image==null?null:String(attr.image)
