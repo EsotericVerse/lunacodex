@@ -1,6 +1,7 @@
 // Fixed Anchor feature model for Time, Space, Source and Media UIs.
 // This is not Search: only an exact published Scope + model family is allowed.
 import {z} from 'zod';
+import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {assertZModelAnchorFeatureRows} from '../../../packages/zenstack/import-validation.mjs';
@@ -17,7 +18,7 @@ const schema=z.object({
   types:z.array(z.string()).min(1).max(12).optional(),
   uids:z.array(UID).min(1).max(100).optional(),
   cursor:UID.optional(),offset:z.number().int().min(0).max(10000).optional(),
-  limit:z.number().int().min(1).max(1000).optional(),
+  limit:z.number().int().min(1).max(TIME_ANCHOR_MAX_PAGE_ROWS).optional(),
   order:z.enum(['uid','title','createtime']).optional(),
   sortDirection:z.enum(['asc','desc']).optional(),
   startDate:DAY.optional(),endDate:DAY.optional(),
@@ -44,7 +45,9 @@ export function parseAnchorFeatureTransaction(body){
     value.result==='count'&&(value.cursor||value.offset!==undefined||
       value.includeTotal!==undefined))
     throw Object.assign(Error('Invalid Anchor feature selection'),{httpStatus:400});
-  return {...value,types:value.types||allowed,limit:value.limit||1000,
+  return {...value,types:value.types||allowed,
+    // COUNT queries have no SQL LIMIT; only row projections have page bounds.
+    limit:value.result==='count'?null:(value.limit??MAX_ROWS),
     order:value.order||'uid'};
 }
 export async function executeAnchorFeatureTransaction(trx,model){
