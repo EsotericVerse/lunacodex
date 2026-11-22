@@ -160,8 +160,7 @@ export async function readKeywordStatistics(db,scope,classUid,{
 }
 
 export async function readKeywordCatalog(db,scope,classUid,{owner=false}={}){
-  // Reuse the same tree and the same class-specific Pattern projection.
-  // Do not read Class/Group/Item a second time for the editor catalog.
+  // Reuse the same Item/Group tree; counts come from Anchor.num.
   const {_tree:tree,...stats}=await readKeywordStatistics(db,scope,classUid,{
     owner,_returnTree:true
   });
