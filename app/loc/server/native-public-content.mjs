@@ -9,6 +9,7 @@ import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {fixedPolicyReadModel,withFixedPolicyRead} from '../../../packages/zenstack/policy-runtime.mjs';
 import {createScopedLocClient} from '../../../packages/zenstack/client.mjs';
 import {assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {LOC_BLOCK_ANCHOR_FIELDS} from '../blocks/loc-block-anchor.mjs';
 import {block_list,hero_block} from '../providers/kysely-public.mjs';
 import {ZenStackClient} from '@zenstackhq/orm';
@@ -194,17 +195,15 @@ export async function handleNativePublicContent(request,env={},{
       // <scope>_anchor ZModel. The fixed loc_anchor model is the separate
       // LOC-wide taxonomy, not the author's TimeAnchor table.
       // Preserve the trusted published-Scope routing and invisible filter.
-      const typed=scopedFor(scope);
-      const rows=typed
-        ?await typed.anchor.findMany({
-            where:{type:{in:['date','period','era']},invisible:false},
-            select:{uid:true,type:true,title:true,attr:true}
-          })
-        :await query.selectFrom(relation(scope+'_anchor'))
-            .select(['uid','type','title','attr'])
-            .where('type','in',['date','period','era'])
-            .where('invisible','=',false).execute();
-      if(!typed)assertZModelSelectRows('silver.'+scope+'_anchor',
+      // TimeAnchor uses the same trusted, fixed Kysely read as Culture
+      // density; a second ORM query path is unnecessary for this public
+      // projection. The complete Anchor set is returned without an arbitrary
+      // row LIMIT or per-node SQL request.
+      const rows=await query.selectFrom(relation(scope+'_anchor'))
+        .select(['uid','type','title','attr'])
+        .where('type','in',ANCHOR_TYPE_GROUPS.time)
+        .where('invisible','=',false).execute();
+      assertZModelSelectRows('silver.'+scope+'_anchor',
         ['uid','type','title','attr'],rows);
       return respond({data:rows.map(row=>({...row,
         attr:typeof row.attr==='string'?JSON.parse(row.attr||'{}'):row.attr||{}
