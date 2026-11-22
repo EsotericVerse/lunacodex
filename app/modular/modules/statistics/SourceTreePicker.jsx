@@ -1,6 +1,7 @@
 'use client';
 
 import {useMemo} from 'react';
+import {sourceIntersectionOutline} from '../../../loc/statistics/source-tree-measures.mjs';
 
 // Choose any level of the ONE LOC SiteAnchor hierarchy. Parent selection
 // includes its real From descendants, while the individual From (site) stays
@@ -11,6 +12,12 @@ export default function SourceTreePicker({
   // expressly permits only Galaxy/Domain; Universe and From remain navigation.
   selectableTypes=null
 }){
+  // In intersections Universe is a heading; only Galaxy and Domain are
+  // choices. From participates in the rollup, but is not rendered here.
+  const groupedIntersection=Array.isArray(selectableTypes)&&selectableTypes.length===2&&
+    ['galaxy','domain'].every(type=>selectableTypes.includes(type));
+  const sourceGroups=useMemo(()=>groupedIntersection
+    ?sourceIntersectionOutline(metrics):[],[metrics,groupedIntersection]);
   const {children,roots,unclassified}=useMemo(()=>{
     const children=new Map(),roots=[];
     let unclassified=null;
@@ -51,6 +58,24 @@ export default function SourceTreePicker({
       </details>:buttonFor(item)}
     </li>;
   }
+  if(groupedIntersection)return <section className="scope-source-tree-picker" aria-label={label}>
+    <p className="scope-status">依 Universe 分組，選擇 Galaxy 或展開 Domain。</p>
+    <ul>{sourceGroups.map(universe=><li className="scope-source-tree-node" key={universe.uid}>
+      <h4 className="scope-source-tree-universe">{universe.name}</h4>
+      <ul>{universe.galaxies.map(galaxy=><li className="scope-source-tree-node" key={galaxy.uid}>
+        {buttonFor(galaxy)}
+        {galaxy.domains.length?<details
+          defaultOpen={selectedPath.includes(galaxy.uid)}
+          className="scope-source-tree-branch">
+          <summary>Domain（{galaxy.domains.length}）</summary>
+          <ul>{galaxy.domains.map(domain=><li
+            className="scope-source-tree-node" key={domain.uid}>
+            {buttonFor(domain)}
+          </li>)}</ul>
+        </details>:null}
+      </li>)}</ul>
+    </li>)}</ul>
+  </section>;
   return <section className="scope-source-tree-picker" aria-label={label}>
     <p className="scope-status">來源：Universe → Galaxy → Domain → From（site）</p>
     <ul>{roots.map(nodeView)}
