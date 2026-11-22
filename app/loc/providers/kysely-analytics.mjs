@@ -251,13 +251,17 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals
 // A single indexed calendar-year GROUP BY includes every article with a
 // place_id, not just points belonging to the selected route or trace=true.
 // No content, article rows, unlinked source tables or coordinates leave SQL.
-async function traceTerritory(trx,scope,start,end,{withPoints=false}={}){
+async function traceTerritory(trx,scope,start,end,{withPoints=false,statisticsOnly=false}={}){
   if(!start||!end)reject('Territory statistics require a bounded period');
   const galaxy=relation(scope,'galaxy');
   // Count all Galaxy articles linked to a visible Point, regardless of Galaxy
   // trace/list flags. Anchor.invisible owns the territory visibility boundary.
   // Group by date/site to support timeline and source shares without fetching
   // Galaxy articles or constructing a Point UID list in advance.
+  // Standard Trace territory keeps its original visibility semantics.
+  // Only the four-dimensional Statistics comparison opts into the same
+  // statics=true cohort used by its Source/Time count aggregates.
+  const statisticsFilter=statisticsOnly?sql`and g.statics is true`:sql``;
   const grouped=sql`(
     select g.place_id::text as place_id,
       (g.date)::text as day,btrim(coalesce(g.site,'')) as site,
@@ -265,6 +269,7 @@ async function traceTerritory(trx,scope,start,end,{withPoints=false}={}){
     from ${galaxy} g
     where g.place_id is not null and btrim(g.place_id::text)<>''
       and g.date between ${start}::date and ${end}::date
+      ${statisticsFilter}
     group by 1,2,3
   )`.as('g');
   // ZModel verifies the Galaxy/Point join, including a.type=point and
@@ -480,7 +485,8 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   else if(mode==='overview')data=await scopeOverview(trx,scope,start,end);
   else if(mode==='trace_places')data=await tracePlaces(trx,scope,start,end);
   else if(mode==='trace_territory')data=await traceTerritory(trx,scope,start,end,{
-    withPoints:options.withPoints===true
+    withPoints:options.withPoints===true,
+    statisticsOnly:options.statisticsOnly===true
   });
   else if(mode==='shared_classes')data=await sharedClasses(trx,scope,
     'silver.'+scope+'_'+anchorSuffix,role);
@@ -700,12 +706,14 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     }));
   }else if(mode==='trace_territory'){
     if(!start||!end)reject('Territory statistics require a bounded period');
-    const rows=await db.selectFrom(galaxy)
+    let query=db.selectFrom(galaxy)
       .select(['place_id','site','date'])
       .select(eb=>eb.fn.countAll().as('n'))
       .where('place_id','is not',null).where('place_id','!=','')
-      .where('date','>=',start).where('date','<=',end)
-      .groupBy(['place_id','site','date']).orderBy('date','asc').execute();
+      .where('date','>=',start).where('date','<=',end);
+    if(options.statisticsOnly===true)query=query.where('statics','=',true);
+    const rows=await query.groupBy(['place_id','site','date'])
+      .orderBy('date','asc').execute();
     data=rows.map(row=>({place_id:String(row.place_id||''),
       site:String(row.site||'').trim(),day:portableDay(row.date),
       item_count:Number(row.n||0)}));

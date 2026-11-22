@@ -5,7 +5,12 @@ import {useMemo} from 'react';
 // Choose any level of the ONE LOC SiteAnchor hierarchy. Parent selection
 // includes its real From descendants, while the individual From (site) stays
 // selectable. A one-child parent is never flattened into a child label.
-export default function SourceTreePicker({metrics=[],value='',takenIds=new Set(),onChange,label='來源'}){
+export default function SourceTreePicker({
+  metrics=[],value='',takenIds=new Set(),onChange,label='來源',
+  // The general Source selector may allow all four levels. Intersection
+  // expressly permits only Galaxy/Domain; Universe and From remain navigation.
+  selectableTypes=null
+}){
   const {children,roots,unclassified}=useMemo(()=>{
     const children=new Map(),roots=[];
     let unclassified=null;
@@ -22,13 +27,18 @@ export default function SourceTreePicker({metrics=[],value='',takenIds=new Set()
   },[metrics]);
   const chosen=metrics.find(item=>item.id===value);
   const selectedPath=chosen?.path||[];
-  const buttonFor=(item,whole=false)=>(
-    <button type="button" className="scope-source-tree-choice loc-button"
+  const eligible=item=>!Array.isArray(selectableTypes)||
+    selectableTypes.includes(item.type);
+  const buttonFor=(item,whole=false)=>eligible(item)
+    ?<button type="button" className="scope-source-tree-choice loc-button"
       aria-pressed={item.id===value} disabled={takenIds.has(item.id)||item.total<=0}
       onClick={()=>onChange(item.id)}>
       {whole?'選擇整個 '+item.name:item.name}
       <span className="scope-source-tree-count">（{item.total.toLocaleString()}）</span>
-    </button>);
+    </button>
+    :<span className="scope-source-tree-leaf-label">
+      {item.name} <span className="scope-source-tree-count">（{item.total.toLocaleString()}）</span>
+    </span>;
   function nodeView(item){
     const descendants=children.get(item.uid)||[];
     return <li key={item.id} className="scope-source-tree-node">
@@ -44,7 +54,7 @@ export default function SourceTreePicker({metrics=[],value='',takenIds=new Set()
   return <section className="scope-source-tree-picker" aria-label={label}>
     <p className="scope-status">來源：Universe → Galaxy → Domain → From（site）</p>
     <ul>{roots.map(nodeView)}
-      {unclassified?<li className="scope-source-tree-node" key={unclassified.id}>
+      {unclassified&&!Array.isArray(selectableTypes)?<li className="scope-source-tree-node" key={unclassified.id}>
         {buttonFor(unclassified)}
       </li>:null}
     </ul>
