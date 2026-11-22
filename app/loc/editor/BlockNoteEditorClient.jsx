@@ -58,8 +58,16 @@ export default function BlockNoteEditorClient({
       editorEpoch.current++;
       htmlEmitVersion.current++;
       lastEmittedBlocks.current='';
-      // BlockNoteView owns its ProseMirror/UI unmount. Do not keep a second
-      // editor reference or a recoverable document snapshot after that.
+      const exitedEpoch=editorEpoch.current;
+      // React StrictMode may immediately re-run the effect. Defer only the
+      // destruction check, not the abandonment: a remounted editor cancels it.
+      // Release the underlying ProseMirror listeners/plugins after the view
+      // has detached; no draft or editor object is kept in a global cache.
+      queueMicrotask(()=>{
+        if(mountedRef.current||editorEpoch.current!==exitedEpoch)return;
+        const tiptap=editor?._tiptapEditor;
+        if(tiptap&&!tiptap.isDestroyed)tiptap.destroy?.();
+      });
     };
   },[editor]);
 
