@@ -22,24 +22,7 @@ function fakeRegistry(initial=ORIGINAL){
   const scopeConfigs=new Map([['lo3rwang',{display_name:'Owner'}]]);
   const trx={
     selectFrom(table){
-      assert.equal(table,'api.manage as m');
-      return {leftJoin(relation,on,left){
-        assert.deepEqual([relation,on,left],['silver.loc as l','l.id','m.id']);
-        return {select(cols){
-          assert.ok(cols.includes('m.id as id'));
-          return {orderBy(column){
-            assert.equal(column,'m.id');
-            return {forUpdate(alias){
-              assert.equal(alias,'m');
-              return {async execute(){
-                calls.push('registry-lock');
-                return registry.map(row=>({...row,
-                  display_name:summary.get(row.id)||null}));
-              }};
-            }};
-          }};
-        }};
-      }};
+      assert.fail('Registry SQL reads forbidden: '+table);
     },
     insertInto(table){
       return {values(value){
@@ -90,7 +73,7 @@ test('Scope Registry group creation commits its Registry and display projection 
   assert.equal(state.registry.find(x=>x.id==='testgroup').manage_role,'group');
   assert.equal(state.summary.get('testgroup'),'測試群組');
   assert.deepEqual(state.calls,
-    ['registry-lock','insert:api.manage','insert:silver.loc']);
+    ['insert:api.manage','insert:silver.loc']);
 });
 test('Scope rename updates both public config and Registry summary atomically',async()=>{
   const state=fakeRegistry();
@@ -101,7 +84,7 @@ test('Scope rename updates both public config and Registry summary atomically',a
   assert.equal(result.display_name,'新顯示名稱');
   assert.equal(state.summary.get('lo3rwang'),'新顯示名稱');
   assert.equal(state.scopeConfigs.get('lo3rwang').display_name,'新顯示名稱');
-  assert.deepEqual(state.calls,['registry-lock','update:api.manage',
+  assert.deepEqual(state.calls,['update:api.manage',
     'update:silver.loc','update:silver.lo3rwang']);
 });
 test('Scope Registry refuses duplicate routes, unlisted writes and cycles',async()=>{
@@ -175,6 +158,7 @@ test('Scope lifecycle uses serializable website Session and no legacy RPC',()=>{
     assert.ok(actions.includes("'"+action+"'"),action+' must be supported');
   }
   assert.doesNotMatch(lifecycle,/silver\.manage\(|api\.(?:provision_scope|delete_scope|manage_scope_registry)\(/);
+  assert.doesNotMatch(lifecycle,/selectFrom\(['"]api\.manage/);
   assert.doesNotMatch(lifecycle,/enable row level security|create policy|grant select/i);
   assert.match(lifecycle,/synchronizeKeywordLibraryInTransaction\(trx,scope\)/);
   assert.match(lifecycle,/keyword_patterns:indexed\?\.created/);
