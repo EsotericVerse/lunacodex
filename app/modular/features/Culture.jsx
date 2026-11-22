@@ -628,7 +628,7 @@ export default function Culture(){
       const label=node?.display_name||l.other;
       const key=root+':'+code;
       if(!index.has(key))index.set(key,{key,root,label,site:label,
-        sites:[],media_types:[],item_count:0});
+        sites:[],item_count:0});
       const group=index.get(key);
       group.item_count+=Number(source.item_count)||0;
       group.sites.push(...(source.sites||[]));
@@ -650,7 +650,7 @@ export default function Culture(){
         descendants.has(group.key.slice(group.key.indexOf(':')+1)));
       if(members.length)return {key:option.key,root:option.root,label:option.label,
         site:option.label,sites:[...new Set(members.flatMap(item=>item.sites))],
-        media_types:[],item_count:members.reduce((n,item)=>n+item.item_count,0)};
+        item_count:members.reduce((n,item)=>n+item.item_count,0)};
     }
     return categoryGroups.find(item=>item.category_key===
       (keywordDrillSource?'source:'+keywordDrillSource:selectedCategory))||null;
