@@ -37,8 +37,8 @@ test('built-in publication and JS Manage registry agree on routing and role',()=
 
 test('fixed registry removes SQL mapping probes but not signed authorization checks',()=>{
   const code=read('app/loc/providers/kysely-management.mjs');
-  assert.match(code,/const fixed=publishedManagedScope\(scope\);/);
-  assert.match(code,/if\(fixed\)return fixed;/);
+  assert.match(code,/return publishedManagedScope\(scope\);/);
+  assert.doesNotMatch(code,/selectFrom\('api\.manage'\)/);
   assert.match(code,/const record=await registeredScope\(trx,scope\);/);
   assert.match(code,/canLocAccess\(trx,'scope',scope\)/);
   const roles=read('app/loc/permissions/loc_access.mjs');

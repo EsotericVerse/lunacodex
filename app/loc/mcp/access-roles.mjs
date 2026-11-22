@@ -1,6 +1,4 @@
-// MCP uses the exact same api.manage ZModel/PolicyPlugin role reader as Web.
-// Its grants remain restricted to active records: virtual Admin is web-only.
-import {directMcpKysely,closeLocDatabase} from './native-kysely.mjs';
+// Published LOC JS roles are authoritative for MCP/Extension after verified OAuth identity.
 import {z} from 'zod';
 import {readLocAccess} from '../permissions/loc_access.mjs';
 
@@ -15,32 +13,19 @@ function denial(message,httpStatus){
   return Object.assign(new Error(message),{httpStatus});
 }
 
-// One bounded role SELECT, shared by MCP/Extension and website. No extra
-// activeMcpRows Kysely implementation or separate grant builder.
-export async function loadMcpLocAccess(db,email,{dialect,engine,transactional=false}={}){
-  const rights=await readLocAccess(db,email,{dialect,engine,transactional});
+// No SQL connection or api.manage SELECT for role lookup. Preserve the
+// existing call signature for callers that already have a transaction.
+export async function loadMcpLocAccess(_db,email,_options={}){
+  const rights=await readLocAccess(null,email,{website:false});
   if(!rights.roles.length)throw denial('LOC MCP role not granted',403);
   return rights;
 }
 
-export async function authorizeMcpRole(email,env={},{
-  database=directMcpKysely,waitUntil
-}={}){
+export async function authorizeMcpRole(email,_env={},_options={}){
   const verified=String(email||'').trim().toLowerCase();
   if(!VerifiedEmail.safeParse(verified).success)
     throw denial('Verified LOC identity required',401);
-  let permissions,port=null;
-  try{
-    port=await database(env,'',{waitUntil});
-    permissions=await readLocAccess(port.db,verified,{
-      dialect:port.dialect,engine:port.engine});
-  }catch{
-    throw denial('LOC MCP role service unavailable',503);
-  }finally{
-    // Standalone OAuth authorizer owns this request's SQL connection.
-    await closeLocDatabase(port);
-  }
-  if(!permissions.roles.length)throw denial('LOC MCP role not granted',403);
+  const permissions=await loadMcpLocAccess(null,verified);
   return {email:verified,roles:permissions.roles.map(({id,role})=>({id,role})),
     permissions};
 }

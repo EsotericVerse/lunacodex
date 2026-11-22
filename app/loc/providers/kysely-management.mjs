@@ -3,7 +3,7 @@
 // Historical RPC/legacy payload helpers are not independent authorities;
 // Tree Models do not grant access, run SQL, or create additional relations.
 import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
-import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
+import {fixedManageScope,FIXED_MANAGE_ROWS} from '../permissions/fixed-manage-registry.mjs';
 import {publishedManagedScope} from './published-managed-scope.mjs';
 import {provisionScopeNative,manageScopeRegistryNative,deleteScopeNative}
   from './kysely-scope-lifecycle.mjs';
@@ -114,24 +114,10 @@ export function managedPrimaryKeyColumns(table,modelName=''){
   // than guessing a ZModel or changing database routing.
   return [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
 }
-// Every operation in one managed transaction uses the SAME trusted registry
-// snapshot. Do not issue one api.manage SELECT per Anchor/Galaxy operation.
-// Cache lives only as long as the owning Kysely transaction object; a write
-// to api.manage invalidates it before any subsequent operation in that trx.
-const transactionRegistry=new WeakMap();
-async function registeredScope(trx,scope){
-  // Built-in Scope table names are fixed public JS data: zero Registry SQL.
-  // Unpublished custom Scopes continue to use transactional SQL lookup.
-  const fixed=publishedManagedScope(scope);
-  if(fixed)return fixed;
-  let cache=transactionRegistry.get(trx);
-  if(!cache){cache=new Map();transactionRegistry.set(trx,cache);}
-  if(!cache.has(scope)){
-    cache.set(scope,trx.selectFrom('api.manage')
-      .select(['id','manage_role','active','galaxy_table','anchor_table'])
-      .where('id','=',scope).executeTakeFirst());
-  }
-  return cache.get(scope);
+// A Scope absent from published JS has no business authorization.
+ // No fallback to api.manage SQL, including for dynamic/unpublished Scopes.
+async function registeredScope(_trx,scope){
+  return publishedManagedScope(scope);
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'||table==='loc_anchor'){
@@ -807,17 +793,21 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     return {data:rows,count:rows.length};
   }
   if(name==='read_scope_registry_admin'){
-    if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
-    await sql`reset role`.execute(trx);
-    const rows=await zmodelRegistryJoin(trx,{optionalLoc:true})
-      .select(['m.id as id','l.display_name as display_name','m.email as email',
-        'm.manage_role as manage_role','m.domain as domain','m.directory as directory',
-        'm.parent_scope_id as parent_scope_id','m.active as active',
-        'm.sort_order as sort_order','m.galaxy_table as galaxy_table',
-        'm.anchor_table as anchor_table','l.birthday as birthday',
-        'l.title_tw as title_tw','l.desc_tw as desc_tw'])
-      .orderBy('m.sort_order','asc').orderBy('m.id','asc').execute();
-    return {data:rows.filter(row=>row.manage_role!=='reserve'),count:null};
+    if(!canLocAccess(trx,'global'))reject('Global administrator required',403);
+    // api.manage registry fields, including roles and email, come only from
+    // published JS. Silver LOC presentation metadata is separate business data.
+    const registry=FIXED_MANAGE_ROWS.filter(row=>row.manage_role!=='reserve');
+    const summaries=await trx.selectFrom('silver.loc')
+      .select(['id','display_name','birthday','title_tw','desc_tw'])
+      .where('id','in',registry.map(row=>row.id)).execute();
+    const byId=new Map(summaries.map(row=>[row.id,row]));
+    const rows=registry.map(row=>({...row,
+      display_name:byId.get(row.id)?.display_name||row.id,
+      birthday:byId.get(row.id)?.birthday||null,
+      title_tw:byId.get(row.id)?.title_tw||null,
+      desc_tw:byId.get(row.id)?.desc_tw||null
+    })).sort((a,b)=>a.sort_order-b.sort_order||a.id.localeCompare(b.id));
+    return {data:rows,count:null};
   }
   if(name==='bulk_update_galaxy_able')return {data:await bulkUpdateGalaxyFlags(trx,args),count:null};
   if(name==='find_galaxy_duplicates')return {data:await findGalaxyDuplicates(trx,args),count:null};

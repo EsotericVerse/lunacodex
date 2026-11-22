@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync,existsSync} from 'node:fs';
+import {loadMcpLocAccess,authorizeMcpRole} from '../app/loc/mcp/access-roles.mjs';
+
+const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
+
+test('MCP business role checks never open SQL or read api.manage',async()=>{
+  const forbidden={selectFrom(){throw Error('SQL role lookup forbidden');}};
+  const rights=await loadMcpLocAccess(forbidden,'sopa2306@gmail.com');
+  assert.equal(rights.canWrite,true);
+  assert.equal(rights.canManage,false);
+  const response=await authorizeMcpRole('sopa2306@gmail.com');
+  assert.ok(response.permissions.grants.includes('loc:write'));
+  assert.doesNotMatch(read('app/loc/mcp/access-roles.mjs'),/directMcpKysely|closeLocDatabase|selectFrom/);
+});
+
+test('MCP authorization and scope status finish before opening a database',()=>{
+  const native=read('app/loc/mcp/native-operations.mjs');
+  assert.ok(native.indexOf("body.kind==='mcp-authorize'||body.kind==='mcp-scope-status'")<
+    native.indexOf('selected=await database('));
+  assert.doesNotMatch(native,/selectFrom\('api\.manage'\)/);
+  const managed=read('app/loc/providers/kysely-management.mjs');
+  assert.doesNotMatch(managed,/selectFrom\('api\.manage'\)/);
+});
+
+test('the removed general public SELECT server cannot be brought back as an unmounted module',()=>{
+  assert.equal(existsSync(new URL('../app/loc/server/native-public-query.mjs',import.meta.url)),false);
+  const routes=JSON.parse(read('public/_routes.json'));
+  assert.ok(!routes.include.includes('/api/loc-public-query'));
+});

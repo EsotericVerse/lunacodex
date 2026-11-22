@@ -5,6 +5,7 @@ import {sql} from 'kysely';
 import {classifyShortImportFailure} from '../import/import-failure-code.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {readLocAccess} from '../permissions/loc_access.mjs';
+import {publishedManagedScope} from '../providers/published-managed-scope.mjs';
 import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../packages/zenstack/sql-input-shape.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
@@ -168,6 +169,24 @@ export async function handleNativeLocOperation(request,env={},{
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request,fetchImpl,{trustedMcpBridge:host===MCP_HOST});
+    // Pure role and Scope eligibility checks use published JS only.
+    // Returning here prevents needless SQL connections and transactions.
+    if(body.kind==='mcp-authorize'||body.kind==='mcp-scope-status'){
+      if(host!==MCP_HOST)throw refusal('MCP authorization only',404);
+      const rights=await loadMcpLocAccess(null,claims.email);
+      if(body.kind==='mcp-authorize')return reply({data:{authorized:true}});
+      if(!/^[a-z][a-z0-9]{0,14}$/.test(body.scopeid))
+        throw refusal('Invalid Scope',400);
+      const allowed=rights.grants.includes('global:manage')||
+        rights.grants.includes(body.scopeid+':read');
+      if(!allowed)throw refusal('LOC Scope permission required',403);
+      const registry=publishedManagedScope(body.scopeid);
+      if(!registry)throw refusal('Unpublished LOC Scope',403);
+      return reply({data:{scopeid:body.scopeid,active:registry.active===true,
+        role:registry.manage_role,database:'主要資料庫連線',readable:true,
+        writable:rights.grants.includes('global:manage')||
+          rights.grants.includes(body.scopeid+':write')}});
+    }
     // LOC Auth verifies the identity; only active api.manage grants may
     // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
@@ -218,7 +237,7 @@ export async function handleNativeLocOperation(request,env={},{
     // private read; only then may the business Scope eligibility be checked.
     // Extension imports and direct MCP operations share the same role-based
     // Gateway gate. Website editor grants retain their existing separate policy.
-    // Each request performs one active api.manage lookup, never a second probe.
+    // Business grants are derived from JS without api.manage SQL.
     if(operationKind==='short-import')importPhase='permission';
     // Managed batches resolve their one authorization snapshot inside the
     // SAME transaction as all of their writes, not in a preceding query.
@@ -235,15 +254,6 @@ export async function handleNativeLocOperation(request,env={},{
       claims.grants=permission.grants;
       if(writeKinds.has(body.kind)&&!permission.canWrite)
         throw refusal('LOC write permission denied',403);
-    }
-    // These fixed MCP operations are business data; no Authority-owned
-    // custom Scope grants, token service, or SQL profile endpoint is involved.
-    // LAS asks LOC to resolve its existing active api.manage eligibility. 
-    // This is a read-only check, not a new grant or role registry.
-    if(body.kind==='mcp-authorize'){
-      if(host!==MCP_HOST)throw refusal('MCP authorization only',404);
-      if(!permission.roles?.length)throw refusal('LOC MCP role not granted',403);
-      return reply({data:{authorized:true}});
     }
     // Galaxy data and statistics remain owned by LOC. LAS only maps request
     // envelopes and forwards a verified OAuth bearer to these fixed operations.
@@ -291,27 +301,6 @@ export async function handleNativeLocOperation(request,env={},{
         return executeLocConversation(trx,body,claims);
       });
       return reply({data:result});
-    }
-    if(body.kind==='mcp-scope-status'){
-      if(host!==MCP_HOST)throw refusal('MCP Scope endpoint only',404);
-      if(!/^[a-z][a-z0-9]{0,14}$/.test(body.scopeid))
-        throw refusal('Invalid Scope',400);
-      const data=await selected.db.transaction().execute(async trx=>{
-        const rights=await loadMcpLocAccess(trx,claims.email,{
-          dialect:selected.dialect,engine:selected.engine,transactional:true});
-        claims.me=rights.canWrite;claims.grants=rights.grants;
-        const allowed=rights.grants.includes('global:manage')||
-          rights.grants.includes(body.scopeid+':read');
-        if(!allowed)throw refusal('LOC Scope permission required',403);
-        const row=await trx.selectFrom('api.manage')
-          .select(['id','manage_role','active','galaxy_table','anchor_table'])
-          .where('id','=',body.scopeid).executeTakeFirst();
-        return {scopeid:body.scopeid,active:row?.active===true,
-          role:row?.manage_role||'',database:'主要資料庫連線',readable:true,
-          writable:rights.grants.includes('global:manage')||
-            rights.grants.includes(body.scopeid+':write')};
-      });
-      return reply({data});
     }
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
