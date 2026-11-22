@@ -457,7 +457,7 @@ function IncrementalLoad({
       if(loadingRef.current||error||now<readyAtRef.current)return;
       readyAtRef.current=now+Math.max(0,Number(cooldownMs)||0);
       onLoadMore();
-    },{root:scrollRootRef?.current||null,threshold:0.1,rootMargin:'80px 0px'});
+    },{root:scrollRootRef?.current||null,threshold:0,rootMargin:'640px 0px'});
     observer.observe(sentinel);
     return()=>observer.disconnect();
   },[hasMore,error,onLoadMore,cooldownMs,scrollRootRef]);
@@ -552,6 +552,7 @@ export function IncrementalList({
   return <>
     <div ref={scrollRootRef||undefined} className={className}>
       {visible.map((item,index)=>renderItem(item,index))}
+      {scrollRootRef&&loading&&source.length>0?<p className='scope-status' role='status'>正在載入下一批文章；已載入內容保持顯示。</p>:null}
       {scrollRootRef?loader:null}
     </div>
     {!scrollRootRef?loader:null}
