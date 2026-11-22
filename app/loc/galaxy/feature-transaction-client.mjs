@@ -1,12 +1,12 @@
 // Browser-side fixed feature client: never passes SQL, table or column names.
 export async function readGalaxyFeature({
   feature,scope,startDate,endDate,category,sources,excludedSources,
-  placeIds,text,requiredTerms,excludedTerms,
+  placeIds,mediaUrls,text,requiredTerms,excludedTerms,
   result='count',cursor,limit,offset,sortDirection,includeTotal,signal
 }={}){
   const body={kind:'transaction',operation:'galaxy-feature',
     feature,scope,startDate,endDate,category,sources,excludedSources,
-    placeIds,text,requiredTerms,excludedTerms,
+    placeIds,mediaUrls,text,requiredTerms,excludedTerms,
     result,cursor,limit,offset,sortDirection,includeTotal};
   const response=await fetch('/api/loc-public-query',{
     method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
