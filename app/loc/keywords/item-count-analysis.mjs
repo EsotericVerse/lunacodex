@@ -83,7 +83,8 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     }
   }
   function totals(){return {
-    analyzedDocuments:state.scanned,parsedDocuments:state.parsed,
+    analyzedDocuments:state.parsed,scannedDocuments:state.scanned,
+    parsedDocuments:state.parsed,
     matchedDocuments:state.matchedDocuments,itemMatches:state.itemMatches,
     occurrences:state.occurrences,itemCounts:{...state.itemCounts},
     itemDocuments:{...state.itemDocuments},groupCounts:{...state.groupCounts},
