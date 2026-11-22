@@ -37,7 +37,7 @@ import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportD
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
 import {publicVisualUrl,visualGalaxyCandidates} from './visual-galaxy.mjs';
 import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
-import {urlSafeInBatches} from '../query/query-batch-size.mjs';
+import {MAX_ROWS,urlSafeInBatches} from '../query/query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content/content-policy';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
@@ -302,8 +302,9 @@ function ImportFormatSettings({format,onChange,disabled=false}){
 // Count and page each query until all matched rows are returned.
 async function readExistingByIds(table,columns,column,values,message,onPage){
   const records=[],orderColumn='uid';
-  // SELECT comparison pages are independent of the unchanged 1000-row write batch.
-  const pageSize=500;
+  // Internal import match pages use the common SQL return baseline;
+  // these are not UI article UID lists (whose visible pages stay at 100).
+  const pageSize=MAX_ROWS;
   for(const batch of urlSafeInBatches(values,column)){
     for(let offset=0;;){
       const {data,error}=await dbAuthRelation(table).select(columns)
@@ -551,19 +552,19 @@ async function syncImportedVisualGalaxies({
     let cursor='';
     for(;;){
       let query=dbAuthRelation(galaxy).select('uid,source_id,url')
-        .in('url',batch).order('uid',{ascending:true}).limit(500);
+        .in('url',batch).order('uid',{ascending:true}).limit(MAX_ROWS);
       if(cursor)query=query.gt('uid',cursor);
       const {data,error}=await query;
       if(error)throw Error('圖片／影片 Galaxy URL 查詢失敗：'+error.message);
       const rows=data||[];
-      if(!Array.isArray(rows)||rows.length>500)throw Error('圖片／影片 Galaxy 查詢回傳不完整');
+      if(!Array.isArray(rows)||rows.length>MAX_ROWS)throw Error('圖片／影片 Galaxy 查詢回傳不完整');
       for(const row of rows){
         const key=JSON.stringify([String(row.source_id||''),String(row.url||'')]);
         if(!wanted.has(key))continue;
         if(!saved.has(key))saved.set(key,new Set());
         saved.get(key).add(String(row.uid||''));
       }
-      if(rows.length<500)break;
+      if(rows.length<MAX_ROWS)break;
       const next=String(rows.at(-1)?.uid||'');
       if(!/^[A-Za-z0-9]{8}$/.test(next)||next<=cursor)
         throw Error('圖片／影片 Galaxy URL 游標未前進');
@@ -1278,7 +1279,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           for(const idsPage of urlSafeInBatches(ids,'site_id')){
             // Page every stored candidate; one platform ID can map to
             // multiple legacy rows and must remain ambiguous until compared.
-            const pageSize=500;
+            const pageSize=MAX_ROWS;
             for(let offset=0;;){
               const {data,error}=await dbAuthRelation(galaxy)
                 .select(GALAXY_IMPORT_UID_COLUMNS)
@@ -1329,7 +1330,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           ].map(row=>String(row.uid))),
           onProgress:p=>showProgress('依來源與建立時間比對',p.completed,p.total),
           readSourceRows:async({site,fromDate,toDate,consumePage})=>{
-            const pageSize=250;
+            const pageSize=MAX_ROWS;
             const dated=async()=>{
               let afterDate=null,afterUid=null;
               for(;;){
@@ -1406,7 +1407,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const targetDays=[...new Set(incomingNew.map(row=>
           importCalendarDay(row.createtime||fallbackTime)))].filter(Boolean).sort();
         const occupiedTimes=[];
-        const pageSize=500;
+        const pageSize=MAX_ROWS;
         const appendOccupied=page=>{
           if(!Array.isArray(page)||page.length>pageSize)
             throw Error('匯入時間查詢回傳格式錯誤');
