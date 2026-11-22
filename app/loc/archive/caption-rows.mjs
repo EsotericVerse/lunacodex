@@ -1,5 +1,4 @@
-// Facebook album photos with their own text become pic_text rows (one picture each);
-// media are Galaxy Media records and never hold text.
+// Captioned images and videos become Galaxy content, not media Anchors.
 // Structural parents represent actual platform media posts but are not user prose.
 import {JSONPath} from 'jsonpath-plus';
 import {archiveGalaxyRow,platformLabel} from './galaxy-row.mjs';
@@ -7,12 +6,12 @@ import {facebookArchiveUid} from './facebook-place.mjs';
 import {repairMojibakeText} from '../content/content-policy.js';
 import {archiveAttachmentReferences} from './media-evidence.mjs';
 import {parseImportCreatedTime} from '../import/batch.mjs';
-import {publicImageUrl} from '../import/image-galaxy.mjs';
+import {publicVisualUrl} from '../import/visual-galaxy.mjs';
 
 const clean=value=>repairMojibakeText(String(value||'').trim());
-const captionImageUrl=attachments=>(attachments||[])
-  .filter(item=>item.mediaType==='image')
-  .map(item=>publicImageUrl(item.url)).find(Boolean)||'';
+const captionVisualUrl=attachments=>(attachments||[])
+  .filter(item=>['image','video'].includes(item.mediaType))
+  .map(item=>publicVisualUrl(item.url)).find(Boolean)||'';
 // Facebook auto-labels album/upload metadata, not anything the user wrote.
 const GENERIC_FACEBOOK_TITLES=new Set(['行動上傳','Mobile uploads','Mobile upload','Timeline Photos','動態時報相片']);
 const authoredText=value=>{
@@ -67,7 +66,7 @@ export function archiveGalaxyRows(record){
           row:{uid,title:Array.from(description||title).slice(0,120).join(''),
             content:text,createtime:parseImportCreatedTime(item.creation_timestamp)||record.createdAt||null,
             site:source,site_id:postFbid?postFbid+':'+index:null,
-            ...(captionImageUrl(attachments)?{url:captionImageUrl(attachments),__imageGalaxy:true}:{})},
+            ...(captionVisualUrl(attachments)?{url:captionVisualUrl(attachments),__visualGalaxy:true}:{})},
           attachments
         }];
       });
@@ -104,7 +103,7 @@ export function archiveGalaxyRows(record){
         row:{uid,title:Array.from(photoTitle||photoDescription).slice(0,120).join(''),
           content:text,createtime:parseImportCreatedTime(photo.creation_timestamp)||albumTime,
           site:'Facebook',site_id:null,source_id:parentUid,
-          ...(captionImageUrl(attachments)?{url:captionImageUrl(attachments),__imageGalaxy:true}:{})},
+          ...(captionVisualUrl(attachments)?{url:captionVisualUrl(attachments),__visualGalaxy:true}:{})},
         attachments
       }];
     });
@@ -120,7 +119,6 @@ export function archiveGalaxyRows(record){
   }
   const original=archiveGalaxyRow(record);
   if(!original)return [];
-  // An Instagram caption belongs to the whole post, not to one picture. It stays
-  // in the post's own text and every picture hangs on that post's media_link.
+  // Post captions stay on the parent; independently captioned visuals use Galaxy.
   return [{row:original,attachments:Array.isArray(record.attachments)?record.attachments:[]}];
 }

@@ -249,23 +249,21 @@ export function prepareArchiveMedia(evidence=[],knownUids=new Set(),articleTimes
       uid:id,type,url:publicUrl(entry.url),
       title:owners.map(uid=>String(articleTitles.get(uid)||'').trim()).find(Boolean)||
         ({image:'圖片',video:'影片',audio:'音訊'}[type]||'媒體'),
-      // The parent article's prose is not the image's own caption.
-      description:type==='image'?String(entry.caption||'').trim()||null:
+      // Parent article text is not an attachment's own caption.
+      description:['image','video'].includes(type)?String(entry.caption||'').trim()||null:
         owners.map(uid=>String(articleContents.get(uid)||'').trim()).find(Boolean)||null,
       createtime:articleTime,location:null
     };
     const hasUrl=Boolean(row.url);
-    // A ZIP file proved to exist and explicitly linked by a saved article is
-    // valid media evidence, even without an external URL. We save metadata and
-    // the canonical UID relation, never the local path as a playable URL.
-    // Standalone/orphan ZIP files are NOT manufactured into empty media rows.
+    // ZIP paths are never public URLs; captioned visuals require a real URL.
     const linkedZipMedia=!hasUrl&&Boolean(entry.found_in_zip)&&
       Boolean(entry.referenced_by_post)&&owners.length>0&&
-      ['video','audio'].includes(type);
-    const usefulImage=type==='image'&&hasUrl&&Boolean(row.description);
-    if(usefulImage||(type!=='image'&&(hasUrl||linkedZipMedia))){
+      type==='audio';
+    const visual=['image','video'].includes(type);
+    const usefulVisual=visual&&hasUrl&&Boolean(row.description);
+    if(usefulVisual||(!visual&&(hasUrl||linkedZipMedia))){
       media.push({...row,__article_uid:owners[0]||null});
-      for(const uid of owners)mediaLinks.push({uid,media_uid:id});
+      if(!visual)for(const uid of owners)mediaLinks.push({uid,media_uid:id});
     }
     if((Number.isFinite(entry.latitude)&&Number.isFinite(entry.longitude))||entry.camera_local_time)
       exif.push({
