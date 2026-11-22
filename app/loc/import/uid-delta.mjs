@@ -129,10 +129,7 @@ export function planExistingImportUidUpdate(existing,incoming,{
       if(draft.place_id!==id)draft.place_id=id;
     }
   });
-  const changes=changedFields(next,patches);
-  if(Object.hasOwn(changes,'media_link')&&!changes.media_link.length)
-    changes.media_link=null;
-  return {changes,patches};
+  return {changes:changedFields(next,patches),patches};
 }
 
 // A Point already selected by the import UID index only needs a tiny
@@ -170,5 +167,8 @@ export function planImportMediaUrlLinks(prior=[],additions=[],articleUrl=null){
       draft.media_link.push(link);
     }
   });
-  return {changes:changedFields(next,patches),patches};
+  const changes=changedFields(next,patches);
+  if(Object.hasOwn(changes,'media_link')&&!changes.media_link.length)
+    changes.media_link=null;
+  return {changes,patches};
 }
