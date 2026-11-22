@@ -17,17 +17,21 @@ const DEFAULT_GALAXY_ATTR=Object.freeze(Object.fromEntries(
   GALAXY_ABLE_KEYS.map(key=>[key,true])));
 export function privateGalaxySource(row={}){
   const site=String(row.site||'').trim().toLowerCase();
-  if(site==='mcp')return true;
   if(site!=='github')return false;
   return /#[0-9]+$/.test(String(row.site_id||''))||
     /(?:^|[^0-9])PR\s*#[0-9]+(?:[^0-9]|$)/i.test(String(row.title||''));
 }
 export function galaxyAble(row={}){
-  // Never publish private source content regardless of incoming article flags.
+  // GitHub PR records keep their explicitly restricted origin rule.
   if(privateGalaxySource(row))return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>[key,false]));
-  return Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>[
+  const flags=Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>[
     key,booleanOrUndefined(row[key])??DEFAULT_GALAXY_ATTR[key]
   ]));
+  // New MCP imports can be listed but not extracted by default. Explicit
+  // flags are preserved so users manage visibility on the row, not via roles.
+  if(String(row.site||'').trim().toLowerCase()==='mcp'&&
+    booleanOrUndefined(row.extract)===undefined)flags.extract=false;
+  return flags;
 }
 
 export function isScopedGalaxy(table){
