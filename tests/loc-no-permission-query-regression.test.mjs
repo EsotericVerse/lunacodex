@@ -23,10 +23,15 @@ test('no standalone permission or Scope status HTTP operations survive',()=>{
   assert.doesNotMatch(managed,/selectFrom\('api\.manage'\)/);
 });
 
-test('the removed general public SELECT server cannot be brought back as an unmounted module',()=>{
+test('named LOC transactions remain available without a general SELECT executor',()=>{
   assert.equal(existsSync(new URL('../app/loc/server/native-public-query.mjs',import.meta.url)),false);
   const routes=JSON.parse(read('public/_routes.json'));
-  assert.ok(!routes.include.includes('/api/loc-public-query'));
+  assert.ok(routes.include.includes('/api/loc-public-query'));
+  const named=read('app/loc/server/public-named-transactions.mjs');
+  assert.ok(named.includes('executeKyselyAnalytics('));
+  assert.ok(named.includes('executeKyselyPublicAction('));
+  assert.ok(!named.includes('handleNativePublicQuery'));
+  assert.ok(!named.includes('native-public-query.mjs'));
 });
 
 test('Manage changes cannot commit a role or route different from published JS',()=>{
