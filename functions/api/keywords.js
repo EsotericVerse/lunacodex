@@ -167,8 +167,10 @@ export async function onRequestPost(context){
                 })();
               },
               // Closing the page's stream interrupts the unfinished SQL job.
-              // Its async finally closes the resource even when no result emits.
-              cancel(){void entry?.pool?.abort?.();}
+              // Return the cleanup Promise so cancellation cannot complete
+              // before the request-owned PostgreSQL sockets have closed.
+              // The running analysis also reaches its own finally exactly once.
+              cancel(){return entry?.pool?.abort?.();}
             });
             const response=new Response(stream,{headers:{
               'content-type':'application/x-ndjson; charset=utf-8',
