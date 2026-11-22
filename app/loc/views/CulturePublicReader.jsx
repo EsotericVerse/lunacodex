@@ -18,7 +18,12 @@ import {unassignedPublicDateAnchors} from '../culture/time-trace-river.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
 import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 
-const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{loading:()=>null});
+const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{
+  loading:()=> <div className='scope-culture-density-loading' role='status' aria-busy='true'>
+    <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+    <span>正在準備時間長河…</span>
+  </div>
+});
 const NO_ITEMS=Object.freeze([]);
 const NO_FOCUS=Object.freeze({});
 const datePart=value=>String(value||'').slice(0,10);
@@ -491,7 +496,10 @@ export default function CulturePublicReader(){
   return <FeaturePage featureId='culture'>
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
       <section className='scope-card scope-culture-structure-river'>
-        {loading?<p className='scope-status' role='status'>正在載入時間定錨…</p>:null}
+        {loading?<div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
+          <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+          <span>正在載入時間定錨…</span>
+        </div>:null}
         {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
         <div className='scope-culture-structure-toolbar'><h3>時間定錨</h3>
           <span className='scope-status'>{recentTimeWindow.start} ～ {recentTimeWindow.end}（預設視野）</span></div>
