@@ -748,13 +748,12 @@ async function selectLocStatisticsRaw({startDate='',endDate=''}={}){
   return readLocStatistics({startDate,endDate});
 }
 
-// Separate source and media breakdowns. These are independently
-// chosen within the current Scope; no cross-Scope read or merged corpus.
+// Galaxy.site is the single source breakdown, including multimedia publishers.
 export async function selectScopeSourceBreakdownRows(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
   const counted=await scopeStatisticsRows(current,{startDate,endDate});
   if(counted)return counted;
-  // Statistics must never fetch all article/media rows into the browser
+  // Statistics must never fetch all Galaxy article rows into the browser
   // to recreate a daily aggregate. An unavailable DB aggregate is an error.
   throw new Error('Scope statistics aggregate unavailable; full-row fallback disabled');
 }
@@ -787,7 +786,6 @@ function emptyOnFailure(fn,fallback){
     }
   };
 }
-export const selectMediaStatisticsFacetRows=emptyOnFailure(selectMediaStatisticsFacetRowsRaw,[]);
 export const selectScopeDensityRows=emptyOnFailure(selectScopeDensityRowsRaw,[]);
 // A failed Statistics overview is a query failure, never a legitimate zero chart.
 // Let useAsyncResource display the actual request error and its retry action.
