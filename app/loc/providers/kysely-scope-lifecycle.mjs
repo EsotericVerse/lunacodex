@@ -297,6 +297,7 @@ export async function provisionScopeNative(trx,args){
   if(copyKeywords){
     const copied=await copyDefaultKeywordClass(trx,scope);
     classUid=copied.classUid;keywordCount=copied.items;
+    if(keywordCount<1)reject('Scope Keyword Item copy incomplete',409);
   }
   await trx.insertInto('silver.'+scope).values({
     id:scope,display_name:name,theme,locale,
@@ -315,10 +316,8 @@ export async function provisionScopeNative(trx,args){
     sort_order:sort,manage_role:'scope',
     galaxy_table:'galaxy',anchor_table:'anchor'
   }).execute();
-  // Class -> Group -> Item records and their UID relationships are
+  // Class -> Group -> Item records and their UID relationships were
   // copied in this same Registry/DDL transaction. No Pattern index exists.
-  if(copyKeywords&&keywordCount<1)
-    reject('Scope Keyword Item copy incomplete',409);
   return receipt(scope,name,target,{
     parent_scope_id:parent,keyword_rows:keywordCount,
     keyword_class_uid:classUid,locale,created:true});
