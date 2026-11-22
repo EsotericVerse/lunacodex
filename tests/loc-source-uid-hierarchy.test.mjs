@@ -37,9 +37,9 @@ test('the 31 saved loc_anchor Source nodes render as exactly four UID-linked lev
     [2,'domain','Video'],[3,'from','Youtube'],
     [0,'universe','PastBy'],
     [1,'galaxy','SeeYou'],
-    [2,'domain','Closed'],[3,'from','kkcity'],[3,'from','ptt'],
+    [2,'domain','Closed'],[3,'from','kkcity'],
     [3,'from','無名wretch'],[3,'from','MSN'],
-    [2,'domain','NowON'],[3,'from','pixnet']
+    [2,'domain','NowON'],[3,'from','ptt'],[3,'from','pixnet']
   ]);
   assert.equal(hierarchy.visible.filter(x=>x.uid).length,31);
   assert.deepEqual(hierarchy.visible.filter(x=>!x.uid).map(x=>x.label),['未分類來源']);
@@ -48,7 +48,7 @@ test('the 31 saved loc_anchor Source nodes render as exactly four UID-linked lev
 
 test('one-child domains are not collapsed and do not inherit the child title',()=>{
   const hierarchy=buildCultureSourceTreeLanes(catalog,sample,expandAll);
-  for(const [parentName,childName] of [['X','X Twitter'],['Post','Vocus'],['Video','Youtube'],['NowON','pixnet']]){
+  for(const [parentName,childName] of [['X','X Twitter'],['Post','Vocus'],['Video','Youtube'],['NowON','ptt']]){
     const i=hierarchy.visible.findIndex(x=>x.label===parentName);
     assert.ok(i>=0);
     assert.equal(hierarchy.visible[i].type,'domain');

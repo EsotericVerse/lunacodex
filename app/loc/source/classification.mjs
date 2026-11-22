@@ -21,7 +21,7 @@ export function sourceLabelMatchesSite(site,label){
 // Words > CMS > Meta > Facebook/Threads/Instagram; CMS > X > X Twitter.
 // Words > Article > MCP > Github/ChatGPT/runes; Article > Post > Vocus.
 // Mutlimedia > Stream > Music > Suno/Spotify; Stream > Video > Youtube.
-// PastBy > SeeYou > Closed > kkcity/ptt/無名wretch/MSN; NowON > pixnet.
+// PastBy > SeeYou > Closed > kkcity/無名wretch/MSN; NowON > ptt/pixnet.
 // Source labels are not durable keys: Vocus supersedes "方格子vocus" only
 // when source records are explicitly edited; never rewrite Galaxy.site on import.
 // SiteAnchor from/domain/galaxy/universe is a real UID-linked hierarchy; flat UI is only presentation.
