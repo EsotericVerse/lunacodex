@@ -628,8 +628,9 @@ export default function CulturePublicReader(){
           ?<p className='scope-status' key={row.key||index}>本文已隱藏</p>
           :<div className='scope-work-list-row' key={row.key||index}>
             <span>標題：{row.title}　日期：{row.date}　</span>
-            <button type='button' className='loc-button'
+            {row.extract===true?<button type='button' className='loc-button'
               onClick={()=>toggleFull(row)}>全文展開</button>
+              :<span className='scope-status'>僅顯示列表，禁止閱讀全文</span>}
             {fullUid===row.uid?<div>
               {fullError?<p className='scope-status scope-error'>{fullError}</p>:null}
               {fullText?<div>
