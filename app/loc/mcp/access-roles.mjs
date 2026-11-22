@@ -1,54 +1,38 @@
-// MCP uses the exact same api.manage ZModel/PolicyPlugin role reader as Web.
-// Its grants remain restricted to active records: virtual Admin is web-only.
-import {directMcpKysely,closeLocDatabase} from './native-kysely.mjs';
+// LOC's published JS Manage Registry determines roles after signed OAuth
+// identity. Role checks must not open a PostgreSQL connection or query
+// api.manage; only actual business transactions may open the database.
 import {z} from 'zod';
 import {readLocAccess} from '../permissions/loc_access.mjs';
 
 const AUTH_USERINFO='https://auth.lo3rwang.cc/api/auth/oauth2/userinfo';
-const VerifiedEmail=z.email();
 export const VerifiedLocUserInfoSchema=z.looseObject({
   sub:z.string().min(1).max(128),
-  email:VerifiedEmail,
+  email:z.email(),
   email_verified:z.literal(true)
 });
 function denial(message,httpStatus){
   return Object.assign(new Error(message),{httpStatus});
 }
 
-// One bounded role SELECT, shared by MCP/Extension and website. No extra
-// activeMcpRows Kysely implementation or separate grant builder.
-export async function loadMcpLocAccess(db,email,{dialect,engine,transactional=false}={}){
-  const rights=await readLocAccess(db,email,{dialect,engine,transactional});
+export async function loadMcpLocAccess(_db,email){
+  const rights=await readLocAccess(null,email,{website:false});
   if(!rights.roles.length)throw denial('LOC MCP role not granted',403);
   return rights;
 }
 
-export async function authorizeMcpRole(email,env={},{
-  database=directMcpKysely,waitUntil
-}={}){
+export async function authorizeMcpRole(email){
   const verified=String(email||'').trim().toLowerCase();
-  if(!VerifiedEmail.safeParse(verified).success)
+  if(!z.email().safeParse(verified).success)
     throw denial('Verified LOC identity required',401);
-  let permissions,port=null;
-  try{
-    port=await database(env,'',{waitUntil});
-    permissions=await readLocAccess(port.db,verified,{
-      dialect:port.dialect,engine:port.engine});
-  }catch{
-    throw denial('LOC MCP role service unavailable',503);
-  }finally{
-    // Standalone OAuth authorizer owns this request's SQL connection.
-    await closeLocDatabase(port);
-  }
-  if(!permissions.roles.length)throw denial('LOC MCP role not granted',403);
+  const permissions=await loadMcpLocAccess(null,verified);
   return {email:verified,roles:permissions.roles.map(({id,role})=>({id,role})),
     permissions};
 }
 
-// The verified RFC 9068 token and UserInfo bind identity to the same Session;
-// no browser-supplied role or new black/allow list can elevate access.
-export async function authorizeMcpBearer(token,subject,env={},{
-  fetchImpl=globalThis.fetch,database=directMcpKysely,waitUntil
+// Verification remains signed-token + UserInfo. JS rights are only evaluated
+// after the email and subject have been verified by LOC Auth.
+export async function authorizeMcpBearer(token,subject,{
+  fetchImpl=globalThis.fetch
 }={}){
   if(!token||typeof subject!=='string'||!subject)
     throw denial('LOC OAuth access token required',401);
@@ -64,8 +48,9 @@ export async function authorizeMcpBearer(token,subject,env={},{
   if(response?.status===401||response?.status===403)
     throw denial('LOC OAuth identity verification failed',401);
   if(!response?.ok)throw denial('LOC OAuth UserInfo unavailable',503);
-  const parsed=VerifiedLocUserInfoSchema.safeParse(await response.json().catch(()=>null));
+  const parsed=VerifiedLocUserInfoSchema.safeParse(
+    await response.json().catch(()=>null));
   if(!parsed.success||parsed.data.sub!==subject)
     throw denial('Verified LOC OAuth identity required',401);
-  return authorizeMcpRole(parsed.data.email,env,{database,waitUntil});
+  return authorizeMcpRole(parsed.data.email);
 }
