@@ -5,7 +5,8 @@ import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
 import {timeUnitBucket} from '../../../loc/preferences/default-time-unit.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncInfiniteResource,useAsyncResource} from '../../../../packages/zenstack/client-queries';
-import {selectRows} from '../../../loc/db/db-query.mjs';
+import {readGalaxyFeature} from '../../../loc/galaxy/feature-transaction-client.mjs';
+import {readAnchorFeature} from '../../../loc/model/feature-transaction-client.mjs';
 import {traceArticleIdFilters,groupedTraceDays} from './trace-panel-filters.mjs';
 import {nearestTracePlaceIds} from '../../../loc/preferences/loc-feature-preferences.mjs';
 import {defaultScopeData} from '../../../loc/scope/scope-data';
@@ -120,18 +121,16 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       let offset=nearest?Number(pageParam?.offset)||0:Number(pageParam)||0;
       while(true){
         const selectedIds=nearest?[nearestPlaceIds[placeIndex]]:placeIds;
-        const filters=traceArticleIdFilters(selectedIds,{startDate,endDate,sourceName:sourceFilter,allPlacedArticles});
-        const result=await selectRows(scope.galaxy,{
-          columns:galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','),
-          filters,orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
-            {column:'uid',ascending:true}],
-          // Look ahead one row: the article list needs only 'has next',
-          // not a costly exact filtered COUNT on its first page.
-          limit:PAGE_SIZE+1,offset,signal
+        const {data}=await readGalaxyFeature({
+          feature:'trace',scope:targetScope,
+          placeIds:selectedIds,startDate:startDate||undefined,
+          endDate:endDate||undefined,
+          sources:sourceFilter?[sourceFilter]:undefined,
+          result:'articles',limit:PAGE_SIZE,offset,
+          sortDirection:sort==='asc'?'asc':'desc',signal
         });
-        const page=result.rows||[];
-        const rows=page.slice(0,PAGE_SIZE);
-        const moreInPlace=page.length>PAGE_SIZE;
+        const rows=data.rows||[];
+        const moreInPlace=data.hasMore===true;
         const total=null;
         const nextOffset=nearest
           ?moreInPlace?{placeIndex,offset:offset+rows.length}
@@ -160,30 +159,26 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       const mediaOffset=Number(pageParam?.mediaOffset)||0;
       const articleOffset=Number(pageParam?.articleOffset)||0;
       const mediaLimit=80;
-      const {rows:mediaPage}=await selectRows(scope.anchor,{
-        columns:'uid,attr',
-        filters:[{column:'type',operator:'eq',value:selectedMediaType},
-          {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
-          {column:'invisible',operator:'eq',value:false}],
-        orders:[{column:'type',ascending:true},{column:'uid',ascending:true}],
-        limit:mediaLimit,maxLimit:mediaLimit,offset:mediaOffset,signal
-      });
+      if(!ANCHOR_TYPE_GROUPS.media.includes(selectedMediaType))
+        return {rows:[],nextCursor:null};
+      const {rows:mediaPage}=await readAnchorFeature({
+        scope:targetScope,family:'media',types:[selectedMediaType],
+        limit:mediaLimit,offset:mediaOffset
+      },{signal});
       // Galaxy.media_link stores URLs, not MediaAnchor UIDs.
       const mediaUrls=[...new Set(mediaPage.map(row=>String(row.attr?.url||'').trim())
         .filter(url=>/^https?:\/\//i.test(url)))];
       if(!mediaUrls.length)return {rows:[],nextCursor:
         mediaPage.length===mediaLimit?{mediaOffset:mediaOffset+mediaLimit,articleOffset:0}:null};
-      const {rows}=await selectRows(scope.galaxy,{
-        columns:galaxyReadColumnsFor('GalaxyList').join(','),
-        filters:[
-          ...traceArticleIdFilters(placeIds,{startDate,endDate,sourceName:sourceFilter,allPlacedArticles}),
-          {column:'media_link',operator:'overlaps',value:mediaUrls}
-        ],
-        orders:[{column:'date',ascending:sort==='asc'},{column:'createtime',ascending:sort==='asc'},
-            {column:'uid',ascending:true}],
-        limit:PAGE_SIZE,maxLimit:PAGE_SIZE,offset:articleOffset,signal
+      const {data}=await readGalaxyFeature({
+        feature:'trace',scope:targetScope,placeIds,
+        startDate:startDate||undefined,endDate:endDate||undefined,
+        sources:sourceFilter?[sourceFilter]:undefined,
+        mediaUrls,result:'articles',limit:PAGE_SIZE,offset:articleOffset,
+        sortDirection:sort==='asc'?'asc':'desc',signal
       });
-      const moreInMediaPage=rows.length===PAGE_SIZE;
+      const rows=data.rows||[];
+      const moreInMediaPage=data.hasMore===true;
       const nextCursor=moreInMediaPage
         ?{mediaOffset,articleOffset:articleOffset+rows.length}
         :(mediaPage.length===mediaLimit?{mediaOffset:mediaOffset+mediaLimit,articleOffset:0}:null);
@@ -262,20 +257,8 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const mediaSummary=useAsyncResource({
     queryKey:['trace-filtered-media-summary-v3',targetScope,mediaRows.map(row=>row.uid).join('|')],
     enabled:needsSummary&&Boolean(selectedMediaType)&&mediaRows.length>0,
-    queryFn:async({signal})=>{
-      const entries=[];
-      for(let offset=0;offset<mediaRows.length;offset+=80){
-        signal?.throwIfAborted?.();
-        const batch=mediaRows.slice(offset,offset+80).map(row=>String(row.uid));
-        const {rows}=await selectRows(scope.galaxy,{
-          columns:['uid',...galaxyReadColumnsFor('GalaxyUidAnchor','GalaxyAttr')].join(','),
-          filters:[{column:'uid',operator:'in',value:batch}],
-          limit:batch.length,maxLimit:batch.length,signal
-        });
-        entries.push(...rows);
-      }
-      return {rows:groupedTraceDays(entries.filter(row=>row.trace===true),{key:'place_id'})};
-    },
+    queryFn:async()=>({rows:groupedTraceDays(
+      mediaRows.filter(row=>row.trace===true),{key:'place_id'})}),
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const summary=selectedMediaType
