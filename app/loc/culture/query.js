@@ -1,4 +1,4 @@
-import {TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
+import {TIME_ANCHOR_MAX_PAGE_ROWS,TIME_ANCHOR_TARGET_BYTES,TIME_ANCHOR_EDITOR_MAX_BYTES,ARTICLE_UID_PAGE_ROWS} from '../query/query-batch-size.mjs';
 'use client';
 
 
@@ -341,8 +341,8 @@ export async function selectLocCultureDensity({
 
 
 const MANAGED_TIME_COLUMNS='uid,type,title,description,attr,invisible';
-const MAX_MANAGED_TIME_BYTES=32*1024*1024;
-const TARGET_MANAGED_TIME_PAGE_BYTES=2*1024*1024;
+const MAX_MANAGED_TIME_BYTES=TIME_ANCHOR_EDITOR_MAX_BYTES;
+const TARGET_MANAGED_TIME_PAGE_BYTES=TIME_ANCHOR_TARGET_BYTES;
 // Read the complete historical set once for BOTH the editor and TimeRiver.
 // A one-year camera is only a viewport, never a SQL date filter. This is a
 // single authorized read flow with bounded transport pages, no extra COUNT.
@@ -588,7 +588,7 @@ export async function selectCultureArticleListPage(scope,{
 }={}){
   const scopeId=scopeIdOf(scope?.id);
   if(!scopeId)throw new Error('scopeId is required');
-  const pageSize=100;
+  const pageSize=ARTICLE_UID_PAGE_ROWS;
   const start=String(startDate||'').slice(0,10);
   const end=String(endDate||'').slice(0,10);
   if(!start||!end||start>end)return {rows:[],hasMore:false,nextCursor:null};
