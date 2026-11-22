@@ -38,32 +38,8 @@ const sourceTaxonomy=sourceTaxonomyFromAnchors(sourceRows);
 if(!sourceTaxonomy.categories.length)
   throw Error('LOC SiteAnchor source hierarchy has no typed categories');
 
-function cleanPublishedHtml(value,scope,page){
-  if(typeof value!=='string')return value;
-  let html=value.replaceAll(' classname="bn-inline-content-section"','')
-    .replaceAll(' data-inline-content-type="link"','')
-    .replaceAll(' data-level="2"','')
-    .replaceAll(' data-level="3"','')
-    .replaceAll(' data-editable=""','');
-  if(scope==='loc'&&page==='index'){
-    html=html.replaceAll('https://loc.lo3rwang.cc/governance/','https://loc.lo3rwang.cc/trace/');
-    html=html.replaceAll('>治理</a>','>痕跡</a>');
-    html=html.replaceAll("提供<u>管理頁面</u>的設定與功能選項，並說明<u>系統使用原則</u>與<strong><u>法律資訊</u></strong>。","透過地圖查看空間定錨點與相關紀錄。");
-  }
-  return html;
-}
-function cleanPublishedBlock(block,scope,page){
-  return {...block,
-    // Never ship hard-coded dependency version listings from the historical
-    // public homepage. The installed versions live in package.json.
-    block_text:cleanPublishedHtml(block.block_text,scope,page),
-    block_subtitle:cleanPublishedHtml(block.block_subtitle,scope,page),
-    block_entity:scope==='loc'&&page==='index'&&block.uid==='787D2355'?[]
-      :Array.isArray(block.block_entity)
-      ?block.block_entity.map(item=>({...item,text:cleanPublishedHtml(item.text,scope,page)}))
-      :block.block_entity};
-}
-
+// This explicit publication is a byte-for-byte snapshot of authored public
+// Block fields. Do not rewrite content or erase Block entities at publish time.
 const allBlocks=new Map(),routeConfigs=[];
 const cols='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
 for(const row of routes){
@@ -89,7 +65,10 @@ for(const row of routes){
     if(!page||page.length<end-start+1)break;
   }
   for(const block of blocks){
-    const page=String(block.page_name||'').trim().toLowerCase();
+    // Existing LOC Governance Blocks publish on the renamed Trace page,
+    // without altering their persisted type or creating a second source.
+    const originalPage=String(block.page_name||'').trim().toLowerCase();
+    const page=id==='loc'&&originalPage==='governance'?'trace':originalPage;
     if(!validPage.test(page))throw Error('Invalid published page '+id+': '+page);
     // Public group_manage is the first Hero row only. Orders 2+ are legacy
     // management-entry placeholders; the current management panes use their
@@ -97,7 +76,7 @@ for(const row of routes){
     if(id==='loc'&&page==='group_manage'&&Number(block.block_order)!==1)continue;
     const key=id+'/'+page;
     if(!allBlocks.has(key))allBlocks.set(key,[]);
-    allBlocks.get(key).push(cleanPublishedBlock(block,id,page));
+    allBlocks.get(key).push({...block,scope:id,page_name:page});
   }
 }
 const {data:locThemes,error:themesError}=await db.from('loc')
