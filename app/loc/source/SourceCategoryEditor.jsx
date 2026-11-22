@@ -6,7 +6,7 @@ import {transactionWrites,dbAuthClient} from '../db/db-client.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {sourceEditorOutlineOptions} from './keyword-options.mjs';
+import {sourceEditorOutlineOptions} from './outline-options.mjs';
 import {useEditDockForm} from '../../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
