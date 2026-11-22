@@ -43,7 +43,6 @@ import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
-import {mediaDay} from '../../loc/statistics/facets';
 import {useAccount} from '../../loc/auth/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
