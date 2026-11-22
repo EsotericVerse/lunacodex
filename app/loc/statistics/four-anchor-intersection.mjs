@@ -53,7 +53,14 @@ export function timeIntersectionMetrics(anchors=[]){
     }
     return {...metric('period',row,{windows}),ranges};
   });
-  const byPeriod=new Map(periods.map(row=>[row.uid,{type:'period',ranges:row.ranges}]));
+  // Era combines the actual Period windows, including older periods with
+  // saved explicit date boundaries rather than surviving DateAnchor endpoints.
+  const byPeriod=new Map(periods.map(row=>[row.uid,{
+    type:'period',ranges:row.windows.map(w=>({
+      start_date:w.startDate,end_date:w.endDate,point:w.startDate===w.endDate,
+      invalid:false
+    }))
+  }]));
   const eras=all.filter(row=>row.type==='era').map(row=>{
     const data=attr(row);
     const references=refIds(data.period);
@@ -81,7 +88,7 @@ export function spaceIntersectionMetrics(anchors=[]){
     const points=new Set(refIds(data.point).filter(uid=>visiblePoints.has(uid)));
     for(const uid of refIds(data.path))
       for(const point of byPath.get(uid)||[])points.add(point);
-    return metric('trace',row,{points});
+    return metric('trace',row,{points,children:refIds(data.path)});
   });
   return [...traces,...paths];
 }
