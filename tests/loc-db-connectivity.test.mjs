@@ -305,10 +305,12 @@ test('keyword sharing uses one locked read-modify-write transaction and fails cl
   assert.equal(metadata.class_shares.ABCD1234,true);
   assert.deepEqual(events,['begin','rollback']);
 });
-test('non-batch writes resolve api.manage inside the same owned SQL transaction',()=>{
+test('MCP business writes retain one owned SQL transaction and published JS role checks',()=>{
   const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  assert.ok(native.includes("const isManagedBatch=['managed-transaction','managed-write','managed-action',"));
-  for(const kind of ['mcp-conversation','mcp-scope-status','mcp-sync','mcp-append'])
+  assert.match(native,/const rights=host===MCP_HOST/);
+  assert.ok(native.indexOf('const rights=host===MCP_HOST')>0);
+  assert.ok(native.indexOf('const rights=host===MCP_HOST')<native.indexOf('selected=await database('));
+  for(const kind of ['mcp-conversation','mcp-sync','mcp-append'])
     assert.ok(native.includes("'"+kind+"'"),kind+' must join transaction authorization');
   assert.ok(native.includes('await loadMcpLocAccess(trx,claims.email'));
   assert.match(native,/readLocAccess\(trx,claims.email,\{/);
