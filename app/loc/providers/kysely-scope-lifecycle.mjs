@@ -6,6 +6,7 @@
 // with global:manage may reach these functions.
 import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';
+import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {synchronizeKeywordLibraryInTransaction} from '../keywords/sql-service.mjs';
 
@@ -139,6 +140,11 @@ export async function manageScopeRegistryNative(trx,args){
   const current=registered(rows,id);
   if(operation==='create_group'&&current)reject('Scope ID already exists',409);
   if(operation==='update'&&!current)reject('Scope Registry row not found',404);
+  // Deactivation affects JS grants. Do not commit the revocation while the
+  // published release still grants access to the same identity.
+  if(operation==='update'&&values.active===false&&
+     fixedManageScope(id)?.active===true)
+    reject('Deactivate this Scope in published JS before SQL update',409);
   if(operation==='update'&&(
     id==='admin'||!['group','scope'].includes(current.manage_role)))
     reject('System Scope Registry cannot be edited',403);
