@@ -10,6 +10,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
 import {transactionWrites} from '../db/db-client.mjs';
 import {selectRows} from '../db/db-query.mjs';
+import {readGalaxyRecords} from '../model/feature-transaction-client.mjs';
 import {useAccount} from '../auth/use-account';
 import {createUid8} from '../model/uid';
 import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from '../content/content-policy';
@@ -20,7 +21,7 @@ import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-model
 
 const GALAXY_PERMISSION_LABELS=Object.freeze({
   statics:'統計',culture:'文化',search:'搜尋',trace:'痕跡',list:'文章列表',
-  keyword:'關鍵詞',extract:'搜尋片段',others:'其他'
+  keyword:'關鍵詞',extract:'允許閱讀全文',others:'其他'
 });
 
 const datetimeLocal=value=>{
@@ -74,7 +75,15 @@ export default function ManagementArticlePublisher({scopeId}){
   },[inDock,editDock?.register]);
 
   if(!scopeId||!account.canLocAccessSync('scope',scopeId))return null;
-  const change=(key,value)=>setDraft(current=>({...current,[key]:value}));
+  const change=(key,value)=>setDraft(current=>({
+    ...current,[key]:value,
+    // Changing a published article to the MCP source should not accidentally
+    // inherit a previously-readable draft's extract=true bit. Afterwards the
+    // eight explicit switches remain independently editable.
+    ...(key==='source'&&String(value||'').trim().toLowerCase()==='mcp'&&
+      String(current.source||'').trim().toLowerCase()!=='mcp'
+      ?{permissions:{...current.permissions,list:true,extract:false}}:{})
+  }));
   const isDirty=()=>{
     if(editingUid&&loadedBaseline.current){
       const original=loadedBaseline.current;
@@ -102,13 +111,12 @@ export default function ManagementArticlePublisher({scopeId}){
       const galaxy=account.scopeDataFor(scopeId)?.galaxy;
       if(!galaxy)throw new Error(t('uiExtra.publisher.scopeUnavailable'));
       // Exact, authenticated UID lookup: no public-search index or searchable filter.
-      const {rows}=await selectRows(galaxy,{
-        columns:scopeId==='local'
-          ?'uid,title,content,site,site_id,createtime,able,url,source_id,target_id,ref_id'
-          :galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr').concat('site_id')
-            .filter((column,index,all)=>all.indexOf(column)===index).join(','),
+      const {rows}=scopeId==='local'?await selectRows(galaxy,{
+        columns:'uid,title,content,site,site_id,createtime,able,url,source_id,target_id,ref_id',
         filters:[{column:'uid',operator:'eq',value:uid}],limit:1,authenticated:true
-      });
+      }):await readGalaxyRecords({
+        scope:scopeId,view:'detail',uids:[uid]
+      },{editor:true});
       if(!rows?.length)throw new Error(t('uiExtra.publisher.uidNotFound'));
       const loaded=recordDraft(rows[0]);
       loadedBaseline.current=loaded;
@@ -251,7 +259,9 @@ export default function ManagementArticlePublisher({scopeId}){
           <fieldset className="scope-publisher-panel" style={{border:0,padding:0}}>
             <legend>文章八項權限</legend>
             {privateGalaxySource({site:draft.source,site_id:draft.site_id,title:draft.title})
-              ?<p className="scope-status">MCP 與 PR 開發紀錄保持私人，不可啟用公開旗標。</p>:null}
+              ?<p className="scope-status">PR 開發紀錄保持私人，不可啟用公開旗標。</p>:null}
+            {String(draft.source||'').trim().toLowerCase()==='mcp'
+              ?<p className="scope-status">MCP：list 開啟可顯示標題；extract 關閉則禁止公開閱讀全文。</p>:null}
             {GALAXY_ABLE_KEYS.map(key=><label className="scope-setting-toggle" key={key}>
               <input type="checkbox" checked={draft.permissions?.[key]===true}
                 disabled={privateGalaxySource({site:draft.source,site_id:draft.site_id,title:draft.title})}

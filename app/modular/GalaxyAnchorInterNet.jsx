@@ -67,21 +67,12 @@ function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
     controller.current=abort;
     setState(prev=>({...prev,status:'loading'}));
     try{
-      const [{selectRows},{defaultScopeData}]=await Promise.all([
-        import('../loc/db/db-query.mjs'),import('../loc/scope/scope-data')
-      ]);
+      const {readAnchorFeature}=await import('../loc/model/feature-transaction-client.mjs');
       if(abort.signal.aborted)return;
-      const scope=defaultScopeData(scopeId);
-      if(!scope?.anchor)throw Error('Scope Anchor unavailable');
-      const {rows=[]}=await selectRows(scope.anchor,{
-        columns:'uid,type,title,attr,invisible',
-        filters:[
-          {column:'uid',operator:'eq',value:node.uid},
-          {column:'type',operator:'eq',value:node.type},
-          {column:'invisible',operator:'eq',value:false}
-        ],
-        limit:1,signal:abort.signal
-      });
+      const {rows=[]}=await readAnchorFeature({
+        scope:scopeId,family,types:[node.type==='space_anchor'?'point':node.type],
+        uids:[node.uid],limit:1
+      },{signal:abort.signal});
       if(abort.signal.aborted)return;
       const row=rows[0];
       if(!row){setState({status:'missing',row:null,children:[]});return;}
