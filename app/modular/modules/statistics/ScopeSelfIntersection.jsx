@@ -270,10 +270,15 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
 
   return <section className="scope-stat-section scope-self-intersection" aria-label={t('uiExtra.statisticsView.selfIntersectionTitle')}>
     <h3><UiText id="uiExtra.statisticsView.selfIntersectionTitle"/></h3>
-      {query.isPending||keywords.isPending||othersConfig.isPending?<p className="scope-status">{l.readingSources}</p>:null}
+      {query.isPending||keywords.isPending?<p className="scope-status">{l.readingSources}</p>:null}
+      {shownKinds.includes('time')&&timeAnchors.isPending
+        ?<p className="scope-status" role="status">正在讀取時代／時期…</p>:null}
+      {shownKinds.includes('space')&&(spaceAnchors.isPending||territory.isPending)
+        ?<p className="scope-status" role="status">正在讀取痕跡／路徑…</p>:null}
       {query.error||catalog.error?<p className="scope-status scope-error">{String(query.error?.message||catalog.error?.message||l.readFailed)}</p>:null}
       {keywords.error?<p className="scope-status scope-error">關鍵詞分佈載入失敗：{String(keywords.error?.message||keywords.error)}</p>:null}
-      {othersConfig.error?<p className="scope-status scope-error">{t('uiExtra.statisticsView.othersLoadFailed',{error:String(othersConfig.error?.message||othersConfig.error)})}</p>:null}
+      {timeAnchors.error?<p className="scope-status scope-error">時代／時期讀取失敗：{String(timeAnchors.error?.message||timeAnchors.error)}</p>:null}
+      {spaceAnchors.error||territory.error?<p className="scope-status scope-error">痕跡／路徑讀取失敗：{String(spaceAnchors.error?.message||territory.error?.message||'')}</p>:null}
       {!query.isPending&&!catalog.isPending&&!query.error&&!catalog.error?<div className="scope-self-intersection-content">
         <div className="scope-stat-controls">
           <label><span><FieldText text="比較組數"/></span>
@@ -298,27 +303,38 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                 const next=[...selection];next[index]='';return next;
               });
             };
-            const sourceItems=categoryList.filter(item=>item.kind==='source');
-            const systems=sourceItems.filter(item=>
-              !resolveOthers(item.raw)&&assignedSource(item.raw,catalog.data?.aliases||[],catalog.data?.categories||[])!=='unclassified');
-            const personals=sourceItems.filter(item=>resolveOthers(item.raw)&&resolveOthers(item.raw)!=='unclassified');
-            const unclassified=sourceItems.filter(item=>resolveOthers(item.raw)==='unclassified');
-            const sourceGroups=[
-              {name:l.systemCategory,item:categoryList.find(c=>c.id===metricId('source_rollup','system')),items:systems},
-              {name:l.personalCategory,item:categoryList.find(c=>c.id===metricId('source_rollup','personal')),items:personals},
-              {name:l.uncategorized,item:null,items:unclassified}
-            ].filter(group=>group.item||group.items.length);
-            const groupTabs=categoryList.filter(item=>item.kind==='keyword_group')
-              .map(group=>({name:group.name,item:group,
-                items:categoryList.filter(item=>
-                  (item.kind==='keyword_group_items'||item.kind==='keyword_item')&&item.group_uid===group.uid)}));
-            const allKeywords=categoryList.find(item=>item.kind==='keyword_all');
+            const ofKind=kind=>categoryList.filter(item=>item.kind===kind);
+            // Pick a higher-level ancestor first, then either that ancestor
+            // or its direct child. Saved UID edges define every relationship.
+            const galaxies=ofKind('source_galaxy'),domains=ofKind('source_domain');
+            const sources=galaxies.map(parent=>({
+              name:parent.name,item:parent,
+              items:domains.filter(item=>item.path?.includes(parent.uid))
+            }));
+            const eras=ofKind('era'),periods=ofKind('period');
+            const usedPeriods=new Set(eras.flatMap(x=>x.children||[]));
+            const times=[
+              ...eras.map(parent=>({name:parent.name,item:parent,
+                items:periods.filter(item=>parent.children?.includes(item.uid))})),
+              ...(!periods.some(x=>!usedPeriods.has(x.uid))?[]:[{
+                name:'未歸屬時期',items:periods.filter(x=>!usedPeriods.has(x.uid))
+              }])
+            ];
+            const traces=ofKind('trace'),paths=ofKind('path');
+            const usedPaths=new Set(traces.flatMap(x=>x.children||[]));
+            const spaces=[
+              ...traces.map(parent=>({name:parent.name,item:parent,
+                items:paths.filter(item=>parent.children?.includes(item.uid))})),
+              ...(!paths.some(x=>!usedPaths.has(x.uid))?[]:[{
+                name:'未歸屬路徑',items:paths.filter(x=>!usedPaths.has(x.uid))
+              }])
+            ];
+            const keywordGroups=ofKind('keyword_group').map(parent=>({
+              name:parent.name,item:parent,
+              items:ofKind('keyword_item').filter(item=>item.group_uid===parent.uid)
+            }));
             const groups=comparisonMetricGroups(kind,{
-              source:sourceGroups,
-              keyword:[
-                ...(allKeywords?[{name:l.allKeywords,item:allKeywords,items:[]}]:[]),
-                ...groupTabs
-              ]
+              time:times,space:spaces,keyword:keywordGroups,source:sources
             });
             const currentGroup=selectedComparisonMetricGroup(groups,chosenId);
             const selectedGroupMetrics=currentGroup?.options||[];
@@ -328,10 +344,10 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
               <strong>{l.comparisonItem} {index+1}</strong>
               <div className="scope-self-intersection-kind-tabs" role="group"
                 aria-label={l.comparisonItem+' '+(index+1)+' 類型'}>
-                {DIMENSION_FILTERS.filter(tab=>tab.value==='all'?availableKinds.length>0:availableKinds.includes(tab.value)).map(tab=>
+                {DIMENSION_FILTERS.map(tab=>
                   <button type="button" className="scope-self-stat-tab" key={tab.value}
                     aria-pressed={kind===tab.value} onClick={()=>switchKind(tab.value)}>
-                    {tab.value==='all'?'全部':tab.value==='source'?l.sourceTab:tab.value==='media'?l.mediaTab:l.keywordTab}
+                    {tab.label}
                   </button>)}
               </div>
               <div className="scope-self-intersection-category-groups">
@@ -355,12 +371,12 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                     onChange={event=>selectMetric(event.target.value)}>
                     {!selectedGroupMetrics.length?<option value="">無可用項目</option>:null}
                     {selectedGroupMetrics.map(item=><option key={item.id} value={item.id}
-                      disabled={takenByOther.has(item.id)}>{item.kind==='keyword_group_items'?l.groupItems:item.name}</option>)}
+                      disabled={takenByOther.has(item.id)}>{item.name}</option>)}
                   </select>
                 </label>
-                {kind==='keyword'||kind==='all'?keywordCatalog.isPending
+                {kind==='keyword'?keywordCatalog.isPending
                   ?<p className="scope-status" role="status">正在讀取組內項目…</p>:null:null}
-                {(kind==='keyword'||kind==='all')&&keywordCatalog.error?<p role="alert" className="scope-status scope-error">
+                {kind==='keyword'&&keywordCatalog.error?<p role="alert" className="scope-status scope-error">
                   組內關鍵詞讀取失敗：{String(keywordCatalog.error?.message||keywordCatalog.error)}
                 </p>:null}
                 {!groups.length?<p className="scope-status">{l.noSelectableSource}</p>:null}
@@ -388,7 +404,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
             <StatisticsMultiChart type={shownChartType} rows={calculated.chart} series={series}
               distribution={calculated.totals} foldBlank={foldBlank} height={410}/>
           </StatisticsChartFrame>
-          <p className="scope-status">交互以「同日活躍」計算；關鍵詞群組與項目統一使用作品篇數，同日出現不代表同篇文章同時命中。</p>
+          <p className="scope-status">交錯以「同日活躍」計算；時間取已存 Era／Period 區間，空間取已存 Trace／Path 之 Point 範圍，關鍵詞為 Group／Item，來源為 Galaxy／Domain。不同維度同日出現不代表同一篇文章同時命中。</p>
           <StatisticsDetails>{()=><>
           <div className="scope-ranking">
             <div><strong>{l.activeDays}</strong><span>{calculated.days.toLocaleString(locale)}{l.dayUnit}</span></div>
