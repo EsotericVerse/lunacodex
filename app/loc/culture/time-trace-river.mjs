@@ -6,6 +6,17 @@
 const text=value=>String(value||'').trim();
 const list=value=>Array.isArray(value)?value:[];
 const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(text(value).slice(0,10));
+// Real chronological placement for the Y-axis. SQL may return UIDs in any
+// order, and the saved Era/Period UID links are relations, NOT sort keys.
+const firstRangeDate=row=>{
+  const ranges=list(row?.ranges).length?row.ranges:[row];
+  return ranges.filter(range=>!range?.invalid||range?.point)
+    .map(range=>text(range?.start_date).slice(0,10))
+    .filter(validDate).sort()[0]||'9999-12-31';
+};
+const chronological=(a,b)=>firstRangeDate(a).localeCompare(firstRangeDate(b))||
+  text(a?.scope_id).localeCompare(text(b?.scope_id))||
+  text(a?.uid).localeCompare(text(b?.uid));
 const uniqueByUid=rows=>{
   const byUid=new Map();
   for(const row of list(rows)){
@@ -27,11 +38,17 @@ export function unassignedPublicDateAnchors(dates,eraWindows){
 }
 
 export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scopeId=''}={}){
-  const traces=uniqueByUid(source.filter(row=>row?.entry_type==='era'));
+  const traces=uniqueByUid(source.filter(row=>row?.entry_type==='era'))
+    .sort(chronological);
   const events=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='period'))
     .map(row=>[text(row.scope_id)+':'+text(row.uid),row]));
   const anchors=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='anchor'))
     .map(row=>[text(row.scope_id)+':'+text(row.uid),row]));
+  const orderedPeriodIds=(trace,scope)=>
+    [...new Set(list(trace.anchor_ids).map(text).filter(Boolean))]
+      .sort((a,b)=>chronological(
+        events.get(scope+':'+a)||{scope_id:scope,uid:a},
+        events.get(scope+':'+b)||{scope_id:scope,uid:b}));
   const expanded=new Set(list(expandedEraIds).map(text));
   const items=[],groups=[];
   const datedAnchors=[...anchors.values()]
@@ -79,10 +96,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
           ...(validDate(until)&&until>from?{end_date:until}:{}),
           title:trace.title||'時代',display_label:trace.title||'時代'});
       }
-      const seenPeriods=new Set();
-      for(const eventId of list(trace.anchor_ids).map(text)){
-        if(!eventId||seenPeriods.has(eventId))continue;
-        seenPeriods.add(eventId);
+      for(const eventId of orderedPeriodIds(trace,scope)){
         const event=events.get(scope+':'+eventId);
         // Determine membership without rendering the collapsed child nodes.
         // One real Date can belong to multiple saved Periods and Eras.
@@ -154,7 +168,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     const scope=text(trace.scope_id),id=text(trace.uid);
     const groupId='trace:'+scope+':'+id;
     const isExpanded=expanded.has(groupId);
-    const eventIds=list(trace.anchor_ids).map(text).filter(Boolean);
+    const eventIds=orderedPeriodIds(trace,scope);
     groups.push({id:groupId,label:text(trace.title)||'時代 '+id,
       collapsible:true,expanded:isExpanded,order:traceIndex*10000,
       className:'scope-time-trace-parent'});
