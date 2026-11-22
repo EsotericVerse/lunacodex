@@ -11,7 +11,7 @@ test('Media Publisher does not read or overwrite a stale media_link snapshot',()
   assert.match(src,/article_uid:galaxyLink,media_uid:mediaUid/);
   assert.match(src,/await transactionWrites\(plan\.operations\)/);
 });
-test('MediaAnchor append retains existing links under a row lock',()=>{
+test('MediaAnchor append retains existing URL links under a row lock',()=>{
   const src=file('../app/loc/providers/kysely-management.mjs');
   const begin=src.indexOf("if(operation==='append_media_link'){");
   const end=src.indexOf("  // Authorized writes now share",begin);
@@ -19,7 +19,9 @@ test('MediaAnchor append retains existing links under a row lock',()=>{
   const block=src.slice(begin,end);
   assert.match(src,/await authorizeRelation\(trx,table,operation,values,filters,rows\)/);
   assert.match(block,/forUpdate\(\)\.executeTakeFirst\(\)/);
-  assert.match(block,/const next=\[\.\.\.new Set\(\[\.\.\.prior\.map\(String\),values\.media_uid\]\)\]/);
+  assert.match(block,/const url=String\(linked\.attr\?\.url\|\|''\)\.trim\(\)/);
+  assert.match(block,/const next=\[\.\.\.prior,url\]/);
+  assert.doesNotMatch(block,/media_link:\[values\.media_uid\]/);
   assert.match(block,/ANCHOR_TYPE_GROUPS\.media/);
   assert.match(block,/numUpdatedRows/);
 });
@@ -27,4 +29,10 @@ test('Only the website can request a media link append in the managed SQL envelo
   const native=file('../app/loc/mcp/native-operations.mjs');
   assert.match(native,/selected\.engine!=='postgres'\|\|host!==WEB_HOST/);
   assert.match(native,/'append_media_link'\]\.includes\(entry\.p_operation\)/);
+});
+
+test('Suno writes public URLs to Galaxy media_link',()=>{
+  const src=file('../app/loc/media/SunoImportPanel.jsx');
+  assert.match(src,/media_link:\[draft\.url\.trim\(\)\]/);
+  assert.doesNotMatch(src,/media_link:\[mediaUid\]/);
 });
