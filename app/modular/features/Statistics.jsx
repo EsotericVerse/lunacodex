@@ -20,7 +20,7 @@ import {useScopeRuntime} from '../use-scope-runtime';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {FeaturePage} from '../ui';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
-import {sourceOutlineOptions} from '../../loc/source/outline-options.mjs';
+import {groupedSourceOutline} from '../../loc/source/outline-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
 import {usePassiveSessionAccount} from '../../loc/auth/use-account';
 import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
@@ -532,10 +532,14 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         <select className="scope-select" aria-label="來源分類" value={activeSourceSelection}
           onChange={event=>setSourceGroup(event.target.value)}>
           <option value="">全部來源</option>
-          {sourceOutlineOptions(sourceCatalog.data).map(source=>
-            <option key={source.code} value={source.code}>
-              {'　'.repeat(source.level)}{source.label}
-            </option>)}
+          {groupedSourceOutline(sourceCatalog.data).map(group=>
+            <optgroup key={group.key} label={group.label}>
+              {group.items.map(source=><option key={source.code} value={source.code}>
+                {'　'.repeat(source.orphanType
+                  ?Math.max(0,source.level-['universe','galaxy','domain','from'].indexOf(source.orphanType))
+                  :source.level)}{source.label}
+              </option>)}
+            </optgroup>)}
           <option value="others">未分類</option>
         </select>
       </label>:null}
