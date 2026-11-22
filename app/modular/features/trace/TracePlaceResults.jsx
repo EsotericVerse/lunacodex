@@ -170,7 +170,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       });
       // Galaxy.media_link stores URLs, not MediaAnchor UIDs.
       const mediaUrls=[...new Set(mediaPage.map(row=>String(row.attr?.url||'').trim())
-        .filter(url=>/^https?:\\/\\//i.test(url)))];
+        .filter(url=>/^https?:\/\//i.test(url)))];
       if(!mediaUrls.length)return {rows:[],nextCursor:
         mediaPage.length===mediaLimit?{mediaOffset:mediaOffset+mediaLimit,articleOffset:0}:null};
       const {rows}=await selectRows(scope.galaxy,{
