@@ -97,6 +97,21 @@ export function managedPrimaryKeyColumns(table,modelName=''){
   // than guessing a ZModel or changing database routing.
   return [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
 }
+// Every operation in one managed transaction uses the SAME trusted registry
+// snapshot. Do not issue one api.manage SELECT per Anchor/Galaxy operation.
+// Cache lives only as long as the owning Kysely transaction object; a write
+// to api.manage invalidates it before any subsequent operation in that trx.
+const transactionRegistry=new WeakMap();
+async function registeredScope(trx,scope){
+  let cache=transactionRegistry.get(trx);
+  if(!cache){cache=new Map();transactionRegistry.set(trx,cache);}
+  if(!cache.has(scope)){
+    cache.set(scope,trx.selectFrom('api.manage')
+      .select(['id','manage_role','active','galaxy_table','anchor_table'])
+      .where('id','=',scope).executeTakeFirst());
+  }
+  return cache.get(scope);
+}
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'||table==='loc_anchor'){
     if(table==='loc'&&(Object.hasOwn(values||{},'ArticleTag')||rows.some(row=>Object.hasOwn(row,'ArticleTag'))))
@@ -116,9 +131,7 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
     reject('Scope management permission required',403);
   // Verify the dynamic registry mapping before escalating to the trusted
   // server connection. Caller input can never pick an arbitrary table.
-  const record=await trx.selectFrom('api.manage')
-    .select(['id','manage_role','galaxy_table','anchor_table'])
-    .where('id','=',scope).executeTakeFirst();
+  const record=await registeredScope(trx,scope);
   if(!record||!['scope','admin'].includes(record.manage_role))reject('Scope is not registered',403);
   const galaxy=String(record.galaxy_table||'galaxy');
   const anchor=String(record.anchor_table||'anchor');
@@ -131,7 +144,11 @@ async function writeBatch(trx,table,rows){
   if(!/^[a-z][a-z0-9_]*_galaxy$/.test(table))reject('Article batch updates require a Galaxy table');
   if(!Array.isArray(rows)||rows.length>10000)reject('Invalid article batch size');
   if(!rows.length)return 0;
-  const supported=new Set(['uid','title','content','place_id','url','media_link']);
+  // All approved Galaxy columns use the existing ZModel/Zod payload checks.
+  // The SQL update is one JSONB recordset inside the caller's one transaction:
+  // no special-field one-row requests and no additional ad-hoc ORM layer.
+  const supported=new Set(['uid','title','content','place_id','url','media_link',
+    'location','site_id','ref_id','source_id','target_id']);
   const seen=new Set();
   for(const row of validateRows(rows)){
     if(!UID.test(String(row.uid||''))||!Object.keys(row).some(k=>k!=='uid')||
@@ -140,25 +157,25 @@ async function writeBatch(trx,table,rows){
     seen.add(row.uid);
   }
   const ref=sql.ref('silver.'+table);
-  const media=sql`(jsonb_populate_record(NULL::${ref},j.item)).media_link`;
+  const typed=column=>sql`(jsonb_populate_record(NULL::${ref},j.item)).${sql.ref(column)}`;
+  const setFields=['title','content','url','media_link','location',
+    'site_id','ref_id','source_id','target_id'];
+  const updates=setFields.map(column=>
+    sql`${sql.ref(column)}=case when j.item ? ${column}
+      then ${typed(column)} else ${sql.ref('g.'+column)} end`);
+  updates.push(sql`place_id=case when coalesce(btrim(g.place_id),'')=''
+    then coalesce(nullif(btrim(j.item->>'place_id'),''),g.place_id) else g.place_id end`);
+  updates.push(sql`"UpdateTime"=now()`);
+  const changed=sql.join([
+    ...setFields.map(column=>sql`(j.item ? ${column}
+      and ${sql.ref('g.'+column)} is distinct from ${typed(column)})`),
+    sql`(j.item ? 'place_id' and coalesce(btrim(g.place_id),'')=''
+      and nullif(btrim(j.item->>'place_id'),'') is not null)`
+  ],sql` or `);
   const result=await sql`
-    update ${ref} as g set
-      title=case when j.item ? 'title' then j.item->>'title' else g.title end,
-      content=case when j.item ? 'content' then j.item->>'content' else g.content end,
-      place_id=case when coalesce(btrim(g.place_id),'')=''
-        then coalesce(nullif(btrim(j.item->>'place_id'),''),g.place_id) else g.place_id end,
-      url=case when j.item ? 'url' then j.item->>'url' else g.url end,
-      media_link=case when j.item ? 'media_link' then ${media} else g.media_link end,
-      "UpdateTime"=now()
+    update ${ref} as g set ${sql.join(updates)}
     from jsonb_array_elements(${JSON.stringify(rows)}::jsonb) as j(item)
-    where g.uid=(j.item->>'uid')::char(8) and (
-      (j.item ? 'title' and g.title is distinct from j.item->>'title')
-      or (j.item ? 'content' and g.content is distinct from j.item->>'content')
-      or (j.item ? 'place_id' and coalesce(btrim(g.place_id),'')=''
-        and nullif(btrim(j.item->>'place_id'),'') is not null)
-      or (j.item ? 'url' and g.url is distinct from j.item->>'url')
-      or (j.item ? 'media_link' and g.media_link is distinct from ${media})
-    )
+    where g.uid=(j.item->>'uid')::char(8) and (${changed})
   `.execute(trx);
   return Number(result.numAffectedRows||0);
 }
@@ -868,8 +885,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
 async function scopedWrite(trx,input){
   const scope=validScope(input);
   if(!await canLocAccess(trx,'scope',scope))reject('Scope write permission required',403);
-  const registry=await trx.selectFrom('api.manage').select(['id','manage_role','active'])
-    .where('id','=',scope).executeTakeFirst();
+  const registry=await registeredScope(trx,scope);
   if(!registry||!['scope','admin'].includes(registry.manage_role)||registry.active!==true)
     reject('Unknown or inactive Scope',403);
   await sql`reset role`.execute(trx);
