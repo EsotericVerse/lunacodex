@@ -489,7 +489,6 @@ type GalaxyUidRelation {
 }
 // Media/place/time/site are already indexed in these physical Galaxy fields.
 type GalaxyUidAnchor {
-    media_link String[]?
     place_id String?
     location String?
     date DateTime?
@@ -513,6 +512,8 @@ type GalaxyUidRead {
     content String?
     createtime DateTime?
     url String?
+    // URL list stored on the Galaxy row, not a MediaAnchor UID relation.
+    media_link String[]?
     relation GalaxyUidRelation?
     anchor GalaxyUidAnchor?
 }
