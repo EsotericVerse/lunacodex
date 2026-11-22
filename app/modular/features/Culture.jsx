@@ -43,7 +43,6 @@ import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 import {sourceKeywordOptions} from '../../loc/source/keyword-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
-import {mediaDay} from '../../loc/statistics/facets';
 import {useAccount} from '../../loc/auth/use-account';
 import {useScopeRuntime} from '../use-scope-runtime';
 import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
@@ -481,7 +480,7 @@ export default function Culture(){
       const inside=row=>!classificationPeriodRanges||timePeriodContainsDate(
         {ranges:classificationPeriodRanges},String(row.day||''));
       return buildCultureRiverRootPayload({
-        text:text.filter(inside),media:[]
+        text:text.filter(inside)
       },sourceTaxonomy);
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
@@ -570,7 +569,6 @@ export default function Culture(){
     const labels=new Map((taxonomy.roots||[]).map(row=>[row.root,row.title]));
     const grouped=new Map();
     for(const item of keywordSourceOptions){
-      if(item.category_type==='media')continue;
       const code=assignedSource(item.site,taxonomy.aliases,taxonomy.categories);
       const root=categories.get(code)?.root||'custom';
       if(!grouped.has(root))grouped.set(root,[]);
@@ -623,9 +621,6 @@ export default function Culture(){
     const byCode=new Map(catalog.categories.map(row=>[row.category_code,row]));
     const index=new Map();
     for(const source of categoryGroups){
-      // Multimedia is now a *source tree Universe*. Legacy media-type rows
-      // cannot become a second source taxonomy or double-count Galaxy.site.
-      if(source.category_type==='media')continue;
       const raw=String(source.site||'');
       const code=assignedSource(raw,catalog.aliases,catalog.categories);
       const node=byCode.get(code);
@@ -633,7 +628,7 @@ export default function Culture(){
       const label=node?.display_name||l.other;
       const key=root+':'+code;
       if(!index.has(key))index.set(key,{key,root,label,site:label,
-        sites:[],media_types:[],item_count:0});
+        sites:[],item_count:0});
       const group=index.get(key);
       group.item_count+=Number(source.item_count)||0;
       group.sites.push(...(source.sites||[]));
@@ -655,7 +650,7 @@ export default function Culture(){
         descendants.has(group.key.slice(group.key.indexOf(':')+1)));
       if(members.length)return {key:option.key,root:option.root,label:option.label,
         site:option.label,sites:[...new Set(members.flatMap(item=>item.sites))],
-        media_types:[],item_count:members.reduce((n,item)=>n+item.item_count,0)};
+        item_count:members.reduce((n,item)=>n+item.item_count,0)};
     }
     return categoryGroups.find(item=>item.category_key===
       (keywordDrillSource?'source:'+keywordDrillSource:selectedCategory))||null;
@@ -1046,7 +1041,6 @@ export default function Culture(){
     const bySource=new Map();
     for(const group of groupedSources){
       for(const name of group.sites)bySource.set(name,group);
-      for(const name of group.media_types)bySource.set('媒體 · '+name,group);
     }
     // Children (expanded lanes) still draw the real per-day river, built
     // from secondRiverBuckets, which only has data once a lane is expanded.
@@ -1056,7 +1050,7 @@ export default function Culture(){
       const raw=String(item.category||''),day=String(item.start_date||'').slice(0,10);
       if(!day)continue;
       const group=bySource.get(raw);
-      const parent=group?.root||(raw.startsWith('媒體 · ')?'media':'custom');
+      const parent=group?.root||'custom';
       const child=group?.key||parent+':unclassified';
       const count=Number(item.item_count)||0;
       add(subtotals,child+'\u0000'+day,count);

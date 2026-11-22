@@ -4,7 +4,6 @@ import {mapBounded} from '../query/bounded-parallel.mjs';
 import {searchOrderedScopeProviders} from '../search/ordered-scope-providers.mjs';
 
 
-import {StatisticsFacets} from '../statistics/facets';
 import {DEFAULT_LIST_BATCH_SIZE} from '../db/db-contract.mjs';
 import {parseSearchQuery} from '../search/query.mjs';
 import {normalizeRelationIds,publicContentFilters} from '../content/content-policy';
@@ -19,7 +18,6 @@ import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import {portableContainsTerm} from '../providers/portable-search.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS,mediaAnchorProjection,MEDIA_ANCHOR_COLUMNS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 const galaxyListColumns=()=>galaxyReadColumns('GalaxyList');
 const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
 const galaxyUidReadWithPolicyColumns=()=>unique([
@@ -41,12 +39,6 @@ function unique(values=[]){
 function scopeOf(scope){
   if(!scope?.id||!scope?.galaxy||!scope?.anchor)throw new Error('Scope data 未解析');
   return scope;
-}
-function timeFilters(column,startDate,endDate){
-  const filters=[],isDate=column==='date';
-  if(startDate)filters.push({column,operator:'gte',value:String(startDate).slice(0,10)+(isDate?'':'T00:00:00+08:00')});
-  if(endDate)filters.push({column,operator:'lte',value:String(endDate).slice(0,10)+(isDate?'':'T23:59:59.999+08:00')});
-  return filters;
 }
 const dayColumn=table=>
   /^silver\.[a-z][a-z0-9]*_galaxy$/.test(String(table||''))?'date':'createtime';
@@ -137,35 +129,29 @@ async function scopeDailyCounts(current,range){
   throw new Error('Culture statistics aggregate unavailable; full-row fallback is disabled');
 }
 
-// Per-Scope daily category counts for text works and media, computed by the
-// database. includeEmptyMedia keeps media rows without a type; includeUndated
-// keeps rows without a date (their day is '').
-export async function selectScopeDailyCounts(scope,{startDate='',endDate='',includeEmptyMedia=false,includeUndated=false,requireAggregate=false}={}){
+// One database-side daily GROUP BY over Galaxy.site, including multimedia
+// publishing platforms. There is no separate MediaAnchor counting stream.
+export async function selectScopeDailyCounts(scope,{
+  startDate='',endDate='',includeUndated=false,requireAggregate=false
+}={}){
   const current=scopeOf(scope);
   const counted=await scopeStatisticsRows(current,{startDate,endDate,includeUndated});
-  const order=(a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category);
-  if(counted){
-    const pick=kind=>counted.filter(row=>row.kind===kind&&(kind==='source'||includeEmptyMedia||row.category))
-      .map(row=>({day:row.day,category:row.category,item_count:Number(row.item_count)||0})).sort(order);
-    return {text:pick('source'),media:pick('media')};
-  }
-  // Both public Culture and Statistics must rely on the grouped DB reader.
-  // Never silently stream all Galaxy/media rows in a browser fallback.
-  throw new Error('Culture requires a database-side date aggregate; full-row fallback disabled');
+  if(!counted)throw new Error('Culture requires a database-side date aggregate; full-row fallback disabled');
+  const text=counted.filter(row=>row.kind==='source')
+    .map(row=>({day:row.day,category:row.category,item_count:Number(row.item_count)||0}))
+    .sort((a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category));
+  return {text};
 }
 
-// One number per source/media category for a window, no per-day grouping
-// (silver.read_scope_category_totals). This is what a collapsed Culture
-// river lane needs to size its flat water-level bar; the full day x
-// category aggregate (selectScopeDailyCounts) is only fetched once a lane
-// is expanded.
+// Collapsed river source totals are also grouped by the canonical Galaxy.site.
 export async function selectScopeCategoryTotals(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
-  const rows=await cachedReadScopeCategoryTotals(current.id,{startDate:dateOnly(startDate),endDate:dateOnly(endDate)});
-  const pick=kind=>rows.filter(row=>row.kind===kind)
+  const rows=await cachedReadScopeCategoryTotals(current.id,{
+    startDate:dateOnly(startDate),endDate:dateOnly(endDate)
+  });
+  return {text:rows.filter(row=>row.kind==='source')
     .map(row=>({category:row.category,item_count:Number(row.item_count)||0}))
-    .filter(row=>row.item_count>0);
-  return {text:pick('source'),media:pick('media')};
+    .filter(row=>row.item_count>0)};
 }
 
 export async function selectSourceCatalog(scope,{startDate='',endDate='',limit=20}={}){
@@ -681,110 +667,6 @@ export async function hydrateGalaxySearchRows(entries=[],scopes=[],hiddenScopeId
     return details?{...entry,row:{...row,...details}}:entry;
   });
 }
-/**
- * Media facet aggregation reads only the selected Scope's narrow metadata columns,
- * in bounded DB pages. It never fetches media binary or Galaxy body content.
- * For large installations, a DB-side GROUP BY/RPC can replace this adapter
- * without changing the facet response contract.
- */
-
-async function selectMediaStatisticsFacetRowsRaw(scope,dimension,{startDate='',endDate=''}={}){
-  const current=scopeOf(scope);
-  if(!['media_type','media_platform','media_style'].includes(dimension)){
-    throw new Error('Unknown media statistics dimension');
-  }
-  // Query current typed MediaAnchor metadata; no ISR or stored snapshot.
-  const filters=[...timeFilters('createtime',startDate,endDate),
-    {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
-    {column:'invisible',operator:'eq',value:false}];
-  const orders=[{column:'type',ascending:true},{column:'uid',ascending:true}];
-  const aggregates=new Map();
-  let offset=0,source='auto';
-  while(true){
-    const page=await selectRows(current.anchor,{
-      columns:MEDIA_ANCHOR_COLUMNS,filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,source
-    });
-    source=page.dataSource||source;
-    for(const row of StatisticsFacets.base.mediaFacetDaily(page.rows.map(mediaAnchorProjection),dimension)){
-      const key=row.day+'\u0000'+row.category.normalize('NFKC').toLocaleLowerCase();
-      const existing=aggregates.get(key);
-      if(existing)existing.item_count+=row.item_count;
-      else aggregates.set(key,{...row});
-    }
-    offset+=page.rows.length;
-    if(page.rows.length<DB_QUERY_BATCH_SIZE)break;
-  }
-  return [...aggregates.values()].sort((a,b)=>
-    a.day.localeCompare(b.day)||a.category.localeCompare(b.category)
-  );
-}
-
-// Cross-tag comparisons must retain each media item's own metadata.
-// Daily facet aggregates cannot reconstruct which tags belonged to the same item.
-export async function selectMediaCrossTagRows(scope,{startDate='',endDate=''}={}){
-  const current=scopeOf(scope);
-  const filters=[...timeFilters('createtime',startDate,endDate),
-    {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
-    {column:'invisible',operator:'eq',value:false}];
-  const orders=[{column:'type',ascending:true},{column:'uid',ascending:true}];
-  const rows=[];
-  let offset=0,source='auto';
-  while(true){
-    const page=await selectRows(current.anchor,{
-      columns:MEDIA_ANCHOR_COLUMNS,
-      filters,orders,limit:DB_QUERY_BATCH_SIZE,offset,source
-    });
-    source=page.dataSource||source;
-    rows.push(...page.rows.map(mediaAnchorProjection));
-    offset+=page.rows.length;
-    if(page.rows.length<DB_QUERY_BATCH_SIZE)break;
-  }
-  return rows;
-}
-
-
-export async function selectMediaCrossPairWorks(scope,pair,{
-  startDate='',endDate='',offset=0,limit=10
-}={}){
-  const current=scopeOf(scope);
-  if(!pair?.leftLabel||!pair?.rightLabel)return {rows:[],nextOffset:0,hasMore:false};
-  const safeLimit=Math.max(1,Math.min(50,Math.floor(Number(limit)||10)));
-  const batchSize=Math.max(20,safeLimit*2);
-  const escapeLike=value=>String(value).replace(/[\\%_]/g,'\\$&');
-  const filters=[
-    ...timeFilters('createtime',startDate,endDate),
-    {column:'description',operator:'ilike',value:'%'+escapeLike(pair.leftLabel)+'%'},
-    {column:'description',operator:'ilike',value:'%'+escapeLike(pair.rightLabel)+'%'},
-    {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
-    {column:'invisible',operator:'eq',value:false}
-  ];
-  const left=String(pair.left||'').normalize('NFKC').toLocaleLowerCase();
-  const right=String(pair.right||'').normalize('NFKC').toLocaleLowerCase();
-  const rows=[];
-  let cursor=Math.max(0,Math.floor(Number(offset)||0));
-  let source='auto';
-  while(true){
-    const page=await selectRows(current.anchor,{
-      columns:MEDIA_ANCHOR_COLUMNS,
-      filters,orders:[{column:'type',ascending:true},{column:'uid',ascending:true}],
-      limit:batchSize,offset:cursor,source
-    });
-    source=page.dataSource||source;
-    if(!page.rows.length)return {rows,nextOffset:cursor,hasMore:false};
-    for(const raw of page.rows){
-      const row=mediaAnchorProjection(raw);
-      const rowOffset=cursor++;
-      const tags=new Set(StatisticsFacets.base.mediaStyleTags(row.description).map(tag=>tag.normalize('NFKC').toLocaleLowerCase()));
-      if(!tags.has(left)||!tags.has(right))continue;
-      rows.push({id:String(row.uid),title:String(row.title||''),url:String(row.url||''),day:StatisticsFacets.base.mediaDay(row.createtime)});
-      if(rows.length>safeLimit){
-        return {rows:rows.slice(0,safeLimit),nextOffset:rowOffset,hasMore:true};
-      }
-    }
-    if(page.rows.length<batchSize)return {rows,nextOffset:cursor,hasMore:false};
-  }
-}
-
 const SOURCE_BUCKET_ORDER=['Facebook','Threads','IG','Others'];
 function dateOnly(value){return String(value||'').slice(0,10);}
 function sourceBucket(value=''){
@@ -866,13 +748,12 @@ async function selectLocStatisticsRaw({startDate='',endDate=''}={}){
   return readLocStatistics({startDate,endDate});
 }
 
-// Separate source and media breakdowns. These are independently
-// chosen within the current Scope; no cross-Scope read or merged corpus.
+// Galaxy.site is the single source breakdown, including multimedia publishers.
 export async function selectScopeSourceBreakdownRows(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
   const counted=await scopeStatisticsRows(current,{startDate,endDate});
   if(counted)return counted;
-  // Statistics must never fetch all article/media rows into the browser
+  // Statistics must never fetch all Galaxy article rows into the browser
   // to recreate a daily aggregate. An unavailable DB aggregate is an error.
   throw new Error('Scope statistics aggregate unavailable; full-row fallback disabled');
 }
@@ -905,7 +786,6 @@ function emptyOnFailure(fn,fallback){
     }
   };
 }
-export const selectMediaStatisticsFacetRows=emptyOnFailure(selectMediaStatisticsFacetRowsRaw,[]);
 export const selectScopeDensityRows=emptyOnFailure(selectScopeDensityRowsRaw,[]);
 // A failed Statistics overview is a query failure, never a legitimate zero chart.
 // Let useAsyncResource display the actual request error and its retry action.

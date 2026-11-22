@@ -16,7 +16,7 @@ export const LOC_USER_DEFAULTS=Object.freeze({
 const ALLOWED=Object.freeze({
   culture:{time:['anchor','period','era'],display:['density','keywords'],
     unit:['day','week','month','year'],sort:['asc','desc'],list:[false,true]},
-  statics:{display:['source','media_type'],unit:['day','week','month','year'],sort:['asc','desc'],list:[false,true]},
+  statics:{display:['source'],unit:['day','week','month','year'],sort:['asc','desc'],list:[false,true]},
   trace:{display:['anchor','path','trace'],time:['none','period','era'],sort:['desc','nearest'],list:[false,true]},
   search:{field:['content','title'],sort:['asc','desc'],list:[false,true]}
 });
