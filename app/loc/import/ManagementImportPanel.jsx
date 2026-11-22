@@ -18,7 +18,7 @@ import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_A
 import {createImportProgressStore} from './progress-store.mjs';
 import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './checkpoint.mjs';
 import {remapArchiveArticleUids} from './random-uids.mjs';
-import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUidLinks} from './uid-delta.mjs';
+import {createImportUidResolver,remapImportUidRelations,planExistingImportUidUpdate,planImportPointUidLink,planImportMediaUrlLinks} from './uid-delta.mjs';
 import {facebookBackupPlace,facebookBackupPostText,facebookBackupTimestamp} from '../archive/facebook-place.mjs';
 import {archiveGalaxyRows} from '../archive/caption-rows.mjs';
 import {facebookPostPlace} from '../archive/geo-objects.mjs';
@@ -42,15 +42,16 @@ import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normali
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
 import {touchEditorSession} from '../auth/edit-session-ttl.mjs';
-import {PUBLISHED_LOC_ARTICLE_TAGS} from '../../modular/published-source-taxonomy.js';
+import {publishedSourceTaxonomy} from '../../modular/published-source-taxonomy.js';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/zenstack/import-source-models.mjs';
-// The published LOC ArticleTag list is already bundled in the static site;
-// never create an async query/resource just to read this in-memory constant.
-// Keep one stable object so import analysis does not re-run on every UI repaint.
+// Import Source options come from published, typed SiteAnchor From nodes.
+// No retired ArticleTag field or SQL lookup, and no per-render reconstruction.
 const PUBLISHED_SOURCE_CATEGORIES=Object.freeze({
-  system:PUBLISHED_LOC_ARTICLE_TAGS,personal:Object.freeze([])
+  system:Object.freeze([...new Set(publishedSourceTaxonomy().categories
+    .filter(row=>row.type==='from').map(row=>row.display_name)),'Others']),
+  personal:Object.freeze([])
 });
 const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[],warnings:[]});
 const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
@@ -246,7 +247,9 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     ref_id:String(value('ref_id')||'').trim()||null,
     url:visualGalaxyRow?publicVisualUrl(rawUrl):
       !isArchiveMediaUrl(rawUrl)&&!importMapUrlCoordinates(rawUrl)?rawUrl||null:null,
-    ...(mediaRefs.length?{media_link:mediaRefs}:{}),
+    ...(mediaRecords.some(item=>/^https?:\/\//i.test(String(item.url||'')))
+      ?{media_link:[...new Set(mediaRecords.map(item=>String(item.url||''))
+        .filter(url=>/^https?:\/\//i.test(url)))]}:{}),
     site:String(selectedSource||'').trim()
   };
   return {record,mediaRecords,mediaRefs,error:'',warning:mediaWarning};
@@ -423,56 +426,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         mediaConflicts.push({type:record.type||null,url:record.url||null,
           uid:record.uid||null,saved_uids:[...uids].sort()});
       };
-      // URL-less media are reused only when attached to this exact article
-      // with a complete, matching source evidence identity.
-      const mediaEvidenceKey=(item,owner)=>{
-        const type=String(item?.type||'').trim();
-        const metadata=String(item?.description||'').trim();
-        const title=String(item?.title||'').trim();
-        const stamp=Date.parse(String(item?.createtime||''));
-        if(!owner||!type||!metadata||!title||!Number.isFinite(stamp))return '';
-        return JSON.stringify([owner,type,title,metadata,new Date(stamp).toISOString()]);
-      };
-      const pendingOwners=[...new Set(plans.filter(item=>
-        !item.uid&&!item.url&&item.__article_uid&&
-        (item.type==='rune'&&item.description||
-          mediaEvidenceKey(item,String(item.__article_uid))))
-        .map(item=>String(item.__article_uid)))];
-      const existingRuneByArticle=new Map(),existingOwnerMediaByKey=new Map();
-      const ambiguousRunes=new Map(),ambiguousEvidence=new Map();
-      const trackEvidence=(stored,ambiguous,key,uid)=>{
-        if(!key)return;
-        if(ambiguous.has(key))ambiguous.get(key).add(uid);
-        else if(stored.has(key)&&stored.get(key)!==uid){
-          ambiguous.set(key,new Set([stored.get(key),uid]));stored.delete(key);
-        }else stored.set(key,uid);
-      };
-      if(pendingOwners.length){
-        const ownerRows=await readExistingByIds(galaxy,'uid,media_link','uid',pendingOwners,
-          t('uiExtra.importUI.mediaLinkReadFailed'));
-        const linkedUids=[...new Set(ownerRows.flatMap(row=>Array.isArray(row.media_link)?row.media_link:[]))];
-        // The explicit UID/URL phase has already verified a portion of these
-        // media PKs. Reuse that in-memory index; query only UID misses, never
-        // rescan previously loaded MediaAnchor rows in this import attempt.
-        const missingLinkedUids=linkedUids.filter(uid=>!byId.has(uid));
-        const linkedMedia=missingLinkedUids.length?await readImportMediaCandidates(
-          scopeId,mediaAnchor,missingLinkedUids,[],t('uiExtra.importUI.mediaIdCompareFailed')):[];
-        const savedMediaByUid=new Map([...byId.values(),...linkedMedia]
-          .map(row=>[String(row.uid),row]));
-        for(const article of ownerRows){
-          for(const mediaUid of article.media_link||[]){
-            const stored=savedMediaByUid.get(String(mediaUid));
-            if(!stored)continue;
-            const owner=String(article.uid),uid=String(mediaUid);
-            if(stored.type==='rune'&&stored.description)
-              trackEvidence(existingRuneByArticle,ambiguousRunes,
-                JSON.stringify([owner,String(stored.description)]),uid);
-            if(!stored.url)
-              trackEvidence(existingOwnerMediaByKey,ambiguousEvidence,
-                mediaEvidenceKey(stored,owner),uid);
-          }
-        }
-      }
+      // URL-less media stay standalone; no inferred article UID relationship.
       const createMedia=[],pendingMediaUids=new Set(),related=new Map(),seenMedia=new Set(),resolvedIds=new Map();
       const mediaSizer=createImportBatchSizer();
       let created=0;
@@ -488,16 +442,18 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         pendingMediaUids.clear();
         mediaSizer.observe(count,Date.now()-started);
       };
-      function attach(uid,id){
-        if(!uid||!id)return;
+      function attach(uid,url){
+        const mediaUrl=String(url||'').trim();
+        if(!uid||!/^https?:\/\//i.test(mediaUrl))return;
         if(!related.has(uid))related.set(uid,new Set());
-        related.get(uid).add(id);
+        related.get(uid).add(mediaUrl);
       }
       for(const item of normalized){
         const uid=knownArticleIds.get(item.record?.uid);
         for(const mediaId of item.mediaRefs||[]){
-          if(!byId.has(mediaId))throw new Error(t('uiExtra.importUI.missingMediaReference',{id:mediaId}));
-          attach(uid,mediaId);
+          const saved=byId.get(mediaId);
+          if(!saved)throw new Error(t('uiExtra.importUI.missingMediaReference',{id:mediaId}));
+          if(saved.url)attach(uid,saved.url);
         }
       }
       for(const raw of plans){
@@ -505,21 +461,6 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         const record={...raw};delete record.__article_uid;
         if(String(record.location||'').trim()&&!owner)
           throw new Error('未連結文章的媒體地點無法儲存到 MediaAnchor；請先建立文章／LocationAnchor。');
-        const runeDedupKey=record.type==='rune'&&!record.uid&&!record.url&&owner&&record.description
-          ?JSON.stringify([owner,String(record.description)]):'';
-        if(runeDedupKey&&ambiguousRunes.has(runeDedupKey)){
-          reportMediaConflict('rune:'+runeDedupKey,record,ambiguousRunes.get(runeDedupKey));
-          continue;
-        }
-        const existingRuneUid=runeDedupKey?existingRuneByArticle.get(runeDedupKey):null;
-        if(existingRuneUid){attach(owner,existingRuneUid);continue;}
-        const evidenceKey=!record.uid&&!record.url?mediaEvidenceKey(record,owner):'';
-        if(evidenceKey&&ambiguousEvidence.has(evidenceKey)){
-          reportMediaConflict('evidence:'+evidenceKey,record,ambiguousEvidence.get(evidenceKey));
-          continue;
-        }
-        const storedEvidenceUid=evidenceKey?existingOwnerMediaByKey.get(evidenceKey):null;
-        if(storedEvidenceUid){attach(owner,storedEvidenceUid);continue;}
         const key=mediaKey(record);
         // UID is authoritative if it exists; URL+type or article evidence
         // cannot select one among several persisted MediaAnchor UIDs.
@@ -536,25 +477,23 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
             throw new Error('媒體 UID 已存在，但網址不同：'+record.uid);
           // Existing media keep their saved url; the url is only written on insert.
           if(record.uid)resolvedIds.set(String(record.uid),String(known.uid));
-          attach(owner,known.uid);continue;
+          if(known.url)attach(owner,known.url);continue;
         }
         if(key&&seenMedia.has(key))continue;
         if(key)seenMedia.add(key);
         const mediaId=record.uid||createUid8();
         if(!mediaId)throw new Error(t('uiExtra.importUI.mediaUuidUnavailable'));
         record.uid=mediaId;
-        if(runeDedupKey)existingRuneByArticle.set(runeDedupKey,String(mediaId));
-        if(evidenceKey)existingOwnerMediaByKey.set(evidenceKey,String(mediaId));
         createMedia.push(record);pendingMediaUids.add(String(mediaId));
         if(key)byKey.set(key,record);byId.set(mediaId,record);
-        attach(owner,mediaId);
+        if(record.url)attach(owner,record.url);
         if(createMedia.length>=mediaSizer.size)await flushNewMedia();
       }
       await flushNewMedia();
       for(const link of extraLinks){
         const uid=knownArticleIds.get(String(link.uid||'').trim());
         const mediaId=resolvedIds.get(String(link.media_uid||''))||String(link.media_uid||'');
-        if(uid&&byId.has(mediaId))attach(uid,mediaId);
+        if(uid&&byId.get(mediaId)?.url)attach(uid,byId.get(mediaId).url);
       }
       let connected=0,checkedLinks=0;
       const linkedUids=[...related.keys()];
@@ -574,7 +513,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
           for(const row of page){
             const uid=String(row.uid||'').trim();
             const prior=Array.isArray(row.media_link)?row.media_link:[];
-            const delta=planImportMediaUidLinks(prior,related.get(uid)||[]);
+            const delta=planImportMediaUrlLinks(prior,related.get(uid)||[]);
             if(delta.patches.length){
               linkQueue.push({uid,...delta.changes});
               if(linkQueue.length>=linkSizer.size)await flushMediaLinks();

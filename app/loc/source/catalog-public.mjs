@@ -17,7 +17,7 @@ export async function readPublicSourceAnchors({editor=false}={}){
     columns:editor?EDITOR_COLUMNS:SOURCE_COLUMNS,
     filters:[{column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.source}],
     orders:[{column:'uid',ascending:true}],
-    pageSize:200
+    pageSize:1000
   });
   return rows;
 }

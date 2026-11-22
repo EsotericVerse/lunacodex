@@ -100,6 +100,67 @@ test('a failed connection attempt releases its socket before propagating failure
   assert.equal(TestSqlClient.all[0].closed,1);
   await pool.end();
 });
+
+test('Neon-style immediate resets are retried beyond four tries within a fixed budget',async()=>{
+  let elapsed=0,tries=0,closed=0;
+  const delays=[];
+  class WakeClient{
+    constructor(options){
+      assert.ok(options.connectionTimeoutMillis>0);
+      assert.ok(options.connectionTimeoutMillis<=1500);
+    }
+    on(){}
+    async connect(){
+      tries++;
+      if(tries<5)throw Object.assign(new Error('temporary reset'),{code:'ECONNRESET'});
+    }
+    async end(){closed++;}
+  }
+  const pool=requestScopedPool({connectionTimeoutMillis:6000},WakeClient,{
+    now:()=>elapsed,sleep:async ms=>{delays.push(ms);elapsed+=ms;}
+  });
+  const client=await pool.connect();
+  assert.equal(tries,5);
+  assert.deepEqual(delays,[350,700,1400,1400]);
+  assert.ok(elapsed<6000);
+  client.release();
+  await pool.end();
+  assert.equal(closed,tries);
+});
+test('slow connection timeouts never consume four separate six-second waits',async()=>{
+  let elapsed=0,tries=0,closed=0;
+  class SlowClient{
+    constructor(options){this.timeout=options.connectionTimeoutMillis;}
+    on(){}
+    async connect(){
+      tries++;elapsed+=this.timeout;
+      throw Object.assign(new Error('connection timeout'),{code:'ETIMEDOUT'});
+    }
+    async end(){closed++;}
+  }
+  const pool=requestScopedPool({connectionTimeoutMillis:6000},SlowClient,{
+    now:()=>elapsed,sleep:async ms=>{elapsed+=ms;}
+  });
+  await assert.rejects(pool.connect(),/connection timeout/);
+  assert.ok(tries>=2&&tries<7);
+  assert.ok(elapsed<=6000);
+  assert.equal(closed,tries);
+  await pool.end();
+});
+test('invalid database credentials fail immediately without retrying',async()=>{
+  let attempts=0;
+  class InvalidClient{
+    on(){}
+    async connect(){attempts++;throw Object.assign(Error('denied'),{code:'28P01'});}
+    async end(){}
+  }
+  const pool=requestScopedPool({},InvalidClient,{
+    sleep:async()=>{throw Error('must not wait after permanent failure');}
+  });
+  await assert.rejects(pool.connect(),/denied/);
+  assert.equal(attempts,1);
+  await pool.end();
+});
 test('database owner closes its pool even if Kysely destruction fails',async()=>{
   const events=[];
   await assert.rejects(closeLocDatabase({
@@ -294,4 +355,22 @@ test('every multi-statement MCP public read verifies grants in its own transacti
   assert.match(source,/databasePort:\{\.\.\.selected,db:trx,dialect:null\}/);
   assert.match(source,/borrowed:true,inTransaction:true/);
   assert.match(source,/return runMcp\(trx\)/);
+});
+
+test('import special Galaxy fields share one native typed update batch',()=>{
+  const contract=readFileSync(new URL('../app/loc/db/db-contract.mjs',import.meta.url),'utf8');
+  const writer=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  const begin=contract.indexOf('async function updateImportRowsUnchecked(');
+  const end=contract.indexOf('async function deleteRowsUnchecked(',begin);
+  const block=contract.slice(begin,end);
+  assert.match(block,/p_operation:'update_batch'/);
+  assert.doesNotMatch(block,/Promise\.all\(/);
+  assert.doesNotMatch(block,/start\+=6/);
+  assert.match(block,/maxChunkBytes=480000/);
+  assert.match(writer,/const transactionRegistry=new WeakMap\(\)/);
+  assert.match(writer,/const registry=await registeredScope\(trx,scope\)/);
+  for(const key of ['location','site_id','ref_id','source_id','target_id'])
+    assert.ok(writer.includes("'"+key+"'"),'missing approved Galaxy batch field '+key);
+  assert.match(native,/'update_batch','append_media_link'/);
 });

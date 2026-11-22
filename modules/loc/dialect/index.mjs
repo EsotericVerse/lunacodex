@@ -45,11 +45,19 @@ export function createKyselyDialect(engine,config){
 // that is specific to whichever vendor is behind `url` today, so this is
 // handled here, in the connection layer itself, instead of by tuning any
 // one vendor's dashboard settings - the fix has to survive switching DBs.
-// Exponential backoff over more attempts gives a slow cold start real room
-// to finish, while still failing well inside a single HTTP request's own
-// CPU/wall-clock budget (worst case here is under ~9s total).
-export function requestScopedPool(options,ClientClass=pg.Client,
-    {attempts=4,baseDelayMs=300}={}){
+// Retry the *connection*, never a SQL statement or an uncertain write.
+// A cold-starting database may reject early attempts immediately. Bound the
+// entire acquisition to six seconds so a 9-second browser read still has time
+// to execute SQL and return a response. Socket cleanup remains mandatory.
+const NON_RETRYABLE_CONNECTION_CODES=new Set([
+  '28P01','28000','3D000','3F000','42501','ENOTFOUND'
+]);
+export function requestScopedPool(options,ClientClass=pg.Client,{
+  attempts=7,baseDelayMs=350,maxDelayMs=1400,
+  maxElapsedMs=6000,attemptTimeoutMs=1500,
+  now=()=>Date.now(),
+  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+}={}){
   let currentWaitUntil=null;
   let ended=false;
   const acquired=new Set();
@@ -78,9 +86,19 @@ export function requestScopedPool(options,ClientClass=pg.Client,
     async connect(){
       if(ended)throw new Error('LOC request database connection already closed');
       let lastError;
+      const started=now();
       for(let attempt=1;attempt<=attempts;attempt++){
         if(ended)throw new Error('LOC request database connection already closed');
-        const client=new ClientClass(options);
+        const remaining=maxElapsedMs-(now()-started);
+        if(remaining<=0)break;
+        // pg enforces this timeout per socket. A 6s timeout on EACH retry
+        // would take up to 26.1s with the previous four-attempt backoff.
+        const configured=Number(options?.connectionTimeoutMillis);
+        const perAttempt=Number.isFinite(configured)&&configured>0
+          ?Math.min(configured,attemptTimeoutMs):attemptTimeoutMs;
+        const client=new ClientClass({...options,
+          connectionTimeoutMillis:Math.max(1,Math.floor(Math.min(perAttempt,remaining)))
+        });
         client.on?.('error',()=>{});
         connecting.add(client);
         try{
@@ -100,11 +118,18 @@ export function requestScopedPool(options,ClientClass=pg.Client,
           // Wait for its close before retrying or returning an error.
           await close(client);
           if(ended)throw error;
-          if(attempt<attempts)
-            await new Promise(resolve=>setTimeout(resolve,baseDelayMs*2**(attempt-1)));
+          // Invalid credentials, database names and SQL permissions cannot
+          // be fixed by waking the compute; surface them without retrying.
+          if(NON_RETRYABLE_CONNECTION_CODES.has(String(error?.code||'')))
+            throw error;
+          if(attempt<attempts){
+            const left=maxElapsedMs-(now()-started);
+            const delay=Math.min(maxDelayMs,baseDelayMs*2**(attempt-1),left);
+            if(delay>0)await sleep(delay);
+          }
         }
       }
-      throw lastError;
+      throw lastError||new Error('LOC database connection retry budget exhausted');
     },
     async end(){
       ended=true;
@@ -133,10 +158,8 @@ export function dialect(driver,url){
   try{parsed=new URL(url)}catch{throw new TypeError('Invalid database URL')}
   if(!['postgres:','postgresql:'].includes(parsed.protocol)||!parsed.hostname)
     throw new TypeError('Expected a PostgreSQL URL');
-  // 3.5s was too tight to ever let a cold-starting compute finish waking
-  // up; a single short timeout just converted "the DB needed a moment" into
-  // an immediate, user-visible failure. 6s per attempt, retried with
-  // backoff above, gives real cold starts room without blocking forever.
+  // The pool bounds each connection attempt to 1.5s and its cumulative
+  // retry budget to 6s. This option remains an upper bound for other callers.
   const pool=requestScopedPool({
     connectionString:url,connectionTimeoutMillis:6000
   });

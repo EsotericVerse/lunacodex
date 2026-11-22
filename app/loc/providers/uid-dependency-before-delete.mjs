@@ -5,7 +5,6 @@ import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarch
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const SCOPED=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor)$/;
-const MEDIA=new Set(['image','video','rune','suno']);
 
 function failed(){
   const error=new Error('UID 引用修正未完成，已拒絕刪除；請重新載入。');
@@ -74,8 +73,7 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
   }
   const galaxyColumns=kind==='galaxy'
     ?['uid','source_id','target_id','ref_id']
-    :MEDIA.has(deletedType)?['uid','media_link']
-      :deletedType==='point'?['uid','place_id']:[];
+    :deletedType==='point'?['uid','place_id']:[];
   const parentFields=kind==='galaxy'
     ?{pattern:SCOPE_PATTERN_POSTING_KEY}
     :UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
@@ -94,8 +92,6 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
       ]));
     }else if(deletedType==='point'){
       query=query.where('place_id','=',uid);
-    }else if(MEDIA.has(deletedType)){
-      query=query.where(listContains('media_link',uid,engine));
     }
     galaxyRows=await query.execute();
   }

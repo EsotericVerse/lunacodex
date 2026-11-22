@@ -15,11 +15,9 @@ import PanelLoading from '../ui/PanelLoading';
 const ADMIN_OPTIONS=Object.freeze([
   {value:'featureHero',label:'頁面主視覺',shortLabel:'頁面',description:'功能頁圖片與文字'},
   {value:'themes',label:'主題配色',shortLabel:'配色',description:'主題色彩'},
-  {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'},
-  {value:'io',label:'匯入與系統工具',shortLabel:'工具',description:'匯入匯出與系統限制'}
+  {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'}
 ]);
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
-const RuntimeIoSettings=dynamic(()=>import('./admin-panels/RuntimeIoSettings'),{loading:PanelLoading});
 const ThemeEditor=dynamic(()=>import('./admin-panels/ThemeEditor'),{loading:PanelLoading});
 const FeatureHeroImages=dynamic(()=>import('./admin-panels/FeatureHeroImages'),{loading:PanelLoading});
 
@@ -116,7 +114,6 @@ export default function AdminHomeView({scopeGroup}){
           :!entryVerified?<p className="scope-status" role="status">正在開啟管理操作…</p>
           :<>
             {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
-            {section==='io'?<RuntimeIoSettings/>:null}
             {section==='featureHero'?<FeatureHeroImages/>:null}
             {section==='themes'?<ThemeEditor/>:null}
           </>}

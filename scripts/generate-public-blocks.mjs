@@ -7,6 +7,7 @@ import {createKyselyPublicClient} from '../app/loc/providers/kysely-browser.mjs'
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
 import {scopeConfigColumns} from '../app/loc/scope/scope-config-fields.mjs';
 import {isLocBlockPage,locAnchorToBlock} from '../app/loc/blocks/loc-block-anchor.mjs';
+import {sourceTaxonomyFromAnchors} from '../app/loc/source/classification.mjs';
 import {publishPublicFiles} from './publish-public-files.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -26,12 +27,16 @@ if(!site||!Array.isArray(site.registry))throw new Error('Invalid public Bootstra
 console.log('[public] Source: primary');
 const routes=site.registry.filter(x=>x.active!==false&&x.scope_kind!=='system');
 if(!routes.length||routes.some(x=>!validScope.test(x.scope_id)))throw Error('Invalid public Scope list');
-// Explicit public publication projects the existing Scope Anchor From tree.
-// This reads published Anchor source snapshots without scanning Galaxy articles.
-const {data:globalList,error:globalError}=await db.from('loc')
-  .select('ArticleTag').eq('id','loc').maybeSingle();
-if(globalError||!globalList||!Array.isArray(globalList.ArticleTag))throw Error('Cannot publish LOC ArticleTag');
-const systemNames=[...new Set([...globalList.ArticleTag,'Others'].map(x=>String(x).trim()).filter(Boolean))];
+// Publish typed SiteAnchor nodes; neither LOC nor Scope ArticleTag is needed.
+const {data:sourceRows,error:sourceError}=await db.from('loc_anchor')
+  .select('uid,type,title,invisible,attr')
+  .in('type',['universe','galaxy','domain','from'])
+  .order('uid').range(0,999);
+if(sourceError||!Array.isArray(sourceRows)||!sourceRows.length||sourceRows.length>=1000)
+  throw Error('Cannot publish LOC SiteAnchor source hierarchy');
+const sourceTaxonomy=sourceTaxonomyFromAnchors(sourceRows);
+if(!sourceTaxonomy.categories.length)
+  throw Error('LOC SiteAnchor source hierarchy has no typed categories');
 
 function cleanPublishedHtml(value,scope,page){
   if(typeof value!=='string')return value;
@@ -118,7 +123,7 @@ const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,
   theme_list:themeMeta,themes:[],blocks:[]};
 const entries=[
   ['app/modular/routing/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
-  ['app/modular/published-source-taxonomy.js',"// Fixed LOC ArticleTag; no Source Anchor tree.\\nimport {sourceTaxonomyFromArrays} from '../loc/source/classification.mjs';\\nexport const PUBLISHED_LOC_ARTICLE_TAGS=Object.freeze("+encode(systemNames)+");\\nexport const PUBLISHED_SOURCE_LISTS=Object.freeze({loc:{system:PUBLISHED_LOC_ARTICLE_TAGS,personal:[]}});\\nexport const PUBLISHED_SOURCE_ENTRIES=Object.freeze({});\\nexport const PUBLISHED_SOURCE_DOMAINS=Object.freeze({});\\nconst taxonomy=Object.freeze(sourceTaxonomyFromArrays(PUBLISHED_LOC_ARTICLE_TAGS));\\nexport const publishedSourceTaxonomy=()=>taxonomy;\\nexport const publishedSourceCategoryCatalog=()=>({categories:taxonomy.categories,aliases:taxonomy.aliases});\\n"],
+  ['app/modular/published-source-taxonomy.js', "// Public SiteAnchor source hierarchy, projected from persisted Anchor types.\nimport {sourceTaxonomyFromAnchors} from '../loc/source/classification.mjs';\nexport const PUBLISHED_SOURCE_ANCHORS=Object.freeze("+encode(sourceRows)+");\nconst taxonomy=Object.freeze(sourceTaxonomyFromAnchors(PUBLISHED_SOURCE_ANCHORS));\nexport const publishedSourceTaxonomy=()=>taxonomy;\nexport const publishedSourceCategoryCatalog=()=>({categories:taxonomy.categories,aliases:taxonomy.aliases});\n"],
   ...themes.map(t=>['app/modular/themes/theme-'+t.theme_id+'.json',JSON.stringify(t,null,2)+'\n']),
   ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata; theme palettes are loaded by selected ID only.\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze({...'+encode(bootstrap)+',themes:[]});\n'],
   ['app/modular/published-theme-meta.js','// Published Theme metadata (palettes are CSS).\nexport const PUBLISHED_THEME_META='+encode(themes.map(t=>['theme-'+t.theme_id,t.theme_name,t.scheme,t.style_key]))+';\n'],

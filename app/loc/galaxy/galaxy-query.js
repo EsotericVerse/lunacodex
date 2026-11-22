@@ -178,47 +178,23 @@ export async function selectSourceDaily(scope,{startDate='',endDate=''}={}){
   throw new Error('Source daily statistics aggregate unavailable; full-row fallback disabled');
 }
 
-function mediaIdsOf(value){
-  return [...new Set((Array.isArray(value)?value:[]).map(item=>String(item||'').trim()).filter(Boolean))];
+// Galaxy.media_link already carries public URLs. It must not trigger any
+// MediaAnchor UID lookup just to show an external link.
+function mediaUrlsOf(value){
+  return [...new Set((Array.isArray(value)?value:[])
+    .map(item=>String(item||'').trim()).filter(url=>/^https?:\/\//i.test(url)))];
 }
-async function mediaRowsFor(scope,mediaIds=[],{signal=null,includeLegacyRuneRefs=false}={}){
-  const current=scopeOf(scope);
-  const ids=[...new Set(mediaIds.map(String).filter(Boolean))];
-  if(!ids.length)return [];
-  const result=[];
-  for(let i=0;i<ids.length;i+=40){
-    const batch=ids.slice(i,i+40);
-    const page=await selectRows(current.anchor,{
-      columns:MEDIA_ANCHOR_COLUMNS,
-      filters:[{column:'uid',operator:'in',value:batch},
-        {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
-        {column:'invisible',operator:'eq',value:false}],
-      limit:batch.length,maxLimit:batch.length,signal
-    });
-    result.push(...page.rows.map(mediaAnchorProjection));
-  }
-  return result;
-}
-function resolvedLinks(row,mediaById){
+function resolvedLinks(row){
   const links=[];
-  if(row?.url&&/^https?:\/\//i.test(String(row.url)))links.push({id:'url:'+row.uid,href:row.url,label:'外部連結'});
-  for(const id of mediaIdsOf(row?.media_link)){
-    const media=mediaById.get(id);
-    if(media?.url&&/^https?:\/\//i.test(String(media.url))){
-      links.push({id:'media:'+id,href:media.url,label:media.title||media.type||'媒體連結'});
-    }
-  }
+  if(/^https?:\/\//i.test(String(row?.url||'')))
+    links.push({id:'url:'+row.uid,href:row.url,label:'外部連結'});
+  for(const url of mediaUrlsOf(row?.media_link))
+    links.push({id:'media:'+url,href:url,label:'媒體連結'});
   return links;
 }
-
-export async function resolveGalaxyExternalLinks(scope,rows=[],{signal=null}={}){
-  const current=scopeOf(scope);
-  const source=Array.isArray(rows)?rows:[];
-  if(!source.length)return [];
-  const ids=[...new Set(source.flatMap(row=>mediaIdsOf(row?.media_link)))];
-  const mediaRows=await mediaRowsFor(current,ids,{signal});
-  const mediaById=new Map(mediaRows.map(item=>[String(item.uid),item]));
-  return source.map(row=>({...row,resolved_links:resolvedLinks(row,mediaById)}));
+export async function resolveGalaxyExternalLinks(_scope,rows=[]){
+  return (Array.isArray(rows)?rows:[])
+    .map(row=>({...row,resolved_links:resolvedLinks(row)}));
 }
 
 export async function selectGalaxyContent(scope,uid,{authenticated=false,dbId=''}={}){
@@ -349,31 +325,24 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
   });
   const row=articleRows[0]||null;
   if(!row||(!includeHidden&&galaxyAble(row).list===false))return null;
-  const mediaIds=mediaIdsOf(row.media_link);
   const placeId=String(row.place_id||'').trim();
   const day=articleDate(row.date);
-  const [relationTitles,mediaRows,space,time,statistics]=await Promise.all([
+  const [relationTitles,space,time,statistics]=await Promise.all([
     relatedArticleTitlesFor(current,row,{includeHidden,dbId:federated?dbId:''}).catch(()=>({})),
-    // A federated Galaxy row may live in another database with independent
-    // Anchor/Media/Time UIDs. Until those readers accept a qualified dataset,
-    // never attach unrelated primary-DB metadata to this article.
-    federated?Promise.resolve([]):mediaRowsFor(current,mediaIds).catch(()=>[]),
     federated?Promise.resolve({place:null,routes:[],traces:[]}):
       articleSpaceContext(current,placeId,{authenticated:includeHidden}).catch(()=>({place:null,routes:[],traces:[]})),
     federated?Promise.resolve({anchors:[],periods:[],eras:[]}):
       articleTimeContext(current,day).catch(()=>({anchors:[],periods:[],eras:[]})),
     articleStatisticsContext(current,day)
   ]);
-  const mediaById=new Map(mediaRows.map(item=>[String(item.uid),item]));
-  const orderedMedia=mediaIds.map(mediaId=>mediaById.get(mediaId)).filter(Boolean);
   // Existing 2026 records sometimes stored card spreads on non-rune media.
   // Expose them as a read-only rune media view until the verified data backfill;
   // do not modify or duplicate any Galaxy article in a read request.
   // Keep media and original article URLs as distinct associations.
   return {...row,scope_id:current.id,__db_id:dbId||row.__db_id||'',__table:current.galaxy,
     inter_net_federated:Boolean(federated),
-    links:resolvedLinks(row,new Map()),relation_titles:relationTitles,
-    related_media:orderedMedia,trace_place:space.place,
+    links:resolvedLinks(row),relation_titles:relationTitles,
+    related_media:[],trace_place:space.place,
     related_space:space,related_time:time,related_statistics:statistics,
     article_day:day};
 }

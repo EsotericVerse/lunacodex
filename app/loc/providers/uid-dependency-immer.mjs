@@ -1,11 +1,10 @@
 import {produce} from 'immer';
-import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {SCOPE_PATTERN_POSTING_KEY} from '../keywords/anchor-index.mjs';
 
 // An exact UID is an identity; location, date and site are source values,
 // never replacement UIDs. Do not infer identities from titles or dates.
 const UID=/^[A-Za-z0-9]{8}$/;
-const MEDIA_TYPES=new Set(ANCHOR_TYPE_GROUPS.media);
 export const UID_DEPENDENT_ANCHOR_FIELDS=Object.freeze({
   date:Object.freeze({period:'uid'}),
   period:Object.freeze({era:'period'}),
@@ -82,13 +81,12 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
   if(deletedTable==='anchor'&&!PERSISTED_ANCHOR_TYPES.includes(deletedType))
     throw new TypeError('Unknown Anchor type');
   const isGalaxy=deletedTable==='galaxy';
-  const media=!isGalaxy&&MEDIA_TYPES.has(deletedType);
   const point=!isGalaxy&&deletedType==='point';
   const parentFields=isGalaxy?{}:UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
   const galaxyUpdates=[],anchorUpdates=[],galaxySeen=new Set(),anchorSeen=new Set();
   for(const source of galaxyRows){
     const row={...source};
-    for(const key of ['target_id','media_link'])
+    for(const key of ['target_id'])
       if(Object.hasOwn(row,key))row[key]=uidList(row[key]);
     const id=uidOf(row?.uid);
     mark(galaxySeen,id);
@@ -98,15 +96,14 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
         if(draft.source_id===uid)draft.source_id=null;
         if(draft.ref_id===uid)draft.ref_id=null;
         if(hasUid(draft.target_id,uid))draft.target_id=withoutUid(draft.target_id,uid);
-      }else if(media&&hasUid(draft.media_link,uid)){
-        draft.media_link=withoutUid(draft.media_link,uid);
+
       }else if(point&&draft.place_id===uid){
         draft.place_id=null;
       }
     });
     if(next===row)continue;
     const values={},expected={};
-    for(const key of ['source_id','target_id','ref_id','media_link','place_id']){
+    for(const key of ['source_id','target_id','ref_id','place_id']){
       if(next[key]!==row[key]){
         values[key]=next[key];
         expected[key]=source[key]??null;

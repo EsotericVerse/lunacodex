@@ -1,10 +1,8 @@
 import {handleNativePublicContent} from '../../app/loc/server/native-public-content.mjs';
-import {withOptionalNumericEdgeCache} from '../../app/loc/server/optional-numeric-edge-cache.mjs';
 
-// Existing LOC Pages application. When opt-in is OFF, there is no cache IO;
-// when ON, a miss/error always falls through to the same native SQL reader.
+// Public content has one direct business reader. No inactive ISR or optional
+// Cloudflare Cache API wrapper, TTL, alternate route or cache environment flag.
 export function onRequestGet(context){
-  return withOptionalNumericEdgeCache(context,
-    ()=>handleNativePublicContent(context.request,context.env,
-      {waitUntil:context.waitUntil}));
+  return handleNativePublicContent(context.request,context.env,
+    {waitUntil:context.waitUntil});
 }

@@ -200,58 +200,49 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function updateImportRowsUnchecked(table,rows){
-    // Preserve the database update_batch boundary: only Galaxy article tables.
-    if(!/^silver\.[a-z][a-z0-9_]*_galaxy$/.test(String(table||'')))
+    if(!/^silver\\.[a-z][a-z0-9_]*_galaxy$/.test(String(table||'')))
       throw Error('文章批次更新資料表無效');
     const list=Array.isArray(rows)?rows:[];
-    // Keep the existing update_batch RPC contract: it intentionally accepts
-    // only these five fields. Source metadata already belongs to Galaxy,
-    // but must use the existing, authorized single-row update operation.
-    const batchFields=new Set(['title','content','place_id','url','media_link']);
-    const allowedFields=new Set([...batchFields,'location','site_id','ref_id','source_id','target_id']);
-    const bulk=[],metadata=[],seen=new Set();
+    const allowedFields=new Set(['title','content','place_id','url','media_link',
+      'location','site_id','ref_id','source_id','target_id']);
+    const seen=new Set();
     for(const row of list){
       const uid=String(row?.uid||'');
       const keys=Object.keys(row||{}).filter(key=>key!=='uid');
       if(!/^[A-Za-z0-9]{8}$/.test(uid)||!keys.length||
-          keys.some(key=>!allowedFields.has(key))||seen.has(uid))
+        keys.some(key=>!allowedFields.has(key))||seen.has(uid))
         throw Error('無效文章更新資料');
       seen.add(uid);
       validateGalaxyWrite(table,row);
-      if(keys.some(key=>!batchFields.has(key)))metadata.push(row);
-      else bulk.push(row);
     }
-    let count=0;
+    // Keep each authorized import chunk atomic. A single typed update_batch
+    // handles ordinary and special Galaxy fields in ONE PostgreSQL statement.
+    // Bound the serialized payload below LOC Native's 700k request limit.
+    // Never retry a batch whose COMMIT receipt may already have been lost.
+    const maxChunkBytes=480000;
+    const encoder=new TextEncoder();
+    let pending=[],bytes=0,count=0,committed=0;
+    const flush=async()=>{
+      if(!pending.length)return;
+      const payload={p_table:table,p_operation:'update_batch',
+        p_rows:pending,p_values:null,p_filters:[]};
+      const result=await managementWriteUnchecked(payload);
+      count+=Number(result?.count||0);
+      committed+=pending.length;
+      pending=[];bytes=0;
+    };
     try{
-      for(let start=0;start<bulk.length;start+=MAX_ROWS){
-        const batch=bulk.slice(start,start+MAX_ROWS);
-        const result=await managementWriteUnchecked({
-          p_table:table,p_operation:'update_batch',
-          p_rows:batch,p_values:null,p_filters:[]
-        });
-        count+=Number(result?.count||0);
+      for(const row of list){
+        const size=encoder.encode(JSON.stringify(row)).length+1;
+        if(size>maxChunkBytes)throw Error('單筆文章更新超出批次傳輸限制');
+        if(pending.length>=MAX_ROWS||bytes+size>maxChunkBytes)await flush();
+        pending.push(row);bytes+=size;
       }
-      // An existing per-row 'update' RPC handles additional Galaxy fields
-      // without a new table, column, index or RPC. Concurrency is bounded to
-      // avoid overwhelming the database during large reimports.
-      for(let start=0;start<metadata.length;start+=6){
-        const group=metadata.slice(start,start+6);
-        const results=await Promise.all(group.map(async row=>{
-          const {uid,...values}=row;
-          const result=await managementWriteUnchecked({
-            p_table:table,p_operation:'update',
-            p_rows:null,p_values:values,
-            p_filters:[{column:'uid',operator:'eq',value:uid}]
-          });
-          return Number(result?.count||0);
-        }));
-        for(const affected of results){
-          if(affected!==1)throw Error('既有文章更新筆數不符：'+affected);
-          count+=affected;
-        }
-      }
+      await flush();
     }catch(error){
-      throw new Error('文章重匯更新失敗；已確認成功 '+count+' 筆，其他批次可能部分寫入。原始錯誤：'+
+      if(error?.code==='LOC_WRITE_RESULT_UNKNOWN')throw error;
+      throw new Error('文章重匯更新失敗；已確認提交 '+committed+
+        ' 筆資料的批次，當前批次已回滾或提交結果未確認。原始錯誤：'+
         String(error?.message||error));
     }
     return {count};

@@ -40,9 +40,8 @@ export async function db_connection(env={},verifiedAlias='',{probeTicket='',wait
   // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
   // when several requests run queries at once. Open a short-lived client per
   // acquisition instead; it always lives inside the request that uses it.
-  // See dialect/index.mjs: 3.5s was too tight for a cold-starting serverless
-  // Postgres compute to wake up, turning transient connection delay into an
-  // immediate failure. requestScopedPool itself now retries with backoff.
+  // See dialect/index.mjs: short, bounded retries tolerate a cold-starting
+  // compute without extending a browser read past its 9s response budget.
   const pool=requestScopedPool({connectionString:uri,
     connectionTimeoutMillis:6000,ssl:{rejectUnauthorized:true}});
   pool.setWaitUntil(waitUntil);

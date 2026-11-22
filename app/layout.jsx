@@ -5,7 +5,7 @@ import {faviconForScope} from './site-favicons';
 import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
 import {PUBLISHED_THEME_META} from './modular/published-theme-meta.js';
 
-// The public shell is static. Only Culture/Statistics numeric APIs use ISR.
+// The public shell is static. Culture/Statistics read their native numeric APIs directly; no ISR.
 export const dynamic='force-static';
 
 export const metadata = {

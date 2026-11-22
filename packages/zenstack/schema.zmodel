@@ -676,7 +676,7 @@ model Loc {
     id                           String      @id @db.Text
     display_name                 String      @db.Text
     locale                       String      @db.Text @default(dbgenerated())
-    ArticleTag                   Json        @db.JsonB @default(dbgenerated())
+    caches                       Json        @db.JsonB @default(dbgenerated())
     theme                        Json        @db.JsonB @default(dbgenerated())
     keywords                     Json        @db.JsonB @default(dbgenerated())
     title_tw                     String?     @db.Text
@@ -809,8 +809,6 @@ model Manage {
     manage_role                  String?     @db.Text
     galaxy_table                 String      @db.Text @default(dbgenerated())
     anchor_table                 String      @db.Text @default(dbgenerated())
-    caches                       Json        @db.JsonB @default(dbgenerated())
-    note                         String?     @db.Text
     @@map("manage")
     @@schema("api")
     @@allow('read', true)

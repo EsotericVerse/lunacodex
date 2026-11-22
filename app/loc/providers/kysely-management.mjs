@@ -3,6 +3,8 @@
 // Historical RPC/legacy payload helpers are not independent authorities;
 // Tree Models do not grant access, run SQL, or create additional relations.
 import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
+import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
+import {publishedManagedScope} from './published-managed-scope.mjs';
 import {provisionScopeNative,manageScopeRegistryNative,deleteScopeNative}
   from './kysely-scope-lifecycle.mjs';
 import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
@@ -17,7 +19,6 @@ import {sql} from 'kysely';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {saveTracePageInTransaction} from './kysely-trace-page.mjs';
-import {decodeRuntimeIo,encodeRuntimeIo} from '../query/query-batch-size.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
   from '../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -42,6 +43,22 @@ function tableName(value){
   const match=String(value||'').match(/^silver\.([a-z][a-z0-9_]*)$/i);
   if(!match)reject('Invalid managed relation');
   return match[1];
+}
+// Galaxy.media_link is the stored external URL list, never an Anchor UID list.
+// Validate even privileged raw managed writes, not only import/UI callers.
+function validateGalaxyMediaLinks(table,operation,rows,values){
+  if(!/^[a-z][a-z0-9]{0,14}_galaxy$/.test(table))return;
+  const candidates=['insert','upsert','update_batch'].includes(operation)
+    ?rows:operation==='update'?[values]:[];
+  for(const row of candidates){
+    if(!row||!Object.hasOwn(row,'media_link'))continue;
+    const urls=row.media_link;
+    if(urls===null)continue;
+    if(!Array.isArray(urls)||urls.length>100||
+      urls.some(url=>typeof url!=='string'||url.length>8192||
+        !/^https?:\/\/[^\\s]+$/i.test(url)||!URL.canParse(url)))
+      reject('Galaxy.media_link only accepts public HTTP(S) URLs');
+  }
 }
 function validateRows(value){
   const issue=managedRowsIssue(value);
@@ -97,10 +114,27 @@ export function managedPrimaryKeyColumns(table,modelName=''){
   // than guessing a ZModel or changing database routing.
   return [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
 }
+// Every operation in one managed transaction uses the SAME trusted registry
+// snapshot. Do not issue one api.manage SELECT per Anchor/Galaxy operation.
+// Cache lives only as long as the owning Kysely transaction object; a write
+// to api.manage invalidates it before any subsequent operation in that trx.
+const transactionRegistry=new WeakMap();
+async function registeredScope(trx,scope){
+  // Built-in Scope table names are fixed public JS data: zero Registry SQL.
+  // Unpublished custom Scopes continue to use transactional SQL lookup.
+  const fixed=publishedManagedScope(scope);
+  if(fixed)return fixed;
+  let cache=transactionRegistry.get(trx);
+  if(!cache){cache=new Map();transactionRegistry.set(trx,cache);}
+  if(!cache.has(scope)){
+    cache.set(scope,trx.selectFrom('api.manage')
+      .select(['id','manage_role','active','galaxy_table','anchor_table'])
+      .where('id','=',scope).executeTakeFirst());
+  }
+  return cache.get(scope);
+}
 async function authorizeRelation(trx,table,operation,values,filters,rows){
   if(table==='manage'||table==='loc'||table==='loc_anchor'){
-    if(table==='loc'&&(Object.hasOwn(values||{},'ArticleTag')||rows.some(row=>Object.hasOwn(row,'ArticleTag'))))
-      reject('LOC ArticleTag is fixed and cannot be configured',403);
     if(!await canLocAccess(trx,'global'))reject('Global management permission required',403);
     return;
   }
@@ -116,9 +150,7 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
     reject('Scope management permission required',403);
   // Verify the dynamic registry mapping before escalating to the trusted
   // server connection. Caller input can never pick an arbitrary table.
-  const record=await trx.selectFrom('api.manage')
-    .select(['id','manage_role','galaxy_table','anchor_table'])
-    .where('id','=',scope).executeTakeFirst();
+  const record=await registeredScope(trx,scope);
   if(!record||!['scope','admin'].includes(record.manage_role))reject('Scope is not registered',403);
   const galaxy=String(record.galaxy_table||'galaxy');
   const anchor=String(record.anchor_table||'anchor');
@@ -131,7 +163,11 @@ async function writeBatch(trx,table,rows){
   if(!/^[a-z][a-z0-9_]*_galaxy$/.test(table))reject('Article batch updates require a Galaxy table');
   if(!Array.isArray(rows)||rows.length>10000)reject('Invalid article batch size');
   if(!rows.length)return 0;
-  const supported=new Set(['uid','title','content','place_id','url','media_link']);
+  // All approved Galaxy columns use the existing ZModel/Zod payload checks.
+  // The SQL update is one JSONB recordset inside the caller's one transaction:
+  // no special-field one-row requests and no additional ad-hoc ORM layer.
+  const supported=new Set(['uid','title','content','place_id','url','media_link',
+    'location','site_id','ref_id','source_id','target_id']);
   const seen=new Set();
   for(const row of validateRows(rows)){
     if(!UID.test(String(row.uid||''))||!Object.keys(row).some(k=>k!=='uid')||
@@ -140,25 +176,25 @@ async function writeBatch(trx,table,rows){
     seen.add(row.uid);
   }
   const ref=sql.ref('silver.'+table);
-  const media=sql`(jsonb_populate_record(NULL::${ref},j.item)).media_link`;
+  const typed=column=>sql`(jsonb_populate_record(NULL::${ref},j.item)).${sql.ref(column)}`;
+  const setFields=['title','content','url','media_link','location',
+    'site_id','ref_id','source_id','target_id'];
+  const updates=setFields.map(column=>
+    sql`${sql.ref(column)}=case when j.item ? ${column}
+      then ${typed(column)} else ${sql.ref('g.'+column)} end`);
+  updates.push(sql`place_id=case when coalesce(btrim(g.place_id),'')=''
+    then coalesce(nullif(btrim(j.item->>'place_id'),''),g.place_id) else g.place_id end`);
+  updates.push(sql`"UpdateTime"=now()`);
+  const changed=sql.join([
+    ...setFields.map(column=>sql`(j.item ? ${column}
+      and ${sql.ref('g.'+column)} is distinct from ${typed(column)})`),
+    sql`(j.item ? 'place_id' and coalesce(btrim(g.place_id),'')=''
+      and nullif(btrim(j.item->>'place_id'),'') is not null)`
+  ],sql` or `);
   const result=await sql`
-    update ${ref} as g set
-      title=case when j.item ? 'title' then j.item->>'title' else g.title end,
-      content=case when j.item ? 'content' then j.item->>'content' else g.content end,
-      place_id=case when coalesce(btrim(g.place_id),'')=''
-        then coalesce(nullif(btrim(j.item->>'place_id'),''),g.place_id) else g.place_id end,
-      url=case when j.item ? 'url' then j.item->>'url' else g.url end,
-      media_link=case when j.item ? 'media_link' then ${media} else g.media_link end,
-      "UpdateTime"=now()
+    update ${ref} as g set ${sql.join(updates)}
     from jsonb_array_elements(${JSON.stringify(rows)}::jsonb) as j(item)
-    where g.uid=(j.item->>'uid')::char(8) and (
-      (j.item ? 'title' and g.title is distinct from j.item->>'title')
-      or (j.item ? 'content' and g.content is distinct from j.item->>'content')
-      or (j.item ? 'place_id' and coalesce(btrim(g.place_id),'')=''
-        and nullif(btrim(j.item->>'place_id'),'') is not null)
-      or (j.item ? 'url' and g.url is distinct from j.item->>'url')
-      or (j.item ? 'media_link' and g.media_link is distinct from ${media})
-    )
+    where g.uid=(j.item->>'uid')::char(8) and (${changed})
   `.execute(trx);
   return Number(result.numAffectedRows||0);
 }
@@ -189,6 +225,8 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     if(operation==='update'&&Object.hasOwn(values,'domain'))
       Object.assign(values,validateLocRegistryDomain(values));
   }
+  validateGalaxyMediaLinks(table,operation,
+    operation==='update_batch'?payload.p_rows:rows,values);
   await authorizeRelation(trx,table,operation,values,filters,rows);
   if(operation==='append_media_link'){
     // A purpose-only Galaxy/MediaAnchor link, not arbitrary SQL mutation.
@@ -202,20 +240,25 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
       reject('Invalid LOC MediaAnchor link operation');
     const scope=table.slice(0,-7),galaxy='silver.'+table;
     const linked=await trx.selectFrom('silver.'+scope+'_anchor')
-      .select('uid').where('uid','=',values.media_uid)
+      .select(['uid','attr']).where('uid','=',values.media_uid)
       .where('type','in',ANCHOR_TYPE_GROUPS.media).executeTakeFirst();
     if(!linked)reject('MediaAnchor was not inserted in this Scope',409);
+    const url=String(linked.attr?.url||'').trim();
+    if(!/^https?:\/\//i.test(url))
+      reject('Only public MediaAnchor URLs may be linked to Galaxy.media_link',400);
     const article=await trx.selectFrom(galaxy).select('media_link')
       .where('uid','=',values.article_uid).forUpdate().executeTakeFirst();
     if(!article)reject('Linked Galaxy article does not exist',409);
     const prior=Array.isArray(article.media_link)?article.media_link:[];
-    const next=[...new Set([...prior.map(String),values.media_uid])];
-    // Same row lock and transaction: no stale browser-side replacement.
+    if(prior.includes(url))return {data:{count:0}};
+    // The article is row-locked within the same transaction that inserts the
+    // MediaAnchor. Galaxy.media_link is a URL[]; Anchor UIDs never enter it.
+    const next=[...prior,url];
     const updated=await trx.updateTable(galaxy)
       .set({media_link:next}).where('uid','=',values.article_uid)
       .executeTakeFirst();
     if(Number(updated?.numUpdatedRows||0)!==1)
-      reject('Media link update did not complete',409);
+      reject('Media URL link update did not complete',409);
     return {data:{count:1}};
   }
   // Authorized writes now share the exact ZModel column guard already used
@@ -236,7 +279,8 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     schema:namespace,table,
     values:galaxyValidated||anchorBlockValidated?null:modelValues,filters
   });
-  // The signed identity is checked against api.manage above. Only then
+  // The signed identity and current access grants were verified before this
+  // operation; fixed table names come from the JS Registry. Only then
   // does the existing trusted Kysely connection execute the mutation.
   // This does not introduce a database Auth API or a separate SQL Gateway.
   await sql`reset role`.execute(trx);
@@ -345,8 +389,7 @@ async function bulkUpdateGalaxyFlags(trx,args){
     reject('Private MCP and GitHub sources cannot be publicly enabled',403);
   if(!await canLocAccess(trx,'scope',scope))reject('Scope management permission required',403);
   // Reuse the Scope Registry. Do not trust user-supplied SQL relation names.
-  const registry=await trx.selectFrom('api.manage').select(['manage_role','galaxy_table'])
-    .where('id','=',scope).executeTakeFirst();
+  const registry=await registeredScope(trx,scope);
   if(!['scope','admin'].includes(registry?.manage_role)||registry.galaxy_table!=='galaxy')
     reject('Scope Galaxy mapping unavailable',403);
   const table=sql.ref('silver.'+scope+'_galaxy');
@@ -436,9 +479,7 @@ async function searchPrivateGalaxy(trx,args,claims){
     p_place_only:placeOnly}=parsed.data;
   if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
     reject('Private Search Scope access denied',403);
-  const registry=await trx.selectFrom('api.manage')
-    .select(['manage_role','galaxy_table','active'])
-    .where('id','=',scope).executeTakeFirst();
+  const registry=await registeredScope(trx,scope);
   if(registry?.manage_role!=='scope'||registry.active!==true||registry.galaxy_table!=='galaxy')
     reject('Private Search Scope unavailable',403);
   if(start&&end&&start>end)reject('Invalid private Search time range');
@@ -815,9 +856,12 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     if(!title||title.length>120)reject('Group member name must contain 1–120 characters');
     if(!await canLocAccess(trx,'group',group))reject('Group management permission required',403);
     await sql`reset role`.execute(trx);
-    const parent=await trx.selectFrom('api.manage').select('id')
-      .where('id','=',member).where('parent_scope_id','=',group)
-      .where('manage_role','=','scope').executeTakeFirst();
+    const fixed=fixedManageScope(member);
+    const parent=fixed ?
+      fixed.parent_scope_id===group&&fixed.manage_role==='scope'?fixed:null:
+      await trx.selectFrom('api.manage').select('id')
+        .where('id','=',member).where('parent_scope_id','=',group)
+        .where('manage_role','=','scope').executeTakeFirst();
     if(!parent)reject('Scope is outside this Group',403);
     const updated=await trx.updateTable('silver.'+member)
       .set({display_name:title,updated_at:sql`now()`})
@@ -868,8 +912,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
 async function scopedWrite(trx,input){
   const scope=validScope(input);
   if(!await canLocAccess(trx,'scope',scope))reject('Scope write permission required',403);
-  const registry=await trx.selectFrom('api.manage').select(['id','manage_role','active'])
-    .where('id','=',scope).executeTakeFirst();
+  const registry=await registeredScope(trx,scope);
   if(!registry||!['scope','admin'].includes(registry.manage_role)||registry.active!==true)
     reject('Unknown or inactive Scope',403);
   await sql`reset role`.execute(trx);
@@ -988,35 +1031,8 @@ async function managedLocSettings(trx,args,claims){
   const operation=String(args.p_operation||'read');
   const key=String(args.p_key??'').trim();
   const value=args.p_value;
-  if(!['theme','keywords','runtime'].includes(section))
+  if(!['theme','keywords'].includes(section))
     reject('Invalid LOC settings section');
-  // Runtime I/O ceilings and a disabled ISR reservation belong to the
-  // existing private api.manage admin JSON. This does not deploy an ISR route.
-  // Reuse this existing global-admin action, not an anonymous SELECT path.
-  if(section==='runtime'){
-    if(key||!['read','update'].includes(operation))reject('Invalid runtime setting operation');
-    const allowed=new Set(['io_limits','isr']);
-    if(operation==='update'&&(!catalogObject(value)||!Object.keys(value).length||
-        Object.keys(value).some(field=>!allowed.has(field))))
-      reject('Invalid runtime setting fields');
-    await sql`reset role`.execute(trx);
-    let query=trx.selectFrom('api.manage').select('caches')
-      .where('id','=','admin');
-    if(operation==='update')query=query.forUpdate();
-    const row=await query.executeTakeFirst();
-    if(!row)reject('LOC Admin runtime settings unavailable');
-    const previous=decodeRuntimeIo(row.caches);
-    if(operation==='read')return previous;
-    let next;
-    try{next=encodeRuntimeIo({...previous,...value});}
-    catch{reject('Invalid runtime setting values');}
-    const result=await trx.updateTable('api.manage')
-      .set({caches:sql`${JSON.stringify(next)}::jsonb`})
-      .where('id','=','admin').executeTakeFirst();
-    if(Number(result?.numUpdatedRows||0)!==1)
-      reject('LOC Admin runtime settings were not saved');
-    return next;
-  }
   // Permission was established with the signed LOC business identity;
   // no arbitrary table is addressable through this route.
   await sql`reset role`.execute(trx);
@@ -1133,26 +1149,6 @@ async function mergeScopePoints(trx,args,{authorizedScope=''}={}){
       typeof raw==='string'?[raw]:[];
     return [p.title,...stored];
   }).filter(t=>typeof t==='string'&&t.trim()).map(t=>t.trim()))].sort();
-  // A merged place_id can have many historical location spellings. Preserve
-  // every timestamp in both Points and their linked Galaxy articles before
-  // the original place_id references are rewritten.
-  const galaxyRef=sql.ref(galaxy);
-  const allUids=[keep,...removed];
-  const sources=await sql`select coalesce(jsonb_agg(t.ts order by t.ts),'[]'::jsonb) as times
-    from (
-      select distinct ts from (
-        select x.value as ts from ${ref} a
-          cross join lateral jsonb_array_elements_text(
-            case when jsonb_typeof(a.attr->'times')='array'
-              then a.attr->'times' else '[]'::jsonb end) x(value)
-          where a.type='point' and a.uid=any(${allUids}::text[])
-        union all
-        select to_char(g.createtime at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as ts
-          from ${galaxyRef} g where g.place_id=any(${allUids}::text[])
-            and g.createtime is not null
-      ) x where ts is not null and ts<>''
-    ) t`.execute(trx);
-  const mergedTimes=sources.rows[0]?.times||[];
   // Both route and article links must move before source points are deleted.
   await sql`update ${ref} a set attr=jsonb_set(a.attr,'{point}',
     (select coalesce(jsonb_agg(case when x.value=any(${removed}::text[])
@@ -1165,9 +1161,10 @@ async function mergeScopePoints(trx,args,{authorizedScope=''}={}){
   const galaxyResult=await trx.updateTable(galaxy)
     .set({place_id:keep}).where('place_id','in',removed).executeTakeFirst();
   const keepResult=await trx.updateTable(anchor)
-    .set({attr:sql`jsonb_set(
-      jsonb_set(attr,'{location}',${JSON.stringify(aliases)}::jsonb,true),
-      '{times}',${JSON.stringify(mergedTimes)}::jsonb,true)`})
+    // Point stores location aliases only. Time follows the linked articles;
+    // retire any legacy attr.times on the kept Point instead of recomputing it.
+    .set({attr:sql`jsonb_set(coalesce(attr,'{}'::jsonb)-'times',
+      '{location}',${JSON.stringify(aliases)}::jsonb,true)`})
     .where('uid','=',keep).where('type','=','point').executeTakeFirst();
   if(Number(keepResult?.numUpdatedRows||0)!==1)reject('Kept Point not updated');
   const deleted=await trx.deleteFrom(anchor)
@@ -1182,9 +1179,11 @@ async function importSharedKeywordClass(trx,args){
   if(from===to)reject('Source and target Scopes must differ');
   // The target Scope grant is explicitly verified by scopedWrite / LOC access.
   await scopedWrite(trx,to);
-  const sourceRegistry=await trx.selectFrom('api.manage')
-    .select('id').where('id','=',from).where('manage_role','=','scope')
-    .where('active','=',true).executeTakeFirst();
+  const fixedSource=publishedManagedScope(from);
+  const sourceRegistry=fixedSource?.manage_role==='scope'?fixedSource:
+    fixedSource?null:await trx.selectFrom('api.manage')
+      .select('id').where('id','=',from).where('manage_role','=','scope')
+      .where('active','=',true).executeTakeFirst();
   if(!sourceRegistry)reject('Source Scope unavailable');
   const sourceConfig=await trx.selectFrom('silver.'+from).select('keyword_meta')
     .where('id','=',from).executeTakeFirst();

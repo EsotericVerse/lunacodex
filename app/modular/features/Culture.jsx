@@ -48,11 +48,6 @@ import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
 const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
 
-function editorRiverYearWindow(){
-  // The timeline starts at the configured default year. Do not silently
-  // navigate to the first/last anchor after completing the data read.
-  return {start:DEFAULT_YEAR_WINDOW.startDate,end:DEFAULT_YEAR_WINDOW.endDate};
-}
 function isInteractiveTarget(target){
   return Boolean(target?.closest?.('a,button,input,select,textarea,summary,[role="button"],[contenteditable="true"]'));
 }
@@ -217,8 +212,13 @@ export default function Culture(){
   const editDock=useEditDock();
   const canUseScopeEditor=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const pathname=usePathname()||'';
-  const isTimeEditingView=canUseScopeEditor&&(pathname.endsWith('/culture/manage')||
-    pathname.endsWith('/culture/manage/')||searchParams?.get('edit')==='1');
+  // A management URL must render its management workspace even after a full
+  // navigation or an Edit Dock remount. The verified account still controls
+  // access to the editor; a URL or dock state never confers permission.
+  const onTimeManageRoute=pathname.endsWith('/culture/manage')||
+    pathname.endsWith('/culture/manage/');
+  const isTimeEditingView=onTimeManageRoute||
+    (canUseScopeEditor&&searchParams?.get('edit')==='1');
   // Public Culture does not load management grants; editing must verify them.
   const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor});
   const [locCultureView,setLocCultureView]=useState('period');
@@ -731,7 +731,6 @@ export default function Culture(){
   const editorEraRiver=useMemo(()=>
     buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
     [timelineItems,expandedEditorEraIds,scopeId]);
-  const editorRiverWindow=useMemo(editorRiverYearWindow,[]);
   const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
     current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
   const toggleTimeTrace=groupId=>{
@@ -755,6 +754,9 @@ export default function Culture(){
     const last=dates.at(-1)||DEFAULT_YEAR_WINDOW.endDate;
     return {start,end:last>start?last:nextRiverDay(start)};
   },[timelineItems]);
+  // Management displays the same complete historical Time graph as Culture;
+  // the current calendar year is not a filter or the initial editor camera.
+  const editorRiverWindow=structureDateBounds;
   const currentStructureStart=activeStructureKey==='all'?structureDateBounds.start
     :String(currentStructurePeriod?.start_date||'').slice(0,10);
   // A trace stops at its final real anchor; no virtual today endpoint.
@@ -1361,6 +1363,8 @@ export default function Culture(){
             {query.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
             {!query.isPending&&!query.error&&!timelineItems.length
               ?<p className='scope-status'>目前尚未建立此類時間紀錄，可直接在下方新增。</p>:null}
+            {!query.isPending&&!query.error&&!editorEraRiver.groups.length
+              ?<p className='scope-status' role='status'>時間紀錄已讀取，但目前沒有可顯示的時代／定錨點。</p>:null}
             {!query.isPending&&!query.error&&editorEraRiver.groups.length>0?<CultureTimeline
               key={'time-editor-era-period'}
               items={editorEraRiver.items}

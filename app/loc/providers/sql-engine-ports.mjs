@@ -299,7 +299,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
 
 export const PORTABLE_JSON_COLUMNS=Object.freeze([
   'attr','block_entity','status','media_link','theme','keywords','database',
-  'keyword_meta','ArticleTag','search_aliases','target_id'
+  'keyword_meta','search_aliases','target_id'
 ]);
 export function serializePortableJsonFields(values,engine){
   getSqlEnginePort(engine);
