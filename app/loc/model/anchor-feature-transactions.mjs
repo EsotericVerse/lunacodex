@@ -12,7 +12,8 @@ const schema=z.object({
   mode:z.enum(['public','editor']).default('public'),
   types:z.array(z.string()).min(1).max(12).optional(),
   uids:z.array(UID).min(1).max(100).optional(),
-  cursor:UID.optional(),limit:z.number().int().min(1).max(1000).optional(),
+  cursor:UID.optional(),offset:z.number().int().min(0).max(10000).optional(),
+  limit:z.number().int().min(1).max(1000).optional(),
   order:z.enum(['uid','title','createtime']).optional(),
   // The page name belongs to Blocks, not the Anchor search API.
 }).strict();
@@ -23,7 +24,7 @@ export function parseAnchorFeatureTransaction(body){
   if(!scopes.has(value.scope)||value.scope==='admin'||value.scope==='loc'&&
     value.family!=='source'||!Array.isArray(allowed)||
     value.types?.some(type=>!allowed.includes(type))||
-    value.uids&&value.cursor||
+    value.uids&&value.cursor||value.cursor&&value.offset!==undefined||
     value.uids&&value.uids.length>100)
     throw Object.assign(Error('Invalid Anchor feature selection'),{httpStatus:400});
   return {...value,types:value.types||allowed,limit:value.limit||1000,
@@ -42,7 +43,8 @@ export async function executeAnchorFeatureTransaction(trx,model){
   if(model.order!=='uid'&&!model.uids)
     throw Object.assign(Error('Anchor cursor requires UID ordering'),{httpStatus:400});
   const rows=await query.orderBy(model.order,'asc')
-    .orderBy('uid','asc').limit(model.limit+1).execute();
+    .orderBy('uid','asc').limit(model.limit+1)
+    .offset(model.offset||0).execute();
   const page=rows.slice(0,model.limit);
   return {rows:page,nextCursor:rows.length>model.limit&&page.length
     ?String(page.at(-1).uid):null};
