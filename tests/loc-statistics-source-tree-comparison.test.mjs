@@ -92,5 +92,5 @@ test('multi-item comparison UI selects Source using real nested UID branches',()
   assert.match(picker,/onChange\(item\.id\)/);
   assert.match(picker,/takenIds\.has\(item\.id\)/);
   assert.doesNotMatch(source,/source_rollup|sourceGroups|othersConfig|resolveOthers/);
-  assert.doesNotMatch(source,/media_link|media_type|MediaAnchor/);
+  assert.doesNotMatch(source,/row\.kind==='media'|category_type:'media'|sourceRollup/);
 });
