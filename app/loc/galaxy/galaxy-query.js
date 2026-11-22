@@ -13,6 +13,7 @@ import {anniversarySuggestionsForDate} from '../culture/anniversary.mjs';
 import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from '../db/db-query.mjs';
 import {dbAuthClient,readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
 import {cachedRead} from '../db/semi-dynamic-cache.mjs';
+import {readGalaxyFeature} from './feature-transaction-client.mjs';
 import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import {portableContainsTerm} from '../providers/portable-search.mjs';
@@ -107,9 +108,20 @@ function cachedReadScopeCategoryTotals(id,args){
 // fallback: SQL returns bounded daily totals, not the full Galaxy corpus.
 async function scopeStatisticsRows(scope,{startDate='',endDate='',includeUndated=false}={}){
   const current=scopeOf(scope);
-  return cachedReadScopeStatistics(current.id,{
-    startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated
-  });
+  const range={startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated};
+  // Fixed requested window: use the named Galaxy.statics transaction.
+  // The existing unbounded/undated summary keeps its original contract.
+  if(range.startDate&&range.endDate&&!includeUndated){
+    return cachedRead('scope-aggregate:'+current.id+':statistics:'+JSON.stringify(range),
+      async()=>{
+        const {data}=await readGalaxyFeature({
+          feature:'statics',scope:current.id,startDate:range.startDate,
+          endDate:range.endDate,result:'daily-sources'
+        });
+        return data.rows;
+      });
+  }
+  return cachedReadScopeStatistics(current.id,range);
 }
 // Indexed Galaxy.date drives daily article-source statistics. Media is counted
 // only as distinct article-linked UIDs in the overview, never by media date.
