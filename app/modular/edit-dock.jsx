@@ -6,7 +6,7 @@ import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents,transactionWrites} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
-import {useQueryClient,releaseTransientPageResources} from '../../packages/zenstack/client-queries';
+import {useQueryClient} from '../../packages/zenstack/client-queries';
 
 // UI only: a Scope's permission is checked before entering edit mode,
 // and every write still passes through its existing database authorization.
@@ -187,11 +187,11 @@ export function EditDockProvider({children,scopeId}){
     // Only the edit-session timestamp is stored, never form input or drafts.
     const documentExit=url.origin!==window.location.origin||
       /\/index\.html$/i.test(url.pathname)||isManagementHref(url.href);
-    // The six-key Dock may leave the homepage for a *static HTML* manager.
-    // PageResourceBoundary only sees SPA route-key changes and cannot abort
-    // outgoing reads before a full-document navigation. Do it explicitly,
-    // without touching Session, grants, or any explicit write operation.
-    releaseTransientPageResources({documentExit});
+    // Full-document navigation naturally disposes the old page and its
+    // outstanding requests. Never flush global query/bootstrap state BEFORE
+    // the browser commits the navigation: a slow/failed transition would
+    // leave the live six-key homepage empty. SPA transitions instead clean
+    // their outgoing readers in PageResourceBoundary after the route changes.
     if(documentExit){
       window.location.assign(url.href);
     }else{
@@ -318,9 +318,8 @@ export function EditDockProvider({children,scopeId}){
     if(!target)return;
     const destination=new URL(String(target),window.location.href);
     end();
-    // Discard has the same old-page cleanup guarantee as six-key switches.
-    // Do not re-fetch public bootstrap on the document being discarded.
-    releaseTransientPageResources({documentExit:true});
+    // Do not free the still-visible document before a hard navigation.
+    // The browser unload retires its pending reads, without ever saving.
     window.location.assign(destination.href);
   },[end]);
   const switchTo=useCallback((target,{history='replace',scroll=true}={})=>{
