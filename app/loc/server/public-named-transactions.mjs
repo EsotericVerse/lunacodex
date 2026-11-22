@@ -1,3 +1,4 @@
+import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
 // Only fixed feature operations may cross this public entry. The existing
 // legacy generic SELECT executor is NOT directly exposed as an HTTP route.
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from '../providers/kysely-analytics.mjs';
@@ -57,9 +58,9 @@ function normalize(body){
   if(body.operation==='time-anchors'){
     if(!KEYS(body,['kind','operation','scope','mode','cursor','limit']))throw bad();
     const scope=scopeId(body.scope);
-    const mode=body.mode||'public',cursor=body.cursor||'',limit=body.limit??2000;
+    const mode=body.mode||'public',cursor=body.cursor||'',limit=body.limit??MAX_ROWS;
     if(!['public','editor'].includes(mode)||typeof cursor!=='string'||
-      (cursor&&!UID.test(cursor))||!Number.isSafeInteger(limit)||limit<1||limit>2000)
+      (cursor&&!UID.test(cursor))||!Number.isSafeInteger(limit)||limit<1||limit>TIME_ANCHOR_MAX_PAGE_ROWS)
       throw bad();
     return {operation:'time-anchors',scope,mode,cursor,limit};
   }
