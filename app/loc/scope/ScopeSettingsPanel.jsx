@@ -52,10 +52,11 @@ export default function ScopeSettingsPanel({scopeId}){
       isBusy:()=>dockActions.current.isBusy()
     });
   },[editDock?.active,editDock?.scopeId,editDock?.register,scopeId,account.role]);
+  // Leaving the editor discards its temporary palette; no draft persistence.
+  // Hooks must run before access-controlled early returns.
+  useEffect(()=>()=>broadcastTheme('loc-scope-theme-preview-clear',scopeId),[scopeId]);
   if(!account.canLocAccessSync('scope',scopeId))return null;
   const table=account.scopeDataFor(scopeId)?.config;
-  // Leaving the editor discards its temporary palette; no draft persistence.
-  useEffect(()=>()=>broadcastTheme('loc-scope-theme-preview-clear',scopeId),[scopeId]);
   const change=(key,value)=>{
     setDraft(current=>({...current,[key]:value}));
     if(key==='theme')broadcastTheme('loc-scope-theme-preview',scopeId,value);
