@@ -5,7 +5,6 @@ import {sql} from 'kysely';
 import {classifyShortImportFailure} from '../import/import-failure-code.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {readLocAccess} from '../permissions/loc_access.mjs';
-import {publishedManagedScope} from '../providers/published-managed-scope.mjs';
 import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../packages/zenstack/sql-input-shape.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
@@ -31,7 +30,7 @@ const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-scope-status','mcp-authorize','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action','personal-read','personal-write']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
@@ -169,24 +168,8 @@ export async function handleNativeLocOperation(request,env={},{
       throw refusal('Not found',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request,fetchImpl,{trustedMcpBridge:host===MCP_HOST});
-    // Pure role and Scope eligibility checks use published JS only.
-    // Returning here prevents needless SQL connections and transactions.
-    if(body.kind==='mcp-authorize'||body.kind==='mcp-scope-status'){
-      if(host!==MCP_HOST)throw refusal('MCP authorization only',404);
-      const rights=await loadMcpLocAccess(null,claims.email);
-      if(body.kind==='mcp-authorize')return reply({data:{authorized:true}});
-      if(!/^[a-z][a-z0-9]{0,14}$/.test(body.scopeid))
-        throw refusal('Invalid Scope',400);
-      const allowed=rights.grants.includes('global:manage')||
-        rights.grants.includes(body.scopeid+':read');
-      if(!allowed)throw refusal('LOC Scope permission required',403);
-      const registry=publishedManagedScope(body.scopeid);
-      if(!registry)throw refusal('Unpublished LOC Scope',403);
-      return reply({data:{scopeid:body.scopeid,active:registry.active===true,
-        role:registry.manage_role,database:'主要資料庫連線',readable:true,
-        writable:rights.grants.includes('global:manage')||
-          rights.grants.includes(body.scopeid+':write')}});
-    }
+    // Role grants are evaluated inside their actual authenticated business
+    // operation. There is no standalone HTTP permission/Scope status query.
     // LOC Auth verifies the identity; only active api.manage grants may
     // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
@@ -242,7 +225,7 @@ export async function handleNativeLocOperation(request,env={},{
     // Managed batches resolve their one authorization snapshot inside the
     // SAME transaction as all of their writes, not in a preceding query.
     const isManagedBatch=['managed-transaction','managed-write','managed-action',
-      'mcp-conversation','mcp-scope-status','mcp-sync','mcp-append',
+      'mcp-conversation','mcp-sync','mcp-append',
       'mcp-public-read','mcp-article-stat','mcp-read','mcp-search']
       .includes(body.kind);
     let permission=null;
