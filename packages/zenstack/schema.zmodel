@@ -318,8 +318,8 @@ type EraAnchor {
 type PointAnchor {
     longitude Float?
     latitude Float?
-    location String?
-
+    // A saved location may be a single label or an array of aliases.
+    location Json?
 }
 type PathAnchor {
     point String[]?
@@ -363,27 +363,37 @@ type ItemAnchor {
 }
 type GroupAnchor {
     uid String[]?
+    total Int?
 }
 // Class.attr.exceptions.skip_article is currently parsed by keyword-class-exceptions.mjs.
 // This subtype declaration presently lists UID edges only; do not infer a new table,
 // re-enable legacy hit lists or assume runtime Class exceptions are unimplemented.
 type ClassAnchor {
     uid String[]?
+    exceptions Json?
 }
 type CategoryAnchor {
     uid String[]?
 }
 type FromAnchor {
     uid String[]?
+    // Per-Scope cached article totals, independent of physical Anchor.num.
+    counts Json?
 }
 type DomainAnchor {
     uid String[]?
+    // Per-Scope cached article totals, independent of physical Anchor.num.
+    counts Json?
 }
 type GalaxyAnchor {
     uid String[]?
+    // Per-Scope cached article totals, independent of physical Anchor.num.
+    counts Json?
 }
 type UniverseAnchor {
     uid String[]?
+    // Per-Scope cached article totals, independent of physical Anchor.num.
+    counts Json?
 }
 type AnniversarySuggestion {
     date String
