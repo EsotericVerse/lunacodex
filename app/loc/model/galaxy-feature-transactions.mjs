@@ -93,8 +93,9 @@ function baseQuery(trx,model){
   const selector=model.category;
   if(selector?.type==='source')q=q.where('site','=',selector.value);
   if(selector?.type==='place')q=q.where('place_id','=',selector.value);
-  if(model.sources)q=q.where(eb.fn('lower',['site']),'in',
-    model.sources.map(name=>name.toLowerCase()));
+  if(model.sources)q=q.where(eb=>eb(
+    eb.fn('lower',['site']),'in',model.sources.map(name=>name.toLowerCase())
+  ));
   if(model.excludedSources)q=q.where(eb=>eb.or([
     eb('site','is',null),
     eb(eb.fn('lower',['site']),'not in',
