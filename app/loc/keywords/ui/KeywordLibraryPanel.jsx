@@ -307,7 +307,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
          const {keywordService}=await import('../service-client.mjs');
          await keywordService('deleteItem',{scopeId,itemUid:node.uid});
          await load(chosen.group||'');await invalidate();
-         setNotice('已移除 Item 和無其他關聯的 Pattern，文章保留。');
+         setNotice('已移除 Item，文章保留。');
          return;
        }
        const parent=parentOf(tree,node.uid);
@@ -337,9 +337,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
          const deletion=await prepareKeywordLibraryWrite(scopeId,'delete',child);
          operations.push({...deletion,p_expected_count:1});
        }
-       // Parent detach, descendant deletion, Config invalidation AND Pattern
-       // library reconciliation all share the same SQL COMMIT/ROLLBACK.
-       await transactionWrites(operations,{keywordSyncScope:scopeId});
+       // Parent detach, descendant deletion, and Config invalidation
+       // share the same SQL COMMIT/ROLLBACK; no empty Pattern sync step.
+       await transactionWrites(operations);
        await load(parent?.uid||'');await invalidate();
       setNotice('已刪除；不會刪除文章。');
     }catch(e){setError(String(e.message||e));}
