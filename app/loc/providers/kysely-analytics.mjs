@@ -142,11 +142,14 @@ async function searchSummary(trx,options,{publishedScopeIds=null}={}){
   }
   return {rows:result};
 }
-async function tracePlaces(trx,scope,start,end){
+async function tracePlaces(trx,scope,start,end,{statisticsOnly=false}={}){
   const galaxy=relation(scope,'galaxy');
+  // Trace owns its flag. A Statistics view requires both Galaxy.trace and
+  // Galaxy.statics, without changing the Trace page's own counts.
+  const statisticsFilter=statisticsOnly?sql`and statics is true`:sql``;
   const response=await sql`select date::text as day,btrim(location) as category,
     count(*)::bigint as item_count from ${galaxy}
-    where trace is true and date is not null
+    where trace is true ${statisticsFilter} and date is not null
       and location is not null and btrim(location)<>''
       and (${start}::date is null or date>=${start}::date)
       and (${end}::date is null or date<=${end}::date)
@@ -259,9 +262,10 @@ async function traceTerritory(trx,scope,start,end,{withPoints=false,statisticsOn
   // Group by date/site to support timeline and source shares without fetching
   // Galaxy articles or constructing a Point UID list in advance.
   // Standard Trace territory keeps its original visibility semantics.
-  // Only the four-dimensional Statistics comparison opts into the same
-  // statics=true cohort used by its Source/Time count aggregates.
-  const statisticsFilter=statisticsOnly?sql`and g.statics is true`:sql``;
+  // The four-dimensional Statistics comparison requires BOTH independent
+  // Galaxy feature switches. Trace territory without this option is unchanged.
+  const statisticsFilter=statisticsOnly
+    ?sql`and g.statics is true and g.trace is true`:sql``;
   const grouped=sql`(
     select g.place_id::text as place_id,
       (g.date)::text as day,btrim(coalesce(g.site,'')) as site,
@@ -483,7 +487,9 @@ export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScop
   else if(mode==='earliest')data=await earliest(trx,scope);
   else if(mode==='totals')data=await sourceTotals(trx,scope,start,end);
   else if(mode==='overview')data=await scopeOverview(trx,scope,start,end);
-  else if(mode==='trace_places')data=await tracePlaces(trx,scope,start,end);
+  else if(mode==='trace_places')data=await tracePlaces(trx,scope,start,end,{
+    statisticsOnly:options.statisticsOnly===true
+  });
   else if(mode==='trace_territory')data=await traceTerritory(trx,scope,start,end,{
     withPoints:options.withPoints===true,
     statisticsOnly:options.statisticsOnly===true
@@ -651,6 +657,7 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
   const anchor=portableRelation(scope+'_anchor',engine,namespace);
   const grouped=async(flag,fields,opts={})=>{
     let query=portableStatBase(db,galaxy,start,end,flag,opts.includeUndated);
+    if(opts.requireStatics===true)query=query.where('statics','=',true);
     for(const field of fields){
       // Daily's includeUndated option must retain NULL dates. Other
       // dimensions remain non-null to preserve existing grouping contract.
@@ -699,7 +706,9 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
     data=rows.map(row=>({kind:'source',category:String(row.site||'').trim(),
       item_count:Number(row.n)}));
   }else if(mode==='trace_places'){
-    const rows=await grouped('trace',['date','location']);
+    const rows=await grouped('trace',['date','location'],{
+      requireStatics:options.statisticsOnly===true
+    });
     data=rows.filter(row=>String(row.location||'').trim()).map(row=>({
       day:portableDay(row.date),category:String(row.location).trim(),
       item_count:Number(row.n)
@@ -711,7 +720,8 @@ export async function executePortableKyselyAnalytics(db,body,{engine,namespace='
       .select(eb=>eb.fn.countAll().as('n'))
       .where('place_id','is not',null).where('place_id','!=','')
       .where('date','>=',start).where('date','<=',end);
-    if(options.statisticsOnly===true)query=query.where('statics','=',true);
+    if(options.statisticsOnly===true)query=query.where('statics','=',true)
+      .where('trace','=',true);
     const rows=await query.groupBy(['place_id','site','date'])
       .orderBy('date','asc').execute();
     data=rows.map(row=>({place_id:String(row.place_id||''),
