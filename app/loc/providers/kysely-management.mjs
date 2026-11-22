@@ -222,20 +222,25 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
       reject('Invalid LOC MediaAnchor link operation');
     const scope=table.slice(0,-7),galaxy='silver.'+table;
     const linked=await trx.selectFrom('silver.'+scope+'_anchor')
-      .select('uid').where('uid','=',values.media_uid)
+      .select(['uid','attr']).where('uid','=',values.media_uid)
       .where('type','in',ANCHOR_TYPE_GROUPS.media).executeTakeFirst();
     if(!linked)reject('MediaAnchor was not inserted in this Scope',409);
+    const url=String(linked.attr?.url||'').trim();
+    if(!/^https?:\/\//i.test(url))
+      reject('Only public MediaAnchor URLs may be linked to Galaxy.media_link',400);
     const article=await trx.selectFrom(galaxy).select('media_link')
       .where('uid','=',values.article_uid).forUpdate().executeTakeFirst();
     if(!article)reject('Linked Galaxy article does not exist',409);
     const prior=Array.isArray(article.media_link)?article.media_link:[];
-    const next=[...new Set([...prior.map(String),values.media_uid])];
-    // Same row lock and transaction: no stale browser-side replacement.
+    if(prior.includes(url))return {data:{count:0}};
+    // The article is row-locked within the same transaction that inserts the
+    // MediaAnchor. Galaxy.media_link is a URL[]; Anchor UIDs never enter it.
+    const next=[...prior,url];
     const updated=await trx.updateTable(galaxy)
       .set({media_link:next}).where('uid','=',values.article_uid)
       .executeTakeFirst();
     if(Number(updated?.numUpdatedRows||0)!==1)
-      reject('Media link update did not complete',409);
+      reject('Media URL link update did not complete',409);
     return {data:{count:1}};
   }
   // Authorized writes now share the exact ZModel column guard already used
