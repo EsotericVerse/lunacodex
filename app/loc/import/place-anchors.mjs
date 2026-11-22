@@ -1,3 +1,4 @@
+import {MAX_ROWS} from '../query/query-batch-size.mjs';
 import {importGeoKey} from './geocoordinates.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {planImportPointCreate} from './point-date-immer.mjs';
@@ -73,7 +74,7 @@ function incomingLocations(records){
   return {names,missing};
 }
 export async function prepareImportPlaceAnchors(records,{
-  scopeId,relation,pageSize=750,allowMissing=false,createMissing=true,scanExistingOnEmpty=false,onProgress,anchorSnapshot=null
+  scopeId,relation,pageSize=MAX_ROWS,allowMissing=false,createMissing=true,scanExistingOnEmpty=false,onProgress,anchorSnapshot=null
 }={}){
   const {names,missing}=incomingLocations(records);
   const byCoordinate=new Map(),byName=new Map();
