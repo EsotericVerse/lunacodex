@@ -6,37 +6,30 @@ import UiText,{useUiText} from '../../../i18n/UiText';
 import {useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy/galaxy-query';
-import {assignedSource} from '../../../loc/statistics/member-intersection-model.mjs';
+import {INTERSECTION_FAMILIES,sourceIntersectionMetrics,timeIntersectionMetrics,
+  spaceIntersectionMetrics,fourDimensionDailyCounts}
+  from '../../../loc/statistics/four-anchor-intersection.mjs';
 import {semanticStatisticChartTypes,chartTypeGroups} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
-import {ownScopeCategoryCatalog} from '../../../loc/statistics/source-intersection.mjs';
 import {comparisonMetricGroups,selectedComparisonMetricGroup,firstAvailableGroupMetric} from './statistics-compare-options.mjs';
 
 const DAY_MS=86400000;
-// One dimension tab per comparison lane. Keyword tab appears only if stored
-// statistics contain actual keyword hits in the selected date range.
-export const DIMENSION_FILTERS=Object.freeze([
-  {value:'all',label:'全部'},
-  {value:'source',label:'作品來源'},
-  {value:'keyword',label:'關鍵詞'}
-]);
+// No raw From/site, Point or Date comparison metrics: select the two
+// meaningful saved hierarchy levels of each of the four families.
+export const DIMENSION_FILTERS=Object.freeze(
+  INTERSECTION_FAMILIES.map(({value,label})=>({value,label})));
 export const DIMENSIONS=Object.freeze([
-  {kind:'source',label:'原始作品來源'},
-  {kind:'source_rollup',label:'作品／個人分類'},
-  {kind:'group',label:'作品分類'},
-  {kind:'others_subgroup',label:'個人分類'},
-  {kind:'keyword_all',label:'全部關鍵詞'},
-  {kind:'keyword_group',label:'關鍵詞群組'},
-  {kind:'keyword_group_items',label:'群組內關鍵詞'},
-  {kind:'keyword_item',label:'關鍵詞項目'}
+  {kind:'era',label:'時代'},{kind:'period',label:'時期'},
+  {kind:'trace',label:'痕跡'},{kind:'path',label:'路徑'},
+  {kind:'keyword_group',label:'關鍵詞 Group'},
+  {kind:'keyword_item',label:'關鍵詞 Item'},
+  {kind:'source_galaxy',label:'來源 Galaxy'},
+  {kind:'source_domain',label:'來源 Domain'}
 ]);
-export const LANE_FAMILIES=Object.freeze([
-  {id:'source',label:'作品來源',kinds:['source_rollup','source','group','others_subgroup']},
-  {id:'keyword',label:'關鍵詞',kinds:['keyword_all','keyword_group','keyword_group_items','keyword_item']}
-]);
-const dimensionForKind=kind=>LANE_FAMILIES.find(item=>item.kinds.includes(kind))?.id||'source';
+const dimensionForKind=kind=>
+  INTERSECTION_FAMILIES.find(row=>row.types.includes(kind))?.value||'source';
 const metricId=(kind,value)=>kind+String.fromCharCode(0)+value;
 const dateOnly=v=>String(v||'').slice(0,10);
 function canonicalBucket(day,unit){
@@ -80,28 +73,6 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     return readPublicSourceTaxonomy();
   });
   const catalog=sharedCatalog||localCatalog;
-  const othersConfig=useAsyncResource({
-    queryKey:['scope-others-source-summary',scope?.id],
-    enabled:valid,
-    queryFn:async()=>{
-      const {publishedSourceTaxonomy}=await import('../../published-source-taxonomy.js');
-      const published=publishedSourceTaxonomy(scope.id);
-      if(published)return {groups:published.groups||[],aliases:published.groupAliases||[]};
-      const {readPublicSourceTaxonomy}=await import('../../../loc/source/catalog-public.mjs');
-      const list=await readPublicSourceTaxonomy(scope.id);
-      return {groups:list.groups||[],aliases:list.groupAliases||[]};
-    }
-  });
-  const othersActive=useMemo(()=>new Map((othersConfig.data?.groups||[])
-    .filter(row=>row.enabled!==false).map(row=>[row.group_code,row.display_name])),[othersConfig.data]);
-  const othersAliases=useMemo(()=>new Map((othersConfig.data?.aliases||[])
-    .map(row=>[String(row.source_key||'').trim().toLowerCase(),row.group_code])),[othersConfig.data]);
-  const resolveOthers=(source)=>{
-    const group=othersAliases.get(String(source||'').trim().toLowerCase())||'';
-    if(group&&othersActive.has(group))return group;
-    return assignedSource(source,catalog.data?.aliases||[],catalog.data?.categories||[])==='unclassified'
-      ?'unclassified':'';
-  };
   // Read the already-stored keyword summary only when this panel is expanded.
   const keywords=useAsyncResource({
     queryKey:['own-scope-keyword-summary',scope?.id,classUid,start,end],
@@ -113,21 +84,50 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   });
   const keywordTabAvailable=Boolean(keywords.data?.statisticsEnabled&&
     (keywords.data?.runeTotals||[]).some(item=>Number(item.document_count)>0));
-  const availableKinds=useMemo(()=>{
-    const kinds=[
-      ...(rows.some(row=>row.kind==='source'&&Number(row.item_count)>0)?['source']:[]),
-      ...(keywordTabAvailable?['keyword']:[])
-    ];
-    return kinds.length?[...kinds,'all']:[];
-  },[rows,keywordTabAvailable]);
-  const maximumLanes=Math.min(8,Math.max(0,
-    rows.filter(row=>row.kind==='source'&&Number(row.item_count)>0).length+
-    (keywords.data?.runeTotals||[]).filter(row=>Number(row.document_count)>0).length));
-  const lanes=Math.min(numberOfLanes,Math.max(2,maximumLanes));
+  // Time and Space are loaded only after a lane selects their family. Neither
+  // adds a read to the main Statistics landing or unrelated comparisons.
+  const availableKinds=INTERSECTION_FAMILIES.map(row=>row.value);
+  const maximumLanes=8;
+  const lanes=Math.max(2,Math.min(numberOfLanes,maximumLanes));
   const shownKinds=Array.from({length:lanes},(_,index)=>
     availableKinds.includes(laneKinds[index])?laneKinds[index]:
-    availableKinds[index%Math.max(1,availableKinds.length)]||'source');
-  const keywordModeActive=keywordTabAvailable&&shownKinds.some(kind=>kind==='keyword'||kind==='all');
+    index===0?'source':'keyword');
+  const keywordModeActive=keywordTabAvailable&&shownKinds.includes('keyword');
+  const timeAnchors=useAsyncResource({
+    queryKey:['scope-intersection-time-anchor',scope?.id],
+    enabled:valid&&shownKinds.includes('time'),
+    queryFn:async({signal})=>{
+      const {readAllAnchorFeature}=await import('../../../loc/model/feature-transaction-client.mjs');
+      return readAllAnchorFeature({scope:scope.id,family:'time',
+        types:['era','period','date'],signal});
+    },
+    revalidateOnFocus:false,revalidateOnReconnect:false
+  });
+  const spaceAnchors=useAsyncResource({
+    queryKey:['scope-intersection-space-anchor',scope?.id],
+    enabled:valid&&shownKinds.includes('space'),
+    queryFn:async({signal})=>{
+      const {readAllAnchorFeature}=await import('../../../loc/model/feature-transaction-client.mjs');
+      return readAllAnchorFeature({scope:scope.id,family:'space',
+        types:['trace','path','point'],signal});
+    },
+    revalidateOnFocus:false,revalidateOnReconnect:false
+  });
+  const territory=useAsyncResource({
+    queryKey:['scope-intersection-territory',scope?.id,start,end],
+    enabled:valid&&shownKinds.includes('space'),
+    queryFn:async({signal})=>{
+      const {dbPublicClient}=await import('../../../loc/db/db-client.mjs');
+      const {data,error}=await dbPublicClient.schema('silver').analytics({
+        p_scope_id:scope.id,p_view:'trace_territory',
+        p_start:start,p_end:end,p_options:{withPoints:false},signal
+      });
+      if(error)throw error;
+      if(!Array.isArray(data))throw Error('Invalid territory statistics');
+      return data;
+    },
+    revalidateOnFocus:false,revalidateOnReconnect:false
+  });
   // Resolve Class -> group -> item from the current Scope's *real* keyword
   // catalog. Stored aggregate metadata has item labels but no group mapping.
   const keywordCatalog=useAsyncResource({
