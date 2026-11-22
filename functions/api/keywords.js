@@ -8,7 +8,8 @@ import {readLocAccess} from '../../app/loc/permissions/loc_access.mjs';
 import {
   readKeywordClasses,readKeywordStatistics,readKeywordCatalog,readKeywordDaily,
   suggestKeywordPatterns,analyzeKeywordScope,resetKeywordScope,
-  readKeywordAnalysisCompletion,saveKeywordItem,deleteKeywordItem,synchronizeKeywordLibrary,setKeywordClassShare
+  readKeywordAnalysisCompletion,saveKeywordItem,deleteKeywordItem,synchronizeKeywordLibrary,setKeywordClassShare,
+  readKeywordWorkspace
 } from '../../app/loc/keywords/sql-service.mjs';
 import {queryAnchorArticles} from '../../app/loc/keywords/anchor-search.mjs';
 
@@ -16,7 +17,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const ATTEMPT=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const OPERATIONS=new Set(['analyze','analyzeStatus','reset','classes','catalog','summary','stats','suggest',
-  'anchorSearch','saveItem','deleteItem','syncLibrary','setClassShare']);
+  'anchorSearch','saveItem','deleteItem','syncLibrary','setClassShare','workspace']);
 function respond(data,status=200){
   return new Response(JSON.stringify(data),{
     status,headers:{'content-type':'application/json; charset=utf-8',
@@ -80,11 +81,23 @@ export async function onRequestPost(context){
       bindLocAuthorization(trx,{role,claims});
       return canLocAccess(trx,'scope',scope);
     };
-    const owner=singleWrite?false:
+    // A protected workspace page resolves JS Scope grants INSIDE the same
+    // read-only transaction as its fixed Anchor/Config projection.
+    const scopedWorkspace=operation==='workspace';
+    const owner=singleWrite||scopedWorkspace?false:
       await db.transaction().execute(verifyScope);
     stage='operation:'+operation;
     let result;
-    if(operation==='suggest'){
+    if(operation==='workspace'){
+      const cursor=String(args.cursor||'');
+      const limit=args.limit===undefined?250:Number(args.limit);
+      result=await db.transaction().setIsolationLevel('repeatable read')
+        .execute(async trx=>{
+          if(!await verifyScope(trx))
+            error('Scope Keyword management permission required',403);
+          return readKeywordWorkspace(trx,scope,{cursor,limit});
+        });
+    }else if(operation==='suggest'){
       // Management-only suggestion; a single verified Scope.
       if(!owner)
         error('Scope Keyword management permission required',403);

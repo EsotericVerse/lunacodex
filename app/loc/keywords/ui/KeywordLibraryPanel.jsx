@@ -129,30 +129,31 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(!canEdit)return;
     setLoading(true);setError('');
     try{
-      const [found,settings]=await Promise.all([
-        (async()=>{
-          // Item.authoritative rules: no Pattern index fetch is needed.
-          const owned=[],size=250;
-          for(let offset=0;;offset+=size){
-            const {data,error}=await dbAuthRelation(table)
-              .select('uid,type,title,description,attr')
-              .in('type',['category','class','group','item'])
-              .order('uid',{ascending:true}).range(offset,offset+size-1);
-            if(error)throw new Error(error.message||'Keywords 讀取失敗');
-            owned.push(...(data||[]).map(row=>({
-              ...row,name:String(row.title||''),desc:String(row.description||''),
-              lists:Array.isArray(row.attr?.[row.type==='item'?'keyword':'uid'])
-                ?row.attr[row.type==='item'?'keyword':'uid']:[],uid_lists:[]
-            })));
-            if((data||[]).length<size)break;
-          }
-          return {rows:owned};
-        })(),
-        dbAuthRelation(configTable).select(
-          'current_keyword_class_uid,keyword_min_chars,keyword_min_documents,keyword_class_share_enabled,keyword_meta,staticstime'
-        ).eq('id',scopeId).limit(1)
-      ]);
-      if(settings.error)throw settings.error;
+      // Fixed Keyword Workspace transaction replaces the retired generic
+      // authenticated SELECT. Each request is a bounded read of the physical
+      // Anchor/Scope configuration with its grant checked by the server.
+      const {keywordService}=await import('../service-client.mjs');
+      const owned=[],seen=new Set();
+      let cursor='',config=null;
+      for(;;){
+        const page=await keywordService('workspace',{scopeId,cursor,limit:250});
+        if(!Array.isArray(page?.rows)||page.rows.length>250||!page.config)
+          throw new Error('關鍵詞管理資料回傳格式無效');
+        if(config===null)config=page.config;
+        for(const row of page.rows){
+          if(seen.has(row.uid))throw new Error('關鍵詞管理 UID 重複');
+          seen.add(row.uid);
+          owned.push({...row,name:String(row.title||''),
+            desc:String(row.description||''),
+            lists:Array.isArray(row.attr?.[row.type==='item'?'keyword':'uid'])
+              ?row.attr[row.type==='item'?'keyword':'uid']:[],uid_lists:[]});
+        }
+        if(!page.nextCursor)break;
+        if(page.nextCursor===cursor||!page.rows.length)
+          throw new Error('關鍵詞管理續讀游標無效');
+        cursor=page.nextCursor;
+      }
+      const found={rows:owned},settings={data:[config]};
       const records=(found.rows||[]).map(row=>({...row,uid_lists:[]})),
         index=indexKeywordTree(records);
       const first=index.roots[0];

@@ -100,6 +100,30 @@ const validateKeywordFilters=({start='',end='',source=''})=>{
     typeof source!=='string'||source.length>120)fail('Invalid Keyword filters');
 };
 
+// Fixed, owner-only Keyword editor snapshot. No browser-selected SQL relation,
+// projection, filter or unrestricted SELECT. Each page and its Scope settings
+// share one read-only Transaction; the physical Anchor model is unchanged.
+export async function readKeywordWorkspace(trx,scope,{cursor='',limit=250}={}){
+  checkScope(scope);
+  if(cursor&&!UID.test(cursor))fail('Invalid Keyword editor cursor',400);
+  if(!Number.isInteger(limit)||limit<1||limit>250)
+    fail('Invalid Keyword editor page size',400);
+  let q=trx.selectFrom(anchorName(scope))
+    .select(['uid','type','title','description','attr'])
+    .where('type','in',['category','class','group','item']);
+  if(cursor)q=q.where('uid','>',cursor);
+  const rows=await q.orderBy('uid','asc').limit(limit+1).execute();
+  const page=rows.slice(0,limit);
+  const config=await trx.selectFrom(configName(scope))
+    .select(['current_keyword_class_uid','keyword_min_chars',
+      'keyword_min_documents','keyword_class_share_enabled',
+      'keyword_meta','staticstime'])
+    .where('id','=',scope).executeTakeFirst();
+  if(!config)fail('Keyword Scope not configured',404);
+  return {rows:page,config,nextCursor:rows.length>limit
+    ?String(page.at(-1).uid):null};
+}
+
 export async function readKeywordClasses(db,scope,{owner=false}={}){
   checkScope(scope);
   const cfg=await configuration(db,scope);
