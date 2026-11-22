@@ -30,7 +30,10 @@ test('time editor can start its authorized read without a second public river',(
   assert.match(culture,/selectScopeCultureManagementData\(scopeId,\{signal\}\)/);
   assert.match(culture,/timeRecords=\{query\.data\?\.editorRows\|\|null\}/);
   assert.match(query,/const editorRows=await readManagedTimeRecords\(scope\.time,\{signal\}\)/);
-  assert.match(query,/const parts=cultureParts\(editorRows,scope\.id\)/);
+  // The transport rows have DB types only. Both management river and form
+  // share the one read, but the river needs Era/Period/Date projections.
+  assert.match(query,/const projected=projectScopeTimeRecords\(scope\.id,editorRows\)/);
+  assert.match(query,/const parts=cultureParts\(projected,scope\.id\)/);
   assert.match(editor,/const all=Array\.isArray\(timeRecords\)\?timeRecords:\[\]/);
   assert.doesNotMatch(editor,/selectRows\(|readCompleteTimeRecords|useAsyncResource/);
   assert.match(editor,/transactionWrites\(plan\.operations\)/);
