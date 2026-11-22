@@ -59,6 +59,7 @@ test('both Galaxy insert and update importer routes obey actual measured bytes',
   const pg=src('app/loc/providers/kysely-management.mjs');
   assert.match(panel,/insertSizer\.shouldFlush\(payload\.length,payloadBytes,bytes\)/);
   assert.match(panel,/updateSizer\.shouldFlush\(updateQueue\.length,updateBytes,bytes\)/);
+  assert.match(panel,/imageSizer\.shouldFlush\(pending\.length,pendingBytes,bytes\)/);
   assert.match(provider,/const batchSize=HEAVY_QUERY_ROWS/);
   assert.match(pg,/jsonb_populate_recordset/);
 });
