@@ -20,10 +20,11 @@ if(Object.values(GALAXY_FEATURE_MODELS).some(model=>!featureFields.has(model.fla
 
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const UID=z.string().regex(/^[A-Za-z0-9]{8}$/);
+const PLACE_ID=z.string().regex(/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/);
 const source=z.string().trim().min(1).max(120);
 const category=z.discriminatedUnion('type',[
   z.object({type:z.literal('source'),value:source}).strict(),
-  z.object({type:z.literal('place'),value:UID}).strict(),
+  z.object({type:z.literal('place'),value:PLACE_ID}).strict(),
   // A literal substring, not a Keyword Class/Item/Pattern analysis.
   z.object({type:z.literal('keyword'),value:z.string().trim().min(2).max(80)}).strict()
 ]);
@@ -34,7 +35,8 @@ const input=z.object({
   startDate:date.optional(),endDate:date.optional(),category:category.optional(),
   sources:z.array(source).min(1).max(80).optional(),
   excludedSources:z.array(source).min(1).max(80).optional(),
-  placeIds:z.array(UID).min(1).max(80).optional(),
+  placeIds:z.array(PLACE_ID).min(1).max(80).optional(),
+  mediaUrls:z.array(z.string().url().max(1024)).min(1).max(80).optional(),
   // Search expression supports ordinary terms, quoted phrases, OR, exclusions.
   text:z.string().trim().min(1).max(160).optional(),
   requiredTerms:z.array(z.string().trim().min(1).max(80)).max(8).optional(),
@@ -63,7 +65,8 @@ export function parseGalaxyFeatureTransaction(raw){
     (value.includeTotal!==undefined&&value.result!=='articles')||
     (value.limit!==undefined&&!['uids','articles'].includes(value.result))||
     (value.text||value.requiredTerms||value.excludedTerms)&&value.feature!=='search'||
-    value.placeIds&&value.category?.type==='place')
+    value.placeIds&&value.category?.type==='place'||
+    value.mediaUrls&&value.feature!=='trace')
     throw Object.assign(Error('Invalid Galaxy feature parameters'),{httpStatus:400});
   return {...value,limit:['uids','articles'].includes(value.result)?value.limit||100:undefined};
 }
@@ -91,6 +94,7 @@ function baseQuery(trx,model){
       model.excludedSources.map(name=>name.toLowerCase()))
   ]));
   if(model.placeIds)q=q.where('place_id','in',model.placeIds);
+  if(model.mediaUrls)q=q.where('media_link','&&',model.mediaUrls);
   if(selector?.type==='keyword'){
     if(model.feature!=='search')q=q.where('keyword','=',true);
     q=q.where('content','is not',null).where('content','ilike',pattern(selector.value));
