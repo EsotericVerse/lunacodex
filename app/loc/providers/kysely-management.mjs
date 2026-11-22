@@ -19,7 +19,6 @@ import {sql} from 'kysely';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {saveTracePageInTransaction} from './kysely-trace-page.mjs';
-import {decodeRuntimeIo,encodeRuntimeIo} from '../query/query-batch-size.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection}
   from '../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -1011,35 +1010,8 @@ async function managedLocSettings(trx,args,claims){
   const operation=String(args.p_operation||'read');
   const key=String(args.p_key??'').trim();
   const value=args.p_value;
-  if(!['theme','keywords','runtime'].includes(section))
+  if(!['theme','keywords'].includes(section))
     reject('Invalid LOC settings section');
-  // Runtime I/O ceilings and a disabled ISR reservation belong to the
-  // existing private api.manage admin JSON. This does not deploy an ISR route.
-  // Reuse this existing global-admin action, not an anonymous SELECT path.
-  if(section==='runtime'){
-    if(key||!['read','update'].includes(operation))reject('Invalid runtime setting operation');
-    const allowed=new Set(['io_limits','isr']);
-    if(operation==='update'&&(!catalogObject(value)||!Object.keys(value).length||
-        Object.keys(value).some(field=>!allowed.has(field))))
-      reject('Invalid runtime setting fields');
-    await sql`reset role`.execute(trx);
-    let query=trx.selectFrom('api.manage').select('caches')
-      .where('id','=','admin');
-    if(operation==='update')query=query.forUpdate();
-    const row=await query.executeTakeFirst();
-    if(!row)reject('LOC Admin runtime settings unavailable');
-    const previous=decodeRuntimeIo(row.caches);
-    if(operation==='read')return previous;
-    let next;
-    try{next=encodeRuntimeIo({...previous,...value});}
-    catch{reject('Invalid runtime setting values');}
-    const result=await trx.updateTable('api.manage')
-      .set({caches:sql`${JSON.stringify(next)}::jsonb`})
-      .where('id','=','admin').executeTakeFirst();
-    if(Number(result?.numUpdatedRows||0)!==1)
-      reject('LOC Admin runtime settings were not saved');
-    return next;
-  }
   // Permission was established with the signed LOC business identity;
   // no arbitrary table is addressable through this route.
   await sql`reset role`.execute(trx);
