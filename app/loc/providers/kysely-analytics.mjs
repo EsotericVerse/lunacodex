@@ -4,8 +4,7 @@ import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.m
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {sql} from 'kysely';
 import {zmodelRegistryJoin,zmodelGalaxyPointJoin} from '../../../packages/zenstack/model-column-guard.mjs';
-import {keywordPatternItemMetrics,keywordPatternDailySummary} from '../keywords/search-pattern.mjs';
-import {readScopePatternRows} from '../keywords/anchor-index.mjs';
+import {readItemKeywordProjection,itemKeywordStatistics,itemScope} from '../keywords/item-count-analysis.mjs';
 import {sourceTaxonomyFromAnchors} from '../source/classification.mjs';
 
 // Daily/overview totals scan the full requested interval; article pagination must not cap aggregates.
@@ -229,12 +228,12 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals
   }));
   let totals=new Map(),groupTotals=new Map();
   if(withTotals){
-    const patterns=await readScopePatternRows(trx,scope);
-    const indexed=keywordPatternItemMetrics(descriptions,patterns);
-    totals=new Map(indexed.items.map(item=>[item.uid,item.hit_count]));
-    for(const item of indexed.items)
-      groupTotals.set(item.group_uid,
-        (groupTotals.get(item.group_uid)||0)+item.hit_count);
+    const stored=await trx.selectFrom(anchor)
+      .select(['uid','num']).where('uid','in',descriptions.map(i=>i.uid)
+        .concat(ordered.map(g=>g.uid))).execute();
+    const byUid=new Map(stored.map(row=>[row.uid,Number(row.num)||0]));
+    totals=new Map(descriptions.map(i=>[i.uid,byUid.get(i.uid)||0]));
+    groupTotals=new Map(ordered.map(g=>[g.uid,byUid.get(g.uid)||0]));
   }
   const model=node=>({
     uid:node.uid,type:node.type,name:node.title,
@@ -360,22 +359,13 @@ async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,reque
     .flatMap(row=>groups.filter(g=>g.lists.includes(row.uid)).map(g=>({
       uid:row.uid,group_uid:g.uid,item_name:row.name,keywords:row.lists
     })));
-  const patterns=await readScopePatternRows(trx,scope);
-  const candidates=[...new Set(patterns.flatMap(row=>row.uid_list||[]))];
-  const located=new Set();
-  for(let i=0;i<candidates.length;i+=500){
-    let q=trx.selectFrom('silver.'+scope+'_galaxy')
-      .select('uid').where('uid','in',candidates.slice(i,i+500))
-      .where('place_id','in',places).where('keyword','=',true);
-    if(start)q=q.where('date','>=',start);
-    if(end)q=q.where('date','<=',end);
-    if(source)q=q.where('site','=',source);
-    for(const row of await q.execute())located.add(String(row.uid));
-  }
-  const metrics=keywordPatternItemMetrics(items,patterns,{articleUids:located});
+  const res=await readItemKeywordProjection(trx,scope,{
+    items,groups,places,start,end,source,owner:true,
+    minChars:Math.max(0,Number(info.config?.keyword_min_chars)||0)
+  });
   return groups.map(group=>({
     group_uid:group.uid,group_name:group.name,
-    document_count:Number(metrics.group_document_counts?.[group.uid])||0
+    document_count:Number(res.totals.groupDocuments?.[group.uid])||0
   }));
 }
 export async function keywordSummary(trx,scope,anchor,start,end,source,requested,role){
@@ -383,27 +373,16 @@ export async function keywordSummary(trx,scope,anchor,start,end,source,requested
   if(!info?.allowed||!info.ready)return [];
   const catalog=await keywordCatalog(trx,scope,anchor,requested,role,{withTotals:false});
   if(!catalog.class_uid)return [];
-  const groups=new Map((catalog.rows||[])
-    .filter(row=>row.type==='group').map(row=>[row.uid,row]));
+  const groups=(catalog.rows||[]).filter(row=>row.type==='group');
   const items=(catalog.rows||[]).filter(row=>row.type==='item')
-    .flatMap(row=>[...groups.values()].filter(g=>g.lists.includes(row.uid))
-      .map(group=>({uid:row.uid,group_uid:group.uid,
-        item_name:row.name,keywords:row.lists})));
-  const patterns=await readScopePatternRows(trx,scope);
-  const uids=[...new Set(patterns.flatMap(row=>row.uid_list||[]))];
-  const articles=[];
-  // Never fetch Galaxy.content. A bounded UID list -> date projection
-  // produces all chart buckets directly from stored word matches.
-  for(let i=0;i<uids.length;i+=500){
-    let query=trx.selectFrom('silver.'+scope+'_galaxy')
-      .select(['uid','date']).where('uid','in',uids.slice(i,i+500))
-      .where('keyword','=',true).where('date','is not',null);
-    if(start)query=query.where('date','>=',start);
-    if(end)query=query.where('date','<=',end);
-    if(source)query=query.where('site','=',source);
-    articles.push(...await query.execute());
-  }
-  return keywordPatternDailySummary(items,patterns,articles);
+    .flatMap(row=>groups.filter(g=>g.lists.includes(row.uid)).map(g=>({
+      uid:row.uid,group_uid:g.uid,item_name:row.name,keywords:row.lists
+    })));
+  const res=await readItemKeywordProjection(trx,scope,{
+    items,groups,start,end,source,owner:true,
+    minChars:Math.max(0,Number(info.config?.keyword_min_chars)||0)
+  });
+  return res.daily;
 }
 
 // Culture reads are ordinary portable Kysely operations: no stored RPC,
