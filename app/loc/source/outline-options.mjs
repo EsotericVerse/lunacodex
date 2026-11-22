@@ -39,6 +39,10 @@ export function groupedSourceOutline(taxonomy={}){
   return groups;
 }
 
+export function sourceEditorOutlineGroups(anchorRows=[]){
+  return groupedSourceOutline(sourceTaxonomyFromAnchors(anchorRows,{includeHidden:true}));
+}
+
 // Editors retain invisible nodes in their hierarchy; public views filter
 // them out in sourceTaxonomyFromAnchors' default mode.
 export function sourceEditorOutlineOptions(anchorRows=[]){
