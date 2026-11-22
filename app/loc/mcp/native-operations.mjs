@@ -5,6 +5,7 @@ import {sql} from 'kysely';
 import {classifyShortImportFailure} from '../import/import-failure-code.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {readLocAccess} from '../permissions/loc_access.mjs';
+import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
 import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../packages/zenstack/sql-input-shape.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
@@ -30,6 +31,28 @@ const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=700000;
+const PUBLISHED_MANAGE_FIELDS=new Set([
+  'email','manage_role','active','galaxy_table','anchor_table',
+  'domain','directory','parent_scope_id','sort_order'
+]);
+// A published JS identity cannot be changed first by SQL. Role and
+// routing mutations are rejected unless they exactly match the release.
+function requirePublishedManageWrite(payload){
+  if(payload?.p_table!=='api.manage')return;
+  const filters=payload.p_filters||[];
+  if(payload.p_operation!=='update'||filters.length!==1||
+    filters[0]?.column!=='id'||filters[0]?.operator!=='eq')
+    throw refusal('Publish the JS Manage registry before changing its rows',409);
+  const fixed=fixedManageScope(filters[0].value);
+  if(!fixed||!payload.p_values||typeof payload.p_values!=='object'||
+     Array.isArray(payload.p_values))
+    throw refusal('Unpublished JS Manage identity',409);
+  for(const [field,value] of Object.entries(payload.p_values)){
+    if(!PUBLISHED_MANAGE_FIELDS.has(field)||!Object.is(fixed[field],value))
+      throw refusal('Manage change requires a matching published JS release',409);
+  }
+}
+
 const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action','personal-read','personal-write']);
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
@@ -179,6 +202,9 @@ export async function handleNativeLocOperation(request,env={},{
     if(host===MCP_HOST&&writeKinds.has(body.kind)&&
        !claims.delegatedScopes?.includes('loc:import'))
       throw refusal('LOC MCP write delegation scope required',403);
+    if(body.kind==='managed-write')requirePublishedManageWrite(body.payload);
+    if(body.kind==='managed-transaction')
+      for(const item of body.operations||[])requirePublishedManageWrite(item);
     // Business grants are a published JS snapshot, not a SELECT and not a
     // separate permission API. Fail closed *before* opening any SQL client.
     // Personal operations remain bound to their verified website Session.
