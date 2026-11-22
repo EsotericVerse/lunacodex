@@ -1625,7 +1625,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       if(newArticleTotal)showProgress('新增文章',0,newArticleTotal);
       const result={inserted:0,conflicts:0,insertedUids:new Set(),conflictedUids:new Set()};
       const insertSizer=createImportBatchSizer();
-      let payload=[],newArticleProcessed=0;
+      let payload=[],payloadBytes=0,newArticleProcessed=0;
       const flushNewArticles=async()=>{
         if(!payload.length)return;
         const count=payload.length,started=Date.now();
@@ -1647,7 +1647,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         for(const uid of outcome.insertedUids)result.insertedUids.add(uid);
         for(const uid of outcome.conflictedUids)result.conflictedUids.add(uid);
         newArticleProcessed+=payload.length;
-        payload=[];
+        payload=[];payloadBytes=0;
         insertSizer.observe(count,Date.now()-started);
         checkpointBatch('insert',newArticleProcessed,newArticleTotal,
           result.inserted,result.conflicts);
@@ -1661,8 +1661,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           __importPlaceUrl:unusedPlaceUrl,__importCheckin:unusedCheckin,
           __importTimeSource:unusedTimeSource,
           ...article}=record;
-        payload.push(placeUid?{...article,place_id:placeUid}:article);
-        if(payload.length>=insertSizer.size)await flushNewArticles();
+        const incoming=placeUid?{...article,place_id:placeUid}:article;
+        const bytes=insertSizer.byteSize(incoming);
+        if(insertSizer.shouldFlush(payload.length,payloadBytes,bytes))
+          await flushNewArticles();
+        payload.push(incoming);payloadBytes+=bytes;
+        if(insertSizer.shouldFlush(payload.length,payloadBytes))
+          await flushNewArticles();
       }
       await flushNewArticles();
       duplicateCount+=result.conflicts;
