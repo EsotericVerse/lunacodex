@@ -159,10 +159,17 @@ function matchingPortableField(key,incoming,stored,engine){
   return JSON.stringify(incoming)===JSON.stringify(stored);
 }
 function portableInsertBatchSize(engine,width){
-  // SQL Server's 2,100-parameter ceiling applies to one statement. Keep a
-  // small margin for driver-generated parameters; MySQL/PostgreSQL retain
-  // the existing 50-row batch behavior.
-  if(engine==='mssql')return Math.max(1,Math.min(50,Math.floor(2000/Math.max(1,width))));
+  // Kysely still emits standard multi-row VALUES across SQL dialects.
+  // PostgreSQL no longer performs 50-row INSERTs: compute the safe physical
+  // chunk from column width and the protocol's parameter budget instead.
+  // The caller's import request is independently bounded to 10k rows and
+  // by serialized payload bytes; this is only the internal SQL statement cap.
+  const columns=Math.max(1,width);
+  if(engine==='postgres')return Math.max(1,
+    Math.min(10000,Math.floor(32000/columns)));
+  // SQL Server has a much lower 2,100 parameter limit.
+  if(engine==='mssql')return Math.max(1,
+    Math.min(50,Math.floor(2000/columns)));
   return 50;
 }
 /**
