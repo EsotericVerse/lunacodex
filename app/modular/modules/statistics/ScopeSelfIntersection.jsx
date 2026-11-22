@@ -153,32 +153,46 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     .filter(item=>item.class_enable!==false&&String(item.group_uid||''))
     .map(item=>[String(item.uid),String(item.group_uid)])),
   [keywordCatalog.data]);
+  const timeMetrics=useMemo(()=>timeIntersectionMetrics(timeAnchors.data||[]),
+    [timeAnchors.data]);
+  const spaceMetrics=useMemo(()=>spaceIntersectionMetrics(spaceAnchors.data||[]),
+    [spaceAnchors.data]);
+  // Preserve the existing single Source-tree engine. Universe/From remain
+  // visible to its picker but are not selectable in comparisons.
+  const sourceMetrics=useMemo(()=>sourceModel.metrics.filter(item=>
+    item.kind==='source_tree'&&['galaxy','domain'].includes(item.type)),
+  [sourceModel]);
+  const hierarchyMetrics=useMemo(()=>[...timeMetrics,...spaceMetrics,...sourceMetrics],
+    [timeMetrics,spaceMetrics,sourceMetrics]);
+  const hierarchyCounts=useMemo(()=>fourDimensionDailyCounts({
+    selected:hierarchyMetrics,sourceRows:rows,
+    taxonomy:catalog.data||{},placeRows:territory.data||[],sourceModel
+  }),[hierarchyMetrics,rows,catalog.data,territory.data,sourceModel]);
   const categoryList=useMemo(()=>{
+    const hierarchy=hierarchyMetrics.map(item=>({
+      ...item,total:[...(hierarchyCounts.get(item.id)?.values()||[])]
+        .reduce((sum,n)=>sum+Number(n||0),0)
+    }));
     const analysis=keywords.data?.statisticsEnabled?keywords.data:null;
-    const keywordGroups=(analysis?.groupTotals||[])
+    const groups=(analysis?.groupTotals||[])
       .filter(row=>Number(row.document_count||0)>0)
-      .map(row=>({id:metricId('keyword_group',row.group_uid),uid:String(row.group_uid),kind:'keyword_group',
-        group:String(row.group||'').trim(),name:String(row.group||'').trim(),total:Number(row.document_count)||0}));
-    const keywordItems=(analysis?.runeTotals||[])
+      .map(row=>({
+        id:metricId('keyword_group',row.group_uid),kind:'keyword_group',
+        uid:String(row.group_uid),name:String(row.group||row.group_uid),
+        total:Number(row.document_count)||0
+      }));
+    const items=(analysis?.runeTotals||[])
       .filter(row=>Number(row.document_count||0)>0)
-      .map(row=>({id:metricId('keyword_item',row.uid),kind:'keyword_item',
+      .map(row=>({
+        id:metricId('keyword_item',row.uid),kind:'keyword_item',
         group_uid:keywordItemGroup.get(String(row.uid))||'',
-        name:String(row.label||row.uid),total:Number(row.document_count)||0}));
-    const keywordGroupsItems=keywordGroups.filter(group=>
-      keywordItems.some(item=>item.group_uid===group.uid))
-      .map(group=>({id:metricId('keyword_group_items',group.uid),
-        kind:'keyword_group_items',group_uid:group.uid,name:'群組內關鍵詞',total:0}));
-    const keywordAll=keywordTabAvailable?[{
-      id:metricId('keyword_all','all'),kind:'keyword_all',name:'全部關鍵詞',total:0
-    }]:[];
-    return [...sourceModel.metrics,...keywordAll,...keywordGroups,
-      ...keywordGroupsItems,...keywordItems];
-  },[sourceModel,keywords.data,keywordItemGroup,keywordTabAvailable]);
+        name:String(row.label||row.uid),total:Number(row.document_count)||0
+      }));
+    return [...hierarchy,...groups,...items];
+  },[hierarchyMetrics,hierarchyCounts,keywords.data,keywordItemGroup]);
   const candidatesForLane=index=>categoryList.filter(item=>
-    (shownKinds[index]==='all'||dimensionForKind(item.kind)===shownKinds[index])&&
-    (item.total>0||['keyword_all','keyword_group_items'].includes(item.kind)))
-    .sort((a,b)=>(b.kind==='source_tree'?b.level:0)-
-      (a.kind==='source_tree'?a.level:0));
+    dimensionForKind(item.kind)===shownKinds[index]&&item.total>0)
+    .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name));
   const chosen=Array.from({length:lanes},(_,index)=>{
     const candidates=candidatesForLane(index);
     const id=selected[index];
@@ -194,7 +208,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     return output;
   });
   const categories=selection.map(id=>categoryList.find(c=>c.id===id)).filter(Boolean);
-  const selectedKeywordItems=categories.some(item=>['keyword_all','keyword_group_items','keyword_item'].includes(item.kind));
+  const selectedKeywordItems=categories.some(item=>item.kind==='keyword_item');
   // Item-by-day data are not in the summary RPC. Load saved attributes only
   // when an item is actually selected, without reading or analyzing article bodies.
   const keywordItems=useAsyncResource({
@@ -223,26 +237,19 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       active.add(id);
       activeDays.set(day,active);
     };
-    for(const row of rows){
-      const day=dateOnly(row.day);
-      if(row.kind==='source')
-        for(const id of sourceModel.metricIdsForSite(row.category))
-          add(day,id,Number(row.item_count)||0);
-    }
+    // Every selected metric receives its own daily aggregate. If an article
+    // lies in a parent and child, it is not counted twice inside either lane.
+    for(const [id,byDay] of hierarchyCounts)
+      for(const [day,count] of byDay)add(day,id,count);
     // One Class per article. The existing summary already aggregates by day.
     for(const row of keywords.data?.classifications||[]){
       add(dateOnly(row.date),'keyword_group'+String.fromCharCode(0)+row.group_uid,Number(row.count)||0);
     }
     if(selectedKeywordItems){
       for(const row of keywordItems.data||[]){
-        const day=dateOnly(row.day);
-        const count=Number(row.document_count)||0;
-        if(row.kind==='keyword_all_day')
-          add(day,metricId('keyword_all','all'),count);
-        else if(row.kind==='item_day')
-          add(day,metricId('keyword_item',String(row.item_key)),count);
-        else if(row.kind==='group_items_day')
-          add(day,metricId('keyword_group_items',String(row.group_uid)),count);
+        if(row.kind==='item_day')
+          add(dateOnly(row.day),metricId('keyword_item',String(row.item_key)),
+            Number(row.document_count)||0);
       }
     }
     const chart=[];
@@ -264,7 +271,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
         value:chart.reduce((n,bucket)=>n+Number(bucket[category.id]||0),0)
       }))
     };
-  },[rows,categories.map(c=>c.id).join(String.fromCharCode(0)),start,end,unit,valid,sourceModel,keywords.data,keywordItems.data,selectedKeywordItems,keywordItemGroup]);
+  },[hierarchyCounts,categories.map(c=>c.id).join(String.fromCharCode(0)),
+    start,end,unit,valid,keywords.data,keywordItems.data,selectedKeywordItems]);
   const series=categories.map(c=>({key:c.id,label:c.name}));
   const enough=maximumLanes>=2&&categories.length===lanes;
   const availableCharts=semanticStatisticChartTypes({purpose:'comparison',rows:calculated.chart,series,distribution:calculated.totals});
