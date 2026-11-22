@@ -18,6 +18,7 @@ const TraceMap=dynamic(()=>import('./trace/TraceMap'),{
   ssr:false,loading:()=> <p className="scope-status" role="status">正在載入痕跡地圖…</p>
 });
 const routeKey=row=>String(row.source_scope||'')+':'+String(row.uid||'');
+const EMPTY_ROUTES=Object.freeze([]);
 
 export default function LocTracePreview(){
   const [selectedTraceKey,setSelectedTraceKey]=useState('');
@@ -45,7 +46,7 @@ export default function LocTracePreview(){
   const routeOptions=currentGroup?.paths||hierarchy.orphans;
   const activePath=routeOptions.find(row=>routeKey(row)===selectedPathKey)||null;
   const selected=activePath||(currentGroup?.trace||routeOptions[0]||null);
-  const referencedRoutes=currentGroup?.trace===selected?currentGroup.paths:[];
+  const referencedRoutes=currentGroup?.trace===selected?currentGroup.paths:EMPTY_ROUTES;
   const memberIds=useMemo(()=>[...new Set([
     ...traceMemberUids(selected),...referencedRoutes.flatMap(traceMemberUids)
   ])],[selected,referencedRoutes]);
@@ -80,7 +81,7 @@ export default function LocTracePreview(){
         </label>
         <label>路徑圖
           <select className="scope-select" aria-label="所屬路徑圖選擇"
-            value={activePath?routeKey(activePath):'__overview__'}
+            value={activePath?routeKey(activePath):currentGroup?'__overview__':selected?routeKey(selected):''}
             onChange={event=>setSelectedPathKey(event.target.value==='__overview__'?'':event.target.value)}>
             {currentGroup?<option value="__overview__">整個痕跡圖</option>:null}
             {routeOptions.map(row=><option key={routeKey(row)} value={routeKey(row)}>
