@@ -74,6 +74,20 @@ function validateAnchorPayload(type,attr){
     ' — '+(issue?.message||'invalid value'));
 }
 
+// Fixed, named Anchor read Transactions use the same per-discriminator
+// ZModel payload validation as writes. Never invent a second attr schema or
+// expose an unverified arbitrary JSON payload to a feature consumer.
+export function assertZModelAnchorFeatureRows(rows=[]){
+  if(!Array.isArray(rows))throw new TypeError('Invalid Anchor feature rows');
+  for(const row of rows){
+    if(!row||typeof row!=='object'||Array.isArray(row))
+      throw new TypeError('Invalid Anchor feature row');
+    const attr=typeof row.attr==='string'?JSON.parse(row.attr):row.attr;
+    validateAnchorPayload(row.type,attr);
+  }
+  return rows;
+}
+
 // The frozen SQL snapshot is authoritative where ZModel V3 loses a native
 // distinction: DATE vs DateTime, and SQL-nullable PostgreSQL arrays.
 // Derive these adaptations from column metadata, never from a second field map.
