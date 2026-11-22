@@ -1,6 +1,8 @@
 // Trusted transaction-bound LOC business authorization. LOC Auth identifies
 // the user; the single ZModel-backed loc_access projection grants resources.
 import {hasLocAccess} from '../permissions/loc_access.mjs';
+import {FIXED_MANAGE_ROWS} from '../permissions/fixed-manage-registry.mjs';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {LocAccessRowSchema} from '../permissions/loc-access-schema.mjs';
 
 const sessions=new WeakMap();
@@ -38,6 +40,27 @@ export async function locAccessRows(db,type,id=null){
   }];
   const state=sessions.get(db);
   if(state?.role!=='authenticated')return [];
+  // Published business identities use JS for every Scope/role column. A
+  // signed Session is already bound to this Kysely transaction; reading a
+  // Role must not need a live Registry SELECT or a second DB request.
+  const staticRows=FIXED_MANAGE_ROWS.filter(row=>row.email===state.email);
+  if(staticRows.length){
+    return staticRows.flatMap(row=>{
+      const parsed=LocAccessRowSchema.safeParse({
+        id:row.id,email:row.email,manage_role:row.manage_role,active:row.active
+      });
+      if(!parsed.success)return [];
+      const level=parsed.data.manage_role==='admin'?'global':parsed.data.manage_role;
+      if(!canLocAccess(db,level,row.id))return [];
+      return [{
+        id:row.id,email:row.email,role:row.manage_role,
+        galaxy:row.galaxy_table,anchor:row.anchor_table,
+        birthday:PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[row.id]||null,
+        allowed:true
+      }];
+    });
+  }
+  // Unpublished custom administrators alone require the portable SQL fallback.
   const rows=await db.selectFrom('api.manage as m')
     .leftJoin('silver.loc as s','s.id','m.id')
     .select(['m.id','m.email','m.manage_role','m.active',
