@@ -5,7 +5,7 @@
 // No new MediaAnchor statistics: Suno/Spotify/Youtube belong to SiteAnchor.
 import {resolveTimeSegments,resolveTimeTrace,timeDateWindows}
   from '../culture/time-anchor-ranges.mjs';
-import {assignedSource} from './member-intersection-model.mjs';
+import {sourceStatisticsTree} from './source-tree-measures.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
@@ -29,7 +29,7 @@ export const INTERSECTION_FAMILIES=Object.freeze([
   {value:'time',label:'時間',types:['era','period']},
   {value:'space',label:'空間',types:['trace','path']},
   {value:'keyword',label:'關鍵詞',types:['keyword_group','keyword_item']},
-  {value:'source',label:'來源',types:['source_galaxy','source_domain']}
+  {value:'source',label:'來源',types:['source_tree']}
 ]);
 
 const metric=(kind,row,extra={})=>({
@@ -93,23 +93,16 @@ export function spaceIntersectionMetrics(anchors=[]){
   return [...traces,...paths];
 }
 
+// Reuse the existing Source tree engine: its from-alias mapping and UID
+// rollups are shared by the interactive tree and by this comparison, rather
+// than creating a competing taxonomy/SQL statistics pipeline.
 export function sourceIntersectionMetrics(taxonomy={}){
-  return (taxonomy?.tree||[]).filter(node=>
-    (node.type==='galaxy'||node.type==='domain')&&UID.test(String(node.uid)))
-    .map(node=>metric(node.type==='galaxy'?'source_galaxy':'source_domain',node,{
-      path:node.path||[],root:node.root
-    }));
-}
-
-// Reconcile source aliases to the real SiteAnchor UID only. The Galaxy.site
-// value is a source label; Galaxy.site_id is a native post identifier and is
-// never inspected to select a Source subtree.
-function sourceUidForSite(site,taxonomy={}){
-  return assignedSource(site,taxonomy?.aliases||[],taxonomy?.categories||[]);
+  return sourceStatisticsTree([],taxonomy).metrics.filter(node=>
+    node.kind==='source_tree'&&['galaxy','domain'].includes(node.type));
 }
 
 export function fourDimensionDailyCounts({
-  selected=[],sourceRows=[],taxonomy={},timeMetrics=[],spaceMetrics=[],placeRows=[]
+  selected=[],sourceRows=[],taxonomy={},placeRows=[],sourceModel=null
 }={}){
   const chosen=(Array.isArray(selected)?selected:[]).filter(Boolean);
   const result=new Map(chosen.map(row=>[row.id,new Map()]));
@@ -117,30 +110,23 @@ export function fourDimensionDailyCounts({
     const sum=result.get(id);if(!sum||!day||!count)return;
     sum.set(day,(sum.get(day)||0)+count);
   };
-  const indexed=new Map((taxonomy?.tree||[]).map(row=>[row.uid,row]));
-  const bySite=new Map();
+  const canonicalSource=sourceModel||sourceStatisticsTree(sourceRows,taxonomy);
   for(const row of sourceRows){
     const day=cleanDay(row?.day),count=num(row?.item_count);
     if(!day||!count)continue;
     if(row.kind==='source'){
-      const site=String(row.category??'');
-      if(!bySite.has(site)){
-        const resolved=indexed.get(sourceUidForSite(site,taxonomy));
-        bySite.set(site,new Set((resolved?.path||[]).filter(uid=>{
-          const type=indexed.get(uid)?.type;
-          return type==='galaxy'||type==='domain';
-        })));
+      for(const id of canonicalSource.metricIdsForSite(row.category)){
+        const metric=chosen.find(item=>item.id===id);
+        // The caller can never aggregate whole Universes or individual
+        // From/site leaves as a comparison category; only 2nd+3rd levels.
+        if(metric?.kind==='source_tree'&&['galaxy','domain'].includes(metric.type))
+          add(id,day,count);
       }
-      const ancestors=bySite.get(site);
-      for(const node of chosen)if(
-        (node.kind==='source_galaxy'||node.kind==='source_domain')&&
-        ancestors.has(node.uid)
-      )add(node.id,day,count);
     }else if(row.kind==='total'){
-      for(const node of chosen){
-        if(node.kind!=='era'&&node.kind!=='period')continue;
-        if((node.windows||[]).some(w=>day>=w.startDate&&day<=w.endDate))
-          add(node.id,day,count);
+      for(const metric of chosen){
+        if(metric.kind!=='era'&&metric.kind!=='period')continue;
+        if((metric.windows||[]).some(w=>day>=w.startDate&&day<=w.endDate))
+          add(metric.id,day,count);
       }
     }
   }
