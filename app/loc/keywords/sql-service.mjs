@@ -495,22 +495,11 @@ export async function setKeywordClassShare(db,scope,classUid,enabled,{
   });
 }
 
-// Legacy management action hook: existing transaction handles Item itself.
-// No Pattern synchronization or second authority is necessary.
-export async function synchronizeKeywordLibraryInTransaction(){return {created:0,linked:0,removed:0};}
-export async function synchronizeKeywordLibrary(){return {created:0,linked:0,removed:0};}
- The managed multi-write endpoint already owns
-// its transaction; it must not open another connection or nested COMMIT.
-export async function synchronizeKeywordLibraryInTransaction(trx,scope){
-  checkScope(scope);
-  return ensureScopePatternLibrary(trx,scope);
+// Existing authorized management transaction owns Keyword Item writes.
+// Pattern reconciliation is retired; do not create index rows or article lists.
+export async function synchronizeKeywordLibraryInTransaction(){
+  return {created:0,linked:0,removed:0};
 }
-export async function synchronizeKeywordLibrary(db,scope,{
-  authorizeTransaction=()=>{}
-}={}){
-  checkScope(scope);
-  return db.transaction().execute(async trx=>{
-    await authorizeTransaction(trx);
-    return synchronizeKeywordLibraryInTransaction(trx,scope);
-  });
+export async function synchronizeKeywordLibrary(){
+  return {created:0,linked:0,removed:0};
 }
