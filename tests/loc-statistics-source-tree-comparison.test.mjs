@@ -15,13 +15,13 @@ const row=(site,count,extra={})=>({
 });
 const code=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('all multi-item Source choices use the 30 LOC source UID nodes at four exact levels',()=>{
+test('all multi-item Source choices use the 31 LOC source UID nodes at four exact levels',()=>{
   const model=sourceStatisticsTree([],taxonomy);
   assert.deepEqual(model.metrics.map(x=>[x.type,x.level]).filter(x=>x[1]===0).map(x=>x[0]),
     ['universe','universe','universe']);
-  assert.equal(model.metrics.length,30);
+  assert.equal(model.metrics.length,31);
   assert.equal(model.metrics.filter(item=>item.type==='galaxy').length,4);
-  assert.equal(model.metrics.filter(item=>item.type==='domain').length,7);
+  assert.equal(model.metrics.filter(item=>item.type==='domain').length,8);
   assert.equal(model.metrics.filter(item=>item.type==='from').length,16);
   for(const [a,b] of [['X','X Twitter'],['Post','Vocus'],['Video','Youtube']]){
     const parent=treeByTitle.get(a),child=treeByTitle.get(b);
@@ -40,7 +40,7 @@ test('Universe groups the Source list; only real Galaxy and Domain UIDs are choi
   const galaxies=grouped.flatMap(group=>group.galaxies);
   const domains=galaxies.flatMap(galaxy=>galaxy.domains);
   assert.equal(galaxies.length,4);
-  assert.equal(domains.length,7);
+  assert.equal(domains.length,8);
   assert.equal(galaxies.find(g=>g.name==='CMS').domains.find(d=>d.name==='Meta').total,5);
   assert.ok(galaxies.every(item=>item.type==='galaxy'));
   assert.ok(domains.every(item=>item.type==='domain'));
@@ -83,7 +83,8 @@ test('each native From rolls up exactly once along its saved Universe/Galaxy/Dom
   assert.equal(stat('Video',model),6);
   assert.equal(stat('Youtube',model),6);
   assert.equal(stat('PastBy',model),3);
-  assert.equal(stat('Yesterday',model),3);
+  assert.equal(stat('Closed',model),3);
+  assert.equal(stat('NowON',model),0);
   assert.equal(model.totals.get(SOURCE_UNCLASSIFIED_METRIC),8);
   // A parent selected as its own comparison lane is a single rolled-up
   // metric, not a second pass that adds its already counted children again.

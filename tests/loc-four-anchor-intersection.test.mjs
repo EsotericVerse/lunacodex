@@ -120,7 +120,8 @@ test('one SiteAnchor rollup includes multimedia but offers only Galaxy/Domain',(
   assert.equal(dayCount(counts,byName.get('Music'),'2026-01-15'),1);
   assert.equal(dayCount(counts,byName.get('Stream'),'2026-01-15'),1);
   assert.equal(byName.has('Mutlimedia'),false); // Universe is navigation only
-  assert.equal(byName.has('Yesterday'),true); // PastBy > SeeYou > Yesterday
+  assert.equal(byName.has('Closed'),true); // PastBy > SeeYou > Closed
+  assert.equal(byName.has('NowON'),true); // PastBy > SeeYou > NowON
 });
 
 test('Statistics space comparisons require both trace and statics without changing Trace territory',()=>{

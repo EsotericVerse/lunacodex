@@ -58,7 +58,7 @@ export function buildCultureSourceTreeLanes(taxonomy={},groupedSources=[],expand
     .sort((a,b)=>(rootOrder.get(a.title)??100)-(rootOrder.get(b.title)??100));
   for(const root of roots)append(root.uid);
   // A site without a matching From/Domain alias is NOT PastBy. PastBy is a
-  // real Universe containing SeeYou > Yesterday; keep unknown sites separate.
+  // real Universe containing SeeYou > Closed/NowON; keep unknown sites separate.
   if(other.count)visible.push({
     uid:null,type:'unassigned',label:'未分類來源',level:0,path:[],
     root:'unassigned',groupId:'dual:source:unassigned',

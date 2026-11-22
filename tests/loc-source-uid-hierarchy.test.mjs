@@ -18,7 +18,7 @@ const sample=[
   {key:'custom:others',sites:['Unmatched source'],item_count:4}
 ];
 
-test('the 30 saved loc_anchor Source nodes render as exactly four UID-linked levels',()=>{
+test('the 31 saved loc_anchor Source nodes render as exactly four UID-linked levels',()=>{
   const hierarchy=buildCultureSourceTreeLanes(catalog,sample,expandAll);
   assert.deepEqual(hierarchy.visible.filter(x=>x.uid).map(x=>[
     x.level,x.type,x.label
@@ -37,17 +37,18 @@ test('the 30 saved loc_anchor Source nodes render as exactly four UID-linked lev
     [2,'domain','Video'],[3,'from','Youtube'],
     [0,'universe','PastBy'],
     [1,'galaxy','SeeYou'],
-    [2,'domain','Yesterday'],[3,'from','kkcity'],[3,'from','ptt'],
-    [3,'from','無名wretch'],[3,'from','pixnet'],[3,'from','MSN']
+    [2,'domain','Closed'],[3,'from','kkcity'],[3,'from','ptt'],
+    [3,'from','無名wretch'],[3,'from','MSN'],
+    [2,'domain','NowON'],[3,'from','pixnet']
   ]);
-  assert.equal(hierarchy.visible.filter(x=>x.uid).length,30);
+  assert.equal(hierarchy.visible.filter(x=>x.uid).length,31);
   assert.deepEqual(hierarchy.visible.filter(x=>!x.uid).map(x=>x.label),['未分類來源']);
   assert.equal(hierarchy.total,12);
 });
 
 test('one-child domains are not collapsed and do not inherit the child title',()=>{
   const hierarchy=buildCultureSourceTreeLanes(catalog,sample,expandAll);
-  for(const [parentName,childName] of [['X','X Twitter'],['Post','Vocus'],['Video','Youtube']]){
+  for(const [parentName,childName] of [['X','X Twitter'],['Post','Vocus'],['Video','Youtube'],['NowON','pixnet']]){
     const i=hierarchy.visible.findIndex(x=>x.label===parentName);
     assert.ok(i>=0);
     assert.equal(hierarchy.visible[i].type,'domain');
@@ -71,7 +72,7 @@ test('collapsed river starts with three Universe rows, not three artificial buck
 
 test('source outline has one selectable option per real Source node and correct indentation',()=>{
   const options=sourceOutlineOptions(catalog);
-  assert.equal(options.length,30);
+  assert.equal(options.length,31);
   assert.deepEqual(options.slice(0,4).map(x=>[x.type,x.label,x.level]),[
     ['universe','Words',0],['galaxy','CMS',1],
     ['domain','Meta',2],['from','Facebook',3]
