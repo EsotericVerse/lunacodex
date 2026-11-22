@@ -78,3 +78,14 @@ test('the daily-source model returns source groups and daily total in one query'
     {day:'2026-11-22',kind:'total',category:'文字作品',item_count:5}
   ]);
 });
+
+test('every Galaxy flag is a typed model; articles require the independent list gate',()=>{
+  for(const flag of ['culture','statics','search','trace','list','keyword','extract','others']){
+    const parsed=parseGalaxyFeatureTransaction({...base,feature:flag});
+    assert.equal(parsed.feature,flag);
+  }
+  for(const view of ['articles','uids']){
+    const parsed=parseGalaxyFeatureTransaction({...base,feature:'others',result:view});
+    assert.equal(parsed.limit,100);
+  }
+});
