@@ -376,6 +376,8 @@ type CategoryAnchor {
     uid String[]?
 }
 type FromAnchor {
+    // The existing physical From.attr.uid is []; From is terminal, never
+    // another parent. The shared UID graph and typed validator enforce this.
     uid String[]?
     // Per-Scope cached article totals, independent of physical Anchor.num.
     counts Json?
@@ -437,10 +439,12 @@ type KeywordAnchor {
 // Site hierarchy: universe (all) > galaxy (group) > domain (collection) > from (one site).
 // Hierarchy links in attr.uid always refer to Anchor UIDs, not Galaxy article UIDs.
 type SiteAnchor {
-    from FromAnchor?
-    domain DomainAnchor?
-    galaxy GalaxyAnchor?
+    // Hierarchy: Universe -> Galaxy -> Domain -> From (one Galaxy.site).
+    // Each subtype still occupies one existing silver.loc_anchor row.
     universe UniverseAnchor?
+    galaxy GalaxyAnchor?
+    domain DomainAnchor?
+    from FromAnchor?
 }
 
 // The 66-card rune catalogue is a separate semantic projection. Its physical
