@@ -9,7 +9,7 @@ import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs
 import {useAccount} from '../auth/use-account';
 import {createUid8} from '../model/uid';
 import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from '../content/content-policy';
-import {refreshSunoStyleMetaTags} from './suno-style-meta-tags.mjs';
+import {refreshSunoStyleMetaTags,appendSunoMetaTagsToArticle} from './suno-style-meta-tags.mjs';
 import BlockNoteEditor from '../editor/BlockNoteEditor';
 import {blocksToPlainText,hasBlockNoteContent,plainTextToBlocks} from '../editor/blocknote-content.mjs';
 
@@ -69,7 +69,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
       if(lyricsUid){
         operations.push({p_table:galaxy,p_operation:'insert',p_rows:[{
           uid:lyricsUid,
-          title,content:lyrics,createtime,
+          title,content:appendSunoMetaTagsToArticle(lyrics,description),createtime,
           source_id:sourceId,target_id:normalizeRelationIds(draft.target_id),ref_id:styleUid||draft.ref_id.trim()||null,
           url:draft.url.trim()||null,site:'suno',
           ...(draft.url.trim()?{media_link:[draft.url.trim()]}:{}),
