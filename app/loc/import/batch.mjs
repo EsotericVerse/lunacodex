@@ -1,6 +1,6 @@
 // One format contract for JSON Import and Source Refresh. No database authority lives here.
 // Archive size limits are configuration, not proof of successful large-file import E2E.
-import {MAX_ROWS,HEAVY_QUERY_ROWS,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
+import {MAX_ROWS,HEAVY_INITIAL_ROWS,HEAVY_QUERY_ROWS,createTextAdaptiveRows,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
 import {sourceImportModel} from '../../../packages/zenstack/import-source-models.mjs';
@@ -349,39 +349,33 @@ export function extractImportCreatedAt(value,depth=0){
   }
   return null;
 }
-// Only explicitly initiated imports use the heavy 10k *ceiling*.
-// Adapt the real request size to measured throughput and serialized bytes.
-// Small articles can fill thousands of rows; long articles flush by bytes.
-// This never raises routine read limits or alters the persisted ZModel schema.
-export const IMPORT_PAYLOAD_TARGET_BYTES=8*1024*1024;
-const importRowBytes=row=>new TextEncoder().encode(JSON.stringify(row)).byteLength;
+// Imported rows are sized by the text actually present, not row count alone.
+// The existing Native managed-write request envelope is 700 KB; this smaller
+// transport payload target leaves room for the operation's JSON wrapper and
+// ZModel normalization. 10k rows is only a ceiling, not a forced SQL LIMIT.
+export const IMPORT_PAYLOAD_TARGET_BYTES=480000;
+const importRowJson=row=>JSON.stringify(row);
+const importRowBytes=row=>new TextEncoder().encode(importRowJson(row)).byteLength;
+const importBatchCharacters=rows=>rows.reduce((sum,row)=>sum+importRowJson(row).length,0);
 export function createImportBatchSizer({
-  initial=2048,minimum=128,maximum=HEAVY_QUERY_ROWS,
+  initial=HEAVY_INITIAL_ROWS,minimum=1,maximum=HEAVY_QUERY_ROWS,
   maxPayloadBytes=IMPORT_PAYLOAD_TARGET_BYTES
 }={}){
-  const ceiling=Math.min(HEAVY_QUERY_ROWS,Math.max(1,maximum));
-  const floor=Math.min(ceiling,Math.max(1,minimum));
-  let size=Math.min(ceiling,Math.max(floor,initial));
-  let previousRate=0;
+  const adaptive=createTextAdaptiveRows({initial,minimum,maximum});
   return {
-    get size(){return size;},
+    get size(){return adaptive.size;},
     get maxBytes(){return maxPayloadBytes;},
     byteSize:importRowBytes,
-    // Decide BEFORE appending the next row; even an oversized single row
-    // remains atomic and is validated/rejected by the existing writer.
+    // Flush before the next oversized row or on reaching the adaptive bound.
     shouldFlush(count,bytes,nextBytes=0){
-      return count>0&&(count>=size||
+      return count>0&&(count>=adaptive.size||
         bytes+nextBytes>maxPayloadBytes);
     },
-    observe(rows,elapsedMs){
-      if(!rows||!Number.isFinite(elapsedMs)||elapsedMs<0)return size;
-      const rate=rows/Math.max(1,elapsedMs);
-      if(!previousRate||rate>previousRate*1.08)
-        size=Math.min(ceiling,size*2);
-      else if(rate<previousRate*0.8)
-        size=Math.max(floor,Math.floor(size/2));
-      previousRate=rate;
-      return size;
+    // Physical bytes enforce the backend contract; observed character count
+    // controls the next 2x geometric row request. Elapsed time is diagnostic
+    // only, and must never suppress growth for otherwise short text.
+    observe(rows,elapsedMs,characters=rows){
+      return adaptive.observe(rows,characters);
     }
   };
 }
@@ -438,7 +432,7 @@ export async function writeImportBatches(records,{writeBatch,onProgress}={}){
         '／'+total+' 筆。'+detail+'。重新執行前會再次比對已存在 UID。');
     }
     completed+=batch.length;batches++;
-    sizer.observe(batch.length,Date.now()-started);
+    sizer.observe(batch.length,Date.now()-started,importBatchCharacters(batch));
     onProgress?.({completed,total,percent:Math.round(completed/Math.max(1,total)*100),
       batch:batches,batches:Math.max(batches,Math.ceil(total/sizer.size))});
   }
