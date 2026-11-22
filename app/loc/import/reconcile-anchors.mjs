@@ -1,3 +1,4 @@
+import {MAX_ROWS} from '../query/query-batch-size.mjs';
 import {prepareImportPlaceAnchors,importedPlaceId} from './place-anchors.mjs';
 import {prepareImportTimeAnchors} from './time-anchors.mjs';
 import {readImportPointDateAnchors} from './anchor-read.mjs';
@@ -6,7 +7,7 @@ import {planImportPointUidLink} from './uid-delta.mjs';
 // Repair location/date links for articles already in Galaxy, without replaying
 // an archive, creating duplicate posts, or touching unrelated article fields.
 export async function reconcileExistingImportAnchors({
-  scopeId,galaxy,timeTable,relation,updateImportRows,onProgress,pageSize=750
+  scopeId,galaxy,timeTable,relation,updateImportRows,onProgress,pageSize=MAX_ROWS
 }={}){
   const scope=String(scopeId||'').trim();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||scope==='loc'||scope==='local')
