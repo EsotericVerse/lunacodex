@@ -36,8 +36,8 @@ test('time editor can start its authorized read without a second public river',(
 test('management TimeRiver uses complete historical bounds rather than a fixed year',()=>{
   const culture=read('app/modular/features/Culture.jsx');
   assert.match(culture,/const editorRiverWindow=structureDateBounds/);
-  assert.match(culture,/windowStart=\\{editorRiverWindow\\.start\\}/);
-  assert.match(culture,/windowEnd=\\{editorRiverWindow\\.end\\}/);
+  assert.match(culture,/windowStart=\{editorRiverWindow\.start\}/);
+  assert.match(culture,/windowEnd=\{editorRiverWindow\.end\}/);
   assert.doesNotMatch(culture,/editorRiverYearWindow/);
 });
 test('management Era lanes retain all dated anchors and unclassified dates',()=>{
