@@ -41,7 +41,7 @@ import {deleteRows,insertRows,updateRows} from '../../loc/db/db-client.mjs';
 import {selectAllRows,selectRows} from '../../loc/db/db-query.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
-import {sourceOutlineOptions} from '../../loc/source/outline-options.mjs';
+import {sourceOutlineOptions,groupedSourceOutline} from '../../loc/source/outline-options.mjs';
 import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
 import {buildCultureSourceTreeLanes,rollupCultureSourceDays} from '../../loc/culture/source-tree-lanes.mjs';
 import {useAccount} from '../../loc/auth/use-account';
@@ -465,6 +465,7 @@ export default function Culture(){
   });
   const sourceTaxonomy=sourceTaxonomyQuery.data;
   const sourceStyleOptions=useMemo(()=>sourceOutlineOptions(sourceTaxonomy),[sourceTaxonomy]);
+  const sourceStyleGroups=useMemo(()=>groupedSourceOutline(sourceTaxonomy),[sourceTaxonomy]);
   const stagedSourceRiver=Boolean(sourceTaxonomy)&&!isAggregateScope&&scopeId!=='local';
   // The expanded items are saved loc_anchor UIDs; root family codes here
   // are only an internal daily-aggregate query filter, never a UI level.
@@ -1604,11 +1605,14 @@ export default function Culture(){
                         <optgroup label='關鍵詞'>
                           <option value='rune66'>{selectedKeywordClass?.name||l.keywordStyle}</option>
                         </optgroup>
-                        {sourceStyleOptions.length?<optgroup label='來源'>
-                          {sourceStyleOptions.map(item=><option key={item.key} value={'source:'+item.key}>
-                            {'\u00a0\u00a0\u00a0'.repeat(item.level)}{item.label}
+                        {sourceStyleGroups.map(group=><optgroup
+                          key={group.key} label={group.label}>
+                          {group.items.map(item=><option key={item.key} value={'source:'+item.key}>
+                            {'\u00a0\u00a0\u00a0'.repeat(item.orphanType
+                              ?Math.max(0,item.level-['universe','galaxy','domain','from'].indexOf(item.orphanType))
+                              :item.level)}{item.label}
                           </option>)}
-                        </optgroup>:null}
+                        </optgroup>)}
                       </select>
                     </label>
                     {keywordPeriodKey==='custom'?<>
