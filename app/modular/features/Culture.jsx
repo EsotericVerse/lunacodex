@@ -54,7 +54,6 @@ const CultureTimelineEditor=dynamic(()=>import('./CultureTimelineEditor'),{
   loading:()=> <CultureTimeLoading label='正在準備時間定錨編輯器…'/>
 });
 const CulturePlaceRiver=dynamic(()=>import('./trace/CulturePlaceRiver'),{loading:()=>null});
-const CultureMediaRiver=dynamic(()=>import('./media/CultureMediaRiver'),{loading:()=>null});
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
@@ -261,9 +260,9 @@ export default function Culture(){
   useEffect(()=>setArticleSort(userActive?userSettings.sort:'desc'),[userActive,userSettings.sort]);
   // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
   const [styleFilter,setStyleFilter]=useState('none');
-  // The second river always uses time on X; Site (default), Keyword, Place,
-  // and typed MediaAnchor are exclusive Y dimensions. Keep their SQL lazy.
-  const usesSourceRiver=styleFilter!=='trace'&&styleFilter!=='media';
+  // Media sites are already included in the unified SiteAnchor source river.
+  // Only geography and keywords use independent presentation dimensions.
+  const usesSourceRiver=styleFilter!=='trace';
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
   const [keywordDrillSource,setKeywordDrillSource]=useState('');
   const [keywordDrillGroup,setKeywordDrillGroup]=useState('');
@@ -1663,7 +1662,6 @@ export default function Culture(){
                         }}>
                         <option value='none'>來源</option>
                         <option value='trace'>地點</option>
-                        <option value='media'>多媒體</option>
                         <optgroup label='關鍵詞'>
                           <option value='rune66'>{selectedKeywordClass?.name||l.keywordStyle}</option>
                         </optgroup>
@@ -1738,8 +1736,6 @@ export default function Culture(){
                     ?<p className='scope-status'>此範圍沒有可顯示的命中資料。</p>:null}
                 </section>:null}
                 {styleFilter==='trace'&&classificationWindowValid?<CulturePlaceRiver
-                  scopeId={scopeId} startDate={classificationWindowStart} endDate={classificationWindowEnd}/>:null}
-                {styleFilter==='media'&&classificationWindowValid?<CultureMediaRiver
                   scopeId={scopeId} startDate={classificationWindowStart} endDate={classificationWindowEnd}/>:null}
                 {!classificationWindowValid&&optionalTimeRangeUnfilled?<p className='scope-status' role='status'>尚未選擇時間範圍；可使用時代、期間或自訂日期。</p>:null}
                 {!classificationWindowValid&&!optionalTimeRangeUnfilled?<p className='scope-status scope-error' role='status'>請選擇有效的時間區間（起始日期不得晚於結束日期）。</p>:null}
