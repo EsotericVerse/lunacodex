@@ -433,6 +433,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       const flushNewMedia=async()=>{
         if(!createMedia.length)return;
         const count=createMedia.length,started=Date.now();
+        const characters=createMedia.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
         await writeImportBatches(createMedia,{
           writeBatch:batch=>insertImportRows(mediaAnchor,batch.map(mediaAnchorRecord)),
           onProgress:p=>onProgress?.({stage:'新增媒體紀錄',completed:created+p.completed,total:created+count})
@@ -440,7 +441,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         created+=count;
         createMedia.length=0;
         pendingMediaUids.clear();
-        mediaSizer.observe(count,Date.now()-started);
+        mediaSizer.observe(count,Date.now()-started,characters);
       };
       function attach(uid,url){
         const mediaUrl=String(url||'').trim();
@@ -498,14 +499,15 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       let connected=0,checkedLinks=0;
       const linkedUids=[...related.keys()];
       const linkSizer=createImportBatchSizer();
-      let linkQueue=[];
+      let linkQueue=[],linkBytes=0;
       const flushMediaLinks=async()=>{
         if(!linkQueue.length)return;
         const count=linkQueue.length,started=Date.now();
+        const characters=linkQueue.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
         const result=await updateImportRows(galaxy,linkQueue);
         connected+=result.count;
-        linkQueue=[];
-        linkSizer.observe(count,Date.now()-started);
+        linkQueue=[];linkBytes=0;
+        linkSizer.observe(count,Date.now()-started,characters);
       };
       onProgress?.({stage:'讀取文章媒體連結',completed:0,total:linkedUids.length});
       await readExistingByIds(galaxy,'uid,media_link','uid',linkedUids,
@@ -515,8 +517,13 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
             const prior=Array.isArray(row.media_link)?row.media_link:[];
             const delta=planImportMediaUrlLinks(prior,related.get(uid)||[]);
             if(delta.patches.length){
-              linkQueue.push({uid,...delta.changes});
-              if(linkQueue.length>=linkSizer.size)await flushMediaLinks();
+              const update={uid,...delta.changes};
+              const bytes=linkSizer.byteSize(update);
+              if(linkSizer.shouldFlush(linkQueue.length,linkBytes,bytes))
+                await flushMediaLinks();
+              linkQueue.push(update);linkBytes+=bytes;
+              if(linkSizer.shouldFlush(linkQueue.length,linkBytes))
+                await flushMediaLinks();
             }
             checkedLinks++;
           }
@@ -599,7 +606,8 @@ async function syncImportedVisualGalaxies({
     });
     created+=result.inserted;conflicts+=result.conflicts;
     processed+=batch.length;pending=[];pendingBytes=0;
-    imageSizer.observe(batch.length,Date.now()-started);
+    imageSizer.observe(batch.length,Date.now()-started,
+      batch.reduce((sum,row)=>sum+JSON.stringify(row).length,0));
     onProgress?.({stage:'新增圖片／影片 Galaxy',completed:processed,total:inserts.length});
   };
   for(const row of inserts){
@@ -1592,10 +1600,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const flushUpdates=async()=>{
         if(!updateQueue.length)return;
         const count=updateQueue.length,started=Date.now();
+        const characters=updateQueue.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
         const result=await updateImportRows(galaxy,updateQueue);
         updated+=result.count;
         updateQueue=[];updateBytes=0;
-        updateSizer.observe(count,Date.now()-started);
+        updateSizer.observe(count,Date.now()-started,characters);
         // A receipt's confirmed count is rows examined, not only rows
         // changed. Most reimports update very few columns.
         checkpointBatch('update',checkedExisting,existingCount,updated);
@@ -1647,6 +1656,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const flushNewArticles=async()=>{
         if(!payload.length)return;
         const count=payload.length,started=Date.now();
+        const characters=payload.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
         const outcome=await insertImportBatches(payload,{
           batchSize:insertSizer.size,
           // The Gateway reports SQLSTATE 23505 without naming its constraint.
@@ -1666,7 +1676,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         for(const uid of outcome.conflictedUids)result.conflictedUids.add(uid);
         newArticleProcessed+=payload.length;
         payload=[];payloadBytes=0;
-        insertSizer.observe(count,Date.now()-started);
+        insertSizer.observe(count,Date.now()-started,characters);
         checkpointBatch('insert',newArticleProcessed,newArticleTotal,
           result.inserted,result.conflicts);
         showProgress('新增文章',newArticleProcessed,newArticleTotal);
