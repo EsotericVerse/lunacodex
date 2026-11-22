@@ -46,6 +46,22 @@ export default function BlockNoteEditorClient({
   const hydratedLegacyHtml=useRef(false);
   const htmlEmitVersion=useRef(0);
   const lastEmittedBlocks=useRef('');
+  // Editing is ephemeral: leaving the editor discards every pending HTML
+  // conversion and prevents an old editor from writing into another page.
+  const mountedRef=useRef(false);
+  const editorEpoch=useRef(0);
+  useEffect(()=>{
+    mountedRef.current=true;
+    editorEpoch.current++;
+    return()=>{
+      mountedRef.current=false;
+      editorEpoch.current++;
+      htmlEmitVersion.current++;
+      lastEmittedBlocks.current='';
+      // BlockNoteView owns its ProseMirror/UI unmount. Do not keep a second
+      // editor reference or a recoverable document snapshot after that.
+    };
+  },[editor]);
 
   useEffect(()=>{
     if(hydratedLegacyHtml.current)return;
@@ -54,7 +70,7 @@ export default function BlockNoteEditorClient({
     let mounted=true;
     // HTML imports can be asynchronous; never pass a Promise to replaceBlocks.
     const apply=blocks=>{
-      if(mounted)editor.replaceBlocks(editor.document,canonicalBlockNoteBlocks(blocks));
+      if(mounted&&mountedRef.current)editor.replaceBlocks(editor.document,canonicalBlockNoteBlocks(blocks));
     };
     try{
       const parsed=initialHtml
@@ -69,6 +85,7 @@ export default function BlockNoteEditorClient({
   },[editor,initialHtml,initialMarkdown]);
 
   const emit=()=>{
+    if(!mountedRef.current)return;
     // BlockNote JSON is the editing source of truth. Empty paragraphs must
     // remain empty blocks, never literal ProseMirror U+FFFC characters.
     const blocks=canonicalBlockNoteBlocks(editor.document);
@@ -78,18 +95,22 @@ export default function BlockNoteEditorClient({
     onChange?.(blocks);
     if(!onHtmlChange)return;
     const version=++htmlEmitVersion.current;
+    const epoch=editorEpoch.current;
     const exported=editor.blocksToHTMLLossy(blocks);
     // Handle sync (current BlockNote) and async HTML exporters safely.
     const deliver=html=>{
-      if(version===htmlEmitVersion.current)onHtmlChange(canonicalBlockNoteHtml(html));
+      if(mountedRef.current&&epoch===editorEpoch.current&&
+        version===htmlEmitVersion.current)onHtmlChange(canonicalBlockNoteHtml(html));
     };
     if(typeof exported==='string')deliver(exported);
     else Promise.resolve(exported).then(deliver).catch(error=>{
-      console.error('BlockNote HTML export failed',error);
+      if(mountedRef.current&&epoch===editorEpoch.current)
+        console.error('BlockNote HTML export failed',error);
     });
   };
 
   function insertImageUrl(event){
+    if(!mountedRef.current)return;
     event?.preventDefault?.();
     let insertionTarget=null;
     try{
@@ -151,9 +172,9 @@ export default function BlockNoteEditorClient({
     >
       {editable&&suggestionKind?<SuggestionMenuController
         triggerCharacter="@" minQueryLength={1}
-        getItems={async query=>blockNoteSuggestionItems(suggestionKind,suggestions,query).map(item=>({
+        getItems={async query=>!mountedRef.current?[]:blockNoteSuggestionItems(suggestionKind,suggestions,query).map(item=>({
           title:item.title,subtext:item.type+(item.uid?' · '+item.uid:''),
-          onItemClick:()=>editor.insertInlineContent([item.title,' '])
+          onItemClick:()=>{if(mountedRef.current)editor.insertInlineContent([item.title,' ']);}
         }))}/>:null}
     </BlockNoteView>
   </>;
