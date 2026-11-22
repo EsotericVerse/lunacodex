@@ -15,3 +15,16 @@ export function sourceKeywordOptions(taxonomy){
     };
   });
 }
+
+// Culture's four-level outline uses the canonical UID path of EVERY saved
+// Source node. Each option is one node, never a flattened "CMS / Facebook"
+// label or an inferred Source hierarchy. Statistics keeps its existing
+// Domain/From-only selectors above.
+export function sourceOutlineOptions(taxonomy){
+  return (taxonomy?.tree||[]).map(node=>({
+    key:node.root+':'+node.uid,code:node.uid,
+    root:node.root,type:node.type,label:node.title,
+    level:Math.max(0,(node.path||[]).length-1),
+    path:node.path||[]
+  }));
+}
