@@ -129,35 +129,29 @@ async function scopeDailyCounts(current,range){
   throw new Error('Culture statistics aggregate unavailable; full-row fallback is disabled');
 }
 
-// Per-Scope daily category counts for text works and media, computed by the
-// database. includeEmptyMedia keeps media rows without a type; includeUndated
-// keeps rows without a date (their day is '').
-export async function selectScopeDailyCounts(scope,{startDate='',endDate='',includeEmptyMedia=false,includeUndated=false,requireAggregate=false}={}){
+// One database-side daily GROUP BY over Galaxy.site, including multimedia
+// publishing platforms. There is no separate MediaAnchor counting stream.
+export async function selectScopeDailyCounts(scope,{
+  startDate='',endDate='',includeUndated=false,requireAggregate=false
+}={}){
   const current=scopeOf(scope);
   const counted=await scopeStatisticsRows(current,{startDate,endDate,includeUndated});
-  const order=(a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category);
-  if(counted){
-    const pick=kind=>counted.filter(row=>row.kind===kind&&(kind==='source'||includeEmptyMedia||row.category))
-      .map(row=>({day:row.day,category:row.category,item_count:Number(row.item_count)||0})).sort(order);
-    return {text:pick('source'),media:pick('media')};
-  }
-  // Both public Culture and Statistics must rely on the grouped DB reader.
-  // Never silently stream all Galaxy/media rows in a browser fallback.
-  throw new Error('Culture requires a database-side date aggregate; full-row fallback disabled');
+  if(!counted)throw new Error('Culture requires a database-side date aggregate; full-row fallback disabled');
+  const text=counted.filter(row=>row.kind==='source')
+    .map(row=>({day:row.day,category:row.category,item_count:Number(row.item_count)||0}))
+    .sort((a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category));
+  return {text};
 }
 
-// One number per source/media category for a window, no per-day grouping
-// (silver.read_scope_category_totals). This is what a collapsed Culture
-// river lane needs to size its flat water-level bar; the full day x
-// category aggregate (selectScopeDailyCounts) is only fetched once a lane
-// is expanded.
+// Collapsed river source totals are also grouped by the canonical Galaxy.site.
 export async function selectScopeCategoryTotals(scope,{startDate='',endDate=''}={}){
   const current=scopeOf(scope);
-  const rows=await cachedReadScopeCategoryTotals(current.id,{startDate:dateOnly(startDate),endDate:dateOnly(endDate)});
-  const pick=kind=>rows.filter(row=>row.kind===kind)
+  const rows=await cachedReadScopeCategoryTotals(current.id,{
+    startDate:dateOnly(startDate),endDate:dateOnly(endDate)
+  });
+  return {text:rows.filter(row=>row.kind==='source')
     .map(row=>({category:row.category,item_count:Number(row.item_count)||0}))
-    .filter(row=>row.item_count>0);
-  return {text:pick('source'),media:pick('media')};
+    .filter(row=>row.item_count>0)};
 }
 
 export async function selectSourceCatalog(scope,{startDate='',endDate='',limit=20}={}){
