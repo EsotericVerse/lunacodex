@@ -42,15 +42,16 @@ import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normali
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
 import {touchEditorSession} from '../auth/edit-session-ttl.mjs';
-import {PUBLISHED_LOC_ARTICLE_TAGS} from '../../modular/published-source-taxonomy.js';
+import {publishedSourceTaxonomy} from '../../modular/published-source-taxonomy.js';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/zenstack/import-source-models.mjs';
-// The published LOC ArticleTag list is already bundled in the static site;
-// never create an async query/resource just to read this in-memory constant.
-// Keep one stable object so import analysis does not re-run on every UI repaint.
+// Import Source options come from published, typed SiteAnchor From nodes.
+// No retired ArticleTag field or SQL lookup, and no per-render reconstruction.
 const PUBLISHED_SOURCE_CATEGORIES=Object.freeze({
-  system:PUBLISHED_LOC_ARTICLE_TAGS,personal:Object.freeze([])
+  system:Object.freeze([...new Set(publishedSourceTaxonomy().categories
+    .filter(row=>row.type==='from').map(row=>row.display_name)),'Others']),
+  personal:Object.freeze([])
 });
 const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[],warnings:[]});
 const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
