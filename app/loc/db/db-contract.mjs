@@ -1,6 +1,6 @@
 import {flashMessage} from '../notifications/flash-message.js';
 import {assertPlainGalaxyAttributes} from '../content/content-policy.js';
-import {DB_QUERY_BATCH_SIZE,MAX_ROWS} from '../query/query-batch-size.mjs';
+import {DB_QUERY_BATCH_SIZE,MAX_ROWS,HEAVY_QUERY_ROWS} from '../query/query-batch-size.mjs';
 import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from '../auth/authorization-runtime.mjs';
 import {assertEditorSession} from '../auth/edit-session-ttl.mjs';
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
@@ -167,7 +167,9 @@ export function createDatabaseClient({publicClient,authClient,auth}){
         throw new Error('LOC insert receipt incomplete; reload before retrying');
       return {count};
     }
-    const batchSize=MAX_ROWS;
+    // Heavy import rows are already bounded by the caller's real payload
+    // bytes. Do not silently re-split them at the ordinary 1k ceiling.
+    const batchSize=HEAVY_QUERY_ROWS;
     let count=0;
     for(let offset=0;offset<list.length;offset+=batchSize){
       const batch=list.slice(offset,offset+batchSize);
