@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {publishedSourceTaxonomy}
   from '../app/modular/published-source-taxonomy.js';
-import {sourceStatisticsTree,sourceTreeMetricId,SOURCE_UNCLASSIFIED_METRIC}
+import {sourceStatisticsTree,sourceTreeMetricId,SOURCE_UNCLASSIFIED_METRIC,
+  sourceIntersectionOutline}
   from '../app/loc/statistics/source-tree-measures.mjs';
 
 const taxonomy=publishedSourceTaxonomy();
@@ -28,6 +29,31 @@ test('all multi-item Source choices use the 30 LOC source UID nodes at four exac
     assert.equal(model.metrics.find(x=>x.uid===child.uid)?.level,3);
     assert.equal(model.metrics.find(x=>x.uid===parent.uid)?.level,2);
   }
+});
+
+test('Universe groups the Source list; only real Galaxy and Domain UIDs are choices',()=>{
+  const model=sourceStatisticsTree([
+    row('Facebook',2),row('Threads',3),row('Suno',1),row('Youtube',1)
+  ],taxonomy);
+  const grouped=sourceIntersectionOutline(model.metrics);
+  assert.deepEqual(grouped.map(group=>group.name),['Words','Mutlimedia','PastBy']);
+  const galaxies=grouped.flatMap(group=>group.galaxies);
+  const domains=galaxies.flatMap(galaxy=>galaxy.domains);
+  assert.equal(galaxies.length,4);
+  assert.equal(domains.length,7);
+  assert.equal(galaxies.find(g=>g.name==='CMS').domains.find(d=>d.name==='Meta').total,5);
+  assert.ok(galaxies.every(item=>item.type==='galaxy'));
+  assert.ok(domains.every(item=>item.type==='domain'));
+  assert.ok(!galaxies.some(item=>item.type==='universe'||item.type==='from'));
+  assert.ok(!domains.some(item=>item.type==='from'));
+  assert.ok(!grouped.some(group=>Object.hasOwn(group,'id')));
+  const picker=code('app/modular/modules/statistics/SourceTreePicker.jsx');
+  const comparison=code('app/modular/modules/statistics/ScopeSelfIntersection.jsx');
+  assert.match(comparison,/selectableTypes=\{\['galaxy','domain'\]\}/);
+  assert.match(picker,/sourceGroups\.map\(universe/);
+  assert.match(picker,/universe\.galaxies\.map\(galaxy/);
+  assert.match(picker,/galaxy\.domains\.map\(domain/);
+  assert.match(picker,/if\(groupedIntersection\)return/);
 });
 
 test('each native From rolls up exactly once along its saved Universe/Galaxy/Domain path',()=>{
