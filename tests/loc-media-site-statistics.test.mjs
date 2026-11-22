@@ -35,8 +35,8 @@ test('statistics and Culture never open a parallel MediaAnchor counting lane',()
   const server=source('app/loc/server/public-named-transactions.mjs');
   assert.doesNotMatch(stat,/value="media"|rankingType==='media'/);
   assert.doesNotMatch(culture,/CultureMediaRiver|value='media'/);
-  assert.doesNotMatch(sql,/mediaTypeGroups|options\\.media===true/);
-  assert.doesNotMatch(client,/p_options:\\{media/);
+  assert.doesNotMatch(sql,/mediaTypeGroups|options\.media===true/);
+  assert.equal(client.includes('p_options:{media'),false);
   assert.doesNotMatch(server,/mediaTypeGroups/);
-  assert.match(sql,/scope\\+'_galaxy'/);
+  assert.ok(sql.includes("scope+'_galaxy'"));
 });
