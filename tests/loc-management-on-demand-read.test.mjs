@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {buildEraRiver} from '../app/loc/culture/time-trace-river.mjs';
 
 const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
@@ -30,4 +31,37 @@ test('time editor can start its authorized read without a second public river',(
   assert.match(editor,/const all=Array\.isArray\(timeRecords\)\?timeRecords:\[\]/);
   assert.doesNotMatch(editor,/selectRows\(|readCompleteTimeRecords|useAsyncResource/);
   assert.match(editor,/transactionWrites\(plan\.operations\)/);
+});
+
+test('management TimeRiver uses complete historical bounds rather than a fixed year',()=>{
+  const culture=read('app/modular/features/Culture.jsx');
+  assert.match(culture,/const editorRiverWindow=structureDateBounds/);
+  assert.match(culture,/windowStart=\\{editorRiverWindow\\.start\\}/);
+  assert.match(culture,/windowEnd=\\{editorRiverWindow\\.end\\}/);
+  assert.doesNotMatch(culture,/editorRiverYearWindow/);
+});
+test('management Era lanes retain all dated anchors and unclassified dates',()=>{
+  const scope='lo3rwang';
+  const dates=[
+    {uid:'AAAA0001',entry_type:'anchor',scope_id:scope,title:'Old',start_date:'2012-01-01'},
+    {uid:'AAAA0002',entry_type:'anchor',scope_id:scope,title:'Recent',start_date:'2020-02-02'},
+    {uid:'AAAA0003',entry_type:'anchor',scope_id:scope,title:'Outside',start_date:'2026-11-22'}
+  ];
+  const entries=[
+    {uid:'ERAA0001',entry_type:'era',scope_id:scope,title:'First era',
+      anchor_ids:['PERA0001'],
+      ranges:[{start_date:'2010-01-01',end_date:'2023-12-31'}]},
+    {uid:'PERA0001',entry_type:'period',scope_id:scope,title:'First period',
+      ranges:[{start_date:'2010-01-01',end_date:'2023-12-31'}]},
+    ...dates
+  ];
+  const group='trace:'+scope+':ERAA0001';
+  const river=buildEraRiver(entries,[],{editorOnly:true,scopeId:scope});
+  assert.ok(river.groups.some(item=>item.id===group));
+  assert.deepEqual(river.items.filter(item=>item.entry_type==='anchor')
+    .map(item=>item.uid).sort(),dates.map(item=>item.uid).sort());
+  assert.equal(river.items.find(item=>item.uid==='AAAA0003').group_key,
+    'time-undefined:'+scope);
+  const expanded=buildEraRiver(entries,[group],{editorOnly:true,scopeId:scope});
+  assert.ok(expanded.groups.some(item=>item.id===group+':period:PERA0001'));
 });
