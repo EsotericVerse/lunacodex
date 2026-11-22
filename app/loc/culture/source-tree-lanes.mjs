@@ -35,16 +35,18 @@ export function buildCultureSourceTreeLanes(taxonomy={},groupedSources=[],expand
   const visible=[];
   const append=uid=>{
     const row=byUid.get(uid),current=totals.get(uid);
-    if(!row||!current?.count)return;
-    const activeChildren=(children.get(uid)||[])
-      .filter(childUid=>(totals.get(childUid)?.count||0)>0);
+    if(!row)return;
+    // Structure is not a frequency filter: every persisted node is visible
+    // when its parent is expanded, including branches with zero articles.
+    const activeChildren=children.get(uid)||[];
     const depth=Math.max(0,(row.path?.length||1)-1);
     visible.push({
       uid:row.uid,type:row.type,label:row.title,level:depth,
       path:row.path||[],root:row.root,groupId:'dual:source:'+row.uid,
-      sourceKey:row.root+':'+row.uid,item_count:current.count,
-      sites:[...current.sites],collapsible:activeChildren.length>0,
-      selectable:activeChildren.length===0&&['domain','from'].includes(row.type),
+      sourceKey:row.root+':'+row.uid,item_count:current?.count||0,
+      sites:[...(current?.sites||[])],collapsible:activeChildren.length>0,
+      selectable:activeChildren.length===0&&Boolean(current?.count)&&
+        ['domain','from'].includes(row.type),
       expanded:expanded.has(row.uid)
     });
     if(expanded.has(uid))for(const child of activeChildren)append(child);
