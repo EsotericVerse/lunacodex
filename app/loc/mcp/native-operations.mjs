@@ -342,7 +342,7 @@ export async function handleNativeLocOperation(request,env={},{
         throw refusal('Keyword reconciliation Scope mismatch',400);
       if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
         operations.some(entry=>!entry||typeof entry!=='object'||
-          Array.isArray(entry)||!['insert','update','delete','upsert','append_media_link'].includes(entry.p_operation)||
+          Array.isArray(entry)||!['insert','update','delete','upsert','update_batch','append_media_link'].includes(entry.p_operation)||
           typeof entry.p_table!=='string'))
         throw refusal('Invalid LOC management transaction',400);
       const results=await selected.db.transaction().execute(async trx=>{
