@@ -202,7 +202,7 @@ export function prepareTransientResourceAction(action,{queryKeys=[]}={}){
 // switching editor sections. Preserve only verified identity/permission data.
 // Browser JS heap collection is managed by GC; dropping all these references
 // makes old page query payloads eligible for collection.
-export function releaseTransientPageResources({documentExit=false}={}){
+export function releaseTransientPageResources(){
   // The shell stays mounted between Next.js routes. Keep its already-complete
   // public bootstrap until the last subscriber leaves, instead of clearing
   // it and forcing the shell's Hero/Config to read the database again.
@@ -229,10 +229,10 @@ export function releaseTransientPageResources({documentExit=false}={}){
     if(isPublicBootstrapKey(key)&&hasReader(key))continue;
     forgetStored(key);
   }
-  // A full-document navigation is already unloading this JS runtime. Do not
-  // restart Bootstrap/Config SQL reads on the outgoing page after aborting
-  // its queries; the destination document owns its fresh bootstrap.
-  if(!documentExit&&retryBootstrap.size)queueMicrotask(()=>{
+  // This cleanup only runs after an actual SPA route change or explicit
+  // section reset. Full-document unload belongs to the browser and must not
+  // clear a still-displayed page before navigation completes.
+  if(retryBootstrap.size)queueMicrotask(()=>{
     for(const [key,interruptedRefresh] of retryBootstrap){
       if(dataStore.has(key)&&!interruptedRefresh)continue;
       const live=[...registry.values()].find(entry=>serialize(entry.key)===key);
