@@ -1,4 +1,4 @@
-import {prepareImportPlaceAnchors,importedPlaceId,recordImportPlaceVisits} from './place-anchors.mjs';
+import {prepareImportPlaceAnchors,importedPlaceId} from './place-anchors.mjs';
 import {prepareImportTimeAnchors} from './time-anchors.mjs';
 import {readImportPointDateAnchors} from './anchor-read.mjs';
 import {planImportPointUidLink} from './uid-delta.mjs';
@@ -30,7 +30,7 @@ export async function reconcileExistingImportAnchors({
     if(page.length<pageSize)break;
   }
   if(!candidates.length)return {scanned:0,linked:0,unmatched:0,
-    places:{created:0,reused:0},dates:{created:0,reused:0},visits:0};
+    places:{created:0,reused:0},dates:{created:0,reused:0}};
   // A known place_id already owns its location aliases. Do not create
   // another Point for each differently spelled location on a merged place.
   // Still collect those articles' timestamps below, keyed by the saved UID.
@@ -49,7 +49,6 @@ export async function reconcileExistingImportAnchors({
     includeUnifiedUidPool:true,onProgress,anchorSnapshot
   });
   let linked=0,unmatched=0,updates=[];
-  const visits=[];
   async function flush(){
     if(!updates.length)return;
     const pending=updates;
@@ -64,7 +63,7 @@ export async function reconcileExistingImportAnchors({
     const saved=String(row.place_id||'').trim();
     // A validated existing Trace UID takes precedence over a name lookup,
     // which may be ambiguous when two different locations share a label.
-    const matched=saved&&places.timesByUid?.has(saved)?saved:importedPlaceId({
+    const matched=saved&&places.knownPointUids?.has(saved)?saved:importedPlaceId({
       incoming:row,byName:places.byName,byCoordinate:places.byCoordinate
     });
     if(!matched){unmatched++;continue;}
@@ -76,17 +75,11 @@ export async function reconcileExistingImportAnchors({
         if(updates.length>=200)await flush();
       }
     }
-    if(row.createtime)visits.push({uid:matched,time:row.createtime});
   }
   await flush();
-  const recorded=await recordImportPlaceVisits(visits,{
-    relation,table:places.table,timesByUid:places.timesByUid,
-    createtimeByUid:places.createtimeByUid,attrsByUid:places.attrsByUid,onProgress
-  });
   return {scanned:candidates.length,linked,unmatched,
     places:{created:places.created,reused:places.reused,
       conflicts:places.conflicts||[]},
     dates:{created:dates.created,reused:dates.reused,
-      conflicts:dates.conflicts||[]},
-    visits:recorded.added};
+      conflicts:dates.conflicts||[]}};
 }
