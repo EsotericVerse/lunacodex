@@ -6,7 +6,7 @@ import {transactionWrites,dbAuthClient} from '../db/db-client.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {sourceEditorOutlineOptions} from './outline-options.mjs';
+import {sourceEditorOutlineGroups} from './outline-options.mjs';
 import {useEditDockForm} from '../../modular/edit-dock';
 
 // The very same graph canvas used by the personal Keyword editor.
@@ -155,8 +155,7 @@ export function AdminSourceCategories(){
     }catch(e){setError(String(e.message||e));}
     finally{setBusy(false);}
   };
-  const sourceOutline=useMemo(()=>sourceEditorOutlineOptions(nodes),[nodes]);
-  const roots=sourceOutline.filter(row=>row.level===0);
+  const sourceGroups=useMemo(()=>sourceEditorOutlineGroups(nodes),[nodes]);
   return <section className="loc-card scope-feature-card scope-keyword-management">
     <h2>文章來源</h2>
     <p className="scope-status">選取圖上節點編輯來源；儲存使用下方六鍵。</p>
@@ -178,11 +177,12 @@ export function AdminSourceCategories(){
               else if(canChangeNode()){setSelected('');setDraft(null);}
             }}>
               <option value="">選擇來源</option>
-              {roots.map(root=><optgroup key={root.code} label={root.label}>
-                {sourceOutline.filter(row=>row.path[0]===root.code)
-                  .map(row=><option key={row.code} value={row.code}>
-                    {'　'.repeat(row.level)}{row.label}
-                  </option>)}
+              {sourceGroups.map(group=><optgroup key={group.key} label={group.label}>
+                {group.items.map(row=><option key={row.code} value={row.code}>
+                  {'　'.repeat(row.orphanType?Math.max(0,row.level-
+                    ['universe','galaxy','domain','from'].indexOf(row.orphanType)):row.level)}
+                  {row.label}
+                </option>)}
               </optgroup>)}
             </select>
           </label>
