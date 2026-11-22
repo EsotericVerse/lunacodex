@@ -42,7 +42,8 @@ test('fixed registry removes SQL mapping probes but not signed authorization che
   assert.match(code,/const record=await registeredScope\(trx,scope\);/);
   assert.match(code,/canLocAccess\(trx,'scope',scope\)/);
   const roles=read('app/loc/permissions/loc_access.mjs');
-  assert.match(roles,/db\.selectFrom\('api\.manage'\)/);
+  assert.doesNotMatch(roles,/selectFrom\('api\.manage'\)/);
+  assert.match(roles,/publishedLocAccess\(email,\{website\}\)/);
 });
 
 test('empty cache-backed admin setting is retired; fixed transfer ceilings remain',()=>{
