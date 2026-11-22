@@ -6,7 +6,6 @@ import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs'
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
-import {hasPublishedBlocks,loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
@@ -337,11 +336,9 @@ export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[a-z0-9_-]+$/.test(name))return [];
-  // Even an intentionally EMPTY published page is complete presentation
-  // data. Don't probe SQL for freshness on ordinary navigation. The editor
-  // uses selectLiveScopeBlocks() and never consumes this release snapshot.
-  if(hasPublishedBlocks(id,name))return loadPublishedBlocks(id,name);
-  // An as-yet-unpublished page retains its existing on-demand SQL fallback.
-  return getOrLoadScopedRead(blockRelation(id),['page','blocks',name],
-    ()=>selectLiveScopeBlocks(id,name));
+  // Editable Blocks always come from their own database relation. A build-time
+  // JS snapshot cannot serve as page content: it can predate the latest Save
+  // and would revive obsolete titles, layouts and body text on navigation.
+  // useAsyncResource deduplicates simultaneous readers of this mounted page.
+  return selectLiveScopeBlocks(id,name);
 }
