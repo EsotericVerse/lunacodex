@@ -137,11 +137,15 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
         const defaultOrder=standardTimeKinds.indexOf(kind);
         const extra=additionalGroups.get(id);
         const label=extra?.label||members.find(row=>row.groupContent)?.groupContent||timeGroupLabels[kind]||groupLabel(id);
+        const depth=Math.max(0,Math.min(3,Number(extra?.depth)||0));
         let content=label;
         if(extra?.collapsible||extra?.selectable){
           const button=document.createElement('button');
           button.type='button';
           button.className='scope-river-group-button';
+          // SiteAnchor depth is visible even if a parent has one child.
+          // Indentation is local to the Source river's extraGroups only.
+          if(depth>0)button.style.paddingInlineStart=depth*1.1+'rem';
           button.textContent=extra.collapsible?(extra.expanded?'−  ':'＋  ')+label:label;
           button.setAttribute('aria-label',label);
           if(extra.collapsible){
@@ -149,6 +153,11 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
             button.addEventListener('click',()=>onGroupToggleRef.current?.(id));
           }else button.addEventListener('click',()=>onGroupSelectRef.current?.(id));
           content=button;
+        }else if(depth>0){
+          const indented=document.createElement('span');
+          indented.style.paddingInlineStart=depth*1.1+'rem';
+          indented.textContent=label;
+          content=indented;
         }
         return {
           id,
