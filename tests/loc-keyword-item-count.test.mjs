@@ -373,3 +373,73 @@ test('tail checkpoint survives finalization failure and retries without reclassi
   assert.equal(attempts,2);
   assert.equal(reads,fetched,'retrying finalization must not SELECT Galaxy again');
 });
+
+test('short Keyword scopes finish without an intermediate SQL checkpoint',async()=>{
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  for(const total of [0,1,1023,1024,4095,4096]){
+    const docs=Array.from({length:total},(_,i)=>
+      doc(String(i+1).padStart(8,'0'),'月光'));
+    let reads=0,checkpoints=0,finals=0;
+    const result=await analyzeItemKeywordCounts({
+      items:terms,groups,expectedCount:total,
+      pageSize:4096,maxRowsPerRun:8192,minRowsPerRun:4096,
+      checkpointRows:4096,deferFinalization:true,
+      timeBudgetMs:15000,now:()=>0,
+      readMetadataPage:async({cursor,limit})=>{
+        reads++;
+        const from=cursor??0,rows=docs.slice(from,from+limit);
+        return {rows,nextCursor:from+rows.length};
+      },
+      onCheckpoint:async()=>{checkpoints++;},
+      finalize:async counts=>{
+        finals++;
+        assert.equal(counts.scannedDocuments,total);
+        assert.equal(counts.itemDocuments.ITEM0001,total);
+      }
+    });
+    assert.equal(result.incomplete,undefined,'short Scope should complete in one request');
+    assert.equal(result.scannedDocuments,total);
+    assert.equal(finals,1);
+    assert.equal(checkpoints,0,'short Scope must not write intermediate receipt');
+    assert.ok(reads<=2,'single indexed page plus at most one empty lookahead');
+  }
+});
+
+test('slow short Keyword scopes still persist their final tail before final SQL',async()=>{
+  const total=1024;
+  const docs=Array.from({length:total},(_,i)=>
+    doc(String(i+1).padStart(8,'0'),'月光'));
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  let time=0,saved=null,finals=0,reads=0;
+  const opts={
+    items:terms,groups,expectedCount:total,
+    pageSize:4096,maxRowsPerRun:8192,minRowsPerRun:4096,
+    checkpointRows:4096,deferFinalization:true,
+    timeBudgetMs:15000,now:()=>time,
+    readMetadataPage:async({cursor,limit})=>{
+      reads++;
+      time=8000; // Less than the request hard budget; not enough finalization headroom.
+      const from=cursor??0,rows=docs.slice(from,from+limit);
+      return {rows,nextCursor:from+rows.length};
+    },
+    onCheckpoint:async progress=>{saved=structuredClone(progress);},
+    finalize:async counts=>{
+      finals++;
+      assert.equal(counts.scannedDocuments,total);
+    }
+  };
+  const first=await analyzeItemKeywordCounts(opts);
+  assert.equal(first.incomplete,true);
+  assert.equal(first.finalizePending,true);
+  assert.equal(saved.scanned,total);
+  assert.equal(saved.finalizePending,true);
+  assert.equal(finals,0);
+  const beforeFinalize=reads;
+  const second=await analyzeItemKeywordCounts({
+    ...opts,resume:saved,
+    readMetadataPage:async()=>{throw Error('Never reread the saved short tail');}
+  });
+  assert.equal(second.scannedDocuments,total);
+  assert.equal(finals,1);
+  assert.equal(reads,beforeFinalize);
+});
