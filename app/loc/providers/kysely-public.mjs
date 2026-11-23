@@ -1,5 +1,6 @@
 import {sql} from 'kysely';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
+import {publicScopeBlockPage} from '../blocks/public-scope-pages.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock,isLocBlockPage} from '../blocks/loc-block-anchor.mjs';
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
@@ -11,7 +12,7 @@ function id(value){
 const ACTION_ARGS={
   read_app_bootstrap:['p_scope_id','p_page_name'],
   read_scope_page_copy:['p_scope_id'],
-  block_list:['p_scope_id'],
+  block_list:['p_scope_id','p_page_name'],
   hero_block:['p_type'],
   search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
 };
@@ -40,17 +41,20 @@ async function readLocBlockAnchors(trx,types,{
 }
 export async function block_list(trx,scopeId,options={}){
   const scope=id(scopeId);
+  const page=publicScopeBlockPage(options.pageName);
+  if(!page)throw Object.assign(new Error('Invalid public Scope Block page'),{httpStatus:400});
   if(scope==='loc'){
+    if(page!=='index')throw Object.assign(new Error('Invalid LOC public Block page'),{httpStatus:400});
     const rows=await readLocBlockAnchors(trx,LOC_LIST_TYPES,options);
     return rows.map(locAnchorToBlock)
       .sort((a,b)=>a.page_name.localeCompare(b.page_name)||
         a.block_order-b.block_order);
   }
-  if(typeof options.readScopeBlocks==='function')
+  if(typeof options.readScopeBlocks==='function'&&page==='index')
     return options.readScopeBlocks(scope);
   return trx.selectFrom(blockRelation(scope+'_blocks',options.engine||'postgres',
     options.namespace||'silver'))
-    .select(BLOCK_COLUMNS).where('page_name','=','index')
+    .select(BLOCK_COLUMNS).where('page_name','=',page)
     .orderBy('block_order','asc').execute();
 }
 export async function hero_block(trx,specificValue,options={}){
@@ -81,7 +85,10 @@ export async function executeKyselyPublicAction(trx,body,{engine='postgres',name
       const scope=id(args.p_scope_id);
       if(!activeScopeIds.includes(scope))
         throw Object.assign(new Error('Unpublished Scope'),{httpStatus:403});
-      return {data:await block_list(trx,scope,{engine,namespace}),count:null};
+      const page=publicScopeBlockPage(args.p_page_name);
+      if(!page||scope==='loc'&&page!=='index')
+        throw Object.assign(new Error('Invalid public Block page'),{httpStatus:400});
+      return {data:await block_list(trx,scope,{engine,namespace,pageName:page}),count:null};
     }
     return {data:await hero_block(trx,args.p_type,{engine,namespace}),count:null};
   }
