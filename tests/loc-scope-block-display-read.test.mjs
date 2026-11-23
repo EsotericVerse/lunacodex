@@ -7,18 +7,29 @@ import {publicScopeBlockPage} from '../app/loc/blocks/public-scope-pages.mjs';
 const src=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 function mockBlocks(rows){
   const calls=[];
-  const trx={selectFrom(table){
-    calls.push(['from',table]);
-    return {select(columns){
-      calls.push(['select',columns]);
-      return {where(column,operator,value){
-        calls.push(['where',column,operator,value]);
-        return {orderBy(key,direction){
-          calls.push(['orderBy',key,direction]);
-          return {async execute(){return rows.filter(r=>r.page_name===value)}};
-        }}};
-      }}};
-  }};
+  const trx={
+    selectFrom(table){
+      calls.push(['from',table]);
+      return {
+        select(columns){
+          calls.push(['select',columns]);
+          return {
+            where(column,operator,value){
+              calls.push(['where',column,operator,value]);
+              return {
+                orderBy(key,direction){
+                  calls.push(['orderBy',key,direction]);
+                  return {
+                    execute:async()=>rows.filter(row=>row.page_name===value)
+                  };
+                }
+              };
+            }
+          };
+        }
+      };
+    }
+  };
   return {trx,calls};
 }
 
