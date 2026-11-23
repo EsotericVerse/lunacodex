@@ -6,7 +6,11 @@ import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents,transactionWrites} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
-import {useQueryClient} from '../../packages/zenstack/client-queries';
+import {useQueryClient,releaseTransientPageResources} from '../../packages/zenstack/client-queries';
+import {openEditorTransactionSession,cancelEditorTransactionSession}
+  from '../loc/db/editor-transaction-lifecycle.mjs';
+import {invalidateScopedReadCache} from '../../packages/zenstack/scoped-read-cache.mjs';
+import {invalidateCachedReadPrefix} from '../loc/db/semi-dynamic-cache.mjs';
 
 // UI only: a Scope's permission is checked before entering edit mode,
 // and every write still passes through its existing database authorization.
@@ -107,6 +111,9 @@ export function EditDockProvider({children,scopeId}){
       try{if(!touchEditorSession(window.sessionStorage))return false}
       catch{return false}
     }
+    // A verified new editing entry opens one fresh network/transaction epoch.
+    // Old queued callbacks remain fenced by their captured generation.
+    openEditorTransactionSession();
     markEditorActive(true);
     setEditing(true);
     setCanManageGlobal(Boolean(globalManage));
@@ -114,6 +121,9 @@ export function EditDockProvider({children,scopeId}){
     return true;
   },[scopeId,exiting]);
   const end=useCallback(()=>{
+    // All exits invalidate the active editor lease before any form callback
+    // can resume. An ordinary tab/section switch does not call end().
+    cancelEditorTransactionSession();
     markEditorActive(false);
     releaseOperation();
     clearEditor();
@@ -271,9 +281,11 @@ export function EditDockProvider({children,scopeId}){
           }
           throw error;
         }
+        if(epoch!==operationEpoch.current)return;
         // Only after confirmed COMMIT may any form clear its draft.
         // A UI refresh failure cannot be mistaken for a SQL ROLLBACK.
         for(const plan of prepared){
+          if(epoch!==operationEpoch.current)return;
           try{await plan.afterCommit?.();}
           catch(error){
             setNotice('資料已提交，但畫面更新失敗，請重新讀取。');
@@ -294,6 +306,7 @@ export function EditDockProvider({children,scopeId}){
         // setQueryData: never erase those values before React can display
         // them. Refresh only still-mounted, scope-owned data readers.
         // QueryClient deduplicates identical keys; no full-page reload.
+        if(epoch!==operationEpoch.current)return;
         const refreshScope=String(scopeId||'');
         await queryClient.invalidateQueries({predicate:query=>{
           const parts=Array.isArray(query.queryKey)?query.queryKey:[];
@@ -326,6 +339,12 @@ export function EditDockProvider({children,scopeId}){
     // buttons reappear if navigation took another frame or stalled.
     setExiting(true);
     end();
+    // A single terminal cleanup for reads, cursors, partial results and
+    // all queued retry/revalidation work. Do not revoke Better Auth, editor
+    // Session TTL or grants; those are not transaction buffers.
+    releaseTransientPageResources({discardEditor:true});
+    invalidateScopedReadCache();
+    invalidateCachedReadPrefix('scope-aggregate:');
     // Replace rather than push: Back must not return to a stale editing
     // screen that automatically requests management entry again.
     window.location.replace(destination.href);
