@@ -90,7 +90,13 @@ export async function closeLocDatabase(port){
 export function bindLocRequestAbort(port,signal){
   const cancel=port?.abort||port?.pool?.abort?.bind(port.pool);
   if(!signal||typeof cancel!=='function')return ()=>{};
-  const abort=()=>{void cancel();};
+  // An abort listener cannot be awaited by AbortSignal. The owning request
+  // still closes resources in finally; never leak a rejected cleanup promise
+  // as an unhandled rejection during a disconnected SQL request.
+  const abort=()=>{
+    try{void Promise.resolve(cancel()).catch(()=>{});}
+    catch{/* The enclosing request handles the original query failure. */}
+  };
   if(signal.aborted)abort();
   else signal.addEventListener('abort',abort,{once:true});
   return ()=>signal.removeEventListener('abort',abort);
