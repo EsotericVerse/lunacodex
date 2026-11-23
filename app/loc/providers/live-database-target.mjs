@@ -51,8 +51,11 @@ export function normalizeLiveTarget(id,profile){
  // would make an implicit cross-database read, so never ignore that input.
  if(type.namespace==='database'&&chosenSchema&&chosenSchema!==database)
    throw Error('MySQL namespace must equal the selected database');
+ // Namespace is a per-connection choice, not a vendor-specific SQL Type.
+ // PostgreSQL defaults to public for arbitrary hosts (Cloud SQL, Neon, RDS).
+ // LOC's primary target separately selects silver in its own configuration.
  const namespace=type.namespace==='database'?'':chosenSchema||
-   type.targetNamespace;
+   type.defaultNamespace;
  const safe=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
  const table=String(profile.table_name||'');
  const fieldMap=profile.field_map||{};
