@@ -19,9 +19,9 @@ export const PLACE_OPTIONS=Object.freeze([
   {value:'timeline',label:'地點對照',description:'Google Timeline 行蹤比對及文章定錨'}
 ]);
 
-export default function PlaceManagement({scopeId,section='organize'}){
+export default function PlaceManagement({scopeId,section='organize',initialOperation='names'}){
   const dock=useEditDock();
-  const [operation,setOperation]=useState('names');
+  const [operation,setOperation]=useState(initialOperation);
   const query=useAsyncResource(traceKey(scopeId,{includeHidden:true}),
     ()=>readTraceData(scopeId,{includeHidden:true}),{
       enabled:section==='organize'&&TRACE_SCOPES.includes(scopeId),
