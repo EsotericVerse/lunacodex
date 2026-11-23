@@ -1,4 +1,5 @@
-import {KEYWORD_SCAN_START_ROWS} from './item-count-analysis.mjs';
+import {KEYWORD_SCAN_START_ROWS,KEYWORD_SCAN_CHECKPOINT_ROWS}
+  from './item-count-analysis.mjs';
 import {sql} from 'kysely';
 // LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
 // Anchor.num is UID-list cardinality; Item/Group.attr.total is the existing
@@ -65,7 +66,7 @@ const galaxyKeywordScanProjection=Object.freeze([
 // before saving (fast). This is not a full-Scope row limit.
 const KEYWORD_ROWS_PER_REQUEST=8192;
 const KEYWORD_MIN_ROWS_PER_REQUEST=4096;
-const KEYWORD_CHECKPOINT_ROWS=8192;
+const KEYWORD_CHECKPOINT_ROWS=KEYWORD_SCAN_CHECKPOINT_ROWS;
 const KEYWORD_REQUEST_BUDGET_MS=15000;
 
 const removeLegacyKeywordHitCache=value=>{
@@ -390,6 +391,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     minRowsPerRun:KEYWORD_MIN_ROWS_PER_REQUEST,
     checkpointRows:KEYWORD_CHECKPOINT_ROWS,
     timeBudgetMs:KEYWORD_REQUEST_BUDGET_MS,
+    paceRows:true,
     onCheckpoint:async progress=>{
       await db.transaction().execute(async trx=>{
         await authorizeTransaction(trx);
@@ -397,12 +399,15 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       });
       onProgress({phase:'checkpoint',total:expectedCount,
         completed:progress.scanned,parsed:progress.parsed,
+        targetRowsPerSecond:progress.targetRowsPerSecond,
         percent:Math.min(99,Math.round(expectedCount?
           progress.scanned/expectedCount*100:0)),
         label:'分析進度已保存，可接續下一批'});
     },
-    onProgress:({phase,completed=0,parsed=0})=>onProgress({
+    onProgress:({phase,completed=0,parsed=0,
+      rowsPerSecond=0,targetRowsPerSecond=null})=>onProgress({
       phase,total:expectedCount,completed,parsed,
+      rowsPerSecond,targetRowsPerSecond,
       percent:phase==='completed'?100:Math.min(99,
         Math.round(expectedCount?completed/expectedCount*100:0)),
       label:phase==='completed'?'分析已完成':'逐批分析 Item 規則'
