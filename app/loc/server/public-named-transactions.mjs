@@ -4,6 +4,7 @@ import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs'
 import {executeKyselyAnalytics,executePortableKyselyAnalytics} from '../providers/kysely-analytics.mjs';
 import {executeKyselyPublicAction} from '../providers/kysely-public.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
+import {publicScopeBlockPage} from '../blocks/public-scope-pages.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {assertZModelAnchorFeatureRows} from '../../../packages/zenstack/import-validation.mjs';
 import {publishedLocAccess} from '../permissions/loc-business-grants.mjs';
@@ -29,7 +30,7 @@ const ANALYTICS=new Set(['culture_list','trace_places','trace_territory',
 const ANALYTICS_OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site',
   'offset','platform','exact','withPoints','statisticsOnly']);
 const ACTION_ARGS=Object.freeze({
-  block_list:['p_scope_id'],hero_block:['p_type'],
+  block_list:['p_scope_id','p_page_name'],hero_block:['p_type'],
   read_scope_page_copy:['p_scope_id'],
   search_scope_trace_place_names:['p_scope_id','p_term','p_limit']
 });
@@ -112,6 +113,9 @@ function normalize(body){
           !/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(name)||
           ['from','domain','galaxy','universe','index','governance'].includes(name)))throw bad();
     }else if(!published.has(String(body.args.p_scope_id||'')))throw bad();
+    if(body.name==='block_list'&&(!publicScopeBlockPage(body.args.p_page_name)||
+        body.args.p_scope_id==='loc'&&body.args.p_page_name!=null&&
+        body.args.p_page_name!=='index'))throw bad();
     return {operation:'action',name:body.name,args:body.args};
   }
   throw bad();

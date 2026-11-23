@@ -110,7 +110,9 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
   },[ready,allowed,locked,scopeId]);
 
   useEffect(()=>{
-    if(!allowed||entered)return;
+    // Cancel sets Dock exiting before ending edit mode. Never interpret the
+    // temporary inactive state during document navigation as a fresh request.
+    if(!allowed||entered||dock?.exiting)return;
     if(editorSessionStatus(window.sessionStorage).expired){setLocked(true);return;}
     setLocked(false);
     const started=dock?.begin(scopeId,{globalManage:Boolean(verification.authorizer?.canLocAccessSync('global'))});
@@ -120,7 +122,7 @@ export default function ManagementAccess({scopeId,level='scope',featureId='manag
       setVerification(previous=>({...previous,user:null,authorizer:null,
         error:'LOC 編輯 Session 無法啟用，請重新確認目前 Scope 與 Session。'}));
     }
-  },[allowed,entered,scopeId,dock?.begin,verification.authorizer]);
+  },[allowed,entered,dock?.exiting,scopeId,dock?.begin,verification.authorizer]);
 
   if(staticFrame)return <ManagementEntryContext.Provider value={{
     ready,allowed,entered,locked,verification,

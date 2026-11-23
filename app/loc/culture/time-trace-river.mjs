@@ -160,21 +160,22 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     // entire unclassified list until the visitor opens it.
     const unassigned=datedAnchors.filter(anchor=>
       !assignedToPeriod.has(text(anchor.scope_id)+':'+text(anchor.uid)));
-    // Do not add a giant empty "unassigned" lane when all dates belong to
-    // saved Periods. Only genuine orphan dates need this separate branch.
-    const scopes=[...new Set(unassigned.map(anchor=>text(anchor.scope_id))
-      .filter(Boolean))];
+    // The last root is ALWAYS "未定義定錨", even when it currently has no
+    // orphan dates. It stays collapsed until explicitly opened. Keep Scope
+    // identity in its UID so a previous Scope cannot show another's dates.
+    const scopes=[...new Set([text(scopeId),...unassigned.map(anchor=>
+      text(anchor.scope_id))].filter(Boolean))];
     for(const scope of scopes){
       const groupId='time-undefined:'+scope;
       const isExpanded=expanded.has(groupId);
-      const order=addGroup({id:groupId,label:'未歸屬定錨點',
+      const order=addGroup({id:groupId,label:'未定義定錨',
         collapsible:true,expanded:isExpanded,
         className:'scope-time-anchor-parent'});
       if(!isExpanded)continue;
       for(const anchor of unassigned.filter(row=>text(row.scope_id)===scope)){
         const uid=text(anchor.uid);
         items.push({id:groupId+':'+uid,uid,scope_id:scope,
-          entry_type:'anchor',group_key:groupId,group_label:'未歸屬定錨點',
+          entry_type:'anchor',group_key:groupId,group_label:'未定義定錨',
           group_order:order,start_date:text(anchor.start_date).slice(0,10),
           title:anchor.title||uid,display_label:'●',
           class_name:'scope-time-original-anchor'});

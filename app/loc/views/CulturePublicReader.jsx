@@ -586,6 +586,14 @@ export default function CulturePublicReader(){
           aria-label='建議定錨點分析'>
           {suggestionAnalysis.error?<p className='scope-status scope-error' role='alert'>
             {suggestionAnalysis.error}</p>:null}
+          {selectedSuggestion?<div className='scope-culture-anchor-selection' role='status'>
+            <strong>已選取建議日期：{selectedSuggestion.date}</strong>
+            <ScopeLink href={scopeHref(scopeId,
+              'culture/manage?edit=1&anchorDate='+encodeURIComponent(selectedSuggestion.date))}>
+              將此日期帶入時間定錨編輯
+            </ScopeLink>
+            <span className='scope-status'>確認名稱及日期後，再按儲存才會建立。</span>
+          </div>:null}
           {suggestionAnalysis.suggestions.length?<div className='scope-culture-anchor-choices'>
             {suggestionAnalysis.suggestions.map(item=><div key={item.date}
               className='scope-status'>
@@ -594,8 +602,8 @@ export default function CulturePublicReader(){
                 onClick={()=>setFocusedSuggestionDate(item.date)}>
                 {item.date} · 前三日 {item.beforeCount} 篇／後三日 {item.afterCount} 篇
               </button>
-              <ScopeLink href={scopeHref(scopeId,'culture/manage')+
-                '?edit=1&anchorDate='+encodeURIComponent(item.date)}>
+              <ScopeLink href={scopeHref(scopeId,
+                'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date))}>
                 前往時間編輯
               </ScopeLink>
             </div>)}
