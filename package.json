@@ -17,7 +17,6 @@
     "predev": "node scripts/sync-page-locale-assets.mjs && node scripts/stage-loc-pics.mjs"
   },
   "dependencies": {
-    "@better-auth/sso": "1.7.18",
     "@blocknote/core": "0.55.0",
     "@blocknote/ariakit": "0.55.0",
     "@blocknote/react": "0.55.0",

@@ -143,8 +143,8 @@ export function EditDockProvider({children,scopeId}){
     return ()=>window.removeEventListener('loc-editor-session-expired',expire);
   },[end]);
 
-  // A Cloudflare SSO account change invalidates all editor UI permissions.
-  // The backend still authorizes each write using the active JWT/RLS.
+  // A verified LOC Auth account change invalidates all editor UI permissions.
+  // The backend independently authorizes each write using LOC Code grants.
   // Device-local SQLite editing is independent of cloud OAuth.
   useEffect(()=>{
     if(!editing)return undefined;

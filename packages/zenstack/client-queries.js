@@ -42,7 +42,7 @@ function forgetStored(key){
   if(isPublicBootstrapKey(key))bootstrapSnapshots.release(key);
 }
 const IDENTITY_KEYS=new Set([
-  ['loc-account','session'],['loc-account','verified-loc-sso'],
+  ['loc-account','session'],['loc-account','verified-loc-session'],
   ['loc-account','management']
 ].map(serialize));
 function hasReader(serializedKey){

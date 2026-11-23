@@ -19,15 +19,13 @@ export function createLocAccountAdapter({
     throw Error('Untrusted LOC Auth issuer');
   let lazyClient=null;
   async function client(){
-    if(!lazyClient)lazyClient=Promise.all([
-      import('better-auth/client'),import('@better-auth/sso/client')
-    ]).then(([{createAuthClient},{ssoClient}])=>createAuthClient({
+    if(!lazyClient)lazyClient=import('better-auth/client')
+      .then(({createAuthClient})=>createAuthClient({
       baseURL:ISSUER,basePath:'/api/auth',
       // Better Auth owns Session state. Protected pages request a Session
       // explicitly; there are no automatic polls or focus-driven rechecks.
       sessionOptions:{refetchInterval:0,refetchOnWindowFocus:false,
         refetchWhenOffline:false},
-      plugins:[ssoClient()],
       fetchOptions:{credentials:'include'}
     }));
 
@@ -67,20 +65,17 @@ export function createLocAccountAdapter({
       catch(error){return {data:{user:null},error};}
     },
     async signInWithOAuth({provider,options={}}={}){
-      if(provider!=='cloudflare')
-        return {data:null,error:new Error('LOC Cloudflare SSO is the configured sign-in provider')};
+      if(provider!=='google')
+        return {data:null,error:new Error('Google OAuth is the configured LOC Auth provider')};
       try{
+        // LAS owns OAuth initiation, callback and Session; LOC keeps the return path.
         const returnTo=safeReturn(options.redirectTo);
-        const callbackURL=new URL(returnTo,'https://loc.lo3rwang.cc').href;
-        // The official SSO client plugin owns provider dispatch, redirect,
-        // callback handling and error normalization. Do not hand-roll fetch.
-        const result=await (await client()).signIn.sso({
-          providerId:'cloudflare-access',callbackURL,
-          errorCallbackURL:callbackURL
-        });
-        if(result?.error)throw Error(result.error.message||
-          'Cloudflare SSO authorization failed');
-        return {data:result?.data??null,error:null};
+        const loginURL=new URL('/login',ISSUER);
+        loginURL.searchParams.set('return_to',returnTo);
+        if(typeof window==='undefined'||typeof window.location?.assign!=='function')
+          throw Error('LOC Auth login requires browser navigation');
+        window.location.assign(loginURL.href);
+        return {data:{url:loginURL.href},error:null};
       }catch(error){return {data:null,error};}
     },
     async signOut(){

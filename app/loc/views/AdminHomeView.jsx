@@ -105,7 +105,7 @@ export default function AdminHomeView({scopeGroup}){
               ?'目前沒有有效的編輯 Session，或此帳號沒有全域管理權限。'
               :'目前沒有有效的 LOC Session，系統管理未啟用。')}</p>
             {!account.user?<button type="button" onClick={()=>void beginAdminSignIn()} disabled={signingIn}>
-              {signingIn?'正在前往 LOC SSO…':'使用 Cloudflare SSO 登入管理員'}
+              {signingIn?'正在前往 LOC 登入…':'使用 Google OAuth 登入管理員'}
             </button>:null}
             <button type="button" onClick={()=>void retrySession()} disabled={retrying}>
               {retrying?'正在確認 Session…':'重新確認 Session'}

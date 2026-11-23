@@ -125,7 +125,7 @@ async function refresh(){
   '閱讀公開資料不需要登入。';
  return Boolean(verifiedUser);
 }
-// Cloudflare redirects here after Better Auth finishes its OIDC callback.
+// LAS returns here after Better Auth finishes its Google OAuth callback.
 // Confirm the server-side Session before returning to Settings; a redirect
 // alone is never proof that sign-in succeeded.
 const oauthReturn=new URLSearchParams(location.search).get('oauth_return')==='1';

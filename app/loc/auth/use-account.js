@@ -2,7 +2,7 @@
 
 import {useCallback,useEffect} from 'react';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
-import {getAccountSession,dbAuthEvents,signInWithLocSso,signOutAccount} from '../db/db-client.mjs';
+import {getAccountSession,dbAuthEvents,signInWithLocAuth,signOutAccount} from '../db/db-client.mjs';
 import {readLocEditorGrants} from './editor-grants.mjs';
 import {readAuthorization,setAuthorization,clearAuthorization,createScopeAuthorizer} from './authorization-runtime.mjs';
 import {defaultScopeData,scopeDataFromManageRows} from '../scope/scope-data';
@@ -19,7 +19,7 @@ const normalizeScopeId=value=>String(value||'').trim().toLowerCase();
 // management query. Only protected views opt into management authorization. A permission result is UI state, never a substitute for
 // LOC delegated SQL write authorization.
 const SESSION_KEY=['loc-account','session'];
-const VERIFIED_SESSION_KEY=['loc-account','verified-loc-sso'];
+const VERIFIED_SESSION_KEY=['loc-account','verified-loc-session'];
 const MANAGEMENT_KEY=['loc-account','management'];
 // A management workspace verifies LOC Auth once on entry. Never re-query on
 // focus or stale expiry; protected writes still verify server authorization.
@@ -202,7 +202,7 @@ export function useAccount({enabled=true,sessionOnly=false}={}){
       ?{user:result.user,authorizer:result.authorizer}:null;
   },[queryClient,queryKey,queryFn,sessionOnly]);
 
-  const signIn=useCallback(callbackURL=>signInWithLocSso(String(callbackURL||'').trim()),[]);
+  const signIn=useCallback(callbackURL=>signInWithLocAuth(String(callbackURL||'').trim()),[]);
   const signOut=useCallback(async()=>{
     await signOutAccount();
     invalidateAccountPrivateReads();
@@ -271,7 +271,7 @@ export function usePassiveSessionAccount(){
       authUserId=nextUserId;
       authEmail=nextEmail;
       // Passive navigation needs only a session ID hint, never an OAuth email.
-      // Cloudflare SSO email is displayed only after Auth.getUser() verifies it.
+      // LOC Auth email is displayed only after Auth.getUser() verifies it.
       queryClient.setQueryData(SESSION_KEY,nextUserId
         ?{...signedOutState,user:{id:nextUserId}}
         :signedOutState);
