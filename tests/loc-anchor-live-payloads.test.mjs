@@ -94,3 +94,19 @@ test('source taxonomy is LOC-global only, never a Scope anchor source',()=>{
   assert.throws(()=>parseAnchorFeatureTransaction({...body,scope:'loc',family:'time'}),
     /Invalid Anchor feature selection/);
 });
+
+test('Pattern attr.total stores occurrence counts without changing terminal num',()=>{
+  const rows=[
+    anchor('pattern',{},'PATT0001'),
+    anchor('pattern',{total:0},'PATT0002'),
+    anchor('pattern',{total:142},'PATT0003')
+  ];
+  assert.equal(assertZModelAnchorFeatureRows(rows),rows);
+  assert.equal(rows[2].num,0);
+  for(const bad of [{total:-1},{total:1.5},{total:'142'},
+    {uid:['GALAXY01']},{total:2,hits:['GALAXY01']}]){
+    assert.throws(()=>assertZModelAnchorFeatureRows([
+      anchor('pattern',bad)
+    ]),/Pattern.attr/);
+  }
+});
