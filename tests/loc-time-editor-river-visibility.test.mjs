@@ -199,3 +199,19 @@ test('undefined Date anchors remain available only when bottom lane is opened',(
   assert.equal(expanded.groups.at(-1).label,'未定義定錨');
   assert.equal(expanded.items.some(row=>row.uid===orphan.uid),true);
 });
+
+test('suggested anchors reach protected editor with selected date and explicit save',()=>{
+  const publicCulture=file('app/loc/views/CulturePublicReader.jsx');
+  const managementCulture=file('app/modular/features/Culture.jsx');
+  const editor=file('app/modular/features/CultureTimelineEditor.jsx');
+  const app=file('app/loc/LocApp.jsx');
+  assert.match(publicCulture,/將此日期帶入時間定錨編輯/);
+  assert.match(publicCulture,/culture\/manage\?edit=1&anchorDate=/);
+  assert.match(managementCulture,/culture\/manage\?edit=1&anchorDate=/);
+  assert.doesNotMatch(managementCulture,/route\+\(route\.includes\('\?'\)/);
+  assert.match(app,/runtime\.pathname\.includes\('\/culture\/manage'\)/);
+  assert.match(editor,/searchParams\?\.get\?\.\('anchorDate'\)/);
+  assert.match(editor,/setDraft\(fresh\);original\.current=fresh/);
+  assert.match(editor,/await transactionWrites\(plan\.operations\)/);
+  assert.match(editor,/if\(!title\)throw new Error\('請輸入名稱'\)/);
+});
