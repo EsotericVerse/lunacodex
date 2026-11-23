@@ -1286,7 +1286,7 @@ export default function Culture(){
         {editorAvailable&&!permissionPending&&!editorAuthorized?<p className='scope-status scope-error' role='alert'>
           {account.error?String(account.error):account.user?'目前登入帳號沒有此 Scope 的管理權限。':'請先至設定首頁登入，才能編輯時間定錨。'}
         </p>:null}
-        {editorAvailable&&!permissionPending&&editorAuthorized?<div className='scope-time-edit-workspace'>
+        {editorAvailable&&!permissionPending&&editorAuthorized?<div className='scope-time-edit-workspace scope-culture-structure-river'>
           <div className='management-workspace-panel' id='time-editor-panel' role='region'
             aria-label='時間編輯'>
             <div className='scope-culture-timeline-tools'>
