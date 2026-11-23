@@ -43,6 +43,42 @@ function comparisons(query,expected,serialize,table){
   return query;
 }
 
+// Only independent, identical-shape scalar nullifications can share an
+// UPDATE. JSON/array changes and mixed scalar+array changes retain row CAS.
+const SCALAR_UID_REPAIR_COLUMNS=new Set(['source_id','ref_id','place_id']);
+export function planUidScalarRepairBatches(updates,deletedUid,{maxRows=1000}={}){
+  if(!UID.test(String(deletedUid||''))||!Array.isArray(updates)||
+      !Number.isSafeInteger(maxRows)||maxRows<1||maxRows>1000)
+    throw new TypeError('Invalid scalar UID repair batch');
+  const grouped=new Map(),singles=[];
+  for(const item of updates){
+    const fields=Object.keys(item?.values||{}).sort();
+    const scalar=fields.length>0&&fields.every(field=>
+      SCALAR_UID_REPAIR_COLUMNS.has(field)&&item.values[field]===null&&
+      item.expected?.[field]===deletedUid);
+    if(!scalar){singles.push(item);continue;}
+    const key=fields.join('|');
+    if(!grouped.has(key))grouped.set(key,{fields,uids:[]});
+    grouped.get(key).uids.push(item.uid);
+  }
+  const batches=[];
+  for(const {fields,uids} of grouped.values())
+    for(let i=0;i<uids.length;i+=maxRows)
+      batches.push({fields,uids:uids.slice(i,i+maxRows)});
+  return {batches,singles};
+}
+
+// Kysely compiles this for each engine. The old UID equality is the CAS
+// predicate for every changed scalar field, plus the exact candidate PK set.
+export function buildUidScalarRepairQuery(db,table,batch,deletedUid,
+  serialize=values=>values){
+  const values=Object.fromEntries(batch.fields.map(field=>[field,null]));
+  let query=db.updateTable(table).set(serialize(values,table))
+    .where('uid','in',batch.uids);
+  for(const field of batch.fields)query=query.where(field,'=',deletedUid);
+  return query;
+}
+
 /**
  * Reuse the existing authorized Kysely write connection. No additional
  * transaction, stored function or RPC is created. Read only UID projections
@@ -104,7 +140,16 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
   }
   const plan=planUidDependencyRepair({deletedUid:uid,deletedTable:kind,
     deletedType,galaxyRows,anchorRows});
-  for(const item of plan.galaxyUpdates){
+  // One bounded UPDATE per scalar shape, rather than one round-trip per row.
+  // A concurrent change to any expected UID reference fails the row receipt.
+  const {batches,singles}=planUidScalarRepairBatches(plan.galaxyUpdates,uid);
+  for(const batch of batches){
+    const result=await buildUidScalarRepairQuery(db,galaxy,batch,uid,serialize)
+      .executeTakeFirst();
+    if(Number(result?.numUpdatedRows||0)!==batch.uids.length)failed();
+  }
+  // Arrays and mixed patches retain their original per-row old-value CAS.
+  for(const item of singles){
     let query=db.updateTable(galaxy).set(serialize(item.values,galaxy))
       .where('uid','=',item.uid);
     query=comparisons(query,item.expected,serialize,galaxy);

@@ -19,40 +19,32 @@ function deltaFields(next,patches){
 }
 
 
-// New Point / Date Anchor inserts have no existing row to diff. Immer builds
-// the small typed envelope once; the existing ZModel-derived Zod writer still
+// New Point / Date INSERTs have no previous row to diff. Construct the
+// typed envelope directly; the existing ZModel-derived Zod writer still
 // validates the resulting physical row and enforces the SQL contract.
 export function planImportPointCreate({uid,title,description,coordinates=null,createtime=null}={}){
   checkedUid(uid);
-  const [row,patches]=produceWithPatches({
-    uid,type:'point',title:null,description:null,attr:{},invisible:false
-  },draft=>{
-    draft.title=title;
-    draft.description=description;
-    if(coordinates!==null){
-      if(!Array.isArray(coordinates)||coordinates.length!==2||
-          coordinates.some(value=>typeof value!=='number'||!Number.isFinite(value)))
-        throw Error('Point 匯入座標資料無效');
-      draft.attr.longitude=coordinates[0];
-      draft.attr.latitude=coordinates[1];
-    }
-    if(createtime)draft.createtime=createtime;
-  });
-  return {row,patches};
+  // An INSERT has no persisted previous value: construct its small ZModel
+  // envelope directly, without creating and discarding an Immer draft.
+  const row={uid,type:'point',title,description,attr:{},invisible:false};
+  if(coordinates!==null){
+    if(!Array.isArray(coordinates)||coordinates.length!==2||
+        coordinates.some(value=>typeof value!=='number'||!Number.isFinite(value)))
+      throw Error('Point 匯入座標資料無效');
+    row.attr.longitude=coordinates[0];
+    row.attr.latitude=coordinates[1];
+  }
+  if(createtime)row.createtime=createtime;
+  return {row,patches:[]};
 }
 
 export function planImportDateCreate({uid,date,title,description,createtime=null}={}){
   checkedUid(uid);
   if(typeof date!=='string'||!DAY.test(date))
     throw Error('Date Anchor 日期識別無效');
-  const [row,patches]=produceWithPatches({
-    uid,type:'date',attr:{date},invisible:false
-  },draft=>{
-    draft.title=title;
-    draft.description=description;
-    if(createtime)draft.createtime=createtime;
-  });
-  return {row,patches};
+  const row={uid,type:'date',attr:{date},invisible:false,title,description};
+  if(createtime)row.createtime=createtime;
+  return {row,patches:[]};
 }
 
 // Only the legacy date-title backfill is mutable on a reimport. The Date
