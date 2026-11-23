@@ -367,6 +367,16 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
         <button className="loc-button" type="button" disabled={busy||!own||!bulkSelected.length} onClick={()=>applyBulkVisibility(true)}>大量隱藏</button>
         <button className="loc-button" type="button" disabled={busy||!own||!bulkSelected.length} onClick={()=>applyBulkVisibility(false)}>大量公開</button>
       </div>
+      {treeMode?<div style={{maxHeight:'16rem',overflow:'auto'}} role="group" aria-label="選擇路線及痕跡">
+        {records.map(row=><label key={row.uid} style={{display:'block'}}>
+          <input type="checkbox" disabled={busy||!own}
+            checked={bulkSelected.includes(row.uid)}
+            onChange={event=>setBulkSelected(ids=>event.target.checked
+              ?[...ids.filter(id=>id!==row.uid),row.uid]
+              :ids.filter(id=>id!==row.uid))}/>
+          {row.trace_type==='path'?'路徑':'痕跡'}｜{row.title}
+        </label>)}
+      </div>:null}
     </details>
     {!treeMode?<div className="loc-trace-saved-maps">
       {displayRecords.map(({row,key,depth,label})=>!row
