@@ -1,4 +1,4 @@
-import {TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
+import {TIME_ANCHOR_MAX_PAGE_ROWS,planJsonRecordsetBatches} from '../query/query-batch-size.mjs';
 // CURRENT management pipeline: verified LOC Web grant -> pure ZModel/row
 // preflight -> Kysely transaction -> Scope authorization and atomic SQL.
 // Historical RPC/legacy payload helpers are not independent authorities;
@@ -165,8 +165,8 @@ function validateGalaxyUpdateBatch(table,rows){
     seen.add(row.uid);
   }
 }
-async function writeBatch(trx,table,rows,serialized){
-  if(!rows.length)return 0;
+async function writeBatch(trx,table,rowCount,serialized){
+  if(!rowCount)return 0;
   // JSONB is validated and serialized before opening SQL transaction.
   const ref=sql.ref('silver.'+table);
   const typed=column=>sql`(jsonb_populate_record(NULL::${ref},j.item)).${sql.ref(column)}`;
@@ -283,23 +283,13 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
     upsertBatches=planKyselyUpsertBatches(rows,primary)
       .map(batch=>batch.map(row=>postgresManagedJsonbValues(row,relation)));
   }
-  if(operation==='insert'){
-    // The SQL transaction only sends the typed, already packed recordset.
-    const groups=[];
-    for(const row of rows){
-      const keys=Object.keys(row).sort().join('\\0');
-      const last=groups[groups.length-1];
-      if(last?.keys===keys)last.rows.push(row);
-      else groups.push({keys,rows:[row]});
-    }
-    insertGroups=groups.map(group=>({
-      columns:Object.keys(group.rows[0]),serialized:JSON.stringify(group.rows)
-    }));
-  }
-  const updateBatchJson=operation==='update_batch'
-    ?JSON.stringify(payload.p_rows):null;
+  if(operation==='insert')
+    insertGroups=planJsonRecordsetBatches(rows,{groupByShape:true});
+  // Split only the SQL statement; all chunks retain ONE caller transaction.
+  const updateBatchGroups=operation==='update_batch'
+    ?planJsonRecordsetBatches(payload.p_rows):null;
   return {payload,table,operation,rows,values,filters,isAnchor,namespace,
-    upsertBatches,insertGroups,updateBatchJson};
+    upsertBatches,insertGroups,updateBatchGroups};
 }
 
 export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=null}={}){
@@ -361,7 +351,10 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
       serialize:(values,target)=>postgresManagedJsonbValues(values,target)})
     :null;
   let count=0;
-  if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows,plan.updateBatchJson);
+  if(operation==='update_batch'){
+    for(const batch of plan.updateBatchGroups)
+      count+=await writeBatch(trx,table,batch.rowCount,batch.serialized);
+  }
   else if(operation==='upsert'){
     const primary=managedPrimaryKeyColumns(table,modelName)[0];
     // Kysely compiles the native multi-row INSERT ... ON CONFLICT once per
