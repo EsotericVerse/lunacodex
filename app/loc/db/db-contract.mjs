@@ -292,6 +292,11 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const {keywordService}=await import('../keywords/service-client.mjs');
     onProgress?.({phase:'resetting',completed:0,total:1});
     const result=await keywordService('reset',{scopeId:scope,classUid:uid});
+    // Do not tell the editor it is cleared merely because an HTTP request
+    // returned 200; require the server's committed epoch+cursor reset receipt.
+    if(result?.cleared!==true||!Number.isSafeInteger(result.resetEpoch)||
+      result.resetEpoch<1)
+      throw new Error('清空結果未經資料庫確認，請重新讀取後核對。');
     onProgress?.({phase:'completed',completed:1,total:1});
     return result;
   }
