@@ -84,8 +84,21 @@ test('occupied-time import lookup is exact-second, website-only and scope-bounde
   const guard=await readFile(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
   assert.match(backend,/import_occupied_createtimes/);
   assert.match(backend,/ms%1000!==0/);
-  assert.match(backend,/ms\+1000/);
+  assert.match(backend,/withinImportInstants\(/);
+  assert.match(backend,/seconds,1000,/);
+  assert.match(backend,/return readImportCandidatePage\(/);
   assert.match(panel,/action:'import_occupied_createtimes'/);
   assert.match(panel,/new Date\(Math\.floor\(instant\/1000\)\*1000\)\.toISOString\(\)/);
   assert.match(guard,/import_occupied_createtimes/);
+});
+
+test('Kysely import conveniences preserve fixed authorization and pagination',async()=>{
+  const backend=await readFile(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  assert.match(backend,/async function authorizedImportGalaxy\(trx,scope\)/);
+  assert.match(backend,/async function readImportCandidatePage\(query,table,columns,/);
+  assert.match(backend,/\.orderBy\('uid','asc'\)\.limit\(limit\+1\)/);
+  assert.match(backend,/assertZModelSelectRows\(table,columns,rows\)/);
+  assert.match(backend,/return readImportCandidatePage\(query,table,columns,\{after,limit\}\)/);
+  assert.match(backend,/wholeSeconds&&ms%1000!==0/);
+  assert.doesNotMatch(backend,/eval\(/);
 });
