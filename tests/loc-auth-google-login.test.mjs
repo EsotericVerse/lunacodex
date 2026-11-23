@@ -33,10 +33,9 @@ test('LOC sign-in redirects to LAS Google OAuth without Cloudflare SSO',async()=
 
 test('retired SSO package and client plugin are absent',()=>{
   const manifest=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
-  const lock=JSON.parse(readFileSync(new URL('../package-lock.json',import.meta.url),'utf8'));
+  const lock=readFileSync(new URL('../pnpm-lock.yaml',import.meta.url),'utf8');
   const adapter=readFileSync(new URL('../app/loc/auth/loc-browser.mjs',import.meta.url),'utf8');
   assert.equal(manifest.dependencies['@better-auth/sso'],undefined);
-  assert.equal(lock.packages['node_modules/@better-auth/sso'],undefined);
-  assert.equal(lock.packages[''].dependencies['@better-auth/sso'],undefined);
+  assert.doesNotMatch(lock,/@better-auth\/sso/);
   assert.doesNotMatch(adapter,/@better-auth\/sso|signIn\.sso|cloudflare-access/);
 });
