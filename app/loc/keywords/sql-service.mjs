@@ -2,8 +2,8 @@ import {KEYWORD_SCAN_START_ROWS,KEYWORD_SCAN_CHECKPOINT_ROWS}
   from './item-count-analysis.mjs';
 import {sql} from 'kysely';
 // LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
-// Anchor.num is UID-list cardinality; Item/Group.attr.total is the existing
-// cached article hit count. Class completion remains in Scope keyword_meta.
+// Anchor.num is UID-list cardinality; Item/Group/Pattern.attr.total stores
+// verified hit totals. Class completion remains in Scope keyword_meta.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {analyzeItemKeywordCounts,readItemKeywordProjection,
   itemKeywordStatistics,itemScope} from './item-count-analysis.mjs';
@@ -84,7 +84,7 @@ function shared(config,classUid){
   return attr({attr:config.keyword_meta}).class_shares?.[classUid]===true;
 }
 
-async function classTree(db,scope,classUid){
+async function classTree(db,scope,classUid,{withPatterns=false}={}){
   const anchor=anchorName(scope);
   const root=await db.selectFrom(anchor).select(['uid','type','title','description','attr'])
     .where('uid','=',checkClass(classUid)).where('type','=','class').executeTakeFirst();
@@ -107,7 +107,21 @@ async function classTree(db,scope,classUid){
     return {uid,item_name:String(item.title||''),group_uid:group.uid,
       keywords:Array.isArray(attr(item).keyword)?attr(item).keyword:[]};
   }));
-  return {root,groups:ordered,items:words,itemRows:items};
+  // Fetch Pattern labels only for the actual analysis, not every public
+  // statistics/catalog read. Item.attr.uid already stores the canonical
+  // terminal Pattern UIDs. One query covers every distinct linked Pattern.
+  let patterns=[];
+  if(withPatterns){
+    const patternIds=[...new Set(items.flatMap(children))].sort();
+    const matches=patternIds.length?await db.selectFrom(anchor)
+      .select(['uid','title']).where('type','=','pattern')
+      .where('uid','in',patternIds).execute():[];
+    const byPattern=new Map(matches.map(row=>[row.uid,row]));
+    if(patternIds.some(uid=>!byPattern.has(uid)))
+      fail('Keyword Pattern relationship incomplete',409);
+    patterns=patternIds.map(uid=>({uid,title:String(byPattern.get(uid).title||'')}));
+  }
+  return {root,groups:ordered,items:words,itemRows:items,patterns};
 }
 
 const validateKeywordFilters=({start='',end='',source=''})=>{
@@ -289,7 +303,7 @@ export function planKeywordTotalWrites(updates){
        !Number.isSafeInteger(row.total)||row.total<0)
       fail('Invalid Keyword aggregate counts');
     if(byUid.has(row.uid)&&byUid.get(row.uid)!==row.total)
-      fail('Conflicting Keyword counts for one Item UID',409);
+      fail('Conflicting Keyword counts for one Anchor UID',409);
     byUid.set(row.uid,row.total);
   }
   return [...byUid].map(([uid,total])=>({uid,total}));
@@ -304,7 +318,7 @@ async function writeKeywordTotals(trx,scope,updates){
     set attr=jsonb_set(coalesce(a.attr,'{}'::jsonb),
       '{total}',to_jsonb(incoming.total),true)
     from jsonb_to_recordset(${payload}::jsonb) as incoming(uid text,total bigint)
-    where a.uid=incoming.uid::char(8) and a.type in ('item','group')
+    where a.uid=incoming.uid::char(8) and a.type in ('item','group','pattern')
   `.execute(trx);
   const affected=Number(result.numAffectedRows??0);
   if(affected!==physicalUpdates.length)fail('Keyword aggregate targets changed',409);
@@ -319,23 +333,28 @@ async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',exp
     if(Number(latest?.n)!==expectedCount)
       fail('Galaxy changed during Item analysis; rerun',409);
   }
-  const current=await classTree(trx,scope,classUid);
+  const current=await classTree(trx,scope,classUid,{withPatterns:true});
   if(JSON.stringify(current.items)!==JSON.stringify(tree.items)||
       JSON.stringify(current.groups.map(x=>x.uid))!==
-      JSON.stringify(tree.groups.map(x=>x.uid)))
-    fail('Item rules changed during analysis; rerun',409);
+      JSON.stringify(tree.groups.map(x=>x.uid))||
+      JSON.stringify(current.patterns)!==JSON.stringify(tree.patterns))
+    fail('Item/Pattern rules changed during analysis; rerun',409);
   const updates=[
     ...current.items.map(item=>({uid:item.uid,
       total:Math.max(0,Number(counts.itemCounts?.[item.uid])||0)})),
     ...current.groups.map(group=>({uid:group.uid,
-      total:Math.max(0,Number(counts.groupCounts?.[group.uid])||0)}))
+      total:Math.max(0,Number(counts.groupCounts?.[group.uid])||0)})),
+    ...current.patterns.map(pattern=>({uid:pattern.uid,
+      total:Math.max(0,Number(counts.patternCounts?.[pattern.uid])||0)}))
   ];
   // The metadata row was locked before this statement. The typed UPDATE
-  // touches only Item/Group total and never overwrites concurrent attr edits.
+  // touches only Item/Group/Pattern attr.total; num and child UIDs stay intact.
   await writeKeywordTotals(trx,scope,updates);
   const now=new Date().toISOString();
   const {pattern_index_version,pattern_scans,scan_progress,...rest}=old;
-  const {itemCounts,groupCounts,...smallCounts}=counts;
+  // Pattern counters belong to their existing Anchor rows, not a duplicate
+  // finished-Class cache inside Scope keyword_meta.
+  const {itemCounts,groupCounts,patternCounts,...smallCounts}=counts;
   const completed=completeKeywordClass(rest,classUid,{
     ...smallCounts,...(attemptId?{attemptId}:{})
   },now);
@@ -357,7 +376,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   attemptId=''
 }={}){
   checkScope(scope);checkClass(classUid);
-  const cfg=await configuration(db,scope),tree=await classTree(db,scope,classUid);
+  const cfg=await configuration(db,scope),tree=await classTree(db,scope,classUid,{withPatterns:true});
   const meta=attr({attr:cfg.keyword_meta});
   const expectedEpoch=keywordClassEpoch(meta,classUid);
   const resume=readKeywordScanProgress(meta,classUid);
@@ -384,7 +403,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     }
   });
   const result=await analyzeItemKeywordCounts({
-    ...itemScope(tree),expectedCount,readMetadataPage:reader,
+    ...itemScope(tree),patterns:tree.patterns,expectedCount,readMetadataPage:reader,
     minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
     pageSize:KEYWORD_SCAN_START_ROWS,resume,
     maxRowsPerRun:KEYWORD_ROWS_PER_REQUEST,
