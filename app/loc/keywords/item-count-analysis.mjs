@@ -1,6 +1,7 @@
 import {createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Item-driven LOC keyword classification. No Pattern posting or persisted article UID list.
 import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
+import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -79,14 +80,34 @@ export function itemKeywordSuggestions(items=[],query=''){
   }
   return [...map.values()].sort((a,b)=>a.pattern.localeCompare(b.pattern));
 }
-export function createItemCountAccumulator(items=[],groups=[],resume=null,{minChars=0}={}){
+export function createItemCountAccumulator(items=[],groups=[],resume=null,{minChars=0,patterns=[]}={}){
+  // Pattern is an existing typed Anchor UID, never a synthetic word string.
+  // One Pattern can be referenced by several Items, but receives one count
+  // for each literal occurrence in an eligible Galaxy article.
+  const patternByUid=new Map();
+  for(const pattern of patterns){
+    const uid=String(pattern?.uid||''),word=norm(pattern?.title);
+    if(!/^[A-Za-z0-9]{8}$/.test(uid)||!word)
+      throw new TypeError('Invalid Keyword Pattern UID/title');
+    if(patternByUid.has(uid)&&patternByUid.get(uid)!==word)
+      throw new TypeError('Conflicting Keyword Pattern UID titles');
+    patternByUid.set(uid,word);
+  }
+  const patternTerms=[...new Set(patternByUid.values())];
+  const patternMatcher=patternTerms.length?compileKeywordLiteralMatcher(patternTerms):null;
+  const uidsByTerm=new Map();
+  for(const [uid,word] of patternByUid){
+    if(!uidsByTerm.has(word))uidsByTerm.set(word,[]);
+    uidsByTerm.get(word).push(uid);
+  }
   const catalog=items.map((item,i)=>({
     item_no:i+1,item_name:item.item_name,class_group:item.group_uid,
     keywords:item.keywords,order_no:i+1,class_enable:true
   }));
   const classify=createKeywordDocumentClassifier(catalog);
   const itemIds=items.map(x=>x.uid),groupIds=groups.map(x=>x.uid);
-  const fingerprint=JSON.stringify({catalog,groupIds,minChars});
+  const fingerprint=JSON.stringify({catalog,groupIds,minChars,
+    patterns:[...patternByUid]});
   const saved=resume?.scanMode==='item_count_v1'&&resume.fingerprint===fingerprint
     ?resume:null;
   const state={scanMode:'item_count_v1',fingerprint,
@@ -95,7 +116,8 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     itemMatches:count(saved?.itemMatches),occurrences:count(saved?.occurrences),
     itemCounts:mapOf(itemIds,saved?.itemCounts),itemDocuments:mapOf(itemIds,saved?.itemDocuments),
     groupCounts:mapOf(groupIds,saved?.groupCounts),
-    groupDocuments:mapOf(groupIds,saved?.groupDocuments)};
+    groupDocuments:mapOf(groupIds,saved?.groupDocuments),
+    patternCounts:mapOf([...patternByUid.keys()],saved?.patternCounts)};
   const byDay=new Map(),groupOrder=new Map(groupIds.map((uid,i)=>[uid,i]));
   const fallback=groups.find(g=>items.some(i=>i.group_uid===g.uid&&i.item_name==='德'))?.uid||'';
   function absorb(rows=[],callback=null){
@@ -117,6 +139,13 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     for(let i=0;i<docs.length;i++){
       const doc=docs[i],result=classifications[i],hits=new Map();
       state.parsed++;
+      if(patternMatcher){
+        // Count literal occurrences using the same already-cleaned article
+        // text as the Item classifier. No second Galaxy read, no UID postings.
+        for(const [word,times] of patternMatcher.countMatches(norm(doc.scan_text)))
+          for(const uid of uidsByTerm.get(word)||[])
+            state.patternCounts[uid]+=times;
+      }
       for(const hit of result.rune_counts||[]){
         const item=items[Number(hit.rune_id)-1];
         if(!item)throw Error('Unknown Item rule result');
@@ -158,7 +187,7 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     matchedDocuments:state.matchedDocuments,itemMatches:state.itemMatches,
     occurrences:state.occurrences,itemCounts:{...state.itemCounts},
     itemDocuments:{...state.itemDocuments},groupCounts:{...state.groupCounts},
-    groupDocuments:{...state.groupDocuments}
+    groupDocuments:{...state.groupDocuments},patternCounts:{...state.patternCounts}
   };}
   function daily(){
     const rows=[{kind:'eligible',item_key:null,group_uid:null,day:'',
@@ -184,7 +213,7 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
   }
   return {state,fingerprint,absorb,totals,daily};
 }
-export async function analyzeItemKeywordCounts({items,groups,expectedCount,
+export async function analyzeItemKeywordCounts({items,groups,patterns=[],expectedCount,
   readMetadataPage,readContent,finalize,onCheckpoint=null,onProgress=()=>{},
   resume=null,pageSize=KEYWORD_SCAN_START_ROWS,timeBudgetMs=null,now=()=>Date.now(),minChars=0,
   maxRowsPerRun=null,minRowsPerRun=null,
@@ -192,7 +221,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   paceRows=false,rateSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
   deferFinalization=false
 }={}){
-  const a=createItemCountAccumulator(items,groups,resume,{minChars});
+  const a=createItemCountAccumulator(items,groups,resume,{minChars,patterns});
   const valid=resume?.scanMode==='item_count_v1'&&resume.fingerprint===a.fingerprint&&
     Object.hasOwn(resume,'cursor');
   let cursor=valid?resume.cursor:null,scanned=valid?count(resume.scanned):0;
