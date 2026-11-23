@@ -3,6 +3,7 @@
 // alias and a trusted, server-supplied profile plus the engine's native driver.
 // Neither HTTP parameters nor OAuth claims supply raw connection credentials.
 import {Kysely} from 'kysely';
+import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
 import {createKyselyDialect,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
@@ -85,10 +86,17 @@ export async function db_connection(env={},verifiedAlias='',{
   // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
   // when several requests run queries at once. Open a short-lived client per
   // acquisition instead; it always lives inside the request that uses it.
-  // See dialect/index.mjs: short, bounded retries tolerate a cold-starting
-  // compute without extending a browser read past its 9s response budget.
+  // PostgreSQL SSLRequest + verified TLS + startup alone takes ~1.2s at
+  // the deployed edge. The previous 1500ms per-attempt limit killed pg.Client
+  // during the *additional SCRAM authentication exchanges*, even though
+  // its TCP, TLS and PostgreSQL startup were all healthy. Give the first
+  // full authentication handshake up to 4s, while bounding cumulative
+  // acquisition and avoiding any retry of an uncertain SQL statement.
   const pool=requestScopedPool({connectionString:connectionUrl.href,
-    connectionTimeoutMillis:6000,ssl:true});
+    connectionTimeoutMillis:6000,ssl:true},pg.Client,{
+    attempts:2,attemptTimeoutMs:4000,maxElapsedMs:6500,
+    baseDelayMs:200,maxDelayMs:500
+  });
   pool.setWaitUntil(waitUntil);
   // Use Kysely's upstream dialect factory. LOC's selected primary remains
   // PostgreSQL today, while the same trusted boundary can compile MySQL or
