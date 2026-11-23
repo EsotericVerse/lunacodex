@@ -14,7 +14,7 @@
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
-    "predev": "node scripts/sync-page-locale-assets.mjs && node scripts/sync-zenstack-schema-contract.mjs && node scripts/stage-loc-pics.mjs"
+    "predev": "node scripts/print-local-code-revision.mjs && node scripts/sync-page-locale-assets.mjs && node scripts/sync-zenstack-schema-contract.mjs && node scripts/stage-loc-pics.mjs"
   },
   "dependencies": {
     "@blocknote/core": "0.55.0",
