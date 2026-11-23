@@ -252,6 +252,10 @@ export default function Culture(){
   const [structureWindowKey,setStructureWindowKey]=useState('');
   const [expandedEraIds,setExpandedEraIds]=useState([]);
   const [expandedEditorEraIds,setExpandedEditorEraIds]=useState([]);
+  // Mount the historical river before the large management list/editor.
+  // Both consume one authorized TimeAnchor snapshot; no extra SQL fetch.
+  const [timeRiverFirstPaint,setTimeRiverFirstPaint]=useState(false);
+  useEffect(()=>{setTimeRiverFirstPaint(false)},[scopeId,isTimeEditingView]);
   const periodSelectionScopeRef=useRef('');
   const [selectedCategory,setSelectedCategory]=useState('');
   const [articleSort,setArticleSort]=useState('desc');
@@ -1307,6 +1311,8 @@ export default function Culture(){
               labelOf={localizedLabelOf}
               focus={EMPTY_RIVER_FOCUS}
               mode='trace'
+              unfoldCurtain={false}
+              onFirstPaint={()=>setTimeRiverFirstPaint(true)}
               onGroupToggle={toggleEditorEra}
               windowStart={editorRiverWindow.start}
               windowEnd={editorRiverWindow.end}
@@ -1318,7 +1324,8 @@ export default function Culture(){
               <p className='scope-status'>{String(selectedTimelineInfo.start||'').slice(0,10)}{selectedTimelineInfo.end?' ～ '+String(selectedTimelineInfo.end).slice(0,10):''}</p>
             </div>:null}
             <div className='scope-culture-time-input-area'>
-              <CultureTimelineEditor key={scopeId+':unified:'+timelineEditorRevision}
+              {!query.isPending&&(timeRiverFirstPaint||!editorEraRiver.groups.length)
+                ?<CultureTimelineEditor key={scopeId+':unified:'+timelineEditorRevision}
                 scopeId={scopeId}
                 timeTable={scopeData?.time||''}
                 timeRecords={query.data?.editorRows||null}
@@ -1332,6 +1339,7 @@ export default function Culture(){
                 suggestedRequestNonce={suggestedRequestNonce}
                 onDataChanged={refreshTimelineData}
                 onClose={()=>{setSelectedTimelineRecordId('');setSelectedTimelineDate('');setSelectedTimelineInfo(null);setSuggestedRequestNonce(0)}}/>
+                :<CultureTimeLoading label='正在建立時間河道…'/>}
             </div>
             {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
           </div>
