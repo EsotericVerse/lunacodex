@@ -10,7 +10,7 @@ const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const navigationFixture=(scope,path,native)=>{
   const prefix=scope==='loc'||scope==='lrunes'?'':scope==='lo3rwang'
     ?'/lo3rwang':'/scope-shell';
-  const pathname=prefix+'/'+path.replace(/^\\/+/, '')+'/';
+  const pathname=prefix+'/'+path.replace(/^\/+/, '')+'/';
   if(native){
     const file=pathname+'index.html';
     return ['loc','lo3rwang','lrunes'].includes(scope)
@@ -73,8 +73,8 @@ test('Group articles keep explicit edit=1; other Group destinations do not',()=>
   assert.equal(article.searchParams.get('section'),'publish');
   assert.equal(article.searchParams.get('edit'),'1');
   for(const slot of ['system','keywords','members']){
-    const href=href('group',slot,'loc');
-    assert.doesNotMatch(href,/edit=1/);
+    const link=href('group',slot,'loc');
+    assert.doesNotMatch(link,/edit=1/);
   }
 });
 
