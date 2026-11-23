@@ -99,7 +99,7 @@ test('native SQL keyword page avoids a second UID content query',async()=>{
   assert.equal(finalized.itemCounts.ITEM0001,1);
 });
 
-test('Keyword analysis resumes beyond 8192 total articles across durable 2048-row requests',async()=>{
+test('Keyword analysis stores once per 8192-row batch and continues beyond 8192 total articles',async()=>{
   const total=8195;
   const docs=Array.from({length:total},(_,i)=>({
     uid:String(i+1).padStart(8,'0'),
@@ -121,23 +121,21 @@ test('Keyword analysis resumes beyond 8192 total articles across durable 2048-ro
     const result=await analyzeItemKeywordCounts({
       items:terms,groups,expectedCount:total,
       readMetadataPage:reader,resume:durable,pageSize:256,
-      maxRowsPerRun:2048,checkpointRows:512,onCheckpoint:persist,
+      maxRowsPerRun:8192,checkpointRows:8192,onCheckpoint:persist,
       finalize:async counts=>{completed++;final=counts;}
     });
     requests++;
-    assert.ok(requests<=6,'Whole Scope cannot be limited to 8192 rows');
+    assert.ok(requests<=3,'Whole Scope cannot be limited to 8192 rows');
     if(!result.incomplete)break;
     assert.equal(result.scanned,durable.scanned,'Batch must commit cursor before returning');
-    assert.equal(result.scanned,requests*2048);
+    assert.equal(result.scanned,8192);
   }while(true);
-  assert.equal(requests,5);
+  assert.equal(requests,2);
   assert.equal(completed,1);
   assert.equal(final.scannedDocuments,total);
   assert.equal(final.analyzedDocuments,total);
   assert.equal(final.itemDocuments.ITEM0001,total);
-  assert.ok(checkpoints[0]>=512&&checkpoints[0]<=1024);
-  assert.ok(checkpoints.includes(8192));
-  assert.ok(checkpoints.every((position,i)=>i===0||position>checkpoints[i-1]));
+  assert.deepEqual(checkpoints,[8192],'Normal batches must write one SQL checkpoint only');
 });
 
 test('Keyword analysis recovers after an interrupted request from last durable checkpoint',async()=>{
