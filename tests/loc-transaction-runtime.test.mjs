@@ -10,6 +10,7 @@ import {planUidDependencyRepair}
 import {planImportPointCreate,planImportDateCreate,planImportDateTitleDelta}
   from '../app/loc/import/point-date-immer.mjs';
 import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,sql} from 'kysely';
+import {planJsonRecordsetBatches} from '../app/loc/query/query-batch-size.mjs';
 import {remapImportUidRelations,planImportPointUidLink,planImportMediaUrlLinks,
   planExistingImportUidUpdate} from '../app/loc/import/uid-delta.mjs';
 import {planKyselyUpsertBatches,buildKyselyUpsertQuery}
@@ -86,10 +87,14 @@ test('scalar UID repair coalesces exact-CAS rows, but not array or mixed patches
   const malformed={uid:'CASX0001',
     values:{source_id:null},expected:{source_id:'OTHR0001'}};
   const plan=planUidScalarRepairBatches([...scalar,mixed,malformed],deleted);
-  assert.deepEqual(plan.batches.map(batch=>batch.uids.length),[1000,1000,501]);
+  assert.deepEqual(plan.batches.map(batch=>batch.uids.length),[1798,703]);
   assert.deepEqual(plan.singles,[mixed,malformed]);
-  // 2,503 prior per-row UPDATEs become 3 set-based + 2 CAS UPDATEs.
-  assert.equal(plan.batches.length+plan.singles.length,5);
+  // 2,503 prior per-row UPDATEs become two bounded sets plus two CAS rows.
+  assert.equal(plan.batches.length+plan.singles.length,4);
+  const tighter=planUidScalarRepairBatches(scalar,deleted,{maxParameters:14});
+  assert.deepEqual(tighter.batches.map(batch=>batch.uids.length).slice(0,2),[12,12]);
+  const tiny=planUidScalarRepairBatches(scalar.slice(0,3),deleted,{maxBytes:12});
+  assert.equal(tiny.batches.length,3);
 });
 test('Kysely scalar UID UPDATE compiles bound PK and old-reference predicates',()=>{
   const db=new Kysely({dialect:new PostgresDialect({pool:{
@@ -289,4 +294,53 @@ test('UID delete refuses an incomplete CAS batch with conflict status',async()=>
     }),
     error=>error.httpStatus===409
   );
+});
+
+test('JSON recordsets split by UTF-8 bytes, retain input order and preserve columns',()=>{
+  const rows=[
+    {uid:'AAAA0001',title:'一二三'},
+    {uid:'BBBB0002',title:'hello'},
+    {uid:'CCCC0003',content:'x'},
+    {uid:'DDDD0004',content:'y'},
+    {uid:'EEEE0005',title:'last'}
+  ];
+  const chunks=planJsonRecordsetBatches(rows,{maxBytes:65,groupByShape:true});
+  assert.deepEqual(chunks.flatMap(chunk=>JSON.parse(chunk.serialized)),rows);
+  assert.equal(chunks.reduce((sum,chunk)=>sum+chunk.rowCount,0),rows.length);
+  assert.ok(chunks.every(chunk=>chunk.bytes<=65));
+  for(const chunk of chunks){
+    assert.equal(chunk.bytes,new TextEncoder().encode(chunk.serialized).byteLength);
+    assert.deepEqual(chunk.columns,Object.keys(JSON.parse(chunk.serialized)[0]));
+  }
+  const large={uid:'BIGG0001',content:'大型文章'.repeat(20)};
+  const oversized=planJsonRecordsetBatches([large,rows[0]],{maxBytes:32});
+  assert.equal(oversized[0].rowCount,1);
+  assert.deepEqual(oversized.flatMap(chunk=>JSON.parse(chunk.serialized)),
+    [large,rows[0]]);
+  assert.deepEqual(planJsonRecordsetBatches([],{}),[]);
+  assert.throws(()=>planJsonRecordsetBatches(rows,{maxBytes:0}));
+});
+
+test('Managed INSERT and UPDATE_BATCH preflight preserve bounded recordset semantics',()=>{
+  const inserts=Array.from({length:45},(_,i)=>({
+    uid:String(i).padStart(8,'0'),title:'a title'
+  }));
+  const insertPlan=prepareManagedKyselyWrite({payload:{
+    p_table:'silver.lo3rwang_galaxy',p_operation:'insert',p_rows:inserts
+  }});
+  assert.deepEqual(insertPlan.insertGroups.flatMap(group=>JSON.parse(group.serialized)),inserts);
+  assert.equal(insertPlan.updateBatchGroups,null);
+  assert.ok(insertPlan.insertGroups.every(group=>group.rowCount>0));
+  const updates=Array.from({length:45},(_,i)=>({
+    uid:String(i).padStart(8,'0'),title:'updated'
+  }));
+  const updatePlan=prepareManagedKyselyWrite({payload:{
+    p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',p_rows:updates
+  }});
+  assert.deepEqual(updatePlan.updateBatchGroups.flatMap(group=>
+    JSON.parse(group.serialized)),updates);
+  assert.equal(updatePlan.insertGroups,null);
+  const code=source('app/loc/providers/kysely-management.mjs');
+  assert.match(code,/for\(const batch of plan.updateBatchGroups\)/);
+  assert.doesNotMatch(code,/updateBatchJson/);
 });
