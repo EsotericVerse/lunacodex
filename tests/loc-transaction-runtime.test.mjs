@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {planUidScalarRepairBatches,buildUidScalarRepairQuery,
   planUidRepairStatementBatches,buildUidCaseRepairQuery,
-  buildUidNativeArrayRepairQuery}
+  buildUidNativeArrayRepairQuery,repairBeforeUidDelete}
   from '../app/loc/providers/uid-dependency-before-delete.mjs';
 import {planUidDependencyRepair}
   from '../app/loc/providers/uid-dependency-immer.mjs';
 import {planImportPointCreate,planImportDateCreate,planImportDateTitleDelta}
   from '../app/loc/import/point-date-immer.mjs';
-import {Kysely,PostgresDialect,sql} from 'kysely';
+import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,sql} from 'kysely';
 import {remapImportUidRelations,planImportPointUidLink,planImportMediaUrlLinks,
   planExistingImportUidUpdate} from '../app/loc/import/uid-delta.mjs';
 import {planKyselyUpsertBatches,buildKyselyUpsertQuery}
@@ -232,4 +232,48 @@ test('simple Point, Date and URL deltas avoid drafts but retain write shapes',()
     {source_id:'BBBB0002',ref_id:null,target_id:[],place_id:null},
     {source_id:'ZZZZ0009',ref_id:'AAAA0001',target_id:[]}
   ).changes,{ref_id:'AAAA0001'});
+});
+
+test('portable Kysely CASE compiles for MySQL and SQL Server without connections',()=>{
+  const item={uid:'AAAA0001',type:'trace',
+    values:{attr:{point:['BBBB0002','CCCC0003']},num:2n},
+    expected:{attr:{point:['BBBB0002','DELE0001','CCCC0003','DELE0001']}}};
+  const configs=[
+    ['mysql',new MysqlDialect({pool:{}}),'loc_anchor'],
+    ['mssql',new MssqlDialect({tarn:{},tedious:{}}),'dbo.loc_anchor']
+  ];
+  for(const [engine,dialect,relation] of configs){
+    const db=new Kysely({dialect});
+    const compiled=buildUidCaseRepairQuery(db,relation,[item],
+      values=>Object.fromEntries(Object.entries(values).map(
+        ([key,value])=>[key,key==='attr'?JSON.stringify(value):value]))).compile();
+    assert.match(compiled.sql,/case/i,engine);
+    assert.match(compiled.sql,/where/i,engine);
+    assert.ok(compiled.parameters.includes('AAAA0001'),engine);
+    assert.ok(compiled.parameters.includes(JSON.stringify(item.expected.attr)),engine);
+  }
+});
+test('UID delete refuses an incomplete CAS batch with conflict status',async()=>{
+  const update=()=>{
+    const q={set:()=>q,where:()=>q,executeTakeFirst:async()=>({numUpdatedRows:0n})};
+    return q;
+  };
+  const select=table=>{
+    const q={
+      select:()=>q,where:()=>q,
+      executeTakeFirst:async()=>({uid:'DELE0001',type:'point'}),
+      execute:async()=>table.includes('galaxy')
+        ?[{uid:'AAAA0001',place_id:'DELE0001'}]:[]
+    };
+    return q;
+  };
+  const db={selectFrom:select,updateTable:update};
+  await assert.rejects(
+    repairBeforeUidDelete(db,{
+      table:'loc_anchor',
+      filters:[{column:'uid',operator:'eq',value:'DELE0001'}],
+      engine:'postgres'
+    }),
+    error=>error.httpStatus===409
+  );
 });
