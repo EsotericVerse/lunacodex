@@ -13,7 +13,8 @@ const AUTH='https://auth.lo3rwang.cc';
 const READ_ACTIONS=new Set([
   'read_group_members','read_loc_source_hierarchy','read_scope_registry_admin',
   'find_galaxy_duplicates','keyword_pattern_statistics','suggest_search_patterns',
-  'media_anchor_candidates','anchor_import_page','import_site_presence','search_galaxy_private'
+  'media_anchor_candidates','anchor_import_page','import_site_presence',
+  'import_site_id_candidates','import_created_at_candidates','search_galaxy_private'
 ]);
 function errorFromResponse(result,response){
   const error=new Error(result?.error?.message||
