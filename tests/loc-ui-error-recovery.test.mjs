@@ -71,7 +71,7 @@ test('the edit marker is ephemeral and maintained by EditDock transitions',()=>{
   const dock=source('app/modular/edit-dock.jsx');
   assert.match(dock,/root\.dataset\.locEditing='true'/);
   assert.match(dock,/delete root\.dataset\.locEditing/);
-  assert.match(dock,/const end=useCallback\(\(\)=>\{\s*markEditorActive\(false\)/);
+  assert.match(dock,/const end=useCallback\(\(\)=>\{[\s\S]*?cancelEditorTransactionSession\(\);\s*markEditorActive\(false\)/);
   assert.match(dock,/markEditorActive\(true\);\s*setEditing\(true\)/);
   assert.match(dock,/function logCleanupFailure\(failure\)/);
   assert.doesNotMatch(dock,/console\.error\('\[LOC edit-dock\] onFailure cleanup failed',cleanup\)/);
