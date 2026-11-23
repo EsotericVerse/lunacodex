@@ -70,6 +70,17 @@ export async function db_connection(env={},verifiedAlias='',{
   if(sslmode&&!['require','verify-ca','verify-full'].includes(sslmode.toLowerCase()))
     throw unavailable('LOC PostgreSQL requires verified TLS');
   connectionUrl.searchParams.delete('sslmode');
+  // Workerd TLS sockets provide verified transport but cannot expose the
+  // peer certificate to node-postgres for SCRAM-SHA-256-PLUS binding.
+  // Neon URIs commonly request channel_binding=require. Using that libpq
+  // option in this runtime can terminate the pg.Client connection despite
+  // PostgreSQL having offered a valid SCRAM challenge. Fall back ONLY to
+  // SCRAM-SHA-256 inside the already-verified TLS tunnel. Never disable TLS
+  // or allow plaintext credentials.
+  const binding=connectionUrl.searchParams.get('channel_binding');
+  if(binding&&!['require','prefer','disable'].includes(binding.toLowerCase()))
+    throw unavailable('Unsupported LOC PostgreSQL channel binding mode');
+  connectionUrl.searchParams.delete('channel_binding');
   // Cloudflare forbids using a socket or waiting on a promise that was created
   // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
   // when several requests run queries at once. Open a short-lived client per
