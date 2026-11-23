@@ -131,3 +131,14 @@ test('Import article writer binds confirmation windows to existing checkpoint re
   const checkpoint=src('app/loc/import/checkpoint.mjs');
   assert.match(checkpoint,/must still compare/);
 });
+
+test('Import batch sampling uses final physical Galaxy and MediaAnchor row shapes',()=>{
+  const panel=src('app/loc/import/ManagementImportPanel.jsx');
+  assert.match(panel,/const prepared=createMedia.map\(mediaAnchorRecord\)/);
+  assert.match(panel,/writeImportBatches\(prepared,\{/);
+  assert.match(panel,/const prepareArticleForWrite=record=>/);
+  assert.match(panel,/\.slice\(0,128\)\.map\(prepareArticleForWrite\)/);
+  assert.match(panel,/const incoming=prepareArticleForWrite\(record\)/);
+  // Physical rows do not grow new keys AFTER the transport byte measurement.
+  assert.doesNotMatch(panel,/batch\.map\(record=>\(\{/);
+});
