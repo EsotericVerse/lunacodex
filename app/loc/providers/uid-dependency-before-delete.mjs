@@ -40,9 +40,13 @@ function listContains(field,uid,engine,path=''){
 // Only independent, identical-shape scalar nullifications can share an
 // UPDATE. JSON/array changes and mixed scalar+array changes retain row CAS.
 const SCALAR_UID_REPAIR_COLUMNS=new Set(['source_id','ref_id','place_id']);
-export function planUidScalarRepairBatches(updates,deletedUid,{maxRows=1000}={}){
+export function planUidScalarRepairBatches(updates,deletedUid,{
+  maxRows=Number.MAX_SAFE_INTEGER,maxBytes=128*1024,maxParameters=1800
+}={}){
   if(!UID.test(String(deletedUid||''))||!Array.isArray(updates)||
-      !Number.isSafeInteger(maxRows)||maxRows<1||maxRows>1000)
+      !Number.isSafeInteger(maxRows)||maxRows<1||
+      !Number.isSafeInteger(maxBytes)||maxBytes<2||
+      !Number.isSafeInteger(maxParameters)||maxParameters<4||maxParameters>32000)
     throw new TypeError('Invalid scalar UID repair batch');
   const grouped=new Map(),singles=[];
   for(const item of updates){
@@ -55,10 +59,23 @@ export function planUidScalarRepairBatches(updates,deletedUid,{maxRows=1000}={})
     if(!grouped.has(key))grouped.set(key,{fields,uids:[]});
     grouped.get(key).uids.push(item.uid);
   }
-  const batches=[];
-  for(const {fields,uids} of grouped.values())
-    for(let i=0;i<uids.length;i+=maxRows)
-      batches.push({fields,uids:uids.slice(i,i+maxRows)});
+  const batches=[],encoder=new TextEncoder();
+  for(const {fields,uids} of grouped.values()){
+    // One NULL SET and one old-value CAS bind per field, plus each UID.
+    // Leave headroom below SQL Server's 2100-parameter ceiling.
+    const capacity=Math.min(maxRows,maxParameters-2*fields.length);
+    if(capacity<1)throw new TypeError('Scalar UID SQL parameter budget exceeded');
+    let chunk=[],bytes=2;
+    for(const uid of uids){
+      const length=encoder.encode(JSON.stringify(uid)).byteLength;
+      if(chunk.length&&(chunk.length>=capacity||bytes+1+length>maxBytes)){
+        batches.push({fields,uids:chunk});chunk=[];bytes=2;
+      }
+      bytes+=length+(chunk.length?1:0);
+      chunk.push(uid);
+    }
+    if(chunk.length)batches.push({fields,uids:chunk});
+  }
   return {batches,singles};
 }
 
