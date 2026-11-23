@@ -406,7 +406,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
   };
   const run=async(reset=false)=>{
     const runClassUid=activeClass?.uid;
-    if(busy||!runClassUid||unconfirmedAttempt?.classUid===runClassUid)return;
+    // A pending HTTP receipt blocks only another analysis, never an explicitly
+    // confirmed reset. Reset increments the class epoch before clearing data,
+    // so a disconnected old scan cannot publish stale totals afterwards.
+    if(busy||checkingAttempt||!runClassUid||
+      !reset&&unconfirmedAttempt?.classUid===runClassUid)return;
     if(reset&&resetConfirmation!==runClassUid){
       setResetConfirmation(runClassUid);
       setNotice('請再次按下「確認清空」；只會清除選定 Class 的分析結果，文章與關鍵詞定義保留。');
@@ -416,8 +420,12 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setResetConfirmation('');
     setBusy(true);setProgress({phase:'reading',percent:0});setError('');setNotice('');
     try{
-      if(reset)await resetKeywordClassification(scopeId,{classUid:runClassUid,onProgress:setProgress});
-      else{
+      if(reset){
+        await resetKeywordClassification(scopeId,{classUid:runClassUid,onProgress:setProgress});
+        // The reset transaction has committed; its newer epoch invalidates
+        // the old job. Only now may the obsolete local receipt be discarded.
+        if(unconfirmedAttempt?.classUid===runClassUid)storeUnconfirmed(null);
+      }else{
         const {runKeywordAnalysisBatch}=await import('../analysis');
         await runKeywordAnalysisBatch(scopeId,{classUid:runClassUid,onProgress:setProgress});
       }
@@ -707,11 +715,12 @@ export default function KeywordLibraryPanel({scopeId,account}){
       </div>
       {!inDock?<button type="button" className="loc-button primary" disabled={busy} onClick={saveConfig}>儲存設定</button>:null}
     </details>:null}
-    {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card">
-      <h2>重新分析</h2>
-      <label>選擇要解析的關鍵詞科目（Class）
+    {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card loc-keyword-analysis-compact">
+      <h2>關鍵詞解析</h2>
+      <div className="loc-keyword-analysis-toolbar">
+      <label>科目（Class）
         <select className="scope-select" value={activeClass?.uid||''}
-          disabled={busy} onChange={event=>choose('class',event.target.value)}>
+          disabled={busy} onChange={event=>{setResetConfirmation('');choose('class',event.target.value);}}>
           <option value="">請選擇科目</option>
           {allClassNodes.map(node=><option key={node.uid} value={node.uid}>
             {node.name} · {keywordClassState(config,node.uid)?.completedAt
@@ -720,23 +729,24 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </option>)}
         </select>
       </label>
-      <details className="loc-work-subdetails">
-        <summary>上次解析與文章統計</summary>
-        <p className="scope-status">上次解析：{keywordClassState(config,activeClass?.uid)?.completedAt?new Date(keywordClassState(config,activeClass.uid).completedAt).toLocaleString('zh-TW'):'尚未解析'}</p>
-        <p className="scope-status">有效分類文章：{Number(keywordClassState(config,activeClass?.uid)?.matchedDocuments||0).toLocaleString()} 篇</p>
-      </details>
       <div className="scope-preview-links">
         <button type="button" className="loc-button primary"
           disabled={busy||checkingAttempt||!activeClass?.uid||unconfirmedAttempt?.classUid===activeClass.uid}
           onClick={()=>{setResetConfirmation('');run(false);}}>重新分析</button>
         <button type="button" className="loc-button"
-          disabled={busy||checkingAttempt||!activeClass?.uid||unconfirmedAttempt?.classUid===activeClass.uid}
+          disabled={busy||checkingAttempt||!activeClass?.uid}
           onClick={()=>run(true)}>
-          {resetConfirmation===activeClass?.uid?'確認清空':'清空本群組的分析結果'}
+          {resetConfirmation===activeClass?.uid?'確認清空':'清空分析'}
         </button>
       </div>
-      {unconfirmedAttempt?<div className="scope-status" role="status">
-        <p>前次分析尚未確認（Class：{unconfirmedAttempt.classUid}）。保留原始執行識別碼供唯讀核對；不會自動重新分析。</p>
+      </div>
+      <details className="loc-work-subdetails">
+        <summary>上次解析與文章統計</summary>
+        <p className="scope-status">上次解析：{keywordClassState(config,activeClass?.uid)?.completedAt?new Date(keywordClassState(config,activeClass.uid).completedAt).toLocaleString('zh-TW'):'尚未解析'}</p>
+        <p className="scope-status">有效分類文章：{Number(keywordClassState(config,activeClass?.uid)?.matchedDocuments||0).toLocaleString()} 篇</p>
+      </details>
+      {unconfirmedAttempt?<div className="loc-work-status loc-keyword-analysis-receipt" role="status">
+        <p>前次分析回執尚未確認（Class：{unconfirmedAttempt.classUid}）。可唯讀核對，也可選擇「清空分析」確認重設；重設將使舊分析無法再寫回。</p>
         <div className="scope-preview-links">
           <button type="button" className="loc-button primary"
             disabled={checkingAttempt||busy} onClick={checkUnconfirmed}>
@@ -749,8 +759,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
       {busy?<FlowProgress kind="keywords" stage={progress?.label||progress?.phase||'解析關鍵詞'}
         completed={progress?.completed||0} total={progress?.total||0}/>:null}
     </section>:null}
-    {!loading&&workspace==='analysis'?<section className="loc-card scope-feature-card">
-      <h2>建議新增關鍵詞</h2>
+    {!loading&&workspace==='analysis'?<details className="loc-card scope-feature-card loc-work-disclosure loc-keyword-suggestions">
+      <summary>建議新增關鍵詞</summary>
       <details className="loc-work-subdetails"><summary>掃描範圍與安全說明</summary>
         <p className="scope-status">僅讀取目前資料來源的文章內文，不修改既有關鍵詞，也不會自動新增。</p>
       </details>
@@ -799,7 +809,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       {!discoveryBusy?<button type="button" className="loc-button" onClick={discoverNewTerms}>
         {discovery?'重新掃描內文':'開始掃描內文'}
       </button>:null}
-    </section>:null}
+    </details>:null}
     {!loading&&workspace==='network'?<section className="loc-card scope-feature-card">
       <h2>關聯圖</h2>
       {selectedClass?<div className="scope-keyword-network-layout">
