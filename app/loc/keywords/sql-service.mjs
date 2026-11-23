@@ -271,21 +271,24 @@ async function lockedKeywordMetadata(trx,scope,classUid,expectedEpoch){
 // One typed SQL statement updates only attr.total, preserving every other
 // Anchor attribute, hierarchy UID list and its independently derived num.
 // This is not a second keyword index or a public SQL request surface.
-async function writeKeywordTotals(trx,scope,updates){
-  if(!updates.length)return 0;
-  // One physical Anchor UID may be referenced by more than one Group.
-  // PostgreSQL UPDATE ... FROM cannot count duplicate input UIDs as separate
-  // target rows; normalize to a single typed update per physical PK.
+// Pure and testable: distinct physical Anchor PKs, not occurrences of the
+// same Item under several Keyword Groups, determine UPDATE row cardinality.
+export function planKeywordTotalWrites(updates){
+  if(!Array.isArray(updates))fail('Invalid Keyword aggregate counts');
   const byUid=new Map();
   for(const row of updates){
-    if(!UID.test(String(row.uid||''))||
+    if(!UID.test(String(row?.uid||''))||
        !Number.isSafeInteger(row.total)||row.total<0)
       fail('Invalid Keyword aggregate counts');
     if(byUid.has(row.uid)&&byUid.get(row.uid)!==row.total)
       fail('Conflicting Keyword counts for one Item UID',409);
     byUid.set(row.uid,row.total);
   }
-  const physicalUpdates=[...byUid].map(([uid,total])=>({uid,total}));
+  return [...byUid].map(([uid,total])=>({uid,total}));
+}
+async function writeKeywordTotals(trx,scope,updates){
+  const physicalUpdates=planKeywordTotalWrites(updates);
+  if(!physicalUpdates.length)return 0;
   const payload=JSON.stringify(physicalUpdates);
   const table=sql.ref(anchorName(scope));
   const result=await sql`
