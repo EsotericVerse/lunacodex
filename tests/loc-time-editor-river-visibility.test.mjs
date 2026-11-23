@@ -118,7 +118,7 @@ test('Time river is visible from loaded rows before the vis canvas is ready',()=
   assert.match(chart,/recovery\?\.getBoundingClientRect\(\)\.height>2/);
   assert.match(css,/\.scope-trace-progressive-shell>\.scope-time-recovery-river/);
   assert.match(css,/position:relative;z-index:1/);
-  assert.match(chart,/if\(timelinePainted\(containerRef\.current\)\)setTracePainted\(true\)/);
+  assert.match(chart,/if\(!cancelled&&timelinePainted\(containerRef\.current\)\)setTracePainted\(true\)/);
 });
 
 test('Time record transaction completion cannot wait forever for a vis onFirstPaint notification',()=>{
