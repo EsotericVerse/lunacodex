@@ -440,8 +440,18 @@ export async function readKeywordAnalysisCompletion(db,scope,classUid,attemptId)
   const cfg=await configuration(db,scope);
   const meta=attr({attr:cfg.keyword_meta});
   const record=meta.by_class?.[classUid];
-  if(!record||record.attemptId!==attemptId||!record.completedAt)
+  if(!record||record.attemptId!==attemptId||!record.completedAt){
+    const pending=readKeywordScanProgress(meta,classUid);
+    // Do not expose the saved cursor, article bodies or Item counters.
+    // A matching attempt may safely continue automatically: the tail
+    // request ONLY checkpointed and returned; it never began final SQL.
+    if(pending?.finalizePending===true&&
+        Number.isSafeInteger(pending.scanned)&&pending.scanned>=0)
+      return {completed:false,resumable:true,
+        attemptMatched:pending.attemptId===attemptId,
+        scanned:pending.scanned,parsed:Number(pending.parsed)||0};
     return {completed:false};
+  }
   return {completed:true,result:{
     classUid,analyzedDocuments:Number(record.analyzedDocuments)||0,
     matchedDocuments:Number(record.matchedDocuments)||0,
