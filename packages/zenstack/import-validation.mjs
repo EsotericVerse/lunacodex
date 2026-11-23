@@ -46,8 +46,9 @@ const validators=new Map();
 const selectValidators=new Map();
 const scopedGalaxy=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
 const char8Uid=/^[A-Za-z0-9]{8}$/;
-// Anchor.attr validation derives from ZModel. Pattern is a vocabulary-only
-// terminal node: title stores the word, attr is empty, and num is zero.
+// Anchor.attr validation derives from ZModel. Pattern remains a terminal
+// vocabulary node: title is the word, attr.total is the analyzed occurrence
+// count (optional), and num is always zero because it has no child UIDs.
 const anchorTypeGroups=Object.fromEntries(Object.entries(ANCHOR_TYPE_GROUPS)
   .flatMap(([group,types])=>types.map(type=>[type,group])));
 const anchorPayloadValidators=new Map(PERSISTED_ANCHOR_TYPES.map(type=>{
@@ -62,9 +63,13 @@ function validateAnchorPayload(type,attr){
   const entry=anchorPayloadValidators.get(String(type||''));
   if(!entry||attr===undefined)return;
   if(type==='pattern'){
+    // Pattern.attr may hold ONLY a nonnegative hit count. Article UIDs and
+    // postings are forbidden; Anchor.num still counts child UIDs (= 0).
     if(!attr||typeof attr!=='object'||Array.isArray(attr)||
-        Object.keys(attr).length!==0)
-      throw new TypeError('Pattern.attr must be empty: no article UID postings');
+        Object.keys(attr).some(key=>key!=='total')||
+        Object.hasOwn(attr,'total')&&
+          (!Number.isSafeInteger(attr.total)||attr.total<0))
+      throw new TypeError('Pattern.attr allows only a nonnegative total');
     return;
   }
   const parsed=entry.validator.safeParse({[entry.field]:attr});
