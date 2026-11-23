@@ -34,7 +34,7 @@ test('homepage six-key hard navigation does not clear live page or editor Sessio
   // erases the live homepage if the next HTML entrypoint is slow to load.
   assert.match(dock,/const documentExit=url\.origin/);
   assert.match(dock,/if\(documentExit\)\{\s*window\.location\.assign\(url\.href\)/);
-  assert.match(dock,/window\.location\.assign\(destination\.href\)/);
+  assert.match(dock,/window\.location\.replace\(destination\.href\)/);
   const navigate=dock.slice(dock.indexOf('const navigate='),dock.indexOf('const complete='));
   assert.doesNotMatch(navigate,/releaseTransientPageResources\(|transactionWrites\(|clearEditorSession\(/);
   const discard=dock.slice(dock.indexOf('const discard='),dock.indexOf('const switchTo='));
