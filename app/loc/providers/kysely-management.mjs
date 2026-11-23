@@ -1,6 +1,6 @@
 import {TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
-// CURRENT management pipeline: verified LOC Web grant -> physical Kysely
-// transaction -> ZModel field/policy checks -> typed Tree/Model validation.
+// CURRENT management pipeline: verified LOC Web grant -> pure ZModel/row
+// preflight -> Kysely transaction -> Scope authorization and atomic SQL.
 // Historical RPC/legacy payload helpers are not independent authorities;
 // Tree Models do not grant access, run SQL, or create additional relations.
 import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
@@ -148,10 +148,10 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
     scope+'_'+anchor]);
   if(!allowed.has(table))reject('Relation is not managed by this Scope',403);
 }
-async function writeBatch(trx,table,rows){
+function validateGalaxyUpdateBatch(table,rows){
   if(!/^[a-z][a-z0-9_]*_galaxy$/.test(table))reject('Article batch updates require a Galaxy table');
   if(!Array.isArray(rows)||rows.length>10000)reject('Invalid article batch size');
-  if(!rows.length)return 0;
+  if(!rows.length)return;
   // All approved Galaxy columns use the existing ZModel/Zod payload checks.
   // The SQL update is one JSONB recordset inside the caller's one transaction:
   // no special-field one-row requests and no additional ad-hoc ORM layer.
@@ -164,6 +164,10 @@ async function writeBatch(trx,table,rows){
       reject('Invalid article update batch');
     seen.add(row.uid);
   }
+}
+async function writeBatch(trx,table,rows,serialized){
+  if(!rows.length)return 0;
+  // JSONB is validated and serialized before opening SQL transaction.
   const ref=sql.ref('silver.'+table);
   const typed=column=>sql`(jsonb_populate_record(NULL::${ref},j.item)).${sql.ref(column)}`;
   const setFields=['title','content','url','media_link','location',
@@ -182,7 +186,7 @@ async function writeBatch(trx,table,rows){
   ],sql` or `);
   const result=await sql`
     update ${ref} as g set ${sql.join(updates)}
-    from jsonb_array_elements(${JSON.stringify(rows)}::jsonb) as j(item)
+    from jsonb_array_elements(${serialized}::jsonb) as j(item)
     where g.uid=(j.item->>'uid')::char(8) and (${changed})
   `.execute(trx);
   return Number(result.numAffectedRows||0);
@@ -211,8 +215,7 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
   const filters=['update','delete'].includes(operation)?validateFilters(payload.p_filters):[];
   if(operation==='update'&&!managedUpdateValuesValid(values))
     reject('Invalid managed update values');
-  if(operation==='update_batch'&&table.endsWith('_galaxy')===false)
-    reject('Article batches must target a Galaxy table');
+  if(operation==='update_batch')validateGalaxyUpdateBatch(table,payload.p_rows);
   if(table==='manage'){
     if(['insert','upsert'].includes(operation))for(let i=0;i<rows.length;i++)
       rows[i]=validateLocRegistryDomain(rows[i]);
@@ -250,15 +253,53 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
       }else if(Object.hasOwn(row,'num'))reject('Anchor.num requires attr');
     }
   }
+  // Fail fast without occupying a SQL connection for invalid identifiers.
+  if(isAnchor&&operation==='update'&&Object.hasOwn(values,'num')&&
+    !Object.hasOwn(values,'attr')&&!Object.hasOwn(values,'type'))
+    reject('Anchor.num cannot be changed independently');
+  if(operation==='update'){
+    const keys=managedPrimaryKeyColumns(table,modelName);
+    if(keys.some(key=>Object.hasOwn(values,key)))
+      reject('Primary keys cannot be updated');
+  }
+  if(operation==='append_media_link'&&(
+    !/^[a-z][a-z0-9]{0,14}_galaxy$/.test(table)||
+    !values||typeof values!=='object'||Array.isArray(values)||
+    Object.keys(values).sort().join(',')!=='article_uid,media_uid'||
+    !UID.test(values.article_uid)||!UID.test(values.media_uid)||
+    payload.p_filters!==undefined&&payload.p_filters?.length))
+    reject('Invalid LOC MediaAnchor link operation');
   if(['insert','upsert'].includes(operation))payload.p_rows=rows;
   if(operation==='update')payload.p_values=values;
-  let upsertBatches=null;
+  const relation=table==='manage'?'api.manage':'silver.'+table;
+  let upsertBatches=null,insertGroups=null;
   if(operation==='upsert'){
     const keys=managedPrimaryKeyColumns(table,modelName);
     if(keys.length!==1)reject('Composite primary key cannot be upserted');
-    upsertBatches=planKyselyUpsertBatches(rows,keys[0]);
+    const primary=keys[0];
+    for(const row of rows)
+      if(row[primary]===null||row[primary]===undefined)
+        reject('Upsert requires an explicit primary key');
+    upsertBatches=planKyselyUpsertBatches(rows,primary)
+      .map(batch=>batch.map(row=>postgresManagedJsonbValues(row,relation)));
   }
-  return {payload,table,operation,rows,values,filters,isAnchor,namespace,upsertBatches};
+  if(operation==='insert'){
+    // The SQL transaction only sends the typed, already packed recordset.
+    const groups=[];
+    for(const row of rows){
+      const keys=Object.keys(row).sort().join('\\0');
+      const last=groups[groups.length-1];
+      if(last?.keys===keys)last.rows.push(row);
+      else groups.push({keys,rows:[row]});
+    }
+    insertGroups=groups.map(group=>({
+      columns:Object.keys(group.rows[0]),serialized:JSON.stringify(group.rows)
+    }));
+  }
+  const updateBatchJson=operation==='update_batch'
+    ?JSON.stringify(payload.p_rows):null;
+  return {payload,table,operation,rows,values,filters,isAnchor,namespace,
+    upsertBatches,insertGroups,updateBatchJson};
 }
 
 export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=null}={}){
@@ -272,12 +313,6 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
     // A purpose-only Galaxy/MediaAnchor link, not arbitrary SQL mutation.
     // The Anchor INSERT and this row-locked append belong to the same
     // existing Kysely transaction and cannot overwrite concurrent links.
-    if(!/^[a-z][a-z0-9]{0,14}_galaxy$/.test(table)||
-      !values||typeof values!=='object'||Array.isArray(values)||
-      Object.keys(values).sort().join(',')!=='article_uid,media_uid'||
-      !UID.test(values.article_uid)||!UID.test(values.media_uid)||
-      payload.p_filters!==undefined&&payload.p_filters?.length)
-      reject('Invalid LOC MediaAnchor link operation');
     const scope=table.slice(0,-7),galaxy='silver.'+table;
     const linked=await trx.selectFrom('silver.'+scope+'_anchor')
       .select(['uid','attr']).where('uid','=',values.media_uid)
@@ -302,9 +337,6 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
     return {data:{count:1}};
   }
   if(isAnchor&&operation==='update'){
-    if(Object.hasOwn(values,'num')&&!Object.hasOwn(values,'attr')&&
-        !Object.hasOwn(values,'type'))
-      reject('Anchor.num cannot be changed independently');
     if(Object.hasOwn(values,'attr')||Object.hasOwn(values,'type')){
       const targets=await withFilters(trx.selectFrom('silver.'+table)
         .select(['uid','type','attr']),filters).execute();
@@ -324,29 +356,19 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
   // modelName is only a verified ZModel policy identity; Kysely queries
   // must address the actual SQL relation, never the logical model name.
   const name=relation;
-  if(operation==='update'){
-    // Every authorized managed relation has a fixed single-column PK:
-    // Registry and Scope config -> id; Galaxy/Anchor/Blocks -> uid.
-    // These were checked against the live PostgreSQL catalog. There is no
-    // need for one pg_index SELECT on every edit, including dynamic Scopes.
-    const keys=managedPrimaryKeyColumns(table,modelName);
-    if(keys.some(key=>Object.hasOwn(values,key)))
-      reject('Primary keys cannot be updated');
-  }
   const dependencyRepair=operation==='delete'
     ?await repairBeforeUidDelete(trx,{table,filters,
       serialize:(values,target)=>postgresManagedJsonbValues(values,target)})
     :null;
   let count=0;
-  if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows);
+  if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows,plan.updateBatchJson);
   else if(operation==='upsert'){
     const primary=managedPrimaryKeyColumns(table,modelName)[0];
     // Kysely compiles the native multi-row INSERT ... ON CONFLICT once per
     // bounded batch. Every row's update references EXCLUDED, not rows[0].
     for(const batch of plan.upsertBatches){
-      const converted=batch.map(row=>postgresManagedJsonbValues(row,relation));
       const result=await buildKyselyUpsertQuery(trx,{
-        schema:namespace,table,values:converted,onConflict:[primary]
+        schema:namespace,table,values:batch,onConflict:[primary]
       },'postgres').executeTakeFirst();
       const affected=Number(result?.numInsertedOrUpdatedRows??result?.numAffectedRows??0n);
       if(!Number.isSafeInteger(affected)||affected<0)
@@ -354,22 +376,15 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
       count+=affected;
     }
   }else if(operation==='insert'){
-    const groups=[];
-    for(const row of rows){
-      const keys=Object.keys(row).sort().join('\0');
-      const last=groups[groups.length-1];
-      if(last?.keys===keys)last.rows.push(row);
-      else groups.push({keys,rows:[row]});
-    }
-    for(const group of groups){
-      const columns=Object.keys(group.rows[0]);
+    for(const group of plan.insertGroups){
+      const columns=group.columns;
       const columnRefs=columns.map(column=>sql.ref(column));
       const relation=sql.ref(name);
       // One typed JSONB parameter, rather than thousands of bound values:
       // preserves defaults and avoids PostgreSQL's 65,535-parameter ceiling.
       const result=await sql`insert into ${relation} (${sql.join(columnRefs)})
         select ${sql.join(columnRefs)} from
-        jsonb_populate_recordset(NULL::${relation},${JSON.stringify(group.rows)}::jsonb)`
+        jsonb_populate_recordset(NULL::${relation},${group.serialized}::jsonb)`
         .execute(trx);
       count+=Number(result.numAffectedRows||0);
     }
