@@ -19,6 +19,8 @@ import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {saveBlocksKysely} from './kysely-blocks.mjs';
+import {buildKyselyUpsertQuery,planKyselyUpsertBatches}
+  from './kysely-runtime.mjs';
 import {saveTracePageInTransaction} from './kysely-trace-page.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection,anchorUidListCount}
@@ -185,10 +187,14 @@ async function writeBatch(trx,table,rows){
   `.execute(trx);
   return Number(result.numAffectedRows||0);
 }
-export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
-  const payload=body?.payload;
-  if(!payload||typeof payload!=='object'||Array.isArray(payload))
+// Prepare pure ZModel and row-shape validation before opening a SQL transaction.
+// This never grants access: transaction-bound authorizeRelation() still decides.
+export function prepareManagedKyselyWrite(body,{modelName=''}={}){
+
+  const original=body?.payload;
+  if(!original||typeof original!=='object'||Array.isArray(original))
     reject('Invalid managed write payload');
+  const payload={...original};
   const table=tableName(payload.p_table);
   // Only the two fixed global Registry models can use this privileged model
   // mapping. Other relations retain their existing Kysely/Scope boundary.
@@ -199,8 +205,9 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   if(!['insert','upsert','update','delete','update_batch',
     'append_media_link'].includes(operation))
     reject('Invalid managed write operation');
-  const rows=['insert','upsert'].includes(operation)?validateRows(payload.p_rows):[];
-  const values=payload.p_values;
+  const rows=['insert','upsert'].includes(operation)?validateRows(payload.p_rows).map(row=>({...row})):[];
+  const values=payload.p_values&&typeof payload.p_values==='object'&&
+    !Array.isArray(payload.p_values)?{...payload.p_values}:payload.p_values;
   const filters=['update','delete'].includes(operation)?validateFilters(payload.p_filters):[];
   if(operation==='update'&&!managedUpdateValuesValid(values))
     reject('Invalid managed update values');
@@ -214,6 +221,52 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   }
   validateGalaxyMediaLinks(table,operation,
     operation==='update_batch'?payload.p_rows:rows,values);
+  // Authorized writes now share the exact ZModel column guard already used
+  // by query SELECT/UPDATE. Unmodeled, explicitly authorized custom Scope
+  // relations retain their existing Kysely handling.
+  const modelValues=['insert','upsert'].includes(operation)?rows:
+    operation==='update'?values:
+    operation==='update_batch'?payload.p_rows:null;
+  const namespace=table==='manage'?'api':'silver';
+  // Zod verifies the actual values for each modeled Galaxy operation,
+  // including partial updates. ZModel already covers its column names:
+  // do not traverse those same row keys again in the generic SQL guard.
+  const galaxyValidated=assertZModelGalaxyManagedValues(
+    namespace+'.'+table,operation,modelValues);
+  const anchorBlockValidated=!galaxyValidated&&assertZModelAnchorBlockManagedValues(
+    namespace+'.'+table,operation,modelValues);
+  verifyModeledSqlFields({
+    schema:namespace,table,
+    values:galaxyValidated||anchorBlockValidated?null:modelValues,filters
+  });
+  // Physical Anchor.num follows the typed UID list, not a caller-supplied
+  // Keyword count or LOC Block order. Derive it inside the same transaction.
+  const isAnchor=table==='loc_anchor'||/_anchor$/.test(table);
+  if(isAnchor&&['insert','upsert'].includes(operation)){
+    for(const row of rows){
+      if(row.attr!==undefined){
+        if(!row.type)reject('Anchor type required for UID count');
+        row.num=anchorUidListCount(row.type,row.attr);
+      }else if(Object.hasOwn(row,'num'))reject('Anchor.num requires attr');
+    }
+  }
+  if(['insert','upsert'].includes(operation))payload.p_rows=rows;
+  if(operation==='update')payload.p_values=values;
+  let upsertBatches=null;
+  if(operation==='upsert'){
+    const keys=managedPrimaryKeyColumns(table,modelName);
+    if(keys.length!==1)reject('Composite primary key cannot be upserted');
+    upsertBatches=planKyselyUpsertBatches(rows,keys[0]);
+  }
+  return {payload,table,operation,rows,values,filters,isAnchor,namespace,upsertBatches};
+}
+
+export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=null}={}){
+  const plan=prepared||prepareManagedKyselyWrite(body,{modelName});
+  const {payload,table,operation,rows,values,filters,isAnchor,namespace}=plan;
+  if(modelName&&!(modelName==='Manage'&&table==='manage'||
+      modelName==='Loc'&&table==='loc'))
+    reject('Invalid fixed LOC model for management write',403);
   await authorizeRelation(trx,table,operation,values,filters,rows);
   if(operation==='append_media_link'){
     // A purpose-only Galaxy/MediaAnchor link, not arbitrary SQL mutation.
@@ -247,35 +300,6 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
     if(Number(updated?.numUpdatedRows||0)!==1)
       reject('Media URL link update did not complete',409);
     return {data:{count:1}};
-  }
-  // Authorized writes now share the exact ZModel column guard already used
-  // by query SELECT/UPDATE. Unmodeled, explicitly authorized custom Scope
-  // relations retain their existing Kysely handling.
-  const modelValues=['insert','upsert'].includes(operation)?rows:
-    operation==='update'?values:
-    operation==='update_batch'?payload.p_rows:null;
-  const namespace=table==='manage'?'api':'silver';
-  // Zod verifies the actual values for each modeled Galaxy operation,
-  // including partial updates. ZModel already covers its column names:
-  // do not traverse those same row keys again in the generic SQL guard.
-  const galaxyValidated=assertZModelGalaxyManagedValues(
-    namespace+'.'+table,operation,modelValues);
-  const anchorBlockValidated=!galaxyValidated&&assertZModelAnchorBlockManagedValues(
-    namespace+'.'+table,operation,modelValues);
-  verifyModeledSqlFields({
-    schema:namespace,table,
-    values:galaxyValidated||anchorBlockValidated?null:modelValues,filters
-  });
-  // Physical Anchor.num follows the typed UID list, not a caller-supplied
-  // Keyword count or LOC Block order. Derive it inside the same transaction.
-  const isAnchor=table==='loc_anchor'||/_anchor$/.test(table);
-  if(isAnchor&&['insert','upsert'].includes(operation)){
-    for(const row of rows){
-      if(row.attr!==undefined){
-        if(!row.type)reject('Anchor type required for UID count');
-        row.num=anchorUidListCount(row.type,row.attr);
-      }else if(Object.hasOwn(row,'num'))reject('Anchor.num requires attr');
-    }
   }
   if(isAnchor&&operation==='update'){
     if(Object.hasOwn(values,'num')&&!Object.hasOwn(values,'attr')&&
@@ -316,18 +340,18 @@ export async function executeManagedKyselyWrite(trx,body,{modelName=''}={}){
   let count=0;
   if(operation==='update_batch')count=await writeBatch(trx,table,payload.p_rows);
   else if(operation==='upsert'){
-    const keys=managedPrimaryKeyColumns(table,modelName);
-    if(keys.length!==1)reject('Composite primary key cannot be upserted');
-    const primary=keys[0];
-    for(const row of rows){
-      if(row[primary]===undefined||row[primary]===null)
-        reject('Upsert requires an explicit primary key');
-      const document=postgresManagedJsonbValues(row,relation);
-      const updates={...document};delete updates[primary];
-      const builder=trx.insertInto(name).values(document);
-      const result=await builder.onConflict(oc=>updates&&Object.keys(updates).length
-        ?oc.column(primary).doUpdateSet(updates):oc.column(primary).doNothing()).executeTakeFirst();
-      count+=Number(result?.numInsertedOrUpdatedRows??result?.numAffectedRows??1);
+    const primary=managedPrimaryKeyColumns(table,modelName)[0];
+    // Kysely compiles the native multi-row INSERT ... ON CONFLICT once per
+    // bounded batch. Every row's update references EXCLUDED, not rows[0].
+    for(const batch of plan.upsertBatches){
+      const converted=batch.map(row=>postgresManagedJsonbValues(row,relation));
+      const result=await buildKyselyUpsertQuery(trx,{
+        schema:namespace,table,values:converted,onConflict:[primary]
+      },'postgres').executeTakeFirst();
+      const affected=Number(result?.numInsertedOrUpdatedRows??result?.numAffectedRows??0n);
+      if(!Number.isSafeInteger(affected)||affected<0)
+        reject('Invalid UPSERT affected-row receipt');
+      count+=affected;
     }
   }else if(operation==='insert'){
     const groups=[];

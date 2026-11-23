@@ -144,6 +144,32 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
   return {request:req,query:req.head?null:query,countQuery};
 }
 
+// Kysely-native UPSERT batches: adjacent equal-shape rows only.
+// A duplicate conflict key must start a new PostgreSQL statement.
+export function planKyselyUpsertBatches(rows,primary,{
+  maxParameters=32000,maxRows=10000,maxBytes=512*1024
+}={}){
+  if(!Array.isArray(rows)||!rows.length||typeof primary!=='string'||!primary)
+    throw new TypeError('UPSERT rows and primary key are required');
+  const encoder=new TextEncoder(),batches=[];
+  let group=[],shape='',bytes=0,seen=new Set();
+  const flush=()=>{if(group.length)batches.push(group);group=[];shape='';bytes=0;seen=new Set();};
+  for(const row of rows){
+    if(!row||typeof row!=='object'||Array.isArray(row)||row[primary]==null)
+      throw new TypeError('UPSERT primary key is required');
+    const columns=Object.keys(row).sort(),nextShape=columns.join('\0');
+    const limit=Math.max(1,Math.min(maxRows,
+      Math.floor(maxParameters/Math.max(1,columns.length))));
+    const size=encoder.encode(JSON.stringify(row)).length;
+    if(group.length&&(shape!==nextShape||group.length>=limit||
+      bytes+size>maxBytes||seen.has(row[primary])))flush();
+    if(!group.length)shape=nextShape;
+    group.push(row);seen.add(row[primary]);bytes+=size;
+  }
+  flush();
+  return batches;
+}
+
 function sameKeys(rows){
   const keys=Object.keys(rows[0]||{}).sort().join('\0');
   return rows.every(row=>Object.keys(row).sort().join('\0')===keys);

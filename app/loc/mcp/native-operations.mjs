@@ -17,7 +17,8 @@ import {executeLocConversation} from './conversations.mjs';
 import {readMemory as readPublicGalaxy} from './galaxy-read.mjs';
 import {articleDistribution} from './article-distribution.mjs';
 import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.mjs';
-import {executeManagedKyselyWrite,executeManagedKyselyAction} from '../providers/kysely-management.mjs';
+import {executeManagedKyselyWrite,executeManagedKyselyAction,
+  prepareManagedKyselyWrite} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from './native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
@@ -202,8 +203,24 @@ export async function handleNativeLocOperation(request,env={},{
        !claims.delegatedScopes?.includes('loc:import'))
       throw refusal('LOC MCP write delegation scope required',403);
     if(body.kind==='managed-write')requirePublishedManageWrite(body.payload);
-    if(body.kind==='managed-transaction')
-      for(const item of body.operations||[])requirePublishedManageWrite(item);
+    if(body.kind==='managed-transaction'){
+      // Validate the complete input envelope before opening a database
+      // connection, and never begin a transaction for a malformed batch.
+      if(body.keywordSyncScope)
+        throw refusal('Retired Keyword sync requested; reload LOC',409);
+      if(body.scopeid!==''||!Array.isArray(body.operations)||!body.operations.length||
+        body.operations.some(item=>!item||typeof item!=='object'||
+          Array.isArray(item)||
+          !['insert','update','delete','upsert','update_batch','append_media_link'].includes(item.p_operation)||
+          typeof item.p_table!=='string'))
+        throw refusal('Invalid LOC management transaction',400);
+      for(const item of body.operations){
+        requirePublishedManageWrite(item);
+        const expected=item.p_expected_count;
+        if(expected!==undefined&&(!Number.isSafeInteger(expected)||expected<0))
+          throw refusal('LOC transaction affected-row count mismatch',409);
+      }
+    }
     // Business grants come from the published JS snapshot, not SQL.
     // Fail closed before opening any database connection.
     if(operationKind==='short-import')importPhase='permission';
@@ -236,6 +253,13 @@ export async function handleNativeLocOperation(request,env={},{
     releaseAbort=bindLocRequestAbort(selected,request.signal);
     if(!selected?.db||!['postgres','mysql','mssql'].includes(selected.engine))
       throw refusal('LOC native Kysely driver is not configured',503);
+    // No connection/transaction is held while validating ZModel and input
+    // rows. Database-state-dependent Scope checks stay inside Kysely trx.
+    const preparedWrites=selected.engine==='postgres'
+      ?body.kind==='managed-transaction'
+        ?body.operations.map(payload=>prepareManagedKyselyWrite({kind:'managed-write',payload}))
+        :body.kind==='managed-write'?prepareManagedKyselyWrite(body):null
+      :null;
     // Private Search is a website-only management action requiring a verified
     // Session and Scope grants; a client-side switch grants nothing.
     // Galaxy data and statistics remain owned by LOC. LAS only maps request
@@ -247,9 +271,7 @@ export async function handleNativeLocOperation(request,env={},{
         throw refusal('MCP Scope mismatch',400);
       const data=await selected.db.transaction()
         .setIsolationLevel('repeatable read').execute(async trx=>{
-          const rights=await loadMcpLocAccess(trx,claims.email,{
-            dialect:selected.dialect,engine:selected.engine,transactional:true});
-          claims.me=rights.canWrite;claims.grants=rights.grants;
+          // Reuse the verified published-JS grants already attached to claims.
           // Public Galaxy predicates and columns remain fixed by the ZModel
           // reader. Bind its Kysely query to this already-open transaction.
           return readPublicGalaxy({...args,scopeid:body.scopeid},env,{
@@ -263,9 +285,7 @@ export async function handleNativeLocOperation(request,env={},{
         throw refusal('Invalid MCP article statistics scope',400);
       const data=await selected.db.transaction()
         .setIsolationLevel('repeatable read').execute(async trx=>{
-          const rights=await loadMcpLocAccess(trx,claims.email,{
-            dialect:selected.dialect,engine:selected.engine,transactional:true});
-          claims.me=rights.canWrite;claims.grants=rights.grants;
+          // Reuse the verified published-JS grants already attached to claims.
           return articleDistribution(body.args||{},env,{
             database:async()=>({...selected,db:trx}),
             borrowed:true,inTransaction:true
@@ -276,10 +296,7 @@ export async function handleNativeLocOperation(request,env={},{
     if(body.kind==='mcp-conversation'){
       if(host!==MCP_HOST)throw refusal('MCP conversation endpoint only',404);
       const result=await selected.db.transaction().execute(async trx=>{
-        const rights=await loadMcpLocAccess(trx,claims.email,{
-          dialect:selected.dialect,engine:selected.engine,transactional:true});
-        claims.me=rights.canWrite;claims.grants=rights.grants;
-        if(writeKinds.has(body.kind)&&!rights.canWrite)
+        if(writeKinds.has(body.kind)&&!claims.me)
           throw refusal('LOC write permission denied',403);
         return executeLocConversation(trx,body,claims);
       });
@@ -303,30 +320,14 @@ export async function handleNativeLocOperation(request,env={},{
       // there is no arbitrary operation-count cap or separate auth channel.
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
       const operations=body.operations;
-      // Legacy cached clients may still send keywordSyncScope:''.
-      // Reject a nonempty request instead of reporting a fake successful
-      // Pattern sync; current clients send only the actual SQL operations.
-      if(body.keywordSyncScope)
-        throw refusal('Retired Keyword sync requested; reload LOC',409);
-      if(body.scopeid!==''||!Array.isArray(operations)||operations.length<1||
-        operations.some(entry=>!entry||typeof entry!=='object'||
-          Array.isArray(entry)||!['insert','update','delete','upsert','update_batch','append_media_link'].includes(entry.p_operation)||
-          typeof entry.p_table!=='string'))
-        throw refusal('Invalid LOC management transaction',400);
       const results=await selected.db.transaction().execute(async trx=>{
-        const verifiedRights=host===MCP_HOST
-          ?await loadMcpLocAccess(trx,claims.email,{
-            dialect:selected.dialect,engine:selected.engine,transactional:true})
-          :await readLocAccess(trx,claims.email,{
-            dialect:selected.dialect,engine:selected.engine,website:true,transactional:true});
-        claims.me=verifiedRights.canWrite;
-        claims.grants=verifiedRights.grants;
+        const verifiedRights={canWrite:claims.me,grants:claims.grants};
         if(!verifiedRights.canWrite||!claims.grants.some(grant=>
           grant==='global:manage'||grant.endsWith(':manage')))
           throw refusal('LOC management delegation required',403);
         bindLocAuthorization(trx,{role:claims.role,claims,engine:selected.engine});
         const outcomes=[];
-        for(const payload of operations){
+        for(const [index,payload] of operations.entries()){
           if(payload.p_operation==='append_media_link'&&(
             selected.engine!=='postgres'||host!==WEB_HOST))
             throw refusal('MediaAnchor link is LOC Web PostgreSQL-only',403);
@@ -346,7 +347,8 @@ export async function handleNativeLocOperation(request,env={},{
               (selected.engine==='postgres'&&!modelName))
               throw refusal('LOC fixed management policy denied',403);
             if(selected.engine==='postgres'){
-              output=await executeManagedKyselyWrite(trx,action,{modelName});
+              output=await executeManagedKyselyWrite(trx,action,{
+                modelName,prepared:preparedWrites?.[index]});
             }else if(payload.p_table==='api.manage'){
               output={data:await applyManagedWrite(trx,
                 registryRelationForEngine(selected.engine),payload)};
@@ -358,7 +360,8 @@ export async function handleNativeLocOperation(request,env={},{
             }
           }else{
             output=selected.engine==='postgres'
-              ?await executeManagedKyselyWrite(trx,action)
+              ?await executeManagedKyselyWrite(trx,action,{
+                prepared:preparedWrites?.[index]})
               :await executeCrossEngineManagedWrite(trx,action,{
                 engine:selected.engine,namespace:selected.namespace,
                 role:claims.role,claims
@@ -395,14 +398,7 @@ export async function handleNativeLocOperation(request,env={},{
         // Resolve the existing authenticated Manage projection on this exact
         // transaction connection. No preliminary role SELECT, new RLS, or
         // second pooled client is used for the same logical operation.
-        const rights=host===MCP_HOST
-          ?await loadMcpLocAccess(trx,claims.email,{
-            dialect:selected.dialect,engine:selected.engine,transactional:true})
-          :await readLocAccess(trx,claims.email,{
-            dialect:selected.dialect,engine:selected.engine,website:true,
-            transactional:true});
-        claims.me=rights.canWrite;
-        claims.grants=rights.grants;
+        const rights={canWrite:claims.me,grants:claims.grants};
         if(!rights.canWrite||!rights.grants.some(grant=>
           grant==='global:manage'||grant.endsWith(':manage')))
           throw refusal('LOC management delegation required',403);
@@ -422,7 +418,8 @@ export async function handleNativeLocOperation(request,env={},{
             const modelName=fixedPolicyWriteModel({engine:selected.engine},body,
               claims.role,claims);
             if(!modelName)throw refusal('Fixed LOC management model denied',403);
-            return (await executeManagedKyselyWrite(trx,body,{modelName})).data;
+            return (await executeManagedKyselyWrite(trx,body,{
+              modelName,prepared:preparedWrites})).data;
           }
           if(payload.p_table==='api.manage'){
             if(!Array.isArray(payload.p_filters)||!payload.p_filters.length)
@@ -431,7 +428,8 @@ export async function handleNativeLocOperation(request,env={},{
           }
         }
         return selected.engine==='postgres'
-          ?(await executeManagedKyselyWrite(trx,body)).data
+          ?(await executeManagedKyselyWrite(trx,body,{
+            prepared:preparedWrites})).data
           :(await executeCrossEngineManagedWrite(trx,body,{
             engine:selected.engine,namespace:selected.namespace,
             role:claims.role,claims
@@ -448,10 +446,7 @@ export async function handleNativeLocOperation(request,env={},{
       if(selected.tableName)
         throw refusal('LOC MCP control database is unavailable for writing',503);
       const result=await selected.db.transaction().execute(async trx=>{
-        const rights=await loadMcpLocAccess(trx,claims.email,{
-          dialect:selected.dialect,engine:selected.engine,transactional:true});
-        claims.me=rights.canWrite;claims.grants=rights.grants;
-        if(!rights.canWrite)throw refusal('LOC write permission denied',403);
+        if(!claims.me)throw refusal('LOC write permission denied',403);
         return runMcp(trx);
       });
       return reply({data:result.data});
@@ -460,9 +455,6 @@ export async function handleNativeLocOperation(request,env={},{
     // Manage projection and run the scoped SELECT in the same read snapshot.
     const result=await selected.db.transaction()
       .setIsolationLevel('repeatable read').execute(async trx=>{
-        const rights=await loadMcpLocAccess(trx,claims.email,{
-          dialect:selected.dialect,engine:selected.engine,transactional:true});
-        claims.me=rights.canWrite;claims.grants=rights.grants;
         return runMcp(trx);
       });
     return reply({data:result.data});
