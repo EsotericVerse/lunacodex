@@ -289,3 +289,87 @@ test('Keyword checkpoint preserves the ramp across HTTP requests without resetti
   assert.ok(stored[1].target>=stored[0].target);
   assert.equal(stored[1].target,4096);
 });
+
+test('nonmultiple final 4096/8192 tail is saved before finalizing, then resumes without reading',async()=>{
+  const total=8192+17;
+  const docs=Array.from({length:total},(_,i)=>doc(
+    String(i+1).padStart(8,'0'),'月光'));
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  let saved=null,readCount=0,finalized=0;
+  const checkpoints=[],phases=[];
+  const opts={
+    items:terms,groups,expectedCount:total,pageSize:4096,
+    maxRowsPerRun:8192,minRowsPerRun:4096,checkpointRows:4096,
+    deferFinalization:true,now:()=>0,
+    readMetadataPage:async({cursor,limit})=>{
+      readCount++;
+      const from=cursor??0,rows=docs.slice(from,from+limit);
+      return {rows,nextCursor:from+rows.length};
+    },
+    onCheckpoint:async receipt=>{
+      saved=structuredClone(receipt);
+      checkpoints.push({scanned:saved.scanned,pending:saved.finalizePending===true});
+    },
+    onProgress:({phase})=>phases.push(phase),
+    finalize:async counts=>{
+      finalized++;
+      assert.equal(counts.scannedDocuments,total);
+      assert.equal(counts.itemDocuments.ITEM0001,total);
+    }
+  };
+  const first=await analyzeItemKeywordCounts(opts);
+  assert.equal(first.incomplete,true);
+  assert.equal(first.scanned,8192);
+  assert.equal(finalized,0);
+  const tail=await analyzeItemKeywordCounts({...opts,resume:saved});
+  assert.equal(tail.incomplete,true);
+  assert.equal(tail.scanned,total);
+  assert.equal(tail.finalizePending,true);
+  assert.equal(saved.finalizePending,true);
+  assert.equal(saved.scanned,total);
+  assert.equal(finalized,0,'tail must checkpoint rather than commit totals in the same request');
+  const readBeforeFinalize=readCount;
+  const complete=await analyzeItemKeywordCounts({
+    ...opts,resume:saved,
+    readMetadataPage:async()=>{throw Error('Finalization must not scan the tail again');}
+  });
+  assert.equal(readCount,readBeforeFinalize);
+  assert.equal(complete.scannedDocuments,total);
+  assert.equal(finalized,1);
+  assert.ok(phases.includes('finalizing'));
+  assert.ok(checkpoints.some(value=>value.scanned===8192));
+  assert.deepEqual(checkpoints.at(-1),{scanned:total,pending:true});
+});
+
+test('tail checkpoint survives finalization failure and retries without reclassifying',async()=>{
+  const count=4096+13;
+  const docs=Array.from({length:count},(_,i)=>doc(
+    String(i+1).padStart(8,'0'),'月光'));
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  let saved=null,attempts=0,reads=0;
+  const options={
+    items:terms,groups,expectedCount:count,
+    pageSize:4096,maxRowsPerRun:8192,minRowsPerRun:4096,
+    checkpointRows:4096,deferFinalization:true,now:()=>0,
+    readMetadataPage:async({cursor,limit})=>{
+      reads++;
+      const from=cursor??0;
+      return {rows:docs.slice(from,from+limit),
+        nextCursor:Math.min(count,from+limit)};
+    },
+    onCheckpoint:async state=>{saved=structuredClone(state);},
+    finalize:async()=>{if(++attempts===1)throw Error('Transient final SQL failure');}
+  };
+  const tail=await analyzeItemKeywordCounts(options);
+  assert.equal(tail.incomplete,true);
+  assert.equal(saved.scanned,count);
+  assert.equal(saved.finalizePending,true);
+  const fetched=reads;
+  await assert.rejects(analyzeItemKeywordCounts({...options,resume:saved}),
+    /Transient final SQL failure/);
+  assert.equal(saved.scanned,count,'failure cannot erase persisted tail');
+  const completed=await analyzeItemKeywordCounts({...options,resume:saved});
+  assert.equal(completed.scannedDocuments,count);
+  assert.equal(attempts,2);
+  assert.equal(reads,fetched,'retrying finalization must not SELECT Galaxy again');
+});
