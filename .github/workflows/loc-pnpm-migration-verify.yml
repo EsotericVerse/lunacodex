@@ -1,0 +1,43 @@
+name: LOC pnpm migration verification (temporary)
+on:
+  push:
+    branches:
+      - chore/loc-pnpm-20261123
+
+permissions:
+  contents: write
+
+jobs:
+  pnpm-migration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+      - name: Import the existing npm dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm import
+          pnpm install --lockfile-only --no-frozen-lockfile
+          test -s pnpm-lock.yaml
+          git rm package-lock.json
+          git add pnpm-lock.yaml
+          git -c user.name='LOC dependency migration' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore(deps): replace npm lockfile with pnpm lockfile'
+          git push origin HEAD:chore/loc-pnpm-20261123
+      - name: Verify frozen pnpm installation
+        run: pnpm install --frozen-lockfile
+      - name: Verify syntax and regression suites
+        run: |
+          pnpm run check:syntax
+          node --test tests/*.test.mjs
+      - name: Verify Next.js static export
+        run: |
+          pnpm run build:static
+          node --test tests/static-export-assets.test.mjs
