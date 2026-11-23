@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {buildEraRiver} from '../app/loc/culture/time-trace-river.mjs';
+import {buildEraRiver,nextEditorEraExpansion} from '../app/loc/culture/time-trace-river.mjs';
 import {resolveTimeSegments,resolveTimeTrace} from '../app/loc/culture/time-anchor-ranges.mjs';
 import {timelinePainted} from '../app/modular/modules/culture-timeline/timeline-paint-health.mjs';
 
@@ -38,7 +38,7 @@ test('management expands Era -> Period -> dated anchors using the existing snaps
     editorOnly:true,scopeId:scope
   });
   assert.deepEqual(model.groups.map(row=>row.label),[
-    '第一時代','期間｜第一時期','定錨點','未歸屬定錨點'
+    '第一時代','期間｜第一時期','定錨點'
   ]);
   assert.deepEqual(model.items.map(row=>row.entry_type),[
     'era','period','anchor','anchor'
@@ -128,4 +128,44 @@ test('Time record transaction completion cannot wait forever for a vis onFirstPa
   assert.match(management,/timeRiverFirstPaint\|\|timeEditorFrameReady\|\|!editorEraRiver\.groups\.length/);
   assert.doesNotMatch(management,/label='正在建立時間河道…'/);
   assert.doesNotMatch(management,/setTimeout\(\(\)=>setTimeRiverFirstPaint\(true\)/);
+});
+
+test('TimeAnchor begins with chronological Era entries only, without eager Periods/Dates',()=>{
+  const latest={...era,uid:'ERA00002',title:'較晚時代',start_date:'2028-01-01',
+    end_date:'2028-12-31',ranges:[{start_date:'2028-01-01',end_date:'2028-12-31',
+      invalid:false}],anchor_ids:[]};
+  const initial=buildEraRiver([latest,...dates,period,era],[],{
+    editorOnly:true,scopeId:scope
+  });
+  assert.deepEqual(initial.groups.map(group=>group.label),['第一時代','較晚時代']);
+  assert.deepEqual(initial.items.map(item=>item.entry_type),['era','era']);
+  assert.equal(initial.groups.every(group=>group.depth===undefined),true);
+});
+
+test('TimeAnchor keeps one Era and one Period open, and closes siblings',()=>{
+  const e1='trace:lo3rwang:ERA00001',e2='trace:lo3rwang:ERA00002';
+  const p1=e1+':period:PERI0001',p2=e2+':period:PERI0002';
+  assert.deepEqual(nextEditorEraExpansion([],e1),[e1]);
+  assert.deepEqual(nextEditorEraExpansion([e1],p1),[e1,p1]);
+  assert.deepEqual(nextEditorEraExpansion([e1,p1],p1),[e1]);
+  assert.deepEqual(nextEditorEraExpansion([e1,p1],e2),[e2]);
+  assert.deepEqual(nextEditorEraExpansion([e2],p2),[e2,p2]);
+  assert.deepEqual(nextEditorEraExpansion([e2,p2],e2),[]);
+  const orphan='time-undefined:lo3rwang';
+  assert.deepEqual(nextEditorEraExpansion([e1,p1],orphan),[orphan]);
+  assert.deepEqual(nextEditorEraExpansion([orphan],orphan),[]);
+});
+
+test('TimeAnchor management caps both vis and fallback height',()=>{
+  const chart=file('app/modular/modules/culture-timeline/CultureTimeline.jsx');
+  const manage=file('app/modular/features/Culture.jsx');
+  const css=file('app/styles/scope-system.css');
+  assert.match(chart,/compactHierarchy=false/);
+  assert.match(chart,/timelineMinHeight=compactHierarchy\?180/);
+  assert.match(chart,/timelineMaxHeight=compactHierarchy\?560/);
+  assert.match(manage,/nextEditorEraExpansion\(current,groupId\)/);
+  assert.match(manage,/compactHierarchy/);
+  assert.match(css,/\.scope-time-edit-root \.scope-time-recovery-river\{/);
+  assert.match(css,/max-height:min\(62dvh,560px\)/);
+  assert.match(css,/overflow-y:auto/);
 });
