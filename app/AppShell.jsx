@@ -17,6 +17,7 @@ import {PUBLISHED_SITE_BOOTSTRAP} from './modular/published-site-bootstrap.js';
 import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-source-status.mjs';
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
 import {navigationHref} from './modular/routing/scope-registry.js';
+import {managementRouteHref} from './modular/routing/management-route-table.mjs';
 import PageResourceBoundary from './modular/PageResourceBoundary';
 import {recoverChunkOnce} from './loc/ui/chunk-recovery.mjs';
 import BottomNavIcon,{DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
@@ -537,12 +538,12 @@ function AppShellInner({children,runtime}){
   // Scope-only editors. Both entries are visible to guests until clicked.
   const showHomeEditEntry=isScopeHomepage&&scopeId!=='local'&&Boolean(scopeId)&&
     (scopeId==='loc'||(editScopeAvailable&&(!currentScope.nativeOnly||native)));
-  // Keep existing query parameters (especially dynamic scopeid) on iOS and web.
-  const editTabHref=(route,key,value)=>{
-    const href=navigationHref(navScopeId,route,native);
-    return href+(href.includes('?')?'&':'?')+
-      encodeURIComponent(key)+'='+encodeURIComponent(value);
-  };
+  // All Group/Scope/User destinations share the published routing table.
+  // The route builder preserves native index.html and dynamic scopeid before
+  // appending section/edit query parameters.
+  const managementHref=(level,key)=>managementRouteHref(
+    level,key,navScopeId,{native}
+  );
   const editingDockVisible=Boolean(editDock?.active&&editDock.scopeId===navScopeId);
   const locAdminEdit=navScopeId==='loc';
   const editSegments=String(pathname||'').split('/').filter(Boolean);
@@ -554,30 +555,29 @@ function AppShellInner({children,runtime}){
     :editSegments.includes('trace')&&editSegments.includes('manage')?'trace'
     :null;
   const isFeatureEditMode=Boolean(editingDockVisible&&featureEditReturn);
-  // Each editing level has exactly four destinations + Save + Discard.
-  // Group edit dock: System Admin replaces the old first slot, and
-  // People/Works replaces Trace Map. Admin access is still checked by
-  // ManagementAccess at /admin/; the dock grants no privileges.
+  // Four fixed destinations, followed by Save/Cancel. Group works lives
+  // at /manage; Scope space management lives at /trace/manage?section=anchor.
+  // Only the Group article link requests edit=1 explicitly.
   const editDestinations=locAdminEdit?[
     ...(editDock?.canManageGlobal?[{id:'system',icon:'settings',label:translateUiField(activeLocale,'系統管理'),
-      href:'/admin/'}]:[]),
+      href:managementHref('group','system')}]:[]),
     {id:'keywords',icon:'keywords',label:translateUiField(activeLocale,'關鍵詞'),
-      href:editTabHref('statics/manage','edit','1')},
+      href:managementHref('group','keywords')},
     {id:'members',icon:'culture',label:translateUiField(activeLocale,'人員作品管理'),
-      href:editTabHref('culture/manage','edit','1')},
+      href:managementHref('group','members')},
     {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
-      href:editTabHref('search/manage','section','publish')+'&edit=1'}
+      href:managementHref('group','articles')}
   ]:[
     {id:'time',icon:'culture',label:translateUiField(activeLocale,'時間定錨'),
-      href:editScopeAvailable?editTabHref('culture/manage','edit','1'):''},
+      href:editScopeAvailable?managementHref('scope','time'):''},
     {id:'keywords',icon:'keywords',label:translateUiField(activeLocale,'關鍵詞'),
-      href:editScopeAvailable&&navScopeId!=='local'?editTabHref('statics/manage','edit','1'):''},
+      href:editScopeAvailable&&navScopeId!=='local'?managementHref('scope','keywords'):''},
     {id:'manage',icon:'trace',label:navScopeId==='local'?'管理':translateUiField(activeLocale,'空間定錨'),
       href:navScopeId==='local'?navigationHref('local','manage',native)
-        :editTabHref('manage','section','anchor')+'&edit=1'},
+        :managementHref('scope','spatial')},
     {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
       href:navScopeId==='local'?navigationHref('local','search',native)
-        :editTabHref('search/manage','section','publish')+'&edit=1'}
+        :managementHref('scope','articles')}
   ];
   const editTabs=[
     {id:'save',icon:'save',label:translateUiField(activeLocale,'儲存'),action:'save'},
@@ -591,7 +591,7 @@ function AppShellInner({children,runtime}){
     ...['culture','statics','trace','search'].map(id=>{
       const feature=FEATURES.find(item=>item.id===id);
       return {id,icon:id,label:copy.features?.[id]?.title||feature.label,
-        href:navigationHref(localNavigation?'local':navScopeId,feature.path,native)};
+        href:managementRouteHref('user',id,localNavigation?'local':navScopeId,{native})};
     }),
     {id:'settings',icon:'settings',label:copy.common.settings||'設定',
       href:native?'/local/settings/index.html?scopeid='+encodeURIComponent(navScopeId)+(localNavigation?'&section=local':'')
