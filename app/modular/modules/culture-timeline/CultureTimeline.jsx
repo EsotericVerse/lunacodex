@@ -259,6 +259,9 @@ export default function CultureTimeline({
   // The public Culture source river uses the library's natural content height
   // with a viewport cap; group count must never determine its container size.
   naturalSourceHeight=false,
+  // The management-only Era browser has a bounded viewport. The whole
+  // historical graph remains in memory, but only the chosen branch opens.
+  compactHierarchy=false,
   // A LOC annual preview has a fixed time viewport; expanding groups is allowed.
   readOnlyViewport=false,
   onGroupToggle=null,
@@ -337,10 +340,10 @@ export default function CultureTimeline({
   // their natural height, and opening children adds real rows. The date axis
   // follows the last row. No group-count sizing or internal scroll cap.
   // Other Timeline consumers retain their established sizing behavior.
-  const timelineMinHeight=naturalSourceHeight?null:heightVariant==='double'
+  const timelineMinHeight=compactHierarchy?180:naturalSourceHeight?null:heightVariant==='double'
     ?Math.max(186,110+compactGroupCount*58)
     :Math.max(180,96+compactGroupCount*46);
-  const timelineMaxHeight=naturalSourceHeight?null:heightVariant==='double'
+  const timelineMaxHeight=compactHierarchy?560:naturalSourceHeight?null:heightVariant==='double'
     ?Math.max(timelineMinHeight+28,148+compactGroupCount*72)
     :Math.max(360,Math.min(760,180+compactGroupCount*92));
   const timelineHeightOptions=naturalSourceHeight
