@@ -3,7 +3,7 @@ import {parseBlockImage} from './hero-image.mjs';
 import UiText from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 
-import {useMemo,useState} from 'react';
+import {Fragment,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useEditDock} from '../../modular/edit-dock';
 import {navigationHref} from '../../modular/routing/scope-registry';
@@ -311,18 +311,18 @@ export default function ScopeEditableBlocks({
           ?event=>{if(!isInteractiveContentTarget(event.target))selectSuggestion(slot.text||slot.subtitle||slot.title)}
           :undefined}
         >
-          {motionHome&&slot.order===1&&!empty?<motion.span className="loc-home-motion-hero-line"
+          {motionHome&&slot.order===1&&!empty?<motion.span key="hero-line" className="loc-home-motion-hero-line"
             aria-hidden="true" initial={reduceMotion?false:{scaleX:0}} animate={{scaleX:1}}
             transition={{duration:reduceMotion?0:.85,delay:reduceMotion?0:.16,ease:[.22,.8,.22,1]}}/>:null}
           {typeof renderDisplay==='function'
-            ?renderDisplay(slot)
-            :<>
+            ?<Fragment key="slot-display">{renderDisplay(slot)}</Fragment>
+            :<Fragment key="slot-display">
               {slot.eyebrow?<p className="loc-eyebrow">{slot.eyebrow}</p>:null}
               {slot.title?<Heading>{slot.title}</Heading>:null}
               {slot.subtitle?<p className="loc-subtitle scope-block-subtitle">{HomeBlock.plainBlockLine(slot.subtitle)}</p>:null}
               {slot.text?<div className="scope-rich-surface" dangerouslySetInnerHTML={{__html:slot.text}}/>:null}
               {renderEntities(slot.entities,slot.bubbleColumns)}
-            </>}
+            </Fragment>}
         </HomeDisplayTag>;
         return heroSlotOrder&&slot.order===heroSlotOrder?[node,toggleButton]:[node];
       })}
@@ -373,14 +373,14 @@ export default function ScopeEditableBlocks({
           onDone={notice=>{rememberSavedRows();setEditingSlot(null);setMessage(notice)}}
         />:<>
           {typeof renderDisplay==='function'
-            ?renderDisplay(slot)
-            :<>
+            ?<Fragment key="slot-display">{renderDisplay(slot)}</Fragment>
+            :<Fragment key="slot-display">
               {slot.eyebrow?<p className="loc-eyebrow">{slot.eyebrow}</p>:null}
               {slot.title?<Heading>{slot.title}</Heading>:null}
               {slot.subtitle?<p className="loc-subtitle scope-block-subtitle">{HomeBlock.plainBlockLine(slot.subtitle)}</p>:null}
               {slot.text?<div className="scope-rich-surface" dangerouslySetInnerHTML={{__html:slot.text}}/>:null}
               {renderEntities(slot.entities,slot.bubbleColumns)}
-            </>}
+            </Fragment>}
           {canEdit&&allowEntities&&allowInlineChildAdd&&slot.entities.length<HomeBlock.entityLimit?<button
             type="button"
             className="loc-button scope-search-add-child"
