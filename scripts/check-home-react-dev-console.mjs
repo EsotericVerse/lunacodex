@@ -93,20 +93,24 @@ try{
   await call('Log.enable');
   await call('Page.navigate',{url});
 
-  const blockCount=await within(async()=>{
+  // The public snapshot contains five actual LOC homepage blocks. A single
+  // placeholder is rendered before the async snapshot resolves and must NOT
+  // count as proof that the real homepage has hydrated.
+  const hydrated=await within(async()=>{
     const result=await call('Runtime.evaluate',{
-      expression:'document.querySelectorAll("'+homeClass+'").length',
+      expression:'({count:document.querySelectorAll("'+homeClass+'").length,heading:document.querySelector(".loc-home-block__header h1")?.textContent?.trim()||""})',
       returnByValue:true
     });
-    return Number(result?.result?.value)||0;
-  },100000,'hydrated LOC homepage blocks');
+    const data=result?.result?.value;
+    return data?.count>=5&&data?.heading?data:null;
+  },100000,'five published LOC homepage blocks and hero heading');
 
   // The warning can arrive after async published Blocks resolve/hydrate.
   await sleep(3000);
   const captured=[...notes,serverLog].join('\n');
   assert.doesNotMatch(captured,keyWarning,
     'React key warning still occurs in the real developer console');
-  console.log('LOC development React console: '+blockCount+' rendered homepage blocks; no missing key warning');
+  console.log('LOC development React console: '+hydrated.count+' published homepage blocks, hero '+JSON.stringify(hydrated.heading)+'; no missing key warning');
 }finally{
   try{socket?.close();}catch{}
   try{browser?.kill('SIGTERM');}catch{}
