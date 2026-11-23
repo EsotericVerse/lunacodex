@@ -616,6 +616,38 @@ const importOccupiedTimesArgsSchema=z.strictObject({
   p_limit:z.number().int().min(1).max(100).default(60)
 });
 const IMPORT_OCCUPIED_TIME_COLUMNS=Object.freeze(['uid','createtime']);
+
+// Import-only Kysely conveniences. The verified caller owns its transaction,
+// the fixed action name owns the projection, and all inputs stay SQL-bound.
+// No query language, table argument or new authorization surface is exposed.
+async function authorizedImportGalaxy(trx,scope){
+  if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
+    reject('Import Scope access denied',403);
+  await sql`reset role`.execute(trx);
+  return 'silver.'+scope+'_galaxy';
+}
+function withinImportInstants(query,instants,duration,{wholeSeconds=false}={}){
+  const starts=[...new Set(instants.map(value=>Date.parse(value)))];
+  if(starts.some(ms=>!Number.isFinite(ms)||
+    wholeSeconds&&ms%1000!==0||!Number.isFinite(ms+duration)))
+    reject(wholeSeconds?'Import occupied-time seconds must be exact':
+      'Invalid source creation time');
+  // The original precise source time is retained for semantic matching.
+  // SQL only narrows the candidate set to its enclosing time window.
+  return query.where(eb=>eb.or(starts.map(ms=>eb.and([
+    eb('createtime','>=',new Date(ms).toISOString()),
+    eb('createtime','<',new Date(ms+duration).toISOString())
+  ]))));
+}
+async function readImportCandidatePage(query,table,columns,{after=null,limit=60}={}){
+  let ordered=query.orderBy('uid','asc').limit(limit+1);
+  if(after)ordered=ordered.where('uid','>',after);
+  const rows=await ordered.execute();
+  assertZModelSelectRows(table,columns,rows);
+  const page=rows.slice(0,limit);
+  return {data:{rows:page,nextCursor:rows.length>limit
+    ?String(page.at(-1).uid):null},count:page.length};
+}
 // Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
 const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
   'uid','type','title','description','attr','createtime'
@@ -811,11 +843,9 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const parsed=importSitePresenceArgsSchema.safeParse(args);
     if(!parsed.success)reject('Invalid Zod import site presence request');
     const {p_scope_id:scope,p_sites:sites}=parsed.data;
-    if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
-      reject('Import site Scope access denied',403);
-    await sql`reset role`.execute(trx);
+    const galaxy=await authorizedImportGalaxy(trx,scope);
     const keys=[...new Set(sites.map(site=>site.toLowerCase()))];
-    const rows=await trx.selectFrom('silver.'+scope+'_galaxy')
+    const rows=await trx.selectFrom(galaxy)
       .select(sql`lower(site)`.as('site_key'))
       .where(sql`lower(site)`,'in',keys)
       .distinct().execute();
@@ -832,34 +862,17 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const parsed=schema.safeParse(args);
     if(!parsed.success)reject('Invalid import identity candidate request');
     const {p_scope_id:scope,p_site:site,p_after_uid:after,p_limit:limit}=parsed.data;
-    if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
-      reject('Import identity Scope access denied',403);
-    await sql`reset role`.execute(trx);
-    const table='silver.'+scope+'_galaxy';
+    const table=await authorizedImportGalaxy(trx,scope);
     const columns=byId?IMPORT_SITE_ID_CANDIDATE_COLUMNS:IMPORT_CREATED_AT_CANDIDATE_COLUMNS;
     let query=trx.selectFrom(table).select(columns)
-      .where(sql`lower(${sql.ref('site')})`,'=',site.toLowerCase())
-      .orderBy('uid','asc').limit(limit+1);
-    if(after)query=query.where('uid','>',after);
+      .where(sql`lower(${sql.ref('site')})`,'=',site.toLowerCase());
     if(byId){
       query=query.where('site_id','in',[...new Set(parsed.data.p_site_ids)]);
     }else{
-      const milliseconds=[...new Set(parsed.data.p_instants.map(instant=>Date.parse(instant)))];
-      if(milliseconds.some(ms=>!Number.isFinite(ms)||!Number.isFinite(ms+1)))
-        reject('Invalid source creation time');
-      // A persisted timestamp can have collision-adjusted microseconds;
-      // compare within each source millisecond, including NULL date rows.
-      // No full-day or NULL-date Galaxy scan leaves the SQL runtime.
-      query=query.where(eb=>eb.or(milliseconds.map(ms=>eb.and([
-        eb('createtime','>=',new Date(ms).toISOString()),
-        eb('createtime','<',new Date(ms+1).toISOString())
-      ]))));
+      // Preserve bumped-microsecond matches and NULL-date legacy records.
+      query=withinImportInstants(query,parsed.data.p_instants,1);
     }
-    const rows=await query.execute();
-    assertZModelSelectRows(table,columns,rows);
-    const page=rows.slice(0,limit);
-    return {data:{rows:page,nextCursor:rows.length>limit
-      ?String(page.at(-1).uid):null},count:page.length};
+    return readImportCandidatePage(query,table,columns,{after,limit});
   }
   if(name==='import_occupied_createtimes'){
     // Timestamp uniqueness is global within this Scope, across every site
@@ -868,26 +881,12 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     const parsed=importOccupiedTimesArgsSchema.safeParse(args);
     if(!parsed.success)reject('Invalid import occupied-time request');
     const {p_scope_id:scope,p_seconds:seconds,p_after_uid:after,p_limit:limit}=parsed.data;
-    if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
-      reject('Import occupied-time Scope access denied',403);
-    const starts=[...new Set(seconds.map(s=>Date.parse(s)))];
-    if(starts.some(ms=>!Number.isFinite(ms)||ms%1000!==0||
-      !Number.isFinite(ms+1000)))
-      reject('Import occupied-time seconds must be exact');
-    await sql`reset role`.execute(trx);
-    const table='silver.'+scope+'_galaxy';
-    let query=trx.selectFrom(table).select(IMPORT_OCCUPIED_TIME_COLUMNS)
-      .where(eb=>eb.or(starts.map(ms=>eb.and([
-        eb('createtime','>=',new Date(ms).toISOString()),
-        eb('createtime','<',new Date(ms+1000).toISOString())
-      ]))))
-      .orderBy('uid','asc').limit(limit+1);
-    if(after)query=query.where('uid','>',after);
-    const rows=await query.execute();
-    assertZModelSelectRows(table,IMPORT_OCCUPIED_TIME_COLUMNS,rows);
-    const page=rows.slice(0,limit);
-    return {data:{rows:page,nextCursor:rows.length>limit
-      ?String(page.at(-1).uid):null},count:page.length};
+    const table=await authorizedImportGalaxy(trx,scope);
+    const query=withinImportInstants(
+      trx.selectFrom(table).select(IMPORT_OCCUPIED_TIME_COLUMNS),seconds,1000,
+      {wholeSeconds:true});
+    return readImportCandidatePage(query,table,IMPORT_OCCUPIED_TIME_COLUMNS,
+      {after,limit});
   }
   if(name==='anchor_import_page'){
     // LOC Web import only. The native gateway verifies Better Auth Session
