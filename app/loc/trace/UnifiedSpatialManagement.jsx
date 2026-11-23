@@ -38,7 +38,7 @@ export default function UnifiedSpatialManagement({scopeId,initialType='point'}){
     {route?<RouteManager key={scopeId+':'+selected.type+':'+selected.uid+':'+selected.serial}
       scopeId={scopeId} mode="all" treeMode selectedRecordUid={selected.uid}
       initialType={selected.type} spatialData={spatial} reloadSpatial={()=>query.mutate()}
-      onRegisterLeave={registerLeave}/>:<TraceManagementPanel
+      onRegisterLeave={registerLeave} onRemoved={()=>setSelected(old=>({type:'point',uid:'',serial:old.serial+1}))}/>:<TraceManagementPanel
       key={scopeId+':point:'+selected.uid+':'+selected.serial}
       scopeId={scopeId} mode="anchor" embedded selectedUid={selected.uid}
       spatialData={spatial} reloadSpatial={()=>query.mutate()} onRegisterLeave={registerLeave}/>}
