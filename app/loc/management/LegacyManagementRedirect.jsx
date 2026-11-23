@@ -12,7 +12,10 @@ export default function LegacyManagementRedirect({target='trace',label='空間�
     const matcher=isGroup
       ?/\/culture\/manage(?:\/index\.html|\/)?$/
       :/\/manage(?:\/index\.html|\/)?$/;
-    const next=url.pathname.replace(matcher,isGroup?'/manage/':'/trace/manage/');
+    const nativeFile=/\/index\.html$/.test(url.pathname);
+    const destination=isGroup?'manage':'trace/manage';
+    const next=url.pathname.replace(matcher,
+      '/'+destination+(nativeFile?'/index.html':'/'));
     if(next===url.pathname)return;
     url.pathname=next;
     if(!isGroup&&!url.searchParams.has('section'))
