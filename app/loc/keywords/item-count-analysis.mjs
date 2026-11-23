@@ -12,6 +12,55 @@ const count=x=>Math.max(0,Number(x)||0);
 // budget influences growth, never forces repeated 1024-row SQL requests.
 export const KEYWORD_SCAN_START_ROWS=4096;
 export const KEYWORD_SCAN_MAX_ROWS=8192;
+export const KEYWORD_SCAN_START_RATE=1024;
+export const KEYWORD_SCAN_MAX_RATE=8192;
+export const KEYWORD_SCAN_RATE_STEP=1024;
+export const KEYWORD_SCAN_CHECKPOINT_ROWS=4096;
+
+// Processing throughput and persisted SQL progress are distinct controls.
+// The next one-second window grows by only 1024 if the previous target was
+// actually completed at that speed. Checkpoints never reset this controller.
+export function createKeywordScanRate({
+  initial=KEYWORD_SCAN_START_RATE,
+  maximum=KEYWORD_SCAN_MAX_RATE,step=KEYWORD_SCAN_RATE_STEP,
+  now=()=>Date.now(),sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+}={}){
+  if(!Number.isSafeInteger(initial)||initial<1||
+      !Number.isSafeInteger(maximum)||maximum<initial||
+      !Number.isSafeInteger(step)||step<1||
+      typeof now!=='function'||typeof sleep!=='function')
+    throw new TypeError('Invalid Keyword scan rate');
+  let target=initial,started=now(),reserved=0,completed=0;
+  return {
+    get target(){return target;},
+    async take(remaining){
+      if(!Number.isSafeInteger(remaining)||remaining<1)
+        throw new TypeError('Invalid Keyword scan work count');
+      for(;;){
+        const time=now(),elapsed=Math.max(0,time-started);
+        if(elapsed>=1000){
+          // An over-budget CPU/SQL window does NOT qualify for a promotion.
+          // An incomplete window never demotes the carried speed target.
+          if(completed>=target&&elapsed<=1250)
+            target=Math.min(maximum,target+step);
+          started=time;reserved=0;completed=0;
+        }
+        const available=target-reserved;
+        if(available>0){
+          const granted=Math.min(remaining,available);
+          reserved+=granted;
+          return granted;
+        }
+        await sleep(Math.max(1,1000-elapsed));
+      }
+    },
+    complete(rows){
+      if(!Number.isSafeInteger(rows)||rows<1||completed+rows>reserved)
+        throw new TypeError('Invalid Keyword scan completion');
+      completed+=rows;
+    }
+  };
+}
 const KEYWORD_SCAN_PAGE_OPTIONS=Object.freeze({
   maximum:KEYWORD_SCAN_MAX_ROWS,targetChars:32*1024*1024
 });
@@ -138,7 +187,10 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
 export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   readMetadataPage,readContent,finalize,onCheckpoint=null,onProgress=()=>{},
   resume=null,pageSize=KEYWORD_SCAN_START_ROWS,timeBudgetMs=null,now=()=>Date.now(),minChars=0,
-  maxRowsPerRun=null,minRowsPerRun=null,checkpointRows=8192}={}){
+  maxRowsPerRun=null,minRowsPerRun=null,
+  checkpointRows=KEYWORD_SCAN_CHECKPOINT_ROWS,
+  paceRows=false,rateSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+}={}){
   const a=createItemCountAccumulator(items,groups,resume,{minChars});
   const valid=resume?.scanMode==='item_count_v1'&&resume.fingerprint===a.fingerprint&&
     Object.hasOwn(resume,'cursor');
@@ -154,10 +206,21 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     throw new TypeError('Invalid Keyword adaptive batch bounds');
   if(onCheckpoint&&(!Number.isSafeInteger(checkpointRows)||checkpointRows<1))
     throw new TypeError('Invalid Keyword checkpoint interval');
+  // 4096-row indexed SQL pages align durable checkpoints without dividing
+  // the per-second processing budget into artificial 296-row fragments.
   const sizer=createTextAdaptiveRows({
-    initial:pageSize,minimum:Math.min(pageSize,KEYWORD_SCAN_START_ROWS),
-    ...KEYWORD_SCAN_PAGE_OPTIONS
+    ...KEYWORD_SCAN_PAGE_OPTIONS,
+    initial:pageSize,maximum:Math.min(KEYWORD_SCAN_START_ROWS,
+      KEYWORD_SCAN_PAGE_OPTIONS.maximum),
+    minimum:Math.min(pageSize,KEYWORD_SCAN_START_ROWS)
   });
+  const pace=paceRows?createKeywordScanRate({
+    initial:valid&&Number.isSafeInteger(resume?.targetRowsPerSecond)
+      ?Math.max(KEYWORD_SCAN_START_RATE,
+        Math.min(KEYWORD_SCAN_MAX_RATE,resume.targetRowsPerSecond))
+      :KEYWORD_SCAN_START_RATE,
+    now,sleep:rateSleep
+  }):null;
   let lastCheckpoint=scanned,extended=false;
   // Measure actual completed scan throughput. The 1024 rows/second goal is
   // an acceptance metric, not a forced SQL LIMIT or an artificial throttle.
@@ -165,7 +228,8 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     Math.max(1,now()-started));
   const checkpoint=async()=>{
     if(onCheckpoint&&lastCheckpoint!==scanned){
-      await onCheckpoint({...a.state,cursor});
+      await onCheckpoint({...a.state,cursor,
+        ...(pace?{targetRowsPerSecond:pace.target}:{})});
       lastCheckpoint=scanned;
     }
   };
@@ -210,7 +274,17 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
       }
       pageChars=ordered.reduce((sum,row)=>sum+
         String(row?.title??'').length+String(row?.content??'').length,0);
-      a.absorb(ordered);
+      if(pace){
+        // The SQL page may contain 4096 rows, but CPU work starts at a
+        // 1024 rows/sec budget and ramps gently up to 8192. A saved page
+        // is not a new speed window; unused capacity carries straight on.
+        for(let index=0;index<ordered.length;){
+          const size=await pace.take(ordered.length-index);
+          a.absorb(ordered.slice(index,index+size));
+          pace.complete(size);
+          index+=size;
+        }
+      }else a.absorb(ordered);
     }
     a.state.scanned=scanned;
     sizer.observe(page.rows.length,pageChars);
@@ -221,7 +295,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
       if(timeBudgetMs!==null&&elapsed*2>timeBudgetMs*0.65){
         await checkpoint();
         onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,
-          rowsPerSecond:rate()});
+          rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
         return {incomplete:true,scanned,parsed:a.state.parsed};
       }
       extended=true;
@@ -229,7 +303,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     if(onCheckpoint&&scanned-lastCheckpoint>=checkpointRows)
       await checkpoint();
     onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,
-      rowsPerSecond:rate()});
+      rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
     if(onCheckpoint&&(
       runLimit!==null&&scanned-startedScanned>=runLimit||
       timeBudgetMs!==null&&elapsed>=timeBudgetMs*0.65)){
@@ -242,7 +316,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   const result=a.totals();
   await finalize(result);
   onProgress({phase:'completed',completed:scanned,parsed:a.state.parsed,
-    rowsPerSecond:rate()});
+    rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
   return result;
 }
 export async function readItemKeywordProjection(db,scope,{items,groups,start='',end='',
