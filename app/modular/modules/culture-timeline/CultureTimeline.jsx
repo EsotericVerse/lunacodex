@@ -8,6 +8,7 @@ import {DataSet} from 'vis-data/esnext';
 import {Timeline} from 'vis-timeline/esnext';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import {CultureTimelineModel} from './culture-timeline-model';
+import {timelinePainted} from './timeline-paint-health.mjs';
 import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
 
 // Stable defaults matter: an inline [] or {} used as a hook dependency
@@ -352,14 +353,7 @@ export default function CultureTimeline({
             onFirstPaintRef.current?.();
           return;
         }
-        const root=containerRef.current;
-        const visible=selector=>Array.from(root?.querySelectorAll(selector)||[])
-          .some(node=>{
-            const box=node.getBoundingClientRect();
-            return box.width>2&&box.height>2;
-          });
-        if(visible('.vis-panel.vis-left .vis-label')&&
-          visible('.vis-panel.vis-center .vis-item'))
+        if(timelinePainted(containerRef.current))
           onFirstPaintRef.current?.();
         // An empty canvas will be repaired by the trace paint-health effect.
         // Do not schedule the large editor before the actual river.
@@ -636,25 +630,27 @@ export default function CultureTimeline({
   },[heightVariant,ready,rows]);
 
 
-  // Time edit has no separate density fallback. A successful DataSet mount
-  // does not prove the vis-timeline label or item geometry was painted.
+  // A ready DataSet can still be clipped or hidden by layout/CSS. Check
+  // actual pixels intersecting the vis panels, not just nonzero DOM boxes.
+  // Even an Era tree with only groups (no dated bars) must display its
+  // parent labels and let the management editor open.
   useEffect(()=>{
-    if(mode!=='trace'||!ready||!rows.length||!extraGroups.length)return;
-    let cancelled=false;
-    const hasVisible=selector=>Array.from(containerRef.current?.querySelectorAll(selector)||[])
-      .some(el=>{const box=el.getBoundingClientRect();return box.width>2&&box.height>2});
+    if(mode!=='trace'||!ready||!extraGroups.length||chartError)return;
+    let cancelled=false,frame=0;
     const timer=window.setTimeout(()=>{
-      if(cancelled)return;
-      if(hasVisible('.vis-panel.vis-left .vis-label')&&
-        hasVisible('.vis-panel.vis-center .vis-item'))return;
+      if(cancelled||timelinePainted(containerRef.current))return;
       try{timelineRef.current?.redraw()}catch{}
-      window.requestAnimationFrame(()=>{
-        if(!cancelled&&(!hasVisible('.vis-panel.vis-left .vis-label')||
-          !hasVisible('.vis-panel.vis-center .vis-item')))setChartError(true);
+      frame=window.requestAnimationFrame(()=>{
+        if(!cancelled&&!timelinePainted(containerRef.current))
+          setChartError(true);
       });
     },400);
-    return()=>{cancelled=true;window.clearTimeout(timer)};
-  },[mode,ready,rows,extraGroups]);
+    return()=>{
+      cancelled=true;
+      window.clearTimeout(timer);
+      if(frame)window.cancelAnimationFrame(frame);
+    };
+  },[mode,ready,rows,extraGroups,chartError]);
 
   // Density analysis is lazy-loaded after first paint. Updating the source
   // river's hidden date ranges must not destroy/recreate the entire chart.

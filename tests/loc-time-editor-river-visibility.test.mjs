@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {buildEraRiver} from '../app/loc/culture/time-trace-river.mjs';
 import {resolveTimeSegments,resolveTimeTrace} from '../app/loc/culture/time-anchor-ranges.mjs';
+import {timelinePainted} from '../app/modular/modules/culture-timeline/timeline-paint-health.mjs';
 
 const file=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 const scope='lo3rwang';
@@ -46,9 +47,9 @@ test('management expands Era -> Period -> dated anchors using the existing snaps
 test('Time management detects visibly blank vis charts and keeps interactive fallback',()=>{
   const timeline=file('app/modular/modules/culture-timeline/CultureTimeline.jsx');
   const view=file('app/modular/features/Culture.jsx');
-  assert.match(timeline,/if\(mode!=='trace'\|\|!ready\|\|!rows\.length\|\|!extraGroups\.length\)return/);
-  assert.match(timeline,/hasVisible\('\.vis-panel\.vis-left \.vis-label'\)/);
-  assert.match(timeline,/hasVisible\('\.vis-panel\.vis-center \.vis-item'\)/);
+  assert.match(timeline,/if\(mode!=='trace'\|\|!ready\|\|!extraGroups\.length\|\|chartError\)return/);
+  assert.match(timeline,/timelinePainted\(containerRef\.current\)/);
+  assert.doesNotMatch(timeline,/!ready\|\|!rows\.length\|\|!extraGroups\.length/);
   assert.match(timeline,/chartError&&mode==='trace'\?<TimeAnchorRecovery/);
   assert.match(timeline,/onToggle=\{groupId=>onGroupToggleRef\.current\?\.\(groupId\)\}/);
   assert.match(view,/scope-time-edit-workspace scope-culture-structure-river/);
@@ -66,4 +67,42 @@ test('TimeAnchor management paints chart before the heavy list without a coverin
   assert.match(manage,/onFirstPaint=\{\(\)=>setTimeRiverFirstPaint\(true\)\}/);
   assert.match(manage,/!query\.isPending&&\(timeRiverFirstPaint\|\|!editorEraRiver\.groups\.length\)/);
   assert.doesNotMatch(manage,/setTimeout\(\(\)=>setTimeRiverFirstPaint\(true\)/);
+});
+
+const rect=(left,top,width,height)=>({left,top,width,height,right:left+width,bottom:top+height});
+function fakeTimeline({hidden=false,clipped=false,noBars=false}={}){
+  const root={getBoundingClientRect:()=>rect(0,0,700,300)};
+  const vis={parentElement:root,getBoundingClientRect:()=>rect(0,0,700,300)};
+  const left={parentElement:vis,getBoundingClientRect:()=>rect(0,0,140,300)};
+  const center={parentElement:vis,getBoundingClientRect:()=>rect(140,0,560,300)};
+  const label={parentElement:left,getBoundingClientRect:()=>rect(0,25,140,35)};
+  const item={parentElement:center,getBoundingClientRect:()=>rect(clipped?710:170,25,clipped?90:150,30)};
+  root.querySelector=selector=>({
+    '.vis-timeline':vis,'.vis-panel.vis-left':left,'.vis-panel.vis-center':center
+  })[selector]||null;
+  root.querySelectorAll=selector=>({
+    '.vis-panel.vis-left .vis-label':[label],
+    '.vis-panel.vis-center .vis-item':noBars?[]:[item]
+  })[selector]||[];
+  return {root,getStyle:node=>({display:'block',visibility:'visible',
+    contentVisibility:'visible',opacity:hidden&&node===item?'0':'1'})};
+}
+
+test('Time river paint health requires visible labels and on-screen bars',()=>{
+  let t=fakeTimeline();
+  assert.equal(timelinePainted(t.root,t.getStyle),true);
+  t=fakeTimeline({clipped:true});
+  assert.equal(timelinePainted(t.root,t.getStyle),false);
+  t=fakeTimeline({hidden:true});
+  assert.equal(timelinePainted(t.root,t.getStyle),false);
+  t=fakeTimeline({noBars:true});
+  assert.equal(timelinePainted(t.root,t.getStyle),false);
+});
+test('Empty-but-linked Time tree is recovered instead of blocking its editor',()=>{
+  const chart=file('app/modular/modules/culture-timeline/CultureTimeline.jsx');
+  assert.match(chart,/!ready\|\|!extraGroups\.length\|\|chartError/);
+  assert.match(chart,/setChartError\(true\)/);
+  assert.match(chart,/chartError&&mode==='trace'\?<TimeAnchorRecovery/);
+  const manage=file('app/modular/features/Culture.jsx');
+  assert.match(manage,/onFirstPaint=\{\(\)=>setTimeRiverFirstPaint\(true\)\}/);
 });
