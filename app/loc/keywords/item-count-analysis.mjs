@@ -124,7 +124,7 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
 export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   readMetadataPage,readContent,finalize,onCheckpoint=null,onProgress=()=>{},
   resume=null,pageSize=HEAVY_INITIAL_ROWS,timeBudgetMs=null,now=()=>Date.now(),minChars=0,
-  maxRowsPerRun=null,checkpointRows=8192}={}){
+  maxRowsPerRun=null,minRowsPerRun=null,checkpointRows=8192}={}){
   const a=createItemCountAccumulator(items,groups,resume,{minChars});
   const valid=resume?.scanMode==='item_count_v1'&&resume.fingerprint===a.fingerprint&&
     Object.hasOwn(resume,'cursor');
@@ -134,19 +134,34 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   // durable cursor and counts; the browser continues in a fresh request.
   const runLimit=Number.isSafeInteger(maxRowsPerRun)&&maxRowsPerRun>0
     ?maxRowsPerRun:null;
+  const floorLimit=Number.isSafeInteger(minRowsPerRun)&&minRowsPerRun>0
+    ?minRowsPerRun:null;
+  if(floorLimit!==null&&(runLimit===null||floorLimit>=runLimit))
+    throw new TypeError('Invalid Keyword adaptive batch bounds');
   if(onCheckpoint&&(!Number.isSafeInteger(checkpointRows)||checkpointRows<1))
     throw new TypeError('Invalid Keyword checkpoint interval');
   const sizer=createTextAdaptiveRows({
     initial:pageSize,...KEYWORD_SCAN_PAGE_OPTIONS
   });
-  let lastCheckpoint=scanned;
+  let lastCheckpoint=scanned,extended=false;
+  const checkpoint=async()=>{
+    if(onCheckpoint&&lastCheckpoint!==scanned){
+      await onCheckpoint({...a.state,cursor});
+      lastCheckpoint=scanned;
+    }
+  };
   for(;;){
-    const remaining=runLimit===null?Infinity:runLimit-(scanned-startedScanned);
+    const runCount=scanned-startedScanned;
+    const remaining=runLimit===null?Infinity:runLimit-runCount;
     if(remaining<=0){
-      if(onCheckpoint&&lastCheckpoint!==scanned)await onCheckpoint({...a.state,cursor});
+      await checkpoint();
       return {incomplete:true,scanned,parsed:a.state.parsed};
     }
-    const requested=Math.min(sizer.size,remaining);
+    // Stop exactly at the first 4096-row decision point. If throughput has
+    // sufficient headroom, continue to 8192 without an unnecessary SQL write.
+    const untilFloor=floorLimit!==null&&!extended
+      ?Math.max(1,floorLimit-runCount):Infinity;
+    const requested=Math.min(sizer.size,remaining,untilFloor);
     const page=await readMetadataPage({cursor,limit:requested});
     if(!page||!Array.isArray(page.rows)||page.rows.length>requested||
       !Object.hasOwn(page,'nextCursor'))throw Error('Invalid Item scan page');
@@ -180,15 +195,24 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     }
     a.state.scanned=scanned;
     sizer.observe(page.rows.length,pageChars);
-    if(onCheckpoint&&scanned-lastCheckpoint>=checkpointRows){
-      await onCheckpoint({...a.state,cursor});
-      lastCheckpoint=scanned;
+    const elapsed=now()-started;
+    if(floorLimit!==null&&!extended&&scanned-startedScanned>=floorLimit){
+      // Only one checkpoint per successful request: save at 4096 when the
+      // remaining time cannot safely handle another 4096, otherwise at 8192.
+      if(timeBudgetMs!==null&&elapsed*2>timeBudgetMs*0.65){
+        await checkpoint();
+        onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed});
+        return {incomplete:true,scanned,parsed:a.state.parsed};
+      }
+      extended=true;
     }
+    if(onCheckpoint&&scanned-lastCheckpoint>=checkpointRows)
+      await checkpoint();
     onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed});
     if(onCheckpoint&&(
       runLimit!==null&&scanned-startedScanned>=runLimit||
-      timeBudgetMs!==null&&now()-started>=timeBudgetMs*0.65)){
-      if(lastCheckpoint!==scanned)await onCheckpoint({...a.state,cursor});
+      timeBudgetMs!==null&&elapsed>=timeBudgetMs*0.65)){
+      await checkpoint();
       return {incomplete:true,scanned,parsed:a.state.parsed};
     }
   }
