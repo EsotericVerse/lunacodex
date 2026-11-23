@@ -44,11 +44,15 @@ jobs:
           ref: ${{ github.sha }}
           path: loc-source
           persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22.23.5'
-          cache: npm
-          cache-dependency-path: loc-source/package-lock.json
+          cache: pnpm
+          cache-dependency-path: loc-source/pnpm-lock.yaml
       - name: Validate current version and optional release tag
         id: meta
         shell: bash
@@ -61,8 +65,8 @@ jobs:
             echo "::error::The iOS RC workflow requires a valid package RC version."
             exit 1
           fi
-          test "$(node -p "require('./package-lock.json').version")" = "$version"
-          test "$(node -p "require('./package-lock.json').packages[''].version")" = "$version"
+          test "$(node -p "require('./package.json').packageManager")" = 'pnpm@10.30.3'
+          test -s pnpm-lock.yaml
           if [[ -n "$REQUESTED_RELEASE_TAG" && "$REQUESTED_RELEASE_TAG" != "v$version" ]]; then
             echo "::error::Requested tag does not match package version."
             exit 1
@@ -73,9 +77,9 @@ jobs:
             "ipa_name=LOC-$version-device-unsigned.ipa" \
             "release_tag=$REQUESTED_RELEASE_TAG" \
             "loc_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - run: npm ci --no-audit --no-fund
+      - run: pnpm install --frozen-lockfile
       - name: Parse JavaScript and JSX before paying for the macOS build
-        run: npm run check:syntax
+        run: pnpm run check:syntax
 
   build-device-ipa:
     needs: guard
@@ -98,27 +102,34 @@ jobs:
           ref: ${{ needs.guard.outputs.loc_sha }}
           path: loc-source
           persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+          run_install: false
       - name: Install Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22.23.5'
-          cache: npm
-          cache-dependency-path: loc-source/package-lock.json
+          cache: pnpm
+          cache-dependency-path: loc-source/pnpm-lock.yaml
       - name: Verify native build tools
         run: |
           xcodebuild -version
           xcrun --find swift
       - name: Install dependency lockfile
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
       - name: Install pinned Capacitor CLI in isolated native toolchain
         run: |
-          npm install --prefix "$RUNNER_TEMP/loc-capacitor-cli" --no-save --no-package-lock --no-audit --no-fund "@capacitor/cli@8.5.3"
+          mkdir -p "$RUNNER_TEMP/loc-capacitor-cli"
+          printf '{"name":"loc-native-cli","private":true,"version":"0.0.0"}\n' > "$RUNNER_TEMP/loc-capacitor-cli/package.json"
+          pnpm --dir "$RUNNER_TEMP/loc-capacitor-cli" add --save-exact "@capacitor/cli@8.5.3"
           test -x "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap"
       - name: Build LOC static export for the existing native shell
         env:
           NEXT_PUBLIC_LOC_NATIVE_BUNDLE: '1'
         run: |
-          npm run build:static
+          pnpm run build:static
           test -f out/index.html
       - name: Generate ephemeral iOS project and sync
         run: |
