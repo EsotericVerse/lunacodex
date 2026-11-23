@@ -53,7 +53,7 @@ try{
     '--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage',
     '--no-first-run','--disable-extensions','--remote-allow-origins=*',
     '--remote-debugging-port=0','--user-data-dir='+directory,'about:blank'
-  ],{stdio:'ignore'});
+  ],{stdio:'ignore',detached:process.platform!=='win32'});
   const activePortFile=join(directory,'DevToolsActivePort');
   await within(()=>existsSync(activePortFile),30000,'Chrome DevTools port');
   const port=Number(readFileSync(activePortFile,'utf8').split('\n')[0]);
@@ -114,7 +114,15 @@ try{
   console.log('LOC development React console: '+hydrated.count+' published homepage blocks, hero '+JSON.stringify(hydrated.heading)+'; no missing key warning');
 }finally{
   try{socket?.close();}catch{}
-  try{browser?.kill('SIGTERM');}catch{}
+  // Stop Chromium's process group before removing its live user-data profile.
+  if(browser?.pid&&process.platform!=='win32'){
+    try{process.kill(-browser.pid,'SIGTERM');}catch{}
+  }else{
+    try{browser?.kill('SIGTERM');}catch{}
+  }
   stopServer();
-  rmSync(directory,{recursive:true,force:true});
+  // Chromium writes profile files asynchronously during shutdown.
+  // Deleting temporary QA artifacts must not invalidate a passed React assertion.
+  try{rmSync(directory,{recursive:true,force:true,maxRetries:20,retryDelay:150});}
+  catch(error){console.warn('Could not remove temporary browser profile: '+error.message);}
 }
