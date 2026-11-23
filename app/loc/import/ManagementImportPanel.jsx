@@ -307,7 +307,8 @@ function ImportFormatSettings({format,onChange,disabled=false}){
 // no article scan, SQL expression, table selection or candidate cap is exposed.
 async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}){
   const field=action==='import_site_id_candidates'?'p_site_ids':
-    action==='import_created_at_candidates'?'p_instants':null;
+    action==='import_created_at_candidates'?'p_instants':
+    action==='import_occupied_createtimes'?'p_seconds':null;
   if(!field||!Array.isArray(keys)||typeof onPage!=='function')
     throw new Error('匯入識別查詢參數無效');
   const pageSize=60;
@@ -316,7 +317,7 @@ async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}
     let after=null;
     for(;;){
       const {data,error}=await dbAuthClient.schema('silver').managedAction(action,{
-        p_scope_id:scopeId,p_site:site,[field]:chunk,
+        p_scope_id:scopeId,...(field==='p_seconds'?{}:{p_site:site}),[field]:chunk,
         ...(after?{p_after_uid:after}:{}),p_limit:pageSize
       });
       if(error)throw new Error(error.message||'匯入識別查詢失敗');
@@ -1462,6 +1463,20 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           for(const row of page)
             if(row?.createtime)occupiedTimes.push(row.createtime);
         };
+        if(!nativeLocal&&scopeId!=='loc'){
+          // Only seconds containing an incoming article can collide with its
+          // final timestamptz(6). SQL inspects these seconds across ALL sites
+          // and NULL-date legacy rows; no date-wide browser download.
+          const seconds=[...new Set(incomingNew.map(row=>{
+            const parsed=Date.parse(String(row.createtime||fallbackTime));
+            const instant=Number.isFinite(parsed)?parsed:Date.parse(fallbackTime);
+            return new Date(Math.floor(instant/1000)*1000).toISOString();
+          }))].sort();
+          await readImportIdentityCandidates({scopeId,
+            action:'import_occupied_createtimes',keys:seconds,
+            onPage:appendOccupied});
+        }else{
+          // Local/LOC Scope retain their native storage reader.
         // Group the requested calendar dates into bounded IN-index probes.
         // Scanning thousands of individual days requires thousands of HTTP
         // round trips; PostgreSQL can use its existing date index for each
@@ -1513,6 +1528,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             afterUndatedUid!==null&&uid<=afterUndatedUid)
             throw Error('無日期時間 UID 游標未前進');
           afterUndatedUid=uid;
+        }
         }
         const finalized=finalizeImportCreatedTimes(incomingNew,{
           occupiedTimes,fallbackTime
