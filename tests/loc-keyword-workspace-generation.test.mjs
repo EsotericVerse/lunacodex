@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {readKeywordWorkspace} from '../app/loc/keywords/sql-service.mjs';
 import {keywordClassEpoch,bumpKeywordClassEpoch,
   writeKeywordScanProgress,invalidateKeywordClass}
@@ -40,4 +41,31 @@ test('Keyword workspace reads fixed UID-ordered Anchor and Scope config',async()
   assert.ok(used.where.some(v=>v[0]==='type'&&v[1]==='in'));
   await assert.rejects(readKeywordWorkspace(trx,'lo3rwang',{limit:500}),
     /Invalid Keyword editor page size/);
+});
+
+test('Keyword clear removes the interrupted cursor and Pattern totals together',()=>{
+  const service=readFileSync(new URL('../app/loc/keywords/sql-service.mjs',import.meta.url),'utf8');
+  const client=readFileSync(new URL('../app/loc/db/db-contract.mjs',import.meta.url),'utf8');
+  const reset=service.slice(service.indexOf('export async function resetKeywordScope('),
+    service.indexOf('const asNodeText=',service.indexOf('export async function resetKeywordScope(')));
+  assert.match(reset,/classTree\(trx,scope,classUid,\{withPatterns:true\}\)/);
+  assert.match(reset,/\.\.\.tree\.patterns\.map\(x=>x\.uid\)/);
+  assert.match(reset,/writeKeywordTotals\(trx,scope,ids\.map\(uid=>\(\{uid,total:0\}\)\)\)/);
+  assert.match(reset,/writeKeywordScanProgress\(invalidateKeywordClass\(previous,classUid\),classUid,null\)/);
+  assert.match(reset,/bumpKeywordClassEpoch/);
+  assert.match(reset,/cleared:true/);
+  assert.match(reset,/resetEpoch:keywordClassEpoch\(meta,classUid\)/);
+  assert.match(client,/result\?\.cleared!==true/);
+  assert.match(client,/result\.resetEpoch/);
+  // Clearing a Class must not invalidate a neighboring Class receipt.
+  const progress={by_class:{[first]:{completedAt:'yes'},[second]:{completedAt:'still'}},
+    scan_progress:{[first]:{scanned:32768,patternCounts:{PATT0001:92}},
+      [second]:{scanned:4096}},analysis_epochs:{[first]:9,[second]:4}};
+  const after=bumpKeywordClassEpoch(
+    writeKeywordScanProgress(invalidateKeywordClass(progress,first),first,null),first);
+  assert.equal(after.scan_progress[first],undefined);
+  assert.equal(after.by_class[first],undefined);
+  assert.equal(after.analysis_epochs[first],10);
+  assert.equal(after.scan_progress[second].scanned,4096);
+  assert.equal(after.by_class[second].completedAt,'still');
 });
