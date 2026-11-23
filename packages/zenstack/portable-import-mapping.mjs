@@ -16,7 +16,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 // taxonomy node UID from silver.loc_anchor. Galaxy.uid is separate LOC identity.
 // Galaxy.media_link is a list of media URLs, not a list of Source Anchor IDs;
 // Galaxy.url is the article's own permalink.
-const LOOKUP_FIELDS=Object.freeze(['uid','content','site_id']);
+const LOOKUP_FIELDS=Object.freeze(['uid','content','site_id','site']);
 const CORE_FIELDS=Object.freeze(['uid','title','content','site','site_id',
   'url','createtime','UpdateTime']);
 const IMPORT_FIELDS=Object.freeze([...CORE_FIELDS,...galaxyReadColumns('GalaxyAttr')]);
