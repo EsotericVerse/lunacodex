@@ -50,8 +50,18 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
   const byDay=new Map(),groupOrder=new Map(groupIds.map((uid,i)=>[uid,i]));
   const fallback=groups.find(g=>items.some(i=>i.group_uid===g.uid&&i.item_name==='德'))?.uid||'';
   function absorb(rows=[],callback=null){
-    const docs=rows.filter(row=>row.keyword!==false&&
-      Array.from(keywordScanText(row).replace(/\s/gu,'')).length>minChars);
+    // The old path stripped/parses HTML twice per eligible article: once
+    // for the min-length filter and again inside the Rune classifier.
+    // Carry the same scan-only visible text through both operations without
+    // changing persisted Galaxy content or the classification rules.
+    const docs=[];
+    for(const row of rows){
+      if(row.keyword===false)continue;
+      const scanText=typeof row?.scan_text==='string'
+        ?row.scan_text:keywordScanText(row);
+      if(Array.from(scanText.replace(/\s/gu,'')).length<=minChars)continue;
+      docs.push({...row,scan_text:scanText});
+    }
     if(!docs.length)return;
     const classifications=classify(docs).classifications||[];
     if(classifications.length!==docs.length)throw Error('Incomplete Item classifier result');
@@ -149,6 +159,10 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     ...KEYWORD_SCAN_PAGE_OPTIONS
   });
   let lastCheckpoint=scanned,extended=false;
+  // Measure actual completed scan throughput. The 1024 rows/second goal is
+  // an acceptance metric, not a forced SQL LIMIT or an artificial throttle.
+  const rate=()=>Math.round((scanned-startedScanned)*1000/
+    Math.max(1,now()-started));
   const checkpoint=async()=>{
     if(onCheckpoint&&lastCheckpoint!==scanned){
       await onCheckpoint({...a.state,cursor});
@@ -206,14 +220,16 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
       // remaining time cannot safely handle another 4096, otherwise at 8192.
       if(timeBudgetMs!==null&&elapsed*2>timeBudgetMs*0.65){
         await checkpoint();
-        onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed});
+        onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,
+          rowsPerSecond:rate()});
         return {incomplete:true,scanned,parsed:a.state.parsed};
       }
       extended=true;
     }
     if(onCheckpoint&&scanned-lastCheckpoint>=checkpointRows)
       await checkpoint();
-    onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed});
+    onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,
+      rowsPerSecond:rate()});
     if(onCheckpoint&&(
       runLimit!==null&&scanned-startedScanned>=runLimit||
       timeBudgetMs!==null&&elapsed>=timeBudgetMs*0.65)){
@@ -225,7 +241,8 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     throw Error('Item scan ended before all Galaxy rows');
   const result=a.totals();
   await finalize(result);
-  onProgress({phase:'completed',completed:scanned,parsed:a.state.parsed});
+  onProgress({phase:'completed',completed:scanned,parsed:a.state.parsed,
+    rowsPerSecond:rate()});
   return result;
 }
 export async function readItemKeywordProjection(db,scope,{items,groups,start='',end='',
