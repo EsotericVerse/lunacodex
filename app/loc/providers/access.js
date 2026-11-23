@@ -10,7 +10,8 @@
 export const DATABASE_ACCESS_LIST=Object.freeze([
   Object.freeze({
     target_id:'loc-main',label:'主要資料庫連線',provider:'custom',
-    engine:'postgres',connection_alias:'loc_main',connection_mode:'direct',
+    engine:'postgres',schema_name:'silver',
+    connection_alias:'loc_main',connection_mode:'direct',
     selected:true,backup_selected:false
   })
 ]);
