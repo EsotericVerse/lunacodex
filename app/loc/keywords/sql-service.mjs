@@ -247,6 +247,12 @@ export async function readKeywordDaily(db,scope,classUid,{
   checkScope(scope);checkClass(classUid);validateKeywordFilters({start,end,source});
   const cfg=await configuration(db,scope);
   if(!owner&&!shared(cfg,classUid))fail('Keyword Class not published',403);
+  const meta=attr({attr:cfg.keyword_meta});
+  const receipt=meta.by_class?.[classUid];
+  // Daily statistics are an analysis projection too. After Reset, do not
+  // repopulate the chart by silently scanning the original Galaxy content.
+  // Only an explicitly completed new analysis re-enables this projection.
+  if(!receipt?.completedAt||receipt.stale===true)return [];
   const tree=await classTree(db,scope,classUid);
   const result=await readItemKeywordProjection(db,scope,{
     ...itemScope(tree),start,end,source,places,owner:true,
