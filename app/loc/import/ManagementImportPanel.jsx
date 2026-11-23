@@ -302,6 +302,38 @@ function ImportFormatSettings({format,onChange,disabled=false}){
   </details>;
 }
 
+// Fixed, authenticated import lookup: only original platform IDs or source
+// creation instants are supplied. The trusted SQL Runtime owns both queries;
+// no article scan, SQL expression, table selection or candidate cap is exposed.
+async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}){
+  const field=action==='import_site_id_candidates'?'p_site_ids':
+    action==='import_created_at_candidates'?'p_instants':null;
+  if(!field||!Array.isArray(keys)||typeof onPage!=='function')
+    throw new Error('匯入識別查詢參數無效');
+  const pageSize=60;
+  for(let offset=0;offset<keys.length;offset+=80){
+    const chunk=keys.slice(offset,offset+80);
+    let after=null;
+    for(;;){
+      const {data,error}=await dbAuthClient.schema('silver').managedAction(action,{
+        p_scope_id:scopeId,p_site:site,[field]:chunk,
+        ...(after?{p_after_uid:after}:{}),p_limit:pageSize
+      });
+      if(error)throw new Error(error.message||'匯入識別查詢失敗');
+      const rows=data?.rows,next=data?.nextCursor??null;
+      if(!Array.isArray(rows)||rows.length>pageSize||
+        rows.some(row=>!row||typeof row.uid!=='string'||
+          !/^[A-Za-z0-9]{8}$/.test(row.uid))||
+        next!==null&&(typeof next!=='string'||next!==rows.at(-1)?.uid||
+          next===after)||(!rows.length&&next!==null))
+        throw new Error('匯入識別查詢游標或回傳資料無效');
+      if(rows.length)onPage(rows);
+      if(next===null)break;
+      after=next;
+    }
+  }
+}
+
 // A GET .in() filter has a URL budget, unlike POST imports.
 // Count and page each query until all matched rows are returned.
 async function readExistingByIds(table,columns,column,values,message,onPage){
@@ -1280,6 +1312,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const matchesById=existingCandidates.length?await matchExistingImportBySiteId(existingCandidates,{
         onProgress:p=>showProgress('依來源文章 ID 比對',p.completed,p.total),
         readSiteIds:async(ids,consumePage,site)=>{
+          if(!nativeLocal&&scopeId!=='loc'){
+            await readImportIdentityCandidates({scopeId,site,
+              action:'import_site_id_candidates',keys:ids,onPage:consumePage});
+            return;
+          }
           for(const idsPage of urlSafeInBatches(ids,'site_id')){
             // Page every stored candidate; one platform ID can map to
             // multiple legacy rows and must remain ambiguous until compared.
@@ -1333,7 +1370,13 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             ...matchesById.values(),...byPrimaryUid.values()
           ].map(row=>String(row.uid))),
           onProgress:p=>showProgress('依來源與建立時間比對',p.completed,p.total),
-          readSourceRows:async({site,fromDate,toDate,consumePage})=>{
+          readSourceRows:async({site,fromDate,toDate,instants=[],consumePage})=>{
+            if(!nativeLocal&&scopeId!=='loc'){
+              await readImportIdentityCandidates({scopeId,site,
+                action:'import_created_at_candidates',
+                keys:instants,onPage:consumePage});
+              return;
+            }
             const pageSize=MAX_ROWS;
             const dated=async()=>{
               let afterDate=null,afterUid=null;
