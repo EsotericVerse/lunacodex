@@ -329,9 +329,19 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
         // is not a new speed window; unused capacity carries straight on.
         for(let index=0;index<ordered.length;){
           const size=await pace.take(ordered.length-index);
-          a.absorb(ordered.slice(index,index+size));
-          pace.complete(size);
-          index+=size;
+          // The rate reservation (1024 -> 8192 rows/sec) is independent
+          // of CPU slices. A 1024+ article synchronous classifier used to
+          // block the Pages stream heartbeat and could exceed Worker CPU
+          // limits after Pattern matching was added. Yield every 256 rows,
+          // WITHOUT reducing, resetting or discarding the rate budget.
+          const end=index+size;
+          while(index<end){
+            const next=Math.min(end,index+256);
+            a.absorb(ordered.slice(index,next));
+            pace.complete(next-index);
+            index=next;
+            if(index<ordered.length)await rateSleep(0);
+          }
         }
       }else a.absorb(ordered);
     }
