@@ -3,6 +3,7 @@
 // The caller has already resolved Better Auth identity and read api.manage.
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {mergeOrdered} from './ordered-conversation.mjs';
+import {siteForCapturedUrl} from '../source/site-from-url.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -61,13 +62,15 @@ async function batchContent(conversationId,rows){
   if(body.length>125000)throw fail('Conversation batch content too large',413);
   return {batchId,marker,content:body};
 }
-async function existingConversation(db,table,id){
-  return db.selectFrom(table)
-    // Exact conversation checks are UID reads over the same GalaxyUidRead
-    // contract; UpdateTime is the write-concurrency field outside that view.
+async function existingConversation(db,table,id,site){
+  // Old site=mcp rows must continue by the same exact source conversation ID.
+  // Do not silently combine two pre-existing records from different origins.
+  const rows=await db.selectFrom(table)
     .select([...galaxyReadColumns('GalaxyUidRead'),'UpdateTime'])
-    .where('site','=','mcp').where('site_id','=',id)
-    .orderBy('createtime','asc').limit(1).executeTakeFirst();
+    .where('site','in',[site,'mcp']).where('site_id','=',id)
+    .orderBy('createtime','asc').limit(2).execute();
+  if(rows.length>1)throw fail('Ambiguous legacy conversation source',409);
+  return rows[0]||null;
 }
 function ensurePermission(body,claims){
   const scope=String(body.scopeid||'');
@@ -86,9 +89,10 @@ export async function executeLocConversation(db,body,claims){
   const scope=ensurePermission(body,claims);
   const table=target(scope);
   const conversationId=validConversation(body.conversation_id);
+  const site=siteForCapturedUrl(conversationId);
   const timestamp=normalizedTimestamp(body.updated_at);
   if(body.action==='check'){
-    const existing=await existingConversation(db,table,conversationId);
+    const existing=await existingConversation(db,table,conversationId,site);
     return existing?{
       found:true,uid:String(existing.uid).trim(),scopeid:scope,
       updated_at:existing.UpdateTime,
@@ -104,29 +108,35 @@ export async function executeLocConversation(db,body,claims){
     const title=String(body.title||'LOC conversation').trim().slice(0,350);
     const date=created.toISOString().slice(0,10);
     for(let attempt=0;attempt<4;attempt++){
-      const existing=await existingConversation(db,table,conversationId);
+      const existing=await existingConversation(db,table,conversationId,site);
       const merged=mergeOrdered(existing?.content??null,body.records);
       if(merged.content.length>MAX_CONTENT)
         throw fail('Conversation exceeds bounded storage size',413);
       if(existing){
-        if(merged.added===0)return {accepted:true,duplicate:true,
-          uid:String(existing.uid).trim(),scopeid:scope,count:0,
-          messages:merged.count};
-        const builder=db.updateTable(table).set({
-          content:merged.content,UpdateTime:updated
-        }).where('uid','=',existing.uid)
-          .where('site','=','mcp').where('site_id','=',conversationId);
+        if(merged.added===0&&existing.site===site)
+          return {accepted:true,duplicate:true,
+            uid:String(existing.uid).trim(),scopeid:scope,count:0,
+            messages:merged.count};
+        // A duplicate retry can fix its historic From classification
+        // without rewriting the content or manufacturing a second UID.
+        const update={
+          ...(merged.added?{content:merged.content,UpdateTime:updated}:{}),
+          ...(existing.site!==site?{site}:{})
+        };
+        const builder=db.updateTable(table).set(update)
+          .where('uid','=',existing.uid)
+          .where('site','=',existing.site).where('site_id','=',conversationId);
         const result=await (existing.content==null?builder.where('content','is',null):
           builder.where('content','=',existing.content)).executeTakeFirst();
         if(Number(result?.numUpdatedRows||0)===1)return {
-          accepted:true,duplicate:false,uid:String(existing.uid).trim(),
+          accepted:true,duplicate:merged.added===0,uid:String(existing.uid).trim(),
           scopeid:scope,count:merged.added,messages:merged.count};
         continue;
       }
       const newUid=uid();
       if(!UID.test(newUid))throw fail('Invalid generated Galaxy uid',500);
       const row={uid:newUid,title,content:merged.content,
-        createtime:created,UpdateTime:updated,date,site:'mcp',site_id:conversationId,
+        createtime:created,UpdateTime:updated,date,site,site_id:conversationId,
         ...Object.fromEntries(FLAGS.map(flag=>[flag,false]))};
       try{
         await db.insertInto(table).values(row).executeTakeFirst();
@@ -146,7 +156,7 @@ export async function executeLocConversation(db,body,claims){
   const title=String(body.title||'LOC conversation').trim().slice(0,350);
   const date=created.toISOString().slice(0,10);
   for(let attempt=0;attempt<4;attempt++){
-    const existing=await existingConversation(db,table,conversationId);
+    const existing=await existingConversation(db,table,conversationId,site);
     if(existing){
       const before=String(existing.content||'');
       if(before.includes(marker))return {accepted:true,duplicate:true,
@@ -154,9 +164,10 @@ export async function executeLocConversation(db,body,claims){
       const next=before+(before?'\n':'')+content;
       if(next.length>MAX_CONTENT)throw fail('Conversation exceeds bounded storage size',413);
       const builder=db.updateTable(table).set({
-        content:next,UpdateTime:updated
+        content:next,UpdateTime:updated,
+        ...(existing.site!==site?{site}:{})
       }).where('uid','=',existing.uid)
-        .where('site','=','mcp').where('site_id','=',conversationId);
+        .where('site','=',existing.site).where('site_id','=',conversationId);
       const result=await (existing.content==null?builder.where('content','is',null):
         builder.where('content','=',existing.content)).executeTakeFirst();
       if(Number(result?.numUpdatedRows||0)===1)return {
@@ -167,7 +178,7 @@ export async function executeLocConversation(db,body,claims){
     const newUid=uid();
     if(!UID.test(newUid))throw fail('Invalid generated Galaxy uid',500);
     const row={uid:newUid,title,content,
-      createtime:created,UpdateTime:updated,date,site:'mcp',
+      createtime:created,UpdateTime:updated,date,site,
       site_id:conversationId,...Object.fromEntries(FLAGS.map(f=>[f,false]))};
     try{
       await db.insertInto(table).values(row).executeTakeFirst();
