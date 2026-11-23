@@ -3,6 +3,8 @@
 // destination API, then again only inside the protected write transaction.
 // Do not preflight /api/loc-permissions and duplicate both network checks.
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
+import {editorTransactionLease,assertEditorTransactionLease,isEditorTransactionCancelled}
+  from '../db/editor-transaction-lifecycle.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
@@ -30,7 +32,10 @@ export async function keywordService(operation,args={},options={}){
   if(!SCOPE.test(scope))
     throw Error('Invalid Keyword Scope');
   const write=['analyze','reset','saveItem','deleteItem','setClassShare'].includes(operation);
+  const lease=write?editorTransactionLease():null;
+  assertEditorTransactionLease(lease);
   const committed=result=>{
+    assertEditorTransactionLease(lease);
     // /api/keywords writes Item/Group count snapshots directly.
     // Incomplete checkpoints never contain article UID postings.
     const confirmedWrite=write&&!(operation==='analyze'&&result?.incomplete===true);
@@ -51,16 +56,18 @@ export async function keywordService(operation,args={},options={}){
     headers:{'content-type':'application/json',
       ...(stream?{accept:'application/x-ndjson'}:{})},
     body:JSON.stringify({operation,args:requestArgs}),
-    // Caller-supplied cancellation is for read-only tab/era transitions.
-    // It must never abort an authorized keyword write in progress.
-    signal:!write&&readSignal
-      ?AbortSignal.any([readSignal,AbortSignal.timeout(25000)])
-      // The old 180-second client timer could terminate a long authorized
-      // analysis while the server was still writing. Live stream frames
-      // now establish liveness instead of a fixed whole-request cutoff.
-      :operation==='analyze'?undefined:AbortSignal.timeout(write?180000:25000)
+    // Switching a tab does not cancel writes. Explicit six-key Cancel does:
+    // its editor lease stops the stream, deferred status checks and resends.
+    // Keep analysis without a whole-request timeout while progress is live.
+    signal:write&&lease?operation==='analyze'?lease.signal:
+      AbortSignal.any([lease.signal,AbortSignal.timeout(180000)])
+      :!write&&readSignal?AbortSignal.any([readSignal,AbortSignal.timeout(25000)])
+        :operation==='analyze'?undefined:AbortSignal.timeout(write?180000:25000)
     });
   }catch(error){
+    if(isEditorTransactionCancelled(lease)){
+      assertEditorTransactionLease(lease);
+    }
     // The server may have committed after a lost HTTP connection. Preserve
     // the attempt so the user can check the SQL receipt; never replay a write.
     if(stream)throw new KeywordAnalysisUnconfirmedError({
@@ -68,8 +75,10 @@ export async function keywordService(operation,args={},options={}){
     });
     throw error;
   }
+  assertEditorTransactionLease(lease);
   if(!response.ok){
     const payload=await response.json().catch(()=>null);
+    assertEditorTransactionLease(lease);
     if(stream&&response.status>=500)
       throw new KeywordAnalysisUnconfirmedError({
         scopeId:scope,classUid:String(args.classUid||''),attemptId
@@ -86,6 +95,7 @@ export async function keywordService(operation,args={},options={}){
     const reader=response.body.getReader(),decoder=new TextDecoder();
     let pending='',complete=false,result,readFailure=null;
     const consume=line=>{
+      assertEditorTransactionLease(lease);
       if(!line.trim())return;
       let event;
       try{event=JSON.parse(line);}catch{throw Error('關鍵詞分析進度格式無效');}
@@ -102,7 +112,9 @@ export async function keywordService(operation,args={},options={}){
     };
     try{
       for(;;){
+        assertEditorTransactionLease(lease);
         const {done,value}=await reader.read();
+        assertEditorTransactionLease(lease);
         pending+=decoder.decode(value||new Uint8Array(),{stream:!done});
         for(let newline;(newline=pending.indexOf('\n'))>=0;){
           consume(pending.slice(0,newline));pending=pending.slice(newline+1);
@@ -112,12 +124,14 @@ export async function keywordService(operation,args={},options={}){
       if(pending.trim())consume(pending);
     }catch(error){readFailure=error;}
     finally{reader.releaseLock();}
+    assertEditorTransactionLease(lease);
     if(!complete){
       // ONE read-only confirmation request; no polling and no automatic
       // retry of a non-idempotent Keyword analysis transaction.
       const receipt=await keywordService('analyzeStatus',{
         scopeId:scope,classUid:String(args.classUid||''),attemptId
-      }).catch(()=>null);
+      },{signal:lease?.signal}).catch(()=>null);
+      assertEditorTransactionLease(lease);
       if(receipt?.completed&&receipt.result){
         options.onProgress({phase:'completed',completed:receipt.result.analyzedDocuments,
           total:receipt.result.analyzedDocuments,percent:100,
@@ -148,5 +162,6 @@ export async function keywordService(operation,args={},options={}){
     return committed(result);
   }
   const payload=await response.json().catch(()=>null);
+  assertEditorTransactionLease(lease);
   return committed(payload?.data);
 }

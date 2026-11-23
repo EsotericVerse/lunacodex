@@ -202,7 +202,7 @@ export function prepareTransientResourceAction(action,{queryKeys=[]}={}){
 // switching editor sections. Preserve only verified identity/permission data.
 // Browser JS heap collection is managed by GC; dropping all these references
 // makes old page query payloads eligible for collection.
-export function releaseTransientPageResources(){
+export function releaseTransientPageResources({discardEditor=false}={}){
   // The shell stays mounted between Next.js routes. Keep its already-complete
   // public bootstrap until the last subscriber leaves, instead of clearing
   // it and forcing the shell's Hero/Config to read the database again.
@@ -220,6 +220,16 @@ export function releaseTransientPageResources(){
       retryBootstrap.set(key,wasReading);
   }
   resourceEpoch++;
+  // Cancel is a terminal editor boundary: remove mounted form snapshots too,
+  // not only module-level query caches. Public shell/bootstrap and identity
+  // state are intentionally outside this editor-owned resource lifecycle.
+  if(discardEditor){
+    for(const entry of registry.values()){
+      const key=serialize(entry.key);
+      if(IDENTITY_KEYS.has(key)||isPublicBootstrapKey(key))continue;
+      entry.remove?.();
+    }
+  }
   // Abort old transient SQL reads and queued requests. Session, verified
   // grants and explicit writes remain outside this cleanup.
   cancelTransientReads();
@@ -232,7 +242,10 @@ export function releaseTransientPageResources(){
   // This cleanup only runs after an actual SPA route change or explicit
   // section reset. Full-document unload belongs to the browser and must not
   // clear a still-displayed page before navigation completes.
-  if(retryBootstrap.size)queueMicrotask(()=>{
+  const finishingEpoch=resourceEpoch;
+  if(!discardEditor&&retryBootstrap.size)queueMicrotask(()=>{
+    // A later Cancel supersedes any revalidation scheduled by navigation.
+    if(finishingEpoch!==resourceEpoch)return;
     for(const [key,interruptedRefresh] of retryBootstrap){
       if(dataStore.has(key)&&!interruptedRefresh)continue;
       const live=[...registry.values()].find(entry=>serialize(entry.key)===key);
