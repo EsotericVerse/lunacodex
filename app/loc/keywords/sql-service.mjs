@@ -60,10 +60,11 @@ const galaxyKeywordScanProjection=Object.freeze([
 // Keyword analysis is paged across requests, not capped to a fixed number
 // of Scope articles. Each short request commits a resumable SQL checkpoint
 // BEFORE returning so Cloudflare request limits never erase the whole scan.
-// A normal request runs up to 8192 rows and persists one checkpoint before
-// returning. Avoid a database write every few hundred articles; reserve an
-// earlier checkpoint for an actual request-time budget boundary.
+// One request analyzes 4096–8192 articles, based on measured throughput.
+// The 4096-row decision either saves and returns (slow) or continues to 8192
+// before saving (fast). This is not a full-Scope row limit.
 const KEYWORD_ROWS_PER_REQUEST=8192;
+const KEYWORD_MIN_ROWS_PER_REQUEST=4096;
 const KEYWORD_CHECKPOINT_ROWS=8192;
 const KEYWORD_REQUEST_BUDGET_MS=15000;
 
@@ -386,6 +387,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
     pageSize:HEAVY_INITIAL_ROWS,resume,
     maxRowsPerRun:KEYWORD_ROWS_PER_REQUEST,
+    minRowsPerRun:KEYWORD_MIN_ROWS_PER_REQUEST,
     checkpointRows:KEYWORD_CHECKPOINT_ROWS,
     timeBudgetMs:KEYWORD_REQUEST_BUDGET_MS,
     onCheckpoint:async progress=>{
