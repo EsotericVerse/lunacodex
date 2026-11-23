@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createItemCountAccumulator,analyzeItemKeywordCounts,
-  itemKeywordSuggestions} from '../app/loc/keywords/item-count-analysis.mjs';
+  itemKeywordSuggestions,createKeywordScanRate,
+  KEYWORD_SCAN_START_RATE,KEYWORD_SCAN_MAX_RATE,
+  KEYWORD_SCAN_CHECKPOINT_ROWS}
+  from '../app/loc/keywords/item-count-analysis.mjs';
 
 const items=[
   {uid:'ITEM0001',item_name:'日',group_uid:'GROUP001',keywords:['日光TO光']},
@@ -214,4 +217,75 @@ test('adaptive Keyword batch reaches 8192 without a redundant 4096 checkpoint',a
   assert.equal(result.incomplete,true);
   assert.equal(result.scanned,8192);
   assert.deepEqual(checkpoints,[8192]);
+});
+
+test('Keyword per-second target ramps gently from 1024 to 8192 and never resets at 4096 checkpoints',async()=>{
+  assert.equal(KEYWORD_SCAN_START_RATE,1024);
+  assert.equal(KEYWORD_SCAN_MAX_RATE,8192);
+  assert.equal(KEYWORD_SCAN_CHECKPOINT_ROWS,4096);
+  let time=0,done=0;
+  const rate=createKeywordScanRate({
+    now:()=>time,sleep:async ms=>{time+=ms;}
+  });
+  const steps=[];
+  while(done<4096){
+    const part=await rate.take(4096-done);
+    steps.push({part,target:rate.target,time});
+    rate.complete(part);
+    done+=part;
+  }
+  assert.deepEqual(steps.map(x=>x.part),[1024,2048,1024]);
+  assert.equal(rate.target,3072);
+  // Checkpoint records the cumulative number but CANNOT affect this
+  // controller's remaining per-second budget or carried rate.
+  assert.equal(done,4096);
+  const afterCheckpoint=await rate.take(4096);
+  assert.equal(afterCheckpoint,2048);
+  assert.equal(rate.target,3072);
+  rate.complete(afterCheckpoint);
+  const targets=[...steps.map(x=>x.target),rate.target];
+  while(rate.target<8192){
+    const part=await rate.take(8192);
+    rate.complete(part);
+    targets.push(rate.target);
+    assert.ok(targets.length<20);
+  }
+  assert.equal(rate.target,8192);
+  assert.ok(targets.every(x=>x>=1024&&x<=8192));
+  assert.ok(targets.every((x,i)=>i===0||x>=targets[i-1]&&x-targets[i-1]<=1024));
+});
+
+test('Keyword checkpoint preserves the ramp across HTTP requests without resetting to 296/s',async()=>{
+  const docs=Array.from({length:8193},(_,i)=>
+    doc(String(i+1).padStart(8,'0'),'月光'));
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  let ms=0,saved=null;
+  const stored=[],queries=[];
+  const opts={
+    items:terms,groups,expectedCount:docs.length,
+    pageSize:4096,maxRowsPerRun:4096,checkpointRows:4096,paceRows:true,
+    now:()=>ms,rateSleep:async delay=>{ms+=delay;},
+    readMetadataPage:async({cursor,limit})=>{
+      queries.push(limit);
+      const index=cursor??0,rows=docs.slice(index,index+limit);
+      return {rows,nextCursor:index+rows.length};
+    },
+    onCheckpoint:async state=>{
+      saved=JSON.parse(JSON.stringify(state));
+      stored.push({scanned:saved.scanned,target:saved.targetRowsPerSecond});
+    },
+    finalize:async()=>{throw Error('Must not complete in a 4096-row request');}
+  };
+  const first=await analyzeItemKeywordCounts(opts);
+  assert.equal(first.incomplete,true);
+  assert.equal(first.scanned,4096);
+  assert.equal(saved.scanned,4096);
+  assert.equal(saved.targetRowsPerSecond,3072);
+  const second=await analyzeItemKeywordCounts({...opts,resume:saved});
+  assert.equal(second.incomplete,true);
+  assert.equal(second.scanned,8192);
+  assert.deepEqual(queries,[4096,4096]);
+  assert.deepEqual(stored.map(x=>x.scanned),[4096,8192]);
+  assert.ok(stored[1].target>=stored[0].target);
+  assert.equal(stored[1].target,4096);
 });
