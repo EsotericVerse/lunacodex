@@ -1,4 +1,4 @@
-import {HEAVY_INITIAL_ROWS} from '../query/query-batch-size.mjs';
+import {KEYWORD_SCAN_START_ROWS} from './item-count-analysis.mjs';
 import {sql} from 'kysely';
 // LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
 // Anchor.num is UID-list cardinality; Item/Group.attr.total is the existing
@@ -385,7 +385,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   const result=await analyzeItemKeywordCounts({
     ...itemScope(tree),expectedCount,readMetadataPage:reader,
     minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
-    pageSize:HEAVY_INITIAL_ROWS,resume,
+    pageSize:KEYWORD_SCAN_START_ROWS,resume,
     maxRowsPerRun:KEYWORD_ROWS_PER_REQUEST,
     minRowsPerRun:KEYWORD_MIN_ROWS_PER_REQUEST,
     checkpointRows:KEYWORD_CHECKPOINT_ROWS,
