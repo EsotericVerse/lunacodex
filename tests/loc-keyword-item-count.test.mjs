@@ -121,7 +121,8 @@ test('Keyword analysis stores once per 8192-row batch and continues beyond 8192 
     const result=await analyzeItemKeywordCounts({
       items:terms,groups,expectedCount:total,
       readMetadataPage:reader,resume:durable,pageSize:256,
-      maxRowsPerRun:8192,checkpointRows:8192,onCheckpoint:persist,
+      maxRowsPerRun:8192,minRowsPerRun:4096,checkpointRows:8192,
+      timeBudgetMs:15000,now:()=>0,onCheckpoint:persist,
       finalize:async counts=>{completed++;final=counts;}
     });
     requests++;
@@ -167,4 +168,50 @@ test('Keyword analysis recovers after an interrupted request from last durable c
   assert.equal(result.analyzedDocuments,800);
   assert.equal(result.itemDocuments.ITEM0001,800);
   assert.equal(final.itemCounts.ITEM0001,800);
+});
+
+test('adaptive Keyword batch commits at 4096 when measured throughput is too slow for 8192',async()=>{
+  const rows=Array.from({length:16},(_,i)=>doc(String(i+1).padStart(8,'0'),'月光'));
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  let clock=0,saved=null,finalized=0,reads=0;
+  const result=await analyzeItemKeywordCounts({
+    items:terms,groups,expectedCount:rows.length,pageSize:3,
+    minRowsPerRun:4,maxRowsPerRun:8,checkpointRows:8,
+    timeBudgetMs:100,now:()=>clock,
+    readMetadataPage:async({cursor,limit})=>{
+      const from=cursor??0,part=rows.slice(from,from+limit);
+      reads++;
+      clock=from+part.length>=4?40:20;
+      return {rows:part,nextCursor:from+part.length};
+    },
+    onCheckpoint:async progress=>{saved=JSON.parse(JSON.stringify(progress));},
+    finalize:async()=>{finalized++;}
+  });
+  assert.equal(result.incomplete,true);
+  assert.equal(result.scanned,4);
+  assert.equal(saved.scanned,4);
+  assert.equal(saved.cursor,4);
+  assert.equal(finalized,0);
+  assert.ok(reads>=2);
+});
+
+test('adaptive Keyword batch reaches 8192 without a redundant 4096 checkpoint',async()=>{
+  const docs=Array.from({length:8200},(_,i)=>
+    doc(String(i+1).padStart(8,'0'),'月光'));
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  const checkpoints=[];
+  const result=await analyzeItemKeywordCounts({
+    items:terms,groups,expectedCount:docs.length,pageSize:256,
+    minRowsPerRun:4096,maxRowsPerRun:8192,checkpointRows:8192,
+    timeBudgetMs:15000,now:()=>0,
+    readMetadataPage:async({cursor,limit})=>{
+      const from=cursor??0,rows=docs.slice(from,from+limit);
+      return {rows,nextCursor:from+rows.length};
+    },
+    onCheckpoint:async progress=>checkpoints.push(progress.scanned),
+    finalize:async()=>{throw Error('Batch must continue after 8192');}
+  });
+  assert.equal(result.incomplete,true);
+  assert.equal(result.scanned,8192);
+  assert.deepEqual(checkpoints,[8192]);
 });
