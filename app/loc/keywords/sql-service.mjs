@@ -385,12 +385,18 @@ async function persistScanProgress(trx,scope,classUid,progress,expectedEpoch){
 
 export async function analyzeKeywordScope(db,scope,classUid,{
   authorizeTransaction=()=>{},startedAt=new Date().toISOString(),onProgress=()=>{},
-  attemptId=''
+  attemptId='',analysisEpoch=null
 }={}){
   checkScope(scope);checkClass(classUid);
+  if(!Number.isSafeInteger(analysisEpoch)||analysisEpoch<1)
+    fail('Keyword analysis requires a confirmed reset generation',409);
   const cfg=await configuration(db,scope),tree=await classTree(db,scope,classUid,{withPatterns:true});
   const meta=attr({attr:cfg.keyword_meta});
   const expectedEpoch=keywordClassEpoch(meta,classUid);
+  if(expectedEpoch!==analysisEpoch)
+    fail('舊分析工作階段已失效；請重新從零開始解析',409);
+  // Checkpoints are legal only for the SAME fresh epoch. Subsequent row
+  // locks prevent old checkpoints/final totals committing after another reset.
   const resume=readKeywordScanProgress(meta,classUid);
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();
