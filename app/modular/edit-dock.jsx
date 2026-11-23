@@ -261,7 +261,9 @@ export function EditDockProvider({children,scopeId}){
             prepared.push(plan);
           }
         }catch(error){
+          if(epoch!==operationEpoch.current)return;
           for(const plan of prepared){
+            if(epoch!==operationEpoch.current)return;
             // Preserve the original transaction failure and log only safe
             // metadata from a secondary cleanup failure.
             try{await plan.onFailure?.(error);}
@@ -273,7 +275,9 @@ export function EditDockProvider({children,scopeId}){
           const operations=prepared.flatMap(plan=>plan.operations);
           if(operations.length)await transactionWrites(operations);
         }catch(error){
+          if(epoch!==operationEpoch.current)return;
           for(const plan of prepared){
+            if(epoch!==operationEpoch.current)return;
             // Preserve the original transaction failure and log only safe
             // metadata from a secondary cleanup failure.
             try{await plan.onFailure?.(error);}
@@ -288,6 +292,7 @@ export function EditDockProvider({children,scopeId}){
           if(epoch!==operationEpoch.current)return;
           try{await plan.afterCommit?.();}
           catch(error){
+            if(epoch!==operationEpoch.current)return;
             setNotice('資料已提交，但畫面更新失敗，請重新讀取。');
             return;
           }
