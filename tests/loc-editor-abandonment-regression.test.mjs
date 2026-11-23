@@ -38,11 +38,14 @@ test('homepage six-key hard navigation does not clear live page or editor Sessio
   const navigate=dock.slice(dock.indexOf('const navigate='),dock.indexOf('const complete='));
   assert.doesNotMatch(navigate,/releaseTransientPageResources\(|transactionWrites\(|clearEditorSession\(/);
   const discard=dock.slice(dock.indexOf('const discard='),dock.indexOf('const switchTo='));
-  assert.doesNotMatch(discard,/releaseTransientPageResources\(|transactionWrites\(|clearEditorSession\(/);
-  assert.match(resources,/export function releaseTransientPageResources\(\)/);
+  // Explicit Cancel is DIFFERENT from ordinary hard navigation: the user
+  // asked to terminate every pending edit request and release all drafts.
+  assert.match(discard,/releaseTransientPageResources\(\{discardEditor:true\}\)/);
+  assert.doesNotMatch(discard,/transactionWrites\(|clearEditorSession\(/);
+  assert.match(resources,/export function releaseTransientPageResources\(\{discardEditor=false\}=\{\}\)/);
   assert.match(resources,/cancelTransientReads\(\);\s*abortInflight\(\);/);
-  assert.match(resources,/if\(retryBootstrap\.size\)queueMicrotask/,
-    'SPA route cleanups must still revive observed shared Bootstrap');
+  assert.match(resources,/if\(!discardEditor&&retryBootstrap\.size\)queueMicrotask/,
+    'Ordinary SPA navigation may revive observed Bootstrap; Cancel must not');
 });
 
 test('transient management verification failure removes grants but preserves the session clock',()=>{
