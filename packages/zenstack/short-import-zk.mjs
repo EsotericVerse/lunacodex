@@ -5,13 +5,14 @@ import {createQuerySchemaFactory} from '@zenstackhq/orm';
 import {z} from 'zod';
 import {scopedZModelSchema} from './scoped-schema.mjs';
 import {galaxyReadColumns} from './galaxy-read-models.mjs';
+import {CAPTURE_FROM_SITES,CAPTURE_LOOKUP_SITES} from '../../app/loc/source/site-from-url.mjs';
 
 const UID=/^[0-9A-Za-z]{8}$/;
 const SITE_ID=/^gl:[a-f0-9]{64}$/;
 const SOURCE=/^https?:\/\//i;
 const FLAGS=galaxyReadColumns('GalaxyAttr');
 const REQUIRED_FIELDS=['uid','title','content','site','site_id','url','createtime','UpdateTime',...FLAGS];
-const LOOKUP_FIELDS=['uid','content','site_id'];
+const LOOKUP_FIELDS=['uid','content','site_id','site'];
 const cache=new Map();
 
 // Validate the exact INSERT shape sent to Kysely, not the public-facing
@@ -20,7 +21,7 @@ const shortInsertRow=z.strictObject({
   uid:z.string().regex(UID),
   title:z.string().max(350),
   content:z.string().min(1),
-  site:z.enum(['web','mcp']),
+  site:z.enum(CAPTURE_FROM_SITES),
   site_id:z.string().regex(SITE_ID),
   url:z.string().max(2048).refine(v=>SOURCE.test(v)),
   createtime:z.string().refine(v=>Number.isFinite(Date.parse(v))),
@@ -62,17 +63,17 @@ export function shortImportLookupPlan({scope,engine='postgres',namespace='silver
   const list=sources.parse(ids);
   const {schema}=modelContract(scope,engine,namespace);
   const parsed=schema.safeParse({
-    select:{uid:true,content:true,site_id:true},
-    where:{site:{in:['web','mcp']},site_id:{in:list}},
-    take:list.length*2
+    select:{uid:true,content:true,site_id:true,site:true},
+    where:{site:{in:CAPTURE_LOOKUP_SITES},site_id:{in:list}},
+    take:list.length*CAPTURE_LOOKUP_SITES.length
   });
   if(!parsed.success)throw new Error('Short-import ZModel lookup rejected');
   const args=parsed.data;
   // Return only the verified operation's required subset; callers cannot
   // add arbitrary filters, joins, columns or table names.
-  if(args.where?.site?.in?.length!==2||
+  if(args.where?.site?.in?.length!==CAPTURE_LOOKUP_SITES.length||
      args.where.site_id?.in?.length!==list.length||
-     args.take!==list.length*2||
+     args.take!==list.length*CAPTURE_LOOKUP_SITES.length||
      LOOKUP_FIELDS.some(key=>args.select?.[key]!==true))
     throw new Error('Short-import ZModel lookup mismatch');
   return {
