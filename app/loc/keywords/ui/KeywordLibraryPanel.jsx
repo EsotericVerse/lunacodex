@@ -757,7 +757,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
         </div>
       </div>:null}
       {busy?<FlowProgress kind="keywords" stage={progress?.label||progress?.phase||'解析關鍵詞'}
-        completed={progress?.completed||0} total={progress?.total||0}/>:null}
+        completed={progress?.completed||0} total={progress?.total||0}
+        detail={progress?.targetRowsPerSecond
+          ?'目前目標 '+Number(progress.targetRowsPerSecond).toLocaleString()+
+            ' 筆／秒；實測 '+Number(progress.rowsPerSecond||0).toLocaleString()+' 筆／秒'
+          :''}/>:null}
     </section>:null}
     {!loading&&workspace==='analysis'?<details className="loc-card scope-feature-card loc-work-disclosure loc-keyword-suggestions">
       <summary>建議新增關鍵詞</summary>
