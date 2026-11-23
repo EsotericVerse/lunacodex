@@ -10,7 +10,7 @@ import {selectCultureArticleListPage} from '../culture/query';
 import {selectGalaxyIdentity} from '../galaxy/galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/routing/scope-registry';
-import {assignedSource} from '../statistics/member-intersection-model.mjs';
+import {publicCultureSourceModel} from '../culture/public-source-river.mjs';
 import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../preferences/default-year-window.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -151,82 +151,42 @@ function anchorModel(rows,start,end,expanded){
 }
 // Source tree groups use the same LocAnchor UID hierarchy as the management
 // editor and Statistics. Multimedia is a Universe, not a media-type pipeline.
-function sourceModel(rows,taxonomy,expanded,start,end){
-  // The database already GROUPs articles by day/source. Keep the browser
-  // aggregation linear in those grouped rows: a long era may contain 10k+
-  // articles, but expanding ONE category must not rescan every other source
-  // once per row or copy the raw article list into memory.
-  const sourceRows=list(rows);
-  const bySite=new Map(),countBySite=new Map();
+// Keyword density has its own two-level Class/Group display. Source mode
+// alone uses the full four-level published SiteAnchor hierarchy.
+function keywordSourceModel(rows,expanded,start,end){
+  const bySite=new Map(),totals=new Map();
   let max=1;
-  for(const row of sourceRows){
-    const name=String(row.site||''),count=Number(row.item_count)||0;
-    if(!bySite.has(name))bySite.set(name,[]);
-    bySite.get(name).push(row);
-    countBySite.set(name,(countBySite.get(name)||0)+count);
-    if(count>max)max=count;
+  for(const row of list(rows)){
+    const site=String(row.site||''),day=String(row.day||'');
+    const count=Number(row.item_count)||0;
+    if(!site||!day||day<start||day>end||count<=0)continue;
+    if(!bySite.has(site))bySite.set(site,[]);
+    bySite.get(site).push({day,count});
+    totals.set(site,(totals.get(site)||0)+count);
+    max=Math.max(max,count);
   }
-  const names=[...bySite.keys()];
-  const categories=taxonomy?.categories||[],aliases=taxonomy?.aliases||[];
-  const tree=taxonomy?.tree||[];
-  const byUid=new Map(tree.map(row=>[row.uid,row]));
-  const codeBySite=new Map(names.map(name=>[name,assignedSource(name,aliases,categories)]));
-  const roots=taxonomy?(taxonomy.roots||[]).map(node=>{
-    const descendants=new Set(tree
-      .filter(row=>row.path?.[0]===node.uid).map(row=>row.uid));
-    const sites=names.filter(site=>descendants.has(codeBySite.get(site)));
-    const labels=new Map(sites.map(site=>{
-      const entry=byUid.get(codeBySite.get(site));
-      const parts=entry?.type==='from'?[entry.galaxy,entry.domain,entry.title]:
-        entry?.type==='domain'?[entry.galaxy,entry.title]:[site];
-      return [site,parts.filter(Boolean).join(' / ')];
-    }));
-    return {id:'source:'+node.uid,label:node.title,sites,labels};
-  }).filter(node=>node.sites.length):[
-    {id:'keyword',label:'關鍵詞',sites:names,labels:new Map()}
-  ];
-  if(taxonomy){
-    const claimed=new Set(roots.flatMap(root=>root.sites));
-    const unmatched=names.filter(site=>!claimed.has(site));
-    if(unmatched.length)roots.push({
-      id:'source:others',label:'未分類',sites:unmatched,labels:new Map()
+  const opened=expanded.includes('keyword');
+  const groups=[{id:'root:keyword',label:'關鍵詞 ('+[...totals.values()].reduce((a,b)=>a+b,0)+')',
+    order:0,collapsible:true,expanded:opened}],items=[],sites=[];
+  const totalDays=new Map();
+  for(const [site,days] of bySite){
+    for(const {day,count} of days)totalDays.set(day,(totalDays.get(day)||0)+count);
+  }
+  for(const [day,count] of totalDays){
+    items.push({id:'root:keyword:'+day,entry_type:'source_total',
+      group_key:'root:keyword',group_label:'關鍵詞',start_date:day,
+      item_count:count,density_ratio:count/max,display_label:'',title:day+' · '+count});
+  }
+  if(opened)for(const [site,days] of bySite){
+    const id='site:keyword:'+site;
+    groups.push({id,label:'　'+site+' ('+totals.get(site)+')',selectable:true,order:groups.length});
+    for(const {day,count} of days)items.push({
+      id:id+':'+day,entry_type:'source',group_key:id,group_label:site,
+      start_date:day,item_count:count,density_ratio:count/max,
+      display_label:'',title:day+' · '+site+' · '+count
     });
   }
-  const groups=[],items=[],sites=[];
-  for(const root of roots){
-    const total=root.sites.reduce((count,site)=>count+(countBySite.get(site)||0),0);
-    const opened=expanded.includes(root.id);
-    groups.push({id:'root:'+root.id,label:root.label+' ('+total+')',
-      collapsible:true,expanded:opened,order:groups.length});
-    if(!opened){
-      const daily=new Map();
-      for(const site of root.sites)for(const row of bySite.get(site)||[]){
-        if(row.day<start||row.day>end)continue;
-        daily.set(row.day,(daily.get(row.day)||0)+Number(row.item_count||0));
-      }
-      for(const [day,count] of daily){
-        items.push({id:'root:'+root.id+':'+day,entry_type:'source_total',
-          group_key:'root:'+root.id,group_label:root.label,start_date:day,
-          item_count:count,density_ratio:count/max,display_label:'',title:day+' · '+count});
-      }
-      continue;
-    }
-    for(const site of root.sites){
-      const label=root.labels.get(site)||site,key=root.id+':'+site;
-      const count=countBySite.get(site)||0;
-      groups.push({id:'site:'+key,label:'　'+label+' ('+count+')',
-        selectable:true,order:groups.length});
-      sites.push({key,site,root:root.id,count,label});
-      for(const row of bySite.get(site)||[]){
-        if(row.day<start||row.day>end)continue;
-        items.push({id:'site:'+key+':'+row.day,entry_type:'source',
-          group_key:'site:'+key,group_label:label,start_date:row.day,
-          item_count:Number(row.item_count||0),density_ratio:Number(row.item_count||0)/max,
-          display_label:'',title:row.day+' · '+label+' · '+row.item_count});
-      }
-    }
-  }
-  return {items,groups,sites};
+  return {groups,items,sites};
 }
 async function analytics(scope,view,start,end,options={},signal=null){
   const {data,error}=await dbPublicClient.schema('silver').analytics({
@@ -267,6 +227,7 @@ export default function CulturePublicReader(){
   const [anchorSuggestionsOpen,setAnchorSuggestionsOpen]=useState(false);
   const [focusedSuggestionDate,setFocusedSuggestionDate]=useState('');
   const [selectedSite,setSelectedSite]=useState('');
+  const [selectedSites,setSelectedSites]=useState(NO_ITEMS);
   const [selectedCategoryKey,setSelectedCategoryKey]=useState('');
   const [articleRows,setArticleRows]=useState([]);
   const [articleOffset,setArticleOffset]=useState(0);
@@ -416,8 +377,8 @@ export default function CulturePublicReader(){
     item=>item.date===focusedSuggestionDate)||null;
   const densityRiver=useMemo(()=>{
     const base=densityMode==='keyword'
-      ?sourceModel(keywordDaily,null,expandedSources,rangeStart,rangeEnd)
-      :catalog?sourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd)
+      ?keywordSourceModel(keywordDaily,expandedSources,rangeStart,rangeEnd)
+      :catalog?publicCultureSourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd)
         :{items:[],groups:[],sites:[]};
     const candidateLane={
       id:'root:anchor-suggestions',label:anchorSuggestionsOpen
@@ -443,14 +404,14 @@ export default function CulturePublicReader(){
     if(focusedSuggestionDate&&!suggestionAnalysis.suggestions.some(
       item=>item.date===focusedSuggestionDate))setFocusedSuggestionDate('');
   },[focusedSuggestionDate,suggestionAnalysis.suggestions]);
-  const resetArticles=(site='',categoryKey='')=>{
+  const resetArticles=(site='',categoryKey='',sites=[])=>{
     articleAbortRef.current?.abort();articleAbortRef.current=null;
-    sequence.current+=1;setSelectedSite(site);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
+    sequence.current+=1;setSelectedSite(site);setSelectedSites(sites);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);
     setArticleMore(false);setArticlesLoading(false);setArticleError('');fullSequence.current+=1;
     setFullUid('');setFullText('');setFullError('');
   };
-  const fetchArticles=async({append=false,offset=0,site=selectedSite}={})=>{
+  const fetchArticles=async({append=false,offset=0,site=selectedSite,sites=selectedSites}={})=>{
     if(!scope||!site||densityMode!=='source'||!validRange)return;
     articleAbortRef.current?.abort();
     const controller=new AbortController();
@@ -461,7 +422,7 @@ export default function CulturePublicReader(){
     setArticleRows([]);setArticlesLoading(true);setArticleError('');
     try{
       const page=await selectCultureArticleListPage(scope,{
-        startDate:rangeStart,endDate:rangeEnd,site,offset,sortDirection:'desc',
+        startDate:rangeStart,endDate:rangeEnd,site,sites,offset,sortDirection:'desc',
         signal:controller.signal
       });
       if(request!==sequence.current)return;
@@ -478,13 +439,13 @@ export default function CulturePublicReader(){
       if(request===sequence.current)setArticlesLoading(false);
     }
   };
-  const openArticles=(site,categoryKey)=>{
+  const openArticles=(site,categoryKey,sites=[])=>{
     if(densityMode!=='source')return;
     // Clear the previous category before the new bounded page is fetched.
     // The request sequence invalidates late responses from the old category.
-    resetArticles(site,categoryKey);
+    resetArticles(site,categoryKey,sites);
     setArticlesOpen(true);
-    fetchArticles({site,offset:0});
+    fetchArticles({site,sites,offset:0});
   };
   useEffect(()=>{
     // Any date/filter change invalidates visible details, held text, active
@@ -493,14 +454,14 @@ export default function CulturePublicReader(){
     sequence.current+=1;fullSequence.current+=1;
     setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);
     setArticleMore(false);setArticlesLoading(false);setArticleError('');
-    setSelectedSite('');setSelectedCategoryKey('');
+    setSelectedSite('');setSelectedSites(NO_ITEMS);setSelectedCategoryKey('');
     setFullUid('');setFullText('');setFullError('');
     setExpandedSources([]);
     setAnchorSuggestionsOpen(false);setFocusedSuggestionDate('');
   },[scopeId,rangeStart,rangeEnd,densityMode,keywordClass]);
   const loadMore=()=>{
     if(!articlesOpen||!selectedSite)return;
-    if(articleMore&&!articlesLoading)fetchArticles({append:true,offset:articleOffset});
+    if(articleMore&&!articlesLoading)fetchArticles({append:true,offset:articleOffset,sites:selectedSites});
   };
   const toggleFull=async row=>{
     const request=++fullSequence.current;
@@ -603,17 +564,21 @@ export default function CulturePublicReader(){
               setFocusedSuggestionDate('');
               return;
             }
-            if(name.startsWith('root:')){
-              // Open/close child labels without requesting article rows.
+            if(densityMode==='source'&&name.startsWith('dual:source:')){
+              // Any saved ancestor may open the next UID level. Daily buckets
+              // are already in memory; no article query is made on toggle.
+              const uid=name.slice('dual:source:'.length);
+              setExpandedSources(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]);
+            }else if(densityMode==='keyword'&&name.startsWith('root:')){
               const id=name.slice(5);
               setExpandedSources(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id]);
             }
           }}
           onGroupSelect={group=>{
             const name=String(group);
-            if(!name.startsWith('site:')||densityMode!=='source')return;
-            const category=densityRiver.sites.find(item=>'site:'+item.key===name);
-            if(category)openArticles(category.site,category.key);
+            if(!name.startsWith('dual:source:')||densityMode!=='source')return;
+            const category=densityRiver.sites.find(item=>item.key===name);
+            if(category)openArticles(category.site,category.key,category.sites);
           }}/>
         </div>:null}
         {!riverPending&&anchorSuggestionsOpen?<div id='public-culture-anchor-analysis'
@@ -647,7 +612,7 @@ export default function CulturePublicReader(){
         {densityMode==='keyword'&&!classesLoading&&!keywordClasses.length?<p className='scope-status'>目前沒有可使用的公開關鍵詞科目。</p>:null}
         {densityMode==='keyword'&&keywordClass&&!keywordLoading&&!keywordError&&!keywordGroups.length?<p className='scope-status'>此範圍沒有可顯示的關鍵詞統計。</p>:null}
         {densityMode==='source'&&expandedSources.length>0&&!articlesOpen?
-          <p className='scope-status'>點選左側小分類，才會載入該分類文章。</p>:null}
+          <p className='scope-status'>展開來源分類後，點選最末層來源才會載入文章。</p>:null}
       </section>
       {articlesOpen&&densityMode==='source'&&selectedSite?<section className='scope-card scope-culture-source-detail' data-selected-category={selectedCategoryKey}>
         <div className='scope-culture-source-detail-heading'>
