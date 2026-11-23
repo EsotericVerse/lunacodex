@@ -98,3 +98,75 @@ test('native SQL keyword page avoids a second UID content query',async()=>{
   assert.equal(result.parsedDocuments,1);
   assert.equal(finalized.itemCounts.ITEM0001,1);
 });
+
+test('Keyword analysis resumes beyond 8192 total articles across durable 2048-row requests',async()=>{
+  const total=8195;
+  const docs=Array.from({length:total},(_,i)=>({
+    uid:String(i+1).padStart(8,'0'),
+    title:'',content:'月光',date:'2026-11-22',keyword:true
+  }));
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  const reader=async({cursor,limit})=>{
+    const from=cursor??0,rows=docs.slice(from,from+limit);
+    return {rows,nextCursor:from+rows.length};
+  };
+  let durable=null,completed=0,requests=0;
+  const checkpoints=[];
+  const persist=async state=>{
+    durable=JSON.parse(JSON.stringify(state));
+    checkpoints.push(state.scanned);
+  };
+  let final=null;
+  do{
+    const result=await analyzeItemKeywordCounts({
+      items:terms,groups,expectedCount:total,
+      readMetadataPage:reader,resume:durable,pageSize:256,
+      maxRowsPerRun:2048,checkpointRows:512,onCheckpoint:persist,
+      finalize:async counts=>{completed++;final=counts;}
+    });
+    requests++;
+    assert.ok(requests<=6,'Whole Scope cannot be limited to 8192 rows');
+    if(!result.incomplete)break;
+    assert.equal(result.scanned,durable.scanned,'Batch must commit cursor before returning');
+    assert.equal(result.scanned,requests*2048);
+  }while(true);
+  assert.equal(requests,5);
+  assert.equal(completed,1);
+  assert.equal(final.scannedDocuments,total);
+  assert.equal(final.analyzedDocuments,total);
+  assert.equal(final.itemDocuments.ITEM0001,total);
+  assert.ok(checkpoints.includes(512));
+  assert.ok(checkpoints.includes(8192));
+  assert.ok(checkpoints.every((position,i)=>i===0||position>checkpoints[i-1]));
+});
+
+test('Keyword analysis recovers after an interrupted request from last durable checkpoint',async()=>{
+  const docs=Array.from({length:800},(_,i)=>({
+    uid:String(i+1).padStart(8,'0'),
+    title:'',content:'月光',date:'2026-11-22',keyword:true
+  }));
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  let durable=null,crash=true,final=null;
+  const reader=async({cursor,limit})=>{
+    const from=cursor??0;
+    if(crash&&from>=512)throw Error('Transport interrupted');
+    const rows=docs.slice(from,from+limit);
+    return {rows,nextCursor:from+rows.length};
+  };
+  const opts={
+    items:terms,groups,expectedCount:docs.length,readMetadataPage:reader,
+    pageSize:256,checkpointRows:512,
+    onCheckpoint:async state=>{durable=JSON.parse(JSON.stringify(state));},
+    finalize:async counts=>{final=counts;}
+  };
+  await assert.rejects(analyzeItemKeywordCounts(opts),/Transport interrupted/);
+  assert.equal(durable.scanned,512);
+  assert.equal(durable.cursor,512);
+  assert.equal(final,null);
+  crash=false;
+  const result=await analyzeItemKeywordCounts({...opts,resume:durable});
+  assert.equal(result.scannedDocuments,800);
+  assert.equal(result.analyzedDocuments,800);
+  assert.equal(result.itemDocuments.ITEM0001,800);
+  assert.equal(final.itemCounts.ITEM0001,800);
+});
