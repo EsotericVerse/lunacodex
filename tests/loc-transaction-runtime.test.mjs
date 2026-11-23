@@ -270,7 +270,7 @@ test('UID delete refuses an incomplete CAS batch with conflict status',async()=>
   const db={selectFrom:select,updateTable:update};
   await assert.rejects(
     repairBeforeUidDelete(db,{
-      table:'loc_anchor',
+      table:'lo3rwang_anchor',
       filters:[{column:'uid',operator:'eq',value:'DELE0001'}],
       engine:'postgres'
     }),
