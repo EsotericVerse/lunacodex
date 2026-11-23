@@ -104,7 +104,7 @@ test('Empty-but-linked Time tree is recovered instead of blocking its editor',()
   const chart=file('app/modular/modules/culture-timeline/CultureTimeline.jsx');
   assert.match(chart,/!ready\|\|!extraGroups\.length\|\|chartError/);
   assert.match(chart,/setChartError\(true\)/);
-  assert.match(chart,/chartError&&mode==='trace'\?<TimeAnchorRecovery/);
+  assert.match(chart,/showTraceRecovery\?<TimeAnchorRecovery/);
   const manage=file('app/modular/features/Culture.jsx');
   assert.match(manage,/onFirstPaint=\{\(\)=>setTimeRiverFirstPaint\(true\)\}/);
 });
