@@ -13,7 +13,7 @@ const target=process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'?'native':'web';
 if(!fs.existsSync(api))throw new Error('Expected Next API routes at app/api');
 if(fs.existsSync(parked))throw new Error('Found an unfinished static-export build at .loc-api-static-export-build');
 
-const npm=process.platform==='win32'?'npm.cmd':'npm';
+const pnpm=process.platform==='win32'?'pnpm.cmd':'pnpm';
 function run(command,args,env=process.env){
   const result=spawnSync(command,args,{cwd:root,env,stdio:'inherit',shell:process.platform==='win32'});
   if(result.error)throw result.error;
@@ -33,7 +33,7 @@ if(previousTarget&&previousTarget!==target){
 fs.rmSync(output,{recursive:true,force:true});
 // Public JS/CSS snapshots are explicitly published and committed beforehand.
 // Static exports must never read Supabase simply to build app assets.
-run(npm,['run','prebuild']);
+run(pnpm,['run','prebuild']);
 fs.renameSync(api,parked);
 let complete=false;
 try{
