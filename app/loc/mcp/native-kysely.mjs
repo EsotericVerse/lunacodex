@@ -6,7 +6,7 @@ import {Kysely} from 'kysely';
 import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
-import {createKyselyDialect,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
+import {createKyselyDialect,getSqlType,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
 
 // The trusted Kysely dialect and its request-owned pg.Client share the
 // current request lifetime. Never share its waitUntil closure across requests.
@@ -50,7 +50,7 @@ export async function db_connection(env={},verifiedAlias='',{
     const dialect=createKyselyDialect(engine,trustedDialectConfig);
     const db=new Kysely({dialect});
     return {db,dialect,engine,
-      namespace:target.schema_name||(engine==='mysql'?'':'dbo'),
+      namespace:target.schema_name??getSqlType(engine).targetNamespace,
       tableName:target.table_name||'',
       fieldMap:target.field_map||{},
       // Kysely owns the selected driver's pool. Do not close the primary
