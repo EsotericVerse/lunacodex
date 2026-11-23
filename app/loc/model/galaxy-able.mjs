@@ -27,9 +27,10 @@ export function galaxyAble(row={}){
   const flags=Object.fromEntries(GALAXY_ABLE_KEYS.map(key=>[
     key,booleanOrUndefined(row[key])??DEFAULT_GALAXY_ATTR[key]
   ]));
-  // New MCP imports can be listed but not extracted by default. Explicit
-  // flags are preserved so users manage visibility on the row, not via roles.
-  if(String(row.site||'').trim().toLowerCase()==='mcp'&&
+  // Legacy mcp and private chat From sources remain nonextractable by
+  // default; explicitly configured Galaxy flags still take precedence.
+  if(['mcp','chatgpt','claude','gemini'].includes(
+    String(row.site||'').trim().toLowerCase())&&
     booleanOrUndefined(row.extract)===undefined)flags.extract=false;
   return flags;
 }
