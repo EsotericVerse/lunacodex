@@ -3,13 +3,14 @@
 // only explicit username/password authentication is accepted at this stage.
 // Windows integrated login, IAM and unverified passwordless schemes remain
 // rejected rather than silently disabling the database credential boundary.
-const SQL_ENGINES=new Set(['postgres','mysql','mssql']);
+import {getSqlType} from '../../../modules/loc/dialect/index.mjs';
 export function sqlAuthNeedsUserPassword(authentication={type:'default'}){
   return authentication?.type==='default';
 }
 export function normalizeSqlDriverAuthentication(engine,input){
-  if(!SQL_ENGINES.has(engine))
-    throw Error('Unsupported SQL driver authentication for engine');
+  // Explicit trusted Type only. Never infer from credentials or protocol.
+  try{getSqlType(engine);}
+  catch{throw Error('Unsupported SQL driver authentication for engine');}
   const source=input===undefined?{type:'default'}:input;
   if(!source||typeof source!=='object'||Array.isArray(source))
     throw Error('Invalid SQL driver authentication configuration');
