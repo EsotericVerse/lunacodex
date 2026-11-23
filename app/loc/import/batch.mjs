@@ -404,7 +404,9 @@ export function createImportConfirmationWindow({
       if(!Number.isSafeInteger(confirmed)||confirmed<0)
         throw new TypeError('Invalid confirmed import row count');
       if(confirmed<next)return false;
-      do{next=next===firstRows?maxRows:next+maxRows;}
+      do{next=next===firstRows
+        ?(maxRows>firstRows?maxRows:firstRows+maxRows)
+        :next+maxRows;}
       while(confirmed>=next);
       return true;
     }
