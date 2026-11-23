@@ -78,10 +78,11 @@ export function buildUidScalarRepairQuery(db,table,batch,deletedUid,
 // Existing SELECT projections and JS graph validation remain authoritative;
 // these statements only shorten round-trips inside the authorized transaction.
 export function planUidRepairStatementBatches(items,{
-  maxRows=64,maxBytes=96*1024
+  maxRows=Number.MAX_SAFE_INTEGER,maxBytes=128*1024,maxParameters=1800
 }={}){
   if(!Array.isArray(items)||!Number.isSafeInteger(maxRows)||maxRows<1||
-     maxRows>256||!Number.isSafeInteger(maxBytes)||maxBytes<1)
+     !Number.isSafeInteger(maxBytes)||maxBytes<1||
+     !Number.isSafeInteger(maxParameters)||maxParameters<8||maxParameters>32000)
     throw new TypeError('Invalid UID dependency statement budget');
   const groups=new Map(),encoder=new TextEncoder();
   for(const item of items){
@@ -96,14 +97,20 @@ export function planUidRepairStatementBatches(items,{
   }
   const batches=[];
   for(const group of groups.values()){
-    let chunk=[],bytes=0;
+    let chunk=[],bytes=0,parameters=0;
     for(const item of group){
       const size=encoder.encode(JSON.stringify(item,
         (_,value)=>typeof value==='bigint'?String(value):value)).length;
-      if(chunk.length&&(chunk.length>=maxRows||bytes+size>maxBytes)){
-        batches.push(chunk);chunk=[];bytes=0;
+      // Conservative upper bound for a CASE arm plus its own UID/CAS
+      // predicate. SQL Server has 2,100 parameters; allow headroom.
+      // PostgreSQL's native array case needs fewer, never more.
+      const params=Object.keys(item.values).length*2+1+
+        Object.keys(item.expected).length+(item.type?1:0);
+      if(chunk.length&&(chunk.length>=maxRows||bytes+size>maxBytes||
+          parameters+params>maxParameters)){
+        batches.push(chunk);chunk=[];bytes=0;parameters=0;
       }
-      chunk.push(item);bytes+=size;
+      chunk.push(item);bytes+=size;parameters+=params;
     }
     if(chunk.length)batches.push(chunk);
   }
