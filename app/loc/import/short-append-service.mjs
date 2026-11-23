@@ -8,7 +8,7 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const SCOPE=/^[a-z][a-z0-9_]{0,63}$/;
 const BASE62='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const FLAGS=galaxyReadColumns('GalaxyAttr');
-const BATCH_BYTES=601024; // allow for the transport envelope around 600 KB of records
+const BATCH_BYTES=601024; // actual transport bytes are authoritative, not record count
 function failure(message,httpStatus=400){return Object.assign(new Error(message),{httpStatus});}
 export function newShortImportUid(cryptoProvider=globalThis.crypto){
  if(typeof cryptoProvider?.getRandomValues!=='function')throw failure('Secure random UID unavailable',503);
@@ -38,7 +38,7 @@ export function validateShortImportBatch(input){
  if(!input||typeof input!=='object'||Array.isArray(input)||
   Object.keys(input).some(key=>!['id','write_mode','records'].includes(key))||
   !UUID.test(String(input.id||''))||input.write_mode!=='append'||
-  !Array.isArray(input.records)||input.records.length<1||input.records.length>50)
+  !Array.isArray(input.records)||input.records.length<1)
   throw failure('Invalid short-import batch');
  if(new TextEncoder().encode(JSON.stringify(input)).byteLength>BATCH_BYTES)
   throw failure('Short-import batch exceeds 600 KB',413);
