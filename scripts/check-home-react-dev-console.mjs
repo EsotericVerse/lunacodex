@@ -7,7 +7,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {setTimeout as sleep} from 'node:timers/promises';
 
-const url='http://127.0.0.1:3000/';
+// Next.js dev resources use localhost as their allowed origin by default.
+const url='http://localhost:3000/';
 const homeClass='.loc-home-motion-block';
 const keyWarning=/Each child in a list should have a unique ["']key["'] prop/i;
 const chromeBin=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable',
