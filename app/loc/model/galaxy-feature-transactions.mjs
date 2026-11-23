@@ -86,7 +86,7 @@ export function parseGalaxyFeatureTransaction(raw){
 }
 const PRIVATE_SITES=Object.freeze(['messenger','chatgpt','claude','gemini',
   'msn','whatsapp','telegram','discord','line','wechat','teams','copilot',
-  'grok','perplexity','meta ai','meta-ai','github']);
+  'grok','perplexity','meta ai','meta-ai','github','mcp']);
 // Text terms are SQL *values* only. Escape LIKE wildcard syntax so the
 // search grammar cannot accidentally become a pattern-language SQL API.
 const pattern=value=>'%'+String(value).replace(/[\\%_]/g,x=>'\\'+x)+'%';
