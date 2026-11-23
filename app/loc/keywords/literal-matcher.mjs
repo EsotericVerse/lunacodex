@@ -28,6 +28,25 @@ export function compileKeywordLiteralMatcher(words=[]){
       for(let index=0;index<counts.length;index++)
         if(counts[index]>0)found.add(literals[index]);
       return found;
+    },
+    // Vocabulary-level Pattern counts use the same compiled Aho matcher
+    // as the existing literal classifier. Return positive term counts
+    // without article UIDs or a second searchable index.
+    countMatches(text){
+      if(!matcher)return [];
+      const counts=needsFallback(text)
+        ?literals.map(word=>{
+          let n=0,from=0,position;
+          while((position=text.indexOf(word,from))!==-1){
+            n++;from=position+word.length;
+          }
+          return n;
+        })
+        :matcher.countByPattern(text);
+      const result=[];
+      for(let index=0;index<counts.length;index++)
+        if(counts[index]>0)result.push([literals[index],Number(counts[index])]);
+      return result;
     }
   };
 }
