@@ -103,7 +103,7 @@ export async function db_connection(env={},verifiedAlias='',{
   // SQL Server targets when their caller-supplied pool is enabled.
   const dialect=createKyselyDialect(primary?.engine||'postgres',{pool});
   const connection={db:new Kysely({dialect}),dialect,pool,
-    engine:'postgres',namespace:'silver',tableName:'',fieldMap:{}};
+    engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{}};
   return connection;
 }
 export {db_connection as directMcpKysely};
