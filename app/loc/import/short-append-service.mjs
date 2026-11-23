@@ -3,6 +3,7 @@
 // of existing content, extra tables, RLS changes, or PR-specific Galaxy writes.
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {portableGalaxyImportMapping} from '../../../packages/zenstack/portable-import-mapping.mjs';
+import {siteForCapturedUrl,CAPTURE_LOOKUP_SITES} from '../source/site-from-url.mjs';
 const UID=/^[0-9A-Za-z]{8}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SCOPE=/^[a-z][a-z0-9_]{0,63}$/;
@@ -25,14 +26,10 @@ export function normalizeSourceUrl(value){
   throw failure('Source URL must be HTTP(S) without credentials');
  return u.href;
 }
-// Browser-captured past conversations belong to the private MCP archive.
-// This is derived from the normalized, trusted source URL, never a user-provided
-// site string. Every new article still starts with all eight public flags false.
+// Galaxy.site is the source's From label, never its parent MCP Domain.
+// New Plugin captures still start with all eight public flags false.
 export function siteForShortImportSource(sourceKey){
- const hostname=new URL(normalizeSourceUrl(sourceKey)).hostname.toLowerCase();
- return hostname==='chatgpt.com'||hostname.endsWith('.chatgpt.com')||
-  hostname==='chat.openai.com'||hostname==='claude.ai'||
-  hostname.endsWith('.claude.ai')?'mcp':'web';
+ return siteForCapturedUrl(normalizeSourceUrl(sourceKey));
 }
 export function validateShortImportBatch(input){
  if(!input||typeof input!=='object'||Array.isArray(input)||
@@ -147,6 +144,13 @@ export async function processShortImport(batch,actor,{store,cryptoProvider=globa
     throw failure('Cannot revise an unknown article',409);
    const uid=prior?.uid||uidFactory();
    if(!UID.test(uid))throw failure('Invalid Galaxy UID',503);
+   const fromSite=siteForShortImportSource(url);
+   if(prior&&!CAPTURE_LOOKUP_SITES.includes(prior.site))
+    throw failure('Unexpected existing Galaxy source site',409);
+   // Same immutable URL-derived source ID, same UID and text. Normalize
+   // legacy mcp/web classifications inside the already locked transaction.
+   if(prior&&prior.site!==fromSite)
+    await tx.relabelSource(uid,siteId,prior.site,fromSite);
    const content=prior?.content||'';
    const fresh=[];
    for(const e of events){
@@ -158,7 +162,7 @@ export async function processShortImport(batch,actor,{store,cryptoProvider=globa
    const next=fresh.map(e=>segmentText(e,uid)).join('\n');
    if(!prior){
     const first=events[0];
-    pendingInserts.push({uid,title:first.title,content:next,site:siteForShortImportSource(url),site_id:siteId,
+    pendingInserts.push({uid,title:first.title,content:next,site:fromSite,site_id:siteId,
      url,createtime:first.captured_at,UpdateTime:new Date().toISOString(),
      ...Object.fromEntries(FLAGS.map(k=>[k,false]))});
    }else if(next){await tx.append(uid,siteId,'\n'+next);}
@@ -229,6 +233,17 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
     const [verified]=mapping.mapInserts([row]);
     await trx.insertInto(name).values(verified).executeTakeFirstOrThrow();
    },
+   async relabelSource(uid,id,previous,site){
+    onPhase?.('source_site');
+    if(!CAPTURE_LOOKUP_SITES.includes(previous)||
+       !CAPTURE_LOOKUP_SITES.includes(site)||site==='mcp')
+      throw failure('Invalid source classification',409);
+    const changed=await trx.updateTable(name).set({[mapping.site]:site})
+     .where(mapping.uid,'=',uid).where(mapping.siteId,'=',id)
+     .where(mapping.site,'=',previous).executeTakeFirstOrThrow();
+    if(Number(changed.numUpdatedRows??changed.numAffectedRows??0)!==1)
+      throw failure('Galaxy source classification conflict',409);
+   },
    async append(uid,id,tail){
     onPhase?.('append_update');
     const update=await trx.updateTable(name)
@@ -239,7 +254,7 @@ export function portableShortImportStore(db,sql,{engine='postgres',namespace,onP
       // uses ISO text (no extra roundtrip or alternate import logic).
       [mapping.updatedAt]:new Date().toISOString()
      })
-     .where(mapping.uid,'=',uid).where(mapping.site,'in',['web','mcp'])
+     .where(mapping.uid,'=',uid).where(mapping.site,'in',CAPTURE_LOOKUP_SITES)
      .where(mapping.siteId,'=',id).executeTakeFirstOrThrow();
     onPhase?.('append_result');
     if(Number(update.numUpdatedRows??update.numAffectedRows??0)!==1)
