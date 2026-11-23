@@ -41,6 +41,41 @@ export const NATIVE_WRITE_MAX_BYTES=SQL_BATCH_POLICY.nativeWriteMaxBytes;
 export const TIME_ANCHOR_TARGET_BYTES=SQL_BATCH_POLICY.timeAnchorTargetBytes;
 export const TIME_ANCHOR_EDITOR_MAX_BYTES=SQL_BATCH_POLICY.timeAnchorEditorMaxBytes;
 export const clampRows=(n,min,max)=>Math.max(min,Math.min(max,n));
+
+// Prepare bounded SQL JSON recordsets without opening a second transaction.
+// Preserve input order and (optionally) adjacent matching physical columns.
+export function planJsonRecordsetBatches(rows,{
+  maxBytes=IMPORT_WRITE_TARGET_BYTES,maxRows=10000,groupByShape=false
+}={}){
+  if(!Array.isArray(rows)||!Number.isSafeInteger(maxBytes)||maxBytes<2||
+      !Number.isSafeInteger(maxRows)||maxRows<1)
+    throw new TypeError('Invalid SQL JSON batch budget');
+  const encoder=new TextEncoder(),batches=[];
+  let current=[],bytes=2,shape='',columns=[];
+  const flush=()=>{
+    if(!current.length)return;
+    batches.push({columns,serialized:'['+current.join(',')+']',
+      rowCount:current.length,bytes});
+    current=[];bytes=2;
+  };
+  for(const row of rows){
+    if(!row||typeof row!=='object'||Array.isArray(row))
+      throw new TypeError('Invalid SQL JSON record');
+    const currentColumns=Object.keys(row);
+    const key=groupByShape?[...currentColumns].sort().join('\0'):'';
+    const serialized=JSON.stringify(row);
+    if(typeof serialized!=='string')
+      throw new TypeError('Invalid SQL JSON payload');
+    const length=encoder.encode(serialized).byteLength;
+    if(current.length&&(key!==shape||current.length>=maxRows||
+        bytes+1+length>maxBytes))flush();
+    if(!current.length){shape=key;columns=currentColumns;}
+    bytes+=length+(current.length?1:0);
+    current.push(serialized);
+  }
+  flush();
+  return batches;
+}
 export function createTextAdaptiveRows({
   initial=HEAVY_INITIAL_ROWS,maximum=HEAVY_QUERY_ROWS,
   targetChars=TEXT_SCAN_TARGET_CHARS,minimum=1
