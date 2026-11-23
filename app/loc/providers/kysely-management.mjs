@@ -488,6 +488,7 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
   'media_anchor_candidates','anchor_import_page','import_site_presence',
   'import_site_id_candidates','import_created_at_candidates',
+  'import_occupied_createtimes',
   'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope',
   'save_scope_trace_edit']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
@@ -608,6 +609,13 @@ const IMPORT_SITE_ID_CANDIDATE_COLUMNS=Object.freeze([
 const IMPORT_CREATED_AT_CANDIDATE_COLUMNS=Object.freeze([
   ...new Set([...IMPORT_SITE_ID_CANDIDATE_COLUMNS,'date'])
 ]);
+const importOccupiedTimesArgsSchema=z.strictObject({
+  p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
+  p_seconds:z.array(z.string().datetime({offset:true})).min(1).max(80),
+  p_after_uid:z.string().regex(UID).nullable().optional(),
+  p_limit:z.number().int().min(1).max(100).default(60)
+});
+const IMPORT_OCCUPIED_TIME_COLUMNS=Object.freeze(['uid','createtime']);
 // Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
 const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
   'uid','type','title','description','attr','createtime'
@@ -778,6 +786,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     import_site_presence:['p_scope_id','p_sites'],
     import_site_id_candidates:['p_scope_id','p_site','p_site_ids','p_after_uid','p_limit'],
     import_created_at_candidates:['p_scope_id','p_site','p_instants','p_after_uid','p_limit'],
+    import_occupied_createtimes:['p_scope_id','p_seconds','p_after_uid','p_limit'],
     search_galaxy_private:['p_scope_id','p_query','p_offset','p_limit',
       'p_start_date','p_end_date','p_sort_direction','p_content_type',
       'p_source_mode','p_sources','p_place_only']
@@ -848,6 +857,34 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     }
     const rows=await query.execute();
     assertZModelSelectRows(table,columns,rows);
+    const page=rows.slice(0,limit);
+    return {data:{rows:page,nextCursor:rows.length>limit
+      ?String(page.at(-1).uid):null},count:page.length};
+  }
+  if(name==='import_occupied_createtimes'){
+    // Timestamp uniqueness is global within this Scope, across every site
+    // and even legacy rows whose separate date projection is NULL.
+    // SQL only reads occupied seconds requested by the current import batch.
+    const parsed=importOccupiedTimesArgsSchema.safeParse(args);
+    if(!parsed.success)reject('Invalid import occupied-time request');
+    const {p_scope_id:scope,p_seconds:seconds,p_after_uid:after,p_limit:limit}=parsed.data;
+    if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
+      reject('Import occupied-time Scope access denied',403);
+    const starts=[...new Set(seconds.map(s=>Date.parse(s)))];
+    if(starts.some(ms=>!Number.isFinite(ms)||ms%1000!==0||
+      !Number.isFinite(ms+1000)))
+      reject('Import occupied-time seconds must be exact');
+    await sql`reset role`.execute(trx);
+    const table='silver.'+scope+'_galaxy';
+    let query=trx.selectFrom(table).select(IMPORT_OCCUPIED_TIME_COLUMNS)
+      .where(eb=>eb.or(starts.map(ms=>eb.and([
+        eb('createtime','>=',new Date(ms).toISOString()),
+        eb('createtime','<',new Date(ms+1000).toISOString())
+      ]))))
+      .orderBy('uid','asc').limit(limit+1);
+    if(after)query=query.where('uid','>',after);
+    const rows=await query.execute();
+    assertZModelSelectRows(table,IMPORT_OCCUPIED_TIME_COLUMNS,rows);
     const page=rows.slice(0,limit);
     return {data:{rows:page,nextCursor:rows.length>limit
       ?String(page.at(-1).uid):null},count:page.length};
