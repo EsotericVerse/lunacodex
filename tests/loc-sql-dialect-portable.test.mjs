@@ -95,6 +95,6 @@ test('Capability report separates dialect features from actual production connec
     ['insert','upsert','update','delete','update_batch','append_media_link']);
   for(const port of [my,ms]){
     assert.deepEqual(port.managedOperations,
-      ['insert','update','delete','update_batch']);
+      ['insert','upsert','update','delete','update_batch']);
   }
 });

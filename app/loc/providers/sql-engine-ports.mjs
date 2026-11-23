@@ -1,6 +1,6 @@
 import {canLocAccess} from './loc-authorization.mjs';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
-import {modelFieldsForSql,verifyModeledSqlFields}
+import {modelFieldsForSql,modeledPrimaryKeyColumns,verifyModeledSqlFields}
   from '../../../packages/zenstack/model-column-guard.mjs';
 // Single source of truth for the LOC SQL engine plug-in points.
 // Kysely provides dialect-specific SQL generation; connection and security
@@ -40,7 +40,7 @@ export function getSqlRuntimeCapabilities(engine){
     returning:port.id==='postgres'||port.id==='mssql',
     managedOperations:Object.freeze(port.id==='postgres'
       ?['insert','upsert','update','delete','update_batch','append_media_link']
-      :['insert','update','delete','update_batch'])
+      :['insert','upsert','update','delete','update_batch'])
   });
 }
 // Runtime hook boundary: the core Kysely CRUD remains common to all SQL engines.
@@ -195,7 +195,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
   const matched=String(p.p_table||'').match(/^silver\.([a-z][a-z0-9_]*)$/);
   if(!matched)invalidWrite('Invalid managed relation');
   const table=matched[1],operation=String(p.p_operation||'');
-  if(!['insert','update','delete','update_batch'].includes(operation))
+  if(!['insert','upsert','update','delete','update_batch'].includes(operation))
     invalidWrite('Invalid managed operation');
   // Portable DML must stay inside the already-authored LOC ZModel contract.
   // Authenticated delegation controls rights; a legal table identifier by
@@ -233,6 +233,48 @@ export async function executeCrossEngineManagedWrite(db,body,context){
         const batch=group.slice(i,i+size);
         const result=await db.insertInto(name).values(serializePortableJsonFields(batch,engine)).executeTakeFirst();
         count+=managedAffected(result);
+      }
+    }
+  }else if(operation==='upsert'){
+    const rows=p.p_rows;
+    const primary=modeledPrimaryKeyColumns('silver',table);
+    if(!primary||primary.length!==1||!Array.isArray(rows)||
+       rows.length<1||rows.length>10000)
+      invalidWrite('Invalid portable managed UPSERT rows or primary key');
+    const key=primary[0];
+    for(const row of rows){
+      if(!row||typeof row!=='object'||Array.isArray(row)||
+         row[key]===null||row[key]===undefined||
+         !Object.keys(row).some(column=>column!==key)||
+         Object.keys(row).some(column=>!SAFE_FIELD.test(column)||column==='able'))
+        invalidWrite('Invalid portable managed UPSERT row');
+      verifyModeledSqlFields({schema:'silver',table,values:row,onConflict:primary});
+    }
+    // The caller owns ONE validated SQL transaction, including any conflict
+    // and rollback. Materially different incoming row shapes form separate
+    // parameter-safe statements; no extra connection or SQL gateway exists.
+    const {planKyselyUpsertBatches,executeMssqlUpsert,executeMysqlUpsert}
+      =await import('./kysely-runtime.mjs');
+    const batches=planKyselyUpsertBatches(
+      serializePortableJsonFields(rows,engine),key,{
+        maxParameters:engine==='mssql'?1900:32000,
+        maxRows:100,
+        maxBytes:512*1024
+      });
+    for(const batch of batches){
+      const req={schema:'silver',table,operation:'upsert',
+        onConflict:primary,values:batch,columns:['*'],returning:false};
+      if(engine==='mssql'){
+        const result=await executeMssqlUpsert(db,req,{namespace});
+        count+=Number(result.count||0);
+      }else if(engine==='mysql'){
+        // Use the same modeled-primary-key locking contract as SQL Server.
+        // MySQL ON DUPLICATE KEY UPDATE may match an unrelated unique index;
+        // that is not an acceptable source identity for LOC.
+        const result=await executeMysqlUpsert(db,req,{namespace});
+        count+=Number(result.count||0);
+      }else{
+        invalidWrite('Portable managed UPSERT engine unsupported');
       }
     }
   }else if(operation==='update_batch'){

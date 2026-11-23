@@ -216,19 +216,29 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres',namespace){
 // primary-key operation is valid ONLY inside an already-owned Kysely
 // Transaction. UPDLOCK + HOLDLOCK serializes the key range until COMMIT;
 // concurrent conflicting inserts still fail against the physical primary key.
-export async function executeMssqlUpsert(trx,req,{namespace='dbo',modelName=''}={}){
+export async function executeMssqlUpsert(trx,req,options={}){
+  return executePortableKeyedUpsert(trx,req,{...options,dialect:'mssql'});
+}
+export async function executeMysqlUpsert(trx,req,options={}){
+  return executePortableKeyedUpsert(trx,req,{...options,dialect:'mysql'});
+}
+async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName=''}={}){
   if(trx?.isTransaction!==true)
-    throw new Error('SQL Server UPSERT requires an active Kysely transaction');
+    throw new Error('Portable UPSERT requires an active Kysely transaction');
+  if(!['mssql','mysql'].includes(dialect))
+    throw new Error('Unsupported keyed UPSERT SQL dialect');
   if(req?.operation!=='upsert')
     throw new Error('SQL Server UPSERT requires an upsert request');
   const rows=Array.isArray(req.values)?req.values:[req.values];
   if(!rows.length||rows.length>500||!sameKeys(rows))
-    throw new Error('Invalid SQL Server UPSERT rows');
+    throw new Error('Invalid portable UPSERT rows');
+  if(dialect==='mysql'&&req.returning)
+    throw new Error('MySQL has no native UPSERT RETURNING');
   const primary=modeledPrimaryKeyColumns(req.schema,req.table);
   if(!primary?.length||primary.length!==req.onConflict?.length||
     primary.some((column,index)=>column!==req.onConflict[index]))
-    throw new Error('SQL Server UPSERT requires the exact modeled primary key');
-  const table=databaseTable(req,'mssql',namespace,modelName);
+    throw new Error('Portable UPSERT requires the exact modeled primary key');
+  const table=databaseTable(req,dialect,namespace,modelName);
   const updates=Object.keys(rows[0]).filter(column=>!primary.includes(column));
   const projected=query=>!req.returning?query:
     req.columns?.length===1&&req.columns[0]==='*'
@@ -244,22 +254,33 @@ export async function executeMssqlUpsert(trx,req,{namespace='dbo',modelName=''}=
     seen.add(identity);
   }
   for(const row of rows){
-    const conditions=primary.map(column=>
-      sql`${sql.ref(column)} = ${row[column]}`);
-    const found=await sql`
-      select ${sql.join(primary.map(column=>sql.ref(column)),sql`, `)}
-      from ${sql.ref(table)} with (updlock,holdlock)
-      where ${sql.join(conditions,sql` and `)}
-    `.execute(trx);
-    if(found.rows.length>1)throw new Error('Non-unique SQL Server UPSERT primary key');
-    if(found.rows.length&&primary.some(column=>found.rows[0][column]!==row[column]))
-      throw new Error('SQL Server UID collation does not preserve exact identity');
-    if(found.rows.length&&(req.ignoreDuplicates||!updates.length))continue;
-    let builder=found.rows.length
+    let found;
+    if(dialect==='mssql'){
+      const conditions=primary.map(column=>
+        sql`${sql.ref(column)} = ${row[column]}`);
+      found=(await sql`
+        select ${sql.join(primary.map(column=>sql.ref(column)),sql`, `)}
+        from ${sql.ref(table)} with (updlock,holdlock)
+        where ${sql.join(conditions,sql` and `)}
+      `.execute(trx)).rows;
+    }else{
+      // MySQL ON DUPLICATE KEY UPDATE can update an unrelated row when a
+      // different unique index conflicts. Lock only the modeled PK instead;
+      // competing inserts fail at the constraint and roll back safely.
+      let lookup=trx.selectFrom(table).select(primary);
+      for(const column of primary)
+        lookup=lookup.where(column,'=',row[column]);
+      found=await lookup.forUpdate().execute();
+    }
+    if(found.length>1)throw new Error('Non-unique portable UPSERT primary key');
+    if(found.length&&primary.some(column=>found[0][column]!==row[column]))
+      throw new Error('Portable UID collation does not preserve exact identity');
+    if(found.length&&(req.ignoreDuplicates||!updates.length))continue;
+    let builder=found.length
       ?trx.updateTable(table).set(Object.fromEntries(
         updates.map(column=>[column,row[column]])))
       :trx.insertInto(table).values(row);
-    if(found.rows.length){
+    if(found.length){
       for(const column of primary)
         builder=builder.where(column,'=',row[column]);
     }
@@ -331,9 +352,10 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
       });
       data=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,data);
     }
-  }else if(dialect==='mssql'&&req.operation==='upsert'){
-    const prepared={...req,values:serializePortableJsonFields(req.values,'mssql')};
-    ({data,count}=await executeMssqlUpsert(trx,prepared,{namespace,modelName}));
+  }else if(['mssql','mysql'].includes(dialect)&&req.operation==='upsert'){
+    const prepared={...req,values:serializePortableJsonFields(req.values,dialect)};
+    const executor=dialect==='mssql'?executeMssqlUpsert:executeMysqlUpsert;
+    ({data,count}=await executor(trx,prepared,{namespace,modelName}));
   }else{
     const built=buildKyselyMutationQuery(trx,input,{dialect,namespace,modelName});
     const result=await built.query.execute();
