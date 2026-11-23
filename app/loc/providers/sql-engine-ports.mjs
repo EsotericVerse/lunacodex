@@ -36,7 +36,9 @@ export function getSqlRuntimeCapabilities(engine){
       ?['select','insert','update','delete']
       :['select','insert','update','delete','upsert']),
     returning:port.id==='postgres'||port.id==='mssql',
-    managedOperations:Object.freeze(['insert','update','delete','update_batch'])
+    managedOperations:Object.freeze(port.id==='postgres'
+      ?['insert','upsert','update','delete','update_batch','append_media_link']
+      :['insert','update','delete','update_batch'])
   });
 }
 // Runtime hook boundary: the core Kysely CRUD remains common to all SQL engines.
