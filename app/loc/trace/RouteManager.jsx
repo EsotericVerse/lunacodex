@@ -29,7 +29,7 @@ const MAX_ROAD=80,MAX_LINES=400;
 const unique=items=>[...new Set(items)];
 const validPair=pair=>Array.isArray(pair)&&pair.length===2&&pair[0]&&pair[1]&&pair[0]!==pair[1];
 
-export default function TraceRouteManager({scopeId,mode='all',treeMode=false,selectedRecordUid='',initialType='path',spatialData=null,reloadSpatial=null,onRegisterLeave=null}){
+export default function TraceRouteManager({scopeId,mode='all',treeMode=false,selectedRecordUid='',initialType='path',spatialData=null,reloadSpatial=null,onRegisterLeave=null,onRemoved=null}){
   const account=useAccount(),cache=useResourceCache(),params=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const dock=useEditDock();
   const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
@@ -316,6 +316,7 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
       if(selectedUid===row.uid)setSelectedUid('');
       if(readDefaultTraceRoute(owner)===row.uid)clearDefaultTraceRoute(owner,row.uid);
       await refresh();setNotice('已刪除連線資料，原始地點保留');
+      if(treeMode){setEditorOpen(false);clear();onRemoved?.();}
     }catch(e){setError(true);setNotice(String(e.message||e));}finally{setBusy(false);}
   };
   const applyBulkVisibility=async invisible=>{
@@ -403,6 +404,12 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
     </div>:null}
     {editorOpen?<form className="loc-trace-route-composer" onSubmit={event=>{if(inDock)event.preventDefault();else void save(event);}}>
       <h4>{editingUid?'編輯':'新增'}{type==='path'?'路線圖':'痕跡圖'}</h4>
+      {treeMode&&editingUid&&current?<div className="scope-stat-controls">
+        <button type="button" className="loc-button" disabled={busy||!own}
+          onClick={()=>{if(setDefaultTraceRoute(owner,current.uid))setNotice('已設為預設顯示');}}>設為預設</button>
+        <button type="button" className="loc-button" disabled={busy||!own}
+          onClick={()=>remove(current)}>刪除{type==='path'?'路徑':'痕跡'}</button>
+      </div>:null}
       <div className="scope-management-fields">
         <label>名稱<input required maxLength={120} value={title} onChange={e=>setTitle(e.target.value)} disabled={busy}/></label>
         <div className="loc-trace-description-field"><span>說明</span>
