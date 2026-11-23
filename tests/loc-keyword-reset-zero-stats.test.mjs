@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readKeywordStatistics,readKeywordCatalog}
+import {readKeywordStatistics,readKeywordCatalog,readKeywordDaily}
   from '../app/loc/keywords/sql-service.mjs';
 import {readKeywordScanProgress,keywordClassEpoch,bumpKeywordClassEpoch,
   invalidateKeywordClass,writeKeywordScanProgress}
@@ -95,4 +95,13 @@ test('Catalog also reflects zero without dropping the Keyword structure',async()
   const catalog=await readKeywordCatalog(db,'lo3rwang',cls,{owner:true});
   assert.deepEqual(catalog.rows.map(x=>x.uid),[cls,group,item]);
   assert.deepEqual(catalog.rows.map(x=>x.total),[0,0,0]);
+});
+
+test('Daily chart stays empty after clear and performs no article read',async()=>{
+  const db=clearedDatabase();
+  const rows=await readKeywordDaily(db,'lo3rwang',cls,{
+    owner:true,start:'2026-01-01',end:'2026-12-31'
+  });
+  assert.deepEqual(rows,[]);
+  assert.deepEqual(db.queried,['silver.lo3rwang']);
 });
