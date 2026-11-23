@@ -73,5 +73,7 @@ jobs:
           NODE
 
       - name: Verify live React development console without missing-key warnings
+        # Run even if a separate SQL/Culture regression failed; never mask a React warning.
+        if: ${{ !cancelled() }}
         timeout-minutes: 5
         run: node scripts/check-home-react-dev-console.mjs

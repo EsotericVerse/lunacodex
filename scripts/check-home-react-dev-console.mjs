@@ -92,6 +92,10 @@ try{
   await call('Page.enable');
   await call('Runtime.enable');
   await call('Log.enable');
+  // Verify that the DevTools listener really captures browser errors.
+  const probe='LOC-REACT-CONSOLE-CAPTURE-PROBE';
+  await call('Runtime.evaluate',{expression:'console.error('+JSON.stringify(probe)+')'});
+  await within(()=>notes.some(text=>text.includes(probe)),5000,'browser console observer');
   await call('Page.navigate',{url});
 
   // The public snapshot contains five actual LOC homepage blocks. A single

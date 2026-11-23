@@ -82,26 +82,26 @@ function SharedHomeBlockDisplay(slot,scopeId='loc'){
   const children=HomeBlock.visibleEntities(slot).filter(entity=>entity.title||
     BlockNoteContent.image.stripHeroImageTag(entity.text).replace(/<[^>]*>/g,'').trim());
   const Heading=hero?'h1':'h2';
-  const header=<header className="loc-home-block__header">
+  const header=<header key="header" className="loc-home-block__header">
     {slot.eyebrow?<p className="loc-eyebrow">{slot.eyebrow}</p>:null}
     {slot.title?<Heading>{slot.title}</Heading>:null}
     {slot.subtitle?<p className="loc-subtitle loc-home-block__subtitle">{HomeBlock.plainBlockLine(slot.subtitle)}</p>:null}
   </header>;
-  const body=<RichHtml html={slot.text} stripImage scopeId={scopeId} className="loc-home-block__body"/>;
-  const media=image.src?(hero?<figure className="loc-home-block__media home-hero-visual" aria-label={image.alt}>
+  const body=<RichHtml key="body" html={slot.text} stripImage scopeId={scopeId} className="loc-home-block__body"/>;
+  const media=image.src?(hero?<figure key="media" className="loc-home-block__media home-hero-visual" aria-label={image.alt}>
     <picture>{image.small?<source media="(max-width: 760px)" srcSet={image.small.src}/>:null}
       <img src={image.src} alt="" aria-hidden="true" loading="eager" fetchPriority="high" decoding="async"/></picture>
-  </figure>:<article className="loc-home-block__media loc-home-block__media-bubble loc-bubble"
+  </figure>:<article key="media" className="loc-home-block__media loc-home-block__media-bubble loc-bubble"
     style={{'--loc-home-media-max':image.width+'px'}}>
     <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/>
   </article>):null;
   return <>
     {header}
-    {imageOnly?<div className="loc-home-block__body loc-home-block__body--image"
+    {imageOnly?<div key="body" className="loc-home-block__body loc-home-block__body--image"
       style={{'--loc-home-media-max':image.width+'px'}}>
       <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/>
     </div>:body}
-    {children.length?<div className="loc-home-block__children" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([slot.bubbleColumns],slot.pageName||'index')}}>
+    {children.length?<div key="children" className="loc-home-block__children" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([slot.bubbleColumns],slot.pageName||'index')}}>
       {children.map((entity,index)=>{
         const card=HomeBlock.childPresentation(entity.title)==='card';
         return <article className={'loc-home-block__child '+(card?'loc-home-block__child--card':'loc-home-block__child--bubble')}
@@ -112,7 +112,7 @@ function SharedHomeBlockDisplay(slot,scopeId='loc'){
       })}
     </div>:null}
     {!imageOnly?media:null}
-    {sign?<span className={'home-hero-identity home-hero-identity--'+sign.key}
+    {sign?<span key="identity" className={'home-hero-identity home-hero-identity--'+sign.key}
       role="img" aria-label={sign.label}>{sign.text}</span>:null}
   </>;
 }
