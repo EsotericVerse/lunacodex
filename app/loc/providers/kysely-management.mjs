@@ -606,7 +606,7 @@ const IMPORT_SITE_ID_CANDIDATE_COLUMNS=Object.freeze([
   ...new Set([...galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr'),'site_id'])
 ]);
 const IMPORT_CREATED_AT_CANDIDATE_COLUMNS=Object.freeze([
-  'uid','site','site_id','createtime','date'
+  ...new Set([...IMPORT_SITE_ID_CANDIDATE_COLUMNS,'date'])
 ]);
 // Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
 const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
