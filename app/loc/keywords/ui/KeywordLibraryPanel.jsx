@@ -451,11 +451,41 @@ export default function KeywordLibraryPanel({scopeId,account}){
         storeUnconfirmed(null);
         await load(attempt.classUid);await invalidate();
         setNotice('已由資料庫回執確認這次分析完成，不需重新執行。');
+      }else if(result?.resumable){
+        // The persisted final cursor is enough to finish: do not ask the
+        // editor to reset the Class or reclassify tens of thousands of rows.
+        storeUnconfirmed({...attempt,finalizePending:true,
+          scanned:Number(result.scanned)||0});
+        setNotice('最後一段已保存 '+Number(result.scanned||0).toLocaleString()+
+          ' 筆；可以只接續最終統計，不需重新掃描文章。');
       }else{
         setError('資料庫尚未找到這次分析的完成回執。可能仍在執行或已中止；目前未執行任何寫入。');
       }
     }catch(e){setError('核對失敗：'+String(e.message||e));}
     finally{setCheckingAttempt(false);}
+  };
+  const resumeUnconfirmedTail=async()=>{
+    const attempt=unconfirmedAttempt;
+    if(!attempt?.finalizePending||checkingAttempt||busy)return;
+    setBusy(true);setError('');setNotice('');
+    setProgress({phase:'finalizing',completed:attempt.scanned||0,
+      total:attempt.scanned||0,label:'接續已保存的最後一段統計'});
+    try{
+      // This is a user-initiated new authorized request, not a replay of
+      // the uncertain old HTTP response or a reset of classified articles.
+      const {runKeywordAnalysisBatch}=await import('../analysis');
+      await runKeywordAnalysisBatch(scopeId,{
+        classUid:attempt.classUid,onProgress:setProgress
+      });
+      storeUnconfirmed(null);
+      await load(attempt.classUid);await invalidate();
+      setNotice('已由保存的尾段完成統計，無需重新解析文章。');
+    }catch(e){
+      if(e?.name==='KeywordAnalysisUnconfirmedError'&&e?.attemptId)
+        storeUnconfirmed({classUid:attempt.classUid,
+          attemptId:e.attemptId,savedAt:Date.now()});
+      setError(String(e.message||e));
+    }finally{setBusy(false);setProgress(null);}
   };
   const discardUnconfirmed=()=>{
     const attempt=unconfirmedAttempt;
@@ -746,8 +776,14 @@ export default function KeywordLibraryPanel({scopeId,account}){
         <p className="scope-status">有效分類文章：{Number(keywordClassState(config,activeClass?.uid)?.matchedDocuments||0).toLocaleString()} 篇</p>
       </details>
       {unconfirmedAttempt?<div className="loc-work-status loc-keyword-analysis-receipt" role="status">
-        <p>前次分析回執尚未確認（Class：{unconfirmedAttempt.classUid}）。可唯讀核對，也可選擇「清空分析」確認重設；重設將使舊分析無法再寫回。</p>
+        <p>{unconfirmedAttempt.finalizePending
+          ?'尾段進度已保存，可直接接續最終統計，不需要重新掃描。'
+          :'前次分析回執尚未確認（Class：'+unconfirmedAttempt.classUid+'）。請先核對回執，不必清空重新解析。'}</p>
         <div className="scope-preview-links">
+          {unconfirmedAttempt.finalizePending?<button type="button" className="loc-button primary"
+            disabled={checkingAttempt||busy} onClick={resumeUnconfirmedTail}>
+            接續完成統計
+          </button>:null}
           <button type="button" className="loc-button primary"
             disabled={checkingAttempt||busy} onClick={checkUnconfirmed}>
             {checkingAttempt?'正在核對…':'核對本次分析'}
