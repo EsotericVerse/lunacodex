@@ -60,7 +60,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
           aria-labelledby={'scope-sections-option-'+selectedOption.value}>
           <ProtectedManagementSlot>
             {section==='anchor'?<UnifiedSpatialManagement scopeId={routeScopeId}
-              initialType={requestedSection==='path'||requestedSection==='trace'?requestedSection:'point'}/>:null}
+              initialType={requestedSection==='path'||requestedSection==='trace'?requestedSection:traceOnly?'trace':'point'}/>:null}
             {section==='organize'||section==='timeline'?<PlaceManagement
               scopeId={routeScopeId} section={section}
               initialOperation={requestedSection==='quickFill'?'quickFill':'names'}/>:null}
