@@ -37,7 +37,7 @@ import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportD
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
 import {publicVisualUrl,visualGalaxyCandidates} from './visual-galaxy.mjs';
 import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
-import {MAX_ROWS,urlSafeInBatches} from '../query/query-batch-size.mjs';
+import {MAX_ROWS,urlSafeInBatches,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content/content-policy';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
@@ -311,11 +311,24 @@ async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}
     action==='import_occupied_createtimes'?'p_seconds':null;
   if(!field||!Array.isArray(keys)||typeof onPage!=='function')
     throw new Error('匯入識別查詢參數無效');
-  const pageSize=60;
-  for(let offset=0;offset<keys.length;offset+=80){
-    const chunk=keys.slice(offset,offset+80);
+  const encoder=new TextEncoder();
+  // Each trusted Managed Action accepts at most 80 identity keys. Bound the
+  // actual UTF-8 parameter payload too, without treating 80 as a forced size.
+  for(let offset=0;offset<keys.length;){
+    let end=offset,bytes=2;
+    while(end<keys.length&&end-offset<80){
+      const length=encoder.encode(JSON.stringify(keys[end])).byteLength;
+      if(end>offset&&bytes+1+length>16*1024)break;
+      bytes+=length+(end>offset?1:0);
+      end++;
+    }
+    const chunk=keys.slice(offset,end);
+    offset=end;
+    const pages=createTextAdaptiveRows({initial:60,maximum:100,
+      targetChars:128*1024});
     let after=null;
     for(;;){
+      const pageSize=pages.size;
       const {data,error}=await dbAuthClient.schema('silver').managedAction(action,{
         p_scope_id:scopeId,...(field==='p_seconds'?{}:{p_site:site}),[field]:chunk,
         ...(after?{p_after_uid:after}:{}),p_limit:pageSize
@@ -328,7 +341,12 @@ async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}
         next!==null&&(typeof next!=='string'||next!==rows.at(-1)?.uid||
           next===after)||(!rows.length&&next!==null))
         throw new Error('匯入識別查詢游標或回傳資料無效');
-      if(rows.length)onPage(rows);
+      if(rows.length){
+        onPage(rows);
+        // Kysely result shapes vary: use encoded response bytes, not an
+        // assumed fixed row count, to size the next keyset page.
+        pages.observe(rows.length,encoder.encode(JSON.stringify(rows)).byteLength);
+      }
       if(next===null)break;
       after=next;
     }
