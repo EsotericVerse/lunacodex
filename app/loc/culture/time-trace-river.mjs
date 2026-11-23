@@ -37,6 +37,23 @@ export function unassignedPublicDateAnchors(dates,eraWindows){
   });
 }
 
+// A management drill-down follows ONE open branch: Era -> Period -> Dates.
+// Opening another Era closes the previous Periods and dates. This controls
+// display only; it does not rewrite the saved Era/Period UID relationships.
+export function nextEditorEraExpansion(current=[],selectedGroupId=''){
+  const id=text(selectedGroupId);
+  const open=new Set(list(current).map(text));
+  if(id.startsWith('time-undefined:'))
+    return open.has(id)?[]:[id];
+  if(!id.startsWith('trace:'))return [];
+  const periodOffset=id.indexOf(':period:');
+  if(periodOffset!==-1){
+    const eraId=id.slice(0,periodOffset);
+    return open.has(id)?[eraId]:[eraId,id];
+  }
+  return open.has(id)?[]:[id];
+}
+
 export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scopeId=''}={}){
   const traces=uniqueByUid(source.filter(row=>row?.entry_type==='era'))
     .sort(chronological);
@@ -143,8 +160,10 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     // entire unclassified list until the visitor opens it.
     const unassigned=datedAnchors.filter(anchor=>
       !assignedToPeriod.has(text(anchor.scope_id)+':'+text(anchor.uid)));
-    const scopes=[...new Set([text(scopeId),...source.map(row=>text(row?.scope_id)).filter(Boolean),
-      ...unassigned.map(anchor=>text(anchor.scope_id))].filter(Boolean))];
+    // Do not add a giant empty "unassigned" lane when all dates belong to
+    // saved Periods. Only genuine orphan dates need this separate branch.
+    const scopes=[...new Set(unassigned.map(anchor=>text(anchor.scope_id))
+      .filter(Boolean))];
     for(const scope of scopes){
       const groupId='time-undefined:'+scope;
       const isExpanded=expanded.has(groupId);

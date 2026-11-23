@@ -26,7 +26,7 @@ const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTim
 import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
-import {buildEraRiver} from '../../loc/culture/time-trace-river.mjs';
+import {buildEraRiver,nextEditorEraExpansion} from '../../loc/culture/time-trace-river.mjs';
 import {cultureEraPeriodHierarchy} from '../../loc/culture/era-period-hierarchy.mjs';
 import {buildLocCultureScopePreview} from '../../loc/culture/loc-scope-preview.mjs';
 import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-anchor-ranges.mjs';
@@ -737,8 +737,10 @@ export default function Culture(){
   const editorEraRiver=useMemo(()=>
     buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
     [timelineItems,expandedEditorEraIds,scopeId]);
+  // Keep one active Era -> Period -> Date drill-down at a time.
+  // The initial display is always a chronological Era-only list.
   const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
-    current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
+    nextEditorEraExpansion(current,groupId));
   const toggleTimeTrace=groupId=>{
     const open=!expandedEraIds.includes(groupId);
     setExpandedEraIds(current=>
@@ -1333,6 +1335,7 @@ export default function Culture(){
               labelOf={localizedLabelOf}
               focus={EMPTY_RIVER_FOCUS}
               mode='trace'
+              compactHierarchy
               unfoldCurtain={false}
               onFirstPaint={()=>setTimeRiverFirstPaint(true)}
               onGroupToggle={toggleEditorEra}
