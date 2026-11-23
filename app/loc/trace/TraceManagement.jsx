@@ -1,7 +1,7 @@
 'use client';
 import {lazy,Suspense} from 'react';
 
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
 import {useEditDockForm} from '../../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
@@ -29,7 +29,7 @@ const LazyTraceMap=lazy(()=>import('../../modular/features/trace/TraceMap'));
 const TraceMapLoading=()=> <p className="scope-status">正在載入地圖…</p>;
 function TraceMap(props){return <Suspense fallback={<TraceMapLoading/>}><LazyTraceMap {...props}/></Suspense>;}
 
-function AnchorEditor({scopeId,spatial,reload}){
+function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRegisterLeave=null}){
   const cache=useResourceCache();
   // Day-level place rows for the "文化河道" stems drawn on the map's own
   // saved anchors (TraceMap filters to titles it already shows).
@@ -43,20 +43,22 @@ function AnchorEditor({scopeId,spatial,reload}){
     ...(spatial.maps||[]).filter(row=>row.source_scope===scopeId)
       .map(row=>({...row,type:row.trace_type}))
   ],[ownAnchors,spatial.maps,scopeId]);
-  const [editingUid,setEditingUid]=useState('');
-  const [invisible,setInvisible]=useState(false);
+  const initialRow=ownAnchors.find(row=>row.uid===selectedUid);
+  const [editingUid,setEditingUid]=useState(initialRow?.uid||'');
+  const [invisible,setInvisible]=useState(Boolean(initialRow?.invisible));
   const [bulkUids,setBulkUids]=useState([]);
   const [bulkFilter,setBulkFilter]=useState('');
   const [bulkBusy,setBulkBusy]=useState(false);
   const [pendingRenames,setPendingRenames]=useState({});
   const [pendingVisibility,setPendingVisibility]=useState(null);
   const [standardTitles,setStandardTitles]=useState({});
-  const [title,setTitle]=useState('');
-  const [description,setDescription]=useState('');
-  const [postalAddress,setPostalAddress]=useState('');
-  const [longitude,setLongitude]=useState('');
-  const [latitude,setLatitude]=useState('');
-  const [focusLocation,setFocusLocation]=useState(null);
+  const [title,setTitle]=useState(initialRow?.title||'');
+  const [description,setDescription]=useState(initialRow?.description||'');
+  const [postalAddress,setPostalAddress]=useState(initialRow?.postal_address||'');
+  const [longitude,setLongitude]=useState(initialRow?.longitude==null?'':String(initialRow.longitude));
+  const [latitude,setLatitude]=useState(initialRow?.latitude==null?'':String(initialRow.latitude));
+  const [focusLocation,setFocusLocation]=useState(initialRow?.longitude!=null&&initialRow?.latitude!=null
+    ?{longitude:initialRow.longitude,latitude:initialRow.latitude,name:initialRow.title}:null);
   const [mapOpen,setMapOpen]=useState(false);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
@@ -81,6 +83,12 @@ function AnchorEditor({scopeId,spatial,reload}){
     latitude!==(editingRow.latitude==null?'':String(editingRow.latitude))
   )):Boolean(title||description||postalAddress||longitude||latitude);
   const dirty=formDirty||Object.keys(pendingRenames).length>0||Boolean(pendingVisibility)||mergeUids.length>0;
+  useEffect(()=>{
+    if(!onRegisterLeave)return;
+    onRegisterLeave(()=>!busy&&!bulkBusy&&(!dirty||
+      window.confirm('目前有尚未儲存的地點修改或批次操作，確定放棄並切換？')));
+    return ()=>onRegisterLeave(null);
+  },[onRegisterLeave,dirty,busy,bulkBusy]);
   const pickExisting=uid=>{
     if(busy||bulkBusy)return false;
     if(uid===editingUid)return true;
@@ -217,11 +225,11 @@ function AnchorEditor({scopeId,spatial,reload}){
     isDestructive:()=>mergeUids.length>0||Boolean(pendingVisibility)});
   return <section className="loc-card scope-feature-card loc-trace-anchor-editor">
     <h3>{editingUid?'編輯空間定錨點':'新增空間定錨點'}</h3>
-    <label>編輯既有地點（直接搜尋標題）
+    {!embedded?<label>編輯既有地點（直接搜尋標題）
       <ScopeOptionPicker id={'trace-anchor-edit-'+scopeId} options={options}
         value={editingUid} onChange={pickExisting} disabled={busy||bulkBusy} resetKey={scopeId}
         placeholder="搜尋標題，或留空新增"/>
-    </label>
+    </label>:null}
     <details className="scope-card loc-trace-quick-update">
       <summary>快速更新｜相同位置、名稱排列不同（{renameGroups.length} 組）</summary>
       {!renameGroups.length?<p className="scope-status">目前沒有符合條件的名稱排列候選；沒有座標的地點不會猜測為同一位置。</p>:null}
@@ -323,18 +331,19 @@ function AnchorEditor({scopeId,spatial,reload}){
 
 // Embedded under the existing /manage (Scope) or /admin (LOC) routes.
 // The parent manager owns authorization, edit mode and tab navigation.
-export default function TraceManagementPanel({scopeId,mode='anchor',routeMode='all'}){
+export default function TraceManagementPanel({scopeId,mode='anchor',routeMode='all',spatialData=null,reloadSpatial=null,selectedUid='',embedded=false,onRegisterLeave=null}){
   const enabled=TRACE_SCOPES.includes(scopeId);
   const query=useAsyncResource(traceKey(scopeId,{includeHidden:true}),()=>readTraceData(scopeId,{includeHidden:true}),{
-    enabled:enabled&&mode!=='map',revalidateOnFocus:false,revalidateOnReconnect:false
+    enabled:enabled&&mode!=='map'&&!spatialData,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   if(!enabled)return <p className="scope-status">此 Scope 尚未配置痕跡資料表。</p>;
   if(mode==='map')return <TraceRouteManager key={scopeId+'-'+routeMode} scopeId={scopeId} mode={routeMode}/>;
-  if(query.error)return <p role="alert" className="scope-status scope-error">{String(query.error.message||query.error)}</p>;
-  if(query.isPending||query.data===undefined)
+  if(!spatialData&&query.error)return <p role="alert" className="scope-status scope-error">{String(query.error.message||query.error)}</p>;
+  if(!spatialData&&(query.isPending||query.data===undefined))
     return <p className="scope-status" role="status">正在載入空間定錨點…</p>;
-  const spatial=query.data;
+  const spatial=spatialData||query.data;
+  const reload=reloadSpatial||(()=>query.mutate());
   return mode==='cleanup'
-    ?<TraceOrganizer key={scopeId+'-cleanup'} scopeId={scopeId} spatial={spatial} reload={()=>query.mutate()}/>
-    :<AnchorEditor key={scopeId+'-anchor'} scopeId={scopeId} spatial={spatial} reload={()=>query.mutate()}/>;
+    ?<TraceOrganizer key={scopeId+'-cleanup'} scopeId={scopeId} spatial={spatial} reload={reload}/>
+    :<AnchorEditor key={scopeId+'-anchor-'+(embedded?selectedUid:'')} scopeId={scopeId} spatial={spatial} reload={reload} selectedUid={selectedUid} embedded={embedded} onRegisterLeave={onRegisterLeave}/>;
 }
