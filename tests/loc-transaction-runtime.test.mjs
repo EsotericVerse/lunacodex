@@ -191,7 +191,11 @@ test('large UID reconciliations use bounded batches and preserve every row',()=>
   assert.deepEqual(batches.map(b=>b.length),[25,25,25,25,1]);
   assert.deepEqual(batches.flat(),rows);
   assert.equal(planUidRepairStatementBatches(rows,{maxBytes:1}).length,rows.length);
-  assert.throws(()=>planUidRepairStatementBatches(rows,{maxRows:1000}));
+  assert.ok(planUidRepairStatementBatches(rows,{maxParameters:14}).length>=50);
+  assert.throws(()=>planUidRepairStatementBatches(rows,{maxParameters:0}));
+  // Default size follows SQL parameters and serialized payload, not a
+  // hardcoded row count such as 50/64/100.
+  assert.equal(planUidRepairStatementBatches(rows).flat().length,rows.length);
 });
 
 test('UID alias remapping preserves article content, target order and saved IDs',()=>{
