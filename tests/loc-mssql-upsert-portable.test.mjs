@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {Kysely,MssqlDialect} from 'kysely';
 import {executeKyselyQuery,executeMssqlUpsert,buildKyselySelectQuery}
   from '../app/loc/providers/kysely-runtime.mjs';
+import {executeCrossEngineManagedWrite}
+  from '../app/loc/providers/sql-engine-ports.mjs';
+import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
 
 // The SQL Server query compiler and transaction wrapper are real Kysely.
 // Only the remote driver's I/O is replaced, so no tedious/tarn installation
@@ -127,5 +130,23 @@ test('SQL Server SELECT does not emit OFFSET 0 without an order',async()=>{
     },{dialect:'mssql',namespace:'dbo'}).query.compile();
     assert.match(paged.sql,/order by/i);
     assert.match(paged.sql,/offset\s+@\d+\s+rows/i);
+  }finally{await x.db.destroy();}
+});
+
+test('SQL Server managed upsert is authorized and executes inside existing transaction',async()=>{
+  const x=database();
+  const claims={provider:'loc',me:true,sub:'tester_portable',
+    email:'portable@example.com',grants:['lo3rwang:manage']};
+  try{
+    const output=await x.db.transaction().execute(async trx=>{
+      bindLocAuthorization(trx,{role:'authenticated',claims,engine:'mssql'});
+      return executeCrossEngineManagedWrite(trx,{payload:{
+        p_table:'silver.lo3rwang_galaxy',p_operation:'upsert',
+        p_rows:[{uid:'AAAA0001',title:'from-managed'}]
+      }},{engine:'mssql',namespace:'dbo',role:'authenticated',claims});
+    });
+    assert.equal(output.data.count,1);
+    assert.equal(x.records.get('AAAA0001').title,'from-managed');
+    assert.ok(x.statements.some(s=>/with \(updlock,holdlock\)/i.test(s.sql)));
   }finally{await x.db.destroy();}
 });
