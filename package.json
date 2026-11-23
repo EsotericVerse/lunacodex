@@ -19,7 +19,7 @@
   "dependencies": {
     "@better-auth/sso": "1.7.18",
     "@blocknote/core": "0.55.0",
-    "@blocknote/mantine": "0.55.0",
+    "@blocknote/ariakit": "0.55.0",
     "@blocknote/react": "0.55.0",
     "@capacitor/core": "8.5.3",
     "@capacitor/filesystem": "8.0.0",
