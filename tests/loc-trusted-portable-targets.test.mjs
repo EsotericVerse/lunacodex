@@ -45,7 +45,10 @@ test('MSSQL defaults to dbo; PostgreSQL keeps silver as separate schema',()=>{
   const sqlserver=normalizeLiveTarget('archive_sqlserver',profile('mssql'));
   assert.equal(sqlserver.target.schema_name,'dbo');
   const pg=normalizeLiveTarget('archive_pg',profile('postgres'));
-  assert.equal(pg.target.schema_name,'silver');
+  assert.equal(pg.target.schema_name,'public');
+  assert.equal(normalizeLiveTarget('archive_pg',{
+    ...profile('postgres'),schema_name:'silver'
+  }).target.schema_name,'silver');
   const scoped=normalizeLiveTarget('archive_sqlserver',{
     ...profile('mssql'),schema_name:'archive'
   });
@@ -200,4 +203,21 @@ test('Neon PostgreSQL and Azure SQL Server coexist with independent explicit SQL
   }finally{
     await Promise.all([closeLocDatabase(azure),closeLocDatabase(pg)]);
   }
+});
+
+test('provider name never chooses SQL Type: Cloud SQL profiles can independently use PostgreSQL, MySQL or T-SQL',()=>{
+  for(const engine of ['postgres','mysql','mssql']){
+    const selected=normalizeLiveTarget('gcloud_'+engine,{
+      ...profile(engine),provider:'google-cloud-sql',
+      host:'sql.example.org',
+      ...(engine==='postgres'?{schema_name:'analytics'}:{})
+    });
+    assert.equal(selected.target.engine,engine);
+    assert.equal(selected.profile.engine,engine);
+    assert.equal(new URL(selected.profile.url).hostname,'sql.example.org');
+    assert.equal(selected.target.connection_alias,'gcloud_'+engine);
+  }
+  assert.throws(()=>normalizeLiveTarget('gcloud_unknown',{
+    ...profile('postgres'),engine:'',provider:'google-cloud-sql'
+  }),/Unsupported runtime SQL engine/);
 });
