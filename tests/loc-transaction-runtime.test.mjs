@@ -166,7 +166,7 @@ test('row-specific Anchor JSON CASE preserves num and full original attr CAS',()
       expected:{attr:{point:['44444444','33333333','55555555']}}}
   ];
   const serialize=values=>Object.fromEntries(Object.entries(values).map(
-    ([key,value])=>[key,key==='attr'?sql`${{JSON.stringify(value)}::jsonb`:value]));
+    ([key,value])=>[key,key==='attr'?sql`${JSON.stringify(value)}::jsonb`:value]));
   const compiled=buildUidCaseRepairQuery(db,'silver.loc_anchor',items,
     serialize).compile();
   assert.match(compiled.sql,/CASE/i);
