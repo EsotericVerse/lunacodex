@@ -8,8 +8,8 @@ import RouteManager from './RouteManager';
 
 // Shared browser only; Point, Path and Trace still own their existing Save,
 // route sequencing, line segments, map picker, and write permission checks.
-export default function UnifiedSpatialManagement({scopeId}){
-  const [selected,setSelected]=useState({type:'point',uid:'',serial:0});
+export default function UnifiedSpatialManagement({scopeId,initialType='point'}){
+  const [selected,setSelected]=useState({type:initialType,uid:'',serial:0});
   const leaveGuard=useRef(null);
   const registerLeave=useCallback(fn=>{leaveGuard.current=fn;},[]);
   const query=useAsyncResource(traceKey(scopeId,{includeHidden:true}),
@@ -17,7 +17,7 @@ export default function UnifiedSpatialManagement({scopeId}){
       enabled:TRACE_SCOPES.includes(scopeId),revalidateOnFocus:false,revalidateOnReconnect:false
     });
   const pick=useCallback((type,uid='')=>{
-    if(type===selected.type&&uid===selected.uid)return;
+    if(type===selected.type&&uid===selected.uid&&uid)return;
     if(leaveGuard.current&&!leaveGuard.current())return;
     leaveGuard.current=null;
     setSelected(current=>({type,uid,serial:current.serial+1}));
