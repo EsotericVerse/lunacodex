@@ -57,9 +57,12 @@ const galaxyKeywordScanProjection=Object.freeze([
   sql`case when ${sql.ref('keyword')} is false then null
     else ${sql.ref('content')} end`.as('content')
 ]);
-// Normal scans do not intentionally stop at a fixed 20-second window.
-// Item scan retains periodic durable checkpoints only for actual failures.
-// Cloudflare execution limits remain external and require production testing.
+// Keyword analysis is paged across requests, not capped to a fixed number
+// of Scope articles. Each short request commits a resumable SQL checkpoint
+// BEFORE returning so Cloudflare request limits never erase the whole scan.
+const KEYWORD_ROWS_PER_REQUEST=2048;
+const KEYWORD_CHECKPOINT_ROWS=512;
+const KEYWORD_REQUEST_BUDGET_MS=15000;
 
 const removeLegacyKeywordHitCache=value=>{
   const {uidlists,articles,hits,total,...links}=value||{};
@@ -378,11 +381,21 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   const result=await analyzeItemKeywordCounts({
     ...itemScope(tree),expectedCount,readMetadataPage:reader,
     minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
-    pageSize:HEAVY_INITIAL_ROWS,resume,timeBudgetMs:null,
-    onCheckpoint:async progress=>db.transaction().execute(async trx=>{
-      await authorizeTransaction(trx);
-      await persistScanProgress(trx,scope,classUid,progress,expectedEpoch);
-    }),
+    pageSize:HEAVY_INITIAL_ROWS,resume,
+    maxRowsPerRun:KEYWORD_ROWS_PER_REQUEST,
+    checkpointRows:KEYWORD_CHECKPOINT_ROWS,
+    timeBudgetMs:KEYWORD_REQUEST_BUDGET_MS,
+    onCheckpoint:async progress=>{
+      await db.transaction().execute(async trx=>{
+        await authorizeTransaction(trx);
+        await persistScanProgress(trx,scope,classUid,progress,expectedEpoch);
+      });
+      onProgress({phase:'checkpoint',total:expectedCount,
+        completed:progress.scanned,parsed:progress.parsed,
+        percent:Math.min(99,Math.round(expectedCount?
+          progress.scanned/expectedCount*100:0)),
+        label:'分析進度已保存，可接續下一批'});
+    },
     onProgress:({phase,completed=0,parsed=0})=>onProgress({
       phase,total:expectedCount,completed,parsed,
       percent:phase==='completed'?100:Math.min(99,
