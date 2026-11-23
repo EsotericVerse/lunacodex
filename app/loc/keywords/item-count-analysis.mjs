@@ -104,7 +104,6 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     item_no:i+1,item_name:item.item_name,class_group:item.group_uid,
     keywords:item.keywords,order_no:i+1,class_enable:true
   }));
-  const classify=createKeywordDocumentClassifier(catalog);
   const itemIds=items.map(x=>x.uid),groupIds=groups.map(x=>x.uid);
   const fingerprint=JSON.stringify({catalog,groupIds,minChars,
     patterns:[...patternByUid]});
@@ -118,6 +117,16 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     groupCounts:mapOf(groupIds,saved?.groupCounts),
     groupDocuments:mapOf(groupIds,saved?.groupDocuments),
     patternCounts:mapOf([...patternByUid.keys()],saved?.patternCounts)};
+  const classify=createKeywordDocumentClassifier(catalog,{
+    // The classifier already normalizes each article's visible scan text.
+    // Reuse that text for Pattern occurrence counting, instead of doing
+    // a second NFKC normalization and scan for every Galaxy document.
+    onNormalizedText:patternMatcher?text=>{
+      for(const [word,times] of patternMatcher.countMatches(text))
+        for(const uid of uidsByTerm.get(word)||[])
+          state.patternCounts[uid]+=times;
+    }:null
+  });
   const byDay=new Map(),groupOrder=new Map(groupIds.map((uid,i)=>[uid,i]));
   const fallback=groups.find(g=>items.some(i=>i.group_uid===g.uid&&i.item_name==='德'))?.uid||'';
   function absorb(rows=[],callback=null){
@@ -139,13 +148,6 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     for(let i=0;i<docs.length;i++){
       const doc=docs[i],result=classifications[i],hits=new Map();
       state.parsed++;
-      if(patternMatcher){
-        // Count literal occurrences using the same already-cleaned article
-        // text as the Item classifier. No second Galaxy read, no UID postings.
-        for(const [word,times] of patternMatcher.countMatches(norm(doc.scan_text)))
-          for(const uid of uidsByTerm.get(word)||[])
-            state.patternCounts[uid]+=times;
-      }
       for(const hit of result.rune_counts||[]){
         const item=items[Number(hit.rune_id)-1];
         if(!item)throw Error('Unknown Item rule result');
