@@ -132,16 +132,28 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
       !Object.hasOwn(page,'nextCursor'))throw Error('Invalid Item scan page');
     if(!page.rows.length)break;
     cursor=page.nextCursor;scanned+=page.rows.length;
-    const ids=page.rows.filter(row=>row.keyword!==false).map(row=>String(row.uid));
+    const candidates=page.rows.filter(row=>row.keyword!==false);
+    const ids=candidates.map(row=>String(row.uid));
     let pageChars=0;
     if(ids.length){
-      const docs=await readContent(ids);
-      if(!Array.isArray(docs)||docs.length!==ids.length)
-        throw Error('Incomplete Item scan article page');
-      const byUid=new Map(docs.map(row=>[String(row.uid),row]));
-      if(byUid.size!==ids.length||ids.some(id=>!byUid.has(id)))
-        throw Error('Incomplete Item scan article page');
-      const ordered=ids.map(id=>byUid.get(id));
+      if(new Set(ids).size!==ids.length)
+        throw Error('Duplicate Item scan article UID');
+      // The native SQL Runtime can supply eligible article text in its
+      // indexed (date, uid) page. Avoid a second WHERE uid IN (...) fetch.
+      // Keep readContent as the exact fallback for callers with lean pages.
+      let ordered=candidates;
+      if(!candidates.every(row=>Object.hasOwn(row,'title')&&
+          Object.hasOwn(row,'content'))){
+        if(typeof readContent!=='function')
+          throw Error('Item scan article content reader is missing');
+        const docs=await readContent(ids);
+        if(!Array.isArray(docs)||docs.length!==ids.length)
+          throw Error('Incomplete Item scan article page');
+        const byUid=new Map(docs.map(row=>[String(row.uid),row]));
+        if(byUid.size!==ids.length||ids.some(id=>!byUid.has(id)))
+          throw Error('Incomplete Item scan article page');
+        ordered=ids.map(id=>byUid.get(id));
+      }
       pageChars=ordered.reduce((sum,row)=>sum+
         String(row?.title??'').length+String(row?.content??'').length,0);
       a.absorb(ordered);
