@@ -83,7 +83,7 @@ test('homepage motion preserves keyed display children and stable block identity
   const browser=src('app/loc/blocks/ScopeEditableBlocks.jsx');
   assert.match(browser,/import \{Fragment,useMemo,useState\} from 'react'/);
   assert.equal((browser.match(/<Fragment key="slot-display">/g)||[]).length,4);
-  assert.equal((browser.match(/<\/Fragment>/g)||[]).length,2);
+  assert.equal((browser.match(/<\/Fragment>/g)||[]).length,4);
   assert.match(browser,/<motion\.span key="hero-line"/);
   assert.match(browser,/key=\{slot\.uid\|\|'order:'\+slot\.order\}/);
 });
