@@ -238,9 +238,15 @@ export default function ScopeEditableBlocks({
     const heroSlotOrder=Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0?placeholderFirstOrder:null;
     const contents=<>
       {!editing&&!heroSlotOrder?toggleButton:null}
-      {editing&&!editingReady?<p className="scope-status" role="status">
-        {editingError?'編輯資料讀取失敗，請重新進入編輯。':'正在讀取最新編輯資料…'}
-      </p>:null}
+      {editing&&!editingReady?<div className="scope-status"
+        role={editingError?'alert':'status'}>
+        {editingError?<>
+          <p>區塊資料讀取失敗：{String(editorRows.error?.message||'請重試')}</p>
+          <button type="button" className="loc-button" onClick={()=>void editorRows.mutate()}>
+            重新讀取區塊
+          </button>
+        </>:<p>正在讀取最新編輯資料…</p>}
+      </div>:null}
       {editing&&editingReady?<ScopeBlockDraftList
         slots={slots}
         scopeId={scopeId}
