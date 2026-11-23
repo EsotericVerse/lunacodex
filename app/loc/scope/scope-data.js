@@ -324,14 +324,18 @@ export async function selectLiveScopeBlocks(scopeId,page='index'){
     const rows=await nativePublicContent('block_list',id);
     return Array.isArray(rows)?rows:[];
   }
-  // A caller-supplied signal deliberately bypasses the completed public
-  // SELECT cache for this edit-time authoritative read.
-  const {rows}=await selectAllRows(`silver.${id}_blocks`,{
-    columns:BLOCK_COLUMNS,filters:[{column:'page_name',operator:'eq',value:name}],
-    orders:[{column:'block_order',ascending:true}],
-    signal:new AbortController().signal
+  // /api/loc-public-query no longer exposes arbitrary table SELECT.
+  // Scope Block pages are presentation content: use the existing, fixed,
+  // page-exact block_list action. It reads only approved public Block pages,
+  // never requests Manage/Auth data and never performs a write.
+  const {dbPublicClient}=await import('../db/db-client.mjs');
+  const {data,error}=await dbPublicClient.schema('silver').publicAction('block_list',{
+    p_scope_id:id,p_page_name:name
   });
-  return (rows||[]).sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
+  if(error)throw new Error(error.message||'Scope 區塊讀取失敗');
+  if(!Array.isArray(data))throw new Error('Scope 區塊回傳資料格式錯誤');
+  return data.filter(row=>String(row.page_name||'')===name)
+    .sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
 }
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
