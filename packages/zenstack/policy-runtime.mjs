@@ -60,10 +60,11 @@ export function fixedPolicyReader(db,{dialect,ZenStackClient,PolicyPlugin}={}){
   return reader;
 }
 
-/** Execute a trusted fixed-model SELECT using the existing Kysely transaction.
- * ZenStack 3.10.1 also rewrites mapped $qb statements with model policy
- * predicates (verified separately), but raw and unmapped SQL are not
- * assumed policy-enforced. Gateway authorization remains mandatory.
+/** A fixed-model, single-statement SELECT needs only the authorized ZenStack
+ * delegate: do not open an explicit SQL transaction for Config/Hero/Blocks.
+ * The trusted route still selects the target and validates its visibility.
+ * This read path exposes no $qb, raw SQL or transaction to the caller.
+ * Multi-statement and write operations retain their own transaction boundary.
  */
 export async function withFixedPolicyRead(db,target,body,role,claims,
   {dialect,ZenStackClient,PolicyPlugin},run){
@@ -73,10 +74,8 @@ export async function withFixedPolicyRead(db,target,body,role,claims,
   const auth=role==='authenticated'&&claims?.provider==='loc'&&claims?.me===true
     ?locRolePrincipal(claims)
     :undefined;
-  return reader.$setAuth(auth).$transaction(async scoped=>{
-    if(!scoped?.$qb)throw new Error('Policy-enforced Kysely transaction missing');
-    return run(scoped.$qb,modelName,scoped);
-  });
+  const authorized=reader.$setAuth(auth);
+  return run(modelName,authorized);
 }
 
 /** Trusted global registry write. The Gateway verifies the signed LOC

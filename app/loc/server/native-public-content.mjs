@@ -214,9 +214,9 @@ export async function handleNativePublicContent(request,env={},{
       const data=await (async()=>{
         const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
         // loc/lo3rwang/lrunes are fixed public ZModel control relations
-        // (zenstack/policy-runtime.mjs). Route those through the real
-        // ZenStack+PolicyPlugin reader -- same Kysely dialect/pool, no second
-        // connection -- instead of the hand-rolled selectFrom below. A custom
+        // (zenstack/policy-runtime.mjs). A single PolicyPlugin findFirst
+        // uses the trusted Kysely dialect without an explicit BEGIN/COMMIT.
+        // A custom
         // Scope's own config table is not a fixed model, so it keeps the
         // existing plain Kysely path unchanged.
         const modelName=fixedPolicyReadModel({engine:port.engine},
@@ -225,7 +225,7 @@ export async function handleNativePublicContent(request,env={},{
           ?await withFixedPolicyRead(query,{engine:port.engine},
               {kind:'query',schema:'silver',table:scope,operation:'select'},
               'anon',{},{dialect:port.dialect,ZenStackClient,PolicyPlugin},
-              (_qb,name,authorized)=>authorized[
+              (name,authorized)=>authorized[
                 name[0].toLowerCase()+name.slice(1)].findFirst({
                   where:{id:scope},
                   select:Object.fromEntries(columns.map(column=>[column,true]))
@@ -251,7 +251,7 @@ export async function handleNativePublicContent(request,env={},{
         return fixedAnchor
           ?withFixedPolicyRead(query,{engine:port.engine},anchorBody,
               'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
-              (_qb,name,authorized)=>authorized[
+              (name,authorized)=>authorized[
                 name[0].toLowerCase()+name.slice(1)].findMany({
                   where:{type:{in:types},invisible:false},
                   select:Object.fromEntries(LOC_BLOCK_ANCHOR_FIELDS.map(field=>[field,true])),
@@ -283,7 +283,7 @@ export async function handleNativePublicContent(request,env={},{
             schema:port.namespace||'silver',
             table:scope+'_blocks',operation:'select'},
             'anon',{}, {dialect:port.dialect,ZenStackClient,PolicyPlugin},
-            (_qb,name,authorized)=>authorized[
+            (name,authorized)=>authorized[
               name[0].toLowerCase()+name.slice(1)].findMany(blockArgs))
         :typed?await typed.blocks.findMany(blockArgs)
         :await query.selectFrom(table).select(BLOCK_FIELDS)
