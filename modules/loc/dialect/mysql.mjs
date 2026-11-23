@@ -6,7 +6,7 @@ export const MYSQL_SQL_TYPE=Object.freeze({
   id:'mysql',label:'MySQL',dialect:'MysqlDialect',driver:'mysql2',
   runtime:'node',namespace:'database',session:'external-acl',schema:'kysely',
   requiredConfig:Object.freeze(['pool']),protocol:'mysql',
-  defaultNamespace:'',nativeConnection:false,returning:false,
+  defaultNamespace:'',targetNamespace:'',nativeConnection:false,returning:false,
   insertParameterLimit:32000,insertMaxRows:50,upsertParameterLimit:32000
 });
 export const mysqlDialectConstructor=MysqlDialect;
