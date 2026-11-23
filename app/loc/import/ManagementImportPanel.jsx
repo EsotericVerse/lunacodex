@@ -36,7 +36,7 @@ import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './g
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from '../archive/import-safety.mjs';
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
 import {publicVisualUrl,visualGalaxyCandidates} from './visual-galaxy.mjs';
-import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,createImportBatchSizer} from './batch.mjs';
+import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,createImportBatchSizer,createImportConfirmationWindow} from './batch.mjs';
 import {MAX_ROWS,urlSafeInBatches,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content/content-policy';
 import {galaxyAble} from '../model/galaxy-able.mjs';
@@ -647,7 +647,7 @@ async function syncImportedVisualGalaxies({
     });
   }
   let created=0,processed=0,pending=[],pendingBytes=0;
-  const imageSizer=createImportBatchSizer();
+  const imageSizer=createImportBatchSizer({sampleRows:inserts});
   const flushImageBatch=async()=>{
     if(!pending.length)return;
     const batch=pending,started=Date.now();
@@ -1670,6 +1670,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       let updated=0,checkedExisting=0;
       const missingPointUids=new Set();
       const updateSizer=createImportBatchSizer();
+      const updateWindows=createImportConfirmationWindow();
       const checkpointBatch=(phase,confirmed,total,inserted=0,conflicts=0)=>{
         const receipt=writeImportCheckpoint(checkpointStorage(),{
           scopeId,ownerId:importOwnerId,file:queue[queueIndex],
@@ -1727,6 +1728,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             await flushUpdates();
         }
         checkedExisting++;
+        // First milestone at 4096, second at 8192, then every 8192.
+        // Byte-sized SQL writes and their earlier receipts remain intact.
+        if(updateWindows.reached(checkedExisting)){
+          if(updateQueue.length)await flushUpdates();
+          else checkpointBatch('update',checkedExisting,existingCount,updated);
+        }
         if(checkedExisting%25===0||checkedExisting===existingCount)
           showProgress('更新既有文章',checkedExisting,existingCount);
       }
@@ -1734,7 +1741,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const newArticleTotal=unique.length-existingBySiteId.size;
       if(newArticleTotal)showProgress('新增文章',0,newArticleTotal);
       const result={inserted:0,conflicts:0,insertedUids:new Set(),conflictedUids:new Set()};
-      const insertSizer=createImportBatchSizer();
+      const insertSizer=createImportBatchSizer({sampleRows:unique.filter(row=>
+        !existingBySiteId.has(row.uid)).slice(0,128)});
+      const insertWindows=createImportConfirmationWindow();
       let payload=[],payloadBytes=0,newArticleProcessed=0;
       const flushNewArticles=async()=>{
         if(!payload.length)return;
@@ -1778,6 +1787,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           await flushNewArticles();
         payload.push(incoming);payloadBytes+=bytes;
         if(insertSizer.shouldFlush(payload.length,payloadBytes))
+          await flushNewArticles();
+        // Stop exactly at each durable confirmation milestone; on long
+        // articles, physical transport batches will checkpoint sooner.
+        if(insertWindows.reached(newArticleProcessed+payload.length))
           await flushNewArticles();
       }
       await flushNewArticles();

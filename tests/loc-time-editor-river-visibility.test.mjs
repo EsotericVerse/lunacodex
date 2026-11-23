@@ -55,3 +55,15 @@ test('Time management detects visibly blank vis charts and keeps interactive fal
   assert.match(view,/items=\{editorEraRiver\.items\}/);
   assert.match(view,/timeRecords=\{query\.data\?\.editorRows\|\|null\}/);
 });
+
+test('TimeAnchor management paints chart before the heavy list without a covering curtain',()=>{
+  const chart=file('app/modular/modules/culture-timeline/CultureTimeline.jsx');
+  const manage=file('app/modular/features/Culture.jsx');
+  assert.match(chart,/unfoldCurtain=true/);
+  assert.match(chart,/unfoldCurtain&&ready&&!reduceMotion/);
+  assert.match(chart,/onFirstPaintRef\.current\?\.\(\)/);
+  assert.match(manage,/unfoldCurtain=\{false\}/);
+  assert.match(manage,/onFirstPaint=\{\(\)=>setTimeRiverFirstPaint\(true\)\}/);
+  assert.match(manage,/!query\.isPending&&\(timeRiverFirstPaint\|\|!editorEraRiver\.groups\.length\)/);
+  assert.doesNotMatch(manage,/setTimeout\(\(\)=>setTimeRiverFirstPaint\(true\)/);
+});

@@ -4,39 +4,67 @@ import {readFileSync} from 'node:fs';
 import {MAX_ROWS,HEAVY_QUERY_ROWS,NORMAL_QUERY_ROWS}
   from '../app/loc/query/query-batch-size.mjs';
 import {createImportBatchSizer,writeImportBatches,validImportBatchSize,
+  recommendImportBatchRows,createImportConfirmationWindow,
+  IMPORT_FIRST_CHECKPOINT_ROWS,IMPORT_MAX_CHECKPOINT_ROWS,
   IMPORT_PAYLOAD_TARGET_BYTES} from '../app/loc/import/batch.mjs';
+import {writeImportCheckpoint,readImportCheckpoint}
+  from '../app/loc/import/checkpoint.mjs';
 
 const src=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('LOC baseline is 2048; heavy import starts at 256 then doubles by characters',()=>{
+test('Import chooses a 4096 first checkpoint then an 8192 ceiling without a Scope row cap',()=>{
   assert.equal(MAX_ROWS,2048);
   assert.equal(NORMAL_QUERY_ROWS,2048);
   assert.equal(HEAVY_QUERY_ROWS,10000);
-  assert.equal(validImportBatchSize(),10000);
+  assert.equal(validImportBatchSize(),10000); // Physical DB capability is separate.
+  assert.equal(IMPORT_FIRST_CHECKPOINT_ROWS,4096);
+  assert.equal(IMPORT_MAX_CHECKPOINT_ROWS,8192);
   const sizer=createImportBatchSizer();
-  assert.equal(sizer.size,256);
-  const expected=[512,1024,2048,4096,8192,10000];
-  for(const value of expected){
-    const current=sizer.size;
-    assert.equal(sizer.observe(current,1,current*100),value);
-  }
-  assert.equal(sizer.observe(sizer.size,1,sizer.size*100),10000);
-  // Very long text must reduce the next physical batch, not silently cap
-  // the complete import or change a SQL COUNT.
-  assert.ok(sizer.observe(256,1,256*20000)<10000);
+  assert.equal(sizer.size,4096);
+  assert.equal(sizer.observe(4096,1,4096*100),8192);
+  assert.equal(sizer.observe(8192,1,8192*100),8192);
+  // Short records should NOT be forced through 256, 512, 1024, 2048.
+  const short=Array.from({length:128},(_,i)=>({
+    uid:String(i).padStart(8,'0'),title:'a'
+  }));
+  assert.equal(recommendImportBatchRows(short),4096);
+  assert.equal(createImportBatchSizer({sampleRows:short}).size,4096);
+  const long=[{uid:'AAAA0001',content:'x'.repeat(8000)}];
+  assert.ok(recommendImportBatchRows(long)<4096);
+  assert.ok(createImportBatchSizer({sampleRows:long}).size<4096);
+  // Large content still shrinks a physical batch instead of capping the import.
+  assert.ok(sizer.observe(256,1,256*20000)<8192);
 });
 
 test('heavy writer actually writes >1000 rows at once and still reaches 20k',async()=>{
   const rows=Array.from({length:20000},(_,i)=>({uid:String(i).padStart(8,'0'),title:'a'}));
-  const batches=[];
+  const batches=[],confirmed=[];
+  const stored=new Map(),storage={
+    getItem:key=>stored.get(key)||null,
+    setItem:(key,value)=>stored.set(key,value),
+    removeItem:key=>stored.delete(key)
+  };
+  const file={name:'archive.json',size:12345,lastModified:77};
   const result=await writeImportBatches(rows,{
-    writeBatch:async part=>{batches.push(part.length);return {count:part.length};}
+    writeBatch:async part=>{batches.push(part.length);return {count:part.length};},
+    onProgress:progress=>{
+      writeImportCheckpoint(storage,{
+        scopeId:'lo3rwang',ownerId:'test-user',file,
+        phase:'insert',confirmed:progress.completed,total:progress.total
+      });
+      if(progress.checkpoint)confirmed.push(progress.completed);
+    }
   });
   assert.equal(result.completed,20000);
-  assert.ok(batches.some(n=>n>1000),'no nested fixed 1k write slices');
-  assert.ok(batches.every(n=>n<=HEAVY_QUERY_ROWS));
+  assert.deepEqual(batches,[4096,4096,8192,3616]);
+  assert.deepEqual(confirmed,[4096,8192,16384]);
+  assert.ok(batches.every(n=>n<=8192));
   assert.equal(batches.reduce((a,b)=>a+b,0),20000);
   assert.equal(result.batches,batches.length);
+  const saved=readImportCheckpoint(storage,{
+    scopeId:'lo3rwang',ownerId:'test-user',file
+  });
+  assert.equal(saved.confirmed,20000);
 });
 
 test('adaptive writer flushes large texts by bytes rather than sending oversized request',async()=>{
@@ -72,4 +100,34 @@ test('portable PostgreSQL does not recreate the old 50-row internal insert cap',
   assert.match(port,/if\(engine==='postgres'\)return/);
   assert.match(port,/Math\.floor\(32000\/columns\)/);
   assert.match(port,/if\(engine==='mssql'\)return/);
+});
+
+test('Import confirmation windows never skip milestones or loop when sizes match',()=>{
+  const windows=createImportConfirmationWindow();
+  assert.equal(windows.remaining(0),4096);
+  assert.equal(windows.reached(4095),false);
+  assert.equal(windows.reached(4096),true);
+  assert.equal(windows.next,8192);
+  assert.equal(windows.reached(8192),true);
+  assert.equal(windows.next,16384);
+  assert.equal(windows.reached(16384),true);
+  assert.equal(windows.next,24576);
+  const equal=createImportConfirmationWindow({firstRows:4,maxRows:4});
+  assert.equal(equal.reached(4),true);
+  assert.equal(equal.next,8);
+  assert.equal(equal.reached(8),true);
+  assert.equal(equal.next,12);
+});
+
+test('Import article writer binds confirmation windows to existing checkpoint receipts',()=>{
+  const panel=src('app/loc/import/ManagementImportPanel.jsx');
+  assert.match(panel,/const updateWindows=createImportConfirmationWindow\(\)/);
+  assert.match(panel,/updateWindows.reached\(checkedExisting\)/);
+  assert.match(panel,/const insertWindows=createImportConfirmationWindow\(\)/);
+  assert.match(panel,/insertWindows.reached\(newArticleProcessed\+payload.length\)/);
+  assert.match(panel,/checkpointBatch\('insert',newArticleProcessed,newArticleTotal,/);
+  assert.match(panel,/checkpointBatch\('update',checkedExisting,existingCount,updated\)/);
+  // A receipt is evidence of finished writes, NOT a row-skipping cursor.
+  const checkpoint=src('app/loc/import/checkpoint.mjs');
+  assert.match(checkpoint,/must still compare/);
 });

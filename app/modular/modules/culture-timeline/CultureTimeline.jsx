@@ -254,7 +254,10 @@ export default function CultureTimeline({
   onGroupSelect=null,
   anchorInsight=null,
   anchorLabels=null,
-  onAnchorClose=null
+  onAnchorClose=null,
+  // Management editor must never leave a covering animation layer over vis.
+  unfoldCurtain=true,
+  onFirstPaint=null
 }){
   useUiSection('uiExtra.cultureTimeline');
   const {locale,copy}=useUiLocale();
@@ -271,6 +274,7 @@ export default function CultureTimeline({
   const doubleRiverWindowRef=useRef(null);
   const [selectedRowId,setSelectedRowId]=useState('');
   const onSelectRef=useRef(onSelect);
+  const onFirstPaintRef=useRef(onFirstPaint);
   const onGroupToggleRef=useRef(onGroupToggle);
   const onGroupSelectRef=useRef(onGroupSelect);
   const onTimeClickRef=useRef(onTimeClick);
@@ -333,6 +337,36 @@ export default function CultureTimeline({
 
   useEffect(()=>{setRecoveryWindow(null)},[windowStart,windowEnd]);
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
+  useEffect(()=>{onFirstPaintRef.current=onFirstPaint},[onFirstPaint]);
+  // The editor may mount only once the Time river is actually visible.
+  // vis-timeline's constructor/ready flag can precede its layout paint.
+  // Wait for measurable labels AND bars, or for the mounted recovery river.
+  useEffect(()=>{
+    if(!onFirstPaintRef.current||(!ready&&!chartError))return;
+    let cancelled=false,first=0,second=0;
+    first=window.requestAnimationFrame(()=>{
+      second=window.requestAnimationFrame(()=>{
+        if(cancelled)return;
+        if(chartError){
+          if(containerRef.current?.parentElement?.parentElement?.querySelector('.scope-time-recovery-river'))
+            onFirstPaintRef.current?.();
+          return;
+        }
+        const root=containerRef.current;
+        const visible=selector=>Array.from(root?.querySelectorAll(selector)||[])
+          .some(node=>{
+            const box=node.getBoundingClientRect();
+            return box.width>2&&box.height>2;
+          });
+        if(visible('.vis-panel.vis-left .vis-label')&&
+          visible('.vis-panel.vis-center .vis-item'))
+          onFirstPaintRef.current?.();
+        // An empty canvas will be repaired by the trace paint-health effect.
+        // Do not schedule the large editor before the actual river.
+      });
+    });
+    return ()=>{cancelled=true;window.cancelAnimationFrame(first);window.cancelAnimationFrame(second)};
+  },[ready,chartError]);
   useEffect(()=>{onGroupToggleRef.current=onGroupToggle},[onGroupToggle]);
   useEffect(()=>{onGroupSelectRef.current=onGroupSelect},[onGroupSelect]);
   useEffect(()=>{onTimeClickRef.current=onTimeClick},[onTimeClick]);
@@ -723,7 +757,7 @@ export default function CultureTimeline({
       <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
       {/* An independent curtain reveals the river from left to right after
           vis-timeline is ready. Its geometry, gestures and redraw remain intact. */}
-      {ready&&!reduceMotion?<motion.div className='scope-river-unfold-curtain'
+      {unfoldCurtain&&ready&&!reduceMotion?<motion.div className='scope-river-unfold-curtain'
         aria-hidden='true' initial={{scaleX:1}} animate={{scaleX:0}}
         transition={{duration:.55,ease:[.22,.8,.2,1]}}/>:null}
     </div>

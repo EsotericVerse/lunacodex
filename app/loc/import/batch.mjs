@@ -354,26 +354,83 @@ export function extractImportCreatedAt(value,depth=0){
 // transport payload target leaves room for the operation's JSON wrapper and
 // ZModel normalization. 10k rows is only a ceiling, not a forced SQL LIMIT.
 export const IMPORT_PAYLOAD_TARGET_BYTES=IMPORT_WRITE_TARGET_BYTES;
+// A checkpoint is a receipt for CONFIRMED batches, never a forced 8192-row
+// SQL request or permission to skip live UID comparison on retry.
+export const IMPORT_FIRST_CHECKPOINT_ROWS=4096;
+export const IMPORT_MAX_CHECKPOINT_ROWS=8192;
 const importRowJson=row=>JSON.stringify(row);
 const importRowBytes=row=>new TextEncoder().encode(importRowJson(row)).byteLength;
 const importBatchCharacters=rows=>rows.reduce((sum,row)=>sum+importRowJson(row).length,0);
-export function createImportBatchSizer({
-  initial=HEAVY_INITIAL_ROWS,minimum=1,maximum=HEAVY_QUERY_ROWS,
-  maxPayloadBytes=IMPORT_PAYLOAD_TARGET_BYTES
+
+// A bounded sample is already in memory after archive decoding. Choose the
+// first row window directly from actual UTF-8 density, without stepping
+// through 256/512/1024/2048 just to discover that short rows fit.
+export function recommendImportBatchRows(rows,{
+  maxBytes=IMPORT_PAYLOAD_TARGET_BYTES,maximum=IMPORT_FIRST_CHECKPOINT_ROWS,
+  sampleSize=128
 }={}){
-  const adaptive=createTextAdaptiveRows({initial,minimum,maximum});
+  if(!Array.isArray(rows)||!Number.isSafeInteger(maxBytes)||maxBytes<1||
+      !Number.isSafeInteger(maximum)||maximum<1||
+      !Number.isSafeInteger(sampleSize)||sampleSize<1)
+    throw new TypeError('Invalid import batch sample budget');
+  const limit=Math.min(sampleSize,rows.length);
+  if(!limit)return maximum;
+  let bytes=0;
+  for(let i=0;i<limit;i++)bytes+=importRowBytes(rows[i]);
+  const average=Math.max(1,Math.ceil(bytes/limit)+2);
+  // Physical writes still check EVERY row. This 90% headroom is only a
+  // starting guess, not authorization to exceed the native request budget.
+  return Math.max(1,Math.min(maximum,Math.floor(maxBytes*.9/average)));
+}
+
+// First confirmation at 4096, next at 8192, then every additional 8192.
+// SQL transport may flush much earlier when real payload bytes demand it;
+// those smaller confirmed writes keep their existing durable receipts.
+export function createImportConfirmationWindow({
+  firstRows=IMPORT_FIRST_CHECKPOINT_ROWS,maxRows=IMPORT_MAX_CHECKPOINT_ROWS
+}={}){
+  if(!Number.isSafeInteger(firstRows)||firstRows<1||
+      !Number.isSafeInteger(maxRows)||maxRows<firstRows)
+    throw new TypeError('Invalid import confirmation window');
+  let next=firstRows;
+  return {
+    get next(){return next;},
+    remaining(confirmed){
+      if(!Number.isSafeInteger(confirmed)||confirmed<0)
+        throw new TypeError('Invalid confirmed import row count');
+      return Math.max(0,next-confirmed);
+    },
+    reached(confirmed){
+      if(!Number.isSafeInteger(confirmed)||confirmed<0)
+        throw new TypeError('Invalid confirmed import row count');
+      if(confirmed<next)return false;
+      do{next=next===firstRows
+        ?(maxRows>firstRows?maxRows:firstRows+maxRows)
+        :next+maxRows;}
+      while(confirmed>=next);
+      return true;
+    }
+  };
+}
+export function createImportBatchSizer({
+  initial=IMPORT_FIRST_CHECKPOINT_ROWS,minimum=1,
+  maximum=IMPORT_MAX_CHECKPOINT_ROWS,
+  maxPayloadBytes=IMPORT_PAYLOAD_TARGET_BYTES,sampleRows=null
+}={}){
+  const guess=Array.isArray(sampleRows)&&sampleRows.length
+    ?recommendImportBatchRows(sampleRows,{maxBytes:maxPayloadBytes,
+      maximum:Math.min(initial,maximum)}):initial;
+  const adaptive=createTextAdaptiveRows({initial:guess,minimum,maximum});
   return {
     get size(){return adaptive.size;},
     get maxBytes(){return maxPayloadBytes;},
     byteSize:importRowBytes,
-    // Flush before the next oversized row or on reaching the adaptive bound.
+    // A larger logical window is safe only when EACH actual HTTP payload
+    // stays below the existing byte target.
     shouldFlush(count,bytes,nextBytes=0){
       return count>0&&(count>=adaptive.size||
         bytes+nextBytes>maxPayloadBytes);
     },
-    // Physical bytes enforce the backend contract; observed character count
-    // controls the next 2x geometric row request. Elapsed time is diagnostic
-    // only, and must never suppress growth for otherwise short text.
     observe(rows,elapsedMs,characters=rows){
       return adaptive.observe(rows,characters);
     }
@@ -408,13 +465,16 @@ export function validImportBatchSize(){return HEAVY_QUERY_ROWS;}
 export async function writeImportBatches(records,{writeBatch,onProgress}={}){
   if(!Array.isArray(records))throw new Error('匯入批次資料必須是陣列。');
   if(typeof writeBatch!=='function')throw new Error('匯入寫入函式不存在。');
-  const sizer=createImportBatchSizer();
+  const sizer=createImportBatchSizer({sampleRows:records});
+  const windows=createImportConfirmationWindow();
   const total=records.length;
   let completed=0,batches=0;
   while(completed<total){
     const batch=[];
+    const allowedRows=Math.min(sizer.size,windows.remaining(completed));
     let bytes=0;
     for(let index=completed;index<total;index++){
+      if(batch.length>=allowedRows)break;
       const row=records[index],nextBytes=sizer.byteSize(row);
       if(sizer.shouldFlush(batch.length,bytes,nextBytes))break;
       batch.push(row);bytes+=nextBytes;
@@ -432,9 +492,10 @@ export async function writeImportBatches(records,{writeBatch,onProgress}={}){
         '／'+total+' 筆。'+detail+'。重新執行前會再次比對已存在 UID。');
     }
     completed+=batch.length;batches++;
+    const checkpoint=windows.reached(completed);
     sizer.observe(batch.length,Date.now()-started,importBatchCharacters(batch));
     onProgress?.({completed,total,percent:Math.round(completed/Math.max(1,total)*100),
-      batch:batches,batches:Math.max(batches,Math.ceil(total/sizer.size))});
+      checkpoint,batch:batches,batches:Math.max(batches,Math.ceil(total/sizer.size))});
   }
   return {completed,total,batches};
 }
