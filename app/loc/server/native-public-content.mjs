@@ -182,12 +182,13 @@ export async function handleNativePublicContent(request,env={},{
       ?createScopedLocClient({dialect:port.dialect,scopeId:id,
         engine:port.engine,namespace:port.namespace||'silver'}):null;
     if(numeric){
-      // LOC combined scope totals may run several related SELECTs. Pin one
-      // request-owned connection and transaction for the complete result;
-      // finish SQL before returning the chart payload to the browser.
-      const data=await query.transaction().setIsolationLevel('repeatable read').execute(trx=>kind==='loc'
-        ?readLocGroupNumeric(trx,start,end,port)
-        :readGalaxyNumeric(trx,scope,kind,start,end,port));
+      // Each single-Scope numeric view is already one atomic SQL statement.
+      // Only combined LOC totals need a repeatable-read snapshot across
+      // multiple Scope queries; avoid BEGIN/COMMIT on simple public reads.
+      const data=kind==='loc'
+        ?await query.transaction().setIsolationLevel('repeatable read')
+            .execute(trx=>readLocGroupNumeric(trx,start,end,port))
+        :await readGalaxyNumeric(query,scope,kind,start,end,port);
       return respond({data});
     }
     if(kind==='culture_anchors'){
