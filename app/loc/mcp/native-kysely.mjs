@@ -1,7 +1,10 @@
-// The LOC business backend opens its own PostgreSQL connection.
-// It never asks LOC Auth for database credentials, profiles, targets or SQL.
+// The LOC backend opens the server-owned PostgreSQL control connection.
+// Externally selected SQL targets are read-only and require BOTH a verified
+// alias and a trusted, server-supplied profile plus the engine's native driver.
+// Neither HTTP parameters nor OAuth claims supply raw connection credentials.
 import {Kysely} from 'kysely';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
+import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
 import {createKyselyDialect,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
 
 // The trusted Kysely dialect and its request-owned pg.Client share the
@@ -27,14 +30,34 @@ export function mcpDatabaseConfiguration(env={}){
   return {publicReadConfigured:configured,privateReadConfigured:configured,
     privateWriteConfigured:configured,verification:'configuration-only'};
 }
-export async function db_connection(env={},verifiedAlias='',{probeTicket='',waitUntil}={}){
+export async function db_connection(env={},verifiedAlias='',{
+  probeTicket='',waitUntil,trustedTarget=null,trustedDialectConfig=null
+}={}){
   if(!env||typeof env!=='object')throw unavailable('LOC backend environment missing');
-  // A caller's string can never select a different SQL target. LOC currently
-  // uses one production Neon PostgreSQL database for its business data.
-  if(verifiedAlias&&verifiedAlias!==primary?.target_id&&
-     verifiedAlias!==primary?.connection_alias)
-    throw unavailable('Additional database connection not configured');
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
+  const external=Boolean(verifiedAlias&&verifiedAlias!==primary?.target_id&&
+    verifiedAlias!==primary?.connection_alias);
+  if(external){
+    // The OAuth claim identifies an alias only. Opening it is impossible until
+    // the trusted backend supplies a validated Authority profile and actual
+    // Kysely pool/tedious drivers for THIS request. Neither can be selected
+    // through the HTTP body. No fallback to the control database is allowed.
+    if(!trustedTarget||!trustedDialectConfig)
+      throw unavailable('Additional database connection not configured');
+    const {target,profile}=normalizeLiveTarget(verifiedAlias,trustedTarget);
+    const engine=profile.engine;
+    const dialect=createKyselyDialect(engine,trustedDialectConfig);
+    const db=new Kysely({dialect});
+    return {db,dialect,engine,
+      namespace:target.schema_name||(engine==='mysql'?'':'dbo'),
+      tableName:target.table_name||'',
+      fieldMap:target.field_map||{},
+      // Kysely owns the selected driver's pool. Do not close the primary
+      // request-scoped PG pool or share a resource across server requests.
+      abort:()=>db.destroy()};
+  }
+  if(trustedTarget||trustedDialectConfig)
+    throw unavailable('The LOC control database cannot be replaced');
   const uri=mainUri(env);
   // Cloudflare forbids using a socket or waiting on a promise that was created
   // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
@@ -65,8 +88,9 @@ export async function closeLocDatabase(port){
   finally{await port.pool?.end?.();}
 }
 export function bindLocRequestAbort(port,signal){
-  if(!signal||!port?.pool?.abort)return ()=>{};
-  const abort=()=>{void port.pool.abort();};
+  const cancel=port?.abort||port?.pool?.abort?.bind(port.pool);
+  if(!signal||typeof cancel!=='function')return ()=>{};
+  const abort=()=>{void cancel();};
   if(signal.aborted)abort();
   else signal.addEventListener('abort',abort,{once:true});
   return ()=>signal.removeEventListener('abort',abort);
