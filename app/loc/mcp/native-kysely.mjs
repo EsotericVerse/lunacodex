@@ -59,14 +59,25 @@ export async function db_connection(env={},verifiedAlias='',{
   if(trustedTarget||trustedDialectConfig)
     throw unavailable('The LOC control database cannot be replaced');
   const uri=mainUri(env);
+  // pg-connection-string silently overrides an explicit ssl object when the
+  // URI contains sslmode=require. That can inject rejectUnauthorized:false,
+  // while Workers' Node TLS shim does not implement custom
+  // rejectUnauthorized options at all. Use the runtime's verified TLS
+  // defaults (ssl:true) and strip ONLY the redundant sslmode parameter.
+  // No TLS downgrade or alternative database target is permitted.
+  const connectionUrl=new URL(uri);
+  const sslmode=connectionUrl.searchParams.get('sslmode');
+  if(sslmode&&!['require','verify-ca','verify-full'].includes(sslmode.toLowerCase()))
+    throw unavailable('LOC PostgreSQL requires verified TLS');
+  connectionUrl.searchParams.delete('sslmode');
   // Cloudflare forbids using a socket or waiting on a promise that was created
   // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
   // when several requests run queries at once. Open a short-lived client per
   // acquisition instead; it always lives inside the request that uses it.
   // See dialect/index.mjs: short, bounded retries tolerate a cold-starting
   // compute without extending a browser read past its 9s response budget.
-  const pool=requestScopedPool({connectionString:uri,
-    connectionTimeoutMillis:6000,ssl:{rejectUnauthorized:true}});
+  const pool=requestScopedPool({connectionString:connectionUrl.href,
+    connectionTimeoutMillis:6000,ssl:true});
   pool.setWaitUntil(waitUntil);
   // Use Kysely's upstream dialect factory. LOC's selected primary remains
   // PostgreSQL today, while the same trusted boundary can compile MySQL or
