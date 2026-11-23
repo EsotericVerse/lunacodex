@@ -122,7 +122,7 @@ jobs:
       - name: Install pinned Capacitor CLI in isolated native toolchain
         run: |
           mkdir -p "$RUNNER_TEMP/loc-capacitor-cli"
-          printf '{"name":"loc-native-cli","private":true,"version":"0.0.0"}\\n' > "$RUNNER_TEMP/loc-capacitor-cli/package.json"
+          printf '{"name":"loc-native-cli","private":true,"version":"0.0.0"}\n' > "$RUNNER_TEMP/loc-capacitor-cli/package.json"
           pnpm --dir "$RUNNER_TEMP/loc-capacitor-cli" add --save-exact "@capacitor/cli@8.5.3"
           test -x "$RUNNER_TEMP/loc-capacitor-cli/node_modules/.bin/cap"
       - name: Build LOC static export for the existing native shell
