@@ -1361,7 +1361,7 @@ export default function Culture(){
                 suggestedRequestNonce={suggestedRequestNonce}
                 onDataChanged={refreshTimelineData}
                 onClose={()=>{setSelectedTimelineRecordId('');setSelectedTimelineDate('');setSelectedTimelineInfo(null);setSuggestedRequestNonce(0)}}/>
-                :<CultureTimeLoading label='正在建立時間河道…'/>}
+                :null}
             </div>
             {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
           </div>
