@@ -277,7 +277,9 @@ export async function handleNativePublicContent(request,env={},{
           schema:port.namespace||'silver',
           table:scope+'_blocks',operation:'select'})
         :null;
-      const typed=scopedFor(scope);
+      // Do not construct a second scoped ORM when the fixed policy reader
+      // already owns this Blocks query; only custom Scopes need it.
+      const typed=fixedBlockModel?null:scopedFor(scope);
       const data=fixedBlockModel
         ?await withFixedPolicyRead(query,{engine:port.engine},{kind:'query',
             schema:port.namespace||'silver',
