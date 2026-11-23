@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Kysely,MysqlDialect} from 'kysely';
 import {executeKyselyQuery} from '../app/loc/providers/kysely-runtime.mjs';
+import {executeCrossEngineManagedWrite}
+  from '../app/loc/providers/sql-engine-ports.mjs';
+import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
 
 function fixture(initial=[]){
   const rows=new Map(initial.map(row=>[row.uid,{...row}]));
@@ -89,5 +92,23 @@ test('MySQL prevents UPSERT outside a caller-owned transaction',async()=>{
     await assert.rejects(executeKyselyQuery(x.db,request('AAAA0001','text'),
       {dialect:'mysql',namespace:''}),/active Kysely transaction/);
     assert.equal(x.statements.length,0);
+  }finally{await x.db.destroy();}
+});
+
+test('MySQL managed upsert respects signed Scope grants and uses primary-key locking',async()=>{
+  const x=fixture();
+  const claims={provider:'loc',me:true,sub:'tester_portable',
+    email:'portable@example.com',grants:['lo3rwang:manage']};
+  try{
+    const output=await x.db.transaction().execute(async trx=>{
+      bindLocAuthorization(trx,{role:'authenticated',claims,engine:'mysql'});
+      return executeCrossEngineManagedWrite(trx,{payload:{
+        p_table:'silver.lo3rwang_galaxy',p_operation:'upsert',
+        p_rows:[{uid:'AAAA0001',title:'managed'}]
+      }},{engine:'mysql',namespace:'',role:'authenticated',claims});
+    });
+    assert.equal(output.data.count,1);
+    assert.equal(x.rows.get('AAAA0001').title,'managed');
+    assert.ok(x.statements.some(stmt=>/for update/i.test(stmt.sql)));
   }finally{await x.db.destroy();}
 });
