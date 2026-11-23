@@ -42,19 +42,19 @@ export async function selectActiveKeywordClassName(scopeId=''){
 export async function selectAvailableKeywordClasses(scopeId){
   return keywordService('classes',{scopeId:normalizeScopeId(scopeId)});
 }
-// Browser asks the verified server to compute Item-rule aggregate counts.
-// A whole Scope's article table rarely finishes inside one HTTP request's
-// time budget: the server checkpoints counters (never Pattern postings)
- // and reports {incomplete:true}, asking for
-// the same Class to be analyzed again to continue from exactly that point.
-// This loop is what makes "再打一次就接著掃" automatic instead of requiring
-// the user to click 重新分析 repeatedly; it never retries a failed write,
-// only a server-reported "still going, call me again".
-export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUid='',onProgress}={}){
+// A single FRESH analysis still uses durable checkpoints because one Scope
+ // can exceed one request's time budget. A user's new "重新開始解析" first
+ // commits reset and passes its new Class epoch here. Only batches FROM THIS
+ // EPOCH may continue; old interrupted/resend work is rejected by the server.
+ export async function runKeywordAnalysisBatch(scopeId,{
+   classUid:requestedClassUid='',analysisEpoch,onProgress
+ }={}){
   const id=normalizeScopeId(scopeId);
   const classUid=String(requestedClassUid||'');
   if(!/^[0-9A-Za-z]{8}$/.test(classUid))
     throw new Error('尚未指定有效的 Keywords Class');
+  if(!Number.isSafeInteger(analysisEpoch)||analysisEpoch<1)
+    throw new Error('必須先清空並確認本次分析版本，才可從零開始解析');
   reportBatchProgress(onProgress,'reading',0,0,0,'解析關鍵詞中請稍後');
   const forward=progress=>reportBatchProgress(onProgress,
     progress?.phase||'reading',
@@ -67,7 +67,9 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
       targetRowsPerSecond:Math.max(0,Number(progress?.targetRowsPerSecond)||0)});
   let result,lastScanned=-1;
   for(;;){
-    result=await keywordService('analyze',{scopeId:id,classUid},{onProgress:forward});
+    result=await keywordService('analyze',{
+      scopeId:id,classUid,analysisEpoch
+    },{onProgress:forward});
     if(!result?.incomplete)break;
     const scanned=Math.max(0,Number(result.completed)||0);
     // A checkpoint that reports the same position twice in a row means the
@@ -77,7 +79,7 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
     lastScanned=scanned;
     const total=Math.max(0,Number(result.total)||0);
     forward({phase:'reading',completed:scanned,total,
-      percent:total?scanned/total*100:0,label:'進度已存檔，正在繼續下一批',
+      percent:total?scanned/total*100:0,label:'本次新分析進度已存檔，正在繼續下一批',
       parsed:result.parsed,reused:result.reused,
       rowsPerSecond:result.rowsPerSecond,
       targetRowsPerSecond:result.targetRowsPerSecond});
