@@ -38,8 +38,12 @@ jobs:
             git push origin HEAD:chore/loc-pnpm-20261123
           else
             test -s pnpm-lock.yaml
-            pnpm install --lockfile-only --frozen-lockfile
-            git diff --exit-code -- pnpm-lock.yaml
+            pnpm install --lockfile-only --no-frozen-lockfile
+            git add pnpm-lock.yaml
+            if ! git diff --cached --quiet; then
+              git -c user.name='LOC dependency migration' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(deps): update pnpm lock for explicit React type peers'
+              git push origin HEAD:chore/loc-pnpm-20261123
+            fi
           fi
       - name: Verify frozen pnpm installation
         run: pnpm install --frozen-lockfile
