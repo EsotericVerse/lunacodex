@@ -183,12 +183,22 @@ function TimeAnchorRecovery({rows,groups,windowStart,windowEnd,onToggle,onSelect
     if(!grouped.has(item.group))grouped.set(item.group,[]);
     grouped.get(item.group).push(item);
   }
-  const dates=rows.map(row=>[Date.parse(row.start),Date.parse(row.end||row.start)]).flat()
-    .filter(Number.isFinite);
-  const from=Number.isFinite(Date.parse(windowStart))?Date.parse(windowStart):
-    dates.length?Math.min(...dates):0;
-  const until=Number.isFinite(Date.parse(windowEnd))&&Date.parse(windowEnd)>from
-    ?Date.parse(windowEnd):dates.length?Math.max(...dates):from+86400000;
+  // The initial fallback is part of first paint: do not spread thousands
+  // of dates into Math.min/Math.max or allocate a second large temporary list.
+  let earliest=Infinity,latest=-Infinity;
+  for(const row of rows){
+    for(const value of [row.start,row.end||row.start]){
+      const date=Date.parse(value);
+      if(!Number.isFinite(date))continue;
+      if(date<earliest)earliest=date;
+      if(date>latest)latest=date;
+    }
+  }
+  const selectedStart=Date.parse(windowStart),selectedEnd=Date.parse(windowEnd);
+  const from=Number.isFinite(selectedStart)?selectedStart:
+    Number.isFinite(earliest)?earliest:0;
+  const until=Number.isFinite(selectedEnd)&&selectedEnd>from?selectedEnd:
+    Number.isFinite(latest)&&latest>from?latest:from+86400000;
   const span=Math.max(86400000,until-from);
   return <div className='scope-time-recovery-river' role='region' aria-label='時間定錨河道'>
     <div className='scope-time-recovery-axis'>
