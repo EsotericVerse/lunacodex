@@ -8,7 +8,7 @@ description: Use for LOC SQL dialect, query, schema, transaction, migration, and
 Primary upstream source: https://kysely.dev/llms.txt
 Full agent-readable documentation: https://kysely.dev/llms-full.txt
 Versioned upstream source: https://github.com/kysely-org/kysely
-Installed Kysely version: **0.29.8**. Confirm the installed version, official agent docs, and upstream release notes when continuing work.
+Installed Kysely version: **0.29.9**. Confirm the installed version, official agent docs, and upstream release notes when continuing work.
 
 0. **Permanent LOC boundary:** LOC never uses a standalone or generic SQL Gateway. Never reinstall Supabase SDK or Clerk SDK (direct or transitive dependencies); the build rejects them. OAuth is verified by LOC Auth; the trusted LOC application backend itself opens Kysely SQL Driver connections. Do not create, rename, deploy, or reintroduce a SQL Gateway, `/v1/sql`, or Supabase Edge.
 1. Read the **official current** Kysely docs relevant to the operation (Dialect, Query Builder, Schema Builder, Migrator, transaction, plugins, API). If the docs cannot be fetched, inspect the matching upstream tagged source; do not guess the API.
