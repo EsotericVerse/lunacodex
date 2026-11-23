@@ -169,6 +169,60 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
       });
 
 }
+
+/**
+ * The authorized management query already supplies the complete Era/Period/
+ * Date hierarchy. If the vis canvas has no measurable labels or items,
+ * recover with an independently rendered time-axis instead of a blank panel.
+ */
+function TimeAnchorRecovery({rows,groups,windowStart,windowEnd,onToggle,onSelect}){
+  const ordered=[...groups].sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
+  const grouped=new Map();
+  for(const item of rows){
+    if(!grouped.has(item.group))grouped.set(item.group,[]);
+    grouped.get(item.group).push(item);
+  }
+  const dates=rows.map(row=>[Date.parse(row.start),Date.parse(row.end||row.start)]).flat()
+    .filter(Number.isFinite);
+  const from=Number.isFinite(Date.parse(windowStart))?Date.parse(windowStart):
+    dates.length?Math.min(...dates):0;
+  const until=Number.isFinite(Date.parse(windowEnd))&&Date.parse(windowEnd)>from
+    ?Date.parse(windowEnd):dates.length?Math.max(...dates):from+86400000;
+  const span=Math.max(86400000,until-from);
+  return <div className='scope-time-recovery-river' role='region' aria-label='時間定錨河道'>
+    <div className='scope-time-recovery-axis'>
+      <span>時代／期間／定錨點</span>
+      <div>{[0,1,2,3,4].map(n=><time key={n} style={{left:n*25+'%'}}>
+        {new Date(from+span*n/4).getUTCFullYear()}</time>)}</div>
+    </div>
+    {ordered.map(group=><div className='scope-time-recovery-row' key={group.id}>
+      <div className='scope-time-recovery-label'>
+        {group.collapsible?<button type='button'
+          style={{paddingInlineStart:Math.max(0,Number(group.depth)||0)*1.1+'rem'}}
+          aria-expanded={Boolean(group.expanded)} onClick={()=>onToggle?.(group.id)}>
+          {group.expanded?'−':'＋'} {group.label}
+        </button>:<span style={{paddingInlineStart:Math.max(0,Number(group.depth)||0)*1.1+'rem'}}>
+          {group.label}</span>}
+      </div>
+      <div className='scope-time-recovery-track'>
+        {(grouped.get(group.id)||[]).map(item=>{
+          const fromItem=Date.parse(item.start),toItem=Date.parse(item.end||item.start);
+          if(!Number.isFinite(fromItem)||fromItem>until||toItem<from)return null;
+          const left=Math.max(0,Math.min(100,(fromItem-from)/span*100));
+          const right=Math.max(left,Math.min(100,(toItem-from)/span*100));
+          const range=item.type==='range'&&right>left;
+          const label=[item.title,item.start,item.end].filter(Boolean).join(' · ');
+          return <button key={item.id} type='button'
+            className={'scope-time-recovery-item'+(range?' is-range':'')}
+            style={{left:left+'%',...(range?{width:Math.max(.2,right-left)+'%'}:{})}}
+            title={label} aria-label={label}
+            onClick={()=>onSelect?.(item)}>{range?'':'●'}</button>;
+        })}
+      </div>
+    </div>)}
+  </div>;
+}
+
 export default function CultureTimeline({
   items=EMPTY_ITEMS,
   labelOf=defaultTimelineLabel,
@@ -227,6 +281,7 @@ export default function CultureTimeline({
   const onRemoveRef=useRef(onRemove);
   const [ready,setReady]=useState(false);
   const [chartError,setChartError]=useState(false);
+  const [recoveryWindow,setRecoveryWindow]=useState(null);
   // A hidden/zero-count source group must not leave an item in vis-timeline:
   // otherwise the library may create an unlabeled row even after its group
   // was removed. Derive visible rows from the same group model as labels.
@@ -276,6 +331,7 @@ export default function CultureTimeline({
     ?{}
     :{minHeight:timelineMinHeight+'px',maxHeight:timelineMaxHeight+'px'};
 
+  useEffect(()=>{setRecoveryWindow(null)},[windowStart,windowEnd]);
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
   useEffect(()=>{onGroupToggleRef.current=onGroupToggle},[onGroupToggle]);
   useEffect(()=>{onGroupSelectRef.current=onGroupSelect},[onGroupSelect]);
@@ -545,6 +601,27 @@ export default function CultureTimeline({
     return()=>{cancelled=true;window.clearTimeout(timer);if(frame)window.cancelAnimationFrame(frame);};
   },[heightVariant,ready,rows]);
 
+
+  // Time edit has no separate density fallback. A successful DataSet mount
+  // does not prove the vis-timeline label or item geometry was painted.
+  useEffect(()=>{
+    if(mode!=='trace'||!ready||!rows.length||!extraGroups.length)return;
+    let cancelled=false;
+    const hasVisible=selector=>Array.from(containerRef.current?.querySelectorAll(selector)||[])
+      .some(el=>{const box=el.getBoundingClientRect();return box.width>2&&box.height>2});
+    const timer=window.setTimeout(()=>{
+      if(cancelled)return;
+      if(hasVisible('.vis-panel.vis-left .vis-label')&&
+        hasVisible('.vis-panel.vis-center .vis-item'))return;
+      try{timelineRef.current?.redraw()}catch{}
+      window.requestAnimationFrame(()=>{
+        if(!cancelled&&(!hasVisible('.vis-panel.vis-left .vis-label')||
+          !hasVisible('.vis-panel.vis-center .vis-item')))setChartError(true);
+      });
+    },400);
+    return()=>{cancelled=true;window.clearTimeout(timer)};
+  },[mode,ready,rows,extraGroups]);
+
   // Density analysis is lazy-loaded after first paint. Updating the source
   // river's hidden date ranges must not destroy/recreate the entire chart.
   useEffect(()=>{
@@ -572,6 +649,19 @@ export default function CultureTimeline({
 
   // Explicit alternatives to gestures, available on touch, mouse, and keyboard.
   function changeWindow(action){
+    if(chartError&&mode==='trace'){
+      if(action==='reset'){setRecoveryWindow(null);return;}
+      setRecoveryWindow(current=>{
+        const from=Date.parse(current?.start||windowStart),until=Date.parse(current?.end||windowEnd);
+        if(!Number.isFinite(from)||!Number.isFinite(until)||until<=from)return current;
+        const width=until-from,mid=(from+until)/2;
+        if(action==='zoom-in')return {start:new Date(mid-width*.325).toISOString().slice(0,10),end:new Date(mid+width*.325).toISOString().slice(0,10)};
+        if(action==='zoom-out')return {start:new Date(mid-width*.77).toISOString().slice(0,10),end:new Date(mid+width*.77).toISOString().slice(0,10)};
+        const move=width*.35*(action==='earlier'?-1:1);
+        return {start:new Date(from+move).toISOString().slice(0,10),end:new Date(until+move).toISOString().slice(0,10)};
+      });
+      return;
+    }
     const timeline=timelineRef.current;
     if(!timeline)return;
     if(action==='zoom-in')return timeline.zoomIn(.35,{animation:cameraAnimation});
@@ -599,11 +689,11 @@ export default function CultureTimeline({
 
   return <div className='scope-period-timeline-wrap'>
     {!readOnlyViewport?<div className='scope-timeline-controls' role='group' aria-label={t('時間長河操作')}>
-      <button type='button' className='loc-button' aria-label={t('往較早時間移動')} disabled={!ready} onClick={()=>changeWindow('earlier')}>←</button>
-      <button type='button' className='loc-button' aria-label={t('往較晚時間移動')} disabled={!ready} onClick={()=>changeWindow('later')}>→</button>
-      <button type='button' className='loc-button' aria-label={t('放大時間長河')} disabled={!ready} onClick={()=>changeWindow('zoom-in')}>＋</button>
-      <button type='button' className='loc-button' aria-label={t('縮小時間長河')} disabled={!ready} onClick={()=>changeWindow('zoom-out')}>－</button>
-      <button type='button' className='loc-button' aria-label={t('重置時間長河視野')} disabled={!ready} onClick={()=>changeWindow('reset')}><FieldText text="重置"/></button>
+      <button type='button' className='loc-button' aria-label={t('往較早時間移動')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('earlier')}>←</button>
+      <button type='button' className='loc-button' aria-label={t('往較晚時間移動')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('later')}>→</button>
+      <button type='button' className='loc-button' aria-label={t('放大時間長河')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('zoom-in')}>＋</button>
+      <button type='button' className='loc-button' aria-label={t('縮小時間長河')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('zoom-out')}>－</button>
+      <button type='button' className='loc-button' aria-label={t('重置時間長河視野')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('reset')}><FieldText text="重置"/></button>
       {onSelect&&!editable?<div className='scope-timeline-focus-slot' aria-live='polite'>
         <AnimatePresence initial={false} mode='wait'>
           {selectedRow?<motion.output key={selectedRow.id}
@@ -624,12 +714,12 @@ export default function CultureTimeline({
         {rows.map(row=><option key={row.id} value={row.id}>{String(row.start||'').slice(0,10)} · {row.content||row.title||row.entryType||labels.record}</option>)}
       </select>
     </label>:null}
-    {chartError?<p className='scope-status' role='alert'><FieldText text="河道已有統計資料，但圖表沒有正常繪製；以下保留日期與筆數清單。"/></p>:null}
+    {chartError&&mode!=='trace'?<p className='scope-status' role='alert'><FieldText text="河道已有統計資料，但圖表沒有正常繪製；以下保留日期與筆數清單。"/></p>:null}
     {!ready&&!chartError?<div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
       <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
       <span>正在繪製時間長河…</span>
     </div>:null}
-    <div className='scope-river-reveal-shell'>
+    <div className='scope-river-reveal-shell' style={chartError&&mode==='trace'?{display:'none'}:undefined}>
       <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
       {/* An independent curtain reveals the river from left to right after
           vis-timeline is ready. Its geometry, gestures and redraw remain intact. */}
@@ -649,7 +739,12 @@ export default function CultureTimeline({
         {anchorInsight.reason?<p>{anchorLabels?.reason||'Reason'}：{anchorInsight.reason}</p>:null}
       </motion.aside>:null}
     </AnimatePresence>
-    {chartError?<ol className='scope-list'>
+    {chartError&&mode==='trace'?<TimeAnchorRecovery rows={rows} groups={extraGroups}
+      windowStart={recoveryWindow?.start||windowStart}
+      windowEnd={recoveryWindow?.end||windowEnd}
+      onToggle={groupId=>onGroupToggleRef.current?.(groupId)}
+      onSelect={row=>{setSelectedRowId(row.id);onSelectRef.current?.(row)}}/>:null}
+    {chartError&&mode!=='trace'?<ol className='scope-list'>
       {fallbackRows.map(row=><li key={row.id}><strong>{row.content}</strong>{row.group?<span> · {groupLabel(row.group)}</span>:null}<span> · {dateLabel(row.start)}</span>{row.title?<p>{row.title}</p>:null}</li>)}
     </ol>:null}
   </div>;
