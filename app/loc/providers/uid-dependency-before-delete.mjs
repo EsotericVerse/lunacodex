@@ -112,8 +112,14 @@ export function planUidRepairStatementBatches(items,{
 function uidRepairConditions(eb,items,table,serialize){
   return eb.or(items.map(item=>eb.and([
     eb('uid','=',item.uid),
-    ...Object.entries(serialize(item.expected,table)).map(([field,value])=>
-      value===null?eb(field,'is',null):eb(field,'=',value))
+    ...Object.entries(serialize(item.expected,table)).map(([field,value])=>{
+      // Kysely parses a raw JS array as a SQL value tuple, which is NOT a
+      // PostgreSQL text[] comparison. Bind the entire old UID list as one
+      // typed array parameter to retain exact ordered CAS semantics.
+      const comparable=field==='target_id'&&Array.isArray(value)
+        ?sql`${value}::text[]`:value;
+      return value===null?eb(field,'is',null):eb(field,'=',comparable);
+    })
   ])));
 }
 // CASE values are different for each PK, including Anchor JSON and num.
