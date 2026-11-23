@@ -32,9 +32,9 @@ export function getSqlRuntimeCapabilities(engine){
     session:port.session,
     schema:port.schema,
     nativeConnection:port.id==='postgres',
-    operations:Object.freeze(port.id==='mssql'
-      ?['select','insert','update','delete']
-      :['select','insert','update','delete','upsert']),
+    // SQL Server UPSERT uses a trusted, already-open Kysely Transaction
+    // with key-range locks; it is NOT an ordinary single-statement builder.
+    operations:Object.freeze(['select','insert','update','delete','upsert']),
     returning:port.id==='postgres'||port.id==='mssql',
     managedOperations:Object.freeze(port.id==='postgres'
       ?['insert','upsert','update','delete','update_batch','append_media_link']
