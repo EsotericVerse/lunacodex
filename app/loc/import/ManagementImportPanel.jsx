@@ -490,8 +490,11 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         if(!createMedia.length)return;
         const count=createMedia.length,started=Date.now();
         const characters=createMedia.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
-        await writeImportBatches(createMedia,{
-          writeBatch:batch=>insertImportRows(mediaAnchor,batch.map(mediaAnchorRecord)),
+        // Size the exact MediaAnchor rows sent to the writer, not their
+        // larger pre-normalization envelopes with different physical fields.
+        const prepared=createMedia.map(mediaAnchorRecord);
+        await writeImportBatches(prepared,{
+          writeBatch:batch=>insertImportRows(mediaAnchor,batch),
           onProgress:p=>onProgress?.({stage:'新增媒體紀錄',completed:created+p.completed,total:created+count})
         });
         created+=count;
@@ -1755,9 +1758,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           // Verify the UID really exists before treating it as an article collision.
           verifyUidConflict:async uid=>(await readRowsByUid([uid]))
             .some(row=>String(row.uid)===uid),
-          writeBatch:batch=>insertImportRows(galaxy,batch.map(record=>({
-            ...record,place_id:record.place_id??null,media_link:record.media_link??null
-          })),{
+          // The queue already carries the final physical Galaxy shape,
+          // so the measured UTF-8 bytes match what the backend receives.
+          writeBatch:batch=>insertImportRows(galaxy,batch,{
             onValidationProgress:({completed,total})=>setProgress(previous=>
               previous?{...previous,detail:'Galaxy ZModel／Zod 已驗證 '+completed+' / '+total}:previous)
           })
@@ -1781,7 +1784,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           __importPlaceUrl:unusedPlaceUrl,__importCheckin:unusedCheckin,
           __importTimeSource:unusedTimeSource,
           ...article}=record;
-        const incoming=placeUid?{...article,place_id:placeUid}:article;
+        const proposed=placeUid?{...article,place_id:placeUid}:article;
+        const incoming={...proposed,
+          place_id:proposed.place_id??null,
+          media_link:proposed.media_link??null};
         const bytes=insertSizer.byteSize(incoming);
         if(insertSizer.shouldFlush(payload.length,payloadBytes,bytes))
           await flushNewArticles();
