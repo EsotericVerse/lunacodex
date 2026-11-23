@@ -238,9 +238,22 @@ test('portable Kysely CASE compiles for MySQL and SQL Server without connections
   const item={uid:'AAAA0001',type:'trace',
     values:{attr:{point:['BBBB0002','CCCC0003']},num:2n},
     expected:{attr:{point:['BBBB0002','DELE0001','CCCC0003','DELE0001']}}};
+  // MSSQL's real Driver constructs tarn.Pool immediately. For this
+  // compile-only test, retain its native compiler/adapter but supply a
+  // never-connected driver so no tarn/tedious runtime is required.
+  const mssql=new MssqlDialect({tarn:{},tedious:{}});
+  const stubDriver=new PostgresDialect({pool:{
+    connect:async()=>{throw Error('Compile-only test must not connect');}
+  }});
+  const compileOnlyMssql={
+    createDriver:()=>stubDriver.createDriver(),
+    createAdapter:()=>mssql.createAdapter(),
+    createIntrospector:db=>mssql.createIntrospector(db),
+    createQueryCompiler:()=>mssql.createQueryCompiler()
+  };
   const configs=[
     ['mysql',new MysqlDialect({pool:{}}),'loc_anchor'],
-    ['mssql',new MssqlDialect({tarn:{},tedious:{}}),'dbo.loc_anchor']
+    ['mssql',compileOnlyMssql,'dbo.loc_anchor']
   ];
   for(const [engine,dialect,relation] of configs){
     const db=new Kysely({dialect});
