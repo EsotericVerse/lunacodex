@@ -10,7 +10,7 @@ import {createIndexedDateKeywordReader} from './article-reader.mjs';
 import {completeKeywordClass,invalidateKeywordClass,
   readKeywordScanProgress,writeKeywordScanProgress,
   keywordClassEpoch,bumpKeywordClassEpoch} from './class-state.mjs';
-import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -47,8 +47,16 @@ const galaxyListMetadataColumns=Object.freeze([
   ...galaxyReadColumns('GalaxyList')
     .filter(name=>['uid','date','keyword'].includes(name))
 ]);
-const galaxyUidContentColumns=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
-  .filter(column=>['uid','title','content','keyword'].includes(column)));
+// Native SQL scan returns the same ordered UID metadata and only the text
+// eligible for keyword analysis. Excluded rows still count toward progress,
+// but their full bodies never cross the SQL transport.
+const galaxyKeywordScanProjection=Object.freeze([
+  ...galaxyListMetadataColumns,
+  sql`case when ${sql.ref('keyword')} is false then null
+    else ${sql.ref('title')} end`.as('title'),
+  sql`case when ${sql.ref('keyword')} is false then null
+    else ${sql.ref('content')} end`.as('content')
+]);
 // Normal scans do not intentionally stop at a fixed 20-second window.
 // Item scan retains periodic durable checkpoints only for actual failures.
 // Cloudflare execution limits remain external and require production testing.
@@ -339,7 +347,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     fail('Galaxy article count out of range');
   const reader=createIndexedDateKeywordReader({
     readDateBatch:async({afterDate,afterUid,limit})=>{
-      let q=db.selectFrom(galaxyName(scope)).select(galaxyListMetadataColumns)
+      let q=db.selectFrom(galaxyName(scope)).select(galaxyKeywordScanProjection)
         .where('date','is not',null)
         .orderBy('date','asc').orderBy('uid','asc').limit(limit);
       if(afterDate!==null)q=q.where(eb=>eb.or([
@@ -348,7 +356,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       return q.execute();
     },
     readUndatedBatch:async({afterUid,limit})=>{
-      let q=db.selectFrom(galaxyName(scope)).select(galaxyListMetadataColumns)
+      let q=db.selectFrom(galaxyName(scope)).select(galaxyKeywordScanProjection)
         .where('date','is',null).orderBy('uid','asc').limit(limit);
       if(afterUid!==null)q=q.where('uid','>',afterUid);
       return q.execute();
@@ -358,9 +366,6 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     ...itemScope(tree),expectedCount,readMetadataPage:reader,
     minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
     pageSize:HEAVY_INITIAL_ROWS,resume,timeBudgetMs:null,
-    readContent:uids=>db.selectFrom(galaxyName(scope))
-      .select([...galaxyUidContentColumns,'date'])
-      .where('uid','in',uids).execute(),
     onCheckpoint:async progress=>db.transaction().execute(async trx=>{
       await authorizeTransaction(trx);
       await persistScanProgress(trx,scope,classUid,progress,expectedEpoch);
