@@ -542,7 +542,7 @@ function AppShellInner({children,runtime}){
   // The route builder preserves native index.html and dynamic scopeid before
   // appending section/edit query parameters.
   const managementHref=(level,key)=>managementRouteHref(
-    level,key,navScopeId,{native}
+    level,key,navScopeId,{native,navigate:navigationHref}
   );
   const editingDockVisible=Boolean(editDock?.active&&editDock.scopeId===navScopeId);
   const locAdminEdit=navScopeId==='loc';
@@ -591,7 +591,8 @@ function AppShellInner({children,runtime}){
     ...['culture','statics','trace','search'].map(id=>{
       const feature=FEATURES.find(item=>item.id===id);
       return {id,icon:id,label:copy.features?.[id]?.title||feature.label,
-        href:managementRouteHref('user',id,localNavigation?'local':navScopeId,{native})};
+        href:managementRouteHref('user',id,localNavigation?'local':navScopeId,
+          {native,navigate:navigationHref})};
     }),
     {id:'settings',icon:'settings',label:copy.common.settings||'設定',
       href:native?'/local/settings/index.html?scopeid='+encodeURIComponent(navScopeId)+(localNavigation?'&section=local':'')
