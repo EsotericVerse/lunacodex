@@ -21,6 +21,9 @@ export function getSqlEnginePort(engine){
 }
 export function getSqlRuntimeCapabilities(engine){
   const port=getSqlEnginePort(engine);
+  // Describe implemented builders, not what a SQL dialect could support in
+  // theory. The LOC production connection remains PostgreSQL-only; drivers
+  // and verified external targets must be enabled separately by the backend.
   return Object.freeze({
     dialect:port.dialect,
     driver:port.driver,
@@ -28,7 +31,12 @@ export function getSqlRuntimeCapabilities(engine){
     namespace:port.namespace,
     session:port.session,
     schema:port.schema,
-    operations:Object.freeze(['select','insert','update','delete','upsert'])
+    nativeConnection:port.id==='postgres',
+    operations:Object.freeze(port.id==='mssql'
+      ?['select','insert','update','delete']
+      :['select','insert','update','delete','upsert']),
+    returning:port.id==='postgres'||port.id==='mssql',
+    managedOperations:Object.freeze(['insert','update','delete','update_batch'])
   });
 }
 // Runtime hook boundary: the core Kysely CRUD remains common to all SQL engines.
