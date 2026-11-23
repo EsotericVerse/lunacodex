@@ -39,6 +39,9 @@ export function EditDockProvider({children,scopeId}){
   const queryClient=useQueryClient();
   // Route-owned Scope ID is received from AppShell. Only editing is mutable.
   const [editing,setEditing]=useState(false);
+  // A deliberate Cancel must not be interpreted by ManagementAccess as a
+  // fresh request to enter editing while hard navigation is still pending.
+  const [exiting,setExiting]=useState(false);
   const [canManageGlobal,setCanManageGlobal]=useState(false);
   const [hasSave,setHasSave]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -97,7 +100,7 @@ export function EditDockProvider({children,scopeId}){
   const begin=useCallback((id,{globalManage=false}={})=>{
     const idText=String(id||'').trim();
     // Never activate an editor for a different page Scope. No Scope ID copy.
-    if(!idText||idText!==scopeId)return false;
+    if(!idText||idText!==scopeId||exiting)return false;
     if(idText!=='local'){
       // A rejected/expired browser Session is not permission to open a Dock.
       // Explicit LOC re-verification is responsible for restarting editing.
@@ -109,7 +112,7 @@ export function EditDockProvider({children,scopeId}){
     setCanManageGlobal(Boolean(globalManage));
     setNotice('');
     return true;
-  },[scopeId]);
+  },[scopeId,exiting]);
   const end=useCallback(()=>{
     markEditorActive(false);
     releaseOperation();
@@ -200,6 +203,7 @@ export function EditDockProvider({children,scopeId}){
     }
   },[router]);
   const complete=useCallback(target=>{
+    setExiting(true);
     end();
     navigate(target);
   },[end,navigate]);
@@ -317,10 +321,14 @@ export function EditDockProvider({children,scopeId}){
   const discard=useCallback(target=>{
     if(!target)return;
     const destination=new URL(String(target),window.location.href);
+    // Block the management entry effect BEFORE ending the Dock. Previously
+    // it immediately called begin() again after Cancel, making the six-key
+    // buttons reappear if navigation took another frame or stalled.
+    setExiting(true);
     end();
-    // Do not free the still-visible document before a hard navigation.
-    // The browser unload retires its pending reads, without ever saving.
-    window.location.assign(destination.href);
+    // Replace rather than push: Back must not return to a stale editing
+    // screen that automatically requests management entry again.
+    window.location.replace(destination.href);
   },[end]);
   const switchTo=useCallback((target,{history='replace',scroll=true}={})=>{
     if(!target)return;
@@ -338,9 +346,9 @@ export function EditDockProvider({children,scopeId}){
     commit(next);
   },[releaseOperation,clearEditor]);
   const value=useMemo(()=>({
-    active:editing,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,
+    active:editing,exiting,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,
     register,save,discard,complete,switchTo,switchSection,setNotice
-  }),[editing,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
+  }),[editing,exiting,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
   return <EditDockContext.Provider value={value}>{children}</EditDockContext.Provider>;
 }
 
