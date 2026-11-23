@@ -180,8 +180,8 @@ test('database owner closes its pool even if Kysely destruction fails',async()=>
 test('LOC operation source contains one transaction and verified permission snapshot',()=>{
   const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
   const dock=readFileSync(new URL('../app/modular/edit-dock.jsx',import.meta.url),'utf8');
-  assert.match(native,/verifiedRights=host===MCP_HOST/);
-  assert.match(native,/readLocAccess\(trx,claims.email/);
+  assert.match(native,/const verifiedRights=\{canWrite:claims.me,grants:claims.grants\}/);
+  assert.doesNotMatch(native,/readLocAccess\(trx,claims.email/);
   assert.match(native,/await selected\.db\.transaction\(\)\.execute\(async trx=>/);
   assert.match(native,/await closeLocDatabase\(selected\)/);
   assert.match(dock,/await transactionWrites\(operations\)/);
@@ -338,8 +338,8 @@ test('MCP business writes retain one owned SQL transaction and published JS role
   assert.ok(native.indexOf('const rights=host===MCP_HOST')<native.indexOf('selected=await database('));
   for(const kind of ['mcp-conversation','mcp-sync','mcp-append'])
     assert.ok(native.includes("'"+kind+"'"),kind+' must join transaction authorization');
-  assert.ok(native.includes('await loadMcpLocAccess(trx,claims.email'));
-  assert.match(native,/readLocAccess\(trx,claims.email,\{/);
+  assert.match(native,/await loadMcpLocAccess\(null,claims.email/);
+  assert.doesNotMatch(native,/readLocAccess\(trx,claims.email/);
   assert.match(native,/bindLocAuthorization\(trx,\{role:claims.role,claims,engine:selected.engine\}\)/);
   assert.doesNotMatch(native,/withFixedPolicyWrite\(/);
 });
@@ -398,7 +398,7 @@ test('import special Galaxy fields share one native typed update batch',()=>{
   assert.match(block,/maxChunkBytes=480000/);
   assert.match(writer,/return publishedManagedScope\(scope\);/);
   assert.doesNotMatch(writer,/selectFrom\('api\.manage'\)/);
-  assert.match(writer,/const registry=await registeredScope\(trx,scope\)/);
+  assert.match(writer,/const record=await registeredScope\(trx,scope\)/);
   for(const key of ['location','site_id','ref_id','source_id','target_id'])
     assert.ok(writer.includes("'"+key+"'"),'missing approved Galaxy batch field '+key);
   assert.match(native,/'update_batch','append_media_link'/);

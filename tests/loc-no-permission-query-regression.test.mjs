@@ -37,7 +37,8 @@ test('named LOC transactions remain available without a general SELECT executor'
 test('Manage changes cannot commit a role or route different from published JS',()=>{
   const native=read('app/loc/mcp/native-operations.mjs');
   assert.match(native,/requirePublishedManageWrite\(body\.payload\)/);
-  assert.match(native,/for\(const item of body\.operations\|\|\[\]\)requirePublishedManageWrite\(item\)/);
+  assert.match(native,/for\(const item of body\.operations\)\{/);
+  assert.match(native,/requirePublishedManageWrite\(item\)/);
   assert.match(native,/Object\.is\(fixed\[field\],value\)/);
   const lifecycle=read('app/loc/providers/kysely-scope-lifecycle.mjs');
   assert.match(lifecycle,/fixedManageScope\(id\)\?\.active===true/);

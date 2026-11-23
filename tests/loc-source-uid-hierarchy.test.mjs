@@ -119,8 +119,8 @@ test('Culture, Statistics and protected Source editor use one UID-based outline'
   const editor=read('app/loc/source/SourceCategoryEditor.jsx');
   assert.match(culture,/sourceOutlineOptions\(sourceTaxonomy\)/);
   assert.match(statistics,/sourceOutlineOptions\(sourceCatalog\.data\)/);
-  assert.match(editor,/sourceEditorOutlineOptions\(nodes\)/);
-  assert.match(editor,/sourceOutline\.filter\(row=>row\.path\[0\]===root\.code\)/);
+  assert.match(editor,/sourceEditorOutlineGroups\(nodes\)/);
+  assert.match(editor,/sourceGroups\.map\(group=>/);
   assert.doesNotMatch(statistics,/source\.domain\?source\.domain/);
   assert.doesNotMatch(editor,/children\(root\.uid\)\.flatMap/);
   const source=read('app/loc/source/outline-options.mjs');
@@ -131,7 +131,7 @@ test('protected Source editor preserves hidden saved UID nodes; public projectio
   const target=PUBLISHED_SOURCE_ANCHORS.find(row=>row.type==='from'&&row.title==='Vocus');
   const modified=PUBLISHED_SOURCE_ANCHORS.map(row=>row.uid===target.uid?{...row,invisible:true}:row);
   const editor=sourceEditorOutlineOptions(modified);
-  assert.equal(editor.length,30);
+  assert.equal(editor.length,31);
   assert.deepEqual(editor.filter(row=>row.path.includes(target.uid)).map(row=>[row.label,row.level]),[['Vocus',3]]);
   assert.equal(editor.find(row=>row.code===target.uid)?.path.length,4);
   // The public tree hides invisible nodes without changing the persisted UID.

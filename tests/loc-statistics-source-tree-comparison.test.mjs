@@ -83,8 +83,8 @@ test('each native From rolls up exactly once along its saved Universe/Galaxy/Dom
   assert.equal(stat('Video',model),6);
   assert.equal(stat('Youtube',model),6);
   assert.equal(stat('PastBy',model),3);
-  assert.equal(stat('Closed',model),3);
-  assert.equal(stat('NowON',model),0);
+  assert.equal(stat('Closed',model),0);
+  assert.equal(stat('NowON',model),3);
   assert.equal(model.totals.get(SOURCE_UNCLASSIFIED_METRIC),8);
   // A parent selected as its own comparison lane is a single rolled-up
   // metric, not a second pass that adds its already counted children again.

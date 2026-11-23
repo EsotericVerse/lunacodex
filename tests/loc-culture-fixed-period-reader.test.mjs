@@ -4,6 +4,7 @@ import {parseAnchorFeatureTransaction,executeAnchorFeatureTransaction}
   from '../app/loc/model/anchor-feature-transactions.mjs';
 import {parseGalaxyFeatureTransaction}
   from '../app/loc/model/galaxy-feature-transactions.mjs';
+import {TIME_ANCHOR_MAX_PAGE_ROWS} from '../app/loc/query/query-batch-size.mjs';
 
 const base={kind:'transaction',operation:'anchor-feature',scope:'lo3rwang',
   family:'media',types:['suno'],startDate:'2026-11-01',endDate:'2026-11-22',
@@ -14,7 +15,7 @@ test('fixed media window validates dates and limits before opening SQL',()=>{
   for(const patch of [
     {startDate:'2026-02-30'},{endDate:'2026-01-01'},
     {family:'space',startDate:'2026-01-01'},
-    {limit:1001},{types:['arbitrary']},
+    {limit:TIME_ANCHOR_MAX_PAGE_ROWS+1},{types:['arbitrary']},
     {cursor:'ABCD1234',order:'createtime'},
     {result:'count',includeTotal:true},{result:'count',offset:10}
   ])assert.throws(()=>parseAnchorFeatureTransaction({...base,...patch}));

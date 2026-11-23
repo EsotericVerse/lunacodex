@@ -14,7 +14,7 @@ test('Media Publisher does not read or overwrite a stale media_link snapshot',()
 test('MediaAnchor append retains existing URL links under a row lock',()=>{
   const src=file('../app/loc/providers/kysely-management.mjs');
   const begin=src.indexOf("if(operation==='append_media_link'){");
-  const end=src.indexOf("  // Authorized writes now share",begin);
+  const end=src.indexOf("  if(isAnchor&&operation==='update'){",begin);
   assert.ok(begin>0&&end>begin);
   const block=src.slice(begin,end);
   assert.match(src,/await authorizeRelation\(trx,table,operation,values,filters,rows\)/);
@@ -29,7 +29,7 @@ test('MediaAnchor append retains existing URL links under a row lock',()=>{
 test('Only the website can request a media link append in the managed SQL envelope',()=>{
   const native=file('../app/loc/mcp/native-operations.mjs');
   assert.match(native,/selected\.engine!=='postgres'\|\|host!==WEB_HOST/);
-  assert.match(native,/'append_media_link'\]\.includes\(entry\.p_operation\)/);
+  assert.match(native,/'append_media_link'\]\.includes\(item\.p_operation\)/);
 });
 
 test('Suno keeps its public permalink only in Galaxy.url',()=>{
