@@ -420,17 +420,21 @@ export default function KeywordLibraryPanel({scopeId,account}){
     setResetConfirmation('');
     setBusy(true);setProgress({phase:'reading',percent:0});setError('');setNotice('');
     try{
+      let cleared=null;
       if(reset){
-        await resetKeywordClassification(scopeId,{classUid:runClassUid,onProgress:setProgress});
-        // The reset transaction has committed; its newer epoch invalidates
-        // the old job. Only now may the obsolete local receipt be discarded.
+        cleared=await resetKeywordClassification(scopeId,{classUid:runClassUid,onProgress:setProgress});
+        // A committed, epoch-bearing reset receipt is mandatory. No stale
+        // scan cursor or Pattern counter can be presented as "cleared".
         if(unconfirmedAttempt?.classUid===runClassUid)storeUnconfirmed(null);
       }else{
         const {runKeywordAnalysisBatch}=await import('../analysis');
         await runKeywordAnalysisBatch(scopeId,{classUid:runClassUid,onProgress:setProgress});
       }
       await load(runClassUid);await invalidate();
-      setNotice(reset?'已清空此關鍵字群組的分析結果。':'此關鍵字群組已重新分析完成。');
+      setNotice(reset
+        ?'已確認清空此 Class 的分析游標、進度與 '+Number(cleared.count||0).toLocaleString()+
+          ' 個詞級及分類計數；下次解析從 0 筆重新開始。'
+        :'此關鍵字群組已重新分析完成。');
     }catch(e){
       if(e?.name==='KeywordAnalysisUnconfirmedError'&&e?.attemptId){
         storeUnconfirmed({classUid:runClassUid,attemptId:e.attemptId,savedAt:Date.now()});
