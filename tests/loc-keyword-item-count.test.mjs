@@ -5,6 +5,7 @@ import {createItemCountAccumulator,analyzeItemKeywordCounts,
   KEYWORD_SCAN_START_RATE,KEYWORD_SCAN_MAX_RATE,
   KEYWORD_SCAN_CHECKPOINT_ROWS}
   from '../app/loc/keywords/item-count-analysis.mjs';
+import {compileKeywordLiteralMatcher} from '../app/loc/keywords/literal-matcher.mjs';
 
 const items=[
   {uid:'ITEM0001',item_name:'日',group_uid:'GROUP001',keywords:['日光TO光']},
@@ -510,4 +511,56 @@ test('Pattern totals survive 4096-style checkpoints and finalization without res
   assert.equal(done.scannedDocuments,2);
   assert.equal(finals,1);
   assert.equal(readCount,2);
+});
+
+test('Sparse Pattern matching preserves overlap counts and Unicode fallback',()=>{
+  const matcher=compileKeywordLiteralMatcher(['月光','光','月','火']);
+  assert.deepEqual(matcher.countMatches('月光月光火'),[
+    ['月光',2],['光',2],['月',2],['火',1]
+  ]);
+  assert.deepEqual(matcher.countMatches('月光\r\n火'),[
+    ['月光',1],['光',1],['月',1],['火',1]
+  ]);
+  assert.deepEqual(matcher.countMatches('不含詞彙'),[]);
+  // 631 unrelated Patterns must not allocate a 631-slot count array
+  // for every nonmatching article.
+  const big=compileKeywordLiteralMatcher(
+    Array.from({length:631},(_,i)=>'稀有詞'+String(i).padStart(3,'0'))
+  );
+  assert.deepEqual(big.countMatches('普通日記與生活記事'),[]);
+  assert.deepEqual(big.countMatches('稀有詞042稀有詞042'),[['稀有詞042',2]]);
+});
+
+test('Pattern CPU work yields in 256-row slices without reducing the second-rate target',async()=>{
+  const count=1025;
+  const docs=Array.from({length:count},(_,i)=>
+    doc(String(i+1).padStart(8,'0'),'月光月光'));
+  const patterns=[{uid:'PATT0001',title:'月光'}];
+  const items=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',
+    keywords:['月光']}];
+  let ms=0,yields=0,finalized=0,checkpointed=0;
+  const result=await analyzeItemKeywordCounts({
+    items,groups,patterns,expectedCount:count,
+    pageSize:4096,maxRowsPerRun:8192,minRowsPerRun:4096,
+    checkpointRows:4096,paceRows:true,deferFinalization:true,
+    now:()=>ms,rateSleep:async delay=>{
+      if(delay===0)yields++;
+      ms+=delay;
+    },
+    readMetadataPage:async({cursor,limit})=>{
+      const from=cursor??0,rows=docs.slice(from,from+limit);
+      return {rows,nextCursor:from+rows.length};
+    },
+    onCheckpoint:async()=>{checkpointed++;},
+    finalize:async counts=>{
+      finalized++;
+      assert.equal(counts.patternCounts.PATT0001,count*2);
+    }
+  });
+  assert.equal(result.incomplete,undefined);
+  assert.equal(result.scannedDocuments,count);
+  assert.equal(finalized,1);
+  assert.equal(checkpointed,0);
+  assert.ok(yields>=3,'CPU must yield between 256-document slices');
+  assert.equal(result.patternCounts.PATT0001,count*2);
 });
