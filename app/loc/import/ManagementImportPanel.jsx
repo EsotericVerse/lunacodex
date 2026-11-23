@@ -1744,8 +1744,22 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const newArticleTotal=unique.length-existingBySiteId.size;
       if(newArticleTotal)showProgress('新增文章',0,newArticleTotal);
       const result={inserted:0,conflicts:0,insertedUids:new Set(),conflictedUids:new Set()};
+      // Sampling and final write use exactly the same Galaxy shape, so
+      // a direct 4096-row decision is based on the bytes actually transmitted.
+      const prepareArticleForWrite=record=>{
+        const placeUid=importedPlaceId({incoming:record,byName:placeAnchors.byName,
+          byCoordinate:placeAnchors.byCoordinate});
+        const {__importCoordinates:unusedCoordinates,
+          __importPlaceName:unusedPlaceName,__importPlaceAddress:unusedPlaceAddress,
+          __importPlaceUrl:unusedPlaceUrl,__importCheckin:unusedCheckin,
+          __importTimeSource:unusedTimeSource,
+          ...article}=record;
+        const proposed=placeUid?{...article,place_id:placeUid}:article;
+        return {...proposed,place_id:proposed.place_id??null,
+          media_link:proposed.media_link??null};
+      };
       const insertSizer=createImportBatchSizer({sampleRows:unique.filter(row=>
-        !existingBySiteId.has(row.uid)).slice(0,128)});
+        !existingBySiteId.has(row.uid)).slice(0,128).map(prepareArticleForWrite)});
       const insertWindows=createImportConfirmationWindow();
       let payload=[],payloadBytes=0,newArticleProcessed=0;
       const flushNewArticles=async()=>{
@@ -1778,16 +1792,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       };
       for(const record of unique){
         if(existingBySiteId.has(record.uid))continue;
-        const placeUid=importedPlaceId({incoming:record,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
-        const {__importCoordinates:unusedCoordinates,
-          __importPlaceName:unusedPlaceName,__importPlaceAddress:unusedPlaceAddress,
-          __importPlaceUrl:unusedPlaceUrl,__importCheckin:unusedCheckin,
-          __importTimeSource:unusedTimeSource,
-          ...article}=record;
-        const proposed=placeUid?{...article,place_id:placeUid}:article;
-        const incoming={...proposed,
-          place_id:proposed.place_id??null,
-          media_link:proposed.media_link??null};
+        const incoming=prepareArticleForWrite(record);
         const bytes=insertSizer.byteSize(incoming);
         if(insertSizer.shouldFlush(payload.length,payloadBytes,bytes))
           await flushNewArticles();
