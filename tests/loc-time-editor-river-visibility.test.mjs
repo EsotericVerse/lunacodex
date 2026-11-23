@@ -50,7 +50,8 @@ test('Time management detects visibly blank vis charts and keeps interactive fal
   assert.match(timeline,/if\(mode!=='trace'\|\|!ready\|\|!extraGroups\.length\|\|chartError\)return/);
   assert.match(timeline,/timelinePainted\(containerRef\.current\)/);
   assert.doesNotMatch(timeline,/!ready\|\|!rows\.length\|\|!extraGroups\.length/);
-  assert.match(timeline,/chartError&&mode==='trace'\?<TimeAnchorRecovery/);
+  assert.match(timeline,/showTraceRecovery\?<TimeAnchorRecovery/);
+  assert.match(timeline,/const showTraceRecovery=mode==='trace'&&extraGroups\.length>0&&\(chartError\|\|!tracePainted\)/);
   assert.match(timeline,/onToggle=\{groupId=>onGroupToggleRef\.current\?\.\(groupId\)\}/);
   assert.match(view,/scope-time-edit-workspace scope-culture-structure-river/);
   assert.match(view,/items=\{editorEraRiver\.items\}/);
@@ -65,7 +66,8 @@ test('TimeAnchor management paints chart before the heavy list without a coverin
   assert.match(chart,/onFirstPaintRef\.current\?\.\(\)/);
   assert.match(manage,/unfoldCurtain=\{false\}/);
   assert.match(manage,/onFirstPaint=\{\(\)=>setTimeRiverFirstPaint\(true\)\}/);
-  assert.match(manage,/!query\.isPending&&\(timeRiverFirstPaint\|\|!editorEraRiver\.groups\.length\)/);
+  assert.match(manage,/!query\.isPending&&!query\.error&&\(timeRiverFirstPaint\|\|timeEditorFrameReady\|\|!editorEraRiver\.groups\.length\)/);
+  assert.match(manage,/window\.requestAnimationFrame/);
   assert.doesNotMatch(manage,/setTimeout\(\(\)=>setTimeRiverFirstPaint\(true\)/);
 });
 
@@ -102,7 +104,28 @@ test('Empty-but-linked Time tree is recovered instead of blocking its editor',()
   const chart=file('app/modular/modules/culture-timeline/CultureTimeline.jsx');
   assert.match(chart,/!ready\|\|!extraGroups\.length\|\|chartError/);
   assert.match(chart,/setChartError\(true\)/);
-  assert.match(chart,/chartError&&mode==='trace'\?<TimeAnchorRecovery/);
+  assert.match(chart,/showTraceRecovery\?<TimeAnchorRecovery/);
   const manage=file('app/modular/features/Culture.jsx');
   assert.match(manage,/onFirstPaint=\{\(\)=>setTimeRiverFirstPaint\(true\)\}/);
+});
+
+test('Time river is visible from loaded rows before the vis canvas is ready',()=>{
+  const chart=file('app/modular/modules/culture-timeline/CultureTimeline.jsx');
+  const css=file('app/styles/scope-system.css');
+  assert.match(chart,/const \[tracePainted,setTracePainted\]=useState\(false\)/);
+  assert.match(chart,/showTraceRecovery=mode==='trace'&&extraGroups\.length>0&&\(chartError\|\|!tracePainted\)/);
+  assert.match(chart,/const recovery=containerRef\.current\?\.parentElement\?\.parentElement/);
+  assert.match(chart,/recovery\?\.getBoundingClientRect\(\)\.height>2/);
+  assert.match(css,/\.scope-trace-progressive-shell>\.scope-time-recovery-river/);
+  assert.match(css,/position:relative;z-index:1/);
+  assert.match(chart,/if\(!cancelled&&timelinePainted\(containerRef\.current\)\)setTracePainted\(true\)/);
+});
+
+test('Time record transaction completion cannot wait forever for a vis onFirstPaint notification',()=>{
+  const management=file('app/modular/features/Culture.jsx');
+  assert.match(management,/const \[timeEditorFrameReady,setTimeEditorFrameReady\]=useState\(false\)/);
+  assert.match(management,/setTimeEditorFrameReady\(true\)/);
+  assert.match(management,/timeRiverFirstPaint\|\|timeEditorFrameReady\|\|!editorEraRiver\.groups\.length/);
+  assert.doesNotMatch(management,/label='正在建立時間河道…'/);
+  assert.doesNotMatch(management,/setTimeout\(\(\)=>setTimeRiverFirstPaint\(true\)/);
 });

@@ -183,12 +183,22 @@ function TimeAnchorRecovery({rows,groups,windowStart,windowEnd,onToggle,onSelect
     if(!grouped.has(item.group))grouped.set(item.group,[]);
     grouped.get(item.group).push(item);
   }
-  const dates=rows.map(row=>[Date.parse(row.start),Date.parse(row.end||row.start)]).flat()
-    .filter(Number.isFinite);
-  const from=Number.isFinite(Date.parse(windowStart))?Date.parse(windowStart):
-    dates.length?Math.min(...dates):0;
-  const until=Number.isFinite(Date.parse(windowEnd))&&Date.parse(windowEnd)>from
-    ?Date.parse(windowEnd):dates.length?Math.max(...dates):from+86400000;
+  // The initial fallback is part of first paint: do not spread thousands
+  // of dates into Math.min/Math.max or allocate a second large temporary list.
+  let earliest=Infinity,latest=-Infinity;
+  for(const row of rows){
+    for(const value of [row.start,row.end||row.start]){
+      const date=Date.parse(value);
+      if(!Number.isFinite(date))continue;
+      if(date<earliest)earliest=date;
+      if(date>latest)latest=date;
+    }
+  }
+  const selectedStart=Date.parse(windowStart),selectedEnd=Date.parse(windowEnd);
+  const from=Number.isFinite(selectedStart)?selectedStart:
+    Number.isFinite(earliest)?earliest:0;
+  const until=Number.isFinite(selectedEnd)&&selectedEnd>from?selectedEnd:
+    Number.isFinite(latest)&&latest>from?latest:from+86400000;
   const span=Math.max(86400000,until-from);
   return <div className='scope-time-recovery-river' role='region' aria-label='時間定錨河道'>
     <div className='scope-time-recovery-axis'>
@@ -286,6 +296,7 @@ export default function CultureTimeline({
   const onRemoveRef=useRef(onRemove);
   const [ready,setReady]=useState(false);
   const [chartError,setChartError]=useState(false);
+  const [tracePainted,setTracePainted]=useState(false);
   const [recoveryWindow,setRecoveryWindow]=useState(null);
   // A hidden/zero-count source group must not leave an item in vis-timeline:
   // otherwise the library may create an unlabeled row even after its group
@@ -339,28 +350,26 @@ export default function CultureTimeline({
   useEffect(()=>{setRecoveryWindow(null)},[windowStart,windowEnd]);
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
   useEffect(()=>{onFirstPaintRef.current=onFirstPaint},[onFirstPaint]);
-  // The editor may mount only once the Time river is actually visible.
-  // vis-timeline's constructor/ready flag can precede its layout paint.
-  // Wait for measurable labels AND bars, or for the mounted recovery river.
+  // Render the authorized Era/Period/Date recovery river immediately while
+  // vis-timeline warms up. The editor may begin after either surface paints:
+  // waiting only for the vis-ready callback can deadlock a successful read.
   useEffect(()=>{
-    if(!onFirstPaintRef.current||(!ready&&!chartError))return;
+    if(!onFirstPaintRef.current)return;
     let cancelled=false,first=0,second=0;
     first=window.requestAnimationFrame(()=>{
       second=window.requestAnimationFrame(()=>{
         if(cancelled)return;
-        if(chartError){
-          if(containerRef.current?.parentElement?.parentElement?.querySelector('.scope-time-recovery-river'))
-            onFirstPaintRef.current?.();
-          return;
+        const recovery=containerRef.current?.parentElement?.parentElement
+          ?.querySelector('.scope-time-recovery-river');
+        if(mode==='trace'&&recovery?.getBoundingClientRect().height>2){
+          onFirstPaintRef.current?.();return;
         }
-        if(timelinePainted(containerRef.current))
+        if(ready&&timelinePainted(containerRef.current))
           onFirstPaintRef.current?.();
-        // An empty canvas will be repaired by the trace paint-health effect.
-        // Do not schedule the large editor before the actual river.
       });
     });
     return ()=>{cancelled=true;window.cancelAnimationFrame(first);window.cancelAnimationFrame(second)};
-  },[ready,chartError]);
+  },[ready,chartError,mode,tracePainted,extraGroups]);
   useEffect(()=>{onGroupToggleRef.current=onGroupToggle},[onGroupToggle]);
   useEffect(()=>{onGroupSelectRef.current=onGroupSelect},[onGroupSelect]);
   useEffect(()=>{onTimeClickRef.current=onTimeClick},[onTimeClick]);
@@ -630,19 +639,23 @@ export default function CultureTimeline({
   },[heightVariant,ready,rows]);
 
 
-  // A ready DataSet can still be clipped or hidden by layout/CSS. Check
-  // actual pixels intersecting the vis panels, not just nonzero DOM boxes.
-  // Even an Era tree with only groups (no dated bars) must display its
-  // parent labels and let the management editor open.
+  // The parallel recovery hierarchy is already visible when a transaction
+  // resolves, even if vis-timeline has not yet painted its DOM. Retire it
+  // only after measuring the actual vis labels/bars inside their panels.
   useEffect(()=>{
     if(mode!=='trace'||!ready||!extraGroups.length||chartError)return;
     let cancelled=false,frame=0;
+    frame=window.requestAnimationFrame(()=>{
+      if(!cancelled&&timelinePainted(containerRef.current))setTracePainted(true);
+    });
     const timer=window.setTimeout(()=>{
-      if(cancelled||timelinePainted(containerRef.current))return;
+      if(cancelled)return;
+      if(timelinePainted(containerRef.current)){setTracePainted(true);return;}
       try{timelineRef.current?.redraw()}catch{}
       frame=window.requestAnimationFrame(()=>{
-        if(!cancelled&&!timelinePainted(containerRef.current))
-          setChartError(true);
+        if(cancelled)return;
+        if(timelinePainted(containerRef.current))setTracePainted(true);
+        else setChartError(true);
       });
     },400);
     return()=>{
@@ -717,6 +730,7 @@ export default function CultureTimeline({
 
   if(!rows.length&&!editable&&!extraGroups.length)return <div className='scope-period-timeline-wrap scope-period-timeline-empty'><div className='scope-period-timeline scope-period-timeline-empty-line' role='region' aria-label={t('時間長河')}/><p><FieldText text={mode==='overview'?'尚未設定時期，目前以「所有」總覽顯示。':'目前時期尚無可顯示的時間資料。'}/></p></div>;
 
+  const showTraceRecovery=mode==='trace'&&extraGroups.length>0&&(chartError||!tracePainted);
   return <div className='scope-period-timeline-wrap'>
     {!readOnlyViewport?<div className='scope-timeline-controls' role='group' aria-label={t('時間長河操作')}>
       <button type='button' className='loc-button' aria-label={t('往較早時間移動')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('earlier')}>←</button>
@@ -745,17 +759,23 @@ export default function CultureTimeline({
       </select>
     </label>:null}
     {chartError&&mode!=='trace'?<p className='scope-status' role='alert'><FieldText text="河道已有統計資料，但圖表沒有正常繪製；以下保留日期與筆數清單。"/></p>:null}
-    {!ready&&!chartError?<div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
+    {!ready&&!chartError&&!showTraceRecovery?<div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
       <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
       <span>正在繪製時間長河…</span>
     </div>:null}
-    <div className='scope-river-reveal-shell' style={chartError&&mode==='trace'?{display:'none'}:undefined}>
-      <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
-      {/* An independent curtain reveals the river from left to right after
-          vis-timeline is ready. Its geometry, gestures and redraw remain intact. */}
-      {unfoldCurtain&&ready&&!reduceMotion?<motion.div className='scope-river-unfold-curtain'
-        aria-hidden='true' initial={{scaleX:1}} animate={{scaleX:0}}
-        transition={{duration:.55,ease:[.22,.8,.2,1]}}/>:null}
+    <div className={showTraceRecovery?'scope-trace-progressive-shell':undefined}>
+      <div className='scope-river-reveal-shell' style={chartError&&mode==='trace'?{display:'none'}:undefined}>
+        <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
+        {/* The existing vis-timeline still owns gestures/camera once painted. */}
+        {unfoldCurtain&&ready&&!reduceMotion?<motion.div className='scope-river-unfold-curtain'
+          aria-hidden='true' initial={{scaleX:1}} animate={{scaleX:0}}
+          transition={{duration:.55,ease:[.22,.8,.2,1]}}/>:null}
+      </div>
+      {showTraceRecovery?<TimeAnchorRecovery rows={rows} groups={extraGroups}
+        windowStart={recoveryWindow?.start||windowStart}
+        windowEnd={recoveryWindow?.end||windowEnd}
+        onToggle={groupId=>onGroupToggleRef.current?.(groupId)}
+        onSelect={row=>{setSelectedRowId(row.id);onSelectRef.current?.(row)}}/>:null}
     </div>
     <AnimatePresence initial={false}>
       {anchorInsight?<motion.aside key={anchorInsight.date}
@@ -769,11 +789,6 @@ export default function CultureTimeline({
         {anchorInsight.reason?<p>{anchorLabels?.reason||'Reason'}：{anchorInsight.reason}</p>:null}
       </motion.aside>:null}
     </AnimatePresence>
-    {chartError&&mode==='trace'?<TimeAnchorRecovery rows={rows} groups={extraGroups}
-      windowStart={recoveryWindow?.start||windowStart}
-      windowEnd={recoveryWindow?.end||windowEnd}
-      onToggle={groupId=>onGroupToggleRef.current?.(groupId)}
-      onSelect={row=>{setSelectedRowId(row.id);onSelectRef.current?.(row)}}/>:null}
     {chartError&&mode!=='trace'?<ol className='scope-list'>
       {fallbackRows.map(row=><li key={row.id}><strong>{row.content}</strong>{row.group?<span> · {groupLabel(row.group)}</span>:null}<span> · {dateLabel(row.start)}</span>{row.title?<p>{row.title}</p>:null}</li>)}
     </ol>:null}

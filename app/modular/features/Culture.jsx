@@ -255,7 +255,29 @@ export default function Culture(){
   // Mount the historical river before the large management list/editor.
   // Both consume one authorized TimeAnchor snapshot; no extra SQL fetch.
   const [timeRiverFirstPaint,setTimeRiverFirstPaint]=useState(false);
+  const [timeEditorFrameReady,setTimeEditorFrameReady]=useState(false);
   useEffect(()=>{setTimeRiverFirstPaint(false)},[scopeId,isTimeEditingView]);
+  // Never make TimeAnchor editing depend exclusively on a vis-timeline paint
+  // callback: a ready DataSet can have no visible bars or zero-size panels.
+  // Give the real first river two paint frames, then release the editor even
+  // if vis is still recovering; this cannot deadlock on missing callbacks.
+  useEffect(()=>{
+    if(!isTimeEditingView||query.isPending||query.error){
+      setTimeEditorFrameReady(false);
+      return undefined;
+    }
+    let first=0,second=0,cancelled=false;
+    first=window.requestAnimationFrame(()=>{
+      second=window.requestAnimationFrame(()=>{
+        if(!cancelled)setTimeEditorFrameReady(true);
+      });
+    });
+    return ()=>{
+      cancelled=true;
+      if(first)window.cancelAnimationFrame(first);
+      if(second)window.cancelAnimationFrame(second);
+    };
+  },[isTimeEditingView,scopeId,query.isPending,query.error]);
   const periodSelectionScopeRef=useRef('');
   const [selectedCategory,setSelectedCategory]=useState('');
   const [articleSort,setArticleSort]=useState('desc');
@@ -1324,7 +1346,7 @@ export default function Culture(){
               <p className='scope-status'>{String(selectedTimelineInfo.start||'').slice(0,10)}{selectedTimelineInfo.end?' ～ '+String(selectedTimelineInfo.end).slice(0,10):''}</p>
             </div>:null}
             <div className='scope-culture-time-input-area'>
-              {!query.isPending&&(timeRiverFirstPaint||!editorEraRiver.groups.length)
+              {!query.isPending&&!query.error&&(timeRiverFirstPaint||timeEditorFrameReady||!editorEraRiver.groups.length)
                 ?<CultureTimelineEditor key={scopeId+':unified:'+timelineEditorRevision}
                 scopeId={scopeId}
                 timeTable={scopeData?.time||''}
@@ -1339,7 +1361,7 @@ export default function Culture(){
                 suggestedRequestNonce={suggestedRequestNonce}
                 onDataChanged={refreshTimelineData}
                 onClose={()=>{setSelectedTimelineRecordId('');setSelectedTimelineDate('');setSelectedTimelineInfo(null);setSuggestedRequestNonce(0)}}/>
-                :<CultureTimeLoading label='正在建立時間河道…'/>}
+                :null}
             </div>
             {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
           </div>
