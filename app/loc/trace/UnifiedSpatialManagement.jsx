@@ -17,7 +17,6 @@ export default function UnifiedSpatialManagement({scopeId,initialType='point',in
       enabled:TRACE_SCOPES.includes(scopeId),revalidateOnFocus:false,revalidateOnReconnect:false
     });
   const pick=useCallback((type,uid='')=>{
-    if(type===selected.type&&uid===selected.uid&&uid)return;
     if(leaveGuard.current&&!leaveGuard.current())return;
     leaveGuard.current=null;
     setSelected(current=>({type,uid,serial:current.serial+1}));
