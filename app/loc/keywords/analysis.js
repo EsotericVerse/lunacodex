@@ -62,7 +62,9 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
     Math.max(0,Number(progress?.total)||0),
     Math.max(0,Number(progress?.percent)||0),
     String(progress?.label||'正在逐批分析文章'),
-    {parsed:Number(progress?.parsed)||0,reused:Number(progress?.reused)||0});
+    {parsed:Number(progress?.parsed)||0,reused:Number(progress?.reused)||0,
+      rowsPerSecond:Math.max(0,Number(progress?.rowsPerSecond)||0),
+      targetRowsPerSecond:Math.max(0,Number(progress?.targetRowsPerSecond)||0)});
   let result,lastScanned=-1;
   for(;;){
     result=await keywordService('analyze',{scopeId:id,classUid},{onProgress:forward});
@@ -76,7 +78,9 @@ export async function runKeywordAnalysisBatch(scopeId,{classUid:requestedClassUi
     const total=Math.max(0,Number(result.total)||0);
     forward({phase:'reading',completed:scanned,total,
       percent:total?scanned/total*100:0,label:'進度已存檔，正在繼續下一批',
-      parsed:result.parsed,reused:result.reused});
+      parsed:result.parsed,reused:result.reused,
+      rowsPerSecond:result.rowsPerSecond,
+      targetRowsPerSecond:result.targetRowsPerSecond});
   }
   reportBatchProgress(onProgress,'completed',
     Number(result?.analyzedDocuments)||0,
