@@ -33,7 +33,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
     const url=new URL(window.location.href);
     const replacement=isLoc
       ?url.pathname.replace(/\/trace\/manage(?:\/index\.html|\/)?$/,'/search/manage/')
-      :url.pathname.replace(/\/manage(?:\/index\.html|\/)?$/,'/search/manage/');
+      :url.pathname.replace(/\/(?:trace\/)?manage(?:\/index\.html|\/)?$/,'/search/manage/');
     if(replacement===url.pathname)return;
     url.pathname=replacement;
     window.location.replace(url.href);
