@@ -275,8 +275,8 @@ export default function TimelinePlaceManager({scopeId}){
     }finally{setWriting(false);}
   }
   if(!enabled)return <p className="scope-status">請先選擇個別 Scope，LOC 不執行跨 Scope 的行蹤比對。</p>;
-  return <section className="loc-card scope-feature-card" aria-label="Google Timeline 地點整理">
-    <h3>地點整理 · Google Timeline</h3>
+  return <section className="loc-card scope-feature-card" aria-label="Google Timeline 地點對照">
+    <h3>地點對照 · Google Timeline</h3>
     <p className="scope-status">Timeline JSON 只在瀏覽器本機背景解析，每次可指定日期區間，最長一年。先使用 date 查出區間內文章，再於瀏覽器比對時間及 500 公尺內既有定錨點，只列出 place_id 尚未填寫的文章；按定錨點集中審查。只補寫 place_id，不改 location，不儲存私人行蹤。</p>
     <div className="scope-management-fields">
       <label>選擇 Google Timeline JSON

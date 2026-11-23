@@ -36,17 +36,19 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
   const [notice,setNotice]=useState('');
   const revision=useRef(0);
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
-  const suggestions=useAsyncResource(['place-batch-suggestions',scopeId],async()=>{
-    const result=await dbAuthClient.schema('silver').anchor(scopeId,'point',{op:'suggestions',limit:60});
-    return verified(result)||[];
-  },{revalidateOnFocus:false,revalidateOnReconnect:false});
+  // Old schema.anchor(..., {op:'suggestions'}) is not implemented by the
+  // current Kysely client. Reuse the authorized PointAnchor list supplied by
+  // the combined management page instead of calling that removed endpoint.
   const periods=useAsyncResource(['place-batch-time',scopeId],
-    ()=>selectCultureTimeRows(scope),{enabled:Boolean(scope?.time),revalidateOnFocus:false,revalidateOnReconnect:false});
+    ()=>selectCultureTimeRows(scope),{enabled:Boolean(scope?.anchor),revalidateOnFocus:false,revalidateOnReconnect:false});
   const choices=(periods.data||[]).filter(row=>['period','event'].includes(row.entry_type)&&validDate(String(row.start_date||'')));
-  const locations=[...new Set([
-    ...anchors.filter(row=>row.source_scope===scopeId).map(row=>String(row.title||'').trim()),
-    ...(suggestions.data||[]).map(row=>String(row.name||'').trim())
-  ].filter(Boolean))];
+  const locations=[...new Set((anchors||[])
+    .filter(row=>row.source_scope===scopeId)
+    .flatMap(row=>[
+      String(row.title||'').trim(),
+      ...(Array.isArray(row.attr?.location)?row.attr.location:
+        typeof row.attr?.location==='string'?[row.attr.location]:[])
+    ]).map(name=>String(name||'').trim()).filter(Boolean))];
   const isValid=validDate(startDate)&&validDate(endDate)&&startDate<=endDate&&
     place.trim().length>0&&place.trim().length<=200;
   const criteria=[scopeId,startDate,endDate,place.trim()].join('|');
@@ -100,7 +102,7 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
       if(token===revision.current){
         setPreview(null);
         setNotice('已補寫 '+Number(data?.count||0)+' 篇文章的 location；原本已有地點的文章沒有修改。');
-        await suggestions.mutate();
+
       }
       return true;
     }catch(error){
@@ -113,7 +115,7 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
   }
   useEditDockForm({save:apply,isDirty:()=>Boolean(currentPreview&&count>0),isBusy:()=>busy});
   return <section className="loc-card scope-feature-card">
-    <h3>快速補寫打卡地點</h3>
+    <h3>快速補打卡</h3>
     <div className="scope-management-fields">
       <label>從現有時期／事件帶入（可選）
         <select className="scope-select" value={periodId} disabled={busy||periods.isPending} onChange={event=>usePeriod(event.target.value)}>
@@ -138,14 +140,9 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
         </datalist>
       </label>
     </div>
-    {Boolean(suggestions.data?.length)?<p className="scope-status">
-      常見打卡：{suggestions.data.slice(0,8).map(row=><button type="button" key={row.name}
-        className="loc-button" disabled={busy} onClick={()=>change(setPlace,row.name)}>
-        {row.name}（{row.article_count}）
-      </button>)}
-    </p>:null}
+    {locations.length?<p className="scope-status">可直接選用既有空間定錨點名稱；也可以輸入新的打卡地點。</p>:null}
     {periods.error?<p className="scope-status scope-error">時期讀取失敗：{String(periods.error.message||periods.error)}</p>:null}
-    {suggestions.error?<p className="scope-status scope-error">常用地點讀取失敗：{String(suggestions.error.message||suggestions.error)}</p>:null}
+
     <div className="scope-stat-controls">
       <button type="button" className="loc-button" onClick={inspect} disabled={!isValid||busy}>
         {busy?'處理中…':'預覽符合條件的文章'}
