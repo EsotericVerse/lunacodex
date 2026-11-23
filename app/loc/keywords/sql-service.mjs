@@ -482,7 +482,8 @@ export async function readKeywordAnalysisCompletion(db,scope,classUid,attemptId)
   }};
 }
 
-// Reset selected Class and its Item/Group aggregate counters only.
+// Reset one Class's completed receipt, unfinished cursor and all linked
+// Item/Group/Pattern totals in the SAME authorized transaction.
 export async function resetKeywordScope(db,scope,classUid,{
   authorizeTransaction=()=>{}
 }={}){
@@ -492,9 +493,10 @@ export async function resetKeywordScope(db,scope,classUid,{
     const cfg=await trx.selectFrom(configName(scope))
       .select('keyword_meta').where('id','=',scope).forUpdate().executeTakeFirst();
     if(!cfg)fail('Keyword Scope not configured',404);
-    const tree=await classTree(trx,scope,classUid);
-    const ids=[...tree.groups.map(x=>x.uid),...tree.items.map(x=>x.uid)];
-    // Reset only article count snapshots: preserve structural UID cardinality.
+    const tree=await classTree(trx,scope,classUid,{withPatterns:true});
+    const ids=[...new Set([...tree.groups.map(x=>x.uid),
+      ...tree.items.map(x=>x.uid),...tree.patterns.map(x=>x.uid)])];
+    // Reset only analyzed counts: preserve every structural UID and num.
     // Same row-locked metadata transaction as completion, but one SQL
     // statement clears all cached counts without changing Anchor.num.
     const changed=await writeKeywordTotals(trx,scope,ids.map(uid=>({uid,total:0})));
@@ -502,11 +504,19 @@ export async function resetKeywordScope(db,scope,classUid,{
     const meta=bumpKeywordClassEpoch(
       writeKeywordScanProgress(invalidateKeywordClass(previous,classUid),classUid,null),
       classUid);
+    // Never acknowledge an incomplete reset. Clearing the cursor and
+    // incrementing the epoch makes a late, disconnected scan unable to
+    // restore its old 32768-row snapshot.
+    if(readKeywordScanProgress(meta,classUid)!==null||
+      Object.hasOwn(meta.by_class||{},classUid))
+      fail('Keyword reset failed to clear analysis state',409);
     await trx.updateTable(configName(scope)).set({
       keyword_meta:JSON.stringify(meta),staticstime:null,
       updated_at:new Date().toISOString()
     }).where('id','=',scope).execute();
-    return {count:changed,retainedShared:0};
+    return {count:changed,retainedShared:0,cleared:true,
+      resetEpoch:keywordClassEpoch(meta,classUid),
+      clearedPatterns:tree.patterns.length};
   });
 }
 
