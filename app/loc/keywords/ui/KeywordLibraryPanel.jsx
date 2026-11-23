@@ -618,7 +618,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           {!inDock?<button type="button" className="loc-button" onClick={()=>setEditor(null)} disabled={busy}>取消</button>:null}
         </div>
       </div>:null;
-  return <div className="scope-keyword-management">
+  return <div className="scope-keyword-management loc-keyword-management-layout">
     <ManagementSectionNav id="scope-keyword-sections" title="關鍵詞管理" hideHeading
       panelId="scope-keyword-workspace" items={workspaceOptions}
       value={workspace} onChange={next=>{
@@ -629,7 +629,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
         }
         setWorkspace(next);setEditor(null);
       }}/>
-    <div id="scope-keyword-workspace">
+    <div id="scope-keyword-workspace" className="loc-keyword-workspace-panel">
     {loading?<p className="scope-status" role="status">讀取關鍵字資料中…</p>:null}
     {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
@@ -729,7 +729,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </option>)}
         </select>
       </label>
-      <div className="scope-preview-links">
+      0<div className="scope-preview-links loc-keyword-analysis-actions">
         <button type="button" className="loc-button primary"
           disabled={busy||checkingAttempt||!activeClass?.uid||unconfirmedAttempt?.classUid===activeClass.uid}
           onClick={()=>{setResetConfirmation('');run(false);}}>重新分析</button>
