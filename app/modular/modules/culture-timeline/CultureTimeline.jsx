@@ -338,12 +338,34 @@ export default function CultureTimeline({
   useEffect(()=>{setRecoveryWindow(null)},[windowStart,windowEnd]);
   useEffect(()=>{onSelectRef.current=onSelect},[onSelect]);
   useEffect(()=>{onFirstPaintRef.current=onFirstPaint},[onFirstPaint]);
-  // Notify management after the timeline (or recovery view) is committed.
-  // The heavy TimeAnchor editor is deliberately mounted on the next frame.
+  // The editor may mount only once the Time river is actually visible.
+  // vis-timeline's constructor/ready flag can precede its layout paint.
+  // Wait for measurable labels AND bars, or for the mounted recovery river.
   useEffect(()=>{
-    if(!ready&&!chartError)return;
-    const frame=window.requestAnimationFrame(()=>onFirstPaintRef.current?.());
-    return ()=>window.cancelAnimationFrame(frame);
+    if(!onFirstPaintRef.current||(!ready&&!chartError))return;
+    let cancelled=false,first=0,second=0;
+    first=window.requestAnimationFrame(()=>{
+      second=window.requestAnimationFrame(()=>{
+        if(cancelled)return;
+        if(chartError){
+          if(containerRef.current?.parentElement?.parentElement?.querySelector('.scope-time-recovery-river'))
+            onFirstPaintRef.current?.();
+          return;
+        }
+        const root=containerRef.current;
+        const visible=selector=>Array.from(root?.querySelectorAll(selector)||[])
+          .some(node=>{
+            const box=node.getBoundingClientRect();
+            return box.width>2&&box.height>2;
+          });
+        if(visible('.vis-panel.vis-left .vis-label')&&
+          visible('.vis-panel.vis-center .vis-item'))
+          onFirstPaintRef.current?.();
+        // An empty canvas will be repaired by the trace paint-health effect.
+        // Do not schedule the large editor before the actual river.
+      });
+    });
+    return ()=>{cancelled=true;window.cancelAnimationFrame(first);window.cancelAnimationFrame(second)};
   },[ready,chartError]);
   useEffect(()=>{onGroupToggleRef.current=onGroupToggle},[onGroupToggle]);
   useEffect(()=>{onGroupSelectRef.current=onGroupSelect},[onGroupSelect]);
