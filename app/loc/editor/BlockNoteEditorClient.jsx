@@ -4,28 +4,12 @@ import FieldText from '../../i18n/FieldText';
 import {useEffect,useRef} from 'react';
 import {SuggestionMenuController,useCreateBlockNote} from '@blocknote/react';
 import {blockNoteSuggestionItems} from './blocknote-suggestions.mjs';
-import {BlockNoteView} from '@blocknote/mantine';
+import {BlockNoteView} from '@blocknote/ariakit';
 import {canonicalBlockNoteBlocks,canonicalBlockNoteHtml,BlockNoteContent} from './blocknote-content.mjs';
 
-// Keep the native BlockNote/Mantine tools, menus and portalled suggestions
-// on the same live LOC palette as the editor surface. Using CSS var() lets
-// every published theme switch without remounting the editor or changing data.
-const LOC_BLOCKNOTE_THEME={
-  colors:{
-    editor:{text:'var(--loc-text)',background:'var(--loc-panel)'},
-    menu:{text:'var(--loc-text)',background:'var(--loc-panel-strong)'},
-    tooltip:{text:'var(--loc-text)',background:'var(--loc-panel-2)'},
-    hovered:{text:'var(--loc-text)',background:'var(--loc-accent-surface)'},
-    selected:{text:'var(--loc-text)',background:'var(--loc-accent-surface-strong)'},
-    disabled:{text:'var(--loc-muted)',background:'var(--loc-surface-soft)'},
-    shadow:'var(--loc-line)',
-    border:'var(--loc-line)',
-    sideMenu:'var(--loc-muted)'
-  },
-  borderRadius:12,
-  fontFamily:'var(--loc-font-family)'
-};
-
+// Keep the native BlockNote Core/React tools and suggestion controller.
+// The Ariakit view inherits LOC's live palette from BlockNote CSS variables,
+// so no UI-library theme object or editor recreation is necessary.
 export default function BlockNoteEditorClient({
   initialBlocks=[],
   initialHtml='',
@@ -172,7 +156,6 @@ export default function BlockNoteEditorClient({
     </div>:null}
     <BlockNoteView
       editor={editor}
-      theme={LOC_BLOCKNOTE_THEME}
       editable={editable}
       onChange={editable?emit:undefined}
       formattingToolbar={plainTextOnly?false:undefined}
