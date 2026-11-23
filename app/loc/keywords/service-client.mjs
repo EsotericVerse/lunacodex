@@ -124,6 +124,17 @@ export async function keywordService(operation,args={},options={}){
           label:'資料庫已確認分析完成'});
         return committed(receipt.result);
       }
+      // The exact tail request committed only its counters and returned:
+      // no final SQL transaction was started. Its matching receipt makes
+      // a new FINALIZE-only request safe without rescanning any article.
+      if(receipt?.resumable&&receipt.attemptMatched){
+        options.onProgress({phase:'finalizing',completed:receipt.scanned,
+          total:receipt.scanned,percent:99,
+          label:'最後一段已存檔，正在接續最終統計'});
+        return {incomplete:true,finalizePending:true,
+          total:receipt.scanned,completed:receipt.scanned,
+          parsed:receipt.parsed};
+      }
       // Explicit server failures are real errors. Unexpected EOF/network
       // errors remain *unconfirmed*, so preserve the attempt for user-driven
       // status checks rather than discarding its identity.
