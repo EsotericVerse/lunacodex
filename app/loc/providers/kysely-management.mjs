@@ -603,8 +603,10 @@ const importCreatedAtCandidateArgsSchema=z.strictObject({
   // UTC millisecond buckets preserve the existing source-time fallback.
   p_instants:z.array(z.string().datetime({offset:true})).min(1).max(80)
 });
+// Match the import editor's existing GalaxyUidRead projection; Boolean
+// GalaxyAttr flags are unrelated to source identity and need not cross SQL.
 const IMPORT_SITE_ID_CANDIDATE_COLUMNS=Object.freeze([
-  ...new Set([...galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr'),'site_id'])
+  ...new Set([...galaxyReadColumnsFor('GalaxyUidRead'),'site_id'])
 ]);
 const IMPORT_CREATED_AT_CANDIDATE_COLUMNS=Object.freeze([
   ...new Set([...IMPORT_SITE_ID_CANDIDATE_COLUMNS,'date'])
