@@ -19,7 +19,8 @@ export function sourceLabelMatchesSite(site,label){
 // Example: Meta (domain) > Facebook/Threads/Instagram (from); CMS/Article/Stream (galaxy).
 // Example taxonomy (labels only; no automatic DB rewrite):
 // Words > CMS > Meta > Facebook/Threads/Instagram; CMS > X > X Twitter.
-// Words > Article > MCP > Github/ChatGPT/runes; Article > Post > Vocus.
+// Words > CMS > EsotericVerse > LOC/LRS.
+// Words > Article > MCP > Github/ChatGPT; Article > Post > Vocus.
 // Mutlimedia > Stream > Music > Suno/Spotify; Stream > Video > Youtube.
 // PastBy > SeeYou > Closed > kkcity/無名wretch/MSN; NowON > ptt/pixnet.
 // Source labels are not durable keys: Vocus supersedes "方格子vocus" only
