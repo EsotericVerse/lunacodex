@@ -3,8 +3,8 @@
 // the encrypted LOC Authority, never from request body parameters.
 import {normalizeSqlDriverAuthentication,sqlAuthNeedsUserPassword}
  from './sql-driver-auth.mjs';
+import {getSqlType} from '../../../modules/loc/dialect/index.mjs';
 const ID=/^[a-z][a-z0-9_-]{0,63}$/;
-const ENGINES=new Set(['postgres','mysql','mssql']);
 const HOST=/^[a-z0-9.-]{1,253}$/;
 const NAME=/^[A-Za-z0-9_-]{1,120}$/;
 export function normalizeLiveTarget(id,profile){
@@ -12,7 +12,11 @@ export function normalizeLiveTarget(id,profile){
  if(!profile||typeof profile!=='object'||Array.isArray(profile))
   throw Error('LOC database profile is not configured');
  const engine=String(profile.engine||'');
- if(!ENGINES.has(engine))throw Error('Unsupported runtime SQL engine');
+ // Engine is an explicit trusted setting; never infer it from a URI,
+ // the database vendor, a failed query, or another configured target.
+ let type;
+ try{type=getSqlType(engine);}
+ catch{throw Error('Unsupported runtime SQL engine');}
  const port=Number(profile.port);
  const host=String(profile.host||'').toLowerCase();
  const database=String(profile.database||'');
@@ -33,7 +37,7 @@ export function normalizeLiveTarget(id,profile){
  // A normalized URL represents the trusted target identity, not an active
  // driver connection. SQL Server's Tedious driver consumes typed options,
  // not a raw URL, when the verified target is actually opened.
- const protocol=engine==='postgres'?'postgres':engine==='mysql'?'mysql':'mssql';
+ const protocol=type.protocol;
  const url=new URL(protocol+'://example.invalid');
  // WHATWG URL credentials setters do not encode bare percent signs.
  // Explicit component encoding also protects +, / and @ in server-owned
@@ -45,10 +49,10 @@ export function normalizeLiveTarget(id,profile){
  const chosenSchema=String(profile.schema_name||'');
  // MySQL's database is its namespace. Supplying a different schema here
  // would make an implicit cross-database read, so never ignore that input.
- if(engine==='mysql'&&chosenSchema&&chosenSchema!==database)
+ if(type.namespace==='database'&&chosenSchema&&chosenSchema!==database)
    throw Error('MySQL namespace must equal the selected database');
- const namespace=engine==='mysql'?'':chosenSchema||
-   (engine==='mssql'?'dbo':'silver');
+ const namespace=type.namespace==='database'?'':chosenSchema||
+   type.targetNamespace;
  const safe=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
  const table=String(profile.table_name||'');
  const fieldMap=profile.field_map||{};
