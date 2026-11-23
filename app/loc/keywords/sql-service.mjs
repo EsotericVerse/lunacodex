@@ -181,8 +181,14 @@ export async function readKeywordStatistics(db,scope,classUid,{
   const meta=attr({attr:cfg.keyword_meta});
   const receipt=meta.by_class?.[classUid]||{};
   const ready=Boolean(receipt.completedAt)&&receipt.stale!==true;
-  let counts=receipt,daily=[];
-  if(start||end||source){
+  let counts={},daily=[];
+  if(!ready){
+    // Reset removes the Class completion receipt. A date/source-filtered
+    // statistics read must NOT silently scan Galaxy again and display hits
+    // from the original articles. Keep all totals zero until an explicit
+    // successful analysis commits a fresh Class receipt. The Keyword Tree
+    // structure and its UIDs remain intact.
+  }else if(start||end||source){
     const result=await readItemKeywordProjection(db,scope,{
       ...itemScope(tree),start,end,source,owner:true,
       minChars:Math.max(0,Number(cfg.keyword_min_chars)||0)
