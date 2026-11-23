@@ -1,0 +1,33 @@
+/* BlockNote 0.55 Ariakit UI. LOC owns colors, typography, and spacing.
+   Keep the CSS variables on the editor root rather than importing a second
+   UI framework. Ariakit supplies keyboard/focus/menu behavior, not themes. */
+.scope-blocknote .bn-root[data-color-scheme]{
+  --bn-text-color-primary:var(--loc-text);
+  --bn-text-color-menu:var(--loc-text);
+  --bn-text-color-tooltip:var(--loc-text);
+  --bn-text-color-hovered:var(--loc-text);
+  --bn-text-color-selected:var(--loc-text);
+  --bn-text-color-disabled:var(--loc-muted);
+  --bn-text-color-muted:var(--loc-muted);
+  --bn-background-color-editor:var(--loc-panel);
+  --bn-background-color-menu:var(--loc-panel-strong);
+  --bn-background-color-tooltip:var(--loc-panel-2);
+  --bn-background-color-hovered:var(--loc-accent-surface);
+  --bn-background-color-selected:var(--loc-accent-surface-strong);
+  --bn-background-color-disabled:var(--loc-surface-soft);
+  --bn-border-color:var(--loc-line);
+  --bn-border-color-strong:var(--loc-accent-border);
+  --bn-focus-ring-color:var(--loc-accent);
+  --bn-radius-small:6px;
+  --bn-radius-medium:10px;
+  --bn-radius-large:12px;
+  --bn-font-family-default:var(--loc-font-family);
+  font-family:var(--loc-font-family);
+}
+/* Preserve LOC's URL-only image action and narrow-screen editor sizing.
+   Native Ariakit popovers retain their own focus and dismissal behavior. */
+.scope-blocknote .bn-toolbar,
+.scope-blocknote .bn-suggestion-menu,
+.scope-blocknote .bn-link-toolbar{
+  max-width:min(96vw,100%);
+}
