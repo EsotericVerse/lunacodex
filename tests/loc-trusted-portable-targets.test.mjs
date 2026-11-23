@@ -105,7 +105,12 @@ test('verified alias is mandatory to construct an external Kysely connection',as
 test('trusted external adapters compile MySQL and MSSQL queries without DB network access',async()=>{
   const targets=[
     {engine:'mysql',driverConfig:{pool:{}},namespace:''},
-    {engine:'mssql',driverConfig:{tarn:{},tedious:{}},namespace:'dbo'}
+    // Kysely's MSSQL driver constructs tarn.Pool during new Kysely().
+    // A minimal fake keeps this compile-only test offline; real execution
+    // requires an installed and configured tedious/tarn driver.
+    {engine:'mssql',driverConfig:{tarn:{Pool:class {
+      destroy(){return Promise.resolve();}
+    }},tedious:{}},namespace:'dbo'}
   ];
   for(const {engine,driverConfig,namespace} of targets){
     const alias='archive_'+engine;
