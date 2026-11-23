@@ -1,4 +1,5 @@
 import {HEAVY_INITIAL_ROWS} from '../query/query-batch-size.mjs';
+import {sql} from 'kysely';
 // LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
 // Anchor.num is UID-list cardinality; Item/Group.attr.total is the existing
 // cached article hit count. Class completion remains in Scope keyword_meta.
@@ -258,6 +259,29 @@ async function lockedKeywordMetadata(trx,scope,classUid,expectedEpoch){
   return meta;
 }
 
+// The native Keyword service runs on LOC's trusted PostgreSQL Kysely target.
+// One typed SQL statement updates only attr.total, preserving every other
+// Anchor attribute, hierarchy UID list and its independently derived num.
+// This is not a second keyword index or a public SQL request surface.
+async function writeKeywordTotals(trx,scope,updates){
+  if(!updates.length)return 0;
+  if(updates.some(row=>!UID.test(String(row.uid||''))||
+    !Number.isSafeInteger(row.total)||row.total<0))
+    fail('Invalid Keyword aggregate counts');
+  const payload=JSON.stringify(updates);
+  const table=sql.ref(anchorName(scope));
+  const result=await sql`
+    update ${table} as a
+    set attr=jsonb_set(coalesce(a.attr,'{}'::jsonb),
+      '{total}',to_jsonb(incoming.total),true)
+    from jsonb_to_recordset(${payload}::jsonb) as incoming(uid text,total bigint)
+    where a.uid=incoming.uid::char(8) and a.type in ('item','group')
+  `.execute(trx);
+  const affected=Number(result.numAffectedRows??0);
+  if(affected!==updates.length)fail('Keyword aggregate targets changed',409);
+  return affected;
+}
+
 async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',expectedCount=null,expectedEpoch=0){
   const old=await lockedKeywordMetadata(trx,scope,classUid,expectedEpoch);
   if(expectedCount!==null){
@@ -277,17 +301,9 @@ async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',exp
     ...current.groups.map(group=>({uid:group.uid,
       total:Math.max(0,Number(counts.groupCounts?.[group.uid])||0)}))
   ];
-  // Preserve the UID hierarchy and num while updating cached article counts.
-  const originals=await trx.selectFrom(anchorName(scope)).select(['uid','attr'])
-    .where('uid','in',updates.map(row=>row.uid)).forUpdate().execute();
-  if(originals.length!==updates.length)fail('Keyword count targets changed',409);
-  const byUid=new Map(originals.map(row=>[row.uid,attr(row)]));
-  for(const row of updates){
-    const result=await trx.updateTable(anchorName(scope))
-      .set({attr:JSON.stringify({...byUid.get(row.uid),total:row.total})})
-      .where('uid','=',row.uid).executeTakeFirst();
-    if(Number(result?.numUpdatedRows||0)!==1)fail('Item count write incomplete',409);
-  }
+  // The metadata row was locked before this statement. The typed UPDATE
+  // touches only Item/Group total and never overwrites concurrent attr edits.
+  await writeKeywordTotals(trx,scope,updates);
   const now=new Date().toISOString();
   const {pattern_index_version,pattern_scans,scan_progress,...rest}=old;
   const {itemCounts,groupCounts,...smallCounts}=counts;
@@ -400,16 +416,9 @@ export async function resetKeywordScope(db,scope,classUid,{
     const tree=await classTree(trx,scope,classUid);
     const ids=[...tree.groups.map(x=>x.uid),...tree.items.map(x=>x.uid)];
     // Reset only article count snapshots: preserve structural UID cardinality.
-    const originals=await trx.selectFrom(anchorName(scope)).select(['uid','attr'])
-      .where('uid','in',ids).forUpdate().execute();
-    if(originals.length!==ids.length)fail('Keyword reset targets changed',409);
-    let changed=0;
-    for(const row of originals){
-      const result=await trx.updateTable(anchorName(scope))
-        .set({attr:JSON.stringify({...attr(row),total:0})})
-        .where('uid','=',row.uid).executeTakeFirst();
-      changed+=Number(result?.numUpdatedRows||0);
-    }
+    // Same row-locked metadata transaction as completion, but one SQL
+    // statement clears all cached counts without changing Anchor.num.
+    const changed=await writeKeywordTotals(trx,scope,ids.map(uid=>({uid,total:0})));
     const previous=attr({attr:cfg.keyword_meta});
     const meta=bumpKeywordClassEpoch(
       writeKeywordScanProgress(invalidateKeywordClass(previous,classUid),classUid,null),
