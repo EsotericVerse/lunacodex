@@ -189,7 +189,8 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   resume=null,pageSize=KEYWORD_SCAN_START_ROWS,timeBudgetMs=null,now=()=>Date.now(),minChars=0,
   maxRowsPerRun=null,minRowsPerRun=null,
   checkpointRows=KEYWORD_SCAN_CHECKPOINT_ROWS,
-  paceRows=false,rateSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+  paceRows=false,rateSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
+  deferFinalization=false
 }={}){
   const a=createItemCountAccumulator(items,groups,resume,{minChars});
   const valid=resume?.scanMode==='item_count_v1'&&resume.fingerprint===a.fingerprint&&
@@ -226,15 +227,30 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   // an acceptance metric, not a forced SQL LIMIT or an artificial throttle.
   const rate=()=>Math.round((scanned-startedScanned)*1000/
     Math.max(1,now()-started));
-  const incomplete=()=>({incomplete:true,scanned,parsed:a.state.parsed,
-    rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
-  const checkpoint=async()=>{
-    if(onCheckpoint&&lastCheckpoint!==scanned){
+  const incomplete=(finalizePending=false)=>({
+    incomplete:true,scanned,parsed:a.state.parsed,finalizePending,
+    rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null
+  });
+  const checkpoint=async(finalizePending=false)=>{
+    if(onCheckpoint&&(lastCheckpoint!==scanned||finalizePending)){
       await onCheckpoint({...a.state,cursor,
-        ...(pace?{targetRowsPerSecond:pace.target}:{})});
+        ...(pace?{targetRowsPerSecond:pace.target}:{}),
+        ...(finalizePending?{finalizePending:true}:{})});
       lastCheckpoint=scanned;
     }
   };
+  const finish=async()=>{
+    const result=a.totals();
+    await finalize(result);
+    onProgress({phase:'completed',completed:scanned,parsed:a.state.parsed,
+      rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
+    return result;
+  };
+  // A tail receipt includes all counters and the final cursor. Once it has
+  // committed, a fresh request ONLY finalizes Item/Group totals and need
+  // not fetch or classify any article again.
+  if(valid&&resume?.finalizePending===true&&scanned===expectedCount)
+    return finish();
   for(;;){
     const runCount=scanned-startedScanned;
     const remaining=runLimit===null?Infinity:runLimit-runCount;
@@ -291,6 +307,16 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     scanned+=page.rows.length;
     a.state.scanned=scanned;
     sizer.observe(page.rows.length,pageChars);
+    // Total article counts need not be a multiple of 4096 or 8192.
+    // Persist the short final page BEFORE starting the expensive final
+    // SQL transaction. The next request finalizes without a new scan.
+    if(deferFinalization&&onCheckpoint&&expectedCount!==null&&
+        scanned===expectedCount){
+      await checkpoint(true);
+      onProgress({phase:'finalizing',completed:scanned,parsed:a.state.parsed,
+        rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
+      return incomplete(true);
+    }
     const elapsed=now()-started;
     if(floorLimit!==null&&!extended&&scanned-startedScanned>=floorLimit){
       // Only one checkpoint per successful request: save at 4096 when the
@@ -316,11 +342,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   }
   if(expectedCount!==null&&scanned<expectedCount)
     throw Error('Item scan ended before all Galaxy rows');
-  const result=a.totals();
-  await finalize(result);
-  onProgress({phase:'completed',completed:scanned,parsed:a.state.parsed,
-    rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
-  return result;
+  return finish();
 }
 export async function readItemKeywordProjection(db,scope,{items,groups,start='',end='',
   source='',places=null,owner=true,minChars=0,onRow=null}={}){
