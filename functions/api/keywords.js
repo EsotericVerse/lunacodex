@@ -57,6 +57,11 @@ export async function onRequestPost(context){
     if((operation==='analyzeStatus'||operation==='analyze'&&args.attemptId)&&
        !ATTEMPT.test(String(args.attemptId||'')))
       error('Invalid Keyword analysis attempt');
+    // A fresh analysis must carry the generation returned by its reset.
+    // A delayed retry of a superseded job cannot start scanning this epoch.
+    if(operation==='analyze'&&
+       (!Number.isSafeInteger(args.analysisEpoch)||args.analysisEpoch<1))
+      error('必須先清空舊分析並確認版本，才能重新解析',409);
     // The existing Pages native Kysely connection is server-selected; never
     // accept a target URL, SQL dialect or credential from HTTP arguments.
     stage='database';
@@ -143,7 +148,8 @@ export async function onRequestPost(context){
                   try{
                     const analyzed=await analyzeKeywordScope(db,scope,args.classUid,{
                       authorizeTransaction,onProgress:data=>emit('progress',data),
-                      attemptId:String(args.attemptId||'')
+                      attemptId:String(args.attemptId||''),
+                      analysisEpoch:args.analysisEpoch
                     });
                     emit('result',analyzed);
                   }catch(failure){
@@ -180,7 +186,8 @@ export async function onRequestPost(context){
             return response;
           }
           result=await analyzeKeywordScope(db,scope,args.classUid,{
-            authorizeTransaction,attemptId:String(args.attemptId||'')
+            authorizeTransaction,attemptId:String(args.attemptId||''),
+            analysisEpoch:args.analysisEpoch
           });
         }
         else if(operation==='saveItem')
