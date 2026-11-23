@@ -214,6 +214,9 @@ export default function ScopeEditableBlocks({
   // BlockNote draft view remains exactly as before, with no animated ancestors.
   const motionHome=pageName==='index'&&['loc','lo3rwang'].includes(scopeId)&&SlotTag==='section';
   const HomeDisplayTag=motionHome?motion.section:SlotTag;
+  // Invoke the supplied display as a React component, never as a plain function.
+  // Its returned Fragment must have its own owner beneath motion.section.
+  const DisplayComponent=typeof renderDisplay==='function'?renderDisplay:null;
   const homeMotionProps=slot=>!motionHome?{}:{
     initial:reduceMotion?false:{opacity:slot.order===1?.92:.9,y:slot.order===1?14:10},
     ...(slot.order===1
@@ -314,8 +317,8 @@ export default function ScopeEditableBlocks({
           {motionHome&&slot.order===1&&!empty?<motion.span key="hero-line" className="loc-home-motion-hero-line"
             aria-hidden="true" initial={reduceMotion?false:{scaleX:0}} animate={{scaleX:1}}
             transition={{duration:reduceMotion?0:.85,delay:reduceMotion?0:.16,ease:[.22,.8,.22,1]}}/>:null}
-          {typeof renderDisplay==='function'
-            ?<Fragment key="slot-display">{renderDisplay(slot)}</Fragment>
+          {DisplayComponent
+            ?<DisplayComponent key="slot-display" {...slot}/>
             :<Fragment key="slot-display">
               {slot.eyebrow?<p className="loc-eyebrow">{slot.eyebrow}</p>:null}
               {slot.title?<Heading>{slot.title}</Heading>:null}
@@ -372,8 +375,8 @@ export default function ScopeEditableBlocks({
           onClose={cancel}
           onDone={notice=>{rememberSavedRows();setEditingSlot(null);setMessage(notice)}}
         />:<>
-          {typeof renderDisplay==='function'
-            ?<Fragment key="slot-display">{renderDisplay(slot)}</Fragment>
+          {DisplayComponent
+            ?<DisplayComponent key="slot-display" {...slot}/>
             :<Fragment key="slot-display">
               {slot.eyebrow?<p className="loc-eyebrow">{slot.eyebrow}</p>:null}
               {slot.title?<Heading>{slot.title}</Heading>:null}

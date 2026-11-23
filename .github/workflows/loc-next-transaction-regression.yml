@@ -71,3 +71,7 @@ jobs:
           }
           assert.equal(fs.existsSync('out/_loc/routes'),false);
           NODE
+
+      - name: Verify live React development console without missing-key warnings
+        timeout-minutes: 5
+        run: node scripts/check-home-react-dev-console.mjs
