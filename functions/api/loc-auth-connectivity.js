@@ -62,6 +62,51 @@ export async function testLocAuthConnection(env={},database=db_connection,{waitU
   catch(error){console.error('[LOC health SQL cleanup]',{code:String(error?.code||'CLOSE_FAILED').slice(0,64)});}
  }
 }
+// Fixed-environment, password-free transport diagnostic. This is NOT a
+// public query, database selector, SQL gateway, or database-credential echo.
+// It can tell whether the Cloudflare socket or TLS handshake closes before
+// pg.Client even sends PostgreSQL startup/authentication bytes.
+async function diagnoseFixedPgTransport(env){
+ const uri=String(env?.LOC_DATABASE_URI||'');
+ if(!uri)return json({ok:false,stage:'configuration'},503);
+ let plain=null,tls=null,stage='tcp';
+ const bound=async work=>Promise.race([
+   work,new Promise((_,reject)=>setTimeout(
+     ()=>reject(new Error('PROBE_TIMEOUT')),3000))
+ ]);
+ try{
+   const address=new URL(uri);
+   const {connect}=await import('cloudflare:sockets');
+   plain=connect({hostname:address.hostname,
+     port:Number(address.port||5432)},{secureTransport:'starttls'});
+   await bound(plain.opened);
+   stage='postgres_ssl_request';
+   const writer=plain.writable.getWriter();
+   try{await bound(writer.write(new Uint8Array([0,0,0,8,4,210,22,47])));}
+   finally{writer.releaseLock();}
+   const reader=plain.readable.getReader();
+   let response;
+   try{response=await bound(reader.read());}
+   finally{reader.releaseLock();}
+   if(response.done||response.value?.[0]!==83)
+     return json({ok:false,stage,reply:response.done?'EOF':'NOT_SSL'},503);
+   stage='tls';
+   tls=plain.startTls();
+   await bound(tls.opened);
+   return json({ok:true,stage:'tls_ready',verified:true});
+ }catch(error){
+   const msg=String(error?.message||'').toLowerCase();
+   const reason=msg.includes('timeout')?'TIMEOUT':
+     /ssl|tls|certificate|handshake/.test(msg)?'TLS':
+     /closed|terminated|eof/.test(msg)?'EARLY_CLOSE':
+     /connect|network|socket/.test(msg)?'TRANSPORT':'OTHER';
+   return json({ok:false,stage,reason},503);
+ }finally{
+   try{await (tls||plain)?.close?.();}catch{}
+ }
+}
 export function onRequestGet({request,env,waitUntil}){
+ const option=new URL(request.url).searchParams.get('transport');
+ if(option==='diagnose')return diagnoseFixedPgTransport(env);
  return testLocAuthConnection(env,db_connection,{waitUntil,signal:request?.signal});
 }
