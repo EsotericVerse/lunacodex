@@ -1,7 +1,7 @@
 // CI smoke test: visit the real Next.js *development* homepage and capture
 // React's key warnings through Chromium DevTools. No Playwright/npm package added.
 import assert from 'node:assert/strict';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {existsSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -44,7 +44,12 @@ const within=async(fn,ms,label)=>{
   throw new Error('Timed out waiting for '+label+': '+serverLog.slice(-2000));
 };
 function stopServer(){
-  if(process.platform!=='win32'&&server.pid){
+  if(process.platform==='win32'&&server.pid){
+    spawnSync('taskkill',['/PID',String(server.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+    try{server.stdout?.destroy();server.stderr?.destroy();}catch{}
+    return;
+  }
+  if(server.pid){
     try{process.kill(-server.pid,'SIGTERM');return;}catch{}
   }
   try{server.kill('SIGTERM');}catch{}
