@@ -60,8 +60,11 @@ const galaxyKeywordScanProjection=Object.freeze([
 // Keyword analysis is paged across requests, not capped to a fixed number
 // of Scope articles. Each short request commits a resumable SQL checkpoint
 // BEFORE returning so Cloudflare request limits never erase the whole scan.
-const KEYWORD_ROWS_PER_REQUEST=2048;
-const KEYWORD_CHECKPOINT_ROWS=512;
+// A normal request runs up to 8192 rows and persists one checkpoint before
+// returning. Avoid a database write every few hundred articles; reserve an
+// earlier checkpoint for an actual request-time budget boundary.
+const KEYWORD_ROWS_PER_REQUEST=8192;
+const KEYWORD_CHECKPOINT_ROWS=8192;
 const KEYWORD_REQUEST_BUDGET_MS=15000;
 
 const removeLegacyKeywordHitCache=value=>{
