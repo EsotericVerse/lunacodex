@@ -206,8 +206,13 @@ export async function matchExistingImportByCreatedAt(records,{
   const matches=new Map(),ambiguous=[];
   for(const [site,group] of groups){
     const days=[...group.days].sort(),stored=new Map(),millis=new Map();
+    // A bounded SQL Runtime reader can fetch only persisted timestamps
+    // that share an original source millisecond. Keep the existing matcher
+    // unchanged, including ambiguity and collision-adjusted timestamps.
+    const instants=[...new Set([...group.wanted].flatMap(key=>requested.get(key)||[])
+      .map(row=>new Date(row.createtime).toISOString()))];
     await readSourceRows({
-      site,fromDate:days[0],toDate:days.at(-1),
+      site,fromDate:days[0],toDate:days.at(-1),instants,
       consumePage:rows=>{
         if(!Array.isArray(rows))throw new TypeError('Invalid source/time page');
         for(const row of rows){
