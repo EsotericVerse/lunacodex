@@ -95,11 +95,15 @@ test('both Galaxy insert and update importer routes obey actual measured bytes',
   assert.match(pg,/jsonb_populate_recordset/);
 });
 
-test('portable PostgreSQL does not recreate the old 50-row internal insert cap',()=>{
+test('each explicit SQL Type preserves its own parameter-safe insert budget',()=>{
   const port=src('app/loc/providers/sql-engine-ports.mjs');
-  assert.match(port,/if\(engine==='postgres'\)return/);
-  assert.match(port,/Math\.floor\(32000\/columns\)/);
-  assert.match(port,/if\(engine==='mssql'\)return/);
+  const pg=src('modules/loc/dialect/postgres.mjs');
+  const mysql=src('modules/loc/dialect/mysql.mjs');
+  const mssql=src('modules/loc/dialect/mssql.mjs');
+  assert.match(port,/Math\.floor\(type\.insertParameterLimit\/columns\)/);
+  assert.match(pg,/insertParameterLimit:32000,insertMaxRows:10000/);
+  assert.match(mysql,/insertParameterLimit:32000,insertMaxRows:50/);
+  assert.match(mssql,/insertParameterLimit:2000,insertMaxRows:50/);
 });
 
 test('Import confirmation windows never skip milestones or loop when sizes match',()=>{
