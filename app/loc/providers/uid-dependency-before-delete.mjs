@@ -127,9 +127,9 @@ export function buildUidCaseRepairQuery(db,table,items,serialize=values=>values)
     throw new TypeError('Mixed UID repair fields');
   const prepared=items.map(item=>serialize(item.values,table));
   const values=Object.fromEntries(fields.map(field=>[
-    field,sql`CASE ${{sql.ref('uid')} ${{sql.join(items.map((item,index)=>
-      sql`WHEN ${{item.uid} THEN ${{prepared[index][field]}`),sql` `)}
-      ELSE ${{sql.ref(field)} END`
+    field,sql`CASE ${sql.ref('uid')} ${sql.join(items.map((item,index)=>
+      sql`WHEN ${item.uid} THEN ${prepared[index][field]}`),sql` `)}
+      ELSE ${sql.ref(field)} END`
   ]));
   let query=db.updateTable(table).set(values)
     .where(eb=>uidRepairConditions(eb,items,table,serialize));
@@ -161,7 +161,7 @@ export function buildUidNativeArrayRepairQuery(db,table,items,deletedUid,
     throw new TypeError('Mixed native UID array repair fields');
   const values=Object.fromEntries(fields.map(field=>[
     field,field==='target_id'
-      ?sql`array_remove(${{sql.ref('target_id')}, ${{deletedUid})`:null
+      ?sql`array_remove(${sql.ref('target_id')}, ${deletedUid})`:null
   ]));
   return db.updateTable(table).set(values)
     .where(eb=>uidRepairConditions(eb,items,table,serialize));
