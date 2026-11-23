@@ -11,6 +11,7 @@ import {usePathname,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useAsyncInfiniteResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeatureNavigation} from '../routing/feature-navigation';
 import ScopeLink from '../ScopeLink';
+import {scopeHref} from '../routing/scope-registry';
 import {useEditDock} from '../edit-dock';
 import {featureDataErrorMessage} from '../feature-data-state';
 // Keep a visible, CSS-only waiting state even before the timeline chunk loads.
@@ -1665,8 +1666,11 @@ export default function Culture(){
                     <summary>風格密度建議定錨點：{styleRiverAnalysis.suggestions.length} 個（點開查看）</summary>
                     {styleRiverAnalysis.suggestions.length?<div className='scope-culture-anchor-choices'>
                       {styleRiverAnalysis.suggestions.map(item=>{
-                        const route=featureNavigationHref(scopeId,'culture');
-                        const href=route+(route.includes('?')?'&':'?')+'edit=1&anchorDate='+encodeURIComponent(item.date);
+                        // Deep-link straight to the protected TimeAnchor
+                        // editor, not the public Culture view (?edit=1 alone
+                        // does not authorize or mount that editor).
+                        const href=scopeHref(scopeId,
+                          'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date));
                         return <div key={item.date} className='scope-status'>
                           <strong>{item.date}</strong>
                           <span>｜前 3 日 {Number(item.beforeCount||0).toLocaleString(locale)} 次／後 3 日 {Number(item.afterCount||0).toLocaleString(locale)} 次</span>
@@ -1716,8 +1720,8 @@ export default function Culture(){
                       <summary><span className='scope-culture-anchor-picker-mark' aria-hidden='true'/><UiText id="uiExtra.cultureView.expandToCompareWorkVolumeChanges"/></summary>
                       <div className='scope-culture-anchor-choices'>
                         {riverAnalysis.suggestions.map(item=>{
-                          const route=featureNavigationHref(scopeId,'culture');
-                          const href=route+(route.includes('?')?'&':'?')+'edit=1&anchorDate='+encodeURIComponent(item.date);
+                          const href=scopeHref(scopeId,
+                            'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date));
                           return <div key={item.date} className='scope-status'>
                             {canUseScopeEditor?<label><input type='checkbox' checked={selectedVirtualAnchorDates.includes(item.date)}
                               onChange={()=>toggleVirtualAnchor(item.date)}/>
