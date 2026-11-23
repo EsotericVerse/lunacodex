@@ -181,8 +181,14 @@ export async function readKeywordStatistics(db,scope,classUid,{
   const meta=attr({attr:cfg.keyword_meta});
   const receipt=meta.by_class?.[classUid]||{};
   const ready=Boolean(receipt.completedAt)&&receipt.stale!==true;
-  let counts=receipt,daily=[];
-  if(start||end||source){
+  let counts={},daily=[];
+  if(!ready){
+    // Reset removes the Class completion receipt. A date/source-filtered
+    // statistics read must NOT silently scan Galaxy again and display hits
+    // from the original articles. Keep all totals zero until an explicit
+    // successful analysis commits a fresh Class receipt. The Keyword Tree
+    // structure and its UIDs remain intact.
+  }else if(start||end||source){
     const result=await readItemKeywordProjection(db,scope,{
       ...itemScope(tree),start,end,source,owner:true,
       minChars:Math.max(0,Number(cfg.keyword_min_chars)||0)
@@ -241,6 +247,12 @@ export async function readKeywordDaily(db,scope,classUid,{
   checkScope(scope);checkClass(classUid);validateKeywordFilters({start,end,source});
   const cfg=await configuration(db,scope);
   if(!owner&&!shared(cfg,classUid))fail('Keyword Class not published',403);
+  const meta=attr({attr:cfg.keyword_meta});
+  const receipt=meta.by_class?.[classUid];
+  // Daily statistics are an analysis projection too. After Reset, do not
+  // repopulate the chart by silently scanning the original Galaxy content.
+  // Only an explicitly completed new analysis re-enables this projection.
+  if(!receipt?.completedAt||receipt.stale===true)return [];
   const tree=await classTree(db,scope,classUid);
   const result=await readItemKeywordProjection(db,scope,{
     ...itemScope(tree),start,end,source,places,owner:true,
@@ -373,12 +385,18 @@ async function persistScanProgress(trx,scope,classUid,progress,expectedEpoch){
 
 export async function analyzeKeywordScope(db,scope,classUid,{
   authorizeTransaction=()=>{},startedAt=new Date().toISOString(),onProgress=()=>{},
-  attemptId=''
+  attemptId='',analysisEpoch=null
 }={}){
   checkScope(scope);checkClass(classUid);
+  if(!Number.isSafeInteger(analysisEpoch)||analysisEpoch<1)
+    fail('Keyword analysis requires a confirmed reset generation',409);
   const cfg=await configuration(db,scope),tree=await classTree(db,scope,classUid,{withPatterns:true});
   const meta=attr({attr:cfg.keyword_meta});
   const expectedEpoch=keywordClassEpoch(meta,classUid);
+  if(expectedEpoch!==analysisEpoch)
+    fail('舊分析工作階段已失效；請重新從零開始解析',409);
+  // Checkpoints are legal only for the SAME fresh epoch. Subsequent row
+  // locks prevent old checkpoints/final totals committing after another reset.
   const resume=readKeywordScanProgress(meta,classUid);
   const total=await db.selectFrom(galaxyName(scope))
     .select(eb=>eb.fn.count('uid').as('n')).executeTakeFirst();

@@ -18,7 +18,7 @@ test('class select and both analysis actions have a stable non-overflowing layou
     panel.indexOf('<summary>上次解析與文章統計</summary>'));
   assert.match(segment,/className="loc-keyword-analysis-toolbar"/);
   assert.match(segment,/className="scope-preview-links loc-keyword-analysis-actions"/);
-  assert.match(segment,/重新分析/);
+  assert.match(segment,/重新開始解析/);
   assert.match(segment,/清空分析/);
   assert.doesNotMatch(segment,/\b0<div className="scope-preview-links/);
   assert.match(css,/\.loc-keyword-analysis-toolbar\s*\{[^}]*display:grid/);

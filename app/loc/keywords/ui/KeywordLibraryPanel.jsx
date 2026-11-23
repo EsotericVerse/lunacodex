@@ -406,11 +406,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
   };
   const run=async(reset=false)=>{
     const runClassUid=activeClass?.uid;
-    // A pending HTTP receipt blocks only another analysis, never an explicitly
-    // confirmed reset. Reset increments the class epoch before clearing data,
-    // so a disconnected old scan cannot publish stale totals afterwards.
-    if(busy||checkingAttempt||!runClassUid||
-      !reset&&unconfirmedAttempt?.classUid===runClassUid)return;
+    // Restart and Clear both invalidate old scan generations; an unconfirmed
+    // previous receipt may NOT force a new run to inherit its cursor.
+    if(busy||checkingAttempt||!runClassUid)return;
     if(reset&&resetConfirmation!==runClassUid){
       setResetConfirmation(runClassUid);
       setNotice('請再次按下「確認清空」；只會清除選定 Class 的分析結果，文章與關鍵詞定義保留。');
@@ -418,26 +416,37 @@ export default function KeywordLibraryPanel({scopeId,account}){
       return;
     }
     setResetConfirmation('');
-    setBusy(true);setProgress({phase:'reading',percent:0});setError('');setNotice('');
+    setBusy(true);setProgress({phase:'resetting',completed:0,total:1});
+    setError('');setNotice('');
+    let clearedCommitted=false;
     try{
-      let cleared=null;
-      if(reset){
-        cleared=await resetKeywordClassification(scopeId,{classUid:runClassUid,onProgress:setProgress});
-        // A committed, epoch-bearing reset receipt is mandatory. No stale
-        // scan cursor or Pattern counter can be presented as "cleared".
-        if(unconfirmedAttempt?.classUid===runClassUid)storeUnconfirmed(null);
-      }else{
+      // Both commands begin with ONE committed reset transaction. Only
+      // successful reset supplies the generation for a fresh scan; an
+      // interrupted old request cannot continue or republish its counters.
+      const cleared=await resetKeywordClassification(scopeId,{
+        classUid:runClassUid,onProgress:setProgress
+      });
+      clearedCommitted=true;
+      storeUnconfirmed(null);
+      if(!reset){
         const {runKeywordAnalysisBatch}=await import('../analysis');
-        await runKeywordAnalysisBatch(scopeId,{classUid:runClassUid,onProgress:setProgress});
+        await runKeywordAnalysisBatch(scopeId,{
+          classUid:runClassUid,analysisEpoch:cleared.resetEpoch,onProgress:setProgress
+        });
       }
       await load(runClassUid);await invalidate();
       setNotice(reset
-        ?'已確認清空此 Class 的分析游標、進度與 '+Number(cleared.count||0).toLocaleString()+
-          ' 個詞級及分類計數；下次解析從 0 筆重新開始。'
-        :'此關鍵字群組已重新分析完成。');
+        ?'已清空 '+Number(cleared.count||0).toLocaleString()+
+          ' 個詞級及分類計數、舊進度與掃描游標；目前為 0 筆。'
+        :'已從第 0 筆完成新的關鍵詞解析；未繼承舊分析數字。');
     }catch(e){
-      if(e?.name==='KeywordAnalysisUnconfirmedError'&&e?.attemptId){
+      if(e?.name==='KeywordAnalysisUnconfirmedError'&&e?.attemptId)
         storeUnconfirmed({classUid:runClassUid,attemptId:e.attemptId,savedAt:Date.now()});
+      if(clearedCommitted){
+        // A later scan failure does not undo an already committed reset.
+        // Refresh the empty/partial state instead of displaying old totals.
+        await load(runClassUid).catch(()=>{});
+        await invalidate().catch(()=>{});
       }
       setError(String(e.message||e));
     }finally{setBusy(false);setProgress(null);}
@@ -460,36 +469,13 @@ export default function KeywordLibraryPanel({scopeId,account}){
         // editor to reset the Class or reclassify tens of thousands of rows.
         storeUnconfirmed({...attempt,finalizePending:true,
           scanned:Number(result.scanned)||0});
-        setNotice('最後一段已保存 '+Number(result.scanned||0).toLocaleString()+
-          ' 筆；可以只接續最終統計，不需重新掃描文章。');
+        setNotice('舊分析留下 '+Number(result.scanned||0).toLocaleString()+
+          ' 筆檢查點；按「重新開始解析」將先清空再從 0 筆分析。');
       }else{
         setError('資料庫尚未找到這次分析的完成回執。可能仍在執行或已中止；目前未執行任何寫入。');
       }
     }catch(e){setError('核對失敗：'+String(e.message||e));}
     finally{setCheckingAttempt(false);}
-  };
-  const resumeUnconfirmedTail=async()=>{
-    const attempt=unconfirmedAttempt;
-    if(!attempt?.finalizePending||checkingAttempt||busy)return;
-    setBusy(true);setError('');setNotice('');
-    setProgress({phase:'finalizing',completed:attempt.scanned||0,
-      total:attempt.scanned||0,label:'接續已保存的最後一段統計'});
-    try{
-      // This is a user-initiated new authorized request, not a replay of
-      // the uncertain old HTTP response or a reset of classified articles.
-      const {runKeywordAnalysisBatch}=await import('../analysis');
-      await runKeywordAnalysisBatch(scopeId,{
-        classUid:attempt.classUid,onProgress:setProgress
-      });
-      storeUnconfirmed(null);
-      await load(attempt.classUid);await invalidate();
-      setNotice('已由保存的尾段完成統計，無需重新解析文章。');
-    }catch(e){
-      if(e?.name==='KeywordAnalysisUnconfirmedError'&&e?.attemptId)
-        storeUnconfirmed({classUid:attempt.classUid,
-          attemptId:e.attemptId,savedAt:Date.now()});
-      setError(String(e.message||e));
-    }finally{setBusy(false);setProgress(null);}
   };
   const discardUnconfirmed=()=>{
     const attempt=unconfirmedAttempt;
@@ -765,8 +751,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
       </label>
       <div className="scope-preview-links loc-keyword-analysis-actions">
         <button type="button" className="loc-button primary"
-          disabled={busy||checkingAttempt||!activeClass?.uid||unconfirmedAttempt?.classUid===activeClass.uid}
-          onClick={()=>{setResetConfirmation('');run(false);}}>重新分析</button>
+          disabled={busy||checkingAttempt||!activeClass?.uid}
+          onClick={()=>{setResetConfirmation('');run(false);}}>重新開始解析</button>
         <button type="button" className="loc-button"
           disabled={busy||checkingAttempt||!activeClass?.uid}
           onClick={()=>run(true)}>
@@ -781,13 +767,9 @@ export default function KeywordLibraryPanel({scopeId,account}){
       </details>
       {unconfirmedAttempt?<div className="loc-work-status loc-keyword-analysis-receipt" role="status">
         <p>{unconfirmedAttempt.finalizePending
-          ?'尾段進度已保存，可直接接續最終統計，不需要重新掃描。'
-          :'前次分析回執尚未確認（Class：'+unconfirmedAttempt.classUid+'）。請先核對回執，不必清空重新解析。'}</p>
+          ?'前次分析留有未完成進度；重新開始解析會先清空，再從第 0 筆執行。'
+          :'前次分析回執尚未確認（Class：'+unconfirmedAttempt.classUid+'）。可核對，或直接重新開始解析並使舊工作失效。'}</p>
         <div className="scope-preview-links">
-          {unconfirmedAttempt.finalizePending?<button type="button" className="loc-button primary"
-            disabled={checkingAttempt||busy} onClick={resumeUnconfirmedTail}>
-            接續完成統計
-          </button>:null}
           <button type="button" className="loc-button primary"
             disabled={checkingAttempt||busy} onClick={checkUnconfirmed}>
             {checkingAttempt?'正在核對…':'核對本次分析'}
