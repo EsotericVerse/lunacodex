@@ -391,18 +391,23 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     minRowsPerRun:KEYWORD_MIN_ROWS_PER_REQUEST,
     checkpointRows:KEYWORD_CHECKPOINT_ROWS,
     timeBudgetMs:KEYWORD_REQUEST_BUDGET_MS,
-    paceRows:true,
+    paceRows:true,deferFinalization:true,
     onCheckpoint:async progress=>{
       await db.transaction().execute(async trx=>{
         await authorizeTransaction(trx);
-        await persistScanProgress(trx,scope,classUid,progress,expectedEpoch);
+        // The attempt ID identifies this specific persisted tail if the
+        // network closes before the server emits its next-step receipt.
+        await persistScanProgress(trx,scope,classUid,
+          {...progress,...(attemptId?{attemptId}:{})},expectedEpoch);
       });
-      onProgress({phase:'checkpoint',total:expectedCount,
-        completed:progress.scanned,parsed:progress.parsed,
+      onProgress({phase:progress.finalizePending?'finalizing':'checkpoint',
+        total:expectedCount,completed:progress.scanned,parsed:progress.parsed,
         targetRowsPerSecond:progress.targetRowsPerSecond,
         percent:Math.min(99,Math.round(expectedCount?
           progress.scanned/expectedCount*100:0)),
-        label:'分析進度已保存，可接續下一批'});
+        label:progress.finalizePending
+          ?'最後不足整批的文章已存檔，正在提交統計'
+          :'分析進度已保存，可接續下一批'});
     },
     onProgress:({phase,completed=0,parsed=0,
       rowsPerSecond=0,targetRowsPerSecond=null})=>onProgress({
@@ -410,7 +415,8 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       rowsPerSecond,targetRowsPerSecond,
       percent:phase==='completed'?100:Math.min(99,
         Math.round(expectedCount?completed/expectedCount*100:0)),
-      label:phase==='completed'?'分析已完成':'逐批分析 Item 規則'
+      label:phase==='completed'?'分析已完成'
+        :phase==='finalizing'?'尾段已存檔，正在完成統計':'逐批分析 Item 規則'
     }),
     finalize:async counts=>db.transaction().execute(async trx=>{
       await authorizeTransaction(trx);
@@ -419,6 +425,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   });
   if(result.incomplete)return {incomplete:true,total:expectedCount,
     completed:result.scanned,parsed:result.parsed,reused:0,
+    finalizePending:result.finalizePending===true,
     rowsPerSecond:result.rowsPerSecond,
     targetRowsPerSecond:result.targetRowsPerSecond};
   return {...result,reusedDocuments:0,indexedWords:0};
