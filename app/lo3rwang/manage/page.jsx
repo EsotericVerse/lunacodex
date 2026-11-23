@@ -1,4 +1,11 @@
-import LocApp from '../../loc/LocApp';
+import LegacyManagementRedirect from '../../loc/management/LegacyManagementRedirect';
 import {authorMetadata} from '../../seo/metadata';
-export const metadata=authorMetadata({title:'管理｜政德｜月典',description:'個人資料與作品的管理入口。',path:'/lo3rwang/manage/',noIndex:true});
-export default function Page(){return <LocApp forcedView="manage" forcedScope="lo3rwang"/>;}
+
+export const metadata=authorMetadata({
+  title:'空間定錨管理（舊入口）｜政德｜月典',
+  description:'空間定錨管理已移至 /lo3rwang/trace/manage/。',
+  path:'/lo3rwang/manage/',noIndex:true
+});
+export default function Page(){
+  return <LegacyManagementRedirect target="trace" label="空間定錨管理"/>;
+}
