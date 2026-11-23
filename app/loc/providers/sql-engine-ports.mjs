@@ -1,5 +1,7 @@
 import {canLocAccess} from './loc-authorization.mjs';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
+import {modelFieldsForSql,verifyModeledSqlFields}
+  from '../../../packages/zenstack/model-column-guard.mjs';
 // Single source of truth for the LOC SQL engine plug-in points.
 // Kysely provides dialect-specific SQL generation; connection and security
 // adapters remain on the trusted runtime (never in the browser).
@@ -195,6 +197,11 @@ export async function executeCrossEngineManagedWrite(db,body,context){
   const table=matched[1],operation=String(p.p_operation||'');
   if(!['insert','update','delete','update_batch'].includes(operation))
     invalidWrite('Invalid managed operation');
+  // Portable DML must stay inside the already-authored LOC ZModel contract.
+  // Authenticated delegation controls rights; a legal table identifier by
+  // itself is never permission to modify an unmodeled physical relation.
+  if(!modelFieldsForSql('silver',table))
+    invalidWrite('External managed relation is not modeled');
   await authorizeCrossEngineQuery(db,{kind:'query',schema:'silver',table,
     operation:operation==='update_batch'?'update':operation},context);
   const name=portableRelation(table,engine,namespace);
@@ -207,6 +214,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       if(!row||typeof row!=='object'||Array.isArray(row)||!Object.keys(row).length||
          Object.keys(row).some(key=>!SAFE_FIELD.test(key)||key==='able'))
         invalidWrite('Invalid managed insert columns');
+      verifyModeledSqlFields({schema:'silver',table,values:row});
     }
     // Batch by column shape to preserve omitted database defaults.
     // Preserve batched INSERTs rather than issuing one request per row.
@@ -238,6 +246,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
          Object.keys(row).some(k=>!ARTICLE_BATCH_FIELDS.has(k)))
         invalidWrite('Invalid Galaxy batch row');
       seen.add(row.uid);
+      verifyModeledSqlFields({schema:'silver',table,values:row});
     }
     // Read only fields supplied by the import. Full Galaxy content can be
     // large and is not needed when updating media links or locations.
@@ -292,12 +301,14 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     }
   }else{
     const filters=safeFilters(p.p_filters);
+    verifyModeledSqlFields({schema:'silver',table,filters});
     if(operation==='update'){
       const values=p.p_values;
       if(!values||typeof values!=='object'||Array.isArray(values)||
          !Object.keys(values).length||
          Object.keys(values).some(key=>!SAFE_FIELD.test(key)||
            ['id','uid','able'].includes(key)))invalidWrite('Invalid update values');
+      verifyModeledSqlFields({schema:'silver',table,values});
       count=managedAffected(await applyKyselyFilters(db.updateTable(name).set(serializePortableJsonFields(values,engine)),
         filters).executeTakeFirst());
     }else{
