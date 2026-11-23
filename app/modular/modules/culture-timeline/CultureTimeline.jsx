@@ -316,7 +316,16 @@ export default function CultureTimeline({
       return true;
     });
   },[items,extraGroups,heightVariant]);
-  const rows=useMemo(()=>timelineRows(visibleItems,labelOf===defaultTimelineLabel?(item,index)=>item?.display_label||item?.name||item?.title||item?.period||labels.item+' '+(index+1):labelOf,focus,labels),[visibleItems,labelOf,focus,labels]);
+  const rows=useMemo(()=>timelineRows(visibleItems,(item,index)=>{
+    // Management's left axis already names each Era/Period. Repeating each
+    // title inside every non-contiguous interval makes the same collapsed Era
+    // look like several stacked rows. Keep intervals and tooltips, not text.
+    if(compactHierarchy&&(item?.entry_type==='era'||item?.entry_type==='period'))
+      return '';
+    return labelOf===defaultTimelineLabel
+      ?item?.display_label||item?.name||item?.title||item?.period||labels.item+' '+(index+1)
+      :labelOf(item,index);
+  },focus,labels),[visibleItems,labelOf,focus,labels,compactHierarchy]);
   // The chart-error fallback list is not used during a healthy render.
   // Avoid cloning and sorting thousands of buckets on every period switch.
   const fallbackRows=useMemo(()=>chartError
@@ -465,10 +474,14 @@ export default function CultureTimeline({
           onRemove:(item,callback)=>settle(onRemoveRef.current,item,rowById(item.id),callback,null)
         }:{}),
         showCurrentTime:false,
-        stack:mode!=='source',
-        margin:mode==='source'
-          ?{axis:10,item:{horizontal:3,vertical:5}}
-          :{item:{horizontal:8,vertical:12}}
+        // Time management is an Era LIST, not an independently stacked item
+        // list. Multiple disjoint intervals retain their real dates but share
+        // one lane; only an explicitly expanded Period adds another lane.
+        stack:compactHierarchy?false:mode!=='source',
+        margin:compactHierarchy
+          ?{axis:8,item:{horizontal:2,vertical:3}}
+          :mode==='source'?{axis:10,item:{horizontal:3,vertical:5}}
+            :{item:{horizontal:8,vertical:12}}
       });
       timelineRef.current=instance;
       instance.on('select',({items:selectedItems=[]})=>{
