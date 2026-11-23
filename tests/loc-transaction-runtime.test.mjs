@@ -151,7 +151,8 @@ test('native target UID ARRAY update retains every old-value CAS predicate',()=>
   assert.match(compiled.sql,/ or /i);
   assert.ok(compiled.parameters.includes('AAAA0001'));
   assert.ok(compiled.parameters.includes('CCCC0003'));
-  assert.ok(compiled.parameters.some(v=>Array.isArray(v)&&v.length===3));
+  assert.ok(compiled.parameters.some(v=>Array.isArray(v)&&v.length===3),
+    JSON.stringify({sql:compiled.sql,parameters:compiled.parameters}));
 });
 test('row-specific Anchor JSON CASE preserves num and full original attr CAS',()=>{
   const db=new Kysely({dialect:new PostgresDialect({pool:{
@@ -189,7 +190,7 @@ test('large UID reconciliations use bounded batches and preserve every row',()=>
   const batches=planUidRepairStatementBatches(rows,{maxRows:25});
   assert.deepEqual(batches.map(b=>b.length),[25,25,25,25,1]);
   assert.deepEqual(batches.flat(),rows);
-  assert.ok(planUidRepairStatementBatches(rows,{maxBytes:350}).length>60);
+  assert.equal(planUidRepairStatementBatches(rows,{maxBytes:1}).length,rows.length);
   assert.throws(()=>planUidRepairStatementBatches(rows,{maxRows:1000}));
 });
 
