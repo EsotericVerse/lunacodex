@@ -1,15 +1,19 @@
-import {HEAVY_INITIAL_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
+import {createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Item-driven LOC keyword classification. No Pattern posting or persisted article UID list.
 import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 const count=x=>Math.max(0,Number(x)||0);
-// A 10,000-row page is reasonable for scalar SQL, but not for 67+ lexical
-// classifiers and full article bodies. This remains byte-adaptive inside
-// a bounded per-request working set, rather than a fixed per-Scope limit.
+// Full-text Item scans already handle 4096 Galaxy rows per indexed SELECT.
+// The old 1024-row cap made every 4096/8192 checkpoint issue 4-8 SQL reads.
+// Keep the proven 4096-row floor; a compact page can grow to 8192, while the
+// per-request cursor and checkpoints still bound total work. The character
+// budget influences growth, never forces repeated 1024-row SQL requests.
+export const KEYWORD_SCAN_START_ROWS=4096;
+export const KEYWORD_SCAN_MAX_ROWS=8192;
 const KEYWORD_SCAN_PAGE_OPTIONS=Object.freeze({
-  maximum:1024,targetChars:256*1024
+  maximum:KEYWORD_SCAN_MAX_ROWS,targetChars:32*1024*1024
 });
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
 const mapOf=(keys,values)=>Object.fromEntries(keys.map(k=>[k,count(object(values)[k])]));
@@ -123,7 +127,7 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
 }
 export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   readMetadataPage,readContent,finalize,onCheckpoint=null,onProgress=()=>{},
-  resume=null,pageSize=HEAVY_INITIAL_ROWS,timeBudgetMs=null,now=()=>Date.now(),minChars=0,
+  resume=null,pageSize=KEYWORD_SCAN_START_ROWS,timeBudgetMs=null,now=()=>Date.now(),minChars=0,
   maxRowsPerRun=null,minRowsPerRun=null,checkpointRows=8192}={}){
   const a=createItemCountAccumulator(items,groups,resume,{minChars});
   const valid=resume?.scanMode==='item_count_v1'&&resume.fingerprint===a.fingerprint&&
@@ -141,7 +145,8 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   if(onCheckpoint&&(!Number.isSafeInteger(checkpointRows)||checkpointRows<1))
     throw new TypeError('Invalid Keyword checkpoint interval');
   const sizer=createTextAdaptiveRows({
-    initial:pageSize,...KEYWORD_SCAN_PAGE_OPTIONS
+    initial:pageSize,minimum:Math.min(pageSize,KEYWORD_SCAN_START_ROWS),
+    ...KEYWORD_SCAN_PAGE_OPTIONS
   });
   let lastCheckpoint=scanned,extended=false;
   const checkpoint=async()=>{
@@ -227,7 +232,10 @@ export async function readItemKeywordProjection(db,scope,{items,groups,start='',
   source='',places=null,owner=true,minChars=0,onRow=null}={}){
   const a=createItemCountAccumulator(items,groups,null,{minChars});
   let after='';
-  const sizer=createTextAdaptiveRows(KEYWORD_SCAN_PAGE_OPTIONS);
+  const sizer=createTextAdaptiveRows({
+    initial:KEYWORD_SCAN_START_ROWS,minimum:KEYWORD_SCAN_START_ROWS,
+    ...KEYWORD_SCAN_PAGE_OPTIONS
+  });
   for(;;){
     const requested=sizer.size;
     let q=db.selectFrom('silver.'+scope+'_galaxy')
