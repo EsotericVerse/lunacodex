@@ -62,7 +62,7 @@ test('Keyword SQL writer updates only cached totals and keeps Item rules outside
   const src=await readFile(new URL('../app/loc/keywords/sql-service.mjs',import.meta.url),'utf8');
   assert.match(src,/jsonb_to_recordset/);
   assert.match(src,/set attr=jsonb_set/);
-  assert.match(src,/where a\.uid=incoming\.uid::char\(8\) and a\.type in \('item','group'\)/);
+  assert.match(src,/where a\.uid=incoming\.uid::char\(8\) and a\.type in \('item','group','pattern'\)/);
   assert.match(src,/await writeKeywordTotals\(trx,scope,updates\)/);
   assert.match(src,/await writeKeywordTotals\(trx,scope,ids\.map/);
   assert.doesNotMatch(src,/set num=/);
