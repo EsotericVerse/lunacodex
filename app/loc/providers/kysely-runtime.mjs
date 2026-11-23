@@ -1,4 +1,7 @@
 import {sql} from 'kysely';
+import {postgresNativeUpsert,postgresMutationReturning} from '../../../modules/loc/dialect/postgres.mjs';
+import {mysqlNativeUpsert,mysqlMutationReturning,mysqlLockPrimaryKey} from '../../../modules/loc/dialect/mysql.mjs';
+import {mssqlMutationReturning,mssqlCheckPagination,mssqlLockPrimaryKey} from '../../../modules/loc/dialect/mssql.mjs';
 import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
@@ -136,8 +139,7 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
     query=query.orderBy(sql`case when ${sql.ref(sortColumn)} is null then 1 else 0 end`,'asc');
   }
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
-  if(dialect==='mssql'&&req.offset>0&&!req.orders.length)
-    throw new Error('SQL Server pagination requires an explicit order');
+  if(dialect==='mssql')mssqlCheckPagination(req);
   if(req.limit!==null)query=query.limit(req.limit);
   // SQL Server requires ORDER BY for OFFSET; OFFSET 0 is not a harmless
   // default there. Avoid emitting it unless the caller actually paginates.
@@ -193,22 +195,10 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres',namespace){
     if(!pk||pk.length!==req.onConflict.length||
        pk.some((key,i)=>key!==req.onConflict[i]))
       throw new Error('MySQL UPSERT requires the exact modeled primary key');
-    // INSERT IGNORE would also swallow unrelated data errors and uniqueness
-    // conflicts. It is not equivalent to ON CONFLICT (uid) DO NOTHING.
-    if(req.ignoreDuplicates||!updateColumns.length)
-      throw new Error('MySQL conflict-ignore is not equivalent to a targeted UPSERT');
-    return insert.onDuplicateKeyUpdate(Object.fromEntries(
-      updateColumns.map(col=>[col,sql`values(${sql.ref(col)})`])));
+    return mysqlNativeUpsert(insert,req,updateColumns);
   }
-  if(dialect!=='postgres')
-    throw new Error('UPSERT is not implemented for this LOC SQL dialect');
-  // PostgreSQL: excluded.<column> represents EACH incoming row.
-  // Reusing rows[0] here silently overwrote multi-row upserts with the
-  // first row's values. Kysely supports the native excluded reference.
-  return insert.onConflict(oc=>updateColumns.length&&!req.ignoreDuplicates
-    ?oc.columns(req.onConflict).doUpdateSet(eb=>Object.fromEntries(
-      updateColumns.map(col=>[col,eb.ref('excluded.'+col)])))
-    :oc.columns(req.onConflict).doNothing());
+  if(dialect==='postgres')return postgresNativeUpsert(insert,req,updateColumns);
+  throw new Error('UPSERT is not implemented for this LOC SQL dialect');
 }
 
 // SQL Server has no targeted ON CONFLICT. Do not replace it with an
@@ -240,10 +230,9 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
     throw new Error('Portable UPSERT requires the exact modeled primary key');
   const table=databaseTable(req,dialect,namespace,modelName);
   const updates=Object.keys(rows[0]).filter(column=>!primary.includes(column));
-  const projected=query=>!req.returning?query:
-    req.columns?.length===1&&req.columns[0]==='*'
-      ?query.outputAll('inserted')
-      :query.output(req.columns.map(column=>'inserted.'+column));
+  const projected=query=>req.returning
+    ?mssqlMutationReturning(query,{...req,operation:'insert'})
+    :query;
   const seen=new Set(),data=[];
   let count=0;
   for(const row of rows){
@@ -255,23 +244,11 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
   }
   for(const row of rows){
     let found;
-    if(dialect==='mssql'){
-      const conditions=primary.map(column=>
-        sql`${sql.ref(column)} = ${row[column]}`);
-      found=(await sql`
-        select ${sql.join(primary.map(column=>sql.ref(column)),sql`, `)}
-        from ${sql.ref(table)} with (updlock,holdlock)
-        where ${sql.join(conditions,sql` and `)}
-      `.execute(trx)).rows;
-    }else{
-      // MySQL ON DUPLICATE KEY UPDATE can update an unrelated row when a
-      // different unique index conflicts. Lock only the modeled PK instead;
-      // competing inserts fail at the constraint and roll back safely.
-      let lookup=trx.selectFrom(table).select(primary);
-      for(const column of primary)
-        lookup=lookup.where(column,'=',row[column]);
-      found=await lookup.forUpdate().execute();
-    }
+    // Each SQL Type owns its row-lock syntax. LOC never infers or retries
+    // against a different SQL dialect on any execution failure.
+    found=dialect==='mssql'
+      ?await mssqlLockPrimaryKey(trx,table,primary,row)
+      :await mysqlLockPrimaryKey(trx,table,primary,row);
     if(found.length>1)throw new Error('Non-unique portable UPSERT primary key');
     if(found.length&&primary.some(column=>found[0][column]!==row[column]))
       throw new Error('Portable UID collation does not preserve exact identity');
@@ -297,17 +274,9 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
 }
 
 function applyMutationReturning(query,req,dialect){
-  if(!req.returning)return query;
-  if(dialect==='mysql')
-    throw new Error('MySQL has no equivalent native INSERT/UPDATE/DELETE RETURNING');
-  if(dialect==='mssql'){
-    // SQL Server returns affected rows with OUTPUT, not RETURNING.
-    const prefix=req.operation==='delete'?'deleted':'inserted';
-    return req.columns.length===1&&req.columns[0]==='*'
-      ?query.outputAll(prefix)
-      :query.output(req.columns.map(col=>prefix+'.'+col));
-  }
-  if(dialect==='postgres')return query.returning(req.columns);
+  if(dialect==='postgres')return postgresMutationReturning(query,req);
+  if(dialect==='mysql')return mysqlMutationReturning(query,req);
+  if(dialect==='mssql')return mssqlMutationReturning(query,req);
   throw new Error('Unsupported LOC mutation RETURNING dialect');
 }
 
