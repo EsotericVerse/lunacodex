@@ -3,7 +3,7 @@ import {serializePortableJsonFields,portableRelation} from './sql-engine-ports.m
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {portableContainsSpec,parsePortableOrExpression} from './portable-search.mjs';
 import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
-  normalizeModeledSelectRows} from '../../../packages/zenstack/model-column-guard.mjs';
+  normalizeModeledSelectRows,modeledPrimaryKeyColumns} from '../../../packages/zenstack/model-column-guard.mjs';
 import {assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
 import {assertKyselyQueryShape,QUERY_FILTER_SQL}
   from '../../../packages/zenstack/sql-input-shape.mjs';
@@ -180,17 +180,46 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres',namespace){
   if(!sameKeys(rows))throw new Error('Upsert rows must have the same columns');
   const table=databaseTable(req,dialect,namespace);
   const updateColumns=Object.keys(rows[0]||{}).filter(col=>!req.onConflict.includes(col));
+  const insert=trx.insertInto(table).values(req.values);
+  if(dialect==='mysql'){
+    // MySQL has ON DUPLICATE KEY UPDATE, not PostgreSQL ON CONFLICT.
+    // It matches ANY unique index: restrict this path to the modeled PK,
+    // otherwise an unrelated unique conflict could update the wrong row.
+    const pk=modeledPrimaryKeyColumns(req.schema,req.table);
+    if(!pk||pk.length!==req.onConflict.length||
+       pk.some((key,i)=>key!==req.onConflict[i]))
+      throw new Error('MySQL UPSERT requires the exact modeled primary key');
+    // INSERT IGNORE would also swallow unrelated data errors and uniqueness
+    // conflicts. It is not equivalent to ON CONFLICT (uid) DO NOTHING.
+    if(req.ignoreDuplicates||!updateColumns.length)
+      throw new Error('MySQL conflict-ignore is not equivalent to a targeted UPSERT');
+    return insert.onDuplicateKeyUpdate(Object.fromEntries(
+      updateColumns.map(col=>[col,sql`values(${sql.ref(col)})`])));
+  }
+  if(dialect!=='postgres')
+    throw new Error('UPSERT is not implemented for this LOC SQL dialect');
   // PostgreSQL: excluded.<column> represents EACH incoming row.
   // Reusing rows[0] here silently overwrote multi-row upserts with the
   // first row's values. Kysely supports the native excluded reference.
-  return trx.insertInto(table).values(req.values).onConflict(oc=>updateColumns.length&&!req.ignoreDuplicates
+  return insert.onConflict(oc=>updateColumns.length&&!req.ignoreDuplicates
     ?oc.columns(req.onConflict).doUpdateSet(eb=>Object.fromEntries(
       updateColumns.map(col=>[col,eb.ref('excluded.'+col)])))
     :oc.columns(req.onConflict).doNothing());
 }
 
-function applyMutationReturning(query,req){
-  return req.returning?query.returning(req.columns):query;
+function applyMutationReturning(query,req,dialect){
+  if(!req.returning)return query;
+  if(dialect==='mysql')
+    throw new Error('MySQL has no equivalent native INSERT/UPDATE/DELETE RETURNING');
+  if(dialect==='mssql'){
+    // SQL Server returns affected rows with OUTPUT, not RETURNING.
+    const prefix=req.operation==='delete'?'deleted':'inserted';
+    return req.columns.length===1&&req.columns[0]==='*'
+      ?query.outputAll(prefix)
+      :query.output(req.columns.map(col=>prefix+'.'+col));
+  }
+  if(dialect==='postgres')return query.returning(req.columns);
+  throw new Error('Unsupported LOC mutation RETURNING dialect');
 }
 
 export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace,modelName=''}={}){
