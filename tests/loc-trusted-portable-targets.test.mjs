@@ -5,6 +5,8 @@ import {normalizeLiveTarget,runtimeTargetId,registryRelationForEngine}
 import {normalizeSqlDriverAuthentication,sqlAuthNeedsUserPassword}
   from '../app/loc/providers/sql-driver-auth.mjs';
 import {createKyselyDialect} from '../modules/loc/dialect/index.mjs';
+import {db_connection,closeLocDatabase,bindLocRequestAbort}
+  from '../app/loc/mcp/native-kysely.mjs';
 
 const profile=engine=>({
   engine,host:'database.example.org',port:engine==='mysql'?3307:
@@ -85,4 +87,54 @@ test('official Kysely dialect factory still requires trusted external drivers',(
     /Missing Kysely mssql dialect configuration: tarn,tedious/);
   assert.equal(createKyselyDialect('mysql',{pool:{}}).constructor.name,'MysqlDialect');
   assert.equal(createKyselyDialect('mssql',{tarn:{},tedious:{}}).constructor.name,'MssqlDialect');
+});
+
+test('verified alias is mandatory to construct an external Kysely connection',async()=>{
+  await assert.rejects(db_connection({},'archive_mysql'),/not configured/);
+  await assert.rejects(db_connection({},'archive_mysql',{
+    trustedTarget:profile('mysql')
+  }),/not configured/);
+  await assert.rejects(db_connection({},'loc-main',{
+    trustedTarget:profile('mysql'),trustedDialectConfig:{pool:{}}
+  }),/control database cannot be replaced/);
+  await assert.rejects(db_connection({},'loc-main',{
+    probeTicket:'probe'
+  }),/Manual probe/);
+});
+
+test('trusted external adapters compile MySQL and MSSQL queries without DB network access',async()=>{
+  const targets=[
+    {engine:'mysql',driverConfig:{pool:{}},namespace:''},
+    {engine:'mssql',driverConfig:{tarn:{},tedious:{}},namespace:'dbo'}
+  ];
+  for(const {engine,driverConfig,namespace} of targets){
+    const alias='archive_'+engine;
+    const port=await db_connection({},alias,{
+      trustedTarget:profile(engine),trustedDialectConfig:driverConfig
+    });
+    try{
+      assert.equal(port.engine,engine);
+      assert.equal(port.namespace,namespace);
+      assert.equal(port.tableName,'articles');
+      assert.deepEqual(port.fieldMap,{uid:'article_id',content:'body'});
+      const sql=port.db.selectFrom(
+        engine==='mssql'?'dbo.articles':'articles'
+      ).select('article_id').where('article_id','=', 'AAAA0001').compile();
+      assert.match(sql.sql,/select/i);
+      assert.ok(sql.parameters.includes('AAAA0001'));
+    }finally{
+      await closeLocDatabase(port);
+    }
+  }
+});
+
+test('request abort supports an external Kysely port without a PG pool',async()=>{
+  const controller=new AbortController();
+  let called=0;
+  const release=bindLocRequestAbort({abort:async()=>{called++;}},controller.signal);
+  controller.abort();
+  assert.equal(called,1);
+  release();
+  controller.abort();
+  assert.equal(called,1);
 });
