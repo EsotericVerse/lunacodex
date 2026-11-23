@@ -59,19 +59,16 @@ export const CROSS_ENGINE_PUBLIC_READ_TABLES=Object.freeze([
   'runes','runes_etc','runes_group'
 ]);
 const externalPublicReads=new Set(CROSS_ENGINE_PUBLIC_READ_TABLES);
-// LOC's routing, configuration and block presentation are public reference
-// data regardless of SQL vendor. Keep private per-article filters separate.
-const externalPublicApi=new Set(['manage']);
-const externalPublicControl=new Set(['loc','lo3rwang','lrunes']);
-// The retired loc_blocks relation is never a public Scope Blocks table.
+// api.manage is a private grant registry consumed from published JS, never
+// an anonymous SQL relation. Scope configuration rows can contain private
+// settings and must also not be exposed via the cross-engine public gate.
+// Only fixed reference data and public presentation Blocks are anonymous.
 const publicScopeBlocks=/^(?!loc_blocks$)[a-z][a-z0-9]{0,14}_blocks$/;
 const publicScopeData=/^[a-z][a-z0-9]{0,14}_(galaxy|anchor)$/;
 function publicReference(request){
   const table=String(request?.table||'');
-  return request?.schema==='api'&&externalPublicApi.has(table)||
-    request?.schema==='silver'&&(
-      externalPublicReads.has(table)||externalPublicControl.has(table)||
-      publicScopeBlocks.test(table));
+  return request?.schema==='silver'&&(
+    externalPublicReads.has(table)||publicScopeBlocks.test(table));
 }
 export function portableRelation(table,engine,namespace=''){
   if(!/^[a-z][a-z0-9_]*$/i.test(table))throw new Error('Invalid SQL relation');
