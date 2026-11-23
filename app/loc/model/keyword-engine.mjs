@@ -196,17 +196,19 @@ function specialRuneKeywordTexts(texts,masks,rune){
 
 // Reanalysis keeps one immutable compiled Class for every article page.
 // Public one-off calls retain the existing API and identical scoring behavior.
-export function createKeywordDocumentClassifier(catalogRows=[],{collectKeywordTerms=false,selectedTerms=null}={}){
+export function createKeywordDocumentClassifier(catalogRows=[],{
+  collectKeywordTerms=false,selectedTerms=null,onNormalizedText=null
+}={}){
   const prepared=compileCatalog(catalogRows);
   const selected=selectedTerms==null?null:new Set([...selectedTerms].map(normalizeText));
   const literalMatcher=selected?compileKeywordLiteralMatcher([...selected]):null;
   return documents=>classifyKeywordDocumentsWithCompiled(
-    documents,prepared,collectKeywordTerms,selected,literalMatcher);
+    documents,prepared,collectKeywordTerms,selected,literalMatcher,onNormalizedText);
 }
 export function classifyKeywordDocuments(documents=[],catalogRows=[]){
   return classifyKeywordDocumentsWithCompiled(documents,compileCatalog(catalogRows));
 }
-function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false,selectedTerms=null,literalMatcher=null){
+function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false,selectedTerms=null,literalMatcher=null,onNormalizedText=null){
   const source=Array.isArray(documents)?documents:[];
   const {runes,nameToRune,groupOrder,fallbackGroup,maskSources}=prepared;
   if(!source.length||!runes.length)return {
@@ -221,7 +223,13 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
     unsupportedRules:[]
   };
 
-  const normalizedTexts=source.map(row=>normalizeText(textOf(row)));
+  const normalizedTexts=source.map((row,index)=>{
+    const normalized=normalizeText(textOf(row));
+    // Pattern count belongs to this same classifier normalization pass.
+    // The observer receives no article UID index or a second text scan.
+    onNormalizedText?.(normalized,row,index);
+    return normalized;
+  });
   // Incremental word lookups only need to evaluate articles containing at
   // least one selected literal. Item NOR/NAME/TO/AND and masking still run
   // through the original rule-preserving evaluator for those articles.
