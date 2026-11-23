@@ -43,6 +43,28 @@ jobs:
         with:
           node-version: '22.23.5'
           cache: npm
+      # Temporary metadata capture for reproducible npm lock regeneration;
+      # this step will be removed after committing the generated lock.
+      - name: Generate reviewed Ariakit lock diff
+        shell: bash
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const before=JSON.parse(execFileSync('git',['show','HEAD:package-lock.json'],
+            {encoding:'utf8'}));
+          const after=JSON.parse(fs.readFileSync('package-lock.json','utf8'));
+          const changed=Object.fromEntries(Object.entries(after.packages).filter(
+            ([name,pkg])=>JSON.stringify(pkg)!==JSON.stringify(before.packages[name])));
+          const removed=Object.keys(before.packages).filter(
+            name=>!Object.hasOwn(after.packages,name));
+          const data=Buffer.from(JSON.stringify({changed,removed})).toString('base64');
+          console.log('LOC_ARIAKIT_LOCK_DIFF_BEGIN');
+          for(let index=0;index<data.length;index+=400)
+            console.log('LOCKDIFF:'+data.slice(index,index+400));
+          console.log('LOC_ARIAKIT_LOCK_DIFF_END');
+          NODE
       - name: Install exact Next and React build dependencies
         run: npm ci --no-audit --no-fund
       - name: Verify transaction and interactive frontend regressions
