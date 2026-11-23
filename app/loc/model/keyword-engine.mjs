@@ -80,7 +80,7 @@ function compileCatalog(catalogRows=[]){
   runes.sort((a,b)=>a.order-b.order||a.runeId-b.runeId);
   const disabledGroups=[...new Set(runes.filter(rune=>rune.classEnable===false).map(rune=>rune.group).filter(Boolean))];
   const fallbackGroup=disabledGroups.length===1?disabledGroups[0]:'';
-  return {runes,nameToRune,groupOrder,fallbackGroup};
+  return {runes,nameToRune,groupOrder,fallbackGroup,maskSources:compileKeywordMaskSources(runes)};
 }
 
 function replaceAllLiteral(source,needle,replacement=' '){
@@ -158,39 +158,39 @@ function maskCalendarDateLiterals(source){
     .replace(/(?:[〇零一二三四五六七八九十百]{2,4}年)?[〇零一二三四五六七八九十]{1,3}月[〇零一二三四五六七八九十廿卅]{1,3}日/gu,' ');
 }
 
-function specialRuneKeywordTexts(normalizedTexts,runes,rune){
-  const ruleEntries=runes.flatMap(item=>item.rules.map(rule=>({item,rule})));
-
-  const nameSources=ruleEntries
-    .filter(({rule})=>rule.operator==='NAME')
-    .map(({rule})=>normalizeText(rule.source))
-    .filter(Boolean);
-
-  const dayMoonTargetSources=ruleEntries
-    .filter(({rule})=>{
+// NAME and special TO/AND mask sources depend on the Class, not articles.
+// Compile once when the Class is opened; never rebuild per Item / SQL page.
+function compileKeywordMaskSources(runes){
+  const entries=runes.flatMap(item=>item.rules.map(rule=>({item,rule})));
+  const names=entries.filter(({rule})=>rule.operator==='NAME')
+    .map(({rule})=>normalizeText(rule.source)).filter(Boolean);
+  const masks=new Map();
+  for(const rune of runes){
+    const targets=entries.filter(({rule})=>{
       const source=normalizeText(rule.source);
-      if(!source||!(source.includes('日')||source.includes('月')))return false;
-      return (rule.operator==='TO'||rule.operator==='AND')
-        &&normalizeText(rule.target)===normalizeText(rune.label);
-    })
-    .map(({rule})=>normalizeText(rule.source))
-    .filter(Boolean);
-
-  const dayMoonSources=(rune.label==='日'||rune.label==='月')
-    ?ruleEntries
-      .filter(({rule})=>rule.operator==='AND'||rule.operator==='TO')
-      .map(({rule})=>normalizeText(rule.source))
-      .filter(source=>source&&source.includes(normalizeText(rune.label)))
-    :[];
-
-  const sources=[...new Set([...nameSources,...dayMoonTargetSources,...dayMoonSources])]
-    .sort((a,b)=>b.length-a.length);
-
-  return normalizedTexts.map(source=>{
-    let text=source||'';
-    if(rune.label==='日'||rune.label==='月')text=maskCalendarDateLiterals(text);
-    for(const ruleSource of sources)text=replaceAllLiteral(text,ruleSource,' ');
-    return text;
+      return source&&(source.includes('日')||source.includes('月'))&&
+        (rule.operator==='TO'||rule.operator==='AND')&&
+        normalizeText(rule.target)===normalizeText(rune.label);
+    }).map(({rule})=>normalizeText(rule.source)).filter(Boolean);
+    const dayMoon=(rune.label==='日'||rune.label==='月')
+      ?entries.filter(({rule})=>rule.operator==='AND'||rule.operator==='TO')
+        .map(({rule})=>normalizeText(rule.source))
+        .filter(source=>source&&source.includes(normalizeText(rune.label)))
+      :[];
+    masks.set(rune.runeId,[...new Set([...names,...targets,...dayMoon])]
+      .sort((a,b)=>b.length-a.length));
+  }
+  return masks;
+}
+function specialRuneKeywordTexts(texts,masks,rune){
+  const sources=masks.get(rune.runeId)||[];
+  const maskDates=rune.label==='日'||rune.label==='月';
+  if(!sources.length&&!maskDates)return texts;
+  return texts.map(original=>{
+    let result=original||'';
+    if(maskDates)result=maskCalendarDateLiterals(result);
+    for(const source of sources)result=replaceAllLiteral(result,source,' ');
+    return result;
   });
 }
 
@@ -208,7 +208,7 @@ export function classifyKeywordDocuments(documents=[],catalogRows=[]){
 }
 function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false,selectedTerms=null,literalMatcher=null){
   const source=Array.isArray(documents)?documents:[];
-  const {runes,nameToRune,groupOrder,fallbackGroup}=prepared;
+  const {runes,nameToRune,groupOrder,fallbackGroup,maskSources}=prepared;
   if(!source.length||!runes.length)return {
     documentCount:source.length,
     classifiedCount:0,
@@ -266,7 +266,7 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
     };
     const keywordTexts=specialRuneKeywordTexts(
       relevantIndices?relevantIndices.map(index=>normalizedTexts[index]):normalizedTexts,
-      runes,rune).map(withoutBlockedPhrases);
+      maskSources,rune).map(withoutBlockedPhrases);
     const ruleTexts=selectedTerms?[]:normalizedTexts.map(withoutBlockedPhrases);
     const orderedRules=(selectedTerms?[]:[...rune.rules]).sort((a,b)=>
       normalizeText(b.source).length-normalizeText(a.source).length
