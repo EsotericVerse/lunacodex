@@ -1453,8 +1453,6 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const incomingNew=unique.filter(record=>!existingBySiteId.has(String(record.uid)));
       if(incomingNew.length){
         const fallbackTime=new Date().toISOString();
-        const targetDays=[...new Set(incomingNew.map(row=>
-          importCalendarDay(row.createtime||fallbackTime)))].filter(Boolean).sort();
         const occupiedTimes=[];
         const pageSize=MAX_ROWS;
         const appendOccupied=page=>{
@@ -1477,58 +1475,60 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             onPage:appendOccupied});
         }else{
           // Local/LOC Scope retain their native storage reader.
-        // Group the requested calendar dates into bounded IN-index probes.
-        // Scanning thousands of individual days requires thousands of HTTP
-        // round trips; PostgreSQL can use its existing date index for each
-        // small IN set, while the date+UID cursor handles dense days.
-        for(let offset=0;offset<targetDays.length;offset+=40){
-          const days=targetDays.slice(offset,offset+40);
-          let afterDate=null,afterUid=null;
+          const targetDays=[...new Set(incomingNew.map(row=>
+            importCalendarDay(row.createtime||fallbackTime)))].filter(Boolean).sort();
+          // Group the requested calendar dates into bounded IN-index probes.
+          // Scanning thousands of individual days requires thousands of HTTP
+          // round trips; PostgreSQL can use its existing date index for each
+          // small IN set, while the date+UID cursor handles dense days.
+          for(let offset=0;offset<targetDays.length;offset+=40){
+            const days=targetDays.slice(offset,offset+40);
+            let afterDate=null,afterUid=null;
+            for(;;){
+              let query=dbAuthRelation(galaxy)
+                .select('uid,createtime,date')
+                .in('date',days)
+                .order('date',{ascending:true}).order('uid',{ascending:true})
+                .limit(pageSize);
+              if(afterDate!==null)
+                query=query.gte('date',afterDate).or(
+                  'date.gt.'+afterDate+
+                  ',and(date.eq.'+afterDate+',uid.gt.'+afterUid+')');
+              const {data,error}=await query;
+              if(error)throw Error('匯入時間索引查詢失敗：'+error.message);
+              const page=data||[];
+              appendOccupied(page);
+              if(page.length<pageSize)break;
+              const last=page.at(-1);
+              const date=String(last?.date||''),uid=String(last?.uid||'');
+              if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||
+                !/^[A-Za-z0-9]{8}$/.test(uid)||
+                afterDate!==null&&(date<afterDate||
+                  date===afterDate&&uid<=afterUid))
+                throw Error('匯入日期／UID 游標未前進');
+              afterDate=date;afterUid=uid;
+            }
+          }
+          // Legacy Galaxy rows can still carry createtime with a NULL date.
+          // Read this subset once instead of scanning it again for each day.
+          let afterUndatedUid=null;
           for(;;){
-            let query=dbAuthRelation(galaxy)
-              .select('uid,createtime,date')
-              .in('date',days)
-              .order('date',{ascending:true}).order('uid',{ascending:true})
+            let query=dbAuthRelation(galaxy).select('uid,createtime')
+              .is('date',null).order('uid',{ascending:true})
               .limit(pageSize);
-            if(afterDate!==null)
-              query=query.gte('date',afterDate).or(
-                'date.gt.'+afterDate+
-                ',and(date.eq.'+afterDate+',uid.gt.'+afterUid+')');
+            if(afterUndatedUid!==null)
+              query=query.gt('uid',afterUndatedUid);
             const {data,error}=await query;
-            if(error)throw Error('匯入時間索引查詢失敗：'+error.message);
+            if(error)throw Error('匯入無日期時間查詢失敗：'+error.message);
             const page=data||[];
             appendOccupied(page);
             if(page.length<pageSize)break;
-            const last=page.at(-1);
-            const date=String(last?.date||''),uid=String(last?.uid||'');
-            if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||
-              !/^[A-Za-z0-9]{8}$/.test(uid)||
-              afterDate!==null&&(date<afterDate||
-                date===afterDate&&uid<=afterUid))
-              throw Error('匯入日期／UID 游標未前進');
-            afterDate=date;afterUid=uid;
+            const uid=String(page.at(-1)?.uid||'');
+            if(!/^[A-Za-z0-9]{8}$/.test(uid)||
+              afterUndatedUid!==null&&uid<=afterUndatedUid)
+              throw Error('無日期時間 UID 游標未前進');
+            afterUndatedUid=uid;
           }
-        }
-        // Legacy Galaxy rows can still carry createtime with a NULL date.
-        // Read this subset once instead of scanning it again for each day.
-        let afterUndatedUid=null;
-        for(;;){
-          let query=dbAuthRelation(galaxy).select('uid,createtime')
-            .is('date',null).order('uid',{ascending:true})
-            .limit(pageSize);
-          if(afterUndatedUid!==null)
-            query=query.gt('uid',afterUndatedUid);
-          const {data,error}=await query;
-          if(error)throw Error('匯入無日期時間查詢失敗：'+error.message);
-          const page=data||[];
-          appendOccupied(page);
-          if(page.length<pageSize)break;
-          const uid=String(page.at(-1)?.uid||'');
-          if(!/^[A-Za-z0-9]{8}$/.test(uid)||
-            afterUndatedUid!==null&&uid<=afterUndatedUid)
-            throw Error('無日期時間 UID 游標未前進');
-          afterUndatedUid=uid;
-        }
         }
         const finalized=finalizeImportCreatedTimes(incomingNew,{
           occupiedTimes,fallbackTime
