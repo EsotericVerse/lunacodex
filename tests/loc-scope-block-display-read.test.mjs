@@ -88,3 +88,20 @@ test('homepage display renders as a React component with stable sibling keys',()
   assert.match(browser,/<motion\.span key="hero-line"/);
   assert.match(browser,/key=\{slot\.uid\|\|'order:'\+slot\.order\}/);
 });
+
+test('shared home display assigns explicit keys to prebuilt React siblings',()=>{
+  const home=src('app/loc/blocks/LocHomeBlockDisplay.jsx');
+  // JSX stored in variables, then inserted into a Fragment, is different from
+  // inline literal JSX: its element identity must be explicit for React.
+  for(const marker of [
+    '<header key="header"',
+    '<RichHtml key="body"',
+    '<figure key="media"',
+    '<article key="media"',
+    '<div key="body"',
+    '<div key="children"',
+    '<span key="identity"'
+  ])assert.ok(home.includes(marker),'SharedHomeBlockDisplay missing '+marker);
+  assert.match(home,/children\.map\(\(entity,index\)=>\{/);
+  assert.match(home,/key=\{entity\.uid\|\|'child-'\+index\}/);
+});
