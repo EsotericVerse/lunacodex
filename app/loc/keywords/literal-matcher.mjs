@@ -34,19 +34,28 @@ export function compileKeywordLiteralMatcher(words=[]){
     // without article UIDs or a second searchable index.
     countMatches(text){
       if(!matcher)return [];
-      const counts=needsFallback(text)
-        ?literals.map(word=>{
+      // A 631-Pattern Class previously allocated a 631-element dense count
+      // vector for EVERY article. Most articles mention only a handful of
+      // Patterns, so stream matches into a sparse per-article map instead.
+      // Keep the original literal-substring fallback for complex graphemes.
+      const counts=new Map();
+      if(needsFallback(text)){
+        for(let index=0;index<literals.length;index++){
+          const word=literals[index];
           let n=0,from=0,position;
           while((position=text.indexOf(word,from))!==-1){
             n++;from=position+word.length;
           }
-          return n;
-        })
-        :matcher.countByPattern(text);
-      const result=[];
-      for(let index=0;index<counts.length;index++)
-        if(counts[index]>0)result.push([literals[index],Number(counts[index])]);
-      return result;
+          if(n)counts.set(index,n);
+        }
+      }else{
+        for(const hit of matcher.iterate(text)){
+          const index=hit.patternIndex;
+          counts.set(index,(counts.get(index)||0)+1);
+        }
+      }
+      return [...counts].sort((a,b)=>a[0]-b[0])
+        .map(([index,total])=>[literals[index],total]);
     }
   };
 }
