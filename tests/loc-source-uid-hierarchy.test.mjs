@@ -18,7 +18,7 @@ const sample=[
   {key:'custom:others',sites:['Unmatched source'],item_count:4}
 ];
 
-test('the 33 visible loc_anchor Source nodes render as exactly four UID-linked levels',()=>{
+test('the 36 visible loc_anchor Source nodes render as exactly four UID-linked levels',()=>{
   const hierarchy=buildCultureSourceTreeLanes(catalog,sample,expandAll);
   assert.deepEqual(hierarchy.visible.filter(x=>x.uid).map(x=>[
     x.level,x.type,x.label
@@ -30,7 +30,8 @@ test('the 33 visible loc_anchor Source nodes render as exactly four UID-linked l
     [2,'domain','X'],[3,'from','X Twitter'],
     [2,'domain','EsotericVerse'],[3,'from','LOC'],[3,'from','LRS'],
     [1,'galaxy','Article'],
-    [2,'domain','MCP'],[3,'from','Github'],[3,'from','ChatGPT'],
+    [2,'domain','MCP'],[3,'from','web'],[3,'from','Github'],[3,'from','ChatGPT'],
+    [3,'from','Claude'],[3,'from','Gemini'],
     [2,'domain','Post'],[3,'from','Vocus'],
     [0,'universe','Mutlimedia'],
     [1,'galaxy','Stream'],
@@ -42,7 +43,7 @@ test('the 33 visible loc_anchor Source nodes render as exactly four UID-linked l
     [3,'from','無名wretch'],[3,'from','MSN'],
     [2,'domain','NowON'],[3,'from','ptt'],[3,'from','pixnet']
   ]);
-  assert.equal(hierarchy.visible.filter(x=>x.uid).length,33);
+  assert.equal(hierarchy.visible.filter(x=>x.uid).length,36);
   assert.deepEqual(hierarchy.visible.filter(x=>!x.uid).map(x=>x.label),['未分類來源']);
   assert.equal(hierarchy.total,12);
 });
@@ -73,7 +74,7 @@ test('collapsed river starts with three Universe rows, not three artificial buck
 
 test('source outline has one selectable option per real Source node and correct indentation',()=>{
   const options=sourceOutlineOptions(catalog);
-  assert.equal(options.length,33);
+  assert.equal(options.length,36);
   assert.deepEqual(options.slice(0,4).map(x=>[x.type,x.label,x.level]),[
     ['universe','Words',0],['galaxy','CMS',1],
     ['domain','Meta',2],['from','Facebook',3]
@@ -132,7 +133,7 @@ test('protected Source editor preserves hidden saved UID nodes; public projectio
   const target=PUBLISHED_SOURCE_ANCHORS.find(row=>row.type==='from'&&row.title==='Vocus');
   const modified=PUBLISHED_SOURCE_ANCHORS.map(row=>row.uid===target.uid?{...row,invisible:true}:row);
   const editor=sourceEditorOutlineOptions(modified);
-  assert.equal(editor.length,34);
+  assert.equal(editor.length,37);
   assert.equal(sourceOutlineOptions(catalog).filter(row=>row.label==='LRS').length,1);
   assert.deepEqual(editor.filter(row=>row.path.includes(target.uid)).map(row=>[row.label,row.level]),[['Vocus',3]]);
   assert.equal(editor.find(row=>row.code===target.uid)?.path.length,4);
