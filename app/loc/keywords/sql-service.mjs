@@ -418,7 +418,9 @@ export async function analyzeKeywordScope(db,scope,classUid,{
     })
   });
   if(result.incomplete)return {incomplete:true,total:expectedCount,
-    completed:result.scanned,parsed:result.parsed,reused:0};
+    completed:result.scanned,parsed:result.parsed,reused:0,
+    rowsPerSecond:result.rowsPerSecond,
+    targetRowsPerSecond:result.targetRowsPerSecond};
   return {...result,reusedDocuments:0,indexedWords:0};
 }
 
