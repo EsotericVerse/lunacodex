@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {matchExistingImportBySiteId,matchExistingImportByCreatedAt}
   from '../app/loc/import/duplicate-check.mjs';
+import {planKeywordTotalWrites} from '../app/loc/keywords/sql-service.mjs';
 
 const STAMP='2026-11-20T02:12:00.123Z';
 const incoming=(uid,createtime=STAMP,more={})=>({
@@ -101,4 +102,24 @@ test('Kysely import conveniences preserve fixed authorization and pagination',as
   assert.match(backend,/return readImportCandidatePage\(query,table,columns,\{after,limit\}\)/);
   assert.match(backend,/wholeSeconds&&ms%1000!==0/);
   assert.doesNotMatch(backend,/eval\(/);
+});
+
+test('keyword aggregate writes normalize repeated physical Item UIDs',()=>{
+  const rows=planKeywordTotalWrites([
+    {uid:'ITEM0001',total:7},{uid:'GROUP001',total:10},
+    {uid:'ITEM0001',total:7}
+  ]);
+  assert.deepEqual(rows,[
+    {uid:'ITEM0001',total:7},{uid:'GROUP001',total:10}
+  ]);
+  assert.deepEqual(planKeywordTotalWrites([]),[]);
+  assert.throws(()=>planKeywordTotalWrites([
+    {uid:'ITEM0001',total:7},{uid:'ITEM0001',total:8}
+  ]),/Conflicting Keyword counts/);
+  assert.throws(()=>planKeywordTotalWrites([
+    {uid:'INVALID_UID',total:8}
+  ]),/Invalid Keyword aggregate counts/);
+  assert.throws(()=>planKeywordTotalWrites([
+    {uid:'ITEM0001',total:1.2}
+  ]),/Invalid Keyword aggregate counts/);
 });
