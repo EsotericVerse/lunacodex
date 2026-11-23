@@ -1099,6 +1099,17 @@
   border-radius:var(--loc-radius-sm);
   background:var(--loc-panel);
 }
+/* Management shows a chronological Era list first. Expanding one Era and
+   one Period must not stretch the entire page with hundreds of dates. */
+.scope-time-edit-root .scope-time-recovery-river{
+  max-height:min(62dvh,560px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  align-content:start;
+}
+.scope-time-edit-root .scope-time-recovery-axis{
+  position:sticky;top:0;z-index:4;background:var(--loc-panel);
+}
 .scope-time-recovery-axis,.scope-time-recovery-row{
   display:grid;grid-template-columns:minmax(148px,230px) minmax(280px,1fr);
   min-width:460px;
