@@ -60,6 +60,9 @@ export async function db_connection(env={},verifiedAlias='',{
   if(trustedTarget||trustedDialectConfig)
     throw unavailable('The LOC control database cannot be replaced');
   const uri=mainUri(env);
+  if(!primary||primary.engine!=='postgres'||
+     typeof primary.schema_name!=='string'||!primary.schema_name)
+    throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
   // pg-connection-string silently overrides an explicit ssl object when the
   // URI contains sslmode=require. That can inject rejectUnauthorized:false,
   // while Workers' Node TLS shim does not implement custom
@@ -101,7 +104,7 @@ export async function db_connection(env={},verifiedAlias='',{
   // Use Kysely's upstream dialect factory. LOC's selected primary remains
   // PostgreSQL today, while the same trusted boundary can compile MySQL or
   // SQL Server targets when their caller-supplied pool is enabled.
-  const dialect=createKyselyDialect(primary?.engine||'postgres',{pool});
+  const dialect=createKyselyDialect(primary.engine,{pool});
   const connection={db:new Kysely({dialect}),dialect,pool,
     engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{}};
   return connection;
