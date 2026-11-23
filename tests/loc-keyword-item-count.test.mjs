@@ -443,3 +443,71 @@ test('slow short Keyword scopes still persist their final tail before final SQL'
   assert.equal(finals,1);
   assert.equal(reads,beforeFinalize);
 });
+
+test('Pattern Anchor UIDs count occurrences during the same article pass, shared once',()=>{
+  const linked=[
+    {uid:'PATT0001',title:'月光'},
+    {uid:'PATT0002',title:'光'},
+    {uid:'PATT0003',title:'火'},
+    {uid:'PATT0001',title:'月光'} // Two Items may link one UID.
+  ];
+  const catalog=[
+    {uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']},
+    {uid:'ITEM0002',item_name:'亮',group_uid:'GROUP001',keywords:['光']}
+  ];
+  const acc=createItemCountAccumulator(catalog,groups,null,{patterns:linked});
+  acc.absorb([
+    doc('GALAXY01','月光月光'),
+    doc('GALAXY02','光與火'),
+    {uid:'GALAXY03',keyword:false,title:'',content:'月光月光'}
+  ]);
+  assert.deepEqual(acc.totals().patternCounts,{
+    PATT0001:2,PATT0002:3,PATT0003:1
+  });
+  assert.equal(acc.totals().patternCounts.PATT0001,2,
+    'Shared Pattern UID must not be added once per Item');
+  assert.equal(JSON.stringify(acc.state).includes('GALAXY01'),false,
+    'Checkpoint must not carry article UID postings');
+  assert.throws(()=>createItemCountAccumulator(catalog,groups,null,{
+    patterns:[{uid:'PATT0001',title:'月光'},{uid:'PATT0001',title:'其他'}]
+  }),/Conflicting Keyword Pattern/);
+});
+
+test('Pattern totals survive 4096-style checkpoints and finalization without rescanning',async()=>{
+  const patterns=[
+    {uid:'PATT0001',title:'月光'},
+    {uid:'PATT0002',title:'光'}
+  ];
+  const catalog=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',
+    keywords:['月光','光']}];
+  const documents=[doc('GALAXY01','月光月光'),doc('GALAXY02','光')];
+  let state=null,finals=0,readCount=0;
+  const opts={
+    items:catalog,groups,patterns,expectedCount:2,
+    pageSize:1,checkpointRows:1,maxRowsPerRun:1,deferFinalization:true,
+    readMetadataPage:async({cursor})=>{
+      readCount++;
+      const index=cursor??0;
+      return {rows:documents.slice(index,index+1),nextCursor:index+1};
+    },
+    onCheckpoint:async progress=>{state=structuredClone(progress);},
+    finalize:async result=>{
+      finals++;
+      assert.deepEqual(result.patternCounts,{PATT0001:2,PATT0002:3});
+    }
+  };
+  const first=await analyzeItemKeywordCounts(opts);
+  assert.equal(first.incomplete,true);
+  assert.deepEqual(state.patternCounts,{PATT0001:2,PATT0002:2});
+  const second=await analyzeItemKeywordCounts({...opts,resume:state});
+  assert.equal(second.incomplete,true);
+  assert.equal(second.finalizePending,true);
+  assert.deepEqual(state.patternCounts,{PATT0001:2,PATT0002:3});
+  const done=await analyzeItemKeywordCounts({
+    ...opts,resume:state,
+    readMetadataPage:async()=>{throw Error('Finalization must not reread Galaxy');}
+  });
+  assert.equal(done.scannedDocuments,2);
+  assert.equal(finals,1);
+  assert.equal(readCount,2);
+});
