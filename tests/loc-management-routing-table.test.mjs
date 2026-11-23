@@ -95,7 +95,8 @@ test('Dock uses route table for all three tiers and preserves write boundary',()
   assert.match(shell,/managementHref\('scope','articles'\)/);
   assert.match(shell,/managementRouteHref\('user',id/);
   assert.doesNotMatch(shell,/editTabHref\('manage','section','anchor'\)/);
-  assert.match(scope,/\/(?:trace\\\/)?manage/);
+  assert.match(scope,/url\.pathname\.replace\(/);
+  assert.match(scope,/trace/);
   assert.match(legacy,/window\.location\.replace\(url\.href\)/);
   assert.match(legacy,/url\.searchParams\.set\('section','anchor'\)/);
   assert.match(read('app/loc/LocApp.jsx'),/level=\{managementLevel\}/);
