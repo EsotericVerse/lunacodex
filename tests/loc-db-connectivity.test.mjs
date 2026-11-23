@@ -395,7 +395,8 @@ test('import special Galaxy fields share one native typed update batch',()=>{
   assert.match(block,/p_operation:'update_batch'/);
   assert.doesNotMatch(block,/Promise\.all\(/);
   assert.doesNotMatch(block,/start\+=6/);
-  assert.match(block,/maxChunkBytes=480000/);
+  assert.match(block,/maxChunkBytes=IMPORT_WRITE_TARGET_BYTES/);
+  assert.match(readFileSync(new URL('../app/loc/query/query-batch-size.mjs',import.meta.url),'utf8'),/importWriteTargetBytes:480000/);
   assert.match(writer,/return publishedManagedScope\(scope\);/);
   assert.doesNotMatch(writer,/selectFrom\('api\.manage'\)/);
   assert.match(writer,/const record=await registeredScope\(trx,scope\)/);

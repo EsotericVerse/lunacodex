@@ -118,7 +118,7 @@ test('Culture, Statistics and protected Source editor use one UID-based outline'
   const statistics=read('app/modular/features/Statistics.jsx');
   const editor=read('app/loc/source/SourceCategoryEditor.jsx');
   assert.match(culture,/sourceOutlineOptions\(sourceTaxonomy\)/);
-  assert.match(statistics,/sourceOutlineOptions\(sourceCatalog\.data\)/);
+  assert.match(statistics,/groupedSourceOutline\(sourceCatalog\.data\)/);
   assert.match(editor,/sourceEditorOutlineGroups\(nodes\)/);
   assert.match(editor,/sourceGroups\.map\(group=>/);
   assert.doesNotMatch(statistics,/source\.domain\?source\.domain/);
