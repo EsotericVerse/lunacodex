@@ -4,7 +4,8 @@ import {normalizeLiveTarget,runtimeTargetId,registryRelationForEngine}
   from '../app/loc/providers/live-database-target.mjs';
 import {normalizeSqlDriverAuthentication,sqlAuthNeedsUserPassword}
   from '../app/loc/providers/sql-driver-auth.mjs';
-import {createKyselyDialect} from '../modules/loc/dialect/index.mjs';
+import {createKyselyDialect,getSqlType,SQL_TYPES} from '../modules/loc/dialect/index.mjs';
+import {getSqlEnginePort,getSqlRuntimeCapabilities,portableRelation} from '../app/loc/providers/sql-engine-ports.mjs';
 import {db_connection,closeLocDatabase,bindLocRequestAbort}
   from '../app/loc/mcp/native-kysely.mjs';
 
@@ -142,4 +143,61 @@ test('request abort supports an external Kysely port without a PG pool',async()=
   release();
   controller.abort();
   assert.equal(called,1);
+});
+
+test('three named SQL Type files are the sole source of SQL engine configuration',()=>{
+  assert.deepEqual(SQL_TYPES.map(type=>type.id),['postgres','mysql','mssql']);
+  for(const engine of ['postgres','mysql','mssql']){
+    const type=getSqlType(engine);
+    const port=getSqlEnginePort(engine);
+    assert.strictEqual(port,type,'Metadata must not be copied into a second registry');
+    assert.equal(getSqlRuntimeCapabilities(engine).driver,type.driver);
+    assert.equal(getSqlRuntimeCapabilities(engine).returning,type.returning);
+    assert.deepEqual(type.requiredConfig,
+      engine==='mssql'?['tarn','tedious']:['pool']);
+  }
+  for(const engine of [undefined,'','pg','postgresql','neon','azure','tsql','t-sql']){
+    assert.throws(()=>getSqlType(engine),/Unsupported Kysely SQL dialect/);
+  }
+  assert.equal(portableRelation('articles','mysql'),'articles');
+  assert.equal(portableRelation('articles','mssql'),'dbo.articles');
+  assert.equal(portableRelation('articles','postgres'),'public.articles');
+});
+
+test('Neon PostgreSQL and Azure SQL Server coexist with independent explicit SQL Types',async()=>{
+  // Only compile SQL here; neither database driver opens a live socket.
+  const pg=await db_connection({
+    LOC_DATABASE_URI:'postgresql://reader:private@neon.example.org/loc_docs'
+  });
+  const azure=await db_connection({},'archive_azure',{
+    trustedTarget:{
+      ...profile('mssql'),host:'myserver.database.windows.net',
+      schema_name:'dbo'
+    },
+    trustedDialectConfig:{tarn:{Pool:class {
+      destroy(){return Promise.resolve();}
+    }},tedious:{}}
+  });
+  try{
+    assert.equal(pg.engine,'postgres');
+    assert.equal(azure.engine,'mssql');
+    assert.notStrictEqual(pg.db,azure.db);
+    assert.notStrictEqual(pg.dialect,azure.dialect);
+    assert.equal(pg.namespace,'silver');
+    assert.equal(azure.namespace,'dbo');
+    const pgQuery=pg.db.selectFrom('silver.lo3rwang_galaxy')
+      .select('uid').where('uid','=','AAAA0001').compile();
+    const azureQuery=azure.db.selectFrom('dbo.lo3rwang_galaxy')
+      .select('uid').where('uid','=','AAAA0001').compile();
+    assert.match(pgQuery.sql,/\$1/);
+    assert.match(azureQuery.sql,/@1/);
+    assert.doesNotMatch(azureQuery.sql,/\$1/);
+    assert.deepEqual(pgQuery.parameters,['AAAA0001']);
+    assert.deepEqual(azureQuery.parameters,['AAAA0001']);
+    assert.throws(()=>normalizeLiveTarget('archive_azure',{
+      ...profile('mssql'),engine:''
+    }),/Unsupported runtime SQL engine/);
+  }finally{
+    await Promise.all([closeLocDatabase(azure),closeLocDatabase(pg)]);
+  }
 });
