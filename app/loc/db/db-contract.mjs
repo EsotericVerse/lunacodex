@@ -3,6 +3,8 @@ import {assertPlainGalaxyAttributes} from '../content/content-policy.js';
 import {DB_QUERY_BATCH_SIZE,MAX_ROWS,HEAVY_QUERY_ROWS,ARTICLE_UID_PAGE_ROWS,IMPORT_WRITE_TARGET_BYTES} from '../query/query-batch-size.mjs';
 import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from '../auth/authorization-runtime.mjs';
 import {assertEditorSession} from '../auth/edit-session-ttl.mjs';
+import {editorTransactionLease,assertEditorTransactionLease}
+  from './editor-transaction-lifecycle.mjs';
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from '../model/galaxy-able.mjs';
 
@@ -59,7 +61,10 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   function withWriteNotice(run){
     return async(...args)=>{
       try{return await run(...args);}
-      catch(error){flashMessage(WRITE_FAILED_NOTICE);throw error;}
+      catch(error){
+        if(error?.code!=='LOC_EDITOR_CANCELLED')flashMessage(WRITE_FAILED_NOTICE);
+        throw error;
+      }
     };
   }
   const managementWrite=withWriteNotice(managementWriteUnchecked);
@@ -68,6 +73,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   // Import batch retries handle UID conflicts themselves. Keep auth checks and
   // failures, but do not flash a global notice for every bisected retry.
   const insertImportRows=async(table,rows,{onValidationProgress}={})=>{
+    const lease=editorTransactionLease();
+    assertEditorTransactionLease(lease);
     // Normalize once and validate the EXACT rows that reach Kysely. Legacy
     // source flags are expanded before the model-derived Zod parse, while
     // the original authoring/content guard still checks incoming attributes.
@@ -77,6 +84,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const prepared=prepareGalaxyInsertRows(table,rows);
     const {assertZModelImportRows}=await import('../../../packages/zenstack/import-validation.mjs');
     assertZModelImportRows(table,prepared,{onProgress:onValidationProgress});
+    assertEditorTransactionLease(lease);
     return insertRowsUnchecked(table,prepared,{normalizedGalaxy:true,importBatch:true});
   };
   const updateRows=withWriteNotice(updateRowsUnchecked);
@@ -94,6 +102,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   // backend checks identity and api.manage once and runs all steps atomically.
   // Keywords and imports retain their own explicit large-batch protocols.
   async function transactionWritesUnchecked(operations){
+    const lease=editorTransactionLease();
+    assertEditorTransactionLease(lease);
     if(!Array.isArray(operations)||!operations.length)
       throw new Error('LOC transaction requires at least one write');
     preflightWrite();
@@ -115,7 +125,9 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       }
       return item;
     });
+    assertEditorTransactionLease(lease);
     const {data,error}=await authClient.schema('silver').managedTransaction(normalized);
+    assertEditorTransactionLease(lease);
     if(error)throw new Error(error.message||'LOC transaction failed');
     if(!Array.isArray(data?.results)||data.results.length!==normalized.length)
       throw new Error('LOC transaction result is unconfirmed; reload before retrying');
@@ -128,6 +140,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function managementWriteUnchecked(payload,{normalizedGalaxy=false}={}){
+    const lease=editorTransactionLease();
+    assertEditorTransactionLease(lease);
     preflightWrite(payload?.p_table);
     // The import-only caller already normalized and Zod-validated this exact
     // batch. Other management inserts keep the unchanged normalization path.
@@ -136,7 +150,9 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(isScopedGalaxy(payload?.p_table)&&payload?.p_operation==='update')
       payload={...payload,p_values:prepareGalaxyUpdateValues(payload.p_table,payload.p_values)};
     // ZModel physical relations only; the server rejects retired SQL names.
+    assertEditorTransactionLease(lease);
     const {data,error}=await authClient.schema('silver').managedWrite(payload);
+    assertEditorTransactionLease(lease);
     if(error)throw new Error(error.message||'Management write failed');
     if(payload?.p_table==='api.manage'){
       const values=payload.p_values||{};
@@ -151,6 +167,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function insertRowsUnchecked(table,rows,{normalizedGalaxy=false,importBatch=false}={}){
+    const lease=editorTransactionLease();
+    assertEditorTransactionLease(lease);
     const list=Array.isArray(rows)?rows:[];
     if(!list.length)return {count:0};
     if(!normalizedGalaxy)
@@ -172,6 +190,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const batchSize=HEAVY_QUERY_ROWS;
     let count=0;
     for(let offset=0;offset<list.length;offset+=batchSize){
+      assertEditorTransactionLease(lease);
       const batch=list.slice(offset,offset+batchSize);
       const result=await managementWriteUnchecked({
         p_table:table,
@@ -180,6 +199,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
         p_values:null,
         p_filters:[]
       },{normalizedGalaxy});
+      assertEditorTransactionLease(lease);
       const affected=Number(result?.count||0);
       if(affected!==batch.length)throw new Error(`DB INSERT ${table} incomplete: expected ${batch.length}, affected ${affected}`);
       count+=affected;
@@ -202,6 +222,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function updateImportRowsUnchecked(table,rows){
+    const lease=editorTransactionLease();
+    assertEditorTransactionLease(lease);
     if(!/^silver\\.[a-z][a-z0-9_]*_galaxy$/.test(String(table||'')))
       throw Error('文章批次更新資料表無效');
     const list=Array.isArray(rows)?rows:[];
@@ -225,16 +247,19 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const encoder=new TextEncoder();
     let pending=[],bytes=0,count=0,committed=0;
     const flush=async()=>{
+      assertEditorTransactionLease(lease);
       if(!pending.length)return;
       const payload={p_table:table,p_operation:'update_batch',
         p_rows:pending,p_values:null,p_filters:[]};
       const result=await managementWriteUnchecked(payload);
+      assertEditorTransactionLease(lease);
       count+=Number(result?.count||0);
       committed+=pending.length;
       pending=[];bytes=0;
     };
     try{
       for(const row of list){
+        assertEditorTransactionLease(lease);
         const size=encoder.encode(JSON.stringify(row)).length+1;
         if(size>maxChunkBytes)throw Error('單筆文章更新超出批次傳輸限制');
         if(pending.length>=HEAVY_QUERY_ROWS||bytes+size>maxChunkBytes)await flush();
@@ -242,7 +267,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       }
       await flush();
     }catch(error){
-      if(error?.code==='LOC_WRITE_RESULT_UNKNOWN')throw error;
+      if(error?.code==='LOC_WRITE_RESULT_UNKNOWN'||error?.code==='LOC_EDITOR_CANCELLED')
+        throw error;
       throw new Error('文章重匯更新失敗；已確認提交 '+committed+
         ' 筆資料的批次，當前批次已回滾或提交結果未確認。原始錯誤：'+
         String(error?.message||error));
