@@ -253,12 +253,12 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     // The caller owns ONE validated SQL transaction, including any conflict
     // and rollback. Materially different incoming row shapes form separate
     // parameter-safe statements; no extra connection or SQL gateway exists.
-    const {planKyselyUpsertBatches,buildKyselyUpsertQuery,executeMssqlUpsert}
+    const {planKyselyUpsertBatches,executeMssqlUpsert,executeMysqlUpsert}
       =await import('./kysely-runtime.mjs');
     const batches=planKyselyUpsertBatches(
       serializePortableJsonFields(rows,engine),key,{
         maxParameters:engine==='mssql'?1900:32000,
-        maxRows:engine==='mssql'?100:10000,
+        maxRows:100,
         maxBytes:512*1024
       });
     for(const batch of batches){
@@ -268,11 +268,11 @@ export async function executeCrossEngineManagedWrite(db,body,context){
         const result=await executeMssqlUpsert(db,req,{namespace});
         count+=Number(result.count||0);
       }else if(engine==='mysql'){
-        // A successful ON DUPLICATE KEY UPDATE reports 2 affected *changes*
-        // for one row. The managed envelope counts processed source records,
-        // not server affected-row semantics.
-        await buildKyselyUpsertQuery(db,req,'mysql',namespace).execute();
-        count+=batch.length;
+        // Use the same modeled-primary-key locking contract as SQL Server.
+        // MySQL ON DUPLICATE KEY UPDATE may match an unrelated unique index;
+        // that is not an acceptable source identity for LOC.
+        const result=await executeMysqlUpsert(db,req,{namespace});
+        count+=Number(result.count||0);
       }else{
         invalidWrite('Portable managed UPSERT engine unsupported');
       }
