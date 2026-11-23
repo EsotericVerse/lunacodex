@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {planUidScalarRepairBatches,buildUidScalarRepairQuery}
+import {planUidScalarRepairBatches,buildUidScalarRepairQuery,
+  planUidRepairStatementBatches,buildUidCaseRepairQuery,
+  buildUidNativeArrayRepairQuery}
   from '../app/loc/providers/uid-dependency-before-delete.mjs';
 import {planUidDependencyRepair}
   from '../app/loc/providers/uid-dependency-immer.mjs';
 import {planImportPointCreate,planImportDateCreate}
   from '../app/loc/import/point-date-immer.mjs';
-import {Kysely,PostgresDialect} from 'kysely';
+import {Kysely,PostgresDialect,sql} from 'kysely';
 import {planKyselyUpsertBatches,buildKyselyUpsertQuery}
   from '../app/loc/providers/kysely-runtime.mjs';
 import {prepareManagedKyselyWrite}
@@ -127,4 +129,64 @@ test('Trace segment repair keeps endpoint pairs and anchor count',()=>{
   assert.equal(plan.anchorUpdates[0].values.num,2n);
   assert.deepEqual(plan.anchorUpdates[0].expected.attr.point,
     ['POIN0001','POIN0002','POIN0003','POIN0004']);
+});
+
+test('native target UID ARRAY update retains every old-value CAS predicate',()=>{
+  const db=new Kysely({dialect:new PostgresDialect({pool:{
+    connect:async()=>{throw Error('compile-only');}
+  }})});
+  const items=[
+    {uid:'AAAA0001',values:{source_id:null,target_id:['BBBB0002']},
+      expected:{source_id:'DELE0001',target_id:['DELE0001','BBBB0002','DELE0001']}},
+    {uid:'CCCC0003',values:{source_id:null,target_id:['BBBB0002']},
+      expected:{source_id:'DELE0001',target_id:['DELE0001','BBBB0002']}}
+  ];
+  const compiled=buildUidNativeArrayRepairQuery(db,'silver.loc_galaxy',
+    items,'DELE0001').compile();
+  assert.match(compiled.sql,/array_remove/i);
+  assert.match(compiled.sql,/source_id/i);
+  assert.match(compiled.sql,/target_id.*=/i);
+  assert.match(compiled.sql,/ or /i);
+  assert.ok(compiled.parameters.includes('AAAA0001'));
+  assert.ok(compiled.parameters.includes('CCCC0003'));
+  assert.ok(compiled.parameters.some(v=>Array.isArray(v)&&v.length===3));
+});
+test('row-specific Anchor JSON CASE preserves num and full original attr CAS',()=>{
+  const db=new Kysely({dialect:new PostgresDialect({pool:{
+    connect:async()=>{throw Error('compile-only');}
+  }})});
+  const items=[
+    {uid:'AAAA0001',type:'path',
+      values:{attr:{point:['11111111','22222222']},num:2n},
+      expected:{attr:{point:['11111111','33333333','22222222']}}},
+    {uid:'BBBB0002',type:'path',
+      values:{attr:{point:['44444444','55555555']},num:2n},
+      expected:{attr:{point:['44444444','33333333','55555555']}}}
+  ];
+  const serialize=values=>Object.fromEntries(Object.entries(values).map(
+    ([key,value])=>[key,key==='attr'?sql`${{JSON.stringify(value)}::jsonb`:value]));
+  const compiled=buildUidCaseRepairQuery(db,'silver.loc_anchor',items,
+    serialize).compile();
+  assert.match(compiled.sql,/CASE/i);
+  assert.match(compiled.sql,/::jsonb/i);
+  assert.match(compiled.sql,/num/i);
+  assert.match(compiled.sql,/where /i);
+  assert.ok(compiled.parameters.includes('AAAA0001'));
+  assert.ok(compiled.parameters.includes('BBBB0002'));
+  assert.ok(compiled.parameters.includes('path'));
+  assert.ok(compiled.parameters.includes(2n));
+  assert.ok(compiled.parameters.includes(JSON.stringify(items[0].expected.attr)));
+  assert.ok(compiled.parameters.includes(JSON.stringify(items[1].expected.attr)));
+});
+test('large UID reconciliations use bounded batches and preserve every row',()=>{
+  const rows=Array.from({length:101},(_,i)=>({
+    uid:String(i).padStart(8,'0'),type:'trace',
+    values:{attr:{point:['AAAA0001','BBBB0002']},num:2n},
+    expected:{attr:{point:['AAAA0001','DELE0001','BBBB0002','DELE0001']}}
+  }));
+  const batches=planUidRepairStatementBatches(rows,{maxRows:25});
+  assert.deepEqual(batches.map(b=>b.length),[25,25,25,25,1]);
+  assert.deepEqual(batches.flat(),rows);
+  assert.ok(planUidRepairStatementBatches(rows,{maxBytes:350}).length>60);
+  assert.throws(()=>planUidRepairStatementBatches(rows,{maxRows:1000}));
 });

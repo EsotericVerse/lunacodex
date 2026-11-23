@@ -36,12 +36,6 @@ function listContains(field,uid,engine,path=''){
       :sql`EXISTS (SELECT 1 FROM OPENJSON(${column}) AS entry WHERE entry.value = ${uid})`;
   throw new TypeError('Unsupported SQL engine for UID dependency repair');
 }
-function comparisons(query,expected,serialize,table){
-  const values=serialize(expected,table);
-  for(const [field,value] of Object.entries(values))
-    query=value===null?query.where(field,'is',null):query.where(field,'=',value);
-  return query;
-}
 
 // Only independent, identical-shape scalar nullifications can share an
 // UPDATE. JSON/array changes and mixed scalar+array changes retain row CAS.
@@ -77,6 +71,104 @@ export function buildUidScalarRepairQuery(db,table,batch,deletedUid,
     .where('uid','in',batch.uids);
   for(const field of batch.fields)query=query.where(field,'=',deletedUid);
   return query;
+}
+
+
+// Bounded, shape-aware CASE batches retain one predicate per affected row.
+// Existing SELECT projections and JS graph validation remain authoritative;
+// these statements only shorten round-trips inside the authorized transaction.
+export function planUidRepairStatementBatches(items,{
+  maxRows=64,maxBytes=96*1024
+}={}){
+  if(!Array.isArray(items)||!Number.isSafeInteger(maxRows)||maxRows<1||
+     maxRows>256||!Number.isSafeInteger(maxBytes)||maxBytes<1)
+    throw new TypeError('Invalid UID dependency statement budget');
+  const groups=new Map(),encoder=new TextEncoder();
+  for(const item of items){
+    if(!UID.test(String(item?.uid||''))||!item?.values||
+        !item?.expected||!Object.keys(item.values).length)
+      throw new TypeError('Invalid UID repair row');
+    const fields=Object.keys(item.values).sort();
+    const type=String(item.type||'');
+    const key=type+'\0'+fields.join('\0');
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(item);
+  }
+  const batches=[];
+  for(const group of groups.values()){
+    let chunk=[],bytes=0;
+    for(const item of group){
+      const size=encoder.encode(JSON.stringify(item,
+        (_,value)=>typeof value==='bigint'?String(value):value)).length;
+      if(chunk.length&&(chunk.length>=maxRows||bytes+size>maxBytes)){
+        batches.push(chunk);chunk=[];bytes=0;
+      }
+      chunk.push(item);bytes+=size;
+    }
+    if(chunk.length)batches.push(chunk);
+  }
+  return batches;
+}
+function uidRepairConditions(eb,items,table,serialize){
+  return eb.or(items.map(item=>eb.and([
+    eb('uid','=',item.uid),
+    ...Object.entries(serialize(item.expected,table)).map(([field,value])=>
+      value===null?eb(field,'is',null):eb(field,'=',value))
+  ])));
+}
+// CASE values are different for each PK, including Anchor JSON and num.
+// Existing engine serializers provide JSON text or PostgreSQL JSONB casts.
+// Every PK also carries its OWN old-value predicate for CAS.
+export function buildUidCaseRepairQuery(db,table,items,serialize=values=>values){
+  if(!Array.isArray(items)||!items.length)
+    throw new TypeError('Empty UID repair CASE batch');
+  const fields=Object.keys(items[0].values).sort();
+  if(items.some(item=>Object.keys(item.values).sort().join('|')!==fields.join('|')))
+    throw new TypeError('Mixed UID repair fields');
+  const prepared=items.map(item=>serialize(item.values,table));
+  const values=Object.fromEntries(fields.map(field=>[
+    field,sql`CASE ${{sql.ref('uid')} ${{sql.join(items.map((item,index)=>
+      sql`WHEN ${{item.uid} THEN ${{prepared[index][field]}`),sql` `)}
+      ELSE ${{sql.ref(field)} END`
+  ]));
+  let query=db.updateTable(table).set(values)
+    .where(eb=>uidRepairConditions(eb,items,table,serialize));
+  if(items[0].type){
+    if(items.some(item=>item.type!==items[0].type))
+      throw new TypeError('Mixed UID repair Anchor types');
+    query=query.where('type','=',items[0].type);
+  }
+  return query;
+}
+function nativeArrayRepair(item,deletedUid){
+  const fields=Object.keys(item?.values||{});
+  return fields.includes('target_id')&&
+    Array.isArray(item.values.target_id)&&
+    Array.isArray(item.expected?.target_id)&&
+    fields.every(field=>field==='target_id'||(
+      SCALAR_UID_REPAIR_COLUMNS.has(field)&&item.values[field]===null&&
+      item.expected?.[field]===deletedUid));
+}
+// PostgreSQL array_remove removes ALL matching values, like JS filter.
+// Old array/scalar values are still compared exactly in the WHERE clause.
+export function buildUidNativeArrayRepairQuery(db,table,items,deletedUid,
+  serialize=values=>values){
+  if(!Array.isArray(items)||!items.length||
+     items.some(item=>!nativeArrayRepair(item,deletedUid)))
+    throw new TypeError('Invalid native UID array repair batch');
+  const fields=Object.keys(items[0].values).sort();
+  if(items.some(item=>Object.keys(item.values).sort().join('|')!==fields.join('|')))
+    throw new TypeError('Mixed native UID array repair fields');
+  const values=Object.fromEntries(fields.map(field=>[
+    field,field==='target_id'
+      ?sql`array_remove(${{sql.ref('target_id')}, ${{deletedUid})`:null
+  ]));
+  return db.updateTable(table).set(values)
+    .where(eb=>uidRepairConditions(eb,items,table,serialize));
+}
+async function checkRepairBatch(query,expected){
+  const result=await query.executeTakeFirst();
+  if(Number(result?.numUpdatedRows||0)!==expected)failed();
 }
 
 /**
@@ -148,20 +240,23 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
       .executeTakeFirst();
     if(Number(result?.numUpdatedRows||0)!==batch.uids.length)failed();
   }
-  // Arrays and mixed patches retain their original per-row old-value CAS.
+  const native=[],portable=[];
   for(const item of singles){
-    let query=db.updateTable(galaxy).set(serialize(item.values,galaxy))
-      .where('uid','=',item.uid);
-    query=comparisons(query,item.expected,serialize,galaxy);
-    const result=await query.executeTakeFirst();
-    if(Number(result?.numUpdatedRows||0)!==1)failed();
+    if(engine==='postgres'&&nativeArrayRepair(item,uid))native.push(item);
+    else portable.push(item);
   }
-  for(const item of plan.anchorUpdates){
-    let query=db.updateTable(anchor).set(serialize(item.values,anchor))
-      .where('uid','=',item.uid).where('type','=',item.type);
-    query=comparisons(query,item.expected,serialize,anchor);
-    const result=await query.executeTakeFirst();
-    if(Number(result?.numUpdatedRows||0)!==1)failed();
-  }
+  // Native PostgreSQL text[] operation; other engines retain the same JS
+  // resulting value through Kysely's portable CASE and JSON serialization.
+  for(const batch of planUidRepairStatementBatches(native))
+    await checkRepairBatch(buildUidNativeArrayRepairQuery(
+      db,galaxy,batch,uid,serialize),batch.length);
+  for(const batch of planUidRepairStatementBatches(portable))
+    await checkRepairBatch(buildUidCaseRepairQuery(db,galaxy,batch,serialize),
+      batch.length);
+  // Trace endpoint pairs and derived Anchor.num are validated before the
+  // UPDATE. Every CASE arm must also match that row's original attr (CAS).
+  for(const batch of planUidRepairStatementBatches(plan.anchorUpdates))
+    await checkRepairBatch(buildUidCaseRepairQuery(db,anchor,batch,serialize),
+      batch.length);
   return {affected:plan.affected,handled:true};
 }
