@@ -4,6 +4,10 @@ on:
     branches:
       - chore/loc-pnpm-20261123
 
+concurrency:
+  group: loc-pnpm-transition-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -24,13 +28,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pnpm import
-          pnpm install --lockfile-only --no-frozen-lockfile
-          test -s pnpm-lock.yaml
-          git rm package-lock.json
-          git add pnpm-lock.yaml
-          git -c user.name='LOC dependency migration' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore(deps): replace npm lockfile with pnpm lockfile'
-          git push origin HEAD:chore/loc-pnpm-20261123
+          if [ -f package-lock.json ]; then
+            pnpm import
+            pnpm install --lockfile-only --no-frozen-lockfile
+            test -s pnpm-lock.yaml
+            git rm package-lock.json
+            git add pnpm-lock.yaml
+            git -c user.name='LOC dependency migration' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore(deps): replace npm lockfile with pnpm lockfile'
+            git push origin HEAD:chore/loc-pnpm-20261123
+          else
+            test -s pnpm-lock.yaml
+            pnpm install --lockfile-only --frozen-lockfile
+            git diff --exit-code -- pnpm-lock.yaml
+          fi
       - name: Verify frozen pnpm installation
         run: pnpm install --frozen-lockfile
       - name: Verify syntax and regression suites
@@ -41,3 +51,9 @@ jobs:
         run: |
           pnpm run build:static
           node --test tests/static-export-assets.test.mjs
+      - name: Record verified installation, regression and static build
+        run: |
+          printf 'verified_source_sha=%s\n' "$GITHUB_SHA" > .loc-pnpm-ci-verified
+          git add .loc-pnpm-ci-verified
+          git -c user.name='LOC dependency migration' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'test(ci): record passed pnpm migration build'
+          git push origin HEAD:chore/loc-pnpm-20261123
