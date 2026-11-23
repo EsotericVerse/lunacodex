@@ -70,6 +70,8 @@ async function diagnoseFixedPgTransport(env){
  const uri=String(env?.LOC_DATABASE_URI||'');
  if(!uri)return json({ok:false,stage:'configuration'},503);
  let plain=null,tls=null,stage='tcp';
+ const started=Date.now(),elapsed={};
+ const mark=key=>{elapsed[key]=Date.now()-started;};
  const bound=async work=>Promise.race([
    work,new Promise((_,reject)=>setTimeout(
      ()=>reject(new Error('PROBE_TIMEOUT')),3000))
@@ -80,7 +82,7 @@ async function diagnoseFixedPgTransport(env){
    plain=connect({hostname:address.hostname,
      port:Number(address.port||5432)},{secureTransport:'starttls'});
    await bound(plain.opened);
-   stage='postgres_ssl_request';
+   mark('tcp');stage='postgres_ssl_request';
    const writer=plain.writable.getWriter();
    try{await bound(writer.write(new Uint8Array([0,0,0,8,4,210,22,47])));}
    finally{writer.releaseLock();}
@@ -88,11 +90,13 @@ async function diagnoseFixedPgTransport(env){
    let response;
    try{response=await bound(reader.read());}
    finally{reader.releaseLock();}
+   mark('ssl_response');
    if(response.done||response.value?.[0]!==83)
      return json({ok:false,stage,reply:response.done?'EOF':'NOT_SSL'},503);
    stage='tls';
    tls=plain.startTls();
    await bound(tls.opened);
+   mark('tls');
    // Read only PostgreSQL's FIRST authentication frame, without sending a
    // password. This distinguishes a healthy TLS tunnel from a startup
    // protocol failure inside pg.Client. User, database and host stay private.
@@ -115,9 +119,10 @@ async function diagnoseFixedPgTransport(env){
    let authReply;
    try{authReply=await bound(startupReader.read());}
    finally{startupReader.releaseLock();}
+   mark('auth_challenge');
    const first=authReply.value?.[0];
    return first===82
-     ?json({ok:true,stage:'postgres_auth_challenge',verified:true})
+     ?json({ok:true,stage:'postgres_auth_challenge',verified:true,elapsed})
      :json({ok:false,stage,reply:authReply.done?'EOF':
        first===69?'PG_ERROR':'OTHER'},503);
  }catch(error){
@@ -126,7 +131,7 @@ async function diagnoseFixedPgTransport(env){
      /ssl|tls|certificate|handshake/.test(msg)?'TLS':
      /closed|terminated|eof/.test(msg)?'EARLY_CLOSE':
      /connect|network|socket/.test(msg)?'TRANSPORT':'OTHER';
-   return json({ok:false,stage,reason},503);
+   return json({ok:false,stage,reason,elapsed},503);
  }finally{
    try{await (tls||plain)?.close?.();}catch{}
  }
