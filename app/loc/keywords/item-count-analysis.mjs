@@ -5,6 +5,12 @@ import {keywordScanText} from './content-filter.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 const count=x=>Math.max(0,Number(x)||0);
+// A 10,000-row page is reasonable for scalar SQL, but not for 67+ lexical
+// classifiers and full article bodies. This remains byte-adaptive inside
+// a bounded per-request working set, rather than a fixed per-Scope limit.
+const KEYWORD_SCAN_PAGE_OPTIONS=Object.freeze({
+  maximum:1024,targetChars:256*1024
+});
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
 const mapOf=(keys,values)=>Object.fromEntries(keys.map(k=>[k,count(object(values)[k])]));
 const dayOf=x=>x instanceof Date?x.toISOString().slice(0,10):String(x||'').slice(0,10);
@@ -123,7 +129,9 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     Object.hasOwn(resume,'cursor');
   let cursor=valid?resume.cursor:null,scanned=valid?count(resume.scanned):0;
   const started=now();
-  const sizer=createTextAdaptiveRows({initial:pageSize});
+  const sizer=createTextAdaptiveRows({
+    initial:pageSize,...KEYWORD_SCAN_PAGE_OPTIONS
+  });
   let lastCheckpoint=scanned;
   for(;;){
     const requested=sizer.size;
@@ -181,7 +189,7 @@ export async function readItemKeywordProjection(db,scope,{items,groups,start='',
   source='',places=null,owner=true,minChars=0,onRow=null}={}){
   const a=createItemCountAccumulator(items,groups,null,{minChars});
   let after='';
-  const sizer=createTextAdaptiveRows();
+  const sizer=createTextAdaptiveRows(KEYWORD_SCAN_PAGE_OPTIONS);
   for(;;){
     const requested=sizer.size;
     let q=db.selectFrom('silver.'+scope+'_galaxy')
