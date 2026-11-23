@@ -90,7 +90,7 @@ test('Capability report separates dialect features from actual production connec
   assert.equal(my.returning,false);
   assert.equal(ms.returning,true);
   assert.ok(my.operations.includes('upsert'));
-  assert.ok(!ms.operations.includes('upsert'));
+  assert.ok(ms.operations.includes('upsert'));
   assert.deepEqual(pg.managedOperations,
     ['insert','upsert','update','delete','update_batch','append_media_link']);
   for(const port of [my,ms]){
