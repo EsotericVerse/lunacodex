@@ -77,3 +77,24 @@ test('Item autocomplete excludes rule tokens; no Pattern index required',()=>{
   assert.deepEqual(suggestions.map(s=>s.pattern),['日']);
   assert.equal(itemKeywordSuggestions(items,'日光').length,0);
 });
+
+test('native SQL keyword page avoids a second UID content query',async()=>{
+  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
+  let pages=0,finalized=null;
+  const result=await analyzeItemKeywordCounts({
+    items:terms,groups,expectedCount:2,pageSize:2,
+    readMetadataPage:async ({cursor})=>{
+      pages++;
+      return cursor===null?{rows:[
+        {uid:'GALAXY01',keyword:true,title:'',content:'月光',date:'2026-11-22'},
+        {uid:'GALAXY02',keyword:false,title:null,content:null,date:'2026-11-22'}
+      ],nextCursor:'done'}:{rows:[],nextCursor:'done'};
+    },
+    readContent:async()=>{throw Error('Second content SELECT must not run');},
+    finalize:async totals=>{finalized=totals;}
+  });
+  assert.equal(pages,2);
+  assert.equal(result.scannedDocuments,2);
+  assert.equal(result.parsedDocuments,1);
+  assert.equal(finalized.itemCounts.ITEM0001,1);
+});
