@@ -38,7 +38,7 @@ test('management expands Era -> Period -> dated anchors using the existing snaps
     editorOnly:true,scopeId:scope
   });
   assert.deepEqual(model.groups.map(row=>row.label),[
-    '第一時代','期間｜第一時期','定錨點'
+    '第一時代','期間｜第一時期','定錨點','未定義定錨'
   ]);
   assert.deepEqual(model.items.map(row=>row.entry_type),[
     'era','period','anchor','anchor'
@@ -137,7 +137,7 @@ test('TimeAnchor begins with chronological Era entries only, without eager Perio
   const initial=buildEraRiver([latest,...dates,period,era],[],{
     editorOnly:true,scopeId:scope
   });
-  assert.deepEqual(initial.groups.map(group=>group.label),['第一時代','較晚時代']);
+  assert.deepEqual(initial.groups.map(group=>group.label),['第一時代','較晚時代','未定義定錨']);
   assert.deepEqual(initial.items.map(item=>item.entry_type),['era','era']);
   assert.equal(initial.groups.every(group=>group.depth===undefined),true);
 });
@@ -168,4 +168,34 @@ test('TimeAnchor management caps both vis and fallback height',()=>{
   assert.match(css,/\.scope-time-edit-root \.scope-time-recovery-river\{/);
   assert.match(css,/max-height:min\(62dvh,560px\)/);
   assert.match(css,/overflow-y:auto/);
+});
+
+test('management Time river keeps one non-stacked row per collapsed Era',()=>{
+  const chart=file('app/modular/modules/culture-timeline/CultureTimeline.jsx');
+  assert.match(chart,/stack:compactHierarchy\?false:mode!=='source'/);
+  assert.match(chart,/compactHierarchy&&\(item\?\.entry_type==='era'\|\|item\?\.entry_type==='period'\)/);
+  assert.match(chart,/return '';/);
+  const sample={...era,ranges:[
+    {start_date:'2025-01-01',end_date:'2025-02-15'},
+    {start_date:'2025-04-01',end_date:'2025-06-01'}
+  ]};
+  const model=buildEraRiver([...dates,period,sample],[],{editorOnly:true,scopeId:scope});
+  assert.equal(model.groups.length,2);
+  assert.equal(model.groups[0].label,'第一時代');
+  assert.equal(model.items.filter(row=>row.entry_type==='era').length,2);
+  assert.equal(model.groups.at(-1).label,'未定義定錨');
+  assert.equal(model.groups.at(-1).expanded,false);
+  assert.equal(model.groups.at(-1).collapsible,true);
+});
+test('undefined Date anchors remain available only when bottom lane is opened',()=>{
+  const orphan={uid:'DATE0099',scope_id:scope,entry_type:'anchor',
+    start_date:'2030-07-04',title:'未定義日期'};
+  const closed=buildEraRiver([...dates,period,era,orphan],[],{editorOnly:true,scopeId:scope});
+  assert.equal(closed.groups.at(-1).label,'未定義定錨');
+  assert.equal(closed.items.some(row=>row.uid===orphan.uid),false);
+  const expanded=buildEraRiver([...dates,period,era,orphan],['time-undefined:'+scope],{
+    editorOnly:true,scopeId:scope
+  });
+  assert.equal(expanded.groups.at(-1).label,'未定義定錨');
+  assert.equal(expanded.items.some(row=>row.uid===orphan.uid),true);
 });
