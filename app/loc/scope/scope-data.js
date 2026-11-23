@@ -1,7 +1,7 @@
 'use client';
 
 
-import {selectAllRows,selectRows} from '../db/db-query.mjs';
+import {selectRows} from '../db/db-query.mjs';
 import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
@@ -285,7 +285,6 @@ export function invalidateScopeBlockPage(scopeId,page='index'){
   // Page is retained in the API for its existing editor callers.
   invalidateScopedReadCache(blockRelation(id));
 }
-const BLOCK_COLUMNS='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
 // Public display readers of the same Scope share one parsed Block-list result.
 export function block_list(scopeid){
   const id=String(scopeid||'').trim().toLowerCase();
