@@ -307,14 +307,24 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     scanned+=page.rows.length;
     a.state.scanned=scanned;
     sizer.observe(page.rows.length,pageChars);
-    // Total article counts need not be a multiple of 4096 or 8192.
-    // Persist the short final page BEFORE starting the expensive final
-    // SQL transaction. The next request finalizes without a new scan.
+    // Short Scopes fit in one request. Avoid the intermediate SQL checkpoint
+    // entirely when every article is already classified AND there is enough
+    // time left for the final authorized write. A slow short Scope still
+    // gets the durable final-tail receipt used by larger scans.
+    //
+    // The 4096 threshold is total Scope size, not the SQL page size,
+    // processing-rate target, or a restriction on bigger Scopes.
     if(deferFinalization&&onCheckpoint&&expectedCount!==null&&
         scanned===expectedCount){
-      await checkpoint(true);
+      const canFinalizeNow=expectedCount<=KEYWORD_SCAN_CHECKPOINT_ROWS&&
+        startedScanned===0&&
+        (timeBudgetMs===null||now()-started<=timeBudgetMs*0.5);
       onProgress({phase:'finalizing',completed:scanned,parsed:a.state.parsed,
         rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
+      if(canFinalizeNow)return finish();
+      // Large Scopes and slow short Scopes first persist the exact tail,
+      // then a fresh request commits final counters without rescanning.
+      await checkpoint(true);
       return incomplete(true);
     }
     const elapsed=now()-started;
