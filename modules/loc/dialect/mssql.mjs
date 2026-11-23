@@ -6,7 +6,7 @@ export const MSSQL_SQL_TYPE=Object.freeze({
   id:'mssql',label:'SQL Server',dialect:'MssqlDialect',driver:'tedious',
   runtime:'node',namespace:'schema',session:'external-acl',schema:'kysely',
   requiredConfig:Object.freeze(['tarn','tedious']),protocol:'mssql',
-  defaultNamespace:'dbo',nativeConnection:false,returning:true,
+  defaultNamespace:'dbo',targetNamespace:'dbo',nativeConnection:false,returning:true,
   insertParameterLimit:2000,insertMaxRows:50,upsertParameterLimit:1900
 });
 export const mssqlDialectConstructor=MssqlDialect;
