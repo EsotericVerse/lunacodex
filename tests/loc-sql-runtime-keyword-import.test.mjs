@@ -123,3 +123,16 @@ test('keyword aggregate writes normalize repeated physical Item UIDs',()=>{
     {uid:'ITEM0001',total:1.2}
   ]),/Invalid Keyword aggregate counts/);
 });
+
+test('SQL import candidate reader adapts keyset pages without relaxing server limits',async()=>{
+  const panel=await readFile(new URL('../app/loc/import/ManagementImportPanel.jsx',import.meta.url),'utf8');
+  const backend=await readFile(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  assert.match(panel,/const pages=createTextAdaptiveRows\(\{initial:60,maximum:100,/);
+  assert.match(panel,/const pageSize=pages.size/);
+  assert.match(panel,/pages.observe\(rows.length,encoder.encode\(JSON.stringify\(rows\)\).byteLength\)/);
+  assert.match(panel,/end-offset<80/);
+  assert.match(panel,/bytes\+1\+length>16\*1024/);
+  assert.match(backend,/p_limit:z.number\(\).int\(\).min\(1\).max\(100\).default\(60\)/);
+  assert.match(backend,/p_site_ids:z.array\(.+\).min\(1\).max\(80\)/);
+  assert.match(backend,/p_seconds:z.array\(.+\).min\(1\).max\(80\)/);
+});
