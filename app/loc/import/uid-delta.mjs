@@ -40,9 +40,8 @@ export function createImportUidResolver(aliases=new Map(),existingByUid=new Map(
   };
 }
 
-// Small-chain propagation happens on imported rows before both INSERT and
-// UPDATE. Every changed UID field is reported once; unrelated values keep
-// their original references and are never copied into an Immer draft.
+// Resolve verified UID aliases before INSERT or UPDATE. Only changed fields
+// are copied; unrelated content and existing row references stay untouched.
 export function remapImportUidRelations(records=[],{
   aliases=new Map(),existingByUid=new Map()
 }={}){
@@ -50,42 +49,28 @@ export function remapImportUidRelations(records=[],{
   const resolve=createImportUidResolver(aliases,existingByUid);
   const rows=[],changesByUid=new Map();
   for(const row of records){
-    const key=checkedUid(row?.uid);
-    const before={
-      source_id:row.source_id??null,
-      ref_id:row.ref_id??null,
-      target_id:Array.isArray(row.target_id)?[...row.target_id]:null
-    };
-    const [next,patches]=produceWithPatches(before,draft=>{
-      for(const field of ARTICLE_SCALARS){
-        const value=draft[field];
-        if(typeof value==='string'&&UID.test(value)){
-          const mapped=resolve(value);
-          if(mapped!==value)draft[field]=mapped;
-        }
+    const key=checkedUid(row?.uid),changes={},patches=[];
+    for(const field of ARTICLE_SCALARS){
+      const value=row[field]??null;
+      if(typeof value!=='string'||!UID.test(value))continue;
+      const mapped=resolve(value);
+      if(mapped===value)continue;
+      changes[field]=mapped;
+      patches.push({op:'replace',path:[field],value:mapped});
+    }
+    if(Array.isArray(row.target_id)){
+      const mapped=row.target_id.map(value=>
+        typeof value==='string'&&UID.test(value)?resolve(value):value);
+      const remapped=mapped.some((value,i)=>value!==row.target_id[i]);
+      if(remapped){
+        // Only after alias resolution do duplicate persisted UIDs collapse.
+        // Preserve first occurrence ordering and all unrelated references.
+        const distinct=[...new Set(mapped)];
+        changes.target_id=distinct;
+        patches.push({op:'replace',path:['target_id'],value:distinct});
       }
-      if(Array.isArray(draft.target_id)){
-        let remapped=false;
-        for(let i=0;i<draft.target_id.length;i++){
-          const value=draft.target_id[i];
-          if(typeof value!=='string'||!UID.test(value))continue;
-          const mapped=resolve(value);
-          if(mapped!==value){draft.target_id[i]=mapped;remapped=true}
-        }
-        // Two import aliases can refer to the same persisted article.
-        // Preserve link order, remove only post-remap duplicate UIDs.
-        if(remapped){
-          const seen=new Set();
-          const unique=draft.target_id.filter(value=>{
-            if(seen.has(value))return false;
-            seen.add(value);return true;
-          });
-          if(unique.length!==draft.target_id.length)draft.target_id=unique;
-        }
-      }
-    });
-    if(!patches.length){rows.push(row);continue}
-    const changes=changedFields(next,patches);
+    }
+    if(!patches.length){rows.push(row);continue;}
     rows.push({...row,...changes});
     changesByUid.set(key,{changes,patches});
   }
@@ -132,16 +117,14 @@ export function planExistingImportUidUpdate(existing,incoming,{
   return {changes:changedFields(next,patches),patches};
 }
 
-// A Point already selected by the import UID index only needs a tiny
-// single-column patch. Do not re-run the entire article link planner after
-// its source/ref/target changes have already been computed once.
+// A Point already selected by the import UID index needs just one scalar
+// patch, not an Immer draft over a single place_id field.
 export function planImportPointUidLink(previousUid,nextUid){
   if(!nextUid)return {changes:{},patches:[]};
   const id=checkedUid(nextUid);
-  const [next,patches]=produceWithPatches({place_id:previousUid??null},draft=>{
-    if(draft.place_id!==id)draft.place_id=id;
-  });
-  return {changes:changedFields(next,patches),patches};
+  if((previousUid??null)===id)return {changes:{},patches:[]};
+  return {changes:{place_id:id},
+    patches:[{op:'replace',path:['place_id'],value:id}]};
 }
 
 // Galaxy.media_link is a URL list, not MediaAnchor foreign keys.
@@ -156,19 +139,19 @@ export function planImportMediaUrlLinks(prior=[],additions=[],articleUrl=null){
   };
   const permalink=String(articleUrl||'').trim();
   const cleaned=prior.map(mediaUrl).filter(link=>link!==permalink);
+  // Retain the original stored values if cleanup removed nothing. This is
+  // exactly the old Immer delta contract; normalization is not a new import
+  // policy and must not silently change existing URL values.
+  const next=cleaned.length===prior.length?[...prior]:[...cleaned];
   const known=new Set(cleaned);
-  const before={media_link:[...prior]};
-  const [next,patches]=produceWithPatches(before,draft=>{
-    if(cleaned.length!==draft.media_link.length)draft.media_link=cleaned;
-    for(const raw of additions){
-      const link=mediaUrl(raw);
-      if(link===permalink||known.has(link))continue;
-      known.add(link);
-      draft.media_link.push(link);
-    }
-  });
-  const changes=changedFields(next,patches);
-  if(Object.hasOwn(changes,'media_link')&&!changes.media_link.length)
-    changes.media_link=null;
-  return {changes,patches};
+  for(const raw of additions){
+    const link=mediaUrl(raw);
+    if(link===permalink||known.has(link))continue;
+    known.add(link);next.push(link);
+  }
+  if(next.length===prior.length&&next.every((value,i)=>value===prior[i]))
+    return {changes:{},patches:[]};
+  const value=next.length?next:null;
+  return {changes:{media_link:value},
+    patches:[{op:'replace',path:['media_link'],value}]};
 }

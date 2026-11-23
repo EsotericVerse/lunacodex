@@ -1,10 +1,6 @@
-// Import-only Point / Date delta planning. These are the two ZModel Anchor
-// discriminators already represented by the unified <scope>_anchor table.
-// Immer drafts small mutable fields, not the complete Anchor attr, article
-// body, or Scope-wide model. The authorized Kysely caller owns SQL and CAS.
-import {enablePatches,produceWithPatches} from 'immer';
-
-enablePatches();
+// Import-only Point / Date planning for the unified <scope>_anchor table.
+// Simple INSERT and title-backfill values are constructed in JS; the
+// authorized Kysely caller still owns ZModel validation, SQL and CAS.
 const UID=/^[A-Za-z0-9]{8}$/;
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 
@@ -13,12 +9,6 @@ function checkedUid(uid){
     throw Error('匯入 Point／Date 包含無效 UID：'+String(uid));
   return uid;
 }
-function deltaFields(next,patches){
-  const fields=new Set(patches.map(patch=>patch.path[0]));
-  return Object.fromEntries([...fields].map(field=>[field,next[field]]));
-}
-
-
 // New Point / Date INSERTs have no previous row to diff. Construct the
 // typed envelope directly; the existing ZModel-derived Zod writer still
 // validates the resulting physical row and enforces the SQL contract.
@@ -56,12 +46,15 @@ export function planImportDateTitleDelta(existing,entry,day){
     throw Error('Date Anchor 日期識別無效');
   if(!existing||existing.type&&existing.type!=='date')
     throw Error('Date Anchor 型別無效');
-  const initial={title:existing.title??null,description:existing.description??null};
-  const [next,patches]=produceWithPatches(initial,draft=>{
-    if(draft.title!==day||String(draft.description||'').trim()||
-        !entry||entry.title===day)return;
-    draft.title=entry.title;
-    draft.description=entry.description;
-  });
-  return {changes:deltaFields(next,patches),patches};
+  if((existing.title??null)!==day||String(existing.description||'').trim()||
+      !entry||entry.title===day)return {changes:{},patches:[]};
+  const changes={},patches=[];
+  // Immer skipped no-op assignments, so keep that behavior for nullable
+  // legacy dates while avoiding a draft for two scalar fields.
+  for(const [field,value] of [['title',entry.title],['description',entry.description]]){
+    if((existing[field]??null)===value)continue;
+    changes[field]=value;
+    patches.push({op:'replace',path:[field],value});
+  }
+  return {changes,patches};
 }

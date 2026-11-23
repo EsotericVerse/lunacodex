@@ -7,9 +7,11 @@ import {planUidScalarRepairBatches,buildUidScalarRepairQuery,
   from '../app/loc/providers/uid-dependency-before-delete.mjs';
 import {planUidDependencyRepair}
   from '../app/loc/providers/uid-dependency-immer.mjs';
-import {planImportPointCreate,planImportDateCreate}
+import {planImportPointCreate,planImportDateCreate,planImportDateTitleDelta}
   from '../app/loc/import/point-date-immer.mjs';
 import {Kysely,PostgresDialect,sql} from 'kysely';
+import {remapImportUidRelations,planImportPointUidLink,planImportMediaUrlLinks,
+  planExistingImportUidUpdate} from '../app/loc/import/uid-delta.mjs';
 import {planKyselyUpsertBatches,buildKyselyUpsertQuery}
   from '../app/loc/providers/kysely-runtime.mjs';
 import {prepareManagedKyselyWrite}
@@ -189,4 +191,40 @@ test('large UID reconciliations use bounded batches and preserve every row',()=>
   assert.deepEqual(batches.flat(),rows);
   assert.ok(planUidRepairStatementBatches(rows,{maxBytes:350}).length>60);
   assert.throws(()=>planUidRepairStatementBatches(rows,{maxRows:1000}));
+});
+
+test('UID alias remapping preserves article content, target order and saved IDs',()=>{
+  const aliases=new Map([['AAAA0001','BBBB0002'],['CCCC0003','BBBB0002']]);
+  const row={uid:'ROWX0001',content:'unchanged long article',
+    source_id:'AAAA0001',ref_id:null,
+    target_id:['AAAA0001','CCCC0003','DDDD0004']};
+  const out=remapImportUidRelations([row],{aliases});
+  assert.deepEqual(out.rows[0].target_id,['BBBB0002','DDDD0004']);
+  assert.equal(out.rows[0].source_id,'BBBB0002');
+  assert.equal(out.rows[0].content,row.content);
+  assert.deepEqual(out.changesByUid.get('ROWX0001').changes,{
+    source_id:'BBBB0002',target_id:['BBBB0002','DDDD0004']
+  });
+  assert.deepEqual(remapImportUidRelations([row]).rows,[row]);
+  assert.throws(()=>remapImportUidRelations([row],{
+    aliases:new Map([['AAAA0001','BBBB0002'],['BBBB0002','AAAA0001']])
+  }),/循環/);
+});
+test('simple Point, Date and URL deltas avoid drafts but retain write shapes',()=>{
+  assert.deepEqual(planImportPointUidLink(null,'POIN0001').changes,
+    {place_id:'POIN0001'});
+  assert.equal(planImportPointUidLink('POIN0001','POIN0001').patches.length,0);
+  assert.deepEqual(planImportMediaUrlLinks(
+    ['https://example.com/old','https://example.com/article'],
+    ['https://example.com/old','https://example.com/new'],
+    'https://example.com/article').changes,
+    {media_link:['https://example.com/old','https://example.com/new']});
+  assert.deepEqual(planImportDateTitleDelta(
+    {uid:'DATE0001',type:'date',title:'2026-11-23',description:''},
+    {title:'Imported',description:'Text'},'2026-11-23').changes,
+    {title:'Imported',description:'Text'});
+  assert.deepEqual(planExistingImportUidUpdate(
+    {source_id:'BBBB0002',ref_id:null,target_id:[],place_id:null},
+    {source_id:'ZZZZ0009',ref_id:'AAAA0001',target_id:[]}
+  ).changes,{ref_id:'AAAA0001'});
 });
