@@ -7,7 +7,7 @@ export const POSTGRES_SQL_TYPE=Object.freeze({
   runtime:'node',namespace:'schema',session:'external-acl',schema:'kysely',
   requiredConfig:Object.freeze(['pool']),protocol:'postgres',
   defaultNamespace:'public',nativeConnection:true,returning:true,
-  insertParameterLimit:32000
+  insertParameterLimit:32000,insertMaxRows:10000,upsertParameterLimit:32000
 });
 export const postgresDialectConstructor=PostgresDialect;
 
