@@ -126,5 +126,6 @@ test('Time record transaction completion cannot wait forever for a vis onFirstPa
   assert.match(management,/const \[timeEditorFrameReady,setTimeEditorFrameReady\]=useState\(false\)/);
   assert.match(management,/setTimeEditorFrameReady\(true\)/);
   assert.match(management,/timeRiverFirstPaint\|\|timeEditorFrameReady\|\|!editorEraRiver\.groups\.length/);
+  assert.doesNotMatch(management,/label='正在建立時間河道…'/);
   assert.doesNotMatch(management,/setTimeout\(\(\)=>setTimeRiverFirstPaint\(true\)/);
 });
