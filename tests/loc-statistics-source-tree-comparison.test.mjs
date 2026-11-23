@@ -15,15 +15,15 @@ const row=(site,count,extra={})=>({
 });
 const code=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('all multi-item Source choices use the 34 LOC source UID nodes at four exact levels',()=>{
+test('all multi-item Source choices use the 33 visible LOC source UID nodes at four exact levels',()=>{
   const model=sourceStatisticsTree([],taxonomy);
   assert.deepEqual(model.metrics.map(x=>[x.type,x.level]).filter(x=>x[1]===0).map(x=>x[0]),
     ['universe','universe','universe']);
-  assert.equal(model.metrics.length,34);
+  assert.equal(model.metrics.length,33);
   assert.equal(model.metrics.filter(item=>item.type==='galaxy').length,4);
   assert.equal(model.metrics.filter(item=>item.type==='domain').length,9);
-  assert.equal(model.metrics.filter(item=>item.type==='from').length,18);
-  for(const [a,b] of [['X','X Twitter'],['Post','Vocus'],['Video','Youtube']]){
+  assert.equal(model.metrics.filter(item=>item.type==='from').length,17);
+  for(const [a,b] of [['X','X Twitter'],['Post','Vocus'],['Video','Youtube'],['EsotericVerse','LRS']]){
     const parent=treeByTitle.get(a),child=treeByTitle.get(b);
     assert.equal(child.parentUid,parent.uid);
     assert.equal(model.metrics.find(x=>x.uid===child.uid)?.level,3);
