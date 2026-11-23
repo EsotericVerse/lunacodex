@@ -1312,7 +1312,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const matchesById=existingCandidates.length?await matchExistingImportBySiteId(existingCandidates,{
         onProgress:p=>showProgress('依來源文章 ID 比對',p.completed,p.total),
         readSiteIds:async(ids,consumePage,site)=>{
-          if(!nativeLocal&&scopeId!=='loc'){
+          if(!nativeLocal&&scopeId!=='loc'&&site.length<=512&&
+              ids.every(id=>typeof id==='string'&&id.length<=512)){
             await readImportIdentityCandidates({scopeId,site,
               action:'import_site_id_candidates',keys:ids,onPage:consumePage});
             return;
@@ -1371,7 +1372,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           ].map(row=>String(row.uid))),
           onProgress:p=>showProgress('依來源與建立時間比對',p.completed,p.total),
           readSourceRows:async({site,fromDate,toDate,instants=[],consumePage})=>{
-            if(!nativeLocal&&scopeId!=='loc'){
+            if(!nativeLocal&&scopeId!=='loc'&&site.length<=512){
               await readImportIdentityCandidates({scopeId,site,
                 action:'import_created_at_candidates',
                 keys:instants,onPage:consumePage});
