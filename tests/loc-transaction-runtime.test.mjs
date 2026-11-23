@@ -98,8 +98,8 @@ test('Kysely scalar UID UPDATE compiles bound PK and old-reference predicates',(
   assert.match(compiled.sql,/source_id.*=.*ref_id|source_id/i);
   assert.match(compiled.sql,/where .*uid.* in /i);
   assert.match(compiled.sql,/source_id.*=.*and.*ref_id.*=/i);
-  assert.deepEqual(compiled.parameters.slice(-3),
-    ['AAAA0001','BBBB0002','DELE0001']);
+  assert.deepEqual(compiled.parameters.slice(-4),
+    ['AAAA0001','BBBB0002','DELE0001','DELE0001']);
   assert.equal(compiled.parameters.at(-1),'DELE0001');
 });
 test('Point and Date import CREATE use direct envelopes without Immer drafts',()=>{
