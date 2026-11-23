@@ -113,6 +113,9 @@ test('keyword aggregate writes normalize repeated physical Item UIDs',()=>{
     {uid:'ITEM0001',total:7},{uid:'GROUP001',total:10}
   ]);
   assert.deepEqual(planKeywordTotalWrites([]),[]);
+  assert.deepEqual(planKeywordTotalWrites([
+    {uid:'PATT0001',total:42},{uid:'PATT0001',total:42}
+  ]),[{uid:'PATT0001',total:42}]);
   assert.throws(()=>planKeywordTotalWrites([
     {uid:'ITEM0001',total:7},{uid:'ITEM0001',total:8}
   ]),/Conflicting Keyword counts/);
@@ -135,4 +138,13 @@ test('SQL import candidate reader adapts keyset pages without relaxing server li
   assert.match(backend,/p_limit:z.number\(\).int\(\).min\(1\).max\(100\).default\(60\)/);
   assert.match(backend,/p_site_ids:z.array\(.+\).min\(1\).max\(80\)/);
   assert.match(backend,/p_seconds:z.array\(.+\).min\(1\).max\(80\)/);
+});
+
+test('one authorized final Keyword transaction writes Pattern attr.total with Item/Group',async()=>{
+  const service=await readFile(new URL('../app/loc/keywords/sql-service.mjs',import.meta.url),'utf8');
+  assert.match(service,/a\.type in \('item','group','pattern'\)/);
+  assert.match(service,/total:Math\.max\(0,Number\(counts\.patternCounts\?\.\[pattern\.uid\]\)/);
+  assert.match(service,/const \{itemCounts,groupCounts,patternCounts,\.\.\.smallCounts\}=counts/);
+  assert.match(service,/await writeKeywordTotals\(trx,scope,updates\)/);
+  assert.doesNotMatch(service,/set\s+num\s*=/);
 });
