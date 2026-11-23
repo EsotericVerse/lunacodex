@@ -50,7 +50,7 @@ export async function db_connection(env={},verifiedAlias='',{
     const dialect=createKyselyDialect(engine,trustedDialectConfig);
     const db=new Kysely({dialect});
     return {db,dialect,engine,
-      namespace:target.schema_name??getSqlType(engine).targetNamespace,
+      namespace:target.schema_name??getSqlType(engine).defaultNamespace,
       tableName:target.table_name||'',
       fieldMap:target.field_map||{},
       // Kysely owns the selected driver's pool. Do not close the primary
