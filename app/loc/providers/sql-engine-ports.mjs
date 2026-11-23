@@ -1,19 +1,15 @@
 import {canLocAccess} from './loc-authorization.mjs';
+import {POSTGRES_SQL_TYPE} from '../../../modules/loc/dialect/postgres.mjs';
+import {MYSQL_SQL_TYPE} from '../../../modules/loc/dialect/mysql.mjs';
+import {MSSQL_SQL_TYPE} from '../../../modules/loc/dialect/mssql.mjs';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {modelFieldsForSql,modeledPrimaryKeyColumns,verifyModeledSqlFields}
   from '../../../packages/zenstack/model-column-guard.mjs';
-// Single source of truth for the LOC SQL engine plug-in points.
-// Kysely provides dialect-specific SQL generation; connection and security
-// adapters remain on the trusted runtime (never in the browser).
-const ENGINE_DEFINITIONS=[
-  // The dialect names and driver names are Kysely's upstream ports.  Driver
-  // packages are deliberately not pulled into LOC here; a trusted server
-  // connection supplies the matching pool when a portable target is used.
-  {id:'postgres',label:'PostgreSQL',dialect:'PostgresDialect',driver:'pg',runtime:'node',namespace:'schema',session:'external-acl',schema:'kysely'},
-  {id:'mysql',label:'MySQL',dialect:'MysqlDialect',driver:'mysql2',runtime:'node',namespace:'database',session:'external-acl',schema:'kysely'},
-  {id:'mssql',label:'SQL Server',dialect:'MssqlDialect',driver:'tedious',runtime:'node',namespace:'schema',session:'external-acl',schema:'kysely'}
-];
-export const SQL_ENGINE_PORTS=Object.freeze(ENGINE_DEFINITIONS.map(entry=>Object.freeze(entry)));
+// The explicit Type files own their SQL characteristics. This projection is
+// metadata for trusted dispatch only, not a SQL gateway or fallback layer.
+export const SQL_ENGINE_PORTS=Object.freeze([
+  POSTGRES_SQL_TYPE,MYSQL_SQL_TYPE,MSSQL_SQL_TYPE
+]);
 export const SQL_ENGINE_OPTIONS=Object.freeze(SQL_ENGINE_PORTS.map(({id,label})=>Object.freeze({value:id,label})));
 const byId=new Map(SQL_ENGINE_PORTS.map(entry=>[entry.id,entry]));
 export function getSqlEnginePort(engine){
@@ -33,11 +29,11 @@ export function getSqlRuntimeCapabilities(engine){
     namespace:port.namespace,
     session:port.session,
     schema:port.schema,
-    nativeConnection:port.id==='postgres',
+    nativeConnection:port.nativeConnection,
     // SQL Server UPSERT uses a trusted, already-open Kysely Transaction
     // with key-range locks; it is NOT an ordinary single-statement builder.
     operations:Object.freeze(['select','insert','update','delete','upsert']),
-    returning:port.id==='postgres'||port.id==='mssql',
+    returning:port.returning,
     managedOperations:Object.freeze(port.id==='postgres'
       ?['insert','upsert','update','delete','update_batch','append_media_link']
       :['insert','upsert','update','delete','update_batch'])
@@ -74,12 +70,11 @@ function publicReference(request){
 }
 export function portableRelation(table,engine,namespace=''){
   if(!/^[a-z][a-z0-9_]*$/i.test(table))throw new Error('Invalid SQL relation');
-  getSqlEnginePort(engine);
-  // MySQL treats the selected database as the connection namespace; Kysely
-  // therefore addresses a table directly. PostgreSQL and SQL Server use
-  // schema-qualified identifiers.
-  if(engine==='mysql')return table;
-  const schema=String(namespace||(engine==='mssql'?'dbo':'public'));
+  const type=getSqlEnginePort(engine);
+  // MySQL selects the database at connection time; SQL Server and
+  // PostgreSQL have schema-qualified tables. Never infer another SQL Type.
+  if(type.namespace==='database')return table;
+  const schema=String(namespace||type.defaultNamespace);
   if(!/^[a-z][a-z0-9_]*$/i.test(schema))throw new Error('Invalid SQL namespace');
   return schema+'.'+table;
 }
@@ -173,13 +168,9 @@ function portableInsertBatchSize(engine,width){
   // chunk from column width and the protocol's parameter budget instead.
   // The caller's import request is independently bounded to 10k rows and
   // by serialized payload bytes; this is only the internal SQL statement cap.
-  const columns=Math.max(1,width);
-  if(engine==='postgres')return Math.max(1,
-    Math.min(10000,Math.floor(32000/columns)));
-  // SQL Server has a much lower 2,100 parameter limit.
-  if(engine==='mssql')return Math.max(1,
-    Math.min(50,Math.floor(2000/columns)));
-  return 50;
+  const type=getSqlEnginePort(engine),columns=Math.max(1,width);
+  return Math.max(1,Math.min(type.insertMaxRows,
+    Math.floor(type.insertParameterLimit/columns)));
 }
 /**
  * Portable counterpart to the PostgreSQL management write procedure.
@@ -257,7 +248,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       =await import('./kysely-runtime.mjs');
     const batches=planKyselyUpsertBatches(
       serializePortableJsonFields(rows,engine),key,{
-        maxParameters:engine==='mssql'?1900:32000,
+        maxParameters:getSqlEnginePort(engine).upsertParameterLimit,
         maxRows:100,
         maxBytes:512*1024
       });
