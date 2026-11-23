@@ -487,6 +487,7 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
   'media_anchor_candidates','anchor_import_page','import_site_presence',
+  'import_site_id_candidates','import_created_at_candidates',
   'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope',
   'save_scope_trace_edit']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
@@ -583,6 +584,30 @@ const importSitePresenceArgsSchema=z.strictObject({
 const importSitePresenceResultSchema=z.array(z.strictObject({
   site_key:z.string().max(512)
 })).max(200);
+
+// Fixed-purpose authenticated import evidence, never a generic query or SQL
+// endpoint. The caller provides source identities, not columns or operators.
+const importCandidateBase={
+  p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
+  p_site:z.string().min(1).max(512),
+  p_after_uid:z.string().regex(UID).nullable().optional(),
+  p_limit:z.number().int().min(1).max(100).default(60)
+};
+const importSiteIdCandidateArgsSchema=z.strictObject({
+  ...importCandidateBase,
+  p_site_ids:z.array(z.string().min(1).max(512)).min(1).max(80)
+});
+const importCreatedAtCandidateArgsSchema=z.strictObject({
+  ...importCandidateBase,
+  // UTC millisecond buckets preserve the existing source-time fallback.
+  p_instants:z.array(z.string().datetime({offset:true})).min(1).max(80)
+});
+const IMPORT_SITE_ID_CANDIDATE_COLUMNS=Object.freeze([
+  ...new Set([...galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr'),'site_id'])
+]);
+const IMPORT_CREATED_AT_CANDIDATE_COLUMNS=Object.freeze([
+  'uid','site','site_id','createtime','date'
+]);
 // Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
 const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
   'uid','type','title','description','attr','createtime'
@@ -751,6 +776,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     media_anchor_candidates:['p_scope_id','p_uids','p_urls','p_after_uid','p_limit'],
     anchor_import_page:['p_scope_id','p_types','p_after_uid','p_limit'],
     import_site_presence:['p_scope_id','p_sites'],
+    import_site_id_candidates:['p_scope_id','p_site','p_site_ids','p_after_uid','p_limit'],
+    import_created_at_candidates:['p_scope_id','p_site','p_instants','p_after_uid','p_limit'],
     search_galaxy_private:['p_scope_id','p_query','p_offset','p_limit',
       'p_start_date','p_end_date','p_sort_direction','p_content_type',
       'p_source_mode','p_sources','p_place_only']
@@ -787,6 +814,43 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     if(!checked.success||rows.some(row=>!keys.includes(row.site_key)))
       reject('Import site presence SQL result invalid');
     return {data:rows.map(row=>row.site_key),count:rows.length};
+  }
+  if(name==='import_site_id_candidates'||name==='import_created_at_candidates'){
+    // Only the verified LOC Web editor may inspect its own existing Galaxy.
+    // Source identities are server-bound predicates, not exposed SQL text.
+    const byId=name==='import_site_id_candidates';
+    const schema=byId?importSiteIdCandidateArgsSchema:importCreatedAtCandidateArgsSchema;
+    const parsed=schema.safeParse(args);
+    if(!parsed.success)reject('Invalid import identity candidate request');
+    const {p_scope_id:scope,p_site:site,p_after_uid:after,p_limit:limit}=parsed.data;
+    if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
+      reject('Import identity Scope access denied',403);
+    await sql`reset role`.execute(trx);
+    const table='silver.'+scope+'_galaxy';
+    const columns=byId?IMPORT_SITE_ID_CANDIDATE_COLUMNS:IMPORT_CREATED_AT_CANDIDATE_COLUMNS;
+    let query=trx.selectFrom(table).select(columns)
+      .where(sql`lower(${sql.ref('site')})`,'=',site.toLowerCase())
+      .orderBy('uid','asc').limit(limit+1);
+    if(after)query=query.where('uid','>',after);
+    if(byId){
+      query=query.where('site_id','in',[...new Set(parsed.data.p_site_ids)]);
+    }else{
+      const milliseconds=[...new Set(parsed.data.p_instants.map(instant=>Date.parse(instant)))];
+      if(milliseconds.some(ms=>!Number.isFinite(ms)||!Number.isFinite(ms+1)))
+        reject('Invalid source creation time');
+      // A persisted timestamp can have collision-adjusted microseconds;
+      // compare within each source millisecond, including NULL date rows.
+      // No full-day or NULL-date Galaxy scan leaves the SQL runtime.
+      query=query.where(eb=>eb.or(milliseconds.map(ms=>eb.and([
+        eb('createtime','>=',new Date(ms).toISOString()),
+        eb('createtime','<',new Date(ms+1).toISOString())
+      ]))));
+    }
+    const rows=await query.execute();
+    assertZModelSelectRows(table,columns,rows);
+    const page=rows.slice(0,limit);
+    return {data:{rows:page,nextCursor:rows.length>limit
+      ?String(page.at(-1).uid):null},count:page.length};
   }
   if(name==='anchor_import_page'){
     // LOC Web import only. The native gateway verifies Better Auth Session
