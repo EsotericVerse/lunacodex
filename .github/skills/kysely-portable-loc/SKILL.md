@@ -17,7 +17,7 @@ Installed Kysely version: **0.29.9**. Confirm the installed version, official ag
 4. `$pickTables`, `$omitTables`, and TypeScript schema narrowing are **compile-time type constraints**, not a runtime ACL. `withPlugin` custom interceptors are not authorization by themselves. All user-specific read/write access must pass a trusted runtime gate; cross-engine parity includes blackout/hidden article and private keyword visibility, not only Scope ownership.
 5. Distinguish *SQL dialect portability* from *same-schema deployability*: Kysely can build migrations and inspect schemas, but each engine needs its actual tables/types/constraints. The user's long-term goal is a minimal two-table installation with credentials; do not claim that the current multi-table LOC already fulfills it.
 6. Preserve LOC's Base62 case-sensitive UID, eight Galaxy boolean permissions, unified `{scopeid}_anchor` structure, and native LOC Auth issuer, audience, and Scope-delegation contracts. Never reintroduce the retired four tables or create new tables/indexes/RPCs without authorization.
-7. Every upgrade must align `package.json`, `package-lock.json`, and all Deno `npm:kysely@...` imports, pass `npm run check:syntax`, and run targeted + live Dialect/authorization regression tests before merge/deploy.
+7. Every upgrade must align `package.json`, `pnpm-lock.yaml`, and all Deno `npm:kysely@...` imports, pass `pnpm run check:syntax`, and run targeted + live Dialect/authorization regression tests before merge/deploy.
 
 Release notes:
 - https://github.com/kysely-org/kysely/releases/tag/v0.29.7 — controlled transaction races/leaks and MSSQL JSON fixes.

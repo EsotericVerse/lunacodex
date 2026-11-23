@@ -40,12 +40,11 @@ test('Ariakit theme follows existing LOC palette without Mantine component CSS',
   assert.doesNotMatch(css,/@mantine\/|\.mantine-/);
 });
 
-test('lockfile removes Mantine and installs the Ariakit peer-accurate package',()=>{
-  const lock=JSON.parse(source('package-lock.json'));
-  assert.equal(lock.packages[''].dependencies['@blocknote/ariakit'],'0.55.0');
-  assert.equal(lock.packages[''].dependencies['@blocknote/mantine'],undefined);
-  assert.equal(lock.packages['node_modules/@blocknote/ariakit']?.version,'0.55.0');
-  assert.equal(lock.packages['node_modules/@blocknote/mantine'],undefined);
-  assert.equal(lock.packages['node_modules/@mantine/core'],undefined);
-  assert.equal(lock.packages['node_modules/@mantine/hooks'],undefined);
+test('pnpm lockfile removes Mantine and pins the Ariakit editor',()=>{
+  const manifest=JSON.parse(source('package.json'));
+  const lock=source('pnpm-lock.yaml');
+  assert.equal(manifest.dependencies['@blocknote/ariakit'],'0.55.0');
+  assert.equal(manifest.dependencies['@blocknote/mantine'],undefined);
+  assert.match(lock,/@blocknote\/ariakit@0\.55\.0/);
+  assert.doesNotMatch(lock,/@blocknote\/mantine|@mantine\/(?:core|hooks)/);
 });
