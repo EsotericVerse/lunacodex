@@ -35,8 +35,13 @@ export function normalizeLiveTarget(id,profile){
  // not a raw URL, when the verified target is actually opened.
  const protocol=engine==='postgres'?'postgres':engine==='mysql'?'mysql':'mssql';
  const url=new URL(protocol+'://example.invalid');
- url.hostname=host;url.port=String(port);url.username=username;
- url.password=password;url.pathname='/'+encodeURIComponent(database);
+ // WHATWG URL credentials setters do not encode bare percent signs.
+ // Explicit component encoding also protects +, / and @ in server-owned
+ // credentials; the trusted driver decodes exactly once.
+ url.hostname=host;url.port=String(port);
+ url.username=encodeURIComponent(username);
+ url.password=encodeURIComponent(password);
+ url.pathname='/'+encodeURIComponent(database);
  const chosenSchema=String(profile.schema_name||'');
  // MySQL's database is its namespace. Supplying a different schema here
  // would make an implicit cross-database read, so never ignore that input.
