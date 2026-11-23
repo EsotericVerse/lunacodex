@@ -4,6 +4,8 @@
 import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
 import {transientReadSignal} from '../../../packages/zenstack/transient-read-epoch.mjs';
+import {editorTransactionLease,assertEditorTransactionLease,isEditorTransactionCancelled}
+  from '../db/editor-transaction-lifecycle.mjs';
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 import {invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 
@@ -34,12 +36,17 @@ export function createConfiguredAdapter({
   });
   const publicClient=createKyselyPublicClient({role:'anon',fetch:fetchImpl});
   async function operation(kind,scopeid='',fields={}){
-    // The same authenticated endpoint serves reads and writes. Only known
-    // reads can inherit the active page's abort signal; never cancel a write.
+    // An explicit editor Cancel now ends its OWN write generation. Ordinary
+    // section switching still never cancels writes; protected reads retain
+    // their independent transient signal. Request abort reaches the backend's
+    // request-scoped SQL connection and uncommitted transaction.
     const readOnly=kind==='managed-action'&&READ_ACTIONS.has(String(fields.name||''));
+    const lease=readOnly?null:editorTransactionLease();
+    assertEditorTransactionLease(lease);
     const signal=readOnly
       ?AbortSignal.any([transientReadSignal(),AbortSignal.timeout(30000)])
-      :AbortSignal.timeout(30000);
+      :lease?AbortSignal.any([lease.signal,AbortSignal.timeout(30000)])
+        :AbortSignal.timeout(30000);
     // Cookies still authenticate every request; no extra Auth round-trip.
     let response;
     try{
@@ -49,6 +56,14 @@ export function createConfiguredAdapter({
         body:JSON.stringify({kind,scopeid,...fields}),signal
       });
     }catch(error){
+      // Cancel terminates browser work and may abort the server's uncommitted
+      // SQL via request.signal. A request already committed before disconnect
+      // cannot be rolled back retroactively; caller must re-read later.
+      if(isEditorTransactionCancelled(lease)){
+        const stopped=new Error('編輯已取消；已送出的交易結果須重新讀取確認。');
+        stopped.code='LOC_EDITOR_CANCELLED';
+        throw stopped;
+      }
       // A lost HTTP response does NOT prove the database rolled back. Do not
       // tell the editor to retry blindly or leave an ambiguous stale cache.
       if(kind==='managed-transaction'||kind==='managed-write'||
@@ -61,6 +76,7 @@ export function createConfiguredAdapter({
       throw error;
     }
     const result=await response.json().catch(()=>null);
+    assertEditorTransactionLease(lease);
     if(!response.ok)throw errorFromResponse(result,response);
     // Public Culture/Statistics aggregates are semi-dynamic snapshots, not
     // timed caches. One successful mutation retires affected derived results;
