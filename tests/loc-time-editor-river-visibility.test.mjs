@@ -65,5 +65,5 @@ test('TimeAnchor management paints chart before the heavy list without a coverin
   assert.match(manage,/unfoldCurtain=\{false\}/);
   assert.match(manage,/onFirstPaint=\{\(\)=>setTimeRiverFirstPaint\(true\)\}/);
   assert.match(manage,/!query\.isPending&&\(timeRiverFirstPaint\|\|!editorEraRiver\.groups\.length\)/);
-  assert.match(manage,/setTimeout\(\(\)=>setTimeRiverFirstPaint\(true\),2000\)/);
+  assert.doesNotMatch(manage,/setTimeout\(\(\)=>setTimeRiverFirstPaint\(true\)/);
 });
