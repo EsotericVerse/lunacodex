@@ -8,6 +8,7 @@ import {schema as zmodel} from '../../../packages/zenstack/schema.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {portableContainsSpec} from './portable-search.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {CAPTURE_FROM_SITES,CAPTURE_LOOKUP_SITES} from '../source/site-from-url.mjs';
 
 const SCOPE_MODELS=Object.freeze({lo3rwang:'Lo3rwangGalaxy',lrunes:'LrunesGalaxy'});
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -46,7 +47,7 @@ function relation(scope,engine,namespace,tableName=''){
 function validateSync(body){
   const row=body.row;
   if(!row||typeof row!=='object'||Array.isArray(row)||
-     !UID.test(String(row.uid||''))||row.site!=='mcp'||
+     !UID.test(String(row.uid||''))||!CAPTURE_FROM_SITES.includes(row.site)||
      typeof row.site_id!=='string'||row.site_id.length<3||
      typeof row.content!=='string'||!row.content.trim()||
      typeof row.title!=='string'||!row.title.trim()||
@@ -61,12 +62,12 @@ function validateSync(body){
 function validateUid(uid){
   if(!UID.test(String(uid||'')))reject('Invalid case-sensitive Galaxy UID');
 }
-function conversationOnly(q){
-  // A historic PR record can share site=mcp, sometimes with a different
-  // GitHub repository. Exclude PR provenance *from the SQL rows themselves*.
-  // NULL site_id is allowed for old genuine conversations. This filter is
-  // shared by read, search, sync and append, independent of the SQL engine.
-  return q.where('site','=','mcp').where(eb=>eb.or([
+function conversationOnly(q,site=null){
+  // The parent MCP Domain is never a stored source. Legacy mcp rows remain
+  // readable until separately reconciled, never accepted as new writes.
+  // Preserve the existing PR provenance guard on all paths.
+  return q.where('site','in',site?[site]:CAPTURE_LOOKUP_SITES)
+    .where(eb=>eb.or([
     eb('site_id','is',null),
     eb.and([
       eb('site_id','not like','%#%'),
@@ -105,14 +106,15 @@ export async function executePortableMcp(trx,body,claims,{
       if(typeof body.uid!=='string'||body.uid.length<1||body.uid.length>128||
         /[\u0000-\u001f\u007f]/.test(body.uid))reject('Invalid mapped article ID');
     }else validateUid(body.uid);
-    const requestedSite=body.site??'mcp';
-    if(requestedSite!=='mcp'&&requestedSite!=='LOC')
+    const requestedSite=body.site??null;
+    if(requestedSite!==null&&requestedSite!=='LOC'&&
+       !CAPTURE_FROM_SITES.includes(requestedSite))
       reject('Unsupported private Galaxy site',403);
     if(requestedSite==='LOC'&&(scope!=='lo3rwang'||external))
       reject('LOC documentation read requires its owning Scope',403);
     const source=external?trx.selectFrom(table):
       requestedSite==='LOC'?trx.selectFrom(table).where('site','=','LOC'):
-      conversationOnly(trx.selectFrom(table));
+      conversationOnly(trx.selectFrom(table),requestedSite);
     // External tables need only the four canonical article fields. Optional
     // date/url columns are selected only when the owner maps them explicitly:
     // never assume the source schema contains LOC-specific optional columns.
