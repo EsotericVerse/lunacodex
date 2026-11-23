@@ -729,7 +729,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </option>)}
         </select>
       </label>
-      0<div className="scope-preview-links loc-keyword-analysis-actions">
+      <div className="scope-preview-links loc-keyword-analysis-actions">
         <button type="button" className="loc-button primary"
           disabled={busy||checkingAttempt||!activeClass?.uid||unconfirmedAttempt?.classUid===activeClass.uid}
           onClick={()=>{setResetConfirmation('');run(false);}}>重新分析</button>
