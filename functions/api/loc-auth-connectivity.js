@@ -93,7 +93,33 @@ async function diagnoseFixedPgTransport(env){
    stage='tls';
    tls=plain.startTls();
    await bound(tls.opened);
-   return json({ok:true,stage:'tls_ready',verified:true});
+   // Read only PostgreSQL's FIRST authentication frame, without sending a
+   // password. This distinguishes a healthy TLS tunnel from a startup
+   // protocol failure inside pg.Client. User, database and host stay private.
+   stage='postgres_startup';
+   const user=decodeURIComponent(address.username);
+   const database=decodeURIComponent(address.pathname.slice(1));
+   const fields=new TextEncoder().encode(
+     'user\0'+user+'\0database\0'+database+
+     '\0client_encoding\0UTF8\0application_name\0loc_health_probe\0\0'
+   );
+   const packet=new Uint8Array(8+fields.length);
+   const view=new DataView(packet.buffer);
+   view.setUint32(0,packet.length,false);
+   view.setUint32(4,196608,false);
+   packet.set(fields,8);
+   const startupWriter=tls.writable.getWriter();
+   try{await bound(startupWriter.write(packet));}
+   finally{startupWriter.releaseLock();}
+   const startupReader=tls.readable.getReader();
+   let authReply;
+   try{authReply=await bound(startupReader.read());}
+   finally{startupReader.releaseLock();}
+   const first=authReply.value?.[0];
+   return first===82
+     ?json({ok:true,stage:'postgres_auth_challenge',verified:true})
+     :json({ok:false,stage,reply:authReply.done?'EOF':
+       first===69?'PG_ERROR':'OTHER'},503);
  }catch(error){
    const msg=String(error?.message||'').toLowerCase();
    const reason=msg.includes('timeout')?'TIMEOUT':
