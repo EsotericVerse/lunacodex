@@ -715,13 +715,6 @@ export default function Culture(){
   const editorEraRiver=useMemo(()=>
     buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
     [timelineItems,expandedEditorEraIds,scopeId]);
-  // Never strand the edit form if the separate timeline chunk cannot mount.
-  // Normal path is first chart paint; the bounded fallback keeps editing usable.
-  useEffect(()=>{
-    if(!isTimeEditingView||query.isPending||timeRiverFirstPaint||!editorEraRiver.groups.length)return;
-    const timer=window.setTimeout(()=>setTimeRiverFirstPaint(true),2000);
-    return ()=>window.clearTimeout(timer);
-  },[isTimeEditingView,query.isPending,timeRiverFirstPaint,editorEraRiver.groups.length]);
   const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
     current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
   const toggleTimeTrace=groupId=>{
