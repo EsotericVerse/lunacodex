@@ -77,3 +77,15 @@ test('Native import candidate queries are fixed, scoped and not generic SQL',asy
   assert.match(src,/eb\('createtime','>='/);
   assert.match(client,/import_site_id_candidates','import_created_at_candidates'/);
 });
+
+test('occupied-time import lookup is exact-second, website-only and scope-bounded',async()=>{
+  const backend=await readFile(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const panel=await readFile(new URL('../app/loc/import/ManagementImportPanel.jsx',import.meta.url),'utf8');
+  const guard=await readFile(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  assert.match(backend,/import_occupied_createtimes/);
+  assert.match(backend,/ms%1000!==0/);
+  assert.match(backend,/ms\+1000/);
+  assert.match(panel,/action:'import_occupied_createtimes'/);
+  assert.match(panel,/new Date\(Math\.floor\(instant\/1000\)\*1000\)\.toISOString\(\)/);
+  assert.match(guard,/import_occupied_createtimes/);
+});
