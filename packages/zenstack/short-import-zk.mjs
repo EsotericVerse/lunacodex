@@ -27,8 +27,8 @@ const shortInsertRow=z.strictObject({
   UpdateTime:z.string().refine(v=>Number.isFinite(Date.parse(v))),
   ...Object.fromEntries(FLAGS.map(key=>[key,z.boolean()]))
 });
-const shortInsertBatch=z.array(shortInsertRow).min(1).max(50);
-const sources=z.array(z.string().regex(SITE_ID)).min(1).max(50);
+const shortInsertBatch=z.array(shortInsertRow).min(1);
+const sources=z.array(z.string().regex(SITE_ID)).min(1);
 
 function modelContract(scope,engine,namespace){
   // ZenStack V3 cannot target MSSQL. Its ZModel metadata/validation is

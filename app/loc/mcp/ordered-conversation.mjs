@@ -18,8 +18,8 @@ function plainMessage(row){
   source_order:row.source_order,parent_id:row.parent_id||null,text:row.text};
 }
 export function orderedBatch(records){
- if(!Array.isArray(records)||!records.length||records.length>100)
-   reject('Ordered conversation batch requires 1–100 messages');
+ if(!Array.isArray(records)||!records.length)
+   reject('Ordered conversation batch requires messages');
  const ids=new Set(),positions=new Set();
  return records.map(raw=>{
   const row=plainMessage(raw);
