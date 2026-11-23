@@ -29,7 +29,7 @@ const MAX_ROAD=80,MAX_LINES=400;
 const unique=items=>[...new Set(items)];
 const validPair=pair=>Array.isArray(pair)&&pair.length===2&&pair[0]&&pair[1]&&pair[0]!==pair[1];
 
-export default function TraceRouteManager({scopeId,mode='all'}){
+export default function TraceRouteManager({scopeId,mode='all',treeMode=false,selectedRecordUid='',initialType='path',spatialData=null,reloadSpatial=null,onRegisterLeave=null}){
   const account=useAccount(),cache=useResourceCache(),params=useMemo(()=>new URLSearchParams(typeof window==='undefined'?'':window.location.search),[typeof window==='undefined'?'':window.location.search]);
   const dock=useEditDock();
   const inDock=Boolean(dock?.active&&dock.scopeId===scopeId);
@@ -59,16 +59,22 @@ export default function TraceRouteManager({scopeId,mode='all'}){
   const [showMap,setShowMap]=useState(false);
   const [savedReceipt,setSavedReceipt]=useState(null);
   const openedFromUrl=useRef('');
+  const openedFromTree=useRef('');
   const own=owner!=='loc'&&account.canLocAccessSync('scope',owner);
   // A LOC Group manager can inspect member maps, but edits still require
   // permission on the actual owner Scope.
   const canRead=own||(scopeId==='loc'&&account.canLocAccessSync('group','loc'));
-  const index=useAsyncResource({
+  const fetchedIndex=useAsyncResource({
     queryKey:traceMapIndexKey(owner,{includeHidden:own}),
-    enabled:TRACE_SCOPES.includes(owner)&&canRead,
+    enabled:!treeMode&&TRACE_SCOPES.includes(owner)&&canRead,
     queryFn:()=>readTraceMapIndex(owner,{includeHidden:own}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
+  // Reuse the authenticated parent's data when selecting from the common tree.
+  const index=treeMode?{
+    data:spatialData?.maps||[],isPending:false,error:null,
+    mutate:async()=>((await reloadSpatial?.())?.maps||[])
+  }:fetchedIndex;
   const records=(index.data||[]).filter(row=>row.source_scope===owner);
   // Resolve Trace -> Path edges with the existing Space ZModel over the
   // already-loaded owner Scope. Four-character legacy IDs stay compatible.
@@ -123,15 +129,16 @@ export default function TraceRouteManager({scopeId,mode='all'}){
   const currentMemberUids=current
     ?[...new Set([...traceMemberUids(current),...currentRouteMembers.flatMap(traceMemberUids)])]
     :[];
-  const anchorIndex=useAsyncResource({
+  const fetchedAnchorIndex=useAsyncResource({
     queryKey:traceAllAnchorsKey(owner,{nativeOnly:owner==='loc',includeHidden:own}),
-    enabled:editorOpen,
+    enabled:editorOpen&&!treeMode,
     queryFn:()=>readAllTraceAnchors(owner,{nativeOnly:owner==='loc',includeHidden:own}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
+  const anchorIndex=treeMode?{data:spatialData?.anchors||[],isPending:false,error:null}:fetchedAnchorIndex;
   const currentAnchors=useAsyncResource({
     queryKey:current?traceCurrentKey(owner,{...current,anchor_list:currentMemberUids},{nativeOnly:owner==='loc',includeHidden:own}):null,
-    enabled:Boolean(current)&&!editorOpen,
+    enabled:Boolean(current)&&!editorOpen&&!treeMode,
     queryFn:()=>readCurrentTraceAnchors(owner,currentMemberUids,{nativeOnly:owner==='loc',includeHidden:own}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
@@ -146,7 +153,19 @@ export default function TraceRouteManager({scopeId,mode='all'}){
   const poolOptions=useMemo(()=>spool.map(uid=>anchorMap.get(uid))
     .filter(Boolean).map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[spool,anchorMap]);
   const availableRoadOptions=poolOptions.filter(item=>!queue.includes(item.value));
-  const incomplete=editorOpen&&Boolean(editingUid||title||description||spool.length||queue.length||pairs.length||routeUids.length||invisible);
+  const originalRow=records.find(row=>row.uid===editingUid);
+  const originalSpool=originalRow?traceMemberUids(originalRow):[];
+  const treeDirty=editingUid&&originalRow
+    ?title!==String(originalRow.title||'')||
+      description!==String(originalRow.description||'')||
+      invisible!==Boolean(originalRow.invisible)||
+      JSON.stringify(routeUids)!==JSON.stringify(originalRow.route_list?.routes||[])||
+      JSON.stringify(queue)!==JSON.stringify(originalRow.trace_type==='path'?originalRow.anchor_list:[])||
+      JSON.stringify(pairs)!==JSON.stringify(originalRow.trace_type==='trace'?(originalRow.route_list?.segments||[]):[])||
+      JSON.stringify(spool)!==JSON.stringify(originalSpool)
+    :Boolean(title||description||spool.length||queue.length||pairs.length||routeUids.length||invisible);
+  const incomplete=editorOpen&&(treeMode?treeDirty:
+    Boolean(editingUid||title||description||spool.length||queue.length||pairs.length||routeUids.length||invisible));
   const chosenIds=type==='path'?queue:unique(pairs.flat());
   const preview=editorOpen
     ?(chosenIds.length>=2||type==='trace'&&routeUids.length>0
@@ -154,13 +173,18 @@ export default function TraceRouteManager({scopeId,mode='all'}){
         title:title||'地圖預覽',anchor_list:type==='path'?queue:unique(pairs.flat()),route_list:{routes:routeUids,segments:type==='trace'?pairs:[]}}
       :null)
     :current;
-  const previewAnchors=currentAnchors.data||[];
+  const previewAnchors=treeMode?(spatialData?.anchors||[]).filter(row=>currentMemberUids.includes(row.uid)):(currentAnchors.data||[]);
   const clear=()=>{
     setEditingUid('');setTitle('');setDescription('');setSpool([]);setQueue([]);setPairs([]);
     setFrom('');setTo('');setMapStart('');setSelectedStop('');setSelectedAnchor(null);setSavedReceipt(null);
     setInvisible(false);setRouteUids([]);
   };
   const allowLeave=()=>!incomplete||window.confirm('尚未儲存，確定放棄修改？');
+  useEffect(()=>{
+    if(!treeMode||!onRegisterLeave)return;
+    onRegisterLeave(()=>!busy&&allowLeave());
+    return ()=>onRegisterLeave(null);
+  },[treeMode,onRegisterLeave,busy,incomplete]);
   const openNew=kind=>{
     if(busy||!allowLeave())return;
     clear();setType(kind);setEditorOpen(true);setShowMap(true);setError(false);setNotice('');
@@ -178,7 +202,20 @@ export default function TraceRouteManager({scopeId,mode='all'}){
     setSelectedUid('');setEditorOpen(false);setShowMap(false);clear();
   },[owner]);
   useEffect(()=>{
-    const requested=params?.get('frame')||'';
+    if(!treeMode)return;
+    const token=selectedRecordUid?'edit:'+selectedRecordUid:'new:'+initialType;
+    if(openedFromTree.current===token)return;
+    if(selectedRecordUid){
+      if(!index.data)return;
+      const row=records.find(item=>item.uid===selectedRecordUid);
+      if(!row)return;
+      openedFromTree.current=token;openEdit(row);
+    }else{
+      openedFromTree.current=token;openNew(initialType==='trace'?'trace':'path');
+    }
+  },[treeMode,selectedRecordUid,initialType,index.data]);
+  useEffect(()=>{
+    const requested=treeMode?'':params?.get('frame')||'';
     if(!requested||!index.data||!own||editorOpen)return;
     const token=owner+':'+requested;
     if(openedFromUrl.current===token)return;
@@ -299,19 +336,19 @@ export default function TraceRouteManager({scopeId,mode='all'}){
     <header className="loc-trace-map-manager-heading">
       <div><h3>{mode==='path'?'路線管理':mode==='trace'?'痕跡管理':'路線圖／痕跡圖管理'}</h3>
       </div>
-      <div className="scope-stat-controls">
+      {!treeMode?<div className="scope-stat-controls">
         {mode!=='trace'?<button type="button" className="loc-button" disabled={busy||!own} onClick={()=>openNew('path')}>新增路線圖</button>:null}
         {mode!=='path'?<button type="button" className="loc-button" disabled={busy||!own} onClick={()=>openNew('trace')}>新增痕跡圖</button>:null}
-      </div>
+      </div>:null}
     </header>
-    {scopeId==='loc'?<label>作品範圍
+    {scopeId==='loc'&&!treeMode?<label>作品範圍
       <select className="scope-select" value={owner} onChange={e=>{if(allowLeave())setOwner(e.target.value);}}>
         {TRACE_SOURCE_ROWS.map(row=><option key={row.scope_id} value={row.scope_id}>{row.config?.display_name||row.scope_id}</option>)}
       </select>
     </label>:null}
-    <label>搜尋已儲存的路線／痕跡圖
+    {!treeMode?<label>搜尋已儲存的路線／痕跡圖
       <input type="search" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="依標題搜尋"/>
-    </label>
+    </label>:null}
     {index.isPending?<p className="scope-status">載入列表中…</p>:null}
     {index.error?<p role="alert" className="scope-status scope-error">{String(index.error.message||index.error)}</p>:null}
     <details className="scope-card"><summary>大量隱藏／公開路線圖與痕跡圖</summary>
@@ -331,7 +368,7 @@ export default function TraceRouteManager({scopeId,mode='all'}){
         <button className="loc-button" type="button" disabled={busy||!own||!bulkSelected.length} onClick={()=>applyBulkVisibility(false)}>大量公開</button>
       </div>
     </details>
-    <div className="loc-trace-saved-maps">
+    {!treeMode?<div className="loc-trace-saved-maps">
       {displayRecords.map(({row,key,depth,label})=>!row
         ?<h4 key={key} className="scope-source-tree-universe">{label}</h4>
         :<div className="loc-trace-saved-map" key={key}
@@ -353,7 +390,7 @@ export default function TraceRouteManager({scopeId,mode='all'}){
           <button type="button" className="loc-button" disabled={!own||busy} onClick={()=>remove(row)}>刪除</button>
         </div>:null}
       </div>)}
-    </div>
+    </div>:null}
     {editorOpen?<form className="loc-trace-route-composer" onSubmit={event=>{if(inDock)event.preventDefault();else void save(event);}}>
       <h4>{editingUid?'編輯':'新增'}{type==='path'?'路線圖':'痕跡圖'}</h4>
       <div className="scope-management-fields">
@@ -460,7 +497,7 @@ export default function TraceRouteManager({scopeId,mode='all'}){
           onClick={()=>{if(allowLeave()){clear();setEditorOpen(false);}}}>取消</button>:null}
       </div>
     </form>:null}
-    {!editorOpen&&showMap&&preview?<TraceMap spatialData={{anchors:previewAnchors,maps:[preview,...currentRouteMembers]}}
+    {!treeMode&&!editorOpen&&showMap&&preview?<TraceMap spatialData={{anchors:previewAnchors,maps:[preview,...currentRouteMembers]}}
       selectedRouteUid={preview.uid} hideRoutePicker/>:null}
     {notice?<p role={error?'alert':'status'} className={'scope-status'+(error?' scope-error':'')}>{notice}</p>:null}
   </section>;
