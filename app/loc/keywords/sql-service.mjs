@@ -273,10 +273,20 @@ async function lockedKeywordMetadata(trx,scope,classUid,expectedEpoch){
 // This is not a second keyword index or a public SQL request surface.
 async function writeKeywordTotals(trx,scope,updates){
   if(!updates.length)return 0;
-  if(updates.some(row=>!UID.test(String(row.uid||''))||
-    !Number.isSafeInteger(row.total)||row.total<0))
-    fail('Invalid Keyword aggregate counts');
-  const payload=JSON.stringify(updates);
+  // One physical Anchor UID may be referenced by more than one Group.
+  // PostgreSQL UPDATE ... FROM cannot count duplicate input UIDs as separate
+  // target rows; normalize to a single typed update per physical PK.
+  const byUid=new Map();
+  for(const row of updates){
+    if(!UID.test(String(row.uid||''))||
+       !Number.isSafeInteger(row.total)||row.total<0)
+      fail('Invalid Keyword aggregate counts');
+    if(byUid.has(row.uid)&&byUid.get(row.uid)!==row.total)
+      fail('Conflicting Keyword counts for one Item UID',409);
+    byUid.set(row.uid,row.total);
+  }
+  const physicalUpdates=[...byUid].map(([uid,total])=>({uid,total}));
+  const payload=JSON.stringify(physicalUpdates);
   const table=sql.ref(anchorName(scope));
   const result=await sql`
     update ${table} as a
@@ -286,7 +296,7 @@ async function writeKeywordTotals(trx,scope,updates){
     where a.uid=incoming.uid::char(8) and a.type in ('item','group')
   `.execute(trx);
   const affected=Number(result.numAffectedRows??0);
-  if(affected!==updates.length)fail('Keyword aggregate targets changed',409);
+  if(affected!==physicalUpdates.length)fail('Keyword aggregate targets changed',409);
   return affected;
 }
 
