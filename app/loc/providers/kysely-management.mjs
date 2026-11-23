@@ -30,7 +30,7 @@ import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {readItemKeywordProjection,itemKeywordStatistics,
   itemKeywordSuggestions} from '../keywords/item-count-analysis.mjs';
 import {parseSearchQuery} from '../search/query.mjs';
-import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
