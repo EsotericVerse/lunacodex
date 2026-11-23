@@ -226,6 +226,8 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
   // an acceptance metric, not a forced SQL LIMIT or an artificial throttle.
   const rate=()=>Math.round((scanned-startedScanned)*1000/
     Math.max(1,now()-started));
+  const incomplete=()=>({incomplete:true,scanned,parsed:a.state.parsed,
+    rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
   const checkpoint=async()=>{
     if(onCheckpoint&&lastCheckpoint!==scanned){
       await onCheckpoint({...a.state,cursor,
@@ -238,7 +240,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     const remaining=runLimit===null?Infinity:runLimit-runCount;
     if(remaining<=0){
       await checkpoint();
-      return {incomplete:true,scanned,parsed:a.state.parsed};
+      return incomplete();
     }
     // Stop exactly at the first 4096-row decision point. If throughput has
     // sufficient headroom, continue to 8192 without an unnecessary SQL write.
@@ -249,7 +251,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
     if(!page||!Array.isArray(page.rows)||page.rows.length>requested||
       !Object.hasOwn(page,'nextCursor'))throw Error('Invalid Item scan page');
     if(!page.rows.length)break;
-    cursor=page.nextCursor;scanned+=page.rows.length;
+    cursor=page.nextCursor;
     const candidates=page.rows.filter(row=>row.keyword!==false);
     const ids=candidates.map(row=>String(row.uid));
     let pageChars=0;
@@ -286,6 +288,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
         }
       }else a.absorb(ordered);
     }
+    scanned+=page.rows.length;
     a.state.scanned=scanned;
     sizer.observe(page.rows.length,pageChars);
     const elapsed=now()-started;
@@ -296,7 +299,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
         await checkpoint();
         onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,
           rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
-        return {incomplete:true,scanned,parsed:a.state.parsed};
+        return incomplete();
       }
       extended=true;
     }
@@ -308,7 +311,7 @@ export async function analyzeItemKeywordCounts({items,groups,expectedCount,
       runLimit!==null&&scanned-startedScanned>=runLimit||
       timeBudgetMs!==null&&elapsed>=timeBudgetMs*0.65)){
       await checkpoint();
-      return {incomplete:true,scanned,parsed:a.state.parsed};
+      return incomplete();
     }
   }
   if(expectedCount!==null&&scanned<expectedCount)
