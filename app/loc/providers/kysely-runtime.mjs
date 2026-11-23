@@ -136,8 +136,12 @@ export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,p
     query=query.orderBy(sql`case when ${sql.ref(sortColumn)} is null then 1 else 0 end`,'asc');
   }
   for(const order of req.orders)query=query.orderBy(order.column,order.ascending===false?'desc':'asc');
+  if(dialect==='mssql'&&req.offset>0&&!req.orders.length)
+    throw new Error('SQL Server pagination requires an explicit order');
   if(req.limit!==null)query=query.limit(req.limit);
-  query=query.offset(req.offset);
+  // SQL Server requires ORDER BY for OFFSET; OFFSET 0 is not a harmless
+  // default there. Avoid emitting it unless the caller actually paginates.
+  if(req.offset>0)query=query.offset(req.offset);
   const countQuery=req.count?publishedOnly(applyOrFilters(applyFilters(
     trx.selectFrom(table).select(trx.fn.countAll().as('count')),req.filters),req.orFilters),
       req.table,publicOnly,req.columns):null;
@@ -207,6 +211,70 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres',namespace){
     :oc.columns(req.onConflict).doNothing());
 }
 
+// SQL Server has no targeted ON CONFLICT. Do not replace it with an
+// unrestricted MERGE or SELECT-then-INSERT under READ COMMITTED. This fixed
+// primary-key operation is valid ONLY inside an already-owned Kysely
+// Transaction. UPDLOCK + HOLDLOCK serializes the key range until COMMIT;
+// concurrent conflicting inserts still fail against the physical primary key.
+export async function executeMssqlUpsert(trx,req,{namespace='dbo',modelName=''}={}){
+  if(trx?.isTransaction!==true)
+    throw new Error('SQL Server UPSERT requires an active Kysely transaction');
+  if(req?.operation!=='upsert')
+    throw new Error('SQL Server UPSERT requires an upsert request');
+  const rows=Array.isArray(req.values)?req.values:[req.values];
+  if(!rows.length||rows.length>500||!sameKeys(rows))
+    throw new Error('Invalid SQL Server UPSERT rows');
+  const primary=modeledPrimaryKeyColumns(req.schema,req.table);
+  if(!primary?.length||primary.length!==req.onConflict?.length||
+    primary.some((column,index)=>column!==req.onConflict[index]))
+    throw new Error('SQL Server UPSERT requires the exact modeled primary key');
+  const table=databaseTable(req,'mssql',namespace,modelName);
+  const updates=Object.keys(rows[0]).filter(column=>!primary.includes(column));
+  const projected=query=>!req.returning?query:
+    req.columns?.length===1&&req.columns[0]==='*'
+      ?query.outputAll('inserted')
+      :query.output(req.columns.map(column=>'inserted.'+column));
+  const seen=new Set(),data=[];
+  let count=0;
+  for(const row of rows){
+    if(primary.some(column=>row[column]===undefined||row[column]===null))
+      throw new Error('SQL Server UPSERT primary key values are required');
+    const identity=JSON.stringify(primary.map(column=>row[column]));
+    if(seen.has(identity))throw new Error('Duplicate SQL Server UPSERT primary key');
+    seen.add(identity);
+  }
+  for(const row of rows){
+    const conditions=primary.map(column=>
+      sql`${sql.ref(column)} = ${row[column]}`);
+    const found=await sql`
+      select ${sql.join(primary.map(column=>sql.ref(column)),sql`, `)}
+      from ${sql.ref(table)} with (updlock,holdlock)
+      where ${sql.join(conditions,sql` and `)}
+    `.execute(trx);
+    if(found.rows.length>1)throw new Error('Non-unique SQL Server UPSERT primary key');
+    if(found.rows.length&&primary.some(column=>found.rows[0][column]!==row[column]))
+      throw new Error('SQL Server UID collation does not preserve exact identity');
+    if(found.rows.length&&(req.ignoreDuplicates||!updates.length))continue;
+    let builder=found.rows.length
+      ?trx.updateTable(table).set(Object.fromEntries(
+        updates.map(column=>[column,row[column]])))
+      :trx.insertInto(table).values(row);
+    if(found.rows.length){
+      for(const column of primary)
+        builder=builder.where(column,'=',row[column]);
+    }
+    const outcome=await projected(builder).execute();
+    const affected=req.returning?outcome.length:Number(
+      outcome[0]?.numAffectedRows??
+      outcome[0]?.numInsertedOrUpdatedRows??
+      outcome[0]?.numUpdatedRows??0);
+    if(affected!==1)throw new Error('SQL Server UPSERT affected-row count mismatch');
+    count++;
+    if(req.returning)data.push(...outcome);
+  }
+  return req.returning?{data,count:null}:{data:null,count};
+}
+
 function applyMutationReturning(query,req,dialect){
   if(!req.returning)return query;
   if(dialect==='mysql')
@@ -263,6 +331,9 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
       });
       data=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,data);
     }
+  }else if(dialect==='mssql'&&req.operation==='upsert'){
+    const prepared={...req,values:serializePortableJsonFields(req.values,'mssql')};
+    ({data,count}=await executeMssqlUpsert(trx,prepared,{namespace,modelName}));
   }else{
     const built=buildKyselyMutationQuery(trx,input,{dialect,namespace,modelName});
     const result=await built.query.execute();
