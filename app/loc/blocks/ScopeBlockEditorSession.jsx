@@ -236,10 +236,9 @@ export default function ScopeBlockEditorSession({
             <button type="button" className="loc-button scope-danger-button" disabled={busy} onClick={()=>removeEntity(index)}><UiText id="uiExtra.editBlocks.remove"/></button>
           </div>
           <label className="scope-management-wide-field">
-            <span><UiText id="uiExtra.editBlocks.childTitleHint"/></span>
+            <span><UiText id="common.title"/></span>
             <input
               className="scope-search-input"
-              placeholder={t('uiExtra.editBlocks.bubbleHint')}
               value={entity.title}
               onChange={event=>updateEntity(index,{title:event.target.value})}
             />

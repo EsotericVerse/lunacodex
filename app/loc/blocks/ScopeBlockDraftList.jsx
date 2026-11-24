@@ -254,8 +254,8 @@ export default function ScopeBlockDraftList({
           <button type="button" className="loc-button scope-danger-button" disabled={busy} onClick={()=>removeEntity(draft.uid,index)}><UiText id="uiExtra.editBlocks.remove"/></button>
         </div>
         <label className="scope-management-wide-field">
-          <span><UiText id="uiExtra.editBlocks.childTitleHint"/></span>
-          <input className="scope-search-input" placeholder={t('uiExtra.editBlocks.bubbleHint')} value={entity.title}
+          <span><UiText id="common.title"/></span>
+          <input className="scope-search-input" value={entity.title}
             onChange={event=>updateEntity(draft.uid,index,{title:event.target.value})}/>
         </label>
         <BlockNoteEditor
@@ -282,7 +282,7 @@ export default function ScopeBlockDraftList({
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index+1)} onClick={()=>moveBlock(draft.uid,1)}><UiText id="uiExtra.editBlocks.moveDown"/></button>:null}
         {allowDelete?<button type="button" className="loc-button scope-danger-button" disabled={busy} onClick={()=>toggleDelete(draft.uid)}><UiText id="uiExtra.editBlocks.remove"/></button>:null}
       </div>
-      <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3><p className="scope-editor-stage__help">依序設定標題、副標題與正文；下方另行設定圖片及附屬內容。</p>
+      <div className="scope-editor-stage"><h3 className="scope-editor-stage__title">文字內容</h3>
       <ObjectEditor mode="scope" fields={[
         ...(editEyebrow?[{
           key:'eyebrow',label:<UiText id="uiExtra.editBlocks.englishEyebrow"/>,
