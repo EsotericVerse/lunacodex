@@ -70,6 +70,37 @@ export function distanceInMeters(a,b){
   const n=Math.sin(dlat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dlng/2)**2;
   return 12742000*Math.asin(Math.min(1,Math.sqrt(n)));
 }
+// A 3D Cartesian grid on the same sphere as distanceInMeters. Any point
+// within the arc radius is within that chord distance on every axis, so
+// the 27 adjacent cells suffice even at the poles and antimeridian.
+function timelineSpatialCandidates(locations,radius){
+  const size=Math.max(1,Number(radius))+1e-6;
+  if(!Number.isFinite(size))return ()=>locations;
+  const radians=Math.PI/180,earth=6371000;
+  const cell=({lat,lng})=>{
+    const phi=Number(lat)*radians,lambda=Number(lng)*radians;
+    const xy=earth*Math.cos(phi);
+    return [Math.floor(xy*Math.cos(lambda)/size),
+      Math.floor(xy*Math.sin(lambda)/size),Math.floor(earth*Math.sin(phi)/size)];
+  };
+  const buckets=new Map();
+  for(const point of locations){
+    const key=cell(point).join(',');
+    if(!buckets.has(key))buckets.set(key,[]);
+    buckets.get(key).push(point);
+  }
+  return window=>{
+    // Preserve the existing distance filter for nonstandard direct callers.
+    if(!Number.isFinite(Number(window.lat))||!Number.isFinite(Number(window.lng))||
+       Math.abs(Number(window.lat))>90||Math.abs(Number(window.lng))>180)return locations;
+    const [x,y,z]=cell(window),nearby=[];
+    for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++)for(let dz=-1;dz<=1;dz++){
+      const bucket=buckets.get([x+dx,y+dy,z+dz].join(','));
+      if(bucket)for(const point of bucket)nearby.push(point);
+    }
+    return nearby;
+  };
+}
 export function matchTimelineWindows(windows,anchors,radius=TIMELINE_RADIUS_METERS){
   const locations=(anchors||[]).filter(row=>row.trace_type==='space_anchor')
     .map(row=>{
@@ -78,12 +109,13 @@ export function matchTimelineWindows(windows,anchors,radius=TIMELINE_RADIUS_METE
       return a?.length===2&&a[0]!=null&&a[1]!=null&&
         Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180
         ?{uid:String(row.uid||''),title:String(row.title||''),lat,lng}:null;
-    }).filter(Boolean);
+    }).filter(Boolean).map((point,order)=>({...point,order}));
+  const nearby=timelineSpatialCandidates(locations,radius);
   let omitted=0,ambiguous=0;
   const selected=[];
   for(const window of windows){
-    const candidates=locations.map(anchor=>({...anchor,distance:distanceInMeters(window,anchor)}))
-      .filter(anchor=>anchor.distance<=radius).sort((a,b)=>a.distance-b.distance);
+    const candidates=nearby(window).map(anchor=>({...anchor,distance:distanceInMeters(window,anchor)}))
+      .filter(anchor=>anchor.distance<=radius).sort((a,b)=>a.distance-b.distance||a.order-b.order);
     if(!candidates.length){omitted++;continue;}
     if(candidates.length>1||window.uncertain)ambiguous++;
     selected.push({...window,index:selected.length,candidates:candidates.map(({uid,title,distance})=>({
