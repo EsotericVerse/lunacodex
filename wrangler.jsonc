@@ -3,6 +3,7 @@
   "name": "lunacodex",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-24",
+  "previews": {},
   "compatibility_flags": [
     "nodejs_compat",
     "global_fetch_strictly_public"
