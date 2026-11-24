@@ -51,8 +51,7 @@ jobs:
         run: |
           pnpm run check:syntax
           node --test tests/*.test.mjs
-      - name: Build Next.js
-        run: pnpm run build
+      # Production and preview builds belong to Cloudflare Workers Builds.
 
       - name: Verify live React development console without missing-key warnings
         # Run even if a separate SQL/Culture regression failed; never mask a React warning.
