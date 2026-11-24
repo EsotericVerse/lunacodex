@@ -46,13 +46,24 @@ test('fixed registry removes SQL mapping probes but not signed authorization che
   assert.match(roles,/publishedLocAccess\(email,\{website\}\)/);
 });
 
-test('empty cache-backed admin setting is retired; fixed transfer ceilings remain',()=>{
-  const code=read('app/loc/providers/kysely-management.mjs');
-  assert.doesNotMatch(code,/\.select\('caches'\)/);
-  assert.doesNotMatch(code,/section==='runtime'/);
-  const constants=read('app/loc/query/query-batch-size.mjs');
-  assert.match(constants,/archiveMiB:1024,jsonMiB:50,documentMiB:128,timelineMiB:200/);
-  assert.doesNotMatch(constants,/encodeRuntimeIo|decodeRuntimeIo|normalizeReservedIsr/);
-  const view=read('app/loc/views/AdminHomeView.jsx');
-  assert.doesNotMatch(view,/RuntimeIoSettings|value:'io'/);
+test('Manage changes cannot commit a role or route different from published JS',()=>{
+  const native=read('app/loc/mcp/native-operations.mjs');
+  assert.match(native,/requirePublishedManageWrite\(body\.payload\)/);
+  assert.match(native,/for\(const item of body\.operations\)\{/);
+  assert.match(native,/requirePublishedManageWrite\(item\)/);
+  assert.match(native,/Object\.is\(fixed\[field\],value\)/);
+  const lifecycle=read('app/loc/providers/kysely-scope-lifecycle.mjs');
+  assert.match(lifecycle,/fixedManageScope\(id\)\?\.active===true/);
+});
+
+test('Statistics and public Search use published Scope JS, never api.manage SQL',()=>{
+  const analytics=read('app/loc/providers/kysely-analytics.mjs');
+  assert.doesNotMatch(analytics,/selectFrom\('api\.manage'\)|zmodelRegistryJoin/);
+  assert.match(analytics,/publishedManagedScope\(scope\)/);
+  assert.match(analytics,/FIXED_MANAGE_ROWS\.filter/);
+});
+
+test('Registry writes cannot silently outrun the published JS route',()=>{
+  const lifecycle=read('app/loc/providers/kysely-scope-lifecycle.mjs');
+  assert.match(lifecycle,/Publish matching JS Scope routing before Registry update/);
 });

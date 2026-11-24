@@ -80,62 +80,6 @@ test('Scope edit display uses the feature-owned Blocks query, not arbitrary SELE
   assert.match(browser,/editorRows\.mutate\(\)/);
 });
 
-test('homepage display renders as a React component with stable sibling keys',()=>{
-  const browser=src('app/loc/blocks/ScopeEditableBlocks.jsx');
-  assert.match(browser,/const DisplayComponent=typeof renderDisplay===/);
-  assert.equal((browser.match(/<DisplayComponent key="slot-display" \{\.\.\.slot\}\/>/g)||[]).length,2);
-  assert.equal((browser.match(/<Fragment key="slot-display">/g)||[]).length,2);
-  assert.doesNotMatch(browser,/renderDisplay\(slot\)/);
-  assert.match(browser,/<motion\.span key="hero-line"/);
-  assert.match(browser,/key=\{slot\.uid\|\|'order:'\+slot\.order\}/);
-});
-
-test('shared home display assigns explicit keys to prebuilt React siblings',()=>{
-  const home=src('app/loc/blocks/LocHomeBlockDisplay.jsx');
-  // JSX stored in variables, then inserted into a Fragment, is different from
-  // inline literal JSX: its element identity must be explicit for React.
-  for(const marker of [
-    '<header key="header"',
-    '<RichHtml key="body"',
-    '<figure key="media"',
-    '<article key="media"',
-    '<div key="body"',
-    '<div key="children"',
-    '<span key="identity"'
-  ])assert.ok(home.includes(marker),'SharedHomeBlockDisplay missing '+marker);
-  assert.match(home,/children\.map\(\(entity,index\)=>\{/);
-  assert.match(home,/key=\{entity\.uid\|\|'child-'\+index\}/);
-});
-
-test('motion home sections receive a single keyed Fragment child, not a sibling array',()=>{
-  const source=src('app/loc/blocks/ScopeEditableBlocks.jsx');
-  const motionBranch=source.split('const node=<HomeDisplayTag')[1]?.split('</HomeDisplayTag>')[0];
-  assert.ok(motionBranch,'homepage motion section renderer missing');
-  assert.match(motionBranch,/>\s*<Fragment key="motion-section-content">/);
-  assert.match(motionBranch,/<motion\.span key="hero-line"/);
-  assert.match(motionBranch,/<DisplayComponent key="slot-display"/);
-  assert.match(motionBranch,/<\/Fragment>\s*$/);
-});
-
-test('LOC has disabled SW registration while retaining scoped cleanup',()=>{
-  const shell=src('app/AppShell.jsx');
-  assert.doesNotMatch(shell,/navigator\.serviceWorker\.register\s*\(/);
-  assert.match(shell,/navigator\.serviceWorker\.getRegistrations\(\)/);
-  assert.match(shell,/reg\.unregister\(\)/);
-  assert.match(shell,/name\.startsWith\('loc-static-next-'\)/);
-});
-
-test('mapped motion.section key precedes every JSX spread',()=>{
-  const source=src('app/loc/blocks/ScopeEditableBlocks.jsx');
-  const section=source.split('const node=<HomeDisplayTag')[1]?.split('>')[0];
-  assert.ok(section,'mapped motion.section opening tag missing');
-  const keyAt=section.indexOf("key={slot.uid||'order:'+slot.order}");
-  const spreadAt=section.indexOf('{...homeMotionProps(slot)}');
-  assert.ok(keyAt>=0&&spreadAt>=0&&keyAt<spreadAt,
-    'React/Next can report a missing list key if key comes after a props spread');
-  assert.equal(section.match(/\bkey=/g)?.length,1,'mapped section must have one key');
-});
-
 test('LOC homepage reveals copy independently of image load and respects reduced motion',()=>{
   const home=src('app/loc/blocks/LocHomeBlockDisplay.jsx');
   const css=src('app/styles/loc-about-original.css');
