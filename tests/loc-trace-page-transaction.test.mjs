@@ -79,3 +79,14 @@ test('Trace UI uses one managed operation rather than sequential commits',()=>{
   const begin=source.indexOf('const save=async('),end=source.indexOf('const quickRename=',begin);
   assert.doesNotMatch(source.slice(begin,end),/await (?:renameTraceAnchorTitles|updateTraceAnchor|mergeTraceAnchorPoints|updateTraceVisibilityBulk)\(/);
 });
+
+test('Trace bulk Point creation is an all-or-nothing INSERT',()=>{
+  const data=readFileSync(new URL('../app/modular/features/trace/trace-data.js',import.meta.url),'utf8');
+  const begin=data.indexOf('export async function addTraceAnchorsBatch(');
+  const end=data.indexOf('function validatedConnections(',begin);
+  assert.ok(begin>=0&&end>begin);
+  const body=data.slice(begin,end);
+  assert.match(body,/await transactionWrites\(\[\{/);
+  assert.doesNotMatch(body,/for\(let offset=0;offset<inserts\.length/);
+  assert.match(body,/const count=rows\.length/);
+});

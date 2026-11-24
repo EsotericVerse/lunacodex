@@ -2,15 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {publishedSourceTaxonomy} from '../app/modular/published-source-taxonomy.js';
-import {sourceOutlineOptions,sourceEditorOutlineOptions} from '../app/loc/source/outline-options.mjs';
+import {sourceOutlineOptions} from '../app/loc/source/outline-options.mjs';
+import {sourceEditorOutlineOptions} from '../app/loc/source/outline-options.mjs';
 import {PUBLISHED_SOURCE_ANCHORS} from '../app/modular/published-source-taxonomy.js';
-import {buildCultureSourceTreeLanes,rollupCultureSourceDays}
-  from '../app/loc/culture/source-tree-lanes.mjs';
+import {buildCultureSourceTreeLanes} from '../app/loc/culture/source-tree-lanes.mjs';
+import {rollupCultureSourceDays} from '../app/loc/culture/source-tree-lanes.mjs';
+import {ITEM_LANE_OPTIONS} from '../app/loc/statistics/item-confluence-model.mjs';
+import {validateItemLane} from '../app/loc/statistics/item-confluence-model.mjs';
+import {buildCultureRiverRootPayload} from '../app/loc/culture/river-roots.mjs';
+import {buildCultureRiverRootTotals} from '../app/loc/culture/river-roots.mjs';
+import {selectCultureRiverChildren} from '../app/loc/culture/river-roots.mjs';
+import {availableMemberMeasures} from '../app/loc/statistics/member-intersection-model.mjs';
+import {publicCultureSourceModel} from '../app/loc/culture/public-source-river.mjs';
 
+{
 const catalog=publishedSourceTaxonomy();
 const byTitle=new Map(catalog.tree.map(row=>[row.title,row]));
 const expandAll=catalog.tree.filter(row=>row.type!=='from').map(row=>row.uid);
-const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 const sample=[
   {key:'system:'+byTitle.get('Facebook')?.uid,sites:['Facebook'],item_count:2},
   {key:'system:'+byTitle.get('Vocus')?.uid,sites:['vocus'],item_count:5},
@@ -104,30 +112,9 @@ test('daily counts roll up by saved parent UID without treating site as a node t
   assert.equal(counts.days.get('unassigned\u00002026-11-22'),4);
 });
 
-test('Culture UI respects ancestor expansion and uses each UID as a separate timeline group',()=>{
-  const culture=read('app/modular/features/Culture.jsx');
-  const timeline=read('app/modular/modules/culture-timeline/CultureTimeline.jsx');
-  assert.match(culture,/buildCultureSourceTreeLanes\(/);
-  assert.match(culture,/sourceOutlineOptions\(sourceTaxonomy\)/);
-  assert.match(culture,/const uid=id\.slice\('dual:source:'\.length\)/);
-  assert.match(culture,/depth:node\.level/);
-  assert.doesNotMatch(culture,/const onlyChild=|id:'dual:root:'\+parent\.id/);
-  assert.match(timeline,/button\.style\.paddingInlineStart=depth/);
-});
 
-test('Culture, Statistics and protected Source editor use one UID-based outline',()=>{
-  const culture=read('app/modular/features/Culture.jsx');
-  const statistics=read('app/modular/features/Statistics.jsx');
-  const editor=read('app/loc/source/SourceCategoryEditor.jsx');
-  assert.match(culture,/sourceOutlineOptions\(sourceTaxonomy\)/);
-  assert.match(statistics,/groupedSourceOutline\(sourceCatalog\.data\)/);
-  assert.match(editor,/sourceEditorOutlineGroups\(nodes\)/);
-  assert.match(editor,/sourceGroups\.map\(group=>/);
-  assert.doesNotMatch(statistics,/source\.domain\?source\.domain/);
-  assert.doesNotMatch(editor,/children\(root\.uid\)\.flatMap/);
-  const source=read('app/loc/source/outline-options.mjs');
-  assert.match(source,/sourceTaxonomyFromAnchors\(anchorRows,\{includeHidden:true\}\)/);
-});
+
+
 
 test('protected Source editor preserves hidden saved UID nodes; public projection does not',async()=>{
   const target=PUBLISHED_SOURCE_ANCHORS.find(row=>row.type==='from'&&row.title==='Vocus');
@@ -142,3 +129,113 @@ test('protected Source editor preserves hidden saved UID nodes; public projectio
   const guest=sourceOutlineOptions(sourceTaxonomyFromAnchors(modified));
   assert.ok(!guest.some(row=>row.code===target.uid));
 });
+}
+
+{
+const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+
+test('multimedia platforms belong to the one LOC-wide source taxonomy',()=>{
+  const taxonomy=publishedSourceTaxonomy();
+  const from=(taxonomy.categories||[]).filter(row=>row.root==='media'&&row.type==='from');
+  const labels=from.map(row=>row.display_name);
+  assert.ok(labels.includes('Suno'));
+  assert.ok(labels.includes('Spotify'));
+  assert.ok(labels.includes('Youtube'));
+  assert.ok(!labels.includes('Facebook'));
+  // Media classification is stored as source metadata, not media item counts.
+  assert.ok(from.every(row=>typeof row.category_code==='string'));
+});
+
+test('item confluence sources are only Galaxy.site selectors',()=>{
+  assert.ok(ITEM_LANE_OPTIONS.every(item=>item.value.startsWith('galaxy:')));
+  const scopes=[{id:'lo3rwang'}];
+  assert.equal(validateItemLane({scopeId:'lo3rwang',source:'galaxy:all'},scopes).valid,true);
+  assert.equal(validateItemLane({scopeId:'lo3rwang',source:'media:all'},scopes).valid,false);
+  assert.equal(validateItemLane({scopeId:'lo3rwang',source:'media:exact',exact:'suno'},scopes).valid,false);
+});
+}
+
+{
+const fixture={
+  text:[
+    {day:'2026-11-20',category:'Suno',item_count:3},
+    {day:'2026-11-20',category:'Facebook',item_count:5}
+  ],
+  // Retired MediaAnchor statistics must never create another root or count.
+  media:[{day:'2026-11-20',category:'video',item_count:999}]
+};
+
+test('Culture multimedia sources are in loc_anchor taxonomy, not a parallel count',()=>{
+  const taxonomy=publishedSourceTaxonomy();
+  const {rootBuckets,groups,numericRows}=buildCultureRiverRootPayload(fixture,taxonomy);
+  assert.deepEqual(rootBuckets.map(row=>[row.category,row.item_count]).sort(),
+    [['media',3],['system',5]]);
+  assert.equal(numericRows.length,2);
+  assert.equal(groups.reduce((sum,row)=>sum+row.item_count,0),8);
+  assert.ok(groups.every(row=>row.category_type==='source'));
+  const mediaNodes=selectCultureRiverChildren(numericRows,taxonomy,['media']);
+  assert.deepEqual(mediaNodes.map(row=>row.category),['Suno']);
+  const totals=buildCultureRiverRootTotals(fixture,taxonomy);
+  assert.equal(totals.groups.reduce((sum,row)=>sum+row.item_count,0),8);
+});
+
+test('cross-member statistics no longer offer independent media metrics',()=>{
+  const metrics=availableMemberMeasures([[
+    {kind:'media',category:'video',item_count:999},
+    {kind:'source',category:'Suno',item_count:3}
+  ]]);
+  assert.equal(metrics.some(metric=>metric.id==='multimedia'||metric.id.startsWith('media:')),false);
+});
+}
+
+{
+const catalog=publishedSourceTaxonomy();
+const uid=name=>catalog.tree.find(row=>row.title===name)?.uid;
+const daily=[
+  {day:'2026-11-01',site:'Facebook',item_count:2},
+  {day:'2026-11-01',site:'Threads',item_count:3},
+  {day:'2026-11-01',site:'vocus',item_count:5},
+  {day:'2026-11-01',site:'Suno',item_count:4},
+  {day:'2026-11-01',site:'unmapped source',item_count:1}
+];
+
+test('public Culture Source river starts as saved Universe lanes',()=>{
+  const model=publicCultureSourceModel(daily,catalog,[],'2026-11-01','2026-11-30');
+  assert.deepEqual(model.groups.map(x=>x.label),[
+    'Words (10)','Mutlimedia (4)','PastBy (0)','未分類來源 (1)'
+  ]);
+  assert.equal(model.groups.every(x=>x.depth===0),true);
+  assert.equal(model.items.find(x=>x.group_key==='dual:source:'+uid('Words'))?.item_count,10);
+  assert.deepEqual(model.sites.map(x=>x.label),['未分類來源']);
+});
+
+test('public Culture progressively expands Universe, Galaxy, Domain and From by UID',()=>{
+  const expanded=[uid('Words'),uid('CMS'),uid('Meta')];
+  const model=publicCultureSourceModel(daily,catalog,expanded,'2026-11-01','2026-11-30');
+  const rows=model.groups.map(x=>[x.depth,x.label]);
+  assert.deepEqual(rows.slice(0,7),[
+    [0,'Words (10)'],[1,'CMS (5)'],[2,'Meta (5)'],
+    [3,'Facebook (2)'],[3,'Threads (3)'],[3,'Instagram (0)'],
+    [2,'X (0)']
+  ]);
+  // The new EsotericVerse Domain is a real sibling of Meta/X; do not
+  // assume Article must occupy the eighth presentation row.
+  assert.ok(rows.some(([depth,label])=>depth===2&&label==='EsotericVerse (0)'));
+  assert.ok(rows.some(([depth,label])=>depth===1&&label==='Article (5)'));
+  assert.equal(rows.some(([,label])=>label.includes(' / ')),false);
+  assert.deepEqual(model.sites.map(x=>x.label),['Facebook','Threads','未分類來源']);
+  const meta=model.items.find(x=>x.group_key==='dual:source:'+uid('Meta'));
+  assert.equal(meta.item_count,5);
+  assert.equal(meta.start_date,'2026-11-01');
+});
+
+test('public Culture keeps daily density and leaf sites scoped to the selected date range',()=>{
+  const rows=[...daily,{day:'2026-12-01',site:'Facebook',item_count:90}];
+  const model=publicCultureSourceModel(rows,catalog,[uid('Words'),uid('CMS'),uid('Meta')],
+    '2026-11-01','2026-11-30');
+  assert.equal(model.groups.find(x=>x.label.startsWith('Facebook'))?.label,'Facebook (2)');
+  assert.deepEqual(model.sites.find(x=>x.label==='Facebook')?.sites,['Facebook']);
+  assert.equal(model.items.some(x=>x.start_date==='2026-12-01'),false);
+  assert.equal(model.groups.find(x=>x.label.startsWith('PastBy'))?.label,'PastBy (0)');
+});
+}

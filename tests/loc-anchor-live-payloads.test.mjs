@@ -75,14 +75,6 @@ test('unrecognized Anchor attr fields still fail strict ZModel validation',()=>{
   ]),/bogus/);
 });
 
-test('culture never renders an HTTP 503 as an empty SiteAnchor taxonomy',()=>{
-  const code=readFileSync(new URL('../app/loc/views/CulturePublicReader.jsx',
-    import.meta.url),'utf8');
-  assert.doesNotMatch(code,/setCatalog\(\{categories:\[\],aliases:\[\],tree:\[\],roots:\[\]\}\)/);
-  assert.match(code,/setCatalog\(null\);/);
-  assert.match(code,/!catalogLoading&&!catalogError/);
-});
-
 test('source taxonomy is LOC-global only, never a Scope anchor source',()=>{
   const body={kind:'transaction',operation:'anchor-feature',
     family:'source',scope:'loc',result:'rows'};

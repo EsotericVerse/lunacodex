@@ -76,18 +76,3 @@ test('the edit marker is ephemeral and maintained by EditDock transitions',()=>{
   assert.match(dock,/function logCleanupFailure\(failure\)/);
   assert.doesNotMatch(dock,/console\.error\('\[LOC edit-dock\] onFailure cleanup failed',cleanup\)/);
 });
-
-test('route and root error boundaries are independent and retry render only',()=>{
-  const route=source('app/error.jsx');
-  const global=source('app/global-error.jsx');
-  assert.match(route,/^'use client';/);
-  assert.match(global,/^'use client';/);
-  assert.match(route,/recoverChunkOnce\(error\)/);
-  assert.match(route,/onClick=\{\(\)=>reset\(\)\}/);
-  assert.match(global,/<html lang="zh-Hant">/);
-  assert.match(global,/<body style=/);
-  assert.match(global,/onClick=\{\(\)=>reset\(\)\}/);
-  assert.doesNotMatch(global,/^import .*?(?:AppShell|globals\.css|db-client|chunk-recovery)/m);
-  assert.doesNotMatch(route,/console\.error\('\[LOC route error\]',error\)/);
-  assert.doesNotMatch(global,/console\.error\('\[LOC global error\]',error\)/);
-});

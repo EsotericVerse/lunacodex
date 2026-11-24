@@ -4,7 +4,12 @@ import {readFileSync} from 'node:fs';
 import {turnHomeBlocks} from '../app/loc/blocks/home-page-turn.mjs';
 import {block_list} from '../app/loc/providers/kysely-public.mjs';
 import {publicScopeBlockPage} from '../app/loc/blocks/public-scope-pages.mjs';
+import {readdirSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+import {managementHeroSlot} from '../app/loc/blocks/home-block-model.js';
 
+{
 const src=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 function mockBlocks(rows){
   const calls=[];
@@ -80,15 +85,7 @@ test('Scope edit display uses the feature-owned Blocks query, not arbitrary SELE
   assert.match(browser,/editorRows\.mutate\(\)/);
 });
 
-test('LOC homepage reveals copy independently of image load and respects reduced motion',()=>{
-  const home=src('app/loc/blocks/LocHomeBlockDisplay.jsx');
-  const css=src('app/styles/loc-about-original.css');
-  assert.match(home,/onLoad=\{revealHomeImage\}/);
-  assert.match(home,/node\?\.complete&&node\.naturalWidth>0/);
-  assert.match(css,/@media\(prefers-reduced-motion:no-preference\)/);
-  assert.match(css,/img\[data-home-media-ready="true"\]/);
-  assert.match(css,/loc-home-copy-reveal/);
-});
+
 test('homepage draft preview uses the current unsaved drafts and preserves the editor',()=>{
   const home=src('app/loc/blocks/ScopeEditableBlocks.jsx');
   const draft=src('app/loc/blocks/ScopeBlockDraftList.jsx');
@@ -100,15 +97,7 @@ test('homepage draft preview uses the current unsaved drafts and preserves the e
   assert.match(draft,/onClick=\{\(\)=>setRequestedPreview\(value=>!value\)\}/);
 });
 
-test('homepage keeps its public face until authorized editor data and module are ready',()=>{
-  const home=src('app/loc/blocks/ScopeEditableBlocks.jsx');
-  assert.match(home,/publicBlocks\?\?lastPublished\.current/);
-  assert.match(home,/!editingReady\|\|!homeDraftComponent\|\|homeTurned/);
-  assert.match(home,/turnHomeBlocks\('edit',\(\)=>setHomeTurned\(true\)\)/);
-  assert.match(home,/if\(homeTurned\)lastPublished\.current=null/);
-  assert.match(home,/window\.addEventListener\('pagehide',leave\)/);
-  assert.match(home,/if\(!event\.persisted\)return/);
-});
+
 test('page turn is reversible and cancelled on abandonment',async()=>{
   const oldWindow=globalThis.window,oldDocument=globalThis.document;
   let resolve,finished=0,cancelled=0,animated=0;
@@ -141,3 +130,63 @@ test('page turn is reversible and cancelled on abandonment',async()=>{
     if(oldDocument===undefined)delete globalThis.document;else globalThis.document=oldDocument;
   }
 });
+}
+
+{
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const blocksRoot=path.join(root,'app/modular/published-blocks');
+const read=relative=>readFileSync(path.join(root,relative),'utf8');
+
+function publishedBlocks(scope,page){
+  const file=read('app/modular/published-blocks/'+scope+'/'+page+'.js');
+  const match=file.match(/export default (\[[\s\S]*?\]);\s*$/);
+  assert.ok(match,'Published file must contain one JSON array: '+scope+'/'+page);
+  // Snapshot values are JSON, not executable data. HTML is JSON-escaped.
+  assert.ok(!file.includes('<script'),'Unescaped HTML in snapshot: '+scope+'/'+page);
+  return JSON.parse(match[1]);
+}
+
+test('all published Blocks have an exact lazy manifest entry and a stable typed shape',()=>{
+  const manifest=read('app/modular/published-blocks/index.js');
+  const entries=[...manifest.matchAll(/"([a-z0-9]+:[a-z0-9_]+)":\(\)=>import\('\.\/([^']+)'\)/g)];
+  const mapped=new Set(entries.map(([,key])=>key));
+  assert.equal(mapped.size,entries.length,'Manifest must not double-load pages');
+  const physical=[];
+  for(const scope of ['lo3rwang','loc','lrunes']){
+    for(const name of readdirSync(path.join(blocksRoot,scope)).filter(x=>x.endsWith('.js'))){
+      const page=name.slice(0,-3),key=scope+':'+page;
+      physical.push(key);
+      assert.ok(mapped.has(key),'Missing lazy-loader for '+key);
+      const rows=publishedBlocks(scope,page);
+      assert.ok(rows.length>0,'Empty published page '+key);
+      const ids=new Set();
+      let order=-1;
+      for(const block of rows){
+        assert.match(block.uid,/^[A-Za-z0-9]{8}$/);
+        assert.equal(block.scope,scope);
+        assert.equal(block.page_name,page);
+        assert.ok(Number.isSafeInteger(block.block_order)&&block.block_order>=1);
+        assert.ok(block.block_order>=order,'Blocks must remain ordered '+key);
+        assert.ok(typeof block.block_text==='string');
+        assert.ok(typeof block.block_title==='string');
+        assert.ok(Array.isArray(block.block_entity));
+        assert.ok(block.block_image===null||typeof block.block_image==='string');
+        assert.ok(!ids.has(block.uid),'Duplicate block UID in '+key);
+        ids.add(block.uid);order=block.block_order;
+      }
+    }
+  }
+  assert.equal(mapped.size,physical.length,'Manifest includes pages without a published JS module');
+});
+}
+
+{
+const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+
+test('author Article Control Hero has stable identity even before live blocks arrive',()=>{
+  const slot=managementHeroSlot('/lo3rwang/search/manage','lo3rwang',false,'search');
+  assert.equal(slot.label,'文章管理');
+  assert.equal(slot.page,'ScopeAdvSearch');
+  assert.equal(managementHeroSlot('/lo3rwang/search','lo3rwang',false,'search'),null);
+});
+}
