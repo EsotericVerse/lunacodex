@@ -28,8 +28,7 @@ export default function ThemeEditor(){
       try{
         const {data}=await readLocAdminSettings('theme');
         if(!active)return;
-        if(error)throw error;
-        setRows((Array.isArray(data?.theme)?data.theme:[]).map(row=>({
+        setRows((Array.isArray(data)?data:[]).map(row=>({
           ...row,
           theme_id:themeUiId(row.theme_id),
           theme_db_numeric:typeof row.theme_id==='number'
