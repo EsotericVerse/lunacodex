@@ -26,11 +26,6 @@ function mainUri(env){
 }
 export {requestScopedPool};
 
-export function mcpDatabaseConfiguration(env={}){
-  const configured=Boolean(String(env?.LOC_DATABASE_URI||'').trim());
-  return {publicReadConfigured:configured,privateReadConfigured:configured,
-    privateWriteConfigured:configured,verification:'configuration-only'};
-}
 export async function db_connection(env={},verifiedAlias='',{
   probeTicket='',waitUntil,trustedTarget=null,trustedDialectConfig=null
 }={}){
@@ -63,12 +58,18 @@ export async function db_connection(env={},verifiedAlias='',{
   if(!primary||primary.engine!=='postgres'||
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
-  // pg-connection-string silently overrides an explicit ssl object when the
-  // URI contains sslmode=require. That can inject rejectUnauthorized:false,
-  // while Workers' Node TLS shim does not implement custom
-  // rejectUnauthorized options at all. Use the runtime's verified TLS
-  // defaults (ssl:true) and strip ONLY the redundant sslmode parameter.
-  // No TLS downgrade or alternative database target is permitted.
+  const isCloudflareWorkers=Boolean(process.versions?.workerd);
+  if(!isCloudflareWorkers){
+    const pool=new pg.Pool({connectionString:uri});
+    const dialect=createKyselyDialect(primary.engine,{pool});
+    return {db:new Kysely({dialect}),dialect,
+      engine:primary.engine,namespace:primary.schema_name,
+      tableName:'',fieldMap:{}};
+  }
+  // Cloudflare Workers' Node TLS shim does not support the certificate
+  // options node-postgres derives from sslmode/channel_binding URL options.
+  // Keep this URI adjustment inside the Workerd runtime branch.
+  // PostgreSQL requires verified TLS in this runtime.
   const connectionUrl=new URL(uri);
   const sslmode=connectionUrl.searchParams.get('sslmode');
   if(sslmode&&!['require','verify-ca','verify-full'].includes(sslmode.toLowerCase()))
@@ -85,10 +86,8 @@ export async function db_connection(env={},verifiedAlias='',{
   if(binding&&!['require','prefer','disable'].includes(binding.toLowerCase()))
     throw unavailable('Unsupported LOC PostgreSQL channel binding mode');
   connectionUrl.searchParams.delete('channel_binding');
-  // Cloudflare forbids using a socket or waiting on a promise that was created
-  // in another request. A shared pg.Pool therefore hangs/crashes (HTTP 500)
-  // when several requests run queries at once. Open a short-lived client per
-  // acquisition instead; it always lives inside the request that uses it.
+  // Workerd requires request-owned sockets. A shared pg.Pool can reuse a
+  // socket across request lifetimes, so use the request-scoped pool here.
   // PostgreSQL SSLRequest + verified TLS + startup alone takes ~1.2s at
   // the deployed edge. The previous 1500ms per-attempt limit killed pg.Client
   // during the *additional SCRAM authentication exchanges*, even though

@@ -1,3 +1,4 @@
+import {queryTimeAnchors} from '../actions/culture/queries.mjs';
 // Fixed TimeAnchor transaction. Never send tables, SQL, projections, filters,
 // connection details or arbitrary SELECT structure to the website backend.
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
@@ -5,20 +6,8 @@ const UID=/^[A-Za-z0-9]{8}$/;
 export async function readTimeAnchorTransaction(scope,{
   mode='public',cursor='',limit=MAX_ROWS,signal=null
 }={}){
-  const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):
-    AbortSignal.timeout(20000);
-  const response=await fetch('/api/loc-public-query',{
-    method:'POST',credentials:mode==='editor'?'include':'omit',
-    cache:'no-store',redirect:'error',
-    headers:{'content-type':'application/json',accept:'application/json'},
-    body:JSON.stringify({kind:'transaction',operation:'time-anchors',
-      scope,mode,cursor,limit}),signal:requestSignal
-  });
-  const payload=await response.json().catch(()=>null);
-  if(!response.ok){
-    const error=new Error('TimeAnchor transaction failed (HTTP '+response.status+')');
-    error.status=response.status;throw error;
-  }
+  const payload=await queryTimeAnchors({kind:'transaction',operation:'time-anchors',
+    scope,mode,cursor,limit});
   if(!Array.isArray(payload?.data)||payload.data.length>limit||
      payload.nextCursor!=null&&!UID.test(String(payload.nextCursor)))
     throw new Error('Invalid TimeAnchor transaction response');

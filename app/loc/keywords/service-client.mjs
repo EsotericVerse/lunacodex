@@ -1,5 +1,5 @@
-// Fixed-purpose Keyword operations on the existing LOC Pages application.
-// Better Auth Session and api.manage ZModel rights are verified once by the
+// Fixed-purpose Keyword operations on the LOC Next.js application.
+// Better Auth Session and published JavaScript grants are verified once by the
 // destination API, then again only inside the protected write transaction.
 // Do not preflight /api/loc-permissions and duplicate both network checks.
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';

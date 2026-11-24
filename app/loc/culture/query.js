@@ -7,7 +7,7 @@ import {TIME_ANCHOR_MAX_PAGE_ROWS,TIME_ANCHOR_TARGET_BYTES,TIME_ANCHOR_EDITOR_MA
 import {CultureTimelineModel} from '../../modular/modules/culture-timeline/culture-timeline-model';
 import {workDisplayText} from '../../modular/work-display-model';
 import {selectScopeDailyCounts} from '../galaxy/galaxy-query';
-import {DB_QUERY_BATCH_SIZE,selectAllRows,selectCount,selectRows} from '../db/db-query.mjs';
+import {DB_QUERY_BATCH_SIZE,selectRows} from '../db/db-query.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
 import {publicContentFilters} from '../content/content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from '../scope/scope-data';
@@ -757,13 +757,19 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
         limit:pageSize,offset:mediaOffset,includeTotal:!hasCursorCounts
       }).then(data=>({...data,count:data.totalCount}))
   ]);
-  // Fall back only if a provider does not return the requested exact count.
-  const [galaxyCount,mediaCount]=await Promise.all([
-    !includeGalaxy?0:hasCursorCounts?cursor.galaxyCount:
-      (galaxyResult.count??selectCount(scope.galaxy,{idColumn:'uid',filters:galaxyFilters})),
-    !includeMedia?0:hasCursorCounts?cursor.mediaCount:
-      (mediaResult.count??selectCount(scope.anchor,{idColumn:'uid',filters:mediaFilters}))
-  ]);
+  // Each feature query returns its own exact total with the first page.
+  // A missing total is a route contract error; never issue a second generic
+  // SELECT through a shared client as a fallback.
+  const readCount=(result,kind)=>{
+    const value=Number(result?.count);
+    if(!Number.isSafeInteger(value)||value<0)
+      throw new Error('Culture '+kind+' query did not return its page total');
+    return value;
+  };
+  const galaxyCount=!includeGalaxy?0:hasCursorCounts?cursor.galaxyCount:
+    readCount(galaxyResult,'Galaxy');
+  const mediaCount=!includeMedia?0:hasCursorCounts?cursor.mediaCount:
+    readCount(mediaResult,'Anchor');
 
   const galaxyRows=(galaxyResult.rows||[]).map(row=>({
     key:'galaxy:'+row.uid,

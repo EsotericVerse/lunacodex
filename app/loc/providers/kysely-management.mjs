@@ -3,7 +3,7 @@ import {TIME_ANCHOR_MAX_PAGE_ROWS,planJsonRecordsetBatches} from '../query/query
 // preflight -> Kysely transaction -> Scope authorization and atomic SQL.
 // Historical RPC/legacy payload helpers are not independent authorities;
 // Tree Models do not grant access, run SQL, or create additional relations.
-import {canLocAccess,locAccessRows} from './loc-authorization.mjs';
+import {canLocAccess} from './loc-authorization.mjs';
 import {fixedManageScope,FIXED_MANAGE_ROWS} from '../permissions/fixed-manage-registry.mjs';
 import {publishedManagedScope} from './published-managed-scope.mjs';
 import {provisionScopeNative,manageScopeRegistryNative,deleteScopeNative}
@@ -477,7 +477,7 @@ const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_
   'move_scope_block',
   'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
-  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','loc_access','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
+  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
   'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
   'media_anchor_candidates','anchor_import_page','import_site_presence',
   'import_site_id_candidates','import_created_at_candidates',
@@ -797,7 +797,6 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     bulk_update_galaxy_able:['p_scope_id','p_site','p_flags','p_apply','p_expected_count','p_batch_size'],
     merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
-    loc_access:['p_type','p_id'],
     find_galaxy_duplicates:['p_scope_id'],
     read_scope_registry_admin:[],
     provision_scope:['p_scope_id','p_display_name','p_email','p_birthday',
@@ -832,7 +831,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   }
   if(name==='search_galaxy_private')return searchPrivateGalaxy(trx,args,claims);
   if(name==='import_site_presence'){
-    // Verified Better Auth LOC Web Session + active api.manage Scope grants.
+    // Verified Better Auth LOC Web Session + published JavaScript Scope grants.
     // A single Kysely SELECT answers up to 200 exact case-insensitive site
     // existence checks, without reading article UIDs/content or SiteAnchor.
     const parsed=importSitePresenceArgsSchema.safeParse(args);
@@ -884,8 +883,8 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
       {after,limit});
   }
   if(name==='anchor_import_page'){
-    // LOC Web import only. The native gateway verifies Better Auth Session
-    // and api.manage before this Scope-specific read; this action grants no
+    // LOC Web import only. The Next.js route verifies the Better Auth Session
+    // and JavaScript grants before this Scope-specific read; this action grants no
     // insert/update rights and cannot be invoked on the MCP hostname.
     const parsed=anchorImportPageArgsSchema.safeParse(args);
     if(!parsed.success)reject('Invalid Zod Anchor import page request');
@@ -947,7 +946,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     return {data:await saveBlocksKysely(trx,args),count:null};
   }
   if(name==='read_loc_source_hierarchy'){
-    // Same privileged, session-verified Kysely gateway used by Admin Registry:
+    // Same privileged, session-verified Kysely connection used by Admin Registry:
     // RLS policy alone does not grant the browser's authenticated role SELECT.
     // Return only the fixed LOC Source hierarchy, never unrestricted anchors.
     if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
@@ -978,14 +977,6 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   }
   if(name==='bulk_update_galaxy_able')return {data:await bulkUpdateGalaxyFlags(trx,args),count:null};
   if(name==='find_galaxy_duplicates')return {data:await findGalaxyDuplicates(trx,args),count:null};
-  if(name==='loc_access'){
-    const type=String(args.p_type||'').toLowerCase();
-    if(!['self','global','group','scope'].includes(type))reject('Invalid management type');
-    const id=type==='self'?null:args.p_id??null;
-    if(['group','scope'].includes(type)&&!/^[a-z][a-z0-9]{0,14}$/.test(String(id||'')))
-      reject('Invalid management Scope');
-    return {data:await locAccessRows(trx,type,id),count:null};
-  }
   if(name==='merge_scope_trace_place_names')return {data:await mergeScopePoints(trx,args),count:null};
   if(name==='import_shared_keyword_class')return {data:await importSharedKeywordClass(trx,args),count:null};
   if(name==='refresh_scope_search_summary')return {data:await refreshScopeSearchSummary(trx,args),count:null};
@@ -1220,9 +1211,10 @@ async function managedLocSettings(trx,args,claims){
   // Permission was established with the signed LOC business identity;
   // no arbitrary table is addressable through this route.
   await sql`reset role`.execute(trx);
-  const row=await trx.selectFrom('silver.loc')
-    .select(['theme','keywords'])
-    .where('id','=','loc').forUpdate().executeTakeFirst();
+  let query=trx.selectFrom('silver.loc')
+    .select(['theme','keywords']).where('id','=','loc');
+  if(operation!=='read')query=query.forUpdate();
+  const row=await query.executeTakeFirst();
   if(!row)reject('LOC Group settings unavailable');
   const saved=validCatalog(
     section==='theme'?row.theme:row.keywords,section);

@@ -126,7 +126,8 @@ function canEdit(session,scope){
 }
 
 export async function handleNamedPublicTransaction(request,env={},{
-  database=directMcpKysely,waitUntil,verifySession=verifiedLocWebsiteSession
+  database=directMcpKysely,waitUntil,verifySession=verifiedLocWebsiteSession,
+  allowedOperations=null,allowedAnalyticsViews=null,allowedActions=null
 }={}){
   if(request.method!=='POST')return respond({error:'POST required'},405);
   let operation;
@@ -135,6 +136,14 @@ export async function handleNamedPublicTransaction(request,env={},{
     const raw=await request.text();
     if(raw.length>12000)throw bad();
     operation=normalize(JSON.parse(raw));
+    if(allowedOperations&&!allowedOperations.includes(operation.operation))
+      throw Object.assign(new Error('Operation does not belong to this route'),{httpStatus:404});
+    if(operation.operation==='analytics'&&allowedAnalyticsViews&&
+       !allowedAnalyticsViews.includes(String(operation.args?.p_view||'')))
+      throw Object.assign(new Error('Analytics view does not belong to this route'),{httpStatus:404});
+    if(operation.operation==='action'&&allowedActions&&
+       !allowedActions.includes(operation.name))
+      throw Object.assign(new Error('Action does not belong to this route'),{httpStatus:404});
   }catch(error){return respond({error:'Invalid named LOC transaction'},error.httpStatus||400)}
   // Only TimeAnchor editing and editor-only Point-name suggestions require a
   // Session. Identity is verified once; grants are calculated from JS, not SQL.
@@ -157,17 +166,16 @@ export async function handleNamedPublicTransaction(request,env={},{
     const receipt={requestedBy:operation.operation==='galaxy-records'?'galaxy':'anchor',
       model:operation.operation,scope:operation.scope,
       view:operation.view||operation.family,mode:operation.mode,
-      ray:String(request.headers.get('cf-ray')||'').slice(0,80)||null};
+      requestId:String(request.headers.get('x-request-id')||'').slice(0,80)||null};
     try{
       const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
       if(!primary)throw Error('LOC database unavailable');
       port=await database(env,primary.target_id,{waitUntil});
       release=bindLocRequestAbort(port,request.signal);
       if(!port?.db||port.engine!=='postgres')throw Error('LOC database unavailable');
-      const data=await port.db.transaction().setIsolationLevel('repeatable read')
-        .execute(trx=>operation.operation==='galaxy-records'
-          ?executeGalaxyRecordTransaction(trx,operation)
-          :executeAnchorFeatureTransaction(trx,operation));
+      const data=operation.operation==='galaxy-records'
+        ?await executeGalaxyRecordTransaction(port.db,operation)
+        :await executeAnchorFeatureTransaction(port.db,operation);
       return respond({data,transaction:receipt});
     }catch(error){
       status=error?.httpStatus||503;
@@ -184,7 +192,7 @@ export async function handleNamedPublicTransaction(request,env={},{
   }
   if(operation.operation==='galaxy-feature'){
     // Parse and validate the fixed model before any SQL connection.
-    if(operation.category?.type==='keyword'){
+    if(operation.category?.type==='keyword'&&process.versions?.workerd){
       const ip=request.headers.get('cf-connecting-ip');
       if(ip){
         const check=checkSearchQos(ip);
@@ -196,7 +204,7 @@ export async function handleNamedPublicTransaction(request,env={},{
     }
     let port=null,unbind=()=>{};
     const started=Date.now();
-    const ray=String(request.headers.get('cf-ray')||'').slice(0,80);
+    const requestId=String(request.headers.get('x-request-id')||'').slice(0,80);
     // Referrer is best-effort navigation diagnostics, never an authorization
     // claim. Only a same-origin path is retained; no cookies or query string.
     let requestPath=null;
@@ -208,7 +216,7 @@ export async function handleNamedPublicTransaction(request,env={},{
     }catch{}
     const modelName=GALAXY_FEATURE_MODELS[operation.feature].name;
     const receipt={requestedBy:operation.feature,model:modelName,
-      scope:operation.scope,result:operation.result,ray:ray||null,
+      scope:operation.scope,result:operation.result,requestId:requestId||null,
       requestPath};
     let status=200;
     try{
@@ -217,8 +225,7 @@ export async function handleNamedPublicTransaction(request,env={},{
       port=await database(env,primary.target_id,{waitUntil});
       unbind=bindLocRequestAbort(port,request.signal);
       if(!port?.db||port.engine!=='postgres')throw Error('LOC PostgreSQL unavailable');
-      const data=await port.db.transaction().setIsolationLevel('repeatable read')
-        .execute(trx=>executeGalaxyFeatureTransaction(trx,operation));
+      const data=await executeGalaxyFeatureTransaction(port.db,operation);
       return respond({data,transaction:receipt});
     }catch(error){
       status=503;
@@ -235,8 +242,8 @@ export async function handleNamedPublicTransaction(request,env={},{
     }
   }
   if(operation.operation==='analytics'||operation.operation==='action'){
-    // Execute only hardcoded feature models in this request's own DB
-    // transaction. Never bridge to the removed arbitrary SELECT executor.
+    // Execute only hardcoded feature models on this request's own Kysely
+    // connection. These read queries do not open a SQL transaction.
     let port=null,unbind=()=>{};
     try{
       const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
@@ -247,21 +254,19 @@ export async function handleNamedPublicTransaction(request,env={},{
         throw Error('LOC database unavailable');
       const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
       const ids=[...published];
-      // A single snapshot for ALL dialects. Portable views such as
-      // search_summary and loc iterate across Scopes: without a transaction
-      // those SELECTs could observe different concurrent commits.
-      const output=await port.db.transaction().setIsolationLevel('repeatable read')
-        .execute(trx=>port.engine==='postgres'
-          ?operation.operation==='analytics'
-            ?executeKyselyAnalytics(trx,{args:operation.args},{
-              role:'anon',publishedScopeIds:ids.filter(id=>id!=='loc')})
-            :executeKyselyPublicAction(trx,{name:operation.name,args:operation.args},{
-              engine:port.engine,namespace,publishedScopeIds:ids})
-          :operation.operation==='analytics'
-            ?executePortableKyselyAnalytics(trx,{args:operation.args},{
-              engine:port.engine,namespace,role:'anon'})
-            :executeKyselyPublicAction(trx,{name:operation.name,args:operation.args},{
-              engine:port.engine,namespace,publishedScopeIds:ids}));
+      // Feature reads execute directly. Portable aggregate views may issue
+      // several SELECTs across Scopes; each query remains independently usable.
+      const output=port.engine==='postgres'
+        ?operation.operation==='analytics'
+          ?await executeKyselyAnalytics(port.db,{args:operation.args},{
+            role:'anon',publishedScopeIds:ids.filter(id=>id!=='loc')})
+          :await executeKyselyPublicAction(port.db,{name:operation.name,args:operation.args},{
+            engine:port.engine,namespace,publishedScopeIds:ids})
+        :operation.operation==='analytics'
+          ?await executePortableKyselyAnalytics(port.db,{args:operation.args},{
+            engine:port.engine,namespace,role:'anon'})
+          :await executeKyselyPublicAction(port.db,{name:operation.name,args:operation.args},{
+            engine:port.engine,namespace,publishedScopeIds:ids});
       return respond({data:output.data,count:output.count??null});
     }catch(error){
       console.error('[LOC named feature transaction]',{
@@ -281,12 +286,11 @@ export async function handleNamedPublicTransaction(request,env={},{
     port=await database(env,primary.target_id,{waitUntil});
     unbind=bindLocRequestAbort(port,request.signal);
     if(!port?.db||port.engine!=='postgres')throw Error('LOC PostgreSQL unavailable');
-    const result=await port.db.transaction().setIsolationLevel('repeatable read')
-      .execute(async trx=>{
+    const result=await (async()=>{
         // Physical table name is derived exclusively from published JS Scope.
         const table=portableRelation(operation.scope+'_anchor',port.engine,
           port.namespace||'silver');
-        let query=trx.selectFrom(table)
+        let query=port.db.selectFrom(table)
           .select(['uid','type','title','description','attr','invisible'])
           .where('type','in',ANCHOR_TYPE_GROUPS.time)
           .orderBy('uid','asc').limit(operation.limit+1);

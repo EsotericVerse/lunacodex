@@ -4,7 +4,8 @@
 // Do not use this unverified public projection as a login/session assertion.
 // Legacy SQL columns caches/note are intentionally omitted: they are not
 // fixed Scope identity, routing, or permission fields.
-// Dynamic Scope creation and trusted role changes still use live SQL.
+// Dynamic Scope metadata may be stored in SQL; authorization grants remain
+// controlled by this published JavaScript registry.
 export const FIXED_MANAGE_ROWS=Object.freeze([
   Object.freeze({
     id:'admin',email:'sopa2306@gmail.com',domain:null,directory:null,

@@ -23,10 +23,10 @@ test('no standalone permission or Scope status HTTP operations survive',()=>{
   assert.doesNotMatch(managed,/selectFrom\('api\.manage'\)/);
 });
 
-test('named LOC transactions remain available without a general SELECT executor',()=>{
-  assert.equal(existsSync(new URL('../app/loc/server/native-public-query.mjs',import.meta.url)),false);
-  const routes=JSON.parse(read('public/_routes.json'));
-  assert.ok(routes.include.includes('/api/loc-public-query'));
+test('named LOC feature actions run without Pages Functions or a generic SELECT endpoint',()=>{
+  assert.equal(existsSync(new URL('../functions',import.meta.url)),false);
+  assert.equal(existsSync(new URL('../app/api/loc-public-query',import.meta.url)),false);
+  assert.equal(existsSync(new URL('../public/_routes.json',import.meta.url)),false);
   const named=read('app/loc/server/public-named-transactions.mjs');
   assert.ok(named.includes('executeKyselyAnalytics('));
   assert.ok(named.includes('executeKyselyPublicAction('));

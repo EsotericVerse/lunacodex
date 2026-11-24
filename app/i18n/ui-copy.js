@@ -1,8 +1,8 @@
 import DEFAULT_TRADITIONAL_CHINESE from './shared/zh_tw.json';
 import {EMPTY_PAGE_LOCALES,PAGE_LOCALE_ALIASES} from './page-locale-manifest.js';
-// Route-local interface copy. Each page.jsx owns four sibling i18n JSON files.
-// Web fetches exactly one selected page JSON; Capacitor serves the same copied
-// assets from its bundled filesystem. Never prefetch a different language.
+// Route-local interface copy uses shared source bundles declared in
+// page-locale-sources.json. Web fetches only the selected page/language asset;
+// native packaging can include the same generated assets when needed.
 export const UI_LOCALE='zh-Hant';
 export const UI_LOCALE_OPTIONS=Object.freeze([
   Object.freeze({value:'zh-Hant',label:'繁體中文'}),

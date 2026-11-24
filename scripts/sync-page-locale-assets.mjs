@@ -1,5 +1,5 @@
-// Copies sibling page.jsx i18n JSON into Next public assets for both Web and
-// native IPA exports. Source-of-truth stays beside each page.jsx, not in public.
+// Copies the route locale sources into generated Next public assets. Exact
+// duplicate route dictionaries share one source bundle under app/i18n.
 import fs from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
@@ -9,6 +9,10 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const app=path.join(root,'app');
 const target=path.join(root,'public','i18n');
 const locales=['zh_tw','zh_cn','en','ja'];
+const localeSources=JSON.parse(fs.readFileSync(
+  path.join(app,'i18n','page-locale-sources.json'),'utf8'));
+const routeSources=localeSources.sourceByRoute||{};
+const emptyRoutes=new Set(localeSources.emptyRoutes||[]);
 
 function pageDirs(folder,found=[]){
   for(const entry of fs.readdirSync(folder,{withFileTypes:true})){
@@ -19,6 +23,7 @@ function pageDirs(folder,found=[]){
   return found;
 }
 function readLocale(source){
+  if(source===null)return {bytes:Buffer.from('{}'),empty:true};
   if(!fs.existsSync(source))throw new Error('Missing page locale JSON: '+path.relative(root,source));
   const bytes=fs.readFileSync(source);
   const parsed=JSON.parse(bytes.toString('utf8'));
@@ -36,13 +41,10 @@ if(!pages.length)throw new Error('No page.jsx routes found');
 // other public files or another Agent's assets.
 for(const suffix of ['pages','shared'])
   fs.rmSync(path.join(target,suffix),{recursive:true,force:true});
-function localeSource(dir,locale){
-  const route=path.relative(app,dir).replace(/\\/g,'/');
-  // LRS owns non-page sources under app/lrunes; these page.jsx wrappers
-  // reuse their LOC feature route JSON, never a tracked LRS-owned copy.
-  const canonical=route==='lrunes'?'':route.startsWith('lrunes/')?route.slice(7):null;
-  return canonical===null?path.join(dir,'i18n',locale+'.json')
-    :path.join(app,canonical,'i18n',locale+'.json');
+function localeSource(route,locale){
+  const sourceRoute=routeSources[route]||route;
+  if(emptyRoutes.has(sourceRoute))return null;
+  return path.join(app,'i18n','page-sources',sourceRoute,locale+'.json');
 }
 const emptyPageLocales=[];
 const aliases={};
@@ -52,7 +54,7 @@ for(const dir of pages){
   const route=path.relative(app,dir).replace(/\\/g,'/')||'index';
   for(const locale of locales){
     const key=route+'/'+locale;
-    const {bytes,empty}=readLocale(localeSource(dir,locale));
+    const {bytes,empty}=readLocale(localeSource(route,locale));
     if(empty){emptyPageLocales.push(key);continue;}
     // Hash narrows candidates; byte equality is mandatory before sharing.
     // One published resource serves all routes with identical language copy.

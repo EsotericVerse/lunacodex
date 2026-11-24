@@ -1,6 +1,6 @@
 // Galaxy conversation persistence belongs to the LOC business database.
 // This module never issues/verifies OAuth tokens or stores Auth sessions.
-// The caller has already resolved Better Auth identity and read api.manage.
+// The caller has already resolved Better Auth identity and published JS grants.
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {mergeOrdered} from './ordered-conversation.mjs';
 import {siteForCapturedUrl} from '../source/site-from-url.mjs';

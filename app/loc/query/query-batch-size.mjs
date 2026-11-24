@@ -114,7 +114,7 @@ export const TIMELINE_IO=Object.freeze({windowBatch:MAX_ROWS,previewPage:MAX_ROW
 // runtime admin configuration is consulted to set them.
 
 // GET .in() filters are URL-encoded, so MaxRows alone cannot bound a request.
-// Keep room for the endpoint, selected columns, authentication gateway and other filters.
+// Keep room for the route envelope, selected columns, identity and other filters.
 export const MAX_GET_URL_CHARS=8000;
 export function* urlSafeInBatches(values,column){
   const budget=MAX_GET_URL_CHARS-1024;

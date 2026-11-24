@@ -303,7 +303,7 @@ function isUidPrimaryKeyConflict(error){
     &&/(?:_pkey|PRIMARY KEY|\.uid|uid[^a-z])/i.test(message);
 }
 // Bisect only real primary-key conflicts. Never turn an unrelated SQL error
-// into a silent success. Batch commits stay bounded by the database gateway.
+// into a silent success. Batch commits stay bounded by the database connection.
 export async function insertImportBatches(records,{writeBatch,batchSize=200,onProgress,verifyUidConflict}={}){
   if(!Array.isArray(records)||typeof writeBatch!=='function')throw Error('無效匯入批次');
   if(!Number.isSafeInteger(batchSize)||batchSize<1||batchSize>10000)throw Error('無效批次大小');

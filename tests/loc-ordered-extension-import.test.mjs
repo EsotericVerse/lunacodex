@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mergeOrdered,readOrdered,orderedBatch} from '../app/loc/mcp/ordered-conversation.mjs';
-import {onRequestOptions,onRequest} from '../functions/api/las-native.js';
+import {OPTIONS,POST} from '../app/api/las-native/route.js';
 
 const url='https://loc.lo3rwang.cc/api/las-native';
 const ext='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
@@ -22,14 +22,14 @@ test('LOC ordered import retries are idempotent and reject ordinal conflicts',()
  assert.throws(()=>orderedBatch([a,{...a}]),/Duplicate/);
 });
 test('LOC existing LAS bridge preflight allows only configured Chrome Extension',()=>{
- const allowed=onRequestOptions({request:new Request(url,{method:'OPTIONS',
+ const allowed=OPTIONS(new Request(url,{method:'OPTIONS',
    headers:{origin:ext,'access-control-request-method':'POST',
-    'access-control-request-headers':'authorization,content-type'}})});
+    'access-control-request-headers':'authorization,content-type'}}));
  assert.equal(allowed.status,204);
  assert.equal(allowed.headers.get('access-control-allow-origin'),ext);
  assert.match(allowed.headers.get('access-control-allow-headers'),/Authorization/);
- const denied=onRequestOptions({request:new Request(url,{method:'OPTIONS',
-   headers:{origin:'https://untrusted.example'}})});
+ const denied=OPTIONS(new Request(url,{method:'OPTIONS',
+   headers:{origin:'https://untrusted.example'}}));
  assert.equal(denied.status,403);
 });
 test('LOC direct import never grants unauthenticated ordered writes',async()=>{
@@ -37,7 +37,7 @@ test('LOC direct import never grants unauthenticated ordered writes',async()=>{
    headers:{origin:ext,'content-type':'application/json'},
    body:JSON.stringify({kind:'mcp-conversation',action:'record_ordered',
     scopeid:'lo3rwang',conversation_id:'test://no-auth',records:[a]})});
- const response=await onRequest({request,env:{},waitUntil:()=>{}});
+ const response=await POST(request);
  assert.equal(response.status,401);
  assert.equal(response.headers.get('access-control-allow-origin'),ext);
  assert.match((await response.json()).error.message,/bearer token required/i);

@@ -1,10 +1,14 @@
 import {MAX_ROWS} from '../query/query-batch-size.mjs';
-// One browser transport for LOC public reads. The existing Pages Function
-// executes every bounded SELECT with the server-owned Kysely SQL dialect.
+// Browser clients call fixed Next route handlers by feature. They never send
+// arbitrary SQL, relation or projection instructions to a shared endpoint.
 // LOC OAuth delegation is still mandatory for all mutations.
-import {withPublicReadBudget} from './kysely-read-budget.mjs';
 import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
 import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
+import {queryCulture,queryCultureContent} from '../actions/culture/queries.mjs';
+import {queryStatics,queryStaticsContent} from '../actions/statics/queries.mjs';
+import {queryTrace,traceAction} from '../actions/trace/queries.mjs';
+import {querySearch} from '../actions/search/queries.mjs';
+import {queryBlocks} from '../actions/blocks/queries.mjs';
 
 // Pending coalescing is per transport instance, never shared across an
 // unrelated public client or a separately selected SQL target.
@@ -77,19 +81,6 @@ export function createKyselyPublicClient({
 }={}){
   if(typeof fetchImpl!=='function')throw Error('LOC Kysely fetch is unavailable');
   const transportId=++nextPublicTransportId;
-  // Public reads share free capacity without fixed per-class allocations.
-  // Auth and protected writes never enter this anonymous browser queue.
-  const publicReadFetch=(url,options,signal,kind='normal')=>{
-    // Keep the slot until its JSON body has been consumed. A fetch() promise
-    // resolves on headers; freeing at that point can let large responses
-    // accumulate in memory outside the scheduler's actual ownership.
-    const perform=async()=>{
-      const response=await fetchImpl(url,{...options,signal});
-      const payload=await response.json().catch(()=>null);
-      return {response,payload,status:response.status};
-    };
-    return role==='anon'?withPublicReadBudget(perform,signal,{kind}):perform();
-  };
   // Deduplicate only concurrent anonymous requests of exactly the same
   // shape and route epoch. No completed HTTP no-store body is retained.
   // Explicit AbortSignals, identity and protected reads remain independent.
@@ -98,35 +89,8 @@ export function createKyselyPublicClient({
     const key=JSON.stringify(['native-public',transportId,transientReadGeneration(),kind,args]);
     return key.length<=16000?coalescePendingPublicRead(key,perform):perform();
   };
-  async function read(q){
-    // Pre-queued public reads and actual browser fetch use the same route epoch.
-    q.signal=transientReadSignal(q.signal);
-    if(q.dbId)throw Error('Selected SQL database requires signed LOC delegation');
-    if(q.signal?.aborted){const error=new Error('Request cancelled');
-      error.name='AbortError';throw error;}
-    const response=await fetchImpl('/api/loc-public-query',{
-      method:'POST',credentials:'omit',cache:'no-store',redirect:'error',
-      headers:{accept:'application/json','content-type':'application/json'},
-      body:JSON.stringify({schema:q.schema,table:q.table,columns:q.columns,
-        filters:q.filters,orFilters:q.orFilters,orders:q.orders,
-        limit:q.rowLimit,offset:q.offset,head:q.head,count:q.count,
-        cardinality:q.cardinality}),
-      signal:q.signal?AbortSignal.any([q.signal,AbortSignal.timeout(9000)]):
-        AbortSignal.timeout(9000)
-    });
-    const payload=await response.json().catch(()=>null);
-    if(!response.ok){
-      const code=String(payload?.code||'');
-      const stage=String(payload?.stage||'');
-      const reason=String(payload?.reason||'');
-      const error=new Error('LOC Kysely '+(stage||'read')+' failed (HTTP '+
-        response.status+(code?', SQLSTATE '+code:'')+(reason?', '+reason:'')+')');
-      error.status=response.status;error.code=code;error.stage=stage;
-      error.reason=reason;throw error;
-    }
-    if(!payload||!Object.hasOwn(payload,'data'))
-      throw Error('Invalid LOC Kysely read response');
-    return {data:payload.data,error:null,count:payload.count??null,status:response.status};
+  async function read(){
+    throw Error('LOC database reads must use their feature query action');
   }
   async function analytics(args={}){
     const work=async()=>{
@@ -140,35 +104,20 @@ export function createKyselyPublicClient({
     const start=String(args.p_start||''),end=String(args.p_end||'');
     const params=new URLSearchParams({kind:view,scope});
     if(start||end){params.set('start',start);params.set('end',end)}
-    const fixedContent=new Set(['culture_anchors','culture_density','daily','daily_total',
-      'overview','earliest','totals','loc']);
-    const useContent=fixedContent.has(view);
-    const requestSignal=AbortSignal.any([
-      transientReadSignal(args.signal||null),AbortSignal.timeout(9000)
-    ]);
-    const {response,payload}=await publicReadFetch(useContent?'/api/loc-public-content?'+params:
-      '/api/loc-public-query',{
-      method:useContent?'GET':'POST',credentials:'omit',cache:'no-store',
-      redirect:'error',
-      headers:useContent?{accept:'application/json'}:
-        {accept:'application/json','content-type':'application/json'},
-      ...(useContent?{}:{body:JSON.stringify({kind:'transaction',operation:'analytics',args:{
-        p_scope_id:scope,p_view:view,p_start:start||null,p_end:end||null,
-        p_options:args.p_options||{}
-      }})}),
-      // No independent timer/queue. Admission and cancellation are handled
-      // by the existing bounded public-read budget and requestSignal.
-    },requestSignal,args.signal?'interactive':'normal');
-    if(!response.ok){
-      const error=new Error('LOC Kysely analytics '+String(payload?.stage||'read')+
-        ' failed (HTTP '+response.status+
-        (payload?.code?', SQLSTATE '+payload.code:'')+
-        (payload?.reason?', '+payload.reason:'')+')');
-      error.status=response.status;error.code=payload?.code;throw error;
-    }
-    if(!payload||!Object.hasOwn(payload,'data'))
-      throw Error('Invalid LOC Kysely analytics response');
-    return {data:payload.data,error:null,status:response.status};
+    const queryArgs={p_scope_id:scope,p_view:view,p_start:start||null,p_end:end||null,
+      p_options:args.p_options||{}};
+    let payload;
+    if(view==='culture_anchors'||view==='culture_density')
+      payload=await queryCultureContent(params.toString());
+    else if(['daily','daily_total','overview','earliest','totals','loc'].includes(view))
+      payload=await queryStaticsContent(params.toString());
+    else if(view==='culture_list')payload=await queryCulture(queryArgs);
+    else if(['trace_places','trace_territory','trace_daily','lane_daily','trace_keywords'].includes(view))
+      payload=await queryTrace(queryArgs);
+    else if(['shared_classes','keyword_catalog','keyword_summary'].includes(view))
+      payload=await queryStatics(queryArgs);
+    else payload=await querySearch(queryArgs);
+    return {data:payload?.data,error:null,status:200};
     };
     return pendingPublic('analytics',{
       scope:args.p_scope_id,view:args.p_view,start:args.p_start,
@@ -178,20 +127,9 @@ export function createKyselyPublicClient({
   async function publicAction(name,args={}){
     const work=async()=>{
     const requestSignal=AbortSignal.any([transientReadSignal(),AbortSignal.timeout(9000)]);
-    const {response,payload}=await publicReadFetch('/api/loc-public-query',{
-      method:'POST',credentials:name==='search_scope_trace_place_names'?'include':'omit',
-      cache:'no-store',redirect:'error',
-      headers:{accept:'application/json','content-type':'application/json'},
-      body:JSON.stringify({kind:'transaction',operation:'action',name,args})
-    },requestSignal);
-    if(!response.ok){
-      const error=new Error('LOC public action failed (HTTP '+response.status+
-        (payload?.code?', SQLSTATE '+payload.code:'')+')');
-      error.status=response.status;error.code=payload?.code;throw error;
-    }
-    if(!payload||!Object.hasOwn(payload,'data'))
-      throw Error('Invalid LOC public action response');
-    return {data:payload.data,error:null,count:payload.count??null,status:response.status};
+    const payload=name==='block_list'||name==='hero_block'
+      ?await queryBlocks(name,args):await traceAction(name,args);
+    return {data:payload?.data,error:null,count:payload?.count??null,status:200};
     };
     return pendingPublic('public-action',{name,args},work);
   }
@@ -209,16 +147,13 @@ export function createKyselyPublicClient({
     const count=Number(result?.data?.count??result?.count??0);
     if(!Number.isSafeInteger(count)||count<0)throw Error('Invalid LOC write receipt');
     if(!q.returning||!count)return {data:[],error:null,count};
-    if(q.operation==='delete')return {data:[],error:null,count};
-    const idField=['uid','record_id','id'].find(field=>
-      rows.length&&rows.every(row=>row[field]!==undefined&&row[field]!==null));
-    const ids=idField?[...new Set(rows.map(row=>row[idField]))]:[];
-    if(!ids.length)return {data:[],error:null,count};
-    const follow=new Query(read,q.schema,q.table);
-    follow.columns=q.columns;follow.rowLimit=ids.length;
-    follow.in(idField,ids);
-    try{const data=await read(follow);return {data:data.data||[],error:null,count}}
-    catch(error){return {data:[],error:null,count,readError:String(error.message)}}
+    if(q.operation==='insert')return {data:rows,error:null,count};
+    const uidFilter=q.filters.find(filter=>filter.column==='uid'&&
+      ['eq','in'].includes(filter.op));
+    const ids=uidFilter?(uidFilter.op==='in'?uidFilter.value:[uidFilter.value]):[];
+    const data=q.operation==='delete'?ids.map(uid=>({uid})):
+      ids.map(uid=>({uid,...(q.values||{})}));
+    return {data,error:null,count};
   }
   return {
     role,
@@ -226,14 +161,7 @@ export function createKyselyPublicClient({
       FIELD(schema);
       return {from(table){return new Query(q=>{
         const callerSignal=q.signal;
-        const perform=()=>{
-          q.signal=transientReadSignal(callerSignal);
-          return role==='anon'
-            ?withPublicReadBudget(()=>read(q),q.signal,{
-              kind:q.cardinality?'interactive':'normal'
-            })
-            :read(q);
-        };
+        const perform=()=>read(q);
         return pendingPublic('select',{
           schema:q.schema,table:q.table,columns:q.columns,
           filters:q.filters,orFilters:q.orFilters,orders:q.orders,

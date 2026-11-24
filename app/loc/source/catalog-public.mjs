@@ -12,7 +12,7 @@ const EDITOR_COLUMNS='uid,type,title,description,invisible,attr,createtime,num';
 
 export async function readPublicSourceAnchors({editor=false}={}){
   // Culture/Statistics remain public. Protected source-editing reads
-  // use read_loc_source_hierarchy through the management gateway instead.
+  // use read_loc_source_hierarchy through its Admin query route instead.
   return readAllAnchorFeature({scope:'loc',family:'source',editor});
 }
 

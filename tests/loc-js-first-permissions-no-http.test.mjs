@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 import {publishedLocAccess} from '../app/loc/permissions/loc-business-grants.mjs';
 import {readLocAccess,loc_access} from '../app/loc/permissions/loc_access.mjs';
 import {locAccessRows,bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
@@ -45,11 +45,10 @@ test('trusted role self projection reads only published JS, including birthday',
 });
 
 test('self-only JS grants and named transactions are enabled without a generic SELECT route',()=>{
-  const routes=JSON.parse(source('public/_routes.json'));
-  assert.ok(routes.include.includes('/api/loc-permissions'));
-  assert.ok(routes.include.includes('/api/loc-public-query'));
-  assert.match(source('functions/api/loc-permissions.js'),/handleLocSelfPermissions/);
-  assert.match(source('functions/api/loc-public-query.js'),/handleNamedPublicTransaction/);
+  assert.equal(existsSync(new URL('../public/_routes.json',import.meta.url)),false);
+  assert.equal(existsSync(new URL('../app/api/loc-public-query',import.meta.url)),false);
+  assert.match(source('app/api/loc-permissions/route.js'),/handleLocSelfPermissions/);
+  assert.match(source('app/loc/server/public-named-transactions.mjs'),/handleNamedPublicTransaction/);
   assert.doesNotMatch(source('app/loc/server/public-named-transactions.mjs'),
     /req\.schema|req\.table|body\.columns|body\.filters|body\.sql/);
   assert.doesNotMatch(source('app/loc/auth/editor-grants.mjs'),/\/api\/loc-permissions|fetchImpl/);
