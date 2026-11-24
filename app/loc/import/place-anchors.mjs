@@ -37,7 +37,10 @@ export function createImportPlaceIndex(){
     const saved={uid,coordinates};
     // Names and aliases are review evidence only. The authoritative exact
     // coordinate/name indexes below are never widened by substring matches.
-    candidatePlaces.push({uid,title:String(anchor.title||''),attr:anchor.attr});
+    const location=anchor?.attr?.location;
+    const aliases=Array.isArray(location)?location:
+      typeof location==='string'?[location]:[];
+    candidatePlaces.push({uid,title:String(anchor.title||''),aliases});
     if(name){
       if(!existingByName.has(name))existingByName.set(name,[]);
       existingByName.get(name).push(saved);
