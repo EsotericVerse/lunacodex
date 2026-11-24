@@ -2,6 +2,7 @@ import {MAX_ROWS} from '../query/query-batch-size.mjs';
 import {importGeoKey} from './geocoordinates.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {planImportPointCreate} from './point-date-immer.mjs';
+import {matchPlaceNameCandidates} from '../trace/place-name-candidates.mjs';
 
 // An exact coordinate identifies an existing Trace location even if the
 // original place label differs. Without GPS, only unambiguous names are used.
@@ -23,7 +24,7 @@ export const importPlaceNameKey=nameKey;
 // This is a semantic lookup, not a new database PK or a second Anchor table.
 export function createImportPlaceIndex(){
   const existingByCoordinate=new Map(),existingByName=new Map();
-  const knownPointUids=new Set();
+  const knownPointUids=new Set(),candidatePlaces=[];
   const accept=anchor=>{
     if(anchor?.type!=='point')throw Error('Point Anchor 索引型別不符');
     const name=nameKey(anchor?.title),uid=String(anchor?.uid||'');
@@ -34,6 +35,9 @@ export function createImportPlaceIndex(){
     knownPointUids.add(uid);
     if(!name&&!coordinates)return;
     const saved={uid,coordinates};
+    // Names and aliases are review evidence only. The authoritative exact
+    // coordinate/name indexes below are never widened by substring matches.
+    candidatePlaces.push({uid,title:String(anchor.title||''),attr:anchor.attr});
     if(name){
       if(!existingByName.has(name))existingByName.set(name,[]);
       existingByName.get(name).push(saved);
@@ -43,7 +47,7 @@ export function createImportPlaceIndex(){
       existingByCoordinate.get(coordinates).push(saved);
     }
   };
-  return {accept,existingByCoordinate,existingByName,knownPointUids};
+  return {accept,existingByCoordinate,existingByName,knownPointUids,candidatePlaces};
 }
 
 function incomingLocations(records){
@@ -82,7 +86,7 @@ export async function prepareImportPlaceAnchors(records,{
     // Even when every imported article already has place_id, return the
     // shared UID index so verified links can be retained without a name scan.
     const indexed=anchorSnapshot?.scopeId===scopeId?anchorSnapshot.place:null;
-    return {byCoordinate,byName,created:0,reused:0,conflicts:[],
+    return {byCoordinate,byName,created:0,reused:0,conflicts:[],nameCandidates:[],
       skipped:missing+names.size,unmatchedCoordinates:names.size,
       ...(indexed?{knownPointUids:indexed.knownPointUids,table:anchorSnapshot.table}:{})};
   };
@@ -114,6 +118,18 @@ export async function prepareImportPlaceAnchors(records,{
       if((data||[]).length<pageSize)break;
     }
   }
+  // One compiled multi-name scan for ambiguous name-only imports. A name
+  // overlap is reported after import, NOT used to repoint a saved UID or to
+  // silently reuse a Point with different or unknown coordinates.
+  const nameOnly=[...names.values()].filter(place=>
+    !place.coordinates&&!existingByName.has(place.name));
+  const suggestions=matchPlaceNameCandidates(
+    nameOnly.map(place=>({key:place.name,name:place.title})),index.candidatePlaces);
+  const nameCandidates=nameOnly.flatMap(place=>{
+    const hits=suggestions.get(place.name)||[];
+    return hits.length?[{place:place.title,saved_uids:hits.map(hit=>hit.uid),
+      saved_titles:hits.map(hit=>hit.title)}]:[];
+  }).slice(0,100);
   let reused=0,created=0;
   const pending=[],ambiguousNames=new Set(),conflicts=[];
   const register=(place,uid)=>{
@@ -212,7 +228,7 @@ export async function prepareImportPlaceAnchors(records,{
   }
   const unmatchedCoordinates=names.size-reused-created;
   return {byCoordinate,byName,created,reused,knownPointUids,table,
-    skipped:missing+unmatchedCoordinates,unmatchedCoordinates,conflicts};
+    skipped:missing+unmatchedCoordinates,unmatchedCoordinates,conflicts,nameCandidates};
 }
 export function importedPlaceId({incoming,existing,byName,byCoordinate}={}){
   if(String(existing?.place_id||'').trim())return null;
