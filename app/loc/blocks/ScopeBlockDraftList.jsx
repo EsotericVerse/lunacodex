@@ -5,6 +5,7 @@ import {useEditDock} from '../../modular/edit-dock';
 import dynamic from 'next/dynamic';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import UiText,{useUiText} from '../../i18n/UiText';
+import FieldText from '../../i18n/FieldText';
 import {useUiSection} from '../../i18n/ui-locale';
 import {HomeBlock} from './home-block-model';
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
@@ -28,7 +29,8 @@ function stripInlineImage(value){
 export default function ScopeBlockDraftList({
   slots,scopeId,pageName,allowDelete=true,allowEntities=true,allowImages=true,
   editEyebrow=true,canAddBlock=false,slotClassName='loc-card',editSlotClassName='',
-  preserveOrder=false,toolbar=null,onDone,onCancel,onDirtyChange=null
+  preserveOrder=false,toolbar=null,onDone,onCancel,onDirtyChange=null,
+  previewDisplay:PreviewDisplay=null,previewClassName=null,previewStyle=null
 }){
   useUiSection('uiExtra.editBlocks');
   useUiSection('uiExtra.frameEditor');
@@ -49,6 +51,7 @@ export default function ScopeBlockDraftList({
     initialDrafts.current=JSON.stringify(initial);
     return initial;
   });
+  const [preview,setPreview]=useState(false);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
 
@@ -261,7 +264,8 @@ export default function ScopeBlockDraftList({
     const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
     const image=isHomeFrame?resolveHomeImage(draft,scopeId):null;
     const pinnedHero=HomeBlock.isPinnedHomeHero(pageName,draft);
-    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'} key={draft.uid}>
+    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'} key={draft.uid}
+      style={showingPreview?{display:'none'}:undefined}>
       <div className="scope-inline-editbar">
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index-1)} onClick={()=>moveBlock(draft.uid,-1)}><UiText id="uiExtra.editBlocks.moveUp"/></button>:null}
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index+1)} onClick={()=>moveBlock(draft.uid,1)}><UiText id="uiExtra.editBlocks.moveDown"/></button>:null}
@@ -325,16 +329,35 @@ export default function ScopeBlockDraftList({
   },[editDock?.register]);
 
   const visibleDrafts=drafts.filter(draft=>!draft._deleted);
+  const showingPreview=Boolean(PreviewDisplay&&preview);
+  const previewRows=showingPreview?visibleDrafts.map((draft,index)=>({
+    ...draft,pageName,order:preserveOrder?Number(draft.order)||index+1:index+1,
+    eyebrow:HomeBlock.plainBlockLine(draft.eyebrow),title:HomeBlock.plainBlockLine(draft.title),
+    subtitle:HomeBlock.plainBlockLine(draft.subtitle),
+    image:draft.image?.source==='custom'&&!String(draft.image.url||'').trim()
+      ?{...draft.image,source:'default',url:''}:draft.image
+  })):[];
   return <>
     <div className="scope-block-draft-toolbar">
       {toolbar}
+      {PreviewDisplay?<button type="button" className="loc-button" aria-pressed={showingPreview} disabled={busy}
+        onClick={()=>setPreview(value=>!value)}><FieldText text={showingPreview?'返回編輯':'預覽'}/></button>:null}
       {!inDock?<div className="scope-block-draft-actions">
         <button type="button" className="loc-button primary" disabled={busy} onClick={save}>{busy?t('uiExtra.editBlocks.saving'):t('uiExtra.editBlocks.save')}</button>
         <button type="button" className="loc-button" disabled={busy} onClick={()=>{if(window.confirm(t('uiExtra.editBlocks.cancelConfirm')))onCancel();}}><UiText id="uiExtra.editBlocks.cancel"/></button>
       </div>:null}
     </div>
+    {/* Retain mounted BlockNote instances, including undo history, while previewing. */}
     {visibleDrafts.map((draft,index)=>renderDraft(draft,index,visibleDrafts))}
-    {canAddBlock?<button type="button" className="loc-button scope-add-page-block" onClick={addBlock} disabled={busy}><UiText id="uiExtra.editBlocks.addBlock"/></button>:null}
+    {canAddBlock&&!showingPreview?<button type="button" className="loc-button scope-add-page-block" onClick={addBlock} disabled={busy}><UiText id="uiExtra.editBlocks.addBlock"/></button>:null}
+    {showingPreview?previewRows.filter(slot=>BlockNoteContent.text.hasBlockNoteFrameContent(slot)).map(slot=>
+      <section key={slot.uid||'order:'+slot.order}
+        className={(previewClassName?.(slot)||slotClassName)+' scope-editable-block loc-home-motion-block'}
+        style={previewStyle?.(slot)}
+        onClickCapture={event=>{if(event.target.closest?.('a'))event.preventDefault()}}>
+        {slot.order===1?<span className="loc-home-motion-hero-line loc-home-preview-hero-line" aria-hidden="true"/>:null}
+        <PreviewDisplay {...slot}/>
+      </section>):null}
     {message?<p className={'scope-status'+(message.startsWith(t('uiExtra.editBlocks.saveFailedPrefix'))?' scope-error':'')} role="status">{message}</p>:null}
   </>;
 }

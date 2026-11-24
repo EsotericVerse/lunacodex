@@ -217,7 +217,7 @@ export default function ScopeEditableBlocks({
   // Invoke the supplied display as a React component, never as a plain function.
   // Its returned Fragment must have its own owner beneath motion.section.
   const DisplayComponent=typeof renderDisplay==='function'?renderDisplay:null;
-  const homeMotionProps=slot=>!motionHome?{}:{
+  const homeMotionProps=slot=>!motionHome?{}:scopeId==='loc'?{initial:false}:{
     initial:reduceMotion?false:{opacity:slot.order===1?.92:.9,y:slot.order===1?14:10},
     ...(slot.order===1
       ?{animate:{opacity:1,y:0}}
@@ -262,6 +262,9 @@ export default function ScopeEditableBlocks({
         slotClassName={slotClassName}
         editSlotClassName={editSlotClassName}
         preserveOrder={Boolean(normalizedOrders.length)}
+        previewDisplay={scopeId==='loc'&&pageName==='index'?DisplayComponent:null}
+        previewClassName={resolveSlotClassName}
+        previewStyle={resolveSlotStyle}
         toolbar={toggleButton}
         onDirtyChange={onDirtyChange}
         onCancel={()=>{
