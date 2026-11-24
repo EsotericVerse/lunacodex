@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {turnHomeBlocks} from '../app/loc/blocks/home-page-turn.mjs';
 import {block_list} from '../app/loc/providers/kysely-public.mjs';
 import {publicScopeBlockPage} from '../app/loc/blocks/public-scope-pages.mjs';
 
@@ -152,5 +153,47 @@ test('homepage draft preview uses the current unsaved drafts and preserves the e
   assert.match(draft,/style=\{showingPreview\?\{display:'none'\}:undefined\}/);
   assert.match(draft,/\{visibleDrafts\.map\(\(draft,index\)=>renderDraft/);
   assert.match(draft,/<PreviewDisplay \{\.\.\.slot\}\/>/);
-  assert.match(draft,/onClick=\{\(\)=>setPreview\(value=>!value\)\}/);
+  assert.match(draft,/onClick=\{\(\)=>setRequestedPreview\(value=>!value\)\}/);
+});
+
+test('homepage keeps its public face until authorized editor data and module are ready',()=>{
+  const home=src('app/loc/blocks/ScopeEditableBlocks.jsx');
+  assert.match(home,/publicBlocks\?\?lastPublished\.current/);
+  assert.match(home,/!editingReady\|\|!homeDraftComponent\|\|homeTurned/);
+  assert.match(home,/turnHomeBlocks\('edit',\(\)=>setHomeTurned\(true\)\)/);
+  assert.match(home,/if\(homeTurned\)lastPublished\.current=null/);
+  assert.match(home,/window\.addEventListener\('pagehide',leave\)/);
+  assert.match(home,/if\(!event\.persisted\)return/);
+});
+test('page turn is reversible and cancelled on abandonment',async()=>{
+  const oldWindow=globalThis.window,oldDocument=globalThis.document;
+  let resolve,finished=0,cancelled=0,animated=0;
+  const frames=[];
+  try{
+    globalThis.window={innerHeight:800,matchMedia:()=>({matches:false})};
+    globalThis.document={querySelectorAll:()=>[
+      {getBoundingClientRect:()=>({width:600,height:400,top:0,bottom:400}),
+       animate:(steps,options)=>{animated++;frames.push({steps,options});return{
+         finished:new Promise(r=>{resolve=r}),cancel(){cancelled++}
+       }}},
+      {getBoundingClientRect:()=>({width:0,height:0,top:0,bottom:0}),
+       animate:()=>{throw Error('hidden editor must not animate')}}
+    ]};
+    const stop=turnHomeBlocks('preview',()=>finished++);
+    assert.equal(animated,1);
+    assert.match(frames[0].steps[1].transform,/rotateY\(-58deg\)/);
+    stop();resolve();
+    await Promise.resolve();await Promise.resolve();
+    assert.equal(cancelled,1);assert.equal(finished,0);
+    const done=turnHomeBlocks('edit',()=>finished++);
+    assert.match(frames[1].steps[1].transform,/rotateY\(58deg\)/);
+    resolve();await Promise.resolve();await Promise.resolve();
+    assert.equal(finished,1);done();
+    globalThis.window.matchMedia=()=>({matches:true});
+    turnHomeBlocks('edit',()=>finished++)();
+    assert.equal(finished,2);assert.equal(animated,2);
+  }finally{
+    if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;
+    if(oldDocument===undefined)delete globalThis.document;else globalThis.document=oldDocument;
+  }
 });

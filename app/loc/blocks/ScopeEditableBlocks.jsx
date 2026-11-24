@@ -3,7 +3,9 @@ import {parseBlockImage} from './hero-image.mjs';
 import UiText from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 
-import {Fragment,useMemo,useState} from 'react';
+import {Fragment,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
+import {flushSync} from 'react-dom';
+import {scrollHomeTop,turnHomeBlocks} from './home-page-turn.mjs';
 import {motion,useReducedMotion} from 'motion/react';
 import {useEditDock} from '../../modular/edit-dock';
 import {navigationHref} from '../../modular/routing/scope-registry';
@@ -93,6 +95,12 @@ export default function ScopeEditableBlocks({
   const [editMode,setEditMode]=useState(Boolean(startInEditMode));
   const [recentlySavedBlocks,setRecentlySavedBlocks]=useState(null);
   const editingContent=Boolean(homeEditActive||editMode||authorizedByParent);
+  const homePageTurn=scopeId==='loc'&&pageName==='index'&&explicitEditButton;
+  const wantsHomeEditor=homePageTurn&&editingContent;
+  const [homeTurned,setHomeTurned]=useState(false);
+  const [homeDraftComponent,setHomeDraftComponent]=useState(null);
+  const [homeDraftError,setHomeDraftError]=useState(false);
+  const lastPublished=useRef(null);
 
   // Published presentation and the authoritative editor are mutually
   // exclusive on EVERY page, not only on Scope homepages. A management editor
@@ -109,10 +117,49 @@ export default function ScopeEditableBlocks({
     ()=>selectLiveScopeBlocks(scopeId,pageName),{
       enabled:editingContent
     });
-  const blocks=editingContent?editorRows.data
-    :(recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks));
   const editingReady=editorRows.isSuccess;
   const editingError=editorRows.isError;
+  const publicBlocks=recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks);
+  const showEditor=editingContent&&(!homePageTurn||homeTurned);
+  // Keep only the outgoing public face while the authoritative draft is read.
+  // Disabling the public reader must not blank the page during the turn.
+  useLayoutEffect(()=>{
+    if(!homePageTurn)return;
+    if(!wantsHomeEditor&&Array.isArray(publicBlocks))lastPublished.current=publicBlocks;
+    if(homeTurned)lastPublished.current=null;
+  },[homePageTurn,wantsHomeEditor,publicBlocks,homeTurned]);
+  const blocks=showEditor?editorRows.data
+    :(wantsHomeEditor?(publicBlocks??lastPublished.current):publicBlocks);
+  useLayoutEffect(()=>{
+    if(!wantsHomeEditor){setHomeTurned(false);return;}
+    scrollHomeTop();
+  },[wantsHomeEditor]);
+  useEffect(()=>{
+    if(!wantsHomeEditor){setHomeDraftComponent(null);setHomeDraftError(false);return;}
+    let active=true;
+    import('./ScopeBlockDraftList').then(module=>{
+      if(active)setHomeDraftComponent(()=>module.default);
+    }).catch(()=>{if(active)setHomeDraftError(true)});
+    return()=>{active=false;};
+  },[wantsHomeEditor]);
+  useLayoutEffect(()=>{
+    if(!wantsHomeEditor||!editingReady||!homeDraftComponent||homeTurned)return;
+    return turnHomeBlocks('edit',()=>setHomeTurned(true));
+  },[wantsHomeEditor,editingReady,homeDraftComponent,homeTurned]);
+  // A document kept in the browser's back-forward cache is not unmounted.
+  // Retire this homepage edit session even in that case; no draft persistence.
+  useEffect(()=>{
+    if(!wantsHomeEditor)return;
+    const leave=event=>{
+      if(!event.persisted)return;
+      flushSync(()=>{
+        setEditMode(false);setHomeTurned(false);editDock?.end?.();
+      });
+    };
+    window.addEventListener('pagehide',leave);
+    return()=>window.removeEventListener('pagehide',leave);
+  },[wantsHomeEditor,editDock?.end]);
+  const DraftList=homePageTurn?homeDraftComponent:ScopeBlockDraftList;
   const rememberSavedRows=()=>{
     if(isScopeHomepageBlock){
       const saved=queryClient.getQueryData(['scope-blocks',scopeId,pageName]);
@@ -241,6 +288,7 @@ export default function ScopeEditableBlocks({
     const heroSlotOrder=Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0?placeholderFirstOrder:null;
     const contents=<>
       {!editing&&!heroSlotOrder?toggleButton:null}
+      {wantsHomeEditor&&homeDraftError?<p className="scope-status scope-error" role="alert">編輯器載入失敗，請退出後重新進入編輯模式。</p>:null}
       {editing&&!editingReady?<div className="scope-status"
         role={editingError?'alert':'status'}>
         {editingError?<>
@@ -250,7 +298,7 @@ export default function ScopeEditableBlocks({
           </button>
         </>:<p>正在讀取最新編輯資料…</p>}
       </div>:null}
-      {editing&&editingReady?<ScopeBlockDraftList
+      {editing&&editingReady&&showEditor&&DraftList?<DraftList
         slots={slots}
         scopeId={scopeId}
         pageName={pageName}
