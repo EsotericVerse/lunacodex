@@ -1,31 +1,73 @@
-/* BlockNote 0.55 Ariakit UI. LOC owns colors, typography, and spacing.
-   Keep the CSS variables on the editor root rather than importing a second
-   UI framework. Ariakit supplies keyboard/focus/menu behavior, not themes. */
-.scope-blocknote .bn-root[data-color-scheme]{
-  --bn-text-color-primary:var(--loc-text);
-  --bn-text-color-menu:var(--loc-text);
-  --bn-text-color-tooltip:var(--loc-text);
-  --bn-text-color-hovered:var(--loc-text);
-  --bn-text-color-selected:var(--loc-text);
-  --bn-text-color-disabled:var(--loc-muted);
-  --bn-text-color-muted:var(--loc-muted);
-  --bn-background-color-editor:var(--loc-panel);
-  --bn-background-color-menu:var(--loc-panel-strong);
-  --bn-background-color-tooltip:var(--loc-panel-2);
-  --bn-background-color-hovered:var(--loc-accent-surface);
-  --bn-background-color-selected:var(--loc-accent-surface-strong);
-  --bn-background-color-disabled:var(--loc-surface-soft);
-  --bn-border-color:var(--loc-line);
-  --bn-border-color-strong:var(--loc-accent-border);
-  --bn-focus-ring-color:var(--loc-accent);
-  --bn-radius-small:6px;
-  --bn-radius-medium:10px;
-  --bn-radius-large:12px;
-  --bn-font-family-default:var(--loc-font-family);
+/* BlockNote and portalled UI share LOC's live palette. Ariakit also uses
+   literal colors, so map its UI surfaces and states to the same tokens. */
+:root .bn-root[data-color-scheme]{
+  --bn-colors-editor-text:var(--loc-text);
+  --bn-colors-menu-text:var(--loc-text);
+  --bn-colors-tooltip-text:var(--loc-text);
+  --bn-colors-hovered-text:var(--loc-text);
+  --bn-colors-selected-text:var(--loc-text);
+  --bn-colors-disabled-text:var(--loc-muted);
+  --bn-colors-editor-background:var(--loc-panel);
+  --bn-colors-menu-background:var(--loc-panel);
+  --bn-colors-tooltip-background:var(--loc-panel-2);
+  --bn-colors-hovered-background:var(--loc-accent-surface);
+  --bn-colors-selected-background:var(--loc-accent-surface-strong);
+  --bn-colors-disabled-background:var(--loc-surface-soft);
+  --bn-colors-border:var(--loc-line);
+  --bn-colors-side-menu:var(--loc-muted);
+  --bn-border-radius:10px;
+  --bn-font-family:var(--loc-font-family);
   font-family:var(--loc-font-family);
 }
-/* Preserve LOC's URL-only image action and narrow-screen editor sizing.
-   Native Ariakit popovers retain their own focus and dismissal behavior. */
+:root :is(.bn-ak-toolbar,.bn-ak-menu,.bn-ak-popover,.bn-ak-wrapper,.bn-ak-hovercard){
+  background-color:var(--loc-panel);
+  color:var(--loc-text);
+  border-color:var(--loc-line);
+  box-shadow:var(--loc-shadow-card);
+}
+:root .bn-ak-tooltip{
+  background-color:var(--loc-panel-2);
+  color:var(--loc-text);
+  border-color:var(--loc-line);
+}
+:root :is(.bn-ak-button,.bn-ak-tab,.bn-file-input){
+  --border:var(--loc-line);
+  --highlight:var(--loc-surface-soft);
+  --shadow:var(--loc-line-soft);
+  background-color:var(--loc-surface-soft);
+  color:var(--loc-text);
+  outline-color:var(--loc-accent);
+}
+:root :is(.bn-ak-secondary,.bn-ak-flat,.bn-ak-tab,.bn-file-input){background-color:transparent}
+:root :is(.bn-ak-button,.bn-ak-tab,.bn-ak-menu-item,.bn-ak-select-item):not([aria-disabled="true"]):not(:disabled):hover,
+:root :is(.bn-ak-menu-item,.bn-ak-select-item)[data-active-item]{
+  background-color:var(--loc-accent-surface);
+  color:var(--loc-text);
+}
+:root :is(.bn-ak-button,.bn-ak-tab,.bn-ak-menu-item,.bn-ak-select-item):is([data-selected],[data-active],[aria-selected="true"],[aria-pressed="true"],[aria-expanded="true"]),
+:root .bn-ak-primary{
+  background-color:var(--loc-accent-surface-strong);
+  color:var(--loc-text);
+  --border:var(--loc-accent-border);
+}
+:root :is(.bn-ak-button,.bn-ak-tab,.bn-ak-menu-item,.bn-ak-select-item)[aria-disabled="true"],
+:root .bn-ak-button:disabled{color:var(--loc-muted)}
+:root .bn-ak-input,
+:root .bn-ariakit .bn-combobox .bn-ak-input-wrapper{
+  background-color:var(--loc-panel-2);
+  color:var(--loc-text);
+  border-color:var(--loc-line);
+  box-shadow:inset 0 0 0 1px var(--loc-line);
+}
+:root .bn-ak-input:hover{background-color:var(--loc-panel-2)}
+:root .bn-ak-input::placeholder{color:var(--loc-muted)}
+:root .bn-ariakit .bn-combobox .bn-ak-input{background:transparent;box-shadow:none}
+:root :is(.bn-ak-input,.bn-ak-popover,.bn-ak-hovercard):is(:focus-visible,[data-focus-visible]){outline-color:var(--loc-accent)}
+:root :is(.bn-ak-link,.bn-ak-anchor){color:var(--loc-accent)}
+:root .bn-ak-separator{border-color:var(--loc-line)}
+:root .bn-ariakit :is(.bn-side-menu,.bn-table-handle,.bn-extend-button,.bn-table-cell-handle){color:var(--loc-muted)}
+:root .bn-ak-panel-popover{background-color:transparent;border:none;box-shadow:none}
+/* Keep the native floating layout and focus behavior. */
 .scope-blocknote .bn-toolbar,
 .scope-blocknote .bn-suggestion-menu,
 .scope-blocknote .bn-link-toolbar{
