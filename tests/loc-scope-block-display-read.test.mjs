@@ -105,3 +105,22 @@ test('shared home display assigns explicit keys to prebuilt React siblings',()=>
   assert.match(home,/children\.map\(\(entity,index\)=>\{/);
   assert.match(home,/key=\{entity\.uid\|\|'child-'\+index\}/);
 });
+
+test('motion home sections receive a single keyed Fragment child, not a sibling array',()=>{
+  const source=src('app/loc/blocks/ScopeEditableBlocks.jsx');
+  const motionBranch=source.split('const node=<HomeDisplayTag')[1]?.split('</HomeDisplayTag>')[0];
+  assert.ok(motionBranch,'homepage motion section renderer missing');
+  assert.match(motionBranch,/>\s*<Fragment key="motion-section-content">/);
+  assert.match(motionBranch,/<motion\.span key="hero-line"/);
+  assert.match(motionBranch,/<DisplayComponent key="slot-display"/);
+  assert.match(motionBranch,/<\/Fragment>\s*$/);
+});
+
+test('development never registers a production SW or reuses LOC static Next caches',()=>{
+  const shell=src('app/AppShell.jsx');
+  assert.match(shell,/process\.env\.NODE_ENV==='development'/);
+  assert.match(shell,/navigator\.serviceWorker\.getRegistrations\(\)/);
+  assert.match(shell,/reg\.unregister\(\)/);
+  assert.match(shell,/name\.startsWith\('loc-static-next-'\)/);
+  assert.match(shell,/navigator\.serviceWorker\.register\('\/sw\.js'/);
+});

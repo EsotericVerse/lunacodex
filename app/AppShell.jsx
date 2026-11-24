@@ -384,10 +384,34 @@ function AppShellInner({children,runtime}){
     }catch{}
   },[]);
   useEffect(()=>{
-    // Register browser-only static asset caching. Native IPA remains separate;
-    // SQL, public APIs, auth, HTML and images are never intercepted.
+    // Immutable Next assets are production-only. Development serves changing
+    // module URLs: an old website SW can keep giving localhost stale JS even
+    // when the Git HEAD and Next dev build are both current.
     if(Capacitor.isNativePlatform()||!('serviceWorker' in navigator)||
       !/^https?:$/.test(window.location.protocol))return;
+    if(process.env.NODE_ENV==='development'){
+      void (async()=>{
+        // Retire only the LOC-owned root worker and static asset caches.
+        // Never touch another worker, Auth, SQL data, sessions or user files.
+        const swUrl=new URL('/sw.js',window.location.href).href;
+        const registrations=await navigator.serviceWorker.getRegistrations();
+        const old=registrations.filter(reg=>[reg.active,reg.waiting,reg.installing]
+          .some(worker=>worker?.scriptURL===swUrl));
+        await Promise.all(old.map(reg=>reg.unregister()));
+        if('caches' in window){
+          const names=await caches.keys();
+          await Promise.all(names.filter(name=>
+            name.startsWith('loc-static-next-')||
+            name.startsWith('loc-static-preact-')||
+            name.startsWith('loc-public-')).map(name=>caches.delete(name)));
+        }
+        if(old.length&&navigator.serviceWorker.controller)
+          console.info('[loc-dev] Previous website Service Worker retired; refresh once for the latest Next.js modules.');
+      })().catch(()=>{});
+      return;
+    }
+    // Web production only. Native IPA remains separate; HTML, APIs and images
+    // are never intercepted by this worker.
     void navigator.serviceWorker.register('/sw.js',{scope:'/',updateViaCache:'none'})
       .catch(()=>{});
   },[]);
