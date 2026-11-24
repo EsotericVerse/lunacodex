@@ -13,7 +13,8 @@ test('Full classifier shares raw literal candidates with Pattern counts and reta
       {uid:'A',scan_text:'月光月光火焰'},{uid:'B',scan_text:'11月24日'},{uid:'C',scan_text:'無關'}
     ]);
   assert.deepEqual(observed,[[['月光',2],['火焰',1]],[],[]]);
-  assert.deepEqual(result.classifications.map(row=>row.hit_count),[2,0,0]);
+  // 火 and 火焰 are independent original Item signals; 月 is masked by 月光.
+  assert.deepEqual(result.classifications.map(row=>row.hit_count),[3,0,0]);
 });
 test('Discovery keeps a longer new phrase and excludes exact existing words',()=>{
   const rows=[{type:'item',name:'月光',lists:[]},{type:'pattern',name:'火焰'}];
