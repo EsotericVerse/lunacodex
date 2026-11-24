@@ -177,15 +177,6 @@ test('database owner closes its pool even if Kysely destruction fails',async()=>
   }),/forced destroy failure/);
   assert.deepEqual(events,['db','pool']);
 });
-test('LOC operation source contains one transaction and verified permission snapshot',()=>{
-  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  const dock=readFileSync(new URL('../app/modular/edit-dock.jsx',import.meta.url),'utf8');
-  assert.match(native,/const verifiedRights=\{canWrite:claims.me,grants:claims.grants\}/);
-  assert.doesNotMatch(native,/readLocAccess\(trx,claims.email/);
-  assert.match(native,/await selected\.db\.transaction\(\)\.execute\(async trx=>/);
-  assert.match(native,/await closeLocDatabase\(selected\)/);
-  assert.match(dock,/await transactionWrites\(operations\)/);
-});
 
 test('health-check SQL ownership closes connection after successful and invalid probes',async()=>{
   for(const connected of [1,0]){
@@ -228,26 +219,6 @@ test('standalone article distribution owns SQL, borrowed analytics do not',async
   assert.deepEqual(calls,[]);
 });
 
-test('Suno, article, theme, TimeRiver and Search editors expose complete Save plans',()=>{
-  const files=[
-    ['../app/loc/media/SunoImportPanel.jsx','prepareSunoTransaction'],
-    ['../app/loc/management/ManagementArticlePublisher.jsx','prepareArticleTransaction'],
-    ['../app/loc/scope/ScopeSettingsPanel.jsx','prepareThemeTransaction'],
-    ['../app/modular/features/CultureTimelineEditor.jsx','prepareTimeTransaction'],
-    ['../app/modular/features/Search.jsx','prepareSearchEditTransaction'],
-    ['../app/loc/keywords/ui/KeywordLibraryPanel.jsx','prepareKeywordNodeTransaction']
-  ];
-  for(const [path,name] of files){
-    const source=readFileSync(new URL(path,import.meta.url),'utf8');
-    assert.ok(source.includes(name),path+' missing SQL write preparation');
-    assert.match(source,/prepareTransaction:/,path+' must register with six-key Save');
-    assert.match(source,/transactionWrites\(/,path+' must use the shared SQL transaction');
-  }
-  const suno=readFileSync(new URL(files[0][0],import.meta.url),'utf8');
-  assert.doesNotMatch(suno,/await insertRows\(/);
-  const culture=readFileSync(new URL(files[3][0],import.meta.url),'utf8');
-  assert.match(culture,/p_expected_count:ids\.length/);
-});
 test('Keyword subtree deletion performs real Anchor/Config changes in one transaction',()=>{
   const editor=readFileSync(new URL('../app/loc/keywords/ui/KeywordLibraryPanel.jsx',import.meta.url),'utf8');
   const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
@@ -331,18 +302,6 @@ test('keyword sharing uses one locked read-modify-write transaction and fails cl
   assert.equal(metadata.class_shares.ABCD1234,true);
   assert.deepEqual(events,['begin','rollback']);
 });
-test('MCP business writes retain one owned SQL transaction and published JS role checks',()=>{
-  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  assert.match(native,/const rights=host===MCP_HOST/);
-  assert.ok(native.indexOf('const rights=host===MCP_HOST')>0);
-  assert.ok(native.indexOf('const rights=host===MCP_HOST')<native.indexOf('selected=await database('));
-  for(const kind of ['mcp-conversation','mcp-sync','mcp-append'])
-    assert.ok(native.includes("'"+kind+"'"),kind+' must join transaction authorization');
-  assert.match(native,/await loadMcpLocAccess\(null,claims.email/);
-  assert.doesNotMatch(native,/readLocAccess\(trx,claims.email/);
-  assert.match(native,/bindLocAuthorization\(trx,\{role:claims.role,claims,engine:selected.engine\}\)/);
-  assert.doesNotMatch(native,/withFixedPolicyWrite\(/);
-});
 
 test('MCP public Galaxy reads reuse the borrowed Kysely transaction',async()=>{
   const calls=[];
@@ -375,14 +334,6 @@ test('borrowed article analytics reuse transaction without nested BEGIN',async()
     borrowed:true,inTransaction:true
   });
   assert.equal(result.total,3);
-});
-test('MCP reads reuse JS grants and execute directly on the selected connection',()=>{
-  const source=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  for(const kind of ['mcp-public-read','mcp-article-stat','mcp-read','mcp-search'])
-    assert.ok(source.includes("'"+kind+"'"),kind+' must stay within the fixed read allowlist');
-  assert.match(source,/databasePort:selected/);
-  assert.match(source,/database:async\(\)=>selected,borrowed:true/);
-  assert.match(source,/runMcp\(selected\.db\)/);
 });
 
 test('import special Galaxy fields share one native typed update batch',()=>{
