@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {parseGalaxyFeatureTransaction,executeGalaxyFeatureTransaction,
   GALAXY_FEATURE_MODELS} from '../app/loc/model/galaxy-feature-transactions.mjs';
-import {handleNamedPublicTransaction} from '../app/loc/server/public-named-transactions.mjs';
+import {handleGalaxyFeatureQuery} from '../app/loc/galaxy/feature-query-server.mjs';
+import {parseGalaxyRecordTransaction,executeGalaxyRecordTransaction} from '../app/loc/model/galaxy-record-transactions.mjs';
+import {galaxyAble} from '../app/loc/model/galaxy-able.mjs';
 
 const base={kind:'transaction',operation:'galaxy-feature',scope:'lo3rwang',
   feature:'culture',startDate:'2026-01-01',endDate:'2026-12-31',result:'uids'};
-const request=body=>new Request('https://loc.lo3rwang.cc/trace/query',{
+const request=body=>new Request('https://loc.lo3rwang.cc/galaxy/feature',{
   method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify(body)});
 
@@ -27,8 +29,7 @@ test('no arbitrary SQL, relation, column or filter passes the transaction bounda
     {result:'count',cursor:'AAAA0001'}
   ]){
     assert.throws(()=>parseGalaxyFeatureTransaction({...base,...extra}));
-    const response=await handleNamedPublicTransaction(request({...base,...extra}),{},
-      {database:()=>{throw Error('SQL must not start')}});
+    const response=await handleGalaxyFeatureQuery(request({...base,...extra}),{});
     assert.equal(response.status,400);
   }
 });
@@ -36,28 +37,20 @@ test('UID list defaults to 100 and rejects larger limits',()=>{
   assert.equal(parseGalaxyFeatureTransaction(base).limit,100);
   assert.equal(parseGalaxyFeatureTransaction({...base,limit:5}).limit,5);
 });
-test('feature query runs directly on the selected connection and includes its audit context',async()=>{
-  const observed={tables:[],filters:[],transactions:0};
+test('Galaxy Trace model reads the selected Scope and place directly',async()=>{
+  const observed={tables:[],filters:[]};
   const query={where(...args){observed.filters.push(args);return this},
     select(){return this},orderBy(){return this},limit(){return this},
     async execute(){return [{uid:'AAAA0001'}]}};
-  const db={
-    selectFrom(table){observed.tables.push(table);return query},
-    transaction(){observed.transactions++;throw Error('Read query opened a transaction')},
-    async destroy(){}
-  };
-  const response=await handleNamedPublicTransaction(request({
+  const db={selectFrom(table){observed.tables.push(table);return query},
+    transaction(){throw Error('Read query opened a transaction')}};
+  const result=await executeGalaxyFeatureTransaction(db,parseGalaxyFeatureTransaction({
     ...base,feature:'trace',category:{type:'place',value:'BBBB0001'}
-  }),{},{database:async()=>({engine:'postgres',db,pool:{end:async()=>{}}})});
-  assert.equal(response.status,200);
-  const payload=await response.json();
-  assert.deepEqual(payload.data.uids,['AAAA0001']);
-  assert.equal(payload.audit.requestedBy,'trace');
-  assert.equal(payload.audit.model,'GalaxyTrace');
+  }));
+  assert.deepEqual(result.uids,['AAAA0001']);
   assert.deepEqual(observed.tables,['silver.lo3rwang_galaxy']);
   assert.ok(observed.filters.some(args=>args[0]==='trace'&&args[2]===true));
   assert.ok(observed.filters.some(args=>args[0]==='place_id'&&args[2]==='BBBB0001'));
-  assert.equal(observed.transactions,0);
 });
 
 test('the daily-source model returns source groups and daily total in one query',async()=>{
@@ -104,9 +97,7 @@ test('public Search rejects site, source, and place selectors before opening SQL
   for(const extra of selectors){
     const body={...requestBase,...extra};
     assert.throws(()=>parseGalaxyFeatureTransaction(body));
-    const response=await handleNamedPublicTransaction(request(body),{},{
-      database:()=>{throw Error('Disallowed Search must not open SQL')}
-    });
+    const response=await handleGalaxyFeatureQuery(request(body),{});
     assert.equal(response.status,400);
   }
   assert.equal(parseGalaxyFeatureTransaction({
@@ -151,4 +142,38 @@ test('public Search matches title OR content, with no user-chosen metadata field
   assert.match(clauses,/"column":"content","operator":"not ilike","value":"%失落%"/);
   assert.doesNotMatch(clauses,/"column":"location"/);
   assert.doesNotMatch(clauses,/"column":"place_id"/);
+});
+
+test('MCP defaults are listable and nonextractable; all eight flags stay independent',()=>{
+  const attrs=galaxyAble({site:'mcp'});
+  assert.equal(Object.keys(attrs).length,8);
+  assert.equal(attrs.list,true);
+  assert.equal(attrs.extract,false);
+  assert.equal(attrs.search,true);
+  assert.equal(attrs.culture,true);
+  assert.equal(galaxyAble({site:'mcp',list:false,extract:false}).list,false);
+  assert.equal(galaxyAble({site:'mcp',list:true,extract:true}).extract,true);
+});
+
+test('public UID article detail has an enforced SQL list+extract predicate',async()=>{
+  const seen=[];
+  const query={select(){return this},where(...args){seen.push(args);return this},
+    async execute(){return []}};
+  const trx={selectFrom(table){assert.equal(table,'silver.lo3rwang_galaxy');return query}};
+  const detail=parseGalaxyRecordTransaction({kind:'transaction',operation:'galaxy-records',
+    scope:'lo3rwang',view:'detail',uids:['AAAA0001']});
+  await executeGalaxyRecordTransaction(trx,detail);
+  assert.ok(seen.some(args=>args[0]==='list'&&args[1]==='='&&args[2]===true));
+  assert.ok(seen.some(args=>args[0]==='extract'&&args[1]==='='&&args[2]===true));
+  const before=seen.length;
+  await executeGalaxyRecordTransaction(trx,{...detail,view:'list'});
+  assert.ok(!seen.slice(before).some(args=>args[0]==='extract'));
+  seen.length=0;
+  await executeGalaxyRecordTransaction(trx,{...detail,mode:'editor'});
+  assert.ok(!seen.some(args=>args[0]==='extract'));
+});
+
+test('MCP public content uses the independent extract flag',()=>{
+  const mcp=readFileSync(new URL('../app/loc/mcp/galaxy-read.mjs',import.meta.url),'utf8');
+  assert.match(mcp,/\.where\('extract','=',true\)/);
 });

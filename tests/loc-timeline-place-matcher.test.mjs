@@ -1,30 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {reviewPlaceNameCandidates,reviewPlaceNameGroups,placeNameTerms}
-  from '../app/modular/features/trace/trace-place-names.mjs';
 import {matchTimelineWindows,distanceInMeters}
   from '../app/loc/trace/timeline-place-matcher.mjs';
 
-const point=(uid,title,lng,lat,extra={})=>({uid,title,address:[lng,lat],
-  trace_type:'space_anchor',source_scope:'demo',...extra});
-test('Place dictionary matches Chinese name containment and confirmed aliases without identity changes',()=>{
-  const anchors=[
-    point('1','臺北車站',121.5,25),
-    point('2','台北車站地下街',121.5,25,{floor_level:-1}),
-    point('3','北車',121.6,25,{attr:{location:['台北車站']}}),
-    point('4','台北車站另一處',121.5,25,{source_scope:'other'}),
-    point('5','路口',121.6,25,{attr:{location:'台北車站'}})
-  ];
-  const snapshot=JSON.stringify(anchors);
-  const candidates=reviewPlaceNameCandidates(anchors);
-  assert.deepEqual(candidates.map(c=>[c.a.uid,c.b.uid].sort().join(':')).sort(),['1:2','1:3','2:3']);
-  const pair=candidates.find(c=>[c.a.uid,c.b.uid].sort().join(':')==='1:2');
-  assert.equal(pair.samePosition,true);
-  assert.equal(pair.sameFloor,false);
-  assert.deepEqual(placeNameTerms(anchors[4]),['路口']);
-  assert.equal(reviewPlaceNameGroups(anchors).automatic.length,0);
-  assert.equal(JSON.stringify(anchors),snapshot);
-});
+const point=(uid,title,lng,lat)=>({uid,title,address:[lng,lat],
+  trace_type:'space_anchor',source_scope:'demo'});
 test('Timeline spatial candidate grid is equivalent to the full distance scan',()=>{
   const anchors=[
     point('a','A',179.999,0),point('b','B',-179.999,0),

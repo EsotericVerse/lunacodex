@@ -3,7 +3,7 @@
 import {readTracePoint} from '../../loc/actions/trace/direct-query.mjs';
 import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from '../db/db-client.mjs';
-import {reviewPlaceNameGroups,reviewPlaceNameCandidates,compactPlaceName,placeNameTerms} from '../../modular/features/trace/trace-place-names.mjs';
+import {reviewPlaceNameGroups,compactPlaceName} from '../../modular/features/trace/trace-place-names.mjs';
 import {renameTraceAnchorTitles} from '../../modular/features/trace/trace-data';
 import {matchPlaceNameCandidates,placeCandidateKey} from './place-name-candidates.mjs';
 
@@ -15,8 +15,6 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   const anchors=useMemo(()=>(spatial.anchors||[]).filter(item=>
     item.trace_type==='space_anchor'&&item.source_scope===scopeId),[spatial.anchors,scopeId]);
   const {automatic,uncertain}=useMemo(()=>reviewPlaceNameGroups(anchors),[anchors]);
-  const nameCandidates=useMemo(()=>reviewPlaceNameCandidates(anchors),[anchors]);
-  const [nameLimit,setNameLimit]=useState(80);
   // Read-only name-overlap suggestions use the same compiled matcher as
   // import reviews. They never enter the automatic/bulk rename selection.
   const nameOverlapPairs=useMemo(()=>{
@@ -102,7 +100,6 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
       const names=current.attr?.location;
       setAliases(Array.isArray(names)?names:typeof names==='string'?[names]:[]);
       setNewAlias('');setNotice('已儲存 '+place.title+' 的名稱對照。');
-      await reload();
     }catch(saveError){setError(true);setNotice(String(saveError.message||saveError));}
     finally{setBusy(false);}
   };
@@ -172,7 +169,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   const matches=useMemo(()=>{
     const q=compactPlaceName(placeName);
     if(!q)return [];
-    return anchors.filter(item=>placeNameTerms(item).some(name=>name.includes(q))).slice(0,30);
+    return anchors.filter(item=>compactPlaceName(item.title).includes(q)).slice(0,30);
   },[anchors,placeName]);
   return <section className="loc-card scope-feature-card" aria-label="地點管理及名稱整理">
     <h3>地點管理 · 名稱整理</h3>
@@ -277,23 +274,6 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
       </div>)}
       {nameOverlapPairs.length>40?<p className="scope-status">僅顯示前 40 組名稱候選。</p>:null}
     </section>
-    <details className="scope-card">
-      <summary>3. 文字名稱與別名關聯候選（{nameCandidates.length} 組）</summary>
-      <p className="scope-status">名稱相符不代表同一地點；請比較座標與樓層。此清單不會自動改名、合併或補打卡。</p>
-      {!nameCandidates.length?<p className="scope-status">沒有符合條件的文字名稱候選。</p>:null}
-      {nameCandidates.slice(0,nameLimit).map(candidate=><div key={candidate.key} className="loc-trace-article-choice">
-        <p>{candidate.a.title} · {candidate.b.title}（命中：{candidate.matchedName}）</p>
-        <p className="scope-status">{candidate.samePosition?'座標相同':'座標不同或缺少'} · {candidate.sameFloor?'樓層標記一致（含未填）':'樓層標記不同'}</p>
-        <div className="scope-stat-controls">
-          {[candidate.a,candidate.b].map(item=><button type="button" className="loc-button" key={item.uid}
-            onClick={()=>{setSelectedUid(item.uid);setNewAlias('');}}>
-            查看 {item.title} · {item.uid}
-          </button>)}
-        </div>
-      </div>)}
-      {nameCandidates.length>nameLimit?<button type="button" className="loc-button"
-        onClick={()=>setNameLimit(limit=>limit+80)}>顯示更多（剩餘 {nameCandidates.length-nameLimit} 組）</button>:null}
-    </details>
     {notice?<p role={error?'alert':'status'} className={'scope-status'+(error?' scope-error':'')}>{notice}</p>:null}
   </section>;
 }

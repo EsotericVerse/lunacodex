@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {handleTimeAnchorQuery} from '../app/loc/culture/time-anchor-query-server.mjs';
+import {LOC_OWNER_EMAIL} from '../app/loc/permissions/loc-business-grants.mjs';
 import {parseAnchorFeatureTransaction,executeAnchorFeatureTransaction}
   from '../app/loc/model/anchor-feature-transactions.mjs';
 import {parseGalaxyFeatureTransaction}
@@ -48,3 +50,43 @@ test('Culture/Statistics period lists may opt into Galaxy indexed date sorting',
   assert.equal(parseGalaxyFeatureTransaction(input).orderByDate,true);
   assert.throws(()=>parseGalaxyFeatureTransaction({...input,result:'count'}));
 });
+
+{
+const req=body=>new Request('https://loc.lo3rwang.cc/culture/anchors',{
+  method:'POST',headers:{origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
+  body:JSON.stringify(body)});
+const forbid=()=>{throw Error('Rejected query must not open database')};
+
+test('editor TimeAnchor read denies missing Session before SQL',async()=>{
+  const response=await handleTimeAnchorQuery(req({
+    kind:'transaction',operation:'time-anchors',scope:'lo3rwang',mode:'editor'
+  }),{},{database:forbid,verifySession:async()=>{
+    throw Object.assign(Error('Missing Session'),{httpStatus:401});
+  }});
+  assert.equal(response.status,401);
+});
+
+test('authorized TimeAnchor page reads directly on the selected connection',async()=>{
+  const used={transactions:0,tables:[],limits:[]};
+  const rows=[{uid:'AAAA0001',type:'date',title:'First',description:'',
+    attr:{date:'2026-01-01'},invisible:false}];
+  const query={select(){return this;},where(){return this;},
+    orderBy(){return this;},limit(n){used.limits.push(n);return this},
+    async execute(){return rows}};
+  const database=async()=>({engine:'postgres',namespace:'silver',
+    db:{selectFrom(name){used.tables.push(name);return query},
+      transaction(){used.transactions++;throw Error('Read query opened a transaction')},
+      async destroy(){}},
+    pool:{async end(){}}
+  });
+  const response=await handleTimeAnchorQuery(req({
+    kind:'transaction',operation:'time-anchors',scope:'lo3rwang',
+    mode:'editor',limit:50
+  }),{},{database,verifySession:async()=>({email:LOC_OWNER_EMAIL})});
+  assert.equal(response.status,200);
+  assert.deepEqual((await response.json()).data,rows);
+  assert.equal(used.transactions,0);
+  assert.deepEqual(used.tables,['silver.lo3rwang_anchor']);
+  assert.deepEqual(used.limits,[51]);
+});
+}

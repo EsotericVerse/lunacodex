@@ -195,12 +195,12 @@ test('health-check SQL ownership closes connection after successful and invalid 
     assert.deepEqual(calls,['destroy','pool-end']);
   }
 });
-test('standalone article distribution owns SQL, borrowed analytics do not',async()=>{
+test('article distribution reads directly and closes only its own connection',async()=>{
   const now=new Date('2026-11-22T00:00:00+08:00');
   const calls=[];
   const port={
     db:{
-      transaction:()=>({setIsolationLevel(){return this;},execute:async fn=>fn({})}),
+      transaction(){throw Error('Read-only analytics must not open SQL transaction');},
       async destroy(){calls.push('destroy');}
     },
     pool:{async end(){calls.push('pool-end');}}
@@ -303,7 +303,7 @@ test('keyword sharing uses one locked read-modify-write transaction and fails cl
   assert.deepEqual(events,['begin','rollback']);
 });
 
-test('MCP public Galaxy reads reuse the borrowed Kysely transaction',async()=>{
+test('MCP public Galaxy reads use the supplied Kysely connection',async()=>{
   const calls=[];
   const chain={
     select(columns){calls.push(['select',columns.length]);return this;},
@@ -323,15 +323,4 @@ test('MCP public Galaxy reads reuse the borrowed Kysely transaction',async()=>{
   assert.equal(result.content,'text');
   assert.ok(calls.some(([kind,value])=>kind==='table'&&
     value==='silver.lo3rwang_galaxy'));
-});
-test('borrowed article analytics reuse transaction without nested BEGIN',async()=>{
-  const result=await articleDistribution({period:'calendar_year',year:2026},{},{
-    database:async()=>({db:{
-      transaction(){throw Error('Nested SQL transaction refused');}
-    }}),
-    analytics:async()=>({data:{rows:[{day:'2026-11-01',item_count:3}]}}),
-    now:new Date('2026-11-22T00:00:00+08:00'),
-    borrowed:true,inTransaction:true
-  });
-  assert.equal(result.total,3);
 });
