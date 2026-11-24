@@ -252,15 +252,13 @@ export function selectScopeConfig(scopeId){
   const scope=defaultScopeData(scopeId);
   if(!scope)return Promise.resolve(null);
   if(scope.id==='local')return Promise.resolve(null);
-  // Published configuration is the guest fallback. Live feature configuration
-  // is read through the existing application runtime's native Kysely driver.
-  // Never let an unavailable SQL connection blank a public Scope page.
-  // Only cache successful live SQL reads. Offline published fallbacks still
-  // render immediately, but must not prevent a later live retry.
+  // Editing must use current database settings and surface failed reads.
   return cachedRead('scope-config:'+scope.id,
     ()=>nativePublicContent('config',scope.id))
-    .then(data=>data||publishedConfig(scope.id))
-    .catch(()=>publishedConfig(scope.id));
+    .then(data=>{
+      if(!data)throw new Error('Scope settings unavailable');
+      return data;
+    });
 }
 
 
