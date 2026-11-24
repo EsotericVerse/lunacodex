@@ -1,5 +1,5 @@
 'use server';
-import {withAuthorizedLocRead} from '../read-context.mjs';
+import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -7,9 +7,13 @@ import {assertZModelAnchorFeatureRows,assertZModelSelectRows}
   from '../../../../packages/zenstack/import-validation.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS}
   from '../../query/query-batch-size.mjs';
+import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
+import {scopeFeatureEnabled} from '../../scope/scope-config-fields.mjs';
 
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
+const publishedScope=new Map(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false)
+  .map(row=>[row.scope_id,row]));
 const id=value=>{
   const scope=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||scope==='admin')
@@ -36,12 +40,14 @@ export async function queryCulture(args={}){
     args.p_view!=='culture_list'||!exactKeys(args.p_options||{},['site','offset']))
     throw Error('Invalid Culture list request');
   const scope=id(args.p_scope_id),start=date(args.p_start),end=date(args.p_end);
+  if(!scopeFeatureEnabled(publishedScope.get(scope)?.config,'culture_able'))
+    throw Error('Culture feature is not published');
   const site=String(args.p_options?.site||'').trim();
   const offset=Number(args.p_options?.offset||0);
   if(!start||!end||start>end||!site||site.length>120||
     !Number.isSafeInteger(offset)||offset<0||offset>100000)
     throw Error('Invalid Culture list selection');
-  return withAuthorizedLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope},async(db,port)=>{
     const rows=await db.selectFrom(relation(scope,'galaxy',port))
       .select(galaxyReadColumns('GalaxyList'))
       .where('date','>=',start).where('date','<=',end)
@@ -66,10 +72,12 @@ export async function queryCultureContent(searchParams){
     !['culture_anchors','culture_density'].includes(kind))
     throw Error('Invalid Culture query');
   const start=date(params.get('start')),end=date(params.get('end'));
+  if(!scopeFeatureEnabled(publishedScope.get(scope)?.config,'culture_able'))
+    throw Error('Culture feature is not published');
   if(kind==='culture_density'&&(!start||!end||start>end)||
     kind==='culture_anchors'&&(start||end))
     throw Error('Invalid Culture query range');
-  return withAuthorizedLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope},async(db,port)=>{
     if(kind==='culture_anchors'){
       const table=relation(scope,'anchor',port);
       const rows=await db.selectFrom(table).select(['uid','type','title','attr'])
@@ -98,8 +106,7 @@ export async function queryTimeAnchors({scope:scopeValue,mode='public',
     cursor&&!UID.test(cursor)||!Number.isSafeInteger(limit)||limit<1||
     limit>TIME_ANCHOR_MAX_PAGE_ROWS)
     throw Error('Invalid TimeAnchor page');
-  return withAuthorizedLocRead({scope,writeScopes:mode==='editor'?[scope]:[]},
-    async(db,port)=>{
+  const read=async(db,port)=>{
       let query=db.selectFrom(relation(scope,'anchor',port))
         .select(['uid','type','title','description','attr','invisible'])
         .where('type','in',ANCHOR_TYPE_GROUPS.time)
@@ -109,5 +116,8 @@ export async function queryTimeAnchors({scope:scopeValue,mode='public',
       const rows=await query.execute();
       const data=assertZModelAnchorFeatureRows(rows.slice(0,limit));
       return {data,nextCursor:rows.length>limit?String(data.at(-1).uid):null};
-    });
+    };
+  return mode==='editor'
+    ?withAuthorizedLocRead({scope,writeScopes:[scope]},read)
+    :withPublicLocRead({scope},read);
 }

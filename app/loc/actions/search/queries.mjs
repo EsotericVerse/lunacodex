@@ -1,5 +1,5 @@
 'use server';
-import {withAuthorizedLocRead} from '../read-context.mjs';
+import {withPublicLocRead} from '../read-context.mjs';
 import {searchSummary} from '../../providers/kysely-analytics.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
 
@@ -18,7 +18,8 @@ export async function querySearch(args={}){
     requested.some(scope=>typeof scope!=='string'||!published.has(scope)))
     throw Error('Invalid Search Scope list');
   const scopeIds=[...new Set(requested)];
-  return withAuthorizedLocRead({scopes:scopeIds},async(db,port)=>({
+  if(!scopeIds.length)return {data:{rows:[]},count:null};
+  return withPublicLocRead({scopes:scopeIds},async(db,port)=>({
     data:await searchSummary(db,{scopeIds},{publishedScopeIds:scopeIds,
       engine:port.engine,namespace:port.namespace}),count:null
   }));

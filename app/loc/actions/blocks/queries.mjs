@@ -1,5 +1,5 @@
 'use server';
-import {withAuthorizedLocRead} from '../read-context.mjs';
+import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
 import {block_list,hero_block} from '../../providers/kysely-public.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
@@ -13,6 +13,7 @@ const heroPages=new Set([
 ]);
 const validHeroTypes=types=>types.length>0&&types.length<=2&&
   new Set(types).size===types.length&&types.every(type=>heroPages.has(type));
+const managementHeroPages=new Set(MANAGEMENT_HERO_SLOTS.map(slot=>slot.page));
 
 const scopeId=value=>{
   const scope=String(value||'').trim().toLowerCase();
@@ -31,7 +32,7 @@ export async function queryBlocks(name,args={}){
     const scope=scopeId(args.p_scope_id);
     const page=publicScopeBlockPage(args.p_page_name);
     if(!page||scope==='loc'&&page!=='index')throw Error('Invalid Block page');
-    return withAuthorizedLocRead({scope},async(db,port)=>({
+    return withPublicLocRead({scope},async(db,port)=>({
       data:await block_list(db,scope,{engine:port.engine,
         namespace:port.namespace,pageName:page}),count:null
     }));
@@ -40,10 +41,13 @@ export async function queryBlocks(name,args={}){
   const types=Array.isArray(args.p_type)?args.p_type:[args.p_type];
   if(!validHeroTypes(types))
     throw Error('Invalid Hero type');
-  return withAuthorizedLocRead({scope:'loc'},async(db,port)=>({
+  const read=async(db,port)=>({
     data:await hero_block(db,types,{engine:port.engine,namespace:port.namespace}),
     count:null
-  }));
+  });
+  return types.some(type=>managementHeroPages.has(type))
+    ?withAuthorizedLocRead({scope:'loc'},read)
+    :withPublicLocRead({scope:'loc'},read);
 }
 
 export async function queryBlockContent(searchParams){
@@ -58,17 +62,20 @@ export async function queryBlockContent(searchParams){
     const types=feature?feature.split(','):[];
     if(scope!=='loc'||!validHeroTypes(types))
       throw Error('Invalid Hero content request');
-    return withAuthorizedLocRead({scope},async(db,port)=>({
+    const read=async(db,port)=>({
       data:await hero_block(db,types,{engine:port.engine,namespace:port.namespace}),
       count:null
-    }));
+    });
+    return types.some(type=>managementHeroPages.has(type))
+      ?withAuthorizedLocRead({scope},read)
+      :withPublicLocRead({scope},read);
   }
   if(feature)throw Error('Unexpected Block feature');
-  if(kind==='block_list')return withAuthorizedLocRead({scope},async(db,port)=>({
+  if(kind==='block_list')return withPublicLocRead({scope},async(db,port)=>({
     data:await block_list(db,scope,{engine:port.engine,
       namespace:port.namespace,pageName:'index'}),count:null
   }));
-  return withAuthorizedLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope},async(db,port)=>{
     const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
     const table=portableRelation(scope,port.engine,
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));

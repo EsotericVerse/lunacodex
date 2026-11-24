@@ -1,11 +1,11 @@
 'use server';
-import {withAuthorizedLocRead} from '../read-context.mjs';
+import {withPublicLocRead} from '../read-context.mjs';
 import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
 
 export async function readGroupMembers(groupId){
   const group=String(groupId||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(group))throw Error('Invalid LOC Group');
-  return withAuthorizedLocRead({scope:group},async db=>{
+  return withPublicLocRead({scope:group},async db=>{
     const members=FIXED_MANAGE_ROWS.filter(row=>row.parent_scope_id===group&&
       row.manage_role==='scope'&&row.active===true);
     if(!members.length)return {data:[],count:null};

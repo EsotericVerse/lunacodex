@@ -66,6 +66,29 @@ export async function withAuthorizedLocRead({scope,scopes=[],global=false,
   finally{await closeDatabase(port);}
 }
 
+// Public feature readers use their own fixed projections and filters. This
+// connection helper deliberately accepts no SQL, table, columns or query
+// options from the caller; it does not create a public query endpoint.
+export async function withPublicLocRead({scope,scopes=[],targetId=null},read,
+  dependencies={}){
+  const requested=[...new Set([scope,...scopes].filter(Boolean).map(String))];
+  if(!requested.length||requested.some(id=>!activeScopes.has(id)||id==='admin'))
+    throw Object.assign(new Error('LOC public read requires a published Scope'),
+      {httpStatus:400});
+  const openDatabase=dependencies.openDatabase||directMcpKysely;
+  const closeDatabase=dependencies.closeDatabase||closeLocDatabase;
+  const primary=targetId
+    ?DATABASE_ACCESS_LIST.find(row=>row.backup_selected===true&&row.target_id===targetId)
+    :DATABASE_ACCESS_LIST.find(row=>row.selected===true);
+  if(!primary)throw Object.assign(new Error('LOC database unavailable'),{httpStatus:503});
+  const port=await openDatabase(process.env,primary.target_id);
+  try{
+    bindLocAuthorization(port.db,{role:'anon',engine:port.engine,claims:{}});
+    return await read(port.db,port,{session:null,grants:[],scopes:requested});
+  }
+  finally{await closeDatabase(port);}
+}
+
 export function assertLocReadGrant(grants,scope){
   if(!hasReadGrant(grants,String(scope||'')))
     throw Object.assign(new Error('LOC read permission required'),{httpStatus:403});

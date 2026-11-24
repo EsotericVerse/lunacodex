@@ -1,5 +1,5 @@
 'use server';
-import {withAuthorizedLocRead} from '../read-context.mjs';
+import {withPublicLocRead} from '../read-context.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {sharedClasses,keywordCatalog,keywordSummary}
   from '../../providers/kysely-analytics.mjs';
@@ -35,16 +35,18 @@ export async function queryStatics(args={}){
     !options||typeof options!=='object'||Array.isArray(options)||
     Object.keys(options).some(key=>!['classUid','source'].includes(key))||
     start&&end&&start>end)throw Error('Invalid Keyword query');
-  return withAuthorizedLocRead({scope},async(db)=>{
+  if(!scopeFeatureEnabled(active.get(scope)?.config,'statistics_able'))
+    throw Error('Statistics feature is not published');
+  return withPublicLocRead({scope},async(db)=>{
     const anchor='silver.'+scope+'_anchor';
     let data;
     if(view==='shared_classes')
-      data=await sharedClasses(db,scope,anchor,'authenticated');
+      data=await sharedClasses(db,scope,anchor,'anon');
     else if(view==='keyword_catalog')
       data=await keywordCatalog(db,scope,anchor,options.classUid||null,
-        'authenticated');
+        'anon');
     else data=await keywordSummary(db,scope,anchor,start||null,end||null,
-      options.source||null,options.classUid||null,'authenticated');
+      options.source||null,options.classUid||null,'anon');
     return {data,count:null};
   });
 }
@@ -152,10 +154,10 @@ export async function queryStaticsContent(searchParams){
   const config=active.get(scope)?.config;
   if(!scopeFeatureEnabled(config,'statistics_able'))
     throw Error('Statistics feature is not published');
-  if(kind==='loc')return withAuthorizedLocRead({global:true},async(db,port)=>({
+  if(kind==='loc')return withPublicLocRead({scope:'loc'},async(db,port)=>({
     data:await locStatistics(db,start,end,port),count:null
   }));
-  return withAuthorizedLocRead({scope},async(db,port)=>({
+  return withPublicLocRead({scope},async(db,port)=>({
     data:await scopeStatistics(db,scope,kind,start,end,port),count:null
   }));
 }

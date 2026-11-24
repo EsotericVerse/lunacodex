@@ -1,13 +1,16 @@
 'use server';
 import {sql} from 'kysely';
-import {withAuthorizedLocRead} from '../read-context.mjs';
+import {withPublicLocRead} from '../read-context.mjs';
 import {tracePlaces,traceTerritory,traceDaily,laneDaily,
   traceKeywordGroups} from '../../providers/kysely-analytics.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
+import {scopeFeatureEnabled} from '../../scope/scope-config-fields.mjs';
 
 const published=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&
   row.scope_id!=='loc'&&row.scope_id!=='admin').map(row=>row.scope_id));
+const publishedConfig=new Map(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false)
+  .map(row=>[row.scope_id,row.config]));
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const VIEWS=new Set(['trace_places','trace_territory','trace_daily',
@@ -118,6 +121,8 @@ export async function queryTrace(args={}){
     Object.keys(args).some(key=>!['p_scope_id','p_view','p_start','p_end','p_options'].includes(key)))
     throw Error('Invalid Trace query');
   const scope=scopeId(args.p_scope_id),view=String(args.p_view||'');
+  if(!scopeFeatureEnabled(publishedConfig.get(scope),'trace'))
+    throw Error('Trace feature is not published');
   const start=date(args.p_start),end=date(args.p_end);
   const options=args.p_options??{};
   if(!VIEWS.has(view)||!options||typeof options!=='object'||Array.isArray(options)||
@@ -131,7 +136,7 @@ export async function queryTrace(args={}){
     throw Error('Invalid Trace options');
   if(options.classUid!=null&&(!/^[A-Za-z0-9]{8}$/.test(String(options.classUid))))
     throw Error('Invalid Keyword Class UID');
-  return withAuthorizedLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope},async(db,port)=>{
     const table=galaxyTable(scope,port);
     let data;
     if(view==='trace_places')
@@ -164,7 +169,7 @@ export async function queryTrace(args={}){
       if(port.engine!=='postgres')throw Error('Keyword trace aggregation needs PostgreSQL');
       data=await traceKeywordGroups(db,scope,'silver.'+scope+'_anchor',
         [...new Set(ids.map(String))],start,end,source,options.classUid||null,
-        'authenticated');
+        'anon');
     }
     return {data,count:null};
   });
@@ -179,7 +184,7 @@ export async function queryTracePlaceNames(args={}){
   const term=String(args.p_term||'').trim().slice(0,100);
   const limit=Math.max(1,Math.min(8,Number(args.p_limit)||8));
   if(!term)return {data:[],count:null};
-  return withAuthorizedLocRead({scope},async(db)=>{
+  return withPublicLocRead({scope},async(db)=>{
     const pattern='%'+term.replace(/[\\%_]/g,char=>'\\'+char)+'%';
     const anchor=sql.ref('silver.'+scope+'_anchor');
     const result=await sql`select a.uid::varchar as uid,a.title,
