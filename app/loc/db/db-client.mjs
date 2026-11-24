@@ -42,18 +42,6 @@ function routedSchema(schemaName,cloudSchema){
       if(scopeId==='local')return unavailableLocal();
       return cloudSchema.anchor(scopeId,type,attr);
     },
-    analytics(args){
-      if(String(args?.p_scope_id||'')==='local')return unavailableLocal();
-      const source=cloudSchema.analytics?cloudSchema:
-        (adapter.configuredPublicClient||adapter.publicClient).schema(schemaName);
-      return source.analytics(args);
-    },
-    publicAction(name,args={}){
-      if(schemaName==='local'||args?.p_scope_id==='local')return unavailableLocal();
-      const source=cloudSchema.publicAction?cloudSchema:
-        (adapter.configuredPublicClient||adapter.publicClient).schema(schemaName);
-      return source.publicAction(name,args);
-    }
   };
 }
 
@@ -73,4 +61,4 @@ export const dbConfiguredPublicClient=adapter.configuredPublicClient
 export const dbAuthEvents=adapter.auth;
 export const dbPrimarySourceLabel=adapter.primarySourceLabel||'Primary';
 export const dbBackupSourceLabel=adapter.backupSourceLabel??'';
-export const {publicClient:dbPublicClient,authClient:dbAuthClient,dbAuthRelation,selectAuthRow,transactionWrites,prepareKeywordLibraryWrite,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocAuth,signOutAccount}=client;
+export const {publicClient:dbPublicClient,authClient:dbAuthClient,dbAuthRelation,transactionWrites,prepareKeywordLibraryWrite,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocAuth,signOutAccount}=client;

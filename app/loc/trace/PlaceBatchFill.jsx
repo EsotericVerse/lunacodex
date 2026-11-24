@@ -5,6 +5,7 @@ import {useEditDockForm} from '../../modular/edit-dock';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {defaultScopeData,revalidateServerMetadata} from '../scope/scope-data';
 import {selectCultureTimeRows} from '../culture/query';
+import {queryGalaxyPlaceFillPreview} from '../actions/trace/management-queries.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
@@ -73,11 +74,9 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
     const token=++revision.current;
     setBusy(true);setNotice('');setPreview(null);
     try{
-      const response=await dbAuthClient.schema('silver').managedAction('preview_or_fill_galaxy_place',{
+      const data=await queryGalaxyPlaceFillPreview({
         p_scope_id:scopeId,p_start_date:startDate,p_end_date:endDate,p_place:place.trim(),
-        p_apply:false
       });
-      const data=verified(response);
       if(token===revision.current)setPreview({criteria,data});
     }catch(error){
       if(token===revision.current)setNotice('預覽失敗：'+String(error.message||error));
@@ -92,9 +91,9 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
     const token=++revision.current;
     setBusy(true);setNotice('');
     try{
-      const result=await dbAuthClient.schema('silver').managedAction('preview_or_fill_galaxy_place',{
+      const result=await dbAuthClient.schema('silver').managedAction('fill_galaxy_place',{
         p_scope_id:scopeId,p_start_date:startDate,p_end_date:endDate,p_place:place.trim(),
-        p_apply:true,p_expected_count:count
+        p_expected_count:count
       });
       const data=verified(result);
       await revalidateServerMetadata();

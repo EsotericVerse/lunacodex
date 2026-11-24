@@ -8,12 +8,14 @@ import {invalidatePublicScopeMetadata} from '../../scope/scope-data';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 import {duplicateDomainLabelError} from '../../../modular/routing/scope-registry';
 import {THEME_SLOTS} from '../../../modular/theme-registry';
+import {readAdminScopeConfig,readScopeRegistryAdmin}
+  from '../../actions/admin/queries.mjs';
 const LazyObjectEditor=lazy(()=>import('../../editor/BlockNoteEditor').then(mod=>({default:mod.ObjectEditor})));
 function ObjectEditor(props){return <Suspense fallback={null}><LazyObjectEditor {...props}/></Suspense>;}
 import {ScopeFeatureToggles} from '../../../modular/ui';
-import {scopeConfigColumns,scopeFeaturePatch,scopeFeatureName} from '../../scope/scope-config-fields.mjs';
+import {scopeFeaturePatch,scopeFeatureName} from '../../scope/scope-config-fields.mjs';
 import {
-  deleteScope,dbAuthClient,dbAuthRelation,manageScopeRegistry,provisionScope,transactionWrites,updateRows
+  deleteScope,manageScopeRegistry,provisionScope,transactionWrites,updateRows
 } from '../../db/db-client.mjs';
 
 const EMPTY_SCOPE_CREATE={scope_id:'',email:'',locale:'zh-Hant',route_mode:'directory'};
@@ -23,27 +25,6 @@ const EMPTY_MAPPING={email:'',galaxy:'galaxy',anchor:'anchor'};
 function normalizeAliases(value){
   return [...new Set((Array.isArray(value)?value:String(value||'').split(/[\n,，]/g))
     .map(item=>String(item||'').trim()).filter(Boolean))];
-}
-
-// Dynamic Scope tables are created in one transaction. PostgREST may keep the
-// previous schema cache briefly after the provisioning RPC has committed.
-function scopeSchemaCachePending(error){
-  return String(error?.code||'')==='PGRST205'
-    ||/could not find the table .* in the schema cache/i.test(String(error?.message||''));
-}
-const waitForScopeSchema=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function readAdminScopeConfig(scopeId,{attempts=7}={}){
-  for(let attempt=0;attempt<attempts;attempt++){
-    if(attempt>0)await waitForScopeSchema(Math.min(2000,350*attempt));
-    const {data,error}=await dbAuthRelation('silver.'+scopeId)
-      .select(scopeConfigColumns(scopeId))
-      .eq('id',scopeId).limit(1);
-    if(!error)return data?.[0]||null;
-    if(!scopeSchemaCachePending(error)||attempt===attempts-1){
-      throw new Error(error.message||'人員設定讀取失敗。');
-    }
-  }
-  return null;
 }
 
 function useAdminScopeData(){
@@ -60,9 +41,7 @@ function useAdminScopeData(){
       try{
         // Management-only fields are returned by an admin-authorized RPC,
         // never from the public Registry's email column.
-        const locResult=await dbAuthClient.schema('silver').managedAction('read_scope_registry_admin');
-        if(locResult.error)throw new Error(locResult.error.message||'人員目錄讀取失敗。');
-
+        const locResult=await readScopeRegistryAdmin();
         const locRows=locResult.data||[];
         const scopeKindOf=role=>role==='group'?'group':(role==='system'||role==='admin')?'system':'scope';
         const registryRows=locRows.map(row=>({

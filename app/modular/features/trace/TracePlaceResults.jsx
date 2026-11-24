@@ -5,12 +5,11 @@ import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
 import {timeUnitBucket} from '../../../loc/preferences/default-time-unit.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncInfiniteResource,useAsyncResource} from '../../../../packages/zenstack/client-queries';
-import {readGalaxyFeature} from '../../../loc/galaxy/feature-transaction-client.mjs';
-import {readAnchorFeature} from '../../../loc/model/feature-transaction-client.mjs';
+import {readGalaxyFeature} from '../../../loc/galaxy/feature-query-client.mjs';
+import {readAnchorFeature} from '../../../loc/model/feature-query-client.mjs';
 import {traceArticleIdFilters,groupedTraceDays} from './trace-panel-filters.mjs';
 import {nearestTracePlaceIds} from '../../../loc/preferences/loc-feature-preferences.mjs';
 import {defaultScopeData} from '../../../loc/scope/scope-data';
-import {dbPublicClient} from '../../../loc/db/db-client.mjs';
 import {traceArticleIds,traceArticleLabels} from './trace-article-ids.mjs';
 import Article from '../../Article';
 import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../../routing/feature-navigation';
@@ -204,17 +203,17 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     enabled:needsSummary&&!selectedMediaType,
     queryFn:async({signal})=>{
       const rows=[];
-      // The stored procedure accepts at most 80 place IDs per query.
+      // Trace pages are bounded to at most 80 place IDs per query.
       // A large disconnected trace may have hundreds of unique spool points.
       for(let i=0;i<placeIds.length;i+=80){
         signal?.throwIfAborted?.();
-        const {data,error}=await dbPublicClient.schema('silver').analytics({
+        const {queryTrace}=await import('../../../loc/actions/trace/queries.mjs');
+        const {data}=await queryTrace({
           p_scope_id:targetScope,p_view:'trace_daily',
           p_start:startDate||null,p_end:endDate||null,
-          p_options:{placeIds:placeIds.slice(i,i+80),source:sourceFilter||null},
-          signal
+          p_options:{placeIds:placeIds.slice(i,i+80),source:sourceFilter||null}
         });
-        if(error)throw error;
+        signal?.throwIfAborted?.();
         if(!Array.isArray(data))throw new Error('Invalid Trace place_id density response');
         rows.push(...data);
       }
@@ -234,13 +233,13 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       const results=[];
       for(let i=0;i<placeIds.length;i+=80){
         signal?.throwIfAborted?.();
-        const {data,error}=await dbPublicClient.schema('silver').analytics({
+        const {queryTrace}=await import('../../../loc/actions/trace/queries.mjs');
+        const {data}=await queryTrace({
           p_scope_id:targetScope,p_view:'trace_keywords',
           p_start:startDate||null,p_end:endDate||null,
-          p_options:{placeIds:placeIds.slice(i,i+80),source:sourceFilter||null},
-          signal
+          p_options:{placeIds:placeIds.slice(i,i+80),source:sourceFilter||null}
         });
-        if(error)throw error;
+        signal?.throwIfAborted?.();
         if(!Array.isArray(data))throw new Error('Invalid Keywords Group summary');
         results.push(...data);
       }

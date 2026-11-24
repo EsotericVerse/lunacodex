@@ -3,6 +3,7 @@ import {prepareImportPlaceAnchors,importedPlaceId} from './place-anchors.mjs';
 import {prepareImportTimeAnchors} from './time-anchors.mjs';
 import {readImportPointDateAnchors} from './anchor-read.mjs';
 import {planImportPointUidLink} from './uid-delta.mjs';
+import {queryImportAnchorArticlesPage} from '../actions/import/queries.mjs';
 
 // Repair location/date links for articles already in Galaxy, without replaying
 // an archive, creating duplicate posts, or touching unrelated article fields.
@@ -16,19 +17,22 @@ export async function reconcileExistingImportAnchors({
       !String(galaxy||'').startsWith('silver.'+scope+'_'))
     throw Error('既有打卡修復資料來源無效');
   const candidates=[];
-  for(let offset=0;;offset+=pageSize){
-    const {data,error}=await relation(galaxy)
-      .select('uid,title,location,place_id,date,createtime')
-      .or('location.neq."",place_id.neq.""')
-      .order('createtime',{ascending:true}).range(offset,offset+pageSize-1);
-    if(error)throw Error('讀取既有打卡文章失敗：'+(error.message||error));
+  let afterUid=null;
+  for(;;){
+    const {data}=await queryImportAnchorArticlesPage({p_scope_id:scope,
+      p_after_uid:afterUid,p_limit:pageSize});
     const page=data||[];
-    if(!Array.isArray(page))throw Error('既有打卡文章格式錯誤');
+    if(!Array.isArray(page)||page.length>pageSize)
+      throw Error('既有打卡文章格式錯誤');
     // Existing place_id is authoritative even if the article's original
     // location is empty or spelled differently from the kept Point title.
     candidates.push(...page.filter(row=>String(row.location||'').trim()||String(row.place_id||'').trim()));
-    onProgress?.({phase:'核對既有地點文章',completed:offset+page.length,total:0});
+    onProgress?.({phase:'核對既有地點文章',completed:candidates.length,total:0});
     if(page.length<pageSize)break;
+    const next=String(page.at(-1)?.uid||'');
+    if(!/^[A-Za-z0-9]{8}$/.test(next)||next===afterUid)
+      throw Error('既有打卡文章 UID 游標未前進');
+    afterUid=next;
   }
   if(!candidates.length)return {scanned:0,linked:0,unmatched:0,
     places:{created:0,reused:0},dates:{created:0,reused:0}};

@@ -1,10 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {testLocAuthConnection} from '../app/api/loc-auth-connectivity/route.js';
+import {testLocAuthConnection} from '../app/loc/db/native-connectivity-check.mjs';
 import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
 import {closeLocDatabase,bindLocRequestAbort} from '../app/loc/mcp/native-kysely.mjs';
-import {articleDistribution} from '../app/loc/mcp/article-distribution.mjs';
-import {readMemory} from '../app/loc/mcp/galaxy-read.mjs';
 import {setKeywordClassShare} from '../app/loc/keywords/sql-service.mjs';
 
 const body=async response=>JSON.parse(await response.text());
@@ -186,42 +184,10 @@ test('health-check SQL ownership closes connection after successful and invalid 
     assert.deepEqual(calls,['destroy','pool-end']);
   }
 });
-test('article distribution reads directly and closes only its own connection',async()=>{
-  const now=new Date('2026-11-22T00:00:00+08:00');
-  const calls=[];
-  const port={
-    db:{
-      transaction(){throw Error('Read-only analytics must not open SQL transaction');},
-      async destroy(){calls.push('destroy');}
-    },
-    pool:{async end(){calls.push('pool-end');}}
-  };
-  const make=borrowed=>articleDistribution({period:'calendar_year',year:2026},{},{
-    database:async()=>port,
-    analytics:async()=>({data:{rows:[{day:'2026-11-01',item_count:7}]}}),
-    now,borrowed
-  });
-  const standalone=await make(false);
-  assert.equal(standalone.total,7);
-  assert.deepEqual(calls,['destroy','pool-end']);
-  calls.length=0;
-  const inherited=await make(true);
-  assert.equal(inherited.total,7);
-  assert.deepEqual(calls,[]);
-});
-
-test('retired Keyword sync is rejected by client and API before database access',async()=>{
+test('retired Keyword sync is rejected by its feature-action client',async()=>{
   const {keywordService}=await import('../app/loc/keywords/service-client.mjs');
   await assert.rejects(keywordService('syncLibrary',{scopeId:'lo3rwang'}),
     /Unsupported Keyword operation/);
-  const {handleKeywordRequest}=await import('../app/loc/keywords/api.mjs');
-  const req=new Request('https://loc.lo3rwang.cc/api/keywords',{
-    method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({operation:'syncLibrary',args:{scopeId:'lo3rwang'}})
-  });
-  const response=await handleKeywordRequest(req,{});
-  assert.equal(response.status,400);
-  assert.match((await response.json()).error,/Unknown Keyword operation/);
 });
 
 test('keyword sharing uses one locked read-modify-write transaction and fails closed',async()=>{
@@ -272,26 +238,4 @@ test('keyword sharing uses one locked read-modify-write transaction and fails cl
   }),/Scope denied/);
   assert.equal(metadata.class_shares.ABCD1234,true);
   assert.deepEqual(events,['begin','rollback']);
-});
-
-test('MCP public Galaxy reads use the supplied Kysely connection',async()=>{
-  const calls=[];
-  const chain={
-    select(columns){calls.push(['select',columns.length]);return this;},
-    where(){return this;},
-    limit(){return this;},
-    async execute(){return [{
-      uid:'ABCD1234',title:'published',content:'text',site:'public',
-      list:true,search:true
-    }];}
-  };
-  const port={engine:'postgres',namespace:'silver',dialect:null,
-    db:{selectFrom(table){calls.push(['table',table]);return chain;}}};
-  const result=await readMemory({scopeid:'lo3rwang',uid:'ABCD1234'},{},{
-    databasePort:port
-  });
-  assert.equal(result.found,true);
-  assert.equal(result.content,'text');
-  assert.ok(calls.some(([kind,value])=>kind==='table'&&
-    value==='silver.lo3rwang_galaxy'));
 });

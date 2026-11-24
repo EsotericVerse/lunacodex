@@ -134,13 +134,14 @@ test('Statistics space comparisons require both trace and statics without changi
   assert.match(sql,/statisticsOnly:options.statisticsOnly===true/);
 });
 
-test('public analytics accepts dual-flag Statistics filter only for places and territory',()=>{
-  const source=readFileSync(new URL('../app/loc/server/public-named-transactions.mjs',
+test('feature Trace query accepts Statistics filters only on relevant views',()=>{
+  const source=readFileSync(new URL('../app/loc/actions/trace/queries.mjs',
     import.meta.url),'utf8');
-  assert.match(source,/'withPoints','statisticsOnly'\]\)/);
-  assert.match(source,/if\(options\.statisticsOnly!==undefined&&/);
-  assert.match(source,/!\['trace_places','trace_territory'\]\.includes\(view\)/);
+  assert.match(source,/const VIEWS=new Set\(\['trace_places','trace_territory'/);
   assert.match(source,/typeof options\.statisticsOnly!=='boolean'/);
+  assert.match(source,/!\['trace_places','trace_territory'\]\.includes\(view\)/);
+  assert.match(source,/typeof options\.withPoints!=='boolean'/);
+  assert.match(source,/view!=='trace_territory'/);
   const ui=readFileSync(new URL('../app/modular/modules/statistics/ScopeSelfIntersection.jsx',
     import.meta.url),'utf8');
   assert.match(ui,/p_options:\{withPoints:false,statisticsOnly:true\}/);

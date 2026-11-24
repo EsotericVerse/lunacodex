@@ -7,6 +7,8 @@ import {editorTransactionLease,assertEditorTransactionLease}
   from './editor-transaction-lifecycle.mjs';
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from '../model/galaxy-able.mjs';
+import {queryGalaxyDuplicates} from '../actions/galaxy/management-queries.mjs';
+import {queryStatics,queryStaticsContent} from '../actions/statics/queries.mjs';
 
 // Database contract transports physical Galaxy/Anchor rows. Keyword Tree
 // adapters may expose legacy lists for editor compatibility; new persistent
@@ -35,16 +37,12 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return authClient.schema(schema).from(name);
   }
 
-  async function selectAuthRow(table,{idColumn,id,columns}={}){
-    const {data,error}=await dbAuthRelation(table).select(columns).eq(idColumn,String(id)).limit(1);
-    if(error)throw new Error(error.message||('DB SELECT '+table+' failed'));
-    return data?.[0]||null;
-  }
-
   function preflightWrite(table){
     // The local editor's idle lock is UI state only; no browser-made ACL.
-    // Better Auth + ZModel/PolicyPlugin authorize every management write on
-    // the trusted /api/loc-native endpoint and inside its SQL transaction.
+    // Better Auth + ZModel/PolicyPlugin authorize every management write in
+    // the trusted write handler and inside its SQL transaction. Ordinary
+    // website writes call the handler in-process; the HTTP route is reserved
+    // for the separately gated bulk-import path.
     // Keep this activity guard for the current editing UX, not as identity.
     if(typeof window!=='undefined')assertEditorSession(window.sessionStorage);
   }
@@ -98,8 +96,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   const provisionScope=withWriteNotice(provisionScopeUnchecked);
   const manageScopeRegistry=withWriteNotice(manageScopeRegistryUnchecked);
 
-  // A complete logical Save crosses the HTTP boundary once. The trusted
-  // backend checks identity and api.manage once and runs all steps atomically.
+  // A complete logical Save uses one trusted server write action. It checks
+  // identity and api.manage once and runs all steps atomically.
   // Keywords and imports retain their own explicit large-batch protocols.
   async function transactionWritesUnchecked(operations){
     const lease=editorTransactionLease();
@@ -174,7 +172,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(!normalizedGalaxy)
       for(const row of list)validateGalaxyWrite(table,row);
     if(!importBatch){
-      // Every ordinary multi-row Save is one HTTP + one SQL Transaction,
+      // Every ordinary multi-row Save is one server write action + one SQL Transaction,
       // regardless of how many physical INSERT statements the DB chooses.
       // Only the explicit high-volume import API retains batch checkpoints.
       const receipt=await transactionWritesUnchecked([{
@@ -296,17 +294,23 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function readOwnedKeywordNodes(table){
-    const rows=[],size=MAX_ROWS;
-    for(let offset=0;;offset+=size){
-      const {data,error}=await dbAuthRelation(table)
-        .select('uid,type,title,description,attr,num').in('type',['category','class','group','item'])
-        .order('title',{ascending:true}).range(offset,offset+size-1);
-      if(error)throw new Error(error.message||'KeywordAnchor read failed');
-      rows.push(...(data||[]).map(row=>({...row,name:String(row.title||''),
-        desc:String(row.description||''),
-        lists:Array.isArray(row.attr?.[row.type==='item'?'keyword':'uid'])
-          ?row.attr[row.type==='item'?'keyword':'uid']:[],uid_lists:[]})));
-      if((data||[]).length<size)break;
+    const scope=String(table||'').match(/^silver\.([a-z][a-z0-9]{0,14})_anchor$/)?.[1];
+    if(!scope)throw Error('KeywordAnchor Scope is invalid');
+    const {queryKeywordNodesForCopy}=await import('../actions/keywords/queries.mjs');
+    const rows=[];
+    let after=null;
+    for(;;){
+      const result=await queryKeywordNodesForCopy({p_scope_id:scope,
+        p_after_uid:after,p_limit:MAX_ROWS});
+      const page=result?.data;
+      if(!Array.isArray(page)||page.length>MAX_ROWS)
+        throw Error('KeywordAnchor query returned an invalid page');
+      rows.push(...page);
+      if(page.length<MAX_ROWS)break;
+      const next=String(page.at(-1)?.uid||'');
+      if(!/^[A-Za-z0-9]{8}$/.test(next)||next===after)
+        throw Error('KeywordAnchor query cursor did not advance');
+      after=next;
     }
     return rows;
   }
@@ -327,85 +331,64 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return result;
   }
 
-  async function verifiedKeywordOwner(){
-    // No database-auth fallback: only an independently Authority-verified
-    // identity may access owner-only keyword functions.
-    if(typeof auth.getVerifiedSession!=='function')
-      throw new Error('LOC verified identity provider is required');
-    const verified=await auth.getVerifiedSession();
-    return Boolean(verified?.user?.id&&verified?.oauth?.email&&
-      String(verified.user.email||'').toLowerCase()===String(verified.oauth.email).toLowerCase());
-  }
-
-  async function analyticsRead(scope,view,{startDate='',endDate='',options={},signal=null}={},client=publicClient){
-    const day=value=>/^\d{4}-\d{2}-\d{2}/.test(String(value||''))?String(value).slice(0,10):null;
-    const {data,error}=await client.schema('silver').analytics({
-      p_scope_id:scope,p_view:view,p_start:day(startDate),p_end:day(endDate),p_options:options,signal
-    });
-    if(error){const failure=new Error(error.message||'Scope analytics unavailable');failure.code=error.code;throw failure;}
-    return data;
-  }
-
-  async function keywordRead(args,{isEmpty=data=>!data}={}){
-    const publicResult=await publicClient.schema('silver').analytics(args);
-    if(publicResult.error)throw new Error(publicResult.error.message||'Keyword analytics unavailable');
-    if(!isEmpty(publicResult.data))return publicResult.data;
-    if(!await verifiedKeywordOwner())return publicResult.data;
-    const privateResult=await authClient.schema('silver').analytics(args);
-    if(privateResult.error)throw new Error(privateResult.error.message||'Private keyword analytics unavailable');
-    return privateResult.data;
-  }
-
-  // Native KeywordAnchor Kysely analytics replaces the pseudo-Keywords reader.
+  // Keyword reads use the fixed Keyword feature actions.
   async function readKeywordClass(scopeId,classUid){
     const scope=normalizeScopeId(scopeId),uid=String(classUid||'');
     if(!/^[A-Za-z0-9]{4}(?:[A-Za-z0-9]{4})?$/.test(uid))return null;
-    const data=await keywordRead({p_scope_id:scope,p_view:'keyword_catalog',p_options:{classUid:uid}},{
-      isEmpty:result=>!result?.class_uid||!Array.isArray(result.rows)||result.rows.length===0
-    });
+    const {data}=await queryStatics({p_scope_id:scope,p_view:'keyword_catalog',
+      p_options:{classUid:uid}});
     return data?.class_uid===uid?data:null;
   }
 
   async function readKeywordTreeSummary(scopeId,{classUid='',startDate='',endDate='',source=''}={}){
     const scope=normalizeScopeId(scopeId);
     const day=value=>/^\d{4}-\d{2}-\d{2}/.test(String(value||''))?String(value).slice(0,10):null;
-    const data=await keywordRead({
+    const {data}=await queryStatics({
       p_scope_id:scope,p_view:'keyword_summary',p_start:day(startDate),p_end:day(endDate),
       p_options:{classUid:classUid||null,source:String(source||'').trim()||null}
-    },{isEmpty:value=>!Array.isArray(value)||value.length===0});
+    });
     return Array.isArray(data)?data:[];
   }
 
   async function readKeywordTreeCatalog(scopeId,{classUid=''}={}){
     const scope=normalizeScopeId(scopeId);
-    const data=await keywordRead({
+    const {data}=await queryStatics({
       p_scope_id:scope,p_view:'keyword_catalog',p_options:{classUid:classUid||null}
-    },{
-      isEmpty:value=>!value?.class_uid||!Array.isArray(value.rows)||value.rows.length===0
     });
     return data&&Array.isArray(data.rows)?data:{class_uid:'',rows:[]};
   }
 
   async function readSharedKeywordClasses(scopeId){
     const scope=normalizeScopeId(scopeId);
-    const client=await verifiedKeywordOwner()?authClient:publicClient;
-    const data=await analyticsRead(scope,'shared_classes',{},client);
+    const {data}=await queryStatics({p_scope_id:scope,p_view:'shared_classes',
+      p_options:{}});
     return Array.isArray(data)?data:[];
   }
-  async function readScopeStatistics(scopeId,{startDate='',endDate='',includeUndated=false}={}){
-    const data=await analyticsRead(normalizeScopeId(scopeId),'daily',{
-      startDate,endDate,options:{includeUndated:Boolean(includeUndated)}
-    });
+  async function readScopeStatistics(scopeId,{startDate='',endDate=''}={}){
+    const scope=normalizeScopeId(scopeId);
+    const params=new URLSearchParams({kind:'daily',scope});
+    if(startDate)params.set('start',String(startDate).slice(0,10));
+    if(endDate)params.set('end',String(endDate).slice(0,10));
+    const {data}=await queryStaticsContent(params.toString());
     return Array.isArray(data)?data:[];
   }
   async function readScopeCategoryTotals(scopeId,{startDate='',endDate=''}={}){
-    const data=await analyticsRead(normalizeScopeId(scopeId),'totals',{startDate,endDate});
+    const scope=normalizeScopeId(scopeId);
+    const params=new URLSearchParams({kind:'totals',scope});
+    if(startDate)params.set('start',String(startDate).slice(0,10));
+    if(endDate)params.set('end',String(endDate).slice(0,10));
+    const {data}=await queryStaticsContent(params.toString());
     return Array.isArray(data)?data:[];
   }
 
   const dayOrNull=value=>/^\d{4}-\d{2}-\d{2}/.test(String(value||''))?String(value).slice(0,10):null;
   async function readScopeOverview(scopeId,{startDate='',endDate='',signal=null}={}){
-    const data=await analyticsRead(normalizeScopeId(scopeId),'overview',{startDate,endDate,signal});
+    if(signal?.aborted)throw signal.reason||new DOMException('Aborted','AbortError');
+    const scope=normalizeScopeId(scopeId);
+    const params=new URLSearchParams({kind:'overview',scope,
+      start:String(startDate||'').slice(0,10),end:String(endDate||'').slice(0,10)});
+    const {data}=await queryStaticsContent(params.toString());
+    if(signal?.aborted)throw signal.reason||new DOMException('Aborted','AbortError');
     return {
       earliest:dayOrNull(data?.earliest)||'',
       rows:Array.isArray(data?.rows)?data.rows:[],
@@ -414,10 +397,15 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     };
   }
   async function readScopeEarliest(scopeId){
-    return dayOrNull(await analyticsRead(normalizeScopeId(scopeId),'earliest'))||'';
+    const params=new URLSearchParams({kind:'earliest',scope:normalizeScopeId(scopeId)});
+    const {data}=await queryStaticsContent(params.toString());
+    return dayOrNull(data)||'';
   }
   async function readLocStatistics({startDate='',endDate=''}={}){
-    const data=await analyticsRead('loc','loc',{startDate,endDate});
+    const params=new URLSearchParams({kind:'loc',scope:'loc'});
+    if(startDate)params.set('start',String(startDate).slice(0,10));
+    if(endDate)params.set('end',String(endDate).slice(0,10));
+    const {data}=await queryStaticsContent(params.toString());
     return {
       earliest:dayOrNull(data?.earliest)||'',
       scopes:Array.isArray(data?.scopes)?data.scopes:[],
@@ -434,9 +422,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   // here -- the caller reviews each group and deletes explicitly.
   async function findGalaxyDuplicates(scopeId){
     const scope=normalizeScopeId(scopeId);
-    const {data,error}=await authClient.schema('silver').managedAction(
-      'find_galaxy_duplicates',{p_scope_id:scope});
-    if(error)throw new Error(error.message||'Duplicate scan failed');
+    const {data}=await queryGalaxyDuplicates(scope);
     return (Array.isArray(data)?data:[]).map(row=>{
       const uids=(Array.isArray(row?.uids)?row.uids:[]).map(String);
       const newlineFlags=Array.isArray(row?.newline_flags)?row.newline_flags:[];
@@ -625,7 +611,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     if(error)throw new Error(error.message||'Account sign-out failed');
   }
 
-  return {publicClient,authClient,dbAuthRelation,selectAuthRow,transactionWrites,prepareKeywordLibraryWrite,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocAuth,signOutAccount};
+  return {publicClient,authClient,dbAuthRelation,transactionWrites,prepareKeywordLibraryWrite,insertRows,insertImportRows,updateRows,deleteRows,updateImportRows,resetKeywordClassification,readKeywordClass,readScopeStatistics,readScopeCategoryTotals,readScopeOverview,readScopeEarliest,readLocStatistics,findGalaxyDuplicates,readKeywordTreeSummary,readKeywordTreeCatalog,readSharedKeywordClasses,writeKeywordLibraryItem,copyKeywordLibraryClass,copyRune66KeywordClass,deleteScope,moveScopeBlock,provisionScope,manageScopeRegistry,getAccountSession,signInWithLocAuth,signOutAccount};
 }
 
 // One universal hard ceiling for all database read adapters and selected columns.

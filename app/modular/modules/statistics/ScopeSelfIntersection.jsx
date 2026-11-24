@@ -101,7 +101,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['scope-intersection-time-anchor',scope?.id],
     enabled:valid&&shownKinds.includes('time'),
     queryFn:async({signal})=>{
-      const {readAllAnchorFeature}=await import('../../../loc/model/feature-transaction-client.mjs');
+      const {readAllAnchorFeature}=await import('../../../loc/model/feature-query-client.mjs');
       return readAllAnchorFeature({scope:scope.id,family:'time',
         types:['era','period','date'],signal});
     },
@@ -111,7 +111,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['scope-intersection-space-anchor',scope?.id],
     enabled:valid&&shownKinds.includes('space'),
     queryFn:async({signal})=>{
-      const {readAllAnchorFeature}=await import('../../../loc/model/feature-transaction-client.mjs');
+      const {readAllAnchorFeature}=await import('../../../loc/model/feature-query-client.mjs');
       return readAllAnchorFeature({scope:scope.id,family:'space',
         types:['trace','path','point'],signal});
     },
@@ -121,12 +121,13 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     queryKey:['scope-intersection-territory',scope?.id,start,end],
     enabled:valid&&shownKinds.includes('space'),
     queryFn:async({signal})=>{
-      const {dbPublicClient}=await import('../../../loc/db/db-client.mjs');
-      const {data,error}=await dbPublicClient.schema('silver').analytics({
+      signal?.throwIfAborted?.();
+      const {queryTrace}=await import('../../../loc/actions/trace/queries.mjs');
+      const {data}=await queryTrace({
         p_scope_id:scope.id,p_view:'trace_territory',
-        p_start:start,p_end:end,p_options:{withPoints:false,statisticsOnly:true},signal
+        p_start:start,p_end:end,p_options:{withPoints:false,statisticsOnly:true}
       });
-      if(error)throw error;
+      signal?.throwIfAborted?.();
       if(!Array.isArray(data))throw Error('Invalid territory statistics');
       return data;
     },

@@ -5,7 +5,8 @@ import FieldText from '../../../i18n/FieldText';
 import {useUiSection} from '../../../i18n/ui-locale';
 import {THEME_SLOTS,THEME_TOKEN_KEYS} from '../../../modular/theme-registry';
 import {mergeThemeSlot,THEME_DB_COLUMNS,themeColumnForToken,themeUiId,themeNumber,normalizeThemeHex,deriveThemeTokens} from '../../preferences/theme-data';
-import {dbAuthRelation,dbAuthClient} from '../../db/db-client.mjs';
+import {dbAuthClient} from '../../db/db-client.mjs';
+import {readLocAdminSettings} from '../../actions/admin/queries.mjs';
 import {useEditDockForm} from '../../../modular/edit-dock';
 
 export default function ThemeEditor(){
@@ -25,7 +26,7 @@ export default function ThemeEditor(){
     let active=true;
     (async()=>{
       try{
-        const {data,error}=await dbAuthRelation('silver.loc').select('theme').eq('id','loc').single();
+        const {data}=await readLocAdminSettings('theme');
         if(!active)return;
         if(error)throw error;
         setRows((Array.isArray(data?.theme)?data.theme:[]).map(row=>({

@@ -1,18 +1,6 @@
-import {MAX_ROWS} from '../query/query-batch-size.mjs';
-// Browser clients call fixed Next route handlers by feature. They never send
-// arbitrary SQL, relation or projection instructions to a shared endpoint.
-// LOC OAuth delegation is still mandatory for all mutations.
-import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
-import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
-import {queryCulture,queryCultureContent} from '../actions/culture/queries.mjs';
-import {queryStatics,queryStaticsContent} from '../actions/statics/queries.mjs';
-import {queryTrace,traceAction} from '../actions/trace/queries.mjs';
-import {querySearch} from '../actions/search/queries.mjs';
-import {queryBlocks} from '../actions/blocks/queries.mjs';
+// Feature code calls its own Server Action for reads. This adapter rejects
+// generic SELECTs and carries only fixed, permission-checked writes.
 
-// Pending coalescing is per transport instance, never shared across an
-// unrelated public client or a separately selected SQL target.
-let nextPublicTransportId=0;
 const IDENT=/^[A-Za-z_][A-Za-z0-9_]*$/;
 const FIELD=value=>{
   const field=String(value||'');
@@ -80,58 +68,8 @@ export function createKyselyPublicClient({
   role='anon',fetch:fetchImpl=globalThis.fetch,mutate=null
 }={}){
   if(typeof fetchImpl!=='function')throw Error('LOC Kysely fetch is unavailable');
-  const transportId=++nextPublicTransportId;
-  // Deduplicate only concurrent anonymous requests of exactly the same
-  // shape and route epoch. No completed HTTP no-store body is retained.
-  // Explicit AbortSignals, identity and protected reads remain independent.
-  const pendingPublic=(kind,args,perform,share=true)=>{
-    if(role!=='anon'||!share)return perform();
-    const key=JSON.stringify(['native-public',transportId,transientReadGeneration(),kind,args]);
-    return key.length<=16000?coalescePendingPublicRead(key,perform):perform();
-  };
   async function read(){
     throw Error('LOC database reads must use their feature query action');
-  }
-  async function analytics(args={}){
-    const work=async()=>{
-    const view=String(args.p_view||''),scope=String(args.p_scope_id||'');
-    if(!['culture_anchors','culture_density','daily','daily_total','overview','earliest','totals','loc',
-      'culture_list','trace_places','trace_territory','trace_daily','lane_daily','trace_keywords','shared_classes',
-      'search_summary','keyword_catalog','keyword_summary'].includes(view))
-      throw Error('Unsupported LOC analytics query');
-    if(!/^[a-z][a-z0-9]{0,14}$/.test(scope))
-      throw Error('Invalid LOC analytics Scope');
-    const start=String(args.p_start||''),end=String(args.p_end||'');
-    const params=new URLSearchParams({kind:view,scope});
-    if(start||end){params.set('start',start);params.set('end',end)}
-    const queryArgs={p_scope_id:scope,p_view:view,p_start:start||null,p_end:end||null,
-      p_options:args.p_options||{}};
-    let payload;
-    if(view==='culture_anchors'||view==='culture_density')
-      payload=await queryCultureContent(params.toString());
-    else if(['daily','daily_total','overview','earliest','totals','loc'].includes(view))
-      payload=await queryStaticsContent(params.toString());
-    else if(view==='culture_list')payload=await queryCulture(queryArgs);
-    else if(['trace_places','trace_territory','trace_daily','lane_daily','trace_keywords'].includes(view))
-      payload=await queryTrace(queryArgs);
-    else if(['shared_classes','keyword_catalog','keyword_summary'].includes(view))
-      payload=await queryStatics(queryArgs);
-    else payload=await querySearch(queryArgs);
-    return {data:payload?.data,error:null,status:200};
-    };
-    return pendingPublic('analytics',{
-      scope:args.p_scope_id,view:args.p_view,start:args.p_start,
-      end:args.p_end,options:args.p_options
-    },work,!args.signal);
-  }
-  async function publicAction(name,args={}){
-    const work=async()=>{
-    const requestSignal=AbortSignal.any([transientReadSignal(),AbortSignal.timeout(9000)]);
-    const payload=name==='block_list'||name==='hero_block'
-      ?await queryBlocks(name,args):await traceAction(name,args);
-    return {data:payload?.data,error:null,count:payload?.count??null,status:200};
-    };
-    return pendingPublic('public-action',{name,args},work);
   }
   async function write(q){
     if(role!=='authenticated'||!mutate)throw Error('LOC management grant required');
@@ -159,18 +97,9 @@ export function createKyselyPublicClient({
     role,
     schema(schema){
       FIELD(schema);
-      return {from(table){return new Query(q=>{
-        const callerSignal=q.signal;
-        const perform=()=>read(q);
-        return pendingPublic('select',{
-          schema:q.schema,table:q.table,columns:q.columns,
-          filters:q.filters,orFilters:q.orFilters,orders:q.orders,
-          limit:q.rowLimit,offset:q.offset,head:q.head,
-          count:q.count,cardinality:q.cardinality
-        },perform,!callerSignal&&!q.dbId);
-      },schema,table,mutate?write:null)},
-      analytics,managedWrite:noWrite,managedAction:noWrite,
-      publicAction,anchor:noWrite};
+      return {from(table){return new Query(read,schema,table,mutate?write:null)},
+      managedWrite:noWrite,managedAction:noWrite,
+      anchor:noWrite};
     },
     shortImport:noWrite,
     activeTarget:async()=>({data:{id:'primary'},error:null})

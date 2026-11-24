@@ -54,7 +54,7 @@ const CulturePlaceRiver=dynamic(()=>import('./trace/CulturePlaceRiver'),{loading
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
-import {readGalaxyRecords} from '../../loc/model/feature-transaction-client.mjs';
+import {readGalaxyRecords} from '../../loc/model/feature-query-client.mjs';
 const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
 
 function isInteractiveTarget(target){

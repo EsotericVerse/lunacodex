@@ -34,7 +34,8 @@ import {scopeHref} from '../routing/scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../routing/feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search/query.mjs';
-import {readGalaxyRecords,readAnchorFeature} from '../../loc/model/feature-transaction-client.mjs';
+import {readGalaxyRecords,readAnchorFeature} from '../../loc/model/feature-query-client.mjs';
+import {queryGalaxyLocationBatchPreview} from '../../loc/actions/trace/management-queries.mjs';
 import {locGlobalUid} from '../../../packages/zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -1059,12 +1060,18 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const target=selectedPlaceArticles.slice();
     setBulkBusy(true);setBulkNotice('');
     try{
-      const {data,error}=await dbAuthClient.schema('silver').managedAction('batch_fill_galaxy_location',{
-        p_scope_id:target[0].scopeId,p_uids:target.map(row=>row.uid),p_place:bulkPlace.trim(),
-        p_apply:apply,p_expected_count:apply?Number(selectedPreview.eligible):null
-      });
-      if(error)throw Error(error.message||'批次補寫失敗');
-      if(apply){
+      if(!apply){
+        const data=await queryGalaxyLocationBatchPreview({
+          p_scope_id:target[0].scopeId,p_uids:target.map(row=>row.uid)
+        });
+        setBulkPreview({signature:snapshot,data});
+        setBulkNotice('目前選取 '+Number(data?.selected||0)+' 篇，其中空白可補寫 '+Number(data?.eligible||0)+' 篇。');
+      }else{
+        const {data,error}=await dbAuthClient.schema('silver').managedAction('apply_galaxy_location_batch',{
+          p_scope_id:target[0].scopeId,p_uids:target.map(row=>row.uid),
+          p_place:bulkPlace.trim(),p_expected_count:Number(selectedPreview.eligible)
+        });
+        if(error)throw Error(error.message||'批次補寫失敗');
         await revalidateServerMetadata();
         await resourceCache.invalidate({queryKey:['loc-place-summary',target[0].scopeId]});
         const filled=new Set(target.map(row=>row.scopeId+':'+row.uid));
@@ -1072,9 +1079,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           ?{...row,checkInPlace:bulkPlace.trim()}:row));
         setSelectedPlaceArticles([]);setBulkPreview(null);
         setBulkNotice('已補寫 '+Number(data?.count||0)+' 篇文章的 location，原有非空白地點未覆蓋。');
-      }else{
-        setBulkPreview({signature:snapshot,data});
-        setBulkNotice('目前選取 '+Number(data?.selected||0)+' 篇，其中空白可補寫 '+Number(data?.eligible||0)+' 篇。');
       }
     }catch(error){setBulkPreview(null);setBulkNotice('批次操作失敗：'+String(error.message||error));}
     finally{setBulkBusy(false);}

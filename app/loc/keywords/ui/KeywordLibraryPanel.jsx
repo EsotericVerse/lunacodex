@@ -4,7 +4,7 @@ import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
 import {useEditDock} from '../../../modular/edit-dock';
-import {dbAuthRelation,dbPublicClient,dbAuthClient,resetKeywordClassification,updateRows,transactionWrites,prepareKeywordLibraryWrite,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db/db-client.mjs';
+import {dbAuthRelation,dbAuthClient,resetKeywordClassification,updateRows,transactionWrites,prepareKeywordLibraryWrite,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db/db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
 import {allocateAnchorUid} from '../../model/uid.js';
 import ManagementSectionNav from '../../../modular/ManagementSectionNav';
@@ -525,11 +525,10 @@ export default function KeywordLibraryPanel({scopeId,account}){
     }
     setImportBusy(true);
     try{
-      // Anonymous reader returns only publicly shared Class rows, no Group/Item.
-      const {data,error}=await dbPublicClient.schema('silver').analytics({
-        p_scope_id:from,p_view:'shared_classes',p_start:null,p_end:null,p_options:{}
-      });
-      if(error)throw new Error(error.message||'查詢公開群組科目失敗');
+      // The Keyword action returns only Classes published for this Scope.
+      const {queryStatics}=await import('../../actions/statics/queries.mjs');
+      const {data}=await queryStatics({p_scope_id:from,p_view:'shared_classes',
+        p_options:{}});
       const found=(Array.isArray(data)?data:[]).find(item=>item.classUid===uid);
       if(!found)throw new Error('在這個資料來源中找不到指定的公開群組科目。');
       setImportClass({scopeid:from,uid,name:String(found.name||uid)});

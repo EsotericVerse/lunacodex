@@ -1,6 +1,5 @@
 'use client';
 
-import {dbPublicClient} from '../db/db-client.mjs';
 import {
   validateItemConfluenceRange,validateItemLane
 } from './item-confluence-model.mjs';
@@ -10,12 +9,12 @@ import {
 async function selectLaneDailyGrouped({scope,spec,range}){
   const platform=['galaxy:facebook','galaxy:threads','galaxy:instagram']
     .includes(spec.source)?spec.source.slice('galaxy:'.length):null;
-  const {data,error}=await dbPublicClient.schema('silver').analytics({
+  const {queryTrace}=await import('../actions/trace/queries.mjs');
+  const {data}=await queryTrace({
     p_scope_id:scope.id,p_view:'lane_daily',
     p_start:range.startDate,p_end:range.endDate,
     p_options:{platform,exact:spec.source.endsWith(':exact')?spec.exact:null}
   });
-  if(error)throw error;
   if(!Array.isArray(data))throw new Error('Invalid lane daily response');
   return data.map(row=>({day:String(row.day).slice(0,10),count:Number(row.item_count)||0}))
     .filter(row=>row.day>=range.startDate&&row.day<=range.endDate)

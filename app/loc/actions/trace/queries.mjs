@@ -1,15 +1,201 @@
 'use server';
-import {handleNamedPublicTransaction} from '../../server/public-named-transactions.mjs';
-import {invokeHandler} from '../request.mjs';
+import {sql} from 'kysely';
+import {withAuthorizedLocRead} from '../read-context.mjs';
+import {tracePlaces,traceTerritory,traceDaily,laneDaily,
+  traceKeywordGroups} from '../../providers/kysely-analytics.mjs';
+import {portableRelation} from '../../providers/sql-engine-ports.mjs';
+import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
 
-export async function queryTrace(args){
-  return invokeHandler(handleNamedPublicTransaction,{path:'/trace/query',body:{
-    kind:'transaction',operation:'analytics',args
-  },options:{allowedOperations:['analytics'],allowedAnalyticsViews:[
-    'trace_places','trace_territory','trace_daily','lane_daily','trace_keywords']}});
+const published=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&
+  row.scope_id!=='loc'&&row.scope_id!=='admin').map(row=>row.scope_id));
+const DAY=/^\d{4}-\d{2}-\d{2}$/;
+const UID=/^[A-Za-z0-9]{8}$/;
+const VIEWS=new Set(['trace_places','trace_territory','trace_daily',
+  'lane_daily','trace_keywords']);
+const OPTIONS=new Set(['scopeIds','placeIds','classUid','source','site','offset',
+  'platform','exact','withPoints','statisticsOnly']);
+const scopeId=value=>{
+  const scope=String(value||'').trim().toLowerCase();
+  if(!published.has(scope))throw Error('Invalid Trace Scope');
+  return scope;
+};
+const date=value=>{
+  if(value==null||value==='')return null;
+  const result=String(value);
+  if(!DAY.test(result))throw Error('Invalid Trace date');
+  return result;
+};
+const day=value=>value instanceof Date?value.toISOString().slice(0,10):
+  String(value??'').slice(0,10);
+function galaxyTable(scope,port){
+  return portableRelation(scope+'_galaxy',port.engine,
+    port.namespace||(port.engine==='postgres'?'silver':'dbo'));
 }
-export async function traceAction(name,args){
-  return invokeHandler(handleNamedPublicTransaction,{path:'/trace/action',body:{
-    kind:'transaction',operation:'action',name,args
-  },options:{allowedOperations:['action'],allowedActions:['search_scope_trace_place_names']}});
+async function portableTracePlaces(db,table,start,end,statisticsOnly){
+  let query=db.selectFrom(table).select(['date','location'])
+    .select(eb=>eb.fn.countAll().as('item_count'))
+    .where('trace','=',true).where('date','is not',null)
+    .where('location','is not',null).where('location','!=','');
+  if(statisticsOnly)query=query.where('statics','=',true);
+  if(start)query=query.where('date','>=',start);
+  if(end)query=query.where('date','<=',end);
+  const rows=await query.groupBy(['date','location'])
+    .orderBy('date','asc').orderBy('location','asc').execute();
+  return rows.map(row=>({day:day(row.date),category:String(row.location||'').trim(),
+    item_count:Number(row.item_count||0)})).filter(row=>row.category);
+}
+async function portableTraceTerritory(db,scope,start,end,options,port){
+  if(!start||!end)throw Error('Territory statistics require a bounded period');
+  const galaxy=galaxyTable(scope,port);
+  const anchor=portableRelation(scope+'_anchor',port.engine,
+    port.namespace||(port.engine==='postgres'?'silver':'dbo'));
+  let query=db.selectFrom(galaxy+' as g').innerJoin(anchor+' as a',join=>join
+    .onRef('a.uid','=','g.place_id').on('a.type','=','point')
+    .on('a.invisible','=',false))
+    .select(['g.place_id as place_id','g.site as site','g.date as date'])
+    .select(eb=>eb.fn.countAll().as('item_count'))
+    .where('g.place_id','is not',null).where('g.place_id','!=','')
+    .where('g.date','>=',start).where('g.date','<=',end);
+  if(options.statisticsOnly===true)
+    query=query.where('g.statics','=',true).where('g.trace','=',true);
+  if(options.withPoints===true)
+    query=query.select(['a.uid as point_uid','a.title as point_title','a.attr as point_attr']);
+  const rows=await query.groupBy(['g.place_id','g.site','g.date',
+      ...(options.withPoints===true?['a.uid','a.title','a.attr']:[])])
+    .orderBy('g.date','asc').orderBy('g.place_id','asc').orderBy('g.site','asc')
+    .execute();
+  return rows.map(row=>{
+    let attr=row.point_attr;
+    if(typeof attr==='string'){try{attr=JSON.parse(attr)}catch{attr={}}}
+    attr=attr&&typeof attr==='object'?attr:{};
+    return {place_id:String(row.place_id||''),site:String(row.site||'').trim(),
+      day:day(row.date),item_count:Number(row.item_count||0),
+      ...(options.withPoints===true?{point_uid:row.point_uid,
+        point_title:row.point_title,
+        point_longitude:attr.longitude??attr.lng??null,
+        point_latitude:attr.latitude??attr.lat??null}: {})};
+  });
+}
+async function portableTraceDaily(db,table,places,start,end,source){
+  let query=db.selectFrom(table).select(['date','place_id'])
+    .select(eb=>eb.fn.countAll().as('item_count'))
+    .where('trace','=',true).where('place_id','in',places)
+    .where('date','is not',null);
+  if(start)query=query.where('date','>=',start);
+  if(end)query=query.where('date','<=',end);
+  if(source)query=query.where('site','=',source);
+  const rows=await query.groupBy(['date','place_id'])
+    .orderBy('date','asc').execute();
+  return rows.map(row=>({day:day(row.date),category:String(row.place_id||''),
+    item_count:Number(row.item_count||0)}));
+}
+async function portableLaneDaily(db,table,start,end,options){
+  if(!start||!end||(Date.parse(end)-Date.parse(start))/864e5>366)
+    throw Error('Lane statistics need a bounded date range');
+  const exact=options.exact==null||options.exact===''?null:String(options.exact);
+  const platform=options.platform==null||options.platform===''?null:String(options.platform);
+  const patterns={facebook:['%facebook%','fb'],threads:['%threads%'],
+    instagram:['%instagram%','ig','%reels%']};
+  if(platform&&(!Object.hasOwn(patterns,platform)||exact!==null))
+    throw Error('Invalid lane platform');
+  let query=db.selectFrom(table).select('date')
+    .select(eb=>eb.fn.countAll().as('item_count'))
+    .where('date','>=',start).where('date','<=',end)
+    .where('date','is not',null);
+  if(exact!==null)query=query.where('site','=',exact);
+  if(platform){
+    const choices=patterns[platform].map(pattern=>pattern==='fb'||pattern==='ig'
+      ?eb=>eb(sql`lower(site)`,'=',pattern)
+      :eb=>eb(sql`lower(site)`,'like',pattern));
+    query=query.where(eb=>eb.or(choices.map(choice=>choice(eb))));
+  }
+  const rows=await query.groupBy('date').orderBy('date','asc').execute();
+  return rows.map(row=>({day:day(row.date),item_count:Number(row.item_count||0)}));
+}
+
+export async function queryTrace(args={}){
+  if(!args||typeof args!=='object'||Array.isArray(args)||
+    Object.keys(args).some(key=>!['p_scope_id','p_view','p_start','p_end','p_options'].includes(key)))
+    throw Error('Invalid Trace query');
+  const scope=scopeId(args.p_scope_id),view=String(args.p_view||'');
+  const start=date(args.p_start),end=date(args.p_end);
+  const options=args.p_options??{};
+  if(!VIEWS.has(view)||!options||typeof options!=='object'||Array.isArray(options)||
+    Object.keys(options).some(key=>!OPTIONS.has(key))||start&&end&&start>end)
+    throw Error('Invalid Trace query');
+  if(options.statisticsOnly!==undefined&&(
+      typeof options.statisticsOnly!=='boolean'||
+      !['trace_places','trace_territory'].includes(view))||
+    options.withPoints!==undefined&&(
+      typeof options.withPoints!=='boolean'||view!=='trace_territory'))
+    throw Error('Invalid Trace options');
+  if(options.classUid!=null&&(!/^[A-Za-z0-9]{8}$/.test(String(options.classUid))))
+    throw Error('Invalid Keyword Class UID');
+  return withAuthorizedLocRead({scope},async(db,port)=>{
+    const table=galaxyTable(scope,port);
+    let data;
+    if(view==='trace_places')
+      data=port.engine==='postgres'
+        ?await tracePlaces(db,scope,start,end,{statisticsOnly:options.statisticsOnly===true})
+        :await portableTracePlaces(db,table,start,end,options.statisticsOnly===true);
+    else if(view==='trace_territory')
+      data=port.engine==='postgres'?await traceTerritory(db,scope,start,end,{
+        withPoints:options.withPoints===true,
+        statisticsOnly:options.statisticsOnly===true
+      }):await portableTraceTerritory(db,scope,start,end,options,port);
+    else if(view==='lane_daily')
+      data=port.engine==='postgres'?await laneDaily(db,scope,start,end,options):
+        await portableLaneDaily(db,table,start,end,options);
+    else if(view==='trace_daily'){
+      const ids=options.placeIds;
+      if(!Array.isArray(ids)||ids.length<1||ids.length>80||
+        ids.some(uid=>!UID.test(String(uid||''))))throw Error('Invalid Trace Point UID list');
+      const source=options.source?String(options.source).trim():null;
+      if(source&&source.length>120)throw Error('Invalid Trace Source');
+      data=port.engine==='postgres'
+        ?await traceDaily(db,scope,[...new Set(ids.map(String))],start,end,source)
+        :await portableTraceDaily(db,table,[...new Set(ids.map(String))],start,end,source);
+    }else{
+      const ids=options.placeIds;
+      if(!Array.isArray(ids)||ids.length<1||ids.length>80||
+        ids.some(uid=>!UID.test(String(uid||''))))throw Error('Invalid Trace Point UID list');
+      const source=options.source?String(options.source).trim():null;
+      if(source&&source.length>120)throw Error('Invalid Trace Source');
+      if(port.engine!=='postgres')throw Error('Keyword trace aggregation needs PostgreSQL');
+      data=await traceKeywordGroups(db,scope,'silver.'+scope+'_anchor',
+        [...new Set(ids.map(String))],start,end,source,options.classUid||null,
+        'authenticated');
+    }
+    return {data,count:null};
+  });
+}
+
+export async function queryTracePlaceNames(args={}){
+  if(!args||
+    typeof args!=='object'||Array.isArray(args)||
+    Object.keys(args).some(key=>!['p_scope_id','p_term','p_limit'].includes(key)))
+    throw Error('Invalid Trace action');
+  const scope=scopeId(args.p_scope_id);
+  const term=String(args.p_term||'').trim().slice(0,100);
+  const limit=Math.max(1,Math.min(8,Number(args.p_limit)||8));
+  if(!term)return {data:[],count:null};
+  return withAuthorizedLocRead({scope},async(db)=>{
+    const pattern='%'+term.replace(/[\\%_]/g,char=>'\\'+char)+'%';
+    const anchor=sql.ref('silver.'+scope+'_anchor');
+    const result=await sql`select a.uid::varchar as uid,a.title,
+        case when coalesce(a.attr->>'lng',a.attr->>'longitude') is not null
+            and coalesce(a.attr->>'lat',a.attr->>'latitude') is not null
+          then array[coalesce(a.attr->>'lng',a.attr->>'longitude')::double precision,
+            coalesce(a.attr->>'lat',a.attr->>'latitude')::double precision]::double precision[]
+          else null::double precision[] end as address
+      from ${anchor} as a where a.type='point' and a.invisible is false
+        and (a.title ilike ${pattern} or exists(
+          select 1 from jsonb_array_elements_text(case jsonb_typeof(a.attr->'location')
+            when 'array' then a.attr->'location'
+            when 'string' then jsonb_build_array(a.attr->>'location')
+            else '[]'::jsonb end) alias(name)
+          where alias.name ilike ${pattern}))
+      order by a.title limit ${limit}`.execute(db);
+    return {data:result.rows,count:null};
+  });
 }

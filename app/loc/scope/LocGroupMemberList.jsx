@@ -4,6 +4,7 @@ import {useState} from 'react';
 import {useAccount} from '../auth/use-account';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {dbAuthClient} from '../db/db-client.mjs';
+import {readGroupMembers} from '../actions/group/queries.mjs';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 import {invalidatePublicScopeMetadata} from './scope-data';
 import {cachedRead,invalidateCachedRead} from '../db/semi-dynamic-cache.mjs';
@@ -26,9 +27,7 @@ export default function LocGroupMemberList({groupId='loc'}){
   const groupMemberCacheKey='loc-group-member-list:'+userId+':'+groupId;
   const query=useAsyncResource(['loc-group-member-list',userId,groupId],()=>
     cachedRead(groupMemberCacheKey,async()=>{
-      const {data,error}=await dbAuthClient.schema('silver')
-        .managedAction('read_group_members',{p_group_id:groupId});
-      if(error)throw new Error(error.message||'群組人員讀取失敗。');
+      const {data}=await readGroupMembers(groupId);
       return Array.isArray(data)?data:[];
     }),{enabled:allowed});
   const rows=query.data||[];

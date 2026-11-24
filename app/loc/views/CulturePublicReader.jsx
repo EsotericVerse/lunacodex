@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {FeaturePage} from '../../modular/ui';
 import {selectRows} from '../db/db-query.mjs';
-import {dbPublicClient} from '../db/db-client.mjs';
+import {queryCultureContent} from '../actions/culture/queries.mjs';
 import {defaultScopeData} from '../scope/scope-data';
 import {selectCultureArticleListPage} from '../culture/query';
 import {selectGalaxyIdentity} from '../galaxy/galaxy-query';
@@ -188,11 +188,13 @@ function keywordSourceModel(rows,expanded,start,end){
   }
   return {groups,items,sites};
 }
-async function analytics(scope,view,start,end,options={},signal=null){
-  const {data,error}=await dbPublicClient.schema('silver').analytics({
-    p_scope_id:scope,p_view:view,p_start:start,p_end:end,p_options:options,signal
-  });
-  if(error)throw new Error(error.message||'文化資料讀取失敗');
+async function queryCultureData(scope,kind,start,end,signal=null){
+  signal?.throwIfAborted?.();
+  const params=new URLSearchParams({kind,scope});
+  if(start)params.set('start',start);
+  if(end)params.set('end',end);
+  const {data}=await queryCultureContent(params.toString());
+  signal?.throwIfAborted?.();
   return Array.isArray(data)?data:[];
 }
 export default function CulturePublicReader(){
@@ -263,7 +265,7 @@ export default function CulturePublicReader(){
     setCatalogLoading(true);setAnchors([]);
     // A SiteAnchor taxonomy failure must NEVER blank the independent
     // TimeAnchor river. These are separate, non-joined ZModel reads.
-    analytics(scopeId,'culture_anchors',null,null)
+    queryCultureData(scopeId,'culture_anchors','','')
       .then(time=>{if(!cancelled){setAnchors(time);setLoading(false);}})
       .catch(reason=>{if(!cancelled){setError(String(reason?.message||reason));setLoading(false);}});
     readPublicSourceTaxonomy()
@@ -288,7 +290,7 @@ export default function CulturePublicReader(){
     if(!validRange||densityMode!=='source')
       return()=>{active=false;controller.abort();
         if(densityAbortRef.current===controller)densityAbortRef.current=null;};
-    analytics(scopeId,'culture_density',rangeStart,rangeEnd,{},controller.signal)
+    queryCultureData(scopeId,'culture_density',rangeStart,rangeEnd,controller.signal)
       .then(rows=>{
         if(!active||controller.signal.aborted)return;
         setDaily(rows);setDensityReadyKey(densityKey);

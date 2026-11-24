@@ -75,11 +75,10 @@ async function existingConversation(db,table,id,site){
 function ensurePermission(body,claims){
   const scope=String(body.scopeid||'');
   const action=String(body.action||'');
-  if(!['check','record','record_ordered'].includes(action))throw fail('Unsupported conversation action');
+  if(!['record','record_ordered'].includes(action))throw fail('Unsupported conversation action');
   if(claims?.provider!=='loc'||claims?.me!==true||
      !Array.isArray(claims.grants)||
-     !(claims.grants.includes('global:manage')||
-       claims.grants.includes(scope+':'+(action==='check'?'read':'write'))))
+     !(claims.grants.includes('global:manage')||claims.grants.includes(scope+':write')))
     throw fail('Verified LOC business permission required',403);
   return scope;
 }
@@ -91,14 +90,6 @@ export async function executeLocConversation(db,body,claims){
   const conversationId=validConversation(body.conversation_id);
   const site=siteForCapturedUrl(conversationId);
   const timestamp=normalizedTimestamp(body.updated_at);
-  if(body.action==='check'){
-    const existing=await existingConversation(db,table,conversationId,site);
-    return existing?{
-      found:true,uid:String(existing.uid).trim(),scopeid:scope,
-      updated_at:existing.UpdateTime,
-      needs_sync:Date.parse(existing.UpdateTime)<Date.parse(timestamp)
-    }:{found:false,scopeid:scope,needs_sync:true};
-  }
   if(body.action==='record_ordered'){
     // Source order is authoritative. DB write-time and capture-time are never
     // sortable message fields. Legacy text requires a separate recovery flow.

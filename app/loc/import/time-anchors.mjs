@@ -113,21 +113,10 @@ export async function prepareImportTimeAnchors(records,{
       (anchorSnapshot.scopeId!==scopeId||anchorSnapshot.table!==table||
        typeof anchorSnapshot.time?.accept!=='function'))
     throw Error('日期定錨共用索引 Scope 不符');
-  const index=anchorSnapshot?.time||createImportDateIndex();
+  if(!anchorSnapshot)
+    throw Error('日期定錨讀取必須先取得匯入專用授權快照');
+  const index=anchorSnapshot.time;
   const {existingDays,conflictingDays}=index;
-  if(!anchorSnapshot){
-    onProgress?.({phase:'核對既有日期定錨',completed:0,total:0});
-    for(let offset=0;;offset+=pageSize){
-      const {data,error}=await relation(table).select('uid,type,title,description,attr')
-        .eq('type','date').order('title',{ascending:true})
-        .order('uid',{ascending:true}).range(offset,offset+pageSize-1);
-      if(error)throw Error('讀取日期定錨失敗：'+(error.message||error));
-      const rows=data||[];
-      for(const row of rows)index.accept(row);
-      onProgress?.({phase:'核對既有日期定錨',completed:offset+rows.length,total:0});
-      if(rows.length<pageSize)break;
-    }
-  }
   // Existing Anchor PK constraints and the 23505 retry below protect against
   // improbable secure Base62 UID collisions without preloading all Anchor UIDs.
   const occupied=new Set();

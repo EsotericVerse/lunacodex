@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {assertZModelAnchorFeatureRows} from '../packages/zenstack/import-validation.mjs';
 import {schema} from '../packages/zenstack/schema.mjs';
-import {parseAnchorFeatureTransaction} from '../app/loc/model/anchor-feature-transactions.mjs';
+import {parseAnchorFeatureQuery} from '../app/loc/model/anchor-feature-queries.mjs';
 import {anchorUidListCount,indexZModelAnchorHierarchy,nextZModelAnchorType} from '../packages/zenstack/anchor-hierarchy.mjs';
 
 import {locAnchorToBlock,locBlockToAnchor} from '../app/loc/blocks/loc-block-anchor.mjs';
@@ -78,14 +78,14 @@ test('unrecognized Anchor attr fields still fail strict ZModel validation',()=>{
 });
 
 test('source taxonomy is LOC-global only, never a Scope anchor source',()=>{
-  const body={kind:'transaction',operation:'anchor-feature',
+  const body={kind:'query',operation:'anchor-feature',
     family:'source',scope:'loc',result:'rows'};
-  assert.equal(parseAnchorFeatureTransaction(body).family,'source');
-  assert.throws(()=>parseAnchorFeatureTransaction({...body,scope:'lo3rwang'}),
+  assert.equal(parseAnchorFeatureQuery(body).family,'source');
+  assert.throws(()=>parseAnchorFeatureQuery({...body,scope:'lo3rwang'}),
     /Invalid Anchor feature selection/);
-  assert.throws(()=>parseAnchorFeatureTransaction({...body,scope:'lrunes'}),
+  assert.throws(()=>parseAnchorFeatureQuery({...body,scope:'lrunes'}),
     /Invalid Anchor feature selection/);
-  assert.throws(()=>parseAnchorFeatureTransaction({...body,scope:'loc',family:'time'}),
+  assert.throws(()=>parseAnchorFeatureQuery({...body,scope:'loc',family:'time'}),
     /Invalid Anchor feature selection/);
 });
 

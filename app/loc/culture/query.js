@@ -15,9 +15,9 @@ import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.j
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-anchor-ranges.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {readTimeAnchorTransaction,readAllTimeAnchorTransactions} from './time-anchor-transaction.mjs';
-import {readGalaxyFeature} from '../galaxy/feature-transaction-client.mjs';
-import {readAnchorFeature} from '../model/feature-transaction-client.mjs';
+import {readTimeAnchorQuery,readAllTimeAnchorQueries} from './time-anchor-query.mjs';
+import {readGalaxyFeature} from '../galaxy/feature-query-client.mjs';
+import {readAnchorFeature} from '../model/feature-query-client.mjs';
 
 
 
@@ -51,7 +51,7 @@ export async function selectCultureTimeRows(scope,birthday=''){
   if(!scopeId||!table)throw new Error('Scope data 未解析');
   // Collect every Time Anchor/period/era. Internal transport pagination does
   // not cap the historical timeline or borrow the old Data API Max Rows limit.
-  const rows=(await readAllTimeAnchorTransactions(scopeId)).map(projectTimeAnchor);
+  const rows=(await readAllTimeAnchorQueries(scopeId)).map(projectTimeAnchor);
   return projectScopeTimeRecords(scopeId,rows);
 }
 
@@ -359,7 +359,7 @@ async function readManagedTimeRecords(table,{signal=null}={}){
   let averageBytes=0,totalBytes=0;
   for(;;){
     if(signal?.aborted){const error=new Error('Time read cancelled');error.name='AbortError';throw error;}
-    const result=await readTimeAnchorTransaction(scope,{
+    const result=await readTimeAnchorQuery(scope,{
       mode:'editor',cursor:afterUid,limit:Math.min(TIME_ANCHOR_MAX_PAGE_ROWS,pageRows),signal
     });
     const rows=result.rows;
@@ -378,7 +378,7 @@ async function readManagedTimeRecords(table,{signal=null}={}){
     }
     if(!result.nextCursor)return collected;
     if(result.nextCursor===afterUid||!rows.length)
-      throw Error('Invalid TimeAnchor transaction continuation');
+      throw Error('Invalid TimeAnchor query continuation');
     afterUid=result.nextCursor;
     const measured=pageBytes/Math.max(1,rows.length);
     averageBytes=averageBytes===0||measured>averageBytes

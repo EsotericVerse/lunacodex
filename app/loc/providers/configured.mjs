@@ -3,12 +3,13 @@
 // route; identity is verified there and business grants come from published JS.
 import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
-import {transientReadSignal} from '../../../packages/zenstack/transient-read-epoch.mjs';
 import {editorTransactionLease,assertEditorTransactionLease,isEditorTransactionCancelled}
   from '../db/editor-transaction-lifecycle.mjs';
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 import {invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
-import {managedQueryRoute,isManagedReadAction} from '../actions/managed-query-routes.mjs';
+import {isManagedReadAction,isManagedWriteAction}
+  from '../actions/managed-query-routes.mjs';
+import {runLocalLocWrite} from '../actions/local-write.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 function errorFromResponse(result,response){
@@ -28,32 +29,30 @@ export function createConfiguredAdapter({
   });
   const publicClient=createKyselyPublicClient({role:'anon',fetch:fetchImpl});
   async function operation(kind,scopeid='',fields={}){
-    // An explicit editor Cancel now ends its OWN write generation. Ordinary
-    // section switching still never cancels writes; protected reads retain
-    // their independent transient signal. Request abort reaches the backend's
-    // request-scoped SQL connection and uncommitted transaction.
-    const readOnly=kind==='managed-action'&&isManagedReadAction(fields.name,fields.args);
-    const lease=readOnly?null:editorTransactionLease();
+    if(kind==='managed-action'&&isManagedReadAction(fields.name,fields.args))
+      throw Error('LOC reads must call their feature-owned Server Action');
+    if(kind==='managed-action'&&!isManagedWriteAction(fields.name,fields.args))
+      throw Error('Unknown LOC managed write action');
+    const bulkEndpoint=kind==='short-import';
+    const lease=editorTransactionLease();
     assertEditorTransactionLease(lease);
-    const signal=readOnly
-      ?AbortSignal.any([transientReadSignal(),AbortSignal.timeout(30000)])
-      :lease?AbortSignal.any([lease.signal,AbortSignal.timeout(30000)])
-        :AbortSignal.timeout(30000);
-    // Cookies still authenticate every request; no extra Auth round-trip.
-    let response;
+    let result;
     try{
-      const path=kind==='managed-action'
-        ?managedQueryRoute(fields.name,fields.args)||'/api/loc-native'
-        :'/api/loc-native';
-      response=await fetchImpl(path,{
-        method:'POST',credentials:'include',cache:'no-store',
-        headers:{'content-type':'application/json',accept:'application/json'},
-        body:JSON.stringify({kind,scopeid,...fields}),signal
-      });
+      if(bulkEndpoint){
+        const signal=lease?AbortSignal.any([lease.signal,AbortSignal.timeout(30000)])
+          :AbortSignal.timeout(30000);
+        const response=await fetchImpl('/api/loc-native',{
+          method:'POST',credentials:'include',cache:'no-store',
+          headers:{'content-type':'application/json',accept:'application/json'},
+          body:JSON.stringify({kind,scopeid,...fields}),signal
+        });
+        result=await response.json().catch(()=>null);
+        if(!response.ok)throw errorFromResponse(result,response);
+      }else{
+        result=await runLocalLocWrite({kind,scopeid,...fields});
+      }
+      assertEditorTransactionLease(lease);
     }catch(error){
-      // Cancel terminates browser work and may abort the server's uncommitted
-      // SQL via request.signal. A request already committed before disconnect
-      // cannot be rolled back retroactively; caller must re-read later.
       if(isEditorTransactionCancelled(lease)){
         const stopped=new Error('編輯已取消；已送出的交易結果須重新讀取確認。');
         stopped.code='LOC_EDITOR_CANCELLED';
@@ -62,7 +61,7 @@ export function createConfiguredAdapter({
       // A lost HTTP response does NOT prove the database rolled back. Do not
       // tell the editor to retry blindly or leave an ambiguous stale cache.
       if(kind==='managed-transaction'||kind==='managed-write'||
-         kind==='short-import'||kind==='managed-action'&&!readOnly){
+         kind==='short-import'||kind==='managed-action'){
         invalidateCachedReadPrefix('scope-aggregate:');
         const uncertain=new Error('儲存回應中斷，提交結果未確認；請重新讀取後再決定是否重試。');
         uncertain.code='LOC_WRITE_RESULT_UNKNOWN';
@@ -70,24 +69,26 @@ export function createConfiguredAdapter({
       }
       throw error;
     }
-    const result=await response.json().catch(()=>null);
-    assertEditorTransactionLease(lease);
-    if(!response.ok)throw errorFromResponse(result,response);
     // Public Culture/Statistics aggregates are semi-dynamic snapshots, not
     // timed caches. One successful mutation retires affected derived results;
     // no extra COUNT, poll or cache-version SQL is ever triggered here.
     // LOC group aggregates can depend on multiple Scopes, so invalidate the
     // shared numeric family rather than guessing a single physical relation.
     if(kind==='short-import'||kind==='managed-write'||kind==='managed-transaction'||
-       (kind==='managed-action'&&!isManagedReadAction(fields.name,fields.args)))
+       kind==='managed-action')
       invalidateCachedReadPrefix('scope-aggregate:');
     return result;
   }
   const managedAction=async(name,args={})=>{
+    if(isManagedReadAction(name,args))
+      throw Error('LOC reads must call their feature-owned Server Action');
+    if(!isManagedWriteAction(name,args))
+      throw Error('Unknown LOC managed write action');
     // Label the envelope with the Scope this action belongs to. Authorization
     // still comes from the signed claim, and each handler revalidates its own
     // args.p_scope_id; naming the Scope here never widens what it may touch.
-    const result=await operation('managed-action',String(args?.p_scope_id||''),{name,args});
+    const result=await operation('managed-action',
+      String(args?.p_scope_id||''),{name,args});
     // After a trusted successful mutation, expire only its physical ZModel
     // Anchor/Blocks relation. Galaxy and management reads never use this cache.
     const scope=String(args?.p_scope_id||'').trim().toLowerCase();
@@ -102,7 +103,7 @@ export function createConfiguredAdapter({
         invalidateScopedReadCache('silver.'+scope+'_blocks');
       }
     }
-    return {data:result?.data,error:null};
+    return {data:result?.data??null,error:null};
   };
   const managedTransaction=async operations=>{
     let result;

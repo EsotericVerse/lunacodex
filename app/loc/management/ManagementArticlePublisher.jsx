@@ -10,7 +10,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useEditDock} from '../../modular/edit-dock';
 import {transactionWrites} from '../db/db-client.mjs';
 import {selectRows} from '../db/db-query.mjs';
-import {readGalaxyRecords} from '../model/feature-transaction-client.mjs';
+import {readGalaxyRecords} from '../model/feature-query-client.mjs';
 import {useAccount} from '../auth/use-account';
 import {createUid8} from '../model/uid';
 import {normalizeRelationIds,requireGalaxyContent,resolveGalaxyTitle} from '../content/content-policy';

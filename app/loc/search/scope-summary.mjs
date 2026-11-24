@@ -1,7 +1,7 @@
 'use client';
 
 
-import {dbAuthClient,dbPublicClient} from '../db/db-client.mjs';
+import {dbAuthClient} from '../db/db-client.mjs';
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 
@@ -34,12 +34,11 @@ export function summarizeScopeSearchSummary(scopeIds,rows=[]){
 export async function readScopeSearchSummary(scopeIds){
   const ids=summaryScopeIds(scopeIds);
   if(!ids.length)return {rows:[],summary:null};
-  // Read the current server-side Kysely summary; never substitute a build-time
-  // published snapshot when the SQL query fails or returns partial data.
-  const result=await dbPublicClient.schema('silver').analytics({
+  // Search's own action returns only the selected published Scopes' summaries.
+  const {querySearch}=await import('../actions/search/queries.mjs');
+  const result=await querySearch({
     p_scope_id:'loc',p_view:'search_summary',p_options:{scopeIds:ids}
   });
-  if(result?.error)throw Error(result.error.message||'LOC Search summary unavailable');
   const rows=Array.isArray(result?.data?.rows)?result.data.rows:[];
   return {rows,summary:summarizeScopeSearchSummary(ids,rows)};
 }

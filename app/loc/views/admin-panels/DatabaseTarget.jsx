@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {resolveDatabaseRouting} from '../../providers/routing/config.mjs';
-import {dbAuthClient} from '../../db/db-client.mjs';
+import {readBackupReadiness} from '../../actions/admin/queries.mjs';
 
 const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
 const ACCESS_FILE='app/loc/providers/access.js';
@@ -16,10 +16,10 @@ export default function DatabaseTarget(){
       setBackupHealth({state:'absent'});
     }else{
       setBackupHealth({state:'checking'});
-      dbAuthClient.schema('silver').managedAction('check_backup_readiness')
-        .then(({data,error})=>{
+      readBackupReadiness()
+        .then(data=>{
           if(!active)return;
-          setBackupHealth(error?{state:'offline'}:data?.online
+          setBackupHealth(data?.online
             ?{state:data.schema?'online':'schema-error'}:{state:'offline'});
         }).catch(()=>{if(active)setBackupHealth({state:'offline'});});
     }

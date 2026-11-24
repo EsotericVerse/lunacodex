@@ -264,12 +264,12 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryKey:['statistics-total-daily-v1',scopeId,queryRange.startDate,observedEnd],
     enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd),
     queryFn:async({signal})=>{
-      const {dbPublicClient}=await import('../../loc/db/db-client.mjs');
-      const {data,error}=await dbPublicClient.schema('silver').analytics({
-        p_scope_id:scopeId,p_view:'daily_total',
-        p_start:queryRange.startDate,p_end:observedEnd,signal
-      });
-      if(error)throw error;
+      signal?.throwIfAborted?.();
+      const {queryStaticsContent}=await import('../../loc/actions/statics/queries.mjs');
+      const params=new URLSearchParams({kind:'daily_total',scope:scopeId,
+        start:queryRange.startDate,end:observedEnd});
+      const {data}=await queryStaticsContent(params.toString());
+      signal?.throwIfAborted?.();
       return data;
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
@@ -318,15 +318,16 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryKey:['statistics-category-daily',scopeId,rankingType,queryRange.startDate,queryRange.endDate],
     enabled:placeChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
     queryFn:async({signal})=>{
-      const {dbPublicClient}=await import('../../loc/db/db-client.mjs');
-      const {data,error}=await dbPublicClient.schema('silver').analytics({
+      signal?.throwIfAborted?.();
+      const {queryTrace}=await import('../../loc/actions/trace/queries.mjs');
+      const {data}=await queryTrace({
         p_scope_id:scopeId,p_view:'trace_places',
-        p_start:queryRange.startDate,p_end:queryRange.endDate,signal,
+        p_start:queryRange.startDate,p_end:queryRange.endDate,
         // Statistics' place view must satisfy both independent feature flags.
         // Ordinary Trace views keep their own trace-only read semantics.
         p_options:{statisticsOnly:true}
       });
-      if(error)throw error;
+      signal?.throwIfAborted?.();
       if(!Array.isArray(data))throw new Error('Invalid place statistics');
       return data;
     },

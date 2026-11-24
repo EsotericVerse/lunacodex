@@ -444,7 +444,6 @@ async function bulkUpdateGalaxyFlags(trx,args){
   const totalQuery=await sql`select count(*)::int as n from ${table} as g
     where lower(coalesce(g.site,''))=${site} and (${different})`.execute(trx);
   const matching=Number(totalQuery.rows[0]?.n||0);
-  if(args.p_apply!==true)return {matching,updated:0,remaining:matching};
   if(!Number.isInteger(args.p_expected_count)||args.p_expected_count!==matching)
     reject('Bulk preview is stale; preview again before writing',409);
   const limit=args.p_batch_size===undefined?250:Number(args.p_batch_size);
@@ -470,24 +469,20 @@ async function bulkUpdateGalaxyFlags(trx,args){
 }
 
 
-// Source-list control uses the existing per-Scope Anchor table, not Galaxy
-// article scans or a new SQL schema. Privileged reads happen only after
-// verifying LOC Group or the requested Scope, never across sibling Scopes.
-const ACTIONS=new Set(['read_group_members','read_loc_source_hierarchy','update_group_member_name',
+// This dispatcher is write-only. Feature reads have their own Server Actions
+// and never enter the generic managed-action channel.
+const ACTIONS=new Set(['update_group_member_name',
   'move_scope_block',
-  'preview_or_fill_galaxy_place','batch_fill_galaxy_location',
+  'fill_galaxy_place','apply_galaxy_location_batch',
+  'apply_galaxy_visibility_flags',
   'rename_scope_site_batch','save_scope_trace_place_names','save_blocks','loc_admin_settings',
-  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class','find_galaxy_duplicates','read_scope_registry_admin','bulk_update_galaxy_able',
-  'sync_search_patterns','suggest_search_patterns','keyword_pattern_statistics',
-  'media_anchor_candidates','anchor_import_page','import_site_presence',
-  'import_site_id_candidates','import_created_at_candidates',
-  'import_occupied_createtimes',
-  'search_galaxy_private','provision_scope','manage_scope_registry','delete_scope',
+  'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class',
+  'provision_scope','manage_scope_registry','delete_scope',
   'save_scope_trace_edit']);
 // Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
 // A Search-only, read-only action behind the verified LOC Web Session.
-// No browser SELECT may bypass Galaxy.search/list on the public query route.
+// No browser SELECT may bypass the feature-owned Galaxy search/list actions.
 const PRIVATE_SEARCH_COLUMNS=Object.freeze(galaxyReadColumns('GalaxyList'));
 const privateSearchSchema=z.strictObject({
   p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
@@ -506,7 +501,7 @@ function privateSearchLike(value){
   // A query term is literal text. Escape SQL LIKE wildcards and backslashes.
   return '%'+String(value).replace(/[\\%_]/g,char=>'\\'+char)+'%';
 }
-async function searchPrivateGalaxy(trx,args,claims){
+export async function searchPrivateGalaxy(trx,args,claims){
   // Website-only read requires a verified LOC Session and the
   // existing Scope manage grant. No personal preference authorizes access.
   if(claims?.provider!=='loc'||claims?.role!=='authenticated'||
@@ -530,7 +525,6 @@ async function searchPrivateGalaxy(trx,args,claims){
     [...parsedTerms.terms,...parsedTerms.excludes].some(word=>word.length>120))
     reject('Invalid private Search terms');
   if(sourceMode==='names'&&!sources.length)return {data:{rows:[],hasMore:false,nextCursor:null},count:0};
-  await sql`reset role`.execute(trx);
   // Ordinary Search queries both title and body. The separate verified
   // management place-fill workflow may intentionally search location.
   const matchTerm=(eb,term)=>placeOnly
@@ -611,13 +605,11 @@ const importOccupiedTimesArgsSchema=z.strictObject({
 });
 const IMPORT_OCCUPIED_TIME_COLUMNS=Object.freeze(['uid','createtime']);
 
-// Import-only Kysely conveniences. The verified caller owns its transaction,
-// the fixed action name owns the projection, and all inputs stay SQL-bound.
-// No query language, table argument or new authorization surface is exposed.
+// Import-only Kysely reads. Each feature Server Action verifies the Scope
+// grant before calling one fixed projection; none accepts SQL or a table name.
 async function authorizedImportGalaxy(trx,scope){
-  if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
+  if(scope==='local'||!await canLocAccess(trx,'scope',scope))
     reject('Import Scope access denied',403);
-  await sql`reset role`.execute(trx);
   return 'silver.'+scope+'_galaxy';
 }
 function withinImportInstants(query,instants,duration,{wholeSeconds=false}={}){
@@ -641,6 +633,96 @@ async function readImportCandidatePage(query,table,columns,{after=null,limit=60}
   const page=rows.slice(0,limit);
   return {data:{rows:page,nextCursor:rows.length>limit
     ?String(page.at(-1).uid):null},count:page.length};
+}
+
+export async function readImportSitePresence(trx,args={}){
+  const parsed=importSitePresenceArgsSchema.safeParse(args);
+  if(!parsed.success)reject('Invalid Zod import site presence request');
+  const {p_scope_id:scope,p_sites:sites}=parsed.data;
+  const galaxy=await authorizedImportGalaxy(trx,scope);
+  const keys=[...new Set(sites.map(site=>site.toLowerCase()))];
+  const rows=await trx.selectFrom(galaxy)
+    .select(sql`lower(site)`.as('site_key'))
+    .where(sql`lower(site)`,'in',keys)
+    .distinct().execute();
+  const checked=importSitePresenceResultSchema.safeParse(rows);
+  if(!checked.success||rows.some(row=>!keys.includes(row.site_key)))
+    reject('Import site presence SQL result invalid');
+  return {data:rows.map(row=>row.site_key),count:rows.length};
+}
+
+export async function readImportSiteCandidates(trx,name,args={}){
+  const byId=name==='import_site_id_candidates';
+  if(!byId&&name!=='import_created_at_candidates')
+    reject('Invalid import candidate query');
+  const schema=byId?importSiteIdCandidateArgsSchema:importCreatedAtCandidateArgsSchema;
+  const parsed=schema.safeParse(args);
+  if(!parsed.success)reject('Invalid import identity candidate request');
+  const {p_scope_id:scope,p_site:site,p_after_uid:after,p_limit:limit}=parsed.data;
+  const table=await authorizedImportGalaxy(trx,scope);
+  const columns=byId?IMPORT_SITE_ID_CANDIDATE_COLUMNS:IMPORT_CREATED_AT_CANDIDATE_COLUMNS;
+  let query=trx.selectFrom(table).select(columns)
+    .where(sql`lower(${sql.ref('site')})`,'=',site.toLowerCase());
+  if(byId){
+    query=query.where('site_id','in',[...new Set(parsed.data.p_site_ids)]);
+  }else{
+    query=withinImportInstants(query,parsed.data.p_instants,1);
+  }
+  return readImportCandidatePage(query,table,columns,{after,limit});
+}
+
+export async function readImportOccupiedTimes(trx,args={}){
+  const parsed=importOccupiedTimesArgsSchema.safeParse(args);
+  if(!parsed.success)reject('Invalid import occupied-time request');
+  const {p_scope_id:scope,p_seconds:seconds,p_after_uid:after,p_limit:limit}=parsed.data;
+  const table=await authorizedImportGalaxy(trx,scope);
+  const query=withinImportInstants(
+    trx.selectFrom(table).select(IMPORT_OCCUPIED_TIME_COLUMNS),seconds,1000,
+    {wholeSeconds:true});
+  return readImportCandidatePage(query,table,IMPORT_OCCUPIED_TIME_COLUMNS,
+    {after,limit});
+}
+
+export async function readImportAnchorPage(trx,args={}){
+  const parsed=anchorImportPageArgsSchema.safeParse(args);
+  if(!parsed.success)reject('Invalid Zod Anchor import page request');
+  const {p_scope_id:scope,p_types:types,p_after_uid:after,p_limit:limit}=parsed.data;
+  if(scope==='local'||!await canLocAccess(trx,'scope',scope))
+    reject('Anchor import Scope access denied',403);
+  let query=trx.selectFrom('silver.'+scope+'_anchor')
+    .select(ANCHOR_IMPORT_PAGE_COLUMNS).where('type','in',types)
+    .orderBy('uid','asc').limit(limit);
+  if(after)query=query.where('uid','>',after);
+  const rows=await query.execute();
+  if(rows.some(row=>!types.includes(String(row.type))))
+    reject('Anchor import query returned an unexpected ZModel type');
+  assertZModelSelectRows('silver.'+scope+'_anchor',ANCHOR_IMPORT_PAGE_COLUMNS,rows);
+  return {data:rows,count:rows.length};
+}
+
+export async function readImportMediaCandidates(trx,args={}){
+  const parsed=mediaImportCandidateArgsSchema.safeParse(args);
+  if(!parsed.success)reject('Invalid Zod MediaAnchor candidate request');
+  const {p_scope_id:scope,p_uids:uids,p_urls:urls,
+    p_after_uid:after,p_limit:limit}=parsed.data;
+  if(scope==='local'||!await canLocAccess(trx,'scope',scope))
+    reject('MediaAnchor import access denied',403);
+  if(!uids.length&&!urls.length)return {data:[],count:0};
+  const conditions=[];
+  if(uids.length)conditions.push(eb=>eb('uid','in',uids));
+  if(urls.length)conditions.push(eb=>sql`(attr->>'url') in
+    (${sql.join(urls.map(url=>sql`${url}`))})`);
+  let query=trx.selectFrom('silver.'+scope+'_anchor')
+    .select(MEDIA_IMPORT_CANDIDATE_COLUMNS)
+    .where('type','in',ANCHOR_TYPE_GROUPS.media)
+    .where(eb=>eb.or(conditions.map(condition=>condition(eb))))
+    .orderBy('uid','asc').limit(limit);
+  if(after)query=query.where('uid','>',after);
+  const matches=await query.execute();
+  assertZModelSelectRows('silver.'+scope+'_anchor',MEDIA_IMPORT_CANDIDATE_COLUMNS,matches);
+  if(matches.some(row=>!ANCHOR_TYPE_GROUPS.media.includes(row.type)))
+    reject('MediaAnchor lookup returned a non-media type');
+  return {data:matches.map(mediaAnchorProjection),count:matches.length};
 }
 // Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
 const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
@@ -678,10 +760,9 @@ function validUid(value){
 }
 
 
-async function keywordPatternStatistics(trx,args){
+export async function keywordPatternStatistics(trx,args){
   const scope=validScope(args.p_scope_id),classUid=validUid(args.p_class_uid);
   const owner=await canLocAccess(trx,'scope',scope);
-  await sql`reset role`.execute(trx);
   const config=await trx.selectFrom('silver.'+scope)
     .select(['keyword_meta','keyword_min_chars'])
     .where('id','=',scope).executeTakeFirst();
@@ -746,7 +827,7 @@ async function keywordPatternStatistics(trx,args){
 }
 
 // Suggestions come from authored Item vocabulary, not Pattern postings.
-async function suggestSearchPatterns(trx,args){
+export async function suggestSearchPatterns(trx,args){
   const requested=args.p_scope_ids;
   const query=String(args.p_query??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
   if(!Array.isArray(requested)||requested.length<1||requested.length>50||
@@ -756,7 +837,6 @@ async function suggestSearchPatterns(trx,args){
   for(const id of new Set(requested))
     if(await canLocAccess(trx,'scope',id))granted.push(id);
   if(!granted.length)reject('No authorized Keyword Scope',403);
-  await sql`reset role`.execute(trx);
   const found=new Map();
   for(const scope of granted){
     const rows=await trx.selectFrom('silver.'+scope+'_anchor')
@@ -781,40 +861,27 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(!ACTIONS.has(name)||!body.args||typeof body.args!=='object'||
     Array.isArray(body.args))reject('Unknown Kysely action');
   const args=body.args;
+  if(name==='loc_admin_settings'&&
+    !['upsert','delete'].includes(String(args.p_operation||'')))
+    reject('LOC settings read actions are closed');
   const keys={
-    read_group_members:['p_group_id'],
-    read_loc_source_hierarchy:[],
     update_group_member_name:['p_group_id','p_member_id','p_display_name'],
     move_scope_block:['p_scope_id','p_page_name','p_uid','p_direction'],
     save_blocks:['p_scope_id','p_type','p_rows'],
-    preview_or_fill_galaxy_place:['p_scope_id','p_start_date','p_end_date','p_place','p_apply','p_expected_count'],
-    batch_fill_galaxy_location:['p_scope_id','p_uids','p_place','p_apply','p_expected_count'],
+    fill_galaxy_place:['p_scope_id','p_start_date','p_end_date','p_place','p_expected_count'],
+    apply_galaxy_location_batch:['p_scope_id','p_uids','p_place','p_expected_count'],
     rename_scope_site_batch:['p_scope_id','p_before','p_after','p_batch_size'],
     save_scope_trace_place_names:['p_scope_id','p_uid','p_names'],
     loc_admin_settings:['p_section','p_operation','p_key','p_value'],
     refresh_scope_search_summary:['p_scope_id'],
-    bulk_update_galaxy_able:['p_scope_id','p_site','p_flags','p_apply','p_expected_count','p_batch_size'],
+    apply_galaxy_visibility_flags:['p_scope_id','p_site','p_flags','p_expected_count','p_batch_size'],
     merge_scope_trace_place_names:['p_scope_id','p_keep_uid','p_remove_uids'],
     import_shared_keyword_class:['p_target_scope','p_source_scope','p_class_uid'],
-    find_galaxy_duplicates:['p_scope_id'],
-    read_scope_registry_admin:[],
     provision_scope:['p_scope_id','p_display_name','p_email','p_birthday',
       'p_domain','p_directory','p_parent_scope_id','p_theme','p_locale','p_copy_keywords'],
     manage_scope_registry:['p_operation','p_scope_id','p_values'],
     delete_scope:['p_scope_id'],
-    save_scope_trace_edit:['p_scope_id','p_renames','p_point','p_keep_uid','p_merge_uids','p_visibility'],
-    sync_search_patterns:['p_scope_id','p_class_uid','p_patterns','p_final'],
-    suggest_search_patterns:['p_scope_ids','p_query'],
-    keyword_pattern_statistics:['p_scope_id','p_class_uid','p_start_date','p_end_date','p_source'],
-    media_anchor_candidates:['p_scope_id','p_uids','p_urls','p_after_uid','p_limit'],
-    anchor_import_page:['p_scope_id','p_types','p_after_uid','p_limit'],
-    import_site_presence:['p_scope_id','p_sites'],
-    import_site_id_candidates:['p_scope_id','p_site','p_site_ids','p_after_uid','p_limit'],
-    import_created_at_candidates:['p_scope_id','p_site','p_instants','p_after_uid','p_limit'],
-    import_occupied_createtimes:['p_scope_id','p_seconds','p_after_uid','p_limit'],
-    search_galaxy_private:['p_scope_id','p_query','p_offset','p_limit',
-      'p_start_date','p_end_date','p_sort_direction','p_content_type',
-      'p_source_mode','p_sources','p_place_only']
+    save_scope_trace_edit:['p_scope_id','p_renames','p_point','p_keep_uid','p_merge_uids','p_visibility']
   }[name];
   if(Object.keys(args).some(key=>!keys.includes(key)))reject('Unexpected Kysely action argument');
   if(name==='provision_scope')
@@ -828,113 +895,6 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     return {data:await saveTracePageInTransaction(trx,scope,args,
       mergeArgs=>mergeScopePoints(trx,mergeArgs,{authorizedScope:scope})),count:null};
   }
-  if(name==='search_galaxy_private')return searchPrivateGalaxy(trx,args,claims);
-  if(name==='import_site_presence'){
-    // Verified Better Auth LOC Web Session + published JavaScript Scope grants.
-    // A single Kysely SELECT answers up to 200 exact case-insensitive site
-    // existence checks, without reading article UIDs/content or SiteAnchor.
-    const parsed=importSitePresenceArgsSchema.safeParse(args);
-    if(!parsed.success)reject('Invalid Zod import site presence request');
-    const {p_scope_id:scope,p_sites:sites}=parsed.data;
-    const galaxy=await authorizedImportGalaxy(trx,scope);
-    const keys=[...new Set(sites.map(site=>site.toLowerCase()))];
-    const rows=await trx.selectFrom(galaxy)
-      .select(sql`lower(site)`.as('site_key'))
-      .where(sql`lower(site)`,'in',keys)
-      .distinct().execute();
-    const checked=importSitePresenceResultSchema.safeParse(rows);
-    if(!checked.success||rows.some(row=>!keys.includes(row.site_key)))
-      reject('Import site presence SQL result invalid');
-    return {data:rows.map(row=>row.site_key),count:rows.length};
-  }
-  if(name==='import_site_id_candidates'||name==='import_created_at_candidates'){
-    // Only the verified LOC Web editor may inspect its own existing Galaxy.
-    // Source identities are server-bound predicates, not exposed SQL text.
-    const byId=name==='import_site_id_candidates';
-    const schema=byId?importSiteIdCandidateArgsSchema:importCreatedAtCandidateArgsSchema;
-    const parsed=schema.safeParse(args);
-    if(!parsed.success)reject('Invalid import identity candidate request');
-    const {p_scope_id:scope,p_site:site,p_after_uid:after,p_limit:limit}=parsed.data;
-    const table=await authorizedImportGalaxy(trx,scope);
-    const columns=byId?IMPORT_SITE_ID_CANDIDATE_COLUMNS:IMPORT_CREATED_AT_CANDIDATE_COLUMNS;
-    let query=trx.selectFrom(table).select(columns)
-      .where(sql`lower(${sql.ref('site')})`,'=',site.toLowerCase());
-    if(byId){
-      query=query.where('site_id','in',[...new Set(parsed.data.p_site_ids)]);
-    }else{
-      // Preserve bumped-microsecond matches and NULL-date legacy records.
-      query=withinImportInstants(query,parsed.data.p_instants,1);
-    }
-    return readImportCandidatePage(query,table,columns,{after,limit});
-  }
-  if(name==='import_occupied_createtimes'){
-    // Timestamp uniqueness is global within this Scope, across every site
-    // and even legacy rows whose separate date projection is NULL.
-    // SQL only reads occupied seconds requested by the current import batch.
-    const parsed=importOccupiedTimesArgsSchema.safeParse(args);
-    if(!parsed.success)reject('Invalid import occupied-time request');
-    const {p_scope_id:scope,p_seconds:seconds,p_after_uid:after,p_limit:limit}=parsed.data;
-    const table=await authorizedImportGalaxy(trx,scope);
-    const query=withinImportInstants(
-      trx.selectFrom(table).select(IMPORT_OCCUPIED_TIME_COLUMNS),seconds,1000,
-      {wholeSeconds:true});
-    return readImportCandidatePage(query,table,IMPORT_OCCUPIED_TIME_COLUMNS,
-      {after,limit});
-  }
-  if(name==='anchor_import_page'){
-    // LOC Web import only. The Next.js route verifies the Better Auth Session
-    // and JavaScript grants before this Scope-specific read; this action grants no
-    // insert/update rights and cannot be invoked on the MCP hostname.
-    const parsed=anchorImportPageArgsSchema.safeParse(args);
-    if(!parsed.success)reject('Invalid Zod Anchor import page request');
-    const {p_scope_id:scope,p_types:types,p_after_uid:after,p_limit:limit}=parsed.data;
-    if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
-      reject('Anchor import Scope access denied',403);
-    await sql`reset role`.execute(trx);
-    let query=trx.selectFrom('silver.'+scope+'_anchor')
-      .select(ANCHOR_IMPORT_PAGE_COLUMNS).where('type','in',types)
-      .orderBy('uid','asc').limit(limit);
-    if(after)query=query.where('uid','>',after);
-    const rows=await query.execute();
-    if(rows.some(row=>!types.includes(String(row.type))))
-      reject('Anchor import query returned an unexpected ZModel type');
-    // Model-generated Zod validates the physical Anchor envelope and UID.
-    // Semantic uniqueness is deliberately NOT inferred from the UID PK.
-    assertZModelSelectRows('silver.'+scope+'_anchor',ANCHOR_IMPORT_PAGE_COLUMNS,rows);
-    return {data:rows,count:rows.length};
-  }
-  if(name==='media_anchor_candidates'){
-    // Website-only, Better Auth verified import read. Authenticated Scope
-    // grants are checked before the trusted PostgreSQL Kysely SELECT.
-    const parsed=mediaImportCandidateArgsSchema.safeParse(args);
-    if(!parsed.success)reject('Invalid Zod MediaAnchor candidate request');
-    const {p_scope_id:scope,p_uids:uids,p_urls:urls,
-      p_after_uid:after,p_limit:limit}=parsed.data;
-    if(!await canLocAccess(trx,'scope',scope))
-      reject('MediaAnchor import access denied',403);
-    if(!uids.length&&!urls.length)return {data:[],count:0};
-    await sql`reset role`.execute(trx);
-    const conditions=[];
-    if(uids.length)conditions.push(eb=>eb('uid','in',uids));
-    if(urls.length)conditions.push(eb=>sql`(attr->>'url') in
-      (${sql.join(urls.map(url=>sql`${url}`))})`);
-    let query=trx.selectFrom('silver.'+scope+'_anchor')
-      .select(MEDIA_IMPORT_CANDIDATE_COLUMNS)
-      .where('type','in',ANCHOR_TYPE_GROUPS.media)
-      .where(eb=>eb.or(conditions.map(condition=>condition(eb))))
-      .orderBy('uid','asc').limit(limit);
-    if(after)query=query.where('uid','>',after);
-    const matches=await query.execute();
-    // Physical ZModel+Zod verifies the selected rows; semantic duplicates
-    // must reach the caller intact rather than fail at an arbitrary row cap.
-    assertZModelSelectRows('silver.'+scope+'_anchor',MEDIA_IMPORT_CANDIDATE_COLUMNS,matches);
-    if(matches.some(row=>!ANCHOR_TYPE_GROUPS.media.includes(row.type)))
-      reject('MediaAnchor lookup returned a non-media type');
-    return {data:matches.map(mediaAnchorProjection),count:matches.length};
-  }
-  if(name==='keyword_pattern_statistics')return {data:await keywordPatternStatistics(trx,args),count:null};
-  if(name==='sync_search_patterns')return {data:await syncSearchPatterns(trx,args),count:null};
-  if(name==='suggest_search_patterns')return {data:await suggestSearchPatterns(trx,args),count:null};
   if(name==='save_blocks'){
     const scope=validScope(args.p_scope_id);
     const page=String(args.p_type||'').trim();
@@ -944,63 +904,15 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
     await sql`reset role`.execute(trx);
     return {data:await saveBlocksKysely(trx,args),count:null};
   }
-  if(name==='read_loc_source_hierarchy'){
-    // Same privileged, session-verified Kysely connection used by Admin Registry:
-    // RLS policy alone does not grant the browser's authenticated role SELECT.
-    // Return only the fixed LOC Source hierarchy, never unrestricted anchors.
-    if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
-    await sql`reset role`.execute(trx);
-    const columns=['uid','type','title','description','invisible','attr','createtime','num'];
-    const rows=await trx.selectFrom('silver.loc_anchor')
-      .select(columns)
-      .where('type','in',ANCHOR_TYPE_GROUPS.source)
-      .orderBy('uid','asc').execute();
-    return {data:rows,count:rows.length};
-  }
-  if(name==='read_scope_registry_admin'){
-    if(!canLocAccess(trx,'global'))reject('Global administrator required',403);
-    // api.manage registry fields, including roles and email, come only from
-    // published JS. Silver LOC presentation metadata is separate business data.
-    const registry=FIXED_MANAGE_ROWS.filter(row=>row.manage_role!=='reserve');
-    const summaries=await trx.selectFrom('silver.loc')
-      .select(['id','display_name','birthday','title_tw','desc_tw'])
-      .where('id','in',registry.map(row=>row.id)).execute();
-    const byId=new Map(summaries.map(row=>[row.id,row]));
-    const rows=registry.map(row=>({...row,
-      display_name:byId.get(row.id)?.display_name||row.id,
-      birthday:byId.get(row.id)?.birthday||null,
-      title_tw:byId.get(row.id)?.title_tw||null,
-      desc_tw:byId.get(row.id)?.desc_tw||null
-    })).sort((a,b)=>a.sort_order-b.sort_order||a.id.localeCompare(b.id));
-    return {data:rows,count:null};
-  }
-  if(name==='bulk_update_galaxy_able')return {data:await bulkUpdateGalaxyFlags(trx,args),count:null};
-  if(name==='find_galaxy_duplicates')return {data:await findGalaxyDuplicates(trx,args),count:null};
+  if(name==='apply_galaxy_visibility_flags')return {data:await bulkUpdateGalaxyFlags(trx,args),count:null};
   if(name==='merge_scope_trace_place_names')return {data:await mergeScopePoints(trx,args),count:null};
   if(name==='import_shared_keyword_class')return {data:await importSharedKeywordClass(trx,args),count:null};
   if(name==='refresh_scope_search_summary')return {data:await refreshScopeSearchSummary(trx,args),count:null};
   if(name==='loc_admin_settings')return {data:await managedLocSettings(trx,args,claims),count:null};
-  if(name==='preview_or_fill_galaxy_place')return {data:await previewOrFillGalaxyPlace(trx,args),count:null};
-  if(name==='batch_fill_galaxy_location')return {data:await batchFillGalaxyLocation(trx,args),count:null};
+  if(name==='fill_galaxy_place')return {data:await applyGalaxyPlaceFill(trx,args),count:null};
+  if(name==='apply_galaxy_location_batch')return {data:await batchFillGalaxyLocation(trx,args),count:null};
   if(name==='rename_scope_site_batch')return {data:await renameScopeSiteBatch(trx,args),count:null};
   if(name==='save_scope_trace_place_names')return {data:await saveScopePointAliases(trx,args),count:null};
-  if(name==='read_group_members'){
-    const group=validScope(args.p_group_id);
-    if(!await canLocAccess(trx,'group',group))reject('Group management permission required',403);
-    await sql`reset role`.execute(trx);
-    const members=FIXED_MANAGE_ROWS.filter(row=>
-      row.parent_scope_id===group&&row.manage_role==='scope'&&row.active===true);
-    if(!members.length)return {data:[],count:null};
-    const summaries=await trx.selectFrom('silver.loc')
-      .select(['id','display_name'])
-      .where('id','in',members.map(row=>row.id)).execute();
-    const titles=new Map(summaries.map(row=>[row.id,row.display_name]));
-    const rows=members.map(row=>({id:row.id,
-      display_name:titles.get(row.id)||row.id,parent_scope_id:row.parent_scope_id,
-      active:row.active,sort_order:row.sort_order}))
-      .sort((a,b)=>a.sort_order-b.sort_order||a.id.localeCompare(b.id));
-    return {data:rows,count:null};
-  }
   if(name==='update_group_member_name'){
     const group=validScope(args.p_group_id);
     const member=validScope(args.p_member_id);
@@ -1097,7 +1009,7 @@ function placeLabel(value){
   if(!label||label.length>200)reject('Place must have 1–200 characters');
   return label;
 }
-async function previewOrFillGalaxyPlace(trx,args){
+async function applyGalaxyPlaceFill(trx,args){
   const scope=await scopedWrite(trx,args.p_scope_id);
   const start=String(args.p_start_date||''),end=String(args.p_end_date||'');
   const place=placeLabel(args.p_place);
@@ -1110,25 +1022,14 @@ async function previewOrFillGalaxyPlace(trx,args){
   const tally=await sql`select count(*)::integer as count from ${rel}
     where ${condition}`.execute(trx);
   const count=Number(tally.rows[0]?.count||0);
-  if(args.p_apply===true){
-    const expected=Number(args.p_expected_count);
-    if(!Number.isInteger(expected)||expected<1||expected!==count)
-      reject('Preview is stale; repeat the preview',409);
-    const result=await sql`update ${rel} set location=${place}
-      where ${condition}`.execute(trx);
-    if(Number(result.numAffectedRows||0)!==expected)
-      reject('Article count changed during update',409);
-    return {count:expected,applied:true};
-  }
-  const first=await sql`select btrim(uid::text) as uid,coalesce(title,'') as title,
-      to_char(createtime at time zone 'Asia/Taipei','YYYY-MM-DD') as date
-    from ${rel} where ${condition}
-    order by createtime asc limit 3`.execute(trx);
-  const last=await sql`select btrim(uid::text) as uid,coalesce(title,'') as title,
-      to_char(createtime at time zone 'Asia/Taipei','YYYY-MM-DD') as date
-    from ${rel} where ${condition}
-    order by createtime desc limit 3`.execute(trx);
-  return {count,first:first.rows,last:last.rows,applied:false};
+  const expected=Number(args.p_expected_count);
+  if(!Number.isInteger(expected)||expected<1||expected!==count)
+    reject('Preview is stale; repeat the preview',409);
+  const result=await sql`update ${rel} set location=${place}
+    where ${condition}`.execute(trx);
+  if(Number(result.numAffectedRows||0)!==expected)
+    reject('Article count changed during update',409);
+  return {count:expected,applied:true};
 }
 async function batchFillGalaxyLocation(trx,args){
   const scope=await scopedWrite(trx,args.p_scope_id);
@@ -1142,8 +1043,6 @@ async function batchFillGalaxyLocation(trx,args){
   if(found.length!==uids.length)reject('Article selection changed',409);
   const eligible=await trx.selectFrom(table).select('uid').where('uid','in',uids)
     .where(sql`nullif(btrim(location),'') is null`).execute();
-  if(args.p_apply!==true)return {applied:false,selected:uids.length,
-    eligible:eligible.length,skipped:uids.length-eligible.length};
   const expected=Number(args.p_expected_count);
   if(!Number.isInteger(expected)||expected<1||expected!==eligible.length)
     reject('Preview is stale; repeat selection',409);
@@ -1199,7 +1098,7 @@ function validCatalog(value,label){
 function catalogObject(value){
   return value&&typeof value==='object'&&!Array.isArray(value);
 }
-async function managedLocSettings(trx,args,claims){
+export async function managedLocSettings(trx,args,claims){
   if(!await canLocAccess(trx,'global'))reject('Global administrator required',403);
   const section=String(args.p_section||'');
   const operation=String(args.p_operation||'read');
@@ -1209,7 +1108,7 @@ async function managedLocSettings(trx,args,claims){
     reject('Invalid LOC settings section');
   // Permission was established with the signed LOC business identity;
   // no arbitrary table is addressable through this route.
-  await sql`reset role`.execute(trx);
+  if(operation!=='read')await sql`reset role`.execute(trx);
   let query=trx.selectFrom('silver.loc')
     .select(['theme','keywords']).where('id','=','loc');
   if(operation!=='read')query=query.forUpdate();
@@ -1414,7 +1313,7 @@ async function importSharedKeywordClass(trx,args){
     source_uid:classUid,group_count:groupIds.length,item_count:items};
 }
 
-async function findGalaxyDuplicates(trx,args){
+export async function findGalaxyDuplicates(trx,args){
   const scope=await scopedWrite(trx,args.p_scope_id);
   const galaxy=sql.ref('silver.'+scope+'_galaxy');
   const result=await sql`select site,createtime,count(*)::integer as dup_count,
