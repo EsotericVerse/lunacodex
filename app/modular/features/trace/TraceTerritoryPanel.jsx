@@ -40,23 +40,30 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
     [scopeId,scopeQuery.data]);
   // One year-bounded GROUP BY per published Scope. Neither source switching nor
   // advancing the month slider triggers another query.
+  const [territoryCheckpoint,setTerritoryCheckpoint]=useState(null);
+  const territoryKey=JSON.stringify([scopeId,year,scopes]);
   const totalsQuery=useAsyncResource({
     queryKey:['trace-territory-v1',year,...scopes],
     enabled:scopes.length>0&&(scopeId!=='loc'||scopeQuery.data!==undefined),
-    queryFn:async()=>(await mapBounded(scopes,2,async scope=>{
+    queryFn:async({signal})=>{
+      setTerritoryCheckpoint(null);
+      return (await mapBounded(scopes,2,async scope=>{
       const {data,error}=await dbPublicClient.schema('silver').analytics({
         p_scope_id:scope,p_view:'trace_territory',
-        p_start:period.startDate,p_end:period.endDate,p_options:{withPoints:true}
+        p_start:period.startDate,p_end:period.endDate,p_options:{withPoints:true},signal
       });
       if(error)throw error;
       if(!Array.isArray(data))throw Error('年度來源彙整資料格式錯誤');
       return data.map(row=>({...row,source_scope:scope}));
-    })).flat(),
+    },{signal,onCheckpoint:(batches,progress)=>{
+      if(!signal.aborted)setTerritoryCheckpoint({key:territoryKey,rows:batches.flat(),...progress});
+    }})).flat();},
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const regions=useMemo(()=>territoryRegions(totalsQuery.data||[],year),[totalsQuery.data,year]);
-  const pointPlan=useMemo(()=>territoryPointReadPlan(totalsQuery.data||[],regions),
-    [totalsQuery.data,regions]);
+  const mid=totalsQuery.isPending&&!totalsQuery.error&&territoryCheckpoint?.key===territoryKey?territoryCheckpoint:null;
+  const territoryRows=totalsQuery.data||mid?.rows||[];
+  const regions=useMemo(()=>territoryRegions(territoryRows,year),[territoryRows,year]);
+  const pointPlan=useMemo(()=>territoryPointReadPlan(territoryRows,regions),[territoryRows,regions]);
   const pointGroups=pointPlan.groups;
   const pointsQuery=useAsyncResource({
     queryKey:['trace-territory-coordinates-v1',year,scopeId,
@@ -113,7 +120,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
         </label>:null}
         {(totalsQuery.isPending||scopeId==='loc'&&scopeQuery.isPending||
           pointGroups.length>0&&pointsQuery.isPending)&&
-          <span role="status" className="scope-status">整理年度據點中…</span>}
+          <span role="status" className="scope-status">{mid?`已完成 ${mid.completed}／${mid.total} 個 Scope，暫計 ${totalArticles.toLocaleString()} 篇；其餘仍在計算。`:totalsQuery.data!==undefined?'文章已統計，正在補入地點座標…':'整理年度據點中…'}</span>}
         {scopeQuery.error||totalsQuery.error||pointsQuery.error?
           <span role="alert" className="scope-status scope-error">年度據點資料暫時無法完整載入。</span>:null}
       </div>}>
@@ -159,9 +166,9 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
       <section className="loc-trace-territory-overview" aria-label="年度版圖情報">
         <div className="loc-trace-territory-stats">
           <strong>年度版圖</strong>
-          <span>{active.length} / {regions.length} 座據點</span>
-          <span>{totalArticles.toLocaleString()} 篇年度文章</span>
-          <span>{mapped.length} 座已定錨</span>
+          <span>{ready||mid?`${active.length} / ${regions.length} 座據點`:'— 座據點'}</span>
+          <span>{ready||mid?`${mid?'暫計 ':''}${totalArticles.toLocaleString()} 篇年度文章`:'— 篇年度文章'}</span>
+          <span>{ready||mid?`${mapped.length} 座已定錨`:'— 座已定錨'}</span>
         </div>
         {ready&&!regions.length?<p className="scope-status">這個年度沒有帶 place_id 的文章。</p>:null}
         {ready&&regions.length>mapped.length?<p className="scope-status">
