@@ -134,3 +134,23 @@ test('mapped motion.section key precedes every JSX spread',()=>{
     'React/Next can report a missing list key if key comes after a props spread');
   assert.equal(section.match(/\bkey=/g)?.length,1,'mapped section must have one key');
 });
+
+test('LOC homepage reveals copy independently of image load and respects reduced motion',()=>{
+  const home=src('app/loc/blocks/LocHomeBlockDisplay.jsx');
+  const css=src('app/styles/loc-about-original.css');
+  assert.match(home,/onLoad=\{revealHomeImage\}/);
+  assert.match(home,/node\?\.complete&&node\.naturalWidth>0/);
+  assert.match(css,/@media\(prefers-reduced-motion:no-preference\)/);
+  assert.match(css,/img\[data-home-media-ready="true"\]/);
+  assert.match(css,/loc-home-copy-reveal/);
+});
+test('homepage draft preview uses the current unsaved drafts and preserves the editor',()=>{
+  const home=src('app/loc/blocks/ScopeEditableBlocks.jsx');
+  const draft=src('app/loc/blocks/ScopeBlockDraftList.jsx');
+  assert.match(home,/previewDisplay=\{scopeId==='loc'&&pageName==='index'\?DisplayComponent:null\}/);
+  assert.match(draft,/previewRows=showingPreview\?visibleDrafts\.map/);
+  assert.match(draft,/style=\{showingPreview\?\{display:'none'\}:undefined\}/);
+  assert.match(draft,/\{visibleDrafts\.map\(\(draft,index\)=>renderDraft/);
+  assert.match(draft,/<PreviewDisplay \{\.\.\.slot\}\/>/);
+  assert.match(draft,/onClick=\{\(\)=>setPreview\(value=>!value\)\}/);
+});
