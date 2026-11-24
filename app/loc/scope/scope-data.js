@@ -4,12 +4,13 @@
 import {queryBlockContent,queryBlocks} from '../actions/blocks/queries.mjs';
 import {queryCultureContent} from '../actions/culture/queries.mjs';
 import {queryStaticsContent} from '../actions/statics/queries.mjs';
+import {readScopeConfig} from '../actions/scope/queries.mjs';
 import {selectRows} from '../db/db-query.mjs';
-import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
+import {scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
-import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
+import {invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
@@ -240,7 +241,7 @@ export async function selectManagedScope(scopeId){
 async function nativePublicContent(kind,scope,feature=''){
   const params=new URLSearchParams({kind,scope});
   if(feature)params.set('feature',feature);
-  const payload=kind==='config'||kind==='block_list'||kind==='hero_block'
+  const payload=kind==='block_list'||kind==='hero_block'
     ?await queryBlockContent(params.toString())
     :kind==='culture_anchors'||kind==='culture_density'
       ?await queryCultureContent(params.toString())
@@ -252,13 +253,7 @@ export function selectScopeConfig(scopeId){
   const scope=defaultScopeData(scopeId);
   if(!scope)return Promise.resolve(null);
   if(scope.id==='local')return Promise.resolve(null);
-  // Editing must use current database settings and surface failed reads.
-  return cachedRead('scope-config:'+scope.id,
-    ()=>nativePublicContent('config',scope.id))
-    .then(data=>{
-      if(!data)throw new Error('Scope settings unavailable');
-      return data;
-    });
+  return readScopeConfig(scope.id);
 }
 
 

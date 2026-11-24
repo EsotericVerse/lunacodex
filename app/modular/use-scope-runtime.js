@@ -4,14 +4,12 @@ import {useEffect,useMemo,useState} from 'react';
 import {usePathname} from 'next/navigation';
 import {getScope,isKnownScope,normalizeScopeId,resolveScope,rememberCurrentBrowserRoute} from './routing/scope-registry';
 import {PUBLISHED_SITE_BOOTSTRAP} from './published-site-bootstrap.js';
-import {SCOPE_ROUTE_INDEX} from './routing/scope-route-index.js';
+import {selectScopeConfig} from '../loc/scope/scope-data.js';
+import {useAsyncResource} from '../../packages/zenstack/client-queries';
 
-// Routing and the public Scope configuration are immutable release metadata.
-// They never require a page Bootstrap, SQL lookup, React fetch effect or TTL.
+// Scope identity and routing follow the published permission registry.
 const registryByScope=new Map((PUBLISHED_SITE_BOOTSTRAP.registry||[])
   .filter(row=>row.active!==false).map(row=>[row.scope_id,row]));
-const configByScope=new Map(SCOPE_ROUTE_INDEX
-  .filter(row=>row.active!==false).map(row=>[row.scope_id,row.config||null]));
 
 function genericRouteScope(pathname,search){
   const path=String(pathname||'/');
@@ -45,16 +43,14 @@ export function useScopeRuntime(){
     rememberCurrentBrowserRoute(window.sessionStorage,scopeId,pathname);
   },[location.mounted,scopeId,pathname]);
 
-  // The route's display data is selected synchronously from the published file.
-  // No component can accidentally trigger an HTTP / SQL read merely to
-  // determine which Scope it is rendering.
   const activeRegistryRow=registryByScope.get(scopeId)||null;
   const base=getScope(scopeId);
-  const configEnabled=Boolean(scopeId&&scopeId!=='admin'&&
+  const configEnabled=Boolean(location.mounted&&scopeId&&scopeId!=='admin'&&scopeId!=='local'&&
     !base.aggregateChildren&&(!dynamic||activeRegistryRow?.scope_kind==='scope'));
-  const publishedConfig=configByScope.get(scopeId);
-  const activeConfigRow=configEnabled&&publishedConfig?.id===scopeId
-    ?publishedConfig:null;
+  const configQuery=useAsyncResource(['scope-config',scopeId],
+    ()=>selectScopeConfig(scopeId),{enabled:configEnabled});
+  const activeConfigRow=configEnabled&&configQuery.data?.id===scopeId
+    ?configQuery.data:null;
   const structural=activeRegistryRow?{
     ...base,
     label:activeRegistryRow.display_name||scopeId,
@@ -78,6 +74,7 @@ export function useScopeRuntime(){
     dynamic,registryRow:activeRegistryRow,
     registryResolved:location.mounted||!dynamic,
     registryError:dynamic&&location.mounted&&!activeRegistryRow?'Scope Registry 未發布此 Scope。':'',
-    configRow:activeConfigRow
+    configRow:activeConfigRow,configLoading:configEnabled&&configQuery.isPending,
+    configError:configEnabled&&configQuery.isError?configQuery.error:null
   };
 }

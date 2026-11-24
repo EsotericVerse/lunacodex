@@ -9,7 +9,6 @@ import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,uiLo
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
 import {FEATURES,SCOPES,featureIdForPath,getScope,normalizeScopeId} from './modular/routing/scope-registry';
-import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
 import {activatePublishedTheme,THEME_SLOTS} from './modular/theme-registry';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
@@ -134,16 +133,13 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // Scope defaults are owned by the Scope config table; the game route alone
   // has its own purpose-built temporary default, never persisted to the DB.
   const fixedDefaultThemeId=String(defaultThemeIdOverride||'').trim();
-  // Theme options and defaults are bundled with the published site.
+  // Palettes are published CSS; the Scope's default selection is live data.
   const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&!scope.aggregateChildren&&scope.id!=='admin';
-  // A management entry retires its obsolete SQL readers before rendering.
-  // Published route metadata is already available synchronously and prevents
-  // the palette from falling back to day/night while Bootstrap is re-reading.
-  const publishedTheme=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.theme;
+  const scopeTheme=scope.config?.theme;
   const [committedScopeTheme,setCommittedScopeTheme]=useState(()=>({scopeId,themeId:readCommittedScopeTheme(scopeId)}));
   const [themePreview,setThemePreview]=useState({scopeId,themeId:''});
   const committedId=committedScopeTheme.scopeId===scopeId?committedScopeTheme.themeId:'';
-  const configuredTheme=configEnabled?(committedId||String(publishedTheme||'').trim()):'';
+  const configuredTheme=configEnabled?(committedId||String(scopeTheme||'').trim()):'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
   const [selection,setSelection]=useState(()=>({scopeId,themeId:readUserTheme(scopeId)}));
   // Decorative local feedback only when a person selects a different option.
@@ -379,7 +375,10 @@ function AppShellInner({children,runtime}){
   // Administrative Scope metadata updates refresh the shared ZenStack
   // query state consumed by the shell, runtime, and Guest feature pages.
   useEffect(()=>{
-    const refresh=()=>queryClient.invalidateQueries({queryKey:['app-bootstrap']});
+    const refresh=()=>{
+      void queryClient.invalidateQueries({queryKey:['app-bootstrap']});
+      void queryClient.invalidateQueries({queryKey:['scope-config']});
+    };
     const refreshLocal=()=>queryClient.invalidateQueries({predicate:query=>Array.isArray(query.queryKey)&&query.queryKey.some(part=>part==='local'||(typeof part==='string'&&part.startsWith('silver.local_')))});
     window.addEventListener('loc-public-scope-metadata-changed',refresh);
     window.addEventListener('loc-local-data-changed',refreshLocal);

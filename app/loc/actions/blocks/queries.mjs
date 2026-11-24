@@ -1,8 +1,6 @@
 'use server';
 import {withAuthorizedLocRead} from '../read-context.mjs';
 import {block_list,hero_block} from '../../providers/kysely-public.mjs';
-import {portableRelation} from '../../providers/sql-engine-ports.mjs';
-import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
 import {publicScopeBlockPage} from '../../blocks/public-scope-pages.mjs';
 import {FEATURE_HERO_IDS,MANAGEMENT_HERO_SLOTS} from '../../blocks/home-block-model.js';
 
@@ -50,7 +48,7 @@ export async function queryBlockContent(searchParams){
   const params=new URLSearchParams(String(searchParams||''));
   const kind=String(params.get('kind')||''),scope=scopeId(params.get('scope'));
   const keys=[...params.keys()];
-  if(!['config','block_list','hero_block'].includes(kind)||
+  if(!['block_list','hero_block'].includes(kind)||
     keys.some(key=>!['kind','scope','feature'].includes(key)))
     throw Error('Invalid Block content request');
   const feature=String(params.get('feature')||'');
@@ -64,16 +62,8 @@ export async function queryBlockContent(searchParams){
     }));
   }
   if(feature)throw Error('Unexpected Block feature');
-  if(kind==='block_list')return withAuthorizedLocRead({scope},async(db,port)=>({
+  return withAuthorizedLocRead({scope},async(db,port)=>({
     data:await block_list(db,scope,{engine:port.engine,
       namespace:port.namespace,pageName:'index'}),count:null
   }));
-  return withAuthorizedLocRead({scope},async(db,port)=>{
-    const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
-    const table=portableRelation(scope,port.engine,
-      port.namespace||(port.engine==='postgres'?'silver':'dbo'));
-    const row=await db.selectFrom(table).select(columns)
-      .where('id','=',scope).limit(1).executeTakeFirst();
-    return {data:row||null,count:null};
-  });
 }

@@ -11,7 +11,8 @@ import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/routing/scope-registry';
 import ManagementAccess from './management/ManagementAccess';
-import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
+import {useAsyncResource} from '../../packages/zenstack/client-queries';
+import {selectScopeConfig} from './scope/scope-data.js';
 import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
 import {FeaturePage,ManagementHeroContext} from '../modular/ui';
 // Tiny, CSS-only marks live only inside the already-existing loading slot.
@@ -116,11 +117,12 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   const flag=FEATURE_FLAGS[view]||'';
   const scope=scopeMeta||getScope(scopeId);
   const enabled=Boolean(flag)&&!scope.aggregateChildren&&scope.id!=='admin';
-  // Public feature gates read the already-published Scope flags; waiting
-  // for a config SQL request must not block the Hero or content.
+  const configQuery=useAsyncResource(['scope-config',scopeId],
+    ()=>selectScopeConfig(scopeId),{enabled});
   if(!enabled)return children;
-  const config=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId&&row.active!==false)?.config;
-  if(!config)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定尚未發布。</p></section></section></main>;
+  if(configQuery.isPending)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status" role="status">正在讀取功能設定…</p></section></section></main>;
+  const config=configQuery.data;
+  if(configQuery.isError||!config)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error" role="alert">功能設定讀取失敗，請重新整理。</p></section></section></main>;
   if(!scopeFeatureEnabled(config,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
   return children;
 }
