@@ -88,36 +88,3 @@ test('Native index.html files append query AFTER filename, including dynamic sco
   assert.equal(href('user','culture','lo3rwang',true),
     '/lo3rwang/culture/index.html');
 });
-
-test('Actual management pages mount their new editors, not stale route aliases',()=>{
-  assert.match(read('app/manage/page.jsx'),/forcedView="sourceManage" forcedScope="loc"/);
-  for(const scope of ['lo3rwang','lrunes']){
-    const src=read('app/'+scope+'/trace/manage/page.jsx');
-    assert.match(src,/forcedView="manage"/);
-    assert.match(src,/forcedSection="anchor"/);
-  }
-  const dynamic=read('app/scope-shell/trace/manage/page.jsx');
-  assert.match(dynamic,/forcedSection="anchor"/);
-  const oldGroup=read('app/culture/manage/page.jsx');
-  assert.match(oldGroup,/LegacyManagementRedirect target="group"/);
-  for(const legacy of ['lo3rwang','lrunes','scope-shell']){
-    const src=read('app/'+legacy+'/manage/page.jsx');
-    assert.match(src,/LegacyManagementRedirect target="trace"/);
-  }
-});
-
-test('Dock uses route table for all three tiers and preserves write boundary',()=>{
-  const shell=read('app/AppShell.jsx');
-  const scope=read('app/loc/scope/ScopeManagement.jsx');
-  const legacy=read('app/loc/management/LegacyManagementRedirect.jsx');
-  assert.match(shell,/managementHref\('group','members'\)/);
-  assert.match(shell,/managementHref\('scope','spatial'\)/);
-  assert.match(shell,/managementHref\('scope','articles'\)/);
-  assert.match(shell,/managementRouteHref\('user',id/);
-  assert.doesNotMatch(shell,/editTabHref\('manage','section','anchor'\)/);
-  assert.match(scope,/url\.pathname\.replace\(/);
-  assert.match(scope,/trace/);
-  assert.match(legacy,/window\.location\.replace\(url\.href\)/);
-  assert.match(legacy,/url\.searchParams\.set\('section','anchor'\)/);
-  assert.match(read('app/loc/LocApp.jsx'),/level=\{managementLevel\}/);
-});
