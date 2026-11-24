@@ -1,7 +1,6 @@
 import {createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Item-driven LOC keyword classification. No Pattern posting or persisted article UID list.
 import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
-import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -94,7 +93,6 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     patternByUid.set(uid,word);
   }
   const patternTerms=[...new Set(patternByUid.values())];
-  const patternMatcher=patternTerms.length?compileKeywordLiteralMatcher(patternTerms):null;
   const uidsByTerm=new Map();
   for(const [uid,word] of patternByUid){
     if(!uidsByTerm.has(word))uidsByTerm.set(word,[]);
@@ -121,8 +119,9 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
     // The classifier already normalizes each article's visible scan text.
     // Reuse that text for Pattern occurrence counting, instead of doing
     // a second NFKC normalization and scan for every Galaxy document.
-    onNormalizedText:patternMatcher?text=>{
-      for(const [word,times] of patternMatcher.countMatches(text))
+    observedTerms:patternTerms,
+    onNormalizedText:patternTerms.length?(_text,_row,_index,hits)=>{
+      for(const [word,times] of hits)
         for(const uid of uidsByTerm.get(word)||[])
           state.patternCounts[uid]+=times;
     }:null
