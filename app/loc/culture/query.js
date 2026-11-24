@@ -312,7 +312,7 @@ function cultureParts(scopeContext,runtimeId){
 // of the same LocAnchor taxonomy, never a second Galaxy Media source stream.
 export async function selectLocCultureDensity({
   scopes=[],intersectionWindows=[],intersectionStart='',intersectionEnd='',
-  startDate='',endDate=''
+  startDate='',endDate='',onCheckpoint=null,signal=null
 }={}){
   const start=startDate||intersectionStart,end=endDate||intersectionEnd;
   if(!scopes.length||!start||!end||start>end)
@@ -327,8 +327,11 @@ export async function selectLocCultureDensity({
     const {text}=await selectScopeDailyCounts(scope,{
       startDate:start,endDate:end,requireAggregate:true
     });
-    return text.filter(validDate).map(row=>({...row,scope_id:scope.id}));
-  })).flat();
+    return {scopeId:scope.id,rows:text.filter(validDate).map(row=>({...row,scope_id:scope.id}))};
+  },{signal,onCheckpoint:onCheckpoint?(batches,progress)=>onCheckpoint({
+    scopeRanges:buildLocScopeDistribution(batches.flatMap(batch=>batch.rows)),
+    completedScopeIds:batches.map(batch=>batch.scopeId),...progress
+  }):null})).flatMap(batch=>batch.rows);
   const taxonomy=await readPublicSourceTaxonomy();
   const built=buildLocSourceRiver(aggregateRows,taxonomy);
   return {

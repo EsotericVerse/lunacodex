@@ -347,14 +347,18 @@ export default function Culture(){
   // The LOC landing river is always the latest year, not a period intersection.
   const locSourceStart=DEFAULT_YEAR_WINDOW.startDate;
   const locSourceEnd=DEFAULT_YEAR_WINDOW.endDate;
+  const [locDensityCheckpoint,setLocDensityCheckpoint]=useState(null);
+  const locDensityKey=JSON.stringify([scopeId,locSourceStart,locSourceEnd,(query.data?.scopes||[]).map(scope=>scope.id)]);
   const locDensityQuery=useAsyncResource({
     queryKey:['loc-culture-density','zmodel-source-year',scopeId,locSourceStart,locSourceEnd],
     enabled:!isTimeEditingView&&isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
       &&Boolean(query.data?.scopes?.length),
-    queryFn:async()=>{
+    queryFn:async({signal})=>{
+      setLocDensityCheckpoint(null);
       const {selectLocCultureDensity}=await import('../../loc/culture/query');
       return selectLocCultureDensity({
-        scopes:query.data?.scopes||[],startDate:locSourceStart,endDate:locSourceEnd
+        scopes:query.data?.scopes||[],startDate:locSourceStart,endDate:locSourceEnd,signal,
+        onCheckpoint:data=>{if(!signal.aborted)setLocDensityCheckpoint({key:locDensityKey,data});}
       });
     },
   });
@@ -794,13 +798,16 @@ export default function Culture(){
   },[locSourceGroups,locCombinedSourceTotal,l,locale]);
   // LOC is a read-only annual preview. The first lane is always a Scope;
   // its child source categories are revealed from the same numeric query.
+  const locMid=locDensityQuery.isPending&&!locDensityQuery.error&&locDensityCheckpoint?.key===locDensityKey
+    ?locDensityCheckpoint.data:null;
   const locScopePreview=useMemo(()=>buildLocCultureScopePreview({
     scopes:query.data?.scopes||[],
-    scopeRanges:locDensityQuery.data?.scopeRanges||[],
+    scopeRanges:locDensityQuery.data?.scopeRanges||locMid?.scopeRanges||[],
+    completedScopeIds:locDensityQuery.data?null:locMid?.completedScopeIds||[],
     sourceScopeGroups:locDensityQuery.data?.sourceScopeGroups||[],
     sourceScopeRiverItems:locDensityQuery.data?.sourceScopeRiverItems||[],
     expandedScopeIds:expandedLocScopes
-  }),[query.data?.scopes,locDensityQuery.data,expandedLocScopes]);
+  }),[query.data?.scopes,locDensityQuery.data,expandedLocScopes,locMid]);
   const toggleLocScopeGroup=id=>{
     const prefix='loc-preview:';
     if(!String(id).startsWith(prefix))return;
@@ -1377,7 +1384,8 @@ export default function Culture(){
   if(scopeId==='loc'&&!isTimeEditingView)return <FeaturePage featureId="culture">
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
       {query.isPending||Boolean(query.data?.scopes?.length)&&locDensityQuery.isPending
-        ?<p className='scope-status' role='status'>{UI_COPY.common.loading}</p>:null}
+        ?<p className='scope-status' role='status'>{locMid?`已完成 ${locMid.completed}／${locMid.total} 個 Scope，暫計 ${locMid.scopeRanges.reduce((n,row)=>n+Number(row.item_count||0),0).toLocaleString()} 篇；其餘仍在計算。`:UI_COPY.common.loading}</p>:null}
+      {query.isPending&&!locScopePreview.groups.length?<div className='loc-progressive-river-frame' aria-busy='true'><div className='loc-progressive-river-axis'/><small>{locSourceStart} ～ {locSourceEnd}</small></div>:null}
       {query.error?<p className='scope-status scope-error' role='alert'>
         {featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
       {locDensityQuery.error?<p className='scope-status scope-error' role='alert'>

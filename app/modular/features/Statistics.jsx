@@ -599,7 +599,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       </StatisticsDetails>
     </>:null}
     {(sourceChart||placeChart)&&categoryPending&&!categoryError?<div className="scope-stat-data-pending loc-progressive-chart-frame">
-      <p className="scope-status" role="status">統計中請稍後 <ActivityMotion kind="numbers"/></p>
+      <p className="scope-status" role="status">{sourceChart&&overview.data&&!sourceCatalog.isSuccess?
+        '原始來源筆數已取得：'+(overview.data.rows||[]).filter(row=>row.kind==='source').reduce((n,row)=>n+Number(row.item_count||0),0).toLocaleString()+' 篇；正在整理來源分類…':
+        '統計中請稍後'} <ActivityMotion kind="numbers"/></p>
       <div className="loc-progressive-chart-axis" aria-hidden="true"/>
       <small>{queryRange.startDate} ～ {queryRange.endDate}</small>
     </div>:null}

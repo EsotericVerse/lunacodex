@@ -129,9 +129,11 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
     {densityQuery.error?<p className="scope-status scope-error" role="alert">
       {featureDataErrorMessage(densityQuery.error,UI_COPY)}
     </p>:null}
-    {densityQuery.isPending?<p className="scope-status" role="status">
-      正在統計 LOC 各 Scope 作品總數…
-    </p>:null}
+    {densityQuery.isPending?<div className="loc-progressive-chart-frame" role="status" aria-busy="true">
+      <span>正在統計 LOC 各 Scope 作品總數…</span>
+      <div className="loc-progressive-chart-axis" aria-hidden="true"/>
+      <small>{startDate} ～ {observedEnd}</small>
+    </div>:null}
     {!densityQuery.isPending&&!densityQuery.error?<>
       <StatisticsDashboardKpis
         label={t('uiExtra.statisticsView.dashboardTitle')} items={[

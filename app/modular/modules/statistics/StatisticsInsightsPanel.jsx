@@ -130,7 +130,7 @@ export default function StatisticsInsightsPanel({
         <div role="status" aria-live="polite"
           className="scope-status statistics-dashboard__pelt-summary">
           <strong>ByPELT · </strong>
-          <span>{pending?'正在分析已載入的時間分布…'
+          <span>{pending?'已完成 '+stats.total.toLocaleString()+' 篇的完整時段統計；正在計算變化點…'
             :workerError?'變化點分析未完成；平均、中位數和原始圖表仍可使用。'
             :insightText(insight)}</span>
         </div>

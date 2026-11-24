@@ -13,11 +13,12 @@ const nextDay=value=>{
 };
 
 export function buildLocCultureScopePreview({
-  scopes=[],scopeRanges=[],sourceScopeGroups=[],sourceScopeRiverItems=[],expandedScopeIds=[]
+  scopes=[],scopeRanges=[],sourceScopeGroups=[],sourceScopeRiverItems=[],expandedScopeIds=[],completedScopeIds=null
 }={}){
   const scopeIds=[...new Set(scopes.map(scope=>valueOf(scope?.id||scope?.scope_id)).filter(Boolean))];
   const ids=new Set(scopeIds);
   const expanded=new Set(expandedScopeIds);
+  const completed=Array.isArray(completedScopeIds)?new Set(completedScopeIds):null;
   const dailyByScope=new Map();
   for(const row of scopeRanges){
     const scope=valueOf(row?.scope_id),day=valueOf(row?.start_date).slice(0,10),count=countOf(row?.item_count);
@@ -34,7 +35,7 @@ export function buildLocCultureScopePreview({
     const total=totals.reduce((n,row)=>n+row.count,0);
     const maximum=Math.max(1,...totals.map(row=>row.count));
     const isExpanded=expanded.has(scope);
-    groups.push({id:parent,label:scope+'（'+total.toLocaleString()+'）',
+    groups.push({id:parent,label:scope+'（'+(completed&&!completed.has(scope)?'—':total.toLocaleString())+'）',
       order,collapsible:true,expanded:isExpanded,className:'scope-time-trace-parent'});
     for(const row of totals)items.push({
       id:parent+':'+row.day,entry_id:parent+':'+row.day,
