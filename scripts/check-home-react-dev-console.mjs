@@ -136,6 +136,26 @@ try{
     });
     return result?.result?.value?.count>=5&&result?.result?.value?.heading;
   },100000,'reloaded homepage in persisted Service Worker browser profile');
+  // The unregistered worker still controls the document it was attached to.
+  // It may recreate its old cache until a subsequent navigation creates an
+  // uncontrolled client. Do not demand empty caches from the old client.
+  await within(async()=>{
+    const result=await call('Runtime.evaluate',{
+      expression:'navigator.serviceWorker.getRegistrations().then(regs=>regs.filter(r=>r.scope===location.origin+"/").length)',
+      returnByValue:true,awaitPromise:true
+    });
+    return result?.result?.value===0;
+  },30000,'unregistered previous LOC development worker');
+  // Navigate to a new document so the unregistered worker can no longer
+  // intercept Next assets. The dev app will then retire its remaining cache.
+  await call('Page.navigate',{url:url+'?loc-dev-sw-retirement-check=1'});
+  await within(async()=>{
+    const result=await call('Runtime.evaluate',{
+      expression:'({count:document.querySelectorAll("'+homeClass+'").length,heading:document.querySelector(".loc-home-block__header h1")?.textContent?.trim()||""})',
+      returnByValue:true
+    });
+    return result?.result?.value?.count>=5&&result?.result?.value?.heading;
+  },100000,'new document after previous SW unregistration');
   let lastSwState=null;
   try{
     await within(async()=>{
