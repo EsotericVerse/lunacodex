@@ -314,6 +314,7 @@ export default function ScopeEditableBlocks({
           ?event=>{if(!isInteractiveContentTarget(event.target))selectSuggestion(slot.text||slot.subtitle||slot.title)}
           :undefined}
         >
+          <Fragment key="motion-section-content">
           {motionHome&&slot.order===1&&!empty?<motion.span key="hero-line" className="loc-home-motion-hero-line"
             aria-hidden="true" initial={reduceMotion?false:{scaleX:0}} animate={{scaleX:1}}
             transition={{duration:reduceMotion?0:.85,delay:reduceMotion?0:.16,ease:[.22,.8,.22,1]}}/>:null}
@@ -326,6 +327,7 @@ export default function ScopeEditableBlocks({
               {slot.text?<div className="scope-rich-surface" dangerouslySetInnerHTML={{__html:slot.text}}/>:null}
               {renderEntities(slot.entities,slot.bubbleColumns)}
             </Fragment>}
+          </Fragment>
         </HomeDisplayTag>;
         return heroSlotOrder&&slot.order===heroSlotOrder?[node,toggleButton]:[node];
       })}
