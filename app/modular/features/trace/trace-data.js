@@ -32,7 +32,8 @@ export const traceAllAnchorsKey=(scopeId,{nativeOnly=false,includeHidden=false}=
 const VALID_ID=/^[A-Za-z0-9]{8}$/;
 const TRACE_TYPES=ANCHOR_TYPE_GROUPS.space;
 const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
-import {readAnchorFeature,readAllAnchorFeature} from '../../../loc/model/feature-transaction-client.mjs';
+import {readAnchorFeature,readAllAnchorFeature} from '../../../loc/model/feature-query-client.mjs';
+import {queryTracePlaceNames} from '../../../loc/actions/trace/queries.mjs';
 import {readTracePoint,readTraceRouteUids} from '../../../loc/actions/trace/direct-query.mjs';
 const physicalPoint=id=>dbAuthClient.schema('silver').from(id+'_anchor');
 const pointAttr=({address,longitude,latitude})=>{
@@ -166,7 +167,7 @@ export async function readAllTraceAnchors(scopeId,{nativeOnly=false,includeHidde
 export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
   const id=idScope(scopeId),q=textValue(term).slice(0,100);
   if(id==='loc'||!q)return [];
-  const data=checked(await dbAuthClient.schema('silver').publicAction('search_scope_trace_place_names',{
+  const data=checked(await queryTracePlaceNames({
     p_scope_id:id,p_term:q,p_limit:Math.max(1,Math.min(Number(limit)||8,100))
   }),'搜尋地點標題')||[];
   const ids=data.map(row=>row.uid).filter(uid=>VALID_ID.test(String(uid)));

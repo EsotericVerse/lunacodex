@@ -2,6 +2,7 @@
 import {isAbortError} from '../db/db-query.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
 import {searchOrderedScopeProviders} from '../search/ordered-scope-providers.mjs';
+import {queryPrivateGalaxy} from '../actions/search/management-queries.mjs';
 
 
 import {DEFAULT_LIST_BATCH_SIZE} from '../db/db-contract.mjs';
@@ -11,8 +12,8 @@ import {anniversarySuggestionsForDate} from '../culture/anniversary.mjs';
 import {selectRows} from '../db/db-query.mjs';
 import {dbAuthClient,readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
 import {cachedRead} from '../db/semi-dynamic-cache.mjs';
-import {readGalaxyFeature} from './feature-transaction-client.mjs';
-import {readGalaxyRecords,readAnchorFeature} from '../model/feature-transaction-client.mjs';
+import {readGalaxyFeature} from './feature-query-client.mjs';
+import {readGalaxyRecords,readAnchorFeature} from '../model/feature-query-client.mjs';
 import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
@@ -95,7 +96,7 @@ function cachedReadScopeCategoryTotals(id,args){
 async function scopeStatisticsRows(scope,{startDate='',endDate='',includeUndated=false}={}){
   const current=scopeOf(scope);
   const range={startDate:dateOnly(startDate),endDate:dateOnly(endDate),includeUndated};
-  // Fixed requested window: use the named Galaxy.statics transaction.
+  // Fixed requested window: use the Statistics feature query action.
   // The existing unbounded/undated summary keeps its original contract.
   if(range.startDate&&range.endDate&&!includeUndated){
     return cachedRead('scope-aggregate:'+current.id+':statistics:'+JSON.stringify(range),
@@ -404,8 +405,8 @@ function normalizeSearch(value){
 // is handled by the Advanced Search keyword path; keep a no-op for old imports.
 export async function selectStyleKeywordMatches(){return [];}
 
-// Search-only private results use the verified Web managed-action endpoint,
-// never authenticated:true on the public SELECT transport (which is anonymous).
+// Search-only private results use this fixed Search Server Action, which checks
+// the published JavaScript Scope grant before opening its direct DB connection.
 // Site/Keyword/Media readers and their public visibility rules stay unchanged.
 export async function searchAuthorizedGalaxyRows(scopes,query,{
   limit=DEFAULT_LIST_BATCH_SIZE,cursor=null,startDate='',endDate='',
@@ -425,7 +426,7 @@ export async function searchAuthorizedGalaxyRows(scopes,query,{
       if(requestSignal?.aborted){
         const cancelled=new Error('Search cancelled');cancelled.name='AbortError';throw cancelled;
       }
-      const {data,error}=await dbAuthClient.schema('silver').managedAction('search_galaxy_private',{
+      const {data}=await queryPrivateGalaxy({
         p_scope_id:scope.id,p_query:value,p_offset:offset,
         p_limit:Math.max(1,Math.min(100,Math.floor(Number(batch)||DEFAULT_LIST_BATCH_SIZE))),
         p_start_date:start||null,p_end_date:end||null,
@@ -438,7 +439,6 @@ export async function searchAuthorizedGalaxyRows(scopes,query,{
       if(requestSignal?.aborted){
         const cancelled=new Error('Search cancelled');cancelled.name='AbortError';throw cancelled;
       }
-      if(error)throw Error(error.message||'Private Search denied');
       if(!data||!Array.isArray(data.rows))throw Error('Invalid private Search response');
       return {
         rows:data.rows.map(row=>recordFor(row,scope.id+' 文章',

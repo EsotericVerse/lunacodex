@@ -6,12 +6,10 @@ import {EMPTY_PAGE_LOCALES,PAGE_LOCALE_ALIASES} from './page-locale-manifest.js'
 export const UI_LOCALE='zh-Hant';
 export const UI_LOCALE_OPTIONS=Object.freeze([
   Object.freeze({value:'zh-Hant',label:'繁體中文'}),
-  Object.freeze({value:'zh-Hans',label:'简体中文'}),
-  Object.freeze({value:'en',label:'English'}),
-  Object.freeze({value:'ja',label:'日本語'})
+  Object.freeze({value:'en',label:'English'})
 ]);
 const FILE_FOR_LOCALE=Object.freeze({
-  'zh-Hant':'zh_tw','zh-Hans':'zh_cn',en:'en',ja:'ja'
+  'zh-Hant':'zh_tw',en:'en'
 });
 
 // A tiny neutral, synchronous bootstrap contract for module-level UI_COPY

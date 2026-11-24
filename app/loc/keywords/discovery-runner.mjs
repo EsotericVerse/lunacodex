@@ -1,8 +1,8 @@
 'use client';
 
-import {dbAuthRelation} from '../db/db-client.mjs';
-import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {KeywordDiscoveryQueue} from './discovery-queue.mjs';
+import {queryKeywordDiscoveryCount,queryKeywordDiscoveryPage}
+  from '../actions/keywords/queries.mjs';
 import * as z from 'zod';
 
 // The owner's explicit action starts the only scan. Never run during render,
@@ -14,8 +14,6 @@ const WORKER_PROGRESS=z.looseObject({
   read:z.number().int().nonnegative(),
   withContent:z.number().int().nonnegative()
 });
-const ARTICLE_COLUMNS=galaxyReadColumns('GalaxyUidRead')
-  .filter(column=>['uid','title','content','createtime','date'].includes(column));
 const aborted=()=>Object.assign(new Error('已取消關鍵詞建議掃描'),{name:'AbortError'});
 // A scan reads dozens of pages in sequence; one transient network blip must
 // not discard everything already read. Only the caller's own cancellation
@@ -45,6 +43,7 @@ export async function readPageWithRetry(run,signal,{attempts=4,baseDelayMs=500,o
 export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onProgress=()=>{},signal}={}){
   if(!/^silver\.[a-z][a-z0-9_]*_galaxy$/.test(String(galaxy||'')))
     throw new Error('Galaxy Scope 資料表無效');
+  const scopeId=String(galaxy).slice('silver.'.length,-'_galaxy'.length);
   if(signal?.aborted)throw aborted();
   const worker=new Worker(new URL('./discovery-worker.mjs',import.meta.url),{type:'module'});
   const readController=new AbortController();
@@ -74,12 +73,10 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     await send({type:'start',existingRows:existingRows.map(row=>({
       type:row.type,name:row.name,lists:row.type==='item'?row.lists:[]
     }))});
-    let countQuery=dbAuthRelation(galaxy).select('uid',{count:'exact',head:true});
-    if(typeof countQuery.abortSignal==='function')countQuery=countQuery.abortSignal(readSignal);
-    const {count,error:countError}=await countQuery;
+    const count=await queryKeywordDiscoveryCount(scopeId);
     if(signal?.aborted)throw aborted();
-    if(countError||count===null||count===undefined||(count==null||!Number.isSafeInteger(Number(count))))
-      throw new Error(countError?.message||'無法取得完整文章筆數');
+    if(!Number.isSafeInteger(Number(count))||Number(count)<0)
+      throw new Error('無法取得完整文章筆數');
     const total=Number(count);
     // Standard (date, uid) keyset paging retrieves every article once without
     // a second read of the same boundary date or growing OFFSET scans.
@@ -88,17 +85,19 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     const queue=new KeywordDiscoveryQueue();
     // Promise rejections must be observed immediately, including cancellation.
     const settled=promise=>promise.then(value=>({value}),error=>({error}));
-    const readPage=(build,requested)=>{
+    const readPage=(mode,cursor,requested)=>{
       // A retry may reduce the physical page without advancing the cursor.
       // Only the bytes returned by the successful query enter the queue.
       let effective=requested;
       return readPageWithRetry(async()=>{
-        let query=build(dbAuthRelation(galaxy),effective);
-        if(typeof query.abortSignal==='function')query=query.abortSignal(readSignal);
-        const reply=await query;
+        const reply=await queryKeywordDiscoveryPage({p_scope_id:scopeId,
+          p_mode:mode,p_after_date:cursor.afterDate??null,
+          p_after_uid:cursor.afterUid??null,p_limit:effective});
         if(readSignal.aborted)throw aborted();
-        if(reply.error)throw reply.error;
-        return {...reply,requested:effective};
+        if(!Array.isArray(reply?.data)||reply.data.length>effective)
+          throw new Error('Keyword discovery page is incomplete');
+        const data=reply.data;
+        return {data,requested:effective};
       },readSignal,{onRetry:()=>{
         effective=Math.max(1,Math.floor(effective*0.65));
       }});
@@ -156,26 +155,12 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     // One ordered keyset read per page: the final date of a page no longer
     // needs to be downloaded again through a separate same-day OFFSET scan.
     // SQL compares DATE and UID using its own ordering/collation.
-    const quoted=value=>'"'+String(value).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"';
     // A single lookahead read overlaps network with Worker CPU without
     // increasing database concurrency, storing all rows, or skipping pages.
     // Settle rejections immediately so Worker failures cannot leave an
     // unhandled pending request; finally aborts the active read.
-    const datedPage=(afterDate,afterUid,limit)=>readPage((relation,pageRows)=>{
-      let query=relation.select(ARTICLE_COLUMNS).not('date','is',null)
-        .order('date',{ascending:true}).order('uid',{ascending:true})
-        .limit(pageRows);
-      if(afterDate!==null){
-        // The OR cursor alone caused Postgres to scan/filter all earlier dates
-        // (43k rows on a late 2026 page). This redundant AND lower bound is
-        // logically implied by the cursor, but uses the existing DATE index.
-        // Keep the strict date/UID OR so no rows are skipped or duplicated.
-        query=query.gte('date',afterDate).or(
-          'date.gt.'+afterDate+',and(date.eq.'+afterDate+
-          ',uid.gt.'+quoted(afterUid)+')');
-      }
-      return query;
-    },limit);
+    const datedPage=(afterDate,afterUid,limit)=>readPage('dated',
+      {afterDate,afterUid},limit);
     let previousDate=null;
     let datedPending=settled(datedPage(null,null,queue.readLimit));
     for(;;){
@@ -198,12 +183,8 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
     }
     // Undated rows also use a bounded UID keyset instead of deep OFFSET.
     // Both scans are complete even when the transport returns a short page.
-    const undatedPage=(afterUid,limit)=>readPage((relation,pageRows)=>{
-      let query=relation.select(ARTICLE_COLUMNS)
-        .is('date',null).order('uid',{ascending:true}).limit(pageRows);
-      if(afterUid!==null)query=query.gt('uid',afterUid);
-      return query;
-    },limit);
+    const undatedPage=(afterUid,limit)=>readPage('undated',
+      {afterUid},limit);
     let undatedPending=settled(undatedPage(null,queue.readLimit));
     for(;;){
       if(signal?.aborted)throw aborted();

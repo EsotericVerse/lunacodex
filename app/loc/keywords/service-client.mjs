@@ -1,16 +1,21 @@
-// Fixed-purpose Keyword operations on the LOC Next.js application.
-// Better Auth Session and published JavaScript grants are verified once by the
-// destination API, then again only inside the protected write transaction.
-// Do not preflight /api/loc-permissions and duplicate both network checks.
+'use client';
+
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
-import {editorTransactionLease,assertEditorTransactionLease,isEditorTransactionCancelled}
-  from '../db/editor-transaction-lifecycle.mjs';
+import {editorTransactionLease,assertEditorTransactionLease,
+  isEditorTransactionCancelled} from '../db/editor-transaction-lifecycle.mjs';
+import {queryKeywordClasses,queryKeywordStatistics,queryKeywordCatalog,
+  queryKeywordDaily,queryKeywordWorkspace,queryKeywordAnalysisCompletion,
+  queryKeywordSuggestions,queryKeywordAnchorArticles}
+  from '../actions/keywords/queries.mjs';
+import {runKeywordAnalysisBatch,resetKeywordClass,saveKeywordItemAction,
+  deleteKeywordItemAction,setKeywordClassShareAction}
+  from '../actions/keywords/writes.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
-// A missing terminal frame does not prove either success or failure. Keep the
-// exact operation identity so an operator can read its committed SQL receipt
-// again without replaying the non-idempotent analysis.
+// A lost Server Action response does not prove whether the current bounded
+// analysis step committed its checkpoint. Keep its identity for a read-only
+// receipt check; never automatically replay a non-idempotent analysis step.
 export class KeywordAnalysisUnconfirmedError extends Error {
   constructor({scopeId,classUid,attemptId}){
     super('關鍵詞分析連線中斷，本次結果尚未確認。請使用「核對本次分析」查詢原始執行紀錄，勿直接重跑或清空。');
@@ -21,147 +26,91 @@ export class KeywordAnalysisUnconfirmedError extends Error {
   }
 }
 
+const OPERATIONS=new Set(['analyze','analyzeStatus','reset','classes','catalog',
+  'summary','stats','suggest','anchorSearch','saveItem','deleteItem',
+  'setClassShare','workspace']);
+const READS={
+  analyzeStatus:queryKeywordAnalysisCompletion,
+  classes:queryKeywordClasses,
+  catalog:queryKeywordCatalog,
+  summary:queryKeywordDaily,
+  stats:queryKeywordStatistics,
+  suggest:queryKeywordSuggestions,
+  anchorSearch:queryKeywordAnchorArticles,
+  workspace:queryKeywordWorkspace
+};
+const WRITES={
+  reset:resetKeywordClass,
+  saveItem:saveKeywordItemAction,
+  deleteItem:deleteKeywordItemAction,
+  setClassShare:setKeywordClassShareAction
+};
+
+function assertSignal(signal){
+  if(signal?.aborted)throw signal.reason||new DOMException('Aborted','AbortError');
+}
+function isBusinessRefusal(error){
+  const status=Number(error?.httpStatus??error?.status);
+  return status>=400&&status<500;
+}
+function committed(operation,scope,result){
+  const write=['analyze','reset','saveItem','deleteItem','setClassShare'].includes(operation);
+  if(write&&!(operation==='analyze'&&result?.incomplete===true)||
+    operation==='analyzeStatus'&&result?.completed)
+    invalidateScopedReadCache('silver.'+scope+'_anchor');
+  return result;
+}
 
 export async function keywordService(operation,args={},options={}){
-  if(!['analyze','analyzeStatus','reset','classes','catalog','summary','stats','suggest',
-      'anchorSearch','saveItem','deleteItem','setClassShare','workspace'].includes(operation))
-    throw Error('Unsupported Keyword operation');
+  if(!OPERATIONS.has(operation))throw Error('Unsupported Keyword operation');
   if(!args||typeof args!=='object'||Array.isArray(args))
     throw Error('Invalid Keyword request');
-  const scope=String(args.scopeId||'');
-  if(!SCOPE.test(scope))
-    throw Error('Invalid Keyword Scope');
+  const scope=String(args.scopeId||'').trim().toLowerCase();
+  if(!SCOPE.test(scope))throw Error('Invalid Keyword Scope');
   const write=['analyze','reset','saveItem','deleteItem','setClassShare'].includes(operation);
   const lease=write?editorTransactionLease():null;
   assertEditorTransactionLease(lease);
-  const committed=result=>{
-    assertEditorTransactionLease(lease);
-    // /api/keywords writes Item/Group count snapshots directly.
-    // Incomplete checkpoints never contain article UID postings.
-    const confirmedWrite=write&&!(operation==='analyze'&&result?.incomplete===true);
-    if(confirmedWrite||(operation==='analyzeStatus'&&result?.completed))
-      invalidateScopedReadCache('silver.'+scope+'_anchor');
-    return result;
-  };
-  const readSignal=options?.signal||null;
-  const stream=operation==='analyze'&&typeof options?.onProgress==='function';
-  // A completion receipt is committed with the Item count transaction, so a
-  // severed HTTP stream can be checked without rerunning authorized writes.
-  const attemptId=stream?crypto.randomUUID():null;
+  assertSignal(options?.signal);
+  const attemptId=operation==='analyze'?crypto.randomUUID():'';
   const requestArgs=attemptId?{...args,attemptId}:args;
-  let response;
+  const action=operation==='analyze'?runKeywordAnalysisBatch:
+    WRITES[operation]||READS[operation];
+  let result;
   try{
-    response=await fetch('/api/keywords',{
-    method:'POST',credentials:'include',cache:'no-store',
-    headers:{'content-type':'application/json',
-      ...(stream?{accept:'application/x-ndjson'}:{})},
-    body:JSON.stringify({operation,args:requestArgs}),
-    // Switching a tab does not cancel writes. Explicit six-key Cancel does:
-    // its editor lease stops the stream, deferred status checks and resends.
-    // Keep analysis without a whole-request timeout while progress is live.
-    signal:write&&lease?operation==='analyze'?lease.signal:
-      AbortSignal.any([lease.signal,AbortSignal.timeout(180000)])
-      :!write&&readSignal?AbortSignal.any([readSignal,AbortSignal.timeout(25000)])
-        :operation==='analyze'?undefined:AbortSignal.timeout(write?180000:25000)
-    });
+    result=await action(requestArgs);
+    if(result?.__keywordError){
+      const failure=new Error(result.__keywordError.message||'Keyword analysis rejected');
+      failure.status=Number(result.__keywordError.status)||400;
+      throw failure;
+    }
   }catch(error){
-    if(isEditorTransactionCancelled(lease)){
-      assertEditorTransactionLease(lease);
+    if(isEditorTransactionCancelled(lease))assertEditorTransactionLease(lease);
+    if(operation!=='analyze'||isBusinessRefusal(error))throw error;
+    // The action may have committed a checkpoint before a transport failure.
+    // One receipt read confirms that exact step without replaying it.
+    const receipt=await queryKeywordAnalysisCompletion({scopeId:scope,
+      classUid:String(args.classUid||''),attemptId}).catch(()=>null);
+    assertEditorTransactionLease(lease);
+    if(receipt?.completed&&receipt.result){
+      options?.onProgress?.({phase:'completed',
+        completed:receipt.result.analyzedDocuments,
+        total:receipt.result.analyzedDocuments,percent:100,
+        label:'資料庫已確認分析完成'});
+      return committed(operation,scope,receipt.result);
     }
-    // The server may have committed after a lost HTTP connection. Preserve
-    // the attempt so the user can check the SQL receipt; never replay a write.
-    if(stream)throw new KeywordAnalysisUnconfirmedError({
-      scopeId:scope,classUid:String(args.classUid||''),attemptId
-    });
-    throw error;
+    if(receipt?.resumable&&receipt.attemptMatched)
+      return {incomplete:true,finalizePending:true,total:receipt.scanned,
+        completed:receipt.scanned,parsed:receipt.parsed};
+    throw new KeywordAnalysisUnconfirmedError({scopeId:scope,
+      classUid:String(args.classUid||''),attemptId});
   }
   assertEditorTransactionLease(lease);
-  if(!response.ok){
-    const payload=await response.json().catch(()=>null);
-    assertEditorTransactionLease(lease);
-    if(stream&&response.status>=500)
-      throw new KeywordAnalysisUnconfirmedError({
-        scopeId:scope,classUid:String(args.classUid||''),attemptId
-      });
-    const failure=Error(payload?.error||'詞級資料讀取失敗（HTTP '+response.status+'）');
-    failure.status=response.status;
-    failure.code=String(payload?.code||'');
-    throw failure;
+  assertSignal(options?.signal);
+  if(operation==='analyze'&&result?.incomplete){
+    options?.onProgress?.({phase:result.finalizePending?'finalizing':'checkpoint',
+      total:result.total,completed:result.completed,parsed:result.parsed,
+      percent:result.total?Math.min(99,Math.round(result.completed/result.total*100)):0,
+      label:result.finalizePending?'尾段已存檔，正在完成統計':'本批分析已存檔，正在繼續'});
   }
-  if(stream){
-    if(!response.body)throw new KeywordAnalysisUnconfirmedError({
-      scopeId:scope,classUid:String(args.classUid||''),attemptId
-    });
-    const reader=response.body.getReader(),decoder=new TextDecoder();
-    let pending='',complete=false,result,readFailure=null;
-    const consume=line=>{
-      assertEditorTransactionLease(lease);
-      if(!line.trim())return;
-      let event;
-      try{event=JSON.parse(line);}catch{throw Error('關鍵詞分析進度格式無效');}
-      if(event?.kind==='progress')options.onProgress(event.data);
-      else if(event?.kind==='heartbeat')return;
-      else if(event?.kind==='result'){complete=true;result=event.data;}
-      else if(event?.kind==='error'){
-        const failure=Error(event.data?.error||'關鍵詞分析失敗（HTTP '+(event.data?.status||503)+'）');
-        failure.keywordServerError=true;
-        failure.status=Number(event.data?.status)||503;
-        throw failure;
-      }
-      else throw Error('未知的關鍵詞分析進度事件');
-    };
-    try{
-      for(;;){
-        assertEditorTransactionLease(lease);
-        const {done,value}=await reader.read();
-        assertEditorTransactionLease(lease);
-        pending+=decoder.decode(value||new Uint8Array(),{stream:!done});
-        for(let newline;(newline=pending.indexOf('\n'))>=0;){
-          consume(pending.slice(0,newline));pending=pending.slice(newline+1);
-        }
-        if(done)break;
-      }
-      if(pending.trim())consume(pending);
-    }catch(error){readFailure=error;}
-    finally{reader.releaseLock();}
-    assertEditorTransactionLease(lease);
-    if(!complete){
-      // ONE read-only confirmation request; no polling and no automatic
-      // retry of a non-idempotent Keyword analysis transaction.
-      const receipt=await keywordService('analyzeStatus',{
-        scopeId:scope,classUid:String(args.classUid||''),attemptId
-      },{signal:lease?.signal}).catch(()=>null);
-      assertEditorTransactionLease(lease);
-      if(receipt?.completed&&receipt.result){
-        options.onProgress({phase:'completed',completed:receipt.result.analyzedDocuments,
-          total:receipt.result.analyzedDocuments,percent:100,
-          label:'資料庫已確認分析完成'});
-        return committed(receipt.result);
-      }
-      // The exact tail request committed only its counters and returned:
-      // no final SQL transaction was started. Its matching receipt makes
-      // a new FINALIZE-only request safe without rescanning any article.
-      if(receipt?.resumable&&receipt.attemptMatched){
-        options.onProgress({phase:'finalizing',completed:receipt.scanned,
-          total:receipt.scanned,percent:99,
-          label:'最後一段已存檔，正在接續最終統計'});
-        return {incomplete:true,finalizePending:true,
-          total:receipt.scanned,completed:receipt.scanned,
-          parsed:receipt.parsed};
-      }
-      // Explicit server failures are real errors. Unexpected EOF/network
-      // errors remain *unconfirmed*, so preserve the attempt for user-driven
-      // status checks rather than discarding its identity.
-      // Only an explicit, non-transient business refusal is terminal.
-      // A server/transport 5xx can race with a committed transaction.
-      if(readFailure?.keywordServerError&&readFailure.status<500)throw readFailure;
-      throw new KeywordAnalysisUnconfirmedError({
-        scopeId:scope,classUid:String(args.classUid||''),attemptId
-      });
-    }
-    return committed(result);
-  }
-  const payload=await response.json().catch(()=>null);
-  assertEditorTransactionLease(lease);
-  return committed(payload?.data);
+  return committed(operation,scope,result);
 }

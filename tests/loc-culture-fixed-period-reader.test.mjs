@@ -1,18 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {handleTimeAnchorQuery} from '../app/loc/culture/time-anchor-query-server.mjs';
-import {LOC_OWNER_EMAIL} from '../app/loc/permissions/loc-business-grants.mjs';
-import {parseAnchorFeatureTransaction,executeAnchorFeatureTransaction}
-  from '../app/loc/model/anchor-feature-transactions.mjs';
-import {parseGalaxyFeatureTransaction}
-  from '../app/loc/model/galaxy-feature-transactions.mjs';
+import {parseAnchorFeatureQuery,executeAnchorFeatureQuery}
+  from '../app/loc/model/anchor-feature-queries.mjs';
+import {parseGalaxyFeatureQuery}
+  from '../app/loc/model/galaxy-feature-queries.mjs';
 import {TIME_ANCHOR_MAX_PAGE_ROWS} from '../app/loc/query/query-batch-size.mjs';
 
-const base={kind:'transaction',operation:'anchor-feature',scope:'lo3rwang',
+const base={kind:'query',operation:'anchor-feature',scope:'lo3rwang',
   family:'media',types:['suno'],startDate:'2026-11-01',endDate:'2026-11-22',
   order:'createtime',sortDirection:'desc',offset:10,limit:100,includeTotal:true};
 test('fixed media window validates dates and limits before opening SQL',()=>{
-  const parsed=parseAnchorFeatureTransaction(base);
+  const parsed=parseAnchorFeatureQuery(base);
   assert.equal(parsed.order,'createtime');
   for(const patch of [
     {startDate:'2026-02-30'},{endDate:'2026-01-01'},
@@ -20,9 +18,9 @@ test('fixed media window validates dates and limits before opening SQL',()=>{
     {limit:TIME_ANCHOR_MAX_PAGE_ROWS+1},{types:['arbitrary']},
     {cursor:'ABCD1234',order:'createtime'},
     {result:'count',includeTotal:true},{result:'count',offset:10}
-  ])assert.throws(()=>parseAnchorFeatureTransaction({...base,...patch}));
+  ])assert.throws(()=>parseAnchorFeatureQuery({...base,...patch}));
 });
-test('fixed media Anchor query counts once and returns ordered page in same transaction',async()=>{
+test('fixed media Anchor query uses direct selects without a SQL transaction',async()=>{
   const used={tables:[],where:[],sort:[],offset:[],limits:[],count:0};
   const q={where(...args){used.where.push(args);return this},
     select(value){if(typeof value==='function')used.count++;return this},
@@ -31,8 +29,10 @@ test('fixed media Anchor query counts once and returns ordered page in same tran
     limit(x){used.limits.push(x);return this},
     async executeTakeFirst(){return {total:'205'}},
     async execute(){return [{uid:'ABCD1234',createtime:'2026-11-01T00:00:00Z'}]}};
-  const trx={selectFrom(table){used.tables.push(table);return q}};
-  const data=await executeAnchorFeatureTransaction(trx,parseAnchorFeatureTransaction(base));
+  const db={selectFrom(table){used.tables.push(table);return q},
+    transaction(){used.transactions++;throw Error('Read query opened a transaction')}};
+  used.transactions=0;
+  const data=await executeAnchorFeatureQuery(db,parseAnchorFeatureQuery(base));
   assert.equal(data.totalCount,205);
   assert.equal(data.rows.length,1);
   assert.deepEqual(used.tables,['silver.lo3rwang_anchor']);
@@ -43,50 +43,11 @@ test('fixed media Anchor query counts once and returns ordered page in same tran
   assert.deepEqual(used.offset,[10]);
   assert.deepEqual(used.limits,[101]);
   assert.equal(used.count,1);
+  assert.equal(used.transactions,0);
 });
 test('Culture/Statistics period lists may opt into Galaxy indexed date sorting',()=>{
-  const input={kind:'transaction',operation:'galaxy-feature',scope:'lo3rwang',
+  const input={kind:'query',operation:'galaxy-feature',scope:'lo3rwang',
     feature:'culture',result:'articles',orderByDate:true,startDate:'2026-01-01'};
-  assert.equal(parseGalaxyFeatureTransaction(input).orderByDate,true);
-  assert.throws(()=>parseGalaxyFeatureTransaction({...input,result:'count'}));
+  assert.equal(parseGalaxyFeatureQuery(input).orderByDate,true);
+  assert.throws(()=>parseGalaxyFeatureQuery({...input,result:'count'}));
 });
-
-{
-const req=body=>new Request('https://loc.lo3rwang.cc/culture/anchors',{
-  method:'POST',headers:{origin:'https://loc.lo3rwang.cc','content-type':'application/json'},
-  body:JSON.stringify(body)});
-const forbid=()=>{throw Error('Rejected query must not open database')};
-
-test('editor TimeAnchor read denies missing Session before SQL',async()=>{
-  const response=await handleTimeAnchorQuery(req({
-    kind:'transaction',operation:'time-anchors',scope:'lo3rwang',mode:'editor'
-  }),{},{database:forbid,verifySession:async()=>{
-    throw Object.assign(Error('Missing Session'),{httpStatus:401});
-  }});
-  assert.equal(response.status,401);
-});
-
-test('authorized TimeAnchor page reads directly on the selected connection',async()=>{
-  const used={transactions:0,tables:[],limits:[]};
-  const rows=[{uid:'AAAA0001',type:'date',title:'First',description:'',
-    attr:{date:'2026-01-01'},invisible:false}];
-  const query={select(){return this;},where(){return this;},
-    orderBy(){return this;},limit(n){used.limits.push(n);return this},
-    async execute(){return rows}};
-  const database=async()=>({engine:'postgres',namespace:'silver',
-    db:{selectFrom(name){used.tables.push(name);return query},
-      transaction(){used.transactions++;throw Error('Read query opened a transaction')},
-      async destroy(){}},
-    pool:{async end(){}}
-  });
-  const response=await handleTimeAnchorQuery(req({
-    kind:'transaction',operation:'time-anchors',scope:'lo3rwang',
-    mode:'editor',limit:50
-  }),{},{database,verifySession:async()=>({email:LOC_OWNER_EMAIL})});
-  assert.equal(response.status,200);
-  assert.deepEqual((await response.json()).data,rows);
-  assert.equal(used.transactions,0);
-  assert.deepEqual(used.tables,['silver.lo3rwang_anchor']);
-  assert.deepEqual(used.limits,[51]);
-});
-}

@@ -1,2 +1,0 @@
-// Public loc/group_admin Blocks. One-time snapshot from authoritative Neon database.
-export default [{"uid":"EBA7EC4E","scope":"loc","page_name":"group_admin","block_text":"\u003cp>\u003cu>網站\u003c/u>\u003cstrong>\u003cu>系統\u003c/u>\u003c/strong>\u003cu>管理\u003c/u>選單，也控管\u003cu>成員\u003c/u>\u003cstrong>\u003cu>群組\u003c/u>\u003c/strong>。\u003c/p>","block_image":"{\"url\": \"https://loc.lo3rwang.cc/pics/LOC-admin.jpg\", \"source\": \"custom\"}","block_order":1,"block_title":"系統管理","block_entity":[],"block_eyebrow":"Administration","block_subtitle":""}];

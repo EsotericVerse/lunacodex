@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {useQueryClient} from '../../../../packages/zenstack/client-queries';
 import {dbAuthClient} from '../../db/db-client.mjs';
+import {readLocAdminSettings} from '../../actions/admin/queries.mjs';
 import {useEditDock} from '../../../modular/edit-dock';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -12,10 +13,7 @@ const EMPTY={scope_id:'lo3rwang',class_name:'',hash:''};
 const keyOf=row=>JSON.stringify([row.scope_id,row.class_name]);
 
 async function readRegistry(){
-  const {data,error}=await dbAuthClient.schema('silver').managedAction('loc_admin_settings',{
-    p_section:'keywords',p_operation:'read'
-  });
-  if(error)throw Error(error.message||'關鍵詞管理資料讀取失敗');
+  const {data}=await readLocAdminSettings('keywords');
   return (Array.isArray(data)?data:[]).sort((a,b)=>
     a.scope_id.localeCompare(b.scope_id)||a.class_name.localeCompare(b.class_name));
 }

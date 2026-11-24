@@ -163,8 +163,6 @@
       "deleted": "已刪除。",
       "deleteFailed": "刪除失敗。",
       "remove": "刪除",
-      "childTitleHint": "不填標題會顯示為文字泡泡；填寫標題則顯示為文字框。",
-      "bubbleHint": "不填標題時使用文字泡泡",
       "addChild": "＋ 子文字框",
       "save": "儲存",
       "moveUp": "↑ 上移",

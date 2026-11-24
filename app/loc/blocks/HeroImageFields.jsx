@@ -1,6 +1,5 @@
 'use client';
 import UiText,{useUiText} from '../../i18n/UiText';
-import {absoluteImageUrl} from './hero-image.mjs';
 
 // Frame image settings: one image per text box, URL only. `onChange(changes,removeEmbedded)`.
 export function HeroImageFieldset({draft,image,onChange,allowImageOnly=false}){
@@ -13,13 +12,9 @@ export function HeroImageFieldset({draft,image,onChange,allowImageOnly=false}){
     </div>
     <div className="scope-frame-image-fields">
       <label className="scope-frame-image-url"><span>{t('uiExtra.frameEditor.imageUrl')}</span>
-        <input type="url" value={image?.source==='default'?absoluteImageUrl(image.preset?.stable||image.src):image?.source==='custom'?(draft.image?.url||''):''}
+        <input type="url" value={draft.image?.url||image?.customUrl||''}
           placeholder="https://"
-          onChange={event=>{
-            const url=event.target.value;
-            const preset=absoluteImageUrl(image?.preset?.stable);
-            onChange(url.trim()===preset?{source:'default',url:''}:{source:'custom',url},false);
-          }}/>
+          onChange={event=>onChange({source:'custom',url:event.target.value},false)}/>
       </label>
       {!isHero?<>
         <label><span>{t('uiExtra.frameEditor.imagePosition')}</span>

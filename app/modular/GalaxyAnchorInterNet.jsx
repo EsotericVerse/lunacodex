@@ -67,7 +67,7 @@ function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
     controller.current=abort;
     setState(prev=>({...prev,status:'loading'}));
     try{
-      const {readAnchorFeature}=await import('../loc/model/feature-transaction-client.mjs');
+      const {readAnchorFeature}=await import('../loc/model/feature-query-client.mjs');
       if(abort.signal.aborted)return;
       const {rows=[]}=await readAnchorFeature({
         scope:scopeId,family,types:[node.type==='space_anchor'?'point':node.type],

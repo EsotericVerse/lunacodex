@@ -13,7 +13,7 @@ import {getScope} from '../modular/routing/scope-registry';
 import ManagementAccess from './management/ManagementAccess';
 import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
-import {FeaturePage} from '../modular/ui';
+import {FeaturePage,ManagementHeroContext} from '../modular/ui';
 // Tiny, CSS-only marks live only inside the already-existing loading slot.
 // No assets, libraries, timers, layout shifts, or delayed navigation.
 function FeatureLoadingMark({featureId}){
@@ -144,7 +144,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     router.replace('/local/settings/');
   },[scopeMeta?.nativeOnly,router]);
   const publicCulture=forcedView==='culture'&&scopeId!=='loc'&&scopeId!=='lrunes'
-    &&scopeId!=='local'&&!runtime.pathname.includes('/culture/manage');
+    &&scopeId!=='local'&&forcedSection!=='timeManage';
   const ActiveView=publicCulture?CulturePublic:forcedView==='home'
     ?HOME_VIEWS[scopeId]||GenericScopeHomeView
     :VIEWS[forcedView]||AboutView;
@@ -178,7 +178,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   }
 
   const managementRoute=['manage','searchManage','sourceManage','keywordManage','keywords'].includes(forcedView)||
-    (forcedView==='culture'&&runtime.pathname.includes('/culture/manage'));
+    (forcedView==='culture'&&forcedSection==='timeManage');
   // Management is LOC Web business UI, not LOC Auth account administration.
 // Admin: system management; Group: member works/keywords/trace/articles;
 // Scope: time anchors/keywords/space anchors/articles; actual grants remain server-owned.
@@ -192,7 +192,8 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   const managementPage=<ActiveView section={forcedSection} scopeId={scopeId}
     scopeGroup={scopeMeta?.featureScope||scopeMeta?.registry?.parent_scope_id||
       (scopeMeta?.aggregateChildren?scopeId:null)}/>;
-  return <div className="loc-next-main" data-loc-scope={scopeId} data-loc-view={forcedView}
+  return <ManagementHeroContext.Provider value={forcedSection==='timeManage'?'timeManage':forcedView}>
+  <div className="loc-next-main" data-loc-scope={scopeId} data-loc-view={forcedView}
     role={forcedView==='home'&&['loc','lo3rwang','lrunes'].includes(scopeId)?'main':undefined}>
     <Suspense fallback={forcedView==='home'?<HomeFrameLoading/>:
       <FeatureFrameLoading featureId={managementRoute?managementFeature:forcedView}/>}>
@@ -210,5 +211,5 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
         >{managementPage}</ManagementAccess>:managementPage}
       </FeatureGate>
     </Suspense>
-  </div>;
+  </div></ManagementHeroContext.Provider>;
 }

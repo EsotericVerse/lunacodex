@@ -102,25 +102,10 @@ export async function prepareImportPlaceAnchors(records,{
       (anchorSnapshot.scopeId!==scopeId||anchorSnapshot.table!==table||
        typeof anchorSnapshot.place?.accept!=='function'))
     throw Error('空間定錨共用索引 Scope 不符');
-  const index=anchorSnapshot?.place||createImportPlaceIndex();
+  if(!anchorSnapshot)
+    throw Error('空間定錨讀取必須先取得匯入專用授權快照');
+  const index=anchorSnapshot.place;
   const {existingByCoordinate,existingByName,knownPointUids}=index;
-  if(!anchorSnapshot){
-    onProgress?.({phase:'讀取現有空間定錨',completed:0,total:0});
-    for(let offset=0;;offset+=pageSize){
-      const {data,error}=await relation(table)
-        .select('uid,type,title,attr,createtime').eq('type','point')
-        .order('title',{ascending:true}).order('uid',{ascending:true})
-        .range(offset,offset+pageSize-1);
-      if(error){
-        if(allowMissing&&!createMissing&&['42P01','PGRST205'].includes(String(error.code||'')))
-          return unavailable();
-        throw Error('讀取空間定錨失敗：'+(error.message||error));
-      }
-      for(const anchor of data||[])index.accept(anchor);
-      onProgress?.({phase:'讀取現有空間定錨',completed:offset+(data||[]).length,total:0});
-      if((data||[]).length<pageSize)break;
-    }
-  }
   // One compiled multi-name scan for ambiguous name-only imports. A name
   // overlap is reported after import, NOT used to repoint a saved UID or to
   // silently reuse a Point with different or unknown coordinates.

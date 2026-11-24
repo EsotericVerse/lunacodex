@@ -1,2 +1,0 @@
-// Public loc/group_search Blocks. One-time snapshot from authoritative Neon database.
-export default [{"uid":"FFAD289E","scope":"loc","page_name":"group_search","block_text":"\u003cp>從\u003cstrong>關鍵字\u003c/strong>找到\u003cu>作品\u003c/u>、\u003cu>多媒體\u003c/u>與\u003cu>相關內容\u003c/u>\u003c/p>","block_image":"{\"url\": \"https://loc.lo3rwang.cc/pics/LOC-search.jpg\", \"source\": \"custom\"}","block_order":1,"block_title":"搜尋","block_entity":[],"block_eyebrow":"Search","block_subtitle":""}];

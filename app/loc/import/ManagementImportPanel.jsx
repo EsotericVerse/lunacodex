@@ -44,8 +44,15 @@ import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
 import {touchEditorSession} from '../auth/edit-session-ttl.mjs';
 import {publishedSourceTaxonomy} from '../../modular/published-source-taxonomy.js';
 import {runeDrawText} from '../runes/rune-draw-text.mjs';
-import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/zenstack/import-source-models.mjs';
+import {queryImportSitePresence,queryImportSiteIdCandidates,
+  queryImportCreatedAtCandidates,queryImportOccupiedTimes,
+  queryImportMediaCandidates,queryImportGalaxyIdentityRows,
+  queryImportLinkedMediaRows,queryImportImageGalaxyPage,
+  queryImportUidConflicts,queryImportSiteIdRows,
+  queryImportSourceTimePage,queryImportOccupiedDatePage,
+  queryImportUndatedTimesPage}
+  from '../actions/import/queries.mjs';
 // Import Source options come from published, typed SiteAnchor From nodes.
 // No retired ArticleTag field or SQL lookup, and no per-render reconstruction.
 const PUBLISHED_SOURCE_CATEGORIES=Object.freeze({
@@ -54,10 +61,6 @@ const PUBLISHED_SOURCE_CATEGORIES=Object.freeze({
   personal:Object.freeze([])
 });
 const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[],warnings:[]});
-const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
-  .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
-const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
-  .concat(['site_id','keyword']).filter((column,index,all)=>all.indexOf(column)===index).join(',');
 // Imported Anchor keys are semantic matches, not UNIQUE constraints.
 // Report unresolved duplicate UIDs without choosing an arbitrary winner.
 function importAnchorConflictSummary(...results){
@@ -308,9 +311,8 @@ function ImportFormatSettings({format,onChange,disabled=false}){
   </details>;
 }
 
-// Fixed, authenticated import lookup: only original platform IDs or source
-// creation instants are supplied. The trusted SQL Runtime owns both queries;
-// no article scan, SQL expression, table selection or candidate cap is exposed.
+// Import identity scans call only their own bounded Server Actions. No
+// browser SELECT builder, HTTP query route or caller-selected table is used.
 async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}){
   const field=action==='import_site_id_candidates'?'p_site_ids':
     action==='import_created_at_candidates'?'p_instants':
@@ -318,7 +320,7 @@ async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}
   if(!field||!Array.isArray(keys)||typeof onPage!=='function')
     throw new Error('匯入識別查詢參數無效');
   const encoder=new TextEncoder();
-  // Each trusted Managed Action accepts at most 80 identity keys. Bound the
+  // Each import action accepts at most 80 identity keys. Bound the
   // actual UTF-8 parameter payload too, without treating 80 as a forced size.
   for(let offset=0;offset<keys.length;){
     let end=offset,bytes=2;
@@ -335,11 +337,14 @@ async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}
     let after=null;
     for(;;){
       const pageSize=pages.size;
-      const {data,error}=await dbAuthClient.schema('silver').managedAction(action,{
+      const request={
         p_scope_id:scopeId,...(field==='p_seconds'?{}:{p_site:site}),[field]:chunk,
         ...(after?{p_after_uid:after}:{}),p_limit:pageSize
-      });
-      if(error)throw new Error(error.message||'匯入識別查詢失敗');
+      };
+      const query=action==='import_site_id_candidates'
+        ?queryImportSiteIdCandidates:action==='import_created_at_candidates'
+          ?queryImportCreatedAtCandidates:queryImportOccupiedTimes;
+      const {data}=await query(request);
       const rows=data?.rows,next=data?.nextCursor??null;
       if(!Array.isArray(rows)||rows.length>pageSize||
         rows.some(row=>!row||typeof row.uid!=='string'||
@@ -359,42 +364,14 @@ async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}
   }
 }
 
-// A GET .in() filter has a URL budget, unlike POST imports.
-// Count and page each query until all matched rows are returned.
-async function readExistingByIds(table,columns,column,values,message,onPage){
-  const records=[],orderColumn='uid';
-  // Internal import match pages use the common SQL return baseline;
-  // these are not UI article UID lists (whose visible pages stay at 100).
-  const pageSize=MAX_ROWS;
-  for(const batch of urlSafeInBatches(values,column)){
-    for(let offset=0;;){
-      const {data,error}=await dbAuthRelation(table).select(columns)
-        .in(column,batch).order(orderColumn,{ascending:true})
-        .range(offset,offset+pageSize-1);
-      if(error)throw new Error(error.message||message);
-      const rows=data||[];
-      if(!rows.length)break;
-      if(onPage)await onPage(rows);
-      else records.push(...rows);
-      offset+=rows.length;
-      if(rows.length<pageSize)break;
-    }
-  }
-  return records;
-}
-
 // Shared idempotent media attachment write for standard file imports.
 // All records are bound by original article UID; no full-table scan or recursive discovery.
-async function readImportMediaCandidates(scopeId,anchor,uids=[],urls=[],message='媒體讀取失敗'){
+async function readImportMediaCandidates(scopeId,uids=[],urls=[],message='媒體讀取失敗'){
   // MediaAnchor UID is exact PK data; never normalize a malformed ID.
   const ids=[...new Set(uids.map(value=>String(value??'')).filter(Boolean))];
   // Media URL identity is literal: whitespace is significant.
   const links=[...new Set(urls.map(value=>String(value??'')).filter(Boolean))];
-  if(scopeId==='local'){
-    if(links.length)throw new Error('本機媒體 URL 去重尚無 SQL 查詢能力，已停止匯入避免重複資料。');
-    const rows=await readExistingByIds(anchor,MEDIA_ANCHOR_COLUMNS,'uid',ids,message);
-    return rows.filter(row=>ANCHOR_TYPE_GROUPS.media.includes(row.type)).map(mediaAnchorProjection);
-  }
+  if(scopeId==='local')throw new Error('Local Scope 尚未設定資料庫引擎，匯入已停止。');
   const out=new Map(),pageSize=200;
   for(let offset=0;offset<Math.max(ids.length,links.length);offset+=200){
     const uidBatch=ids.slice(offset,offset+200);
@@ -402,10 +379,8 @@ async function readImportMediaCandidates(scopeId,anchor,uids=[],urls=[],message=
     let afterUid=null;
     const seenBatch=new Set();
     for(;;){
-      const {data,error}=await dbAuthClient.schema('silver').managedAction(
-        'media_anchor_candidates',{p_scope_id:scopeId,p_uids:uidBatch,
-          p_urls:urlBatch,p_after_uid:afterUid,p_limit:pageSize});
-      if(error)throw new Error(error.message||message);
+      const {data}=await queryImportMediaCandidates({p_scope_id:scopeId,
+        p_uids:uidBatch,p_urls:urlBatch,p_after_uid:afterUid,p_limit:pageSize});
       if(!Array.isArray(data)||data.length>pageSize)
         throw new Error('MediaAnchor lookup response invalid');
       for(const row of data){
@@ -462,7 +437,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       const candidateUrls=[...new Set(plans.map(row=>row.url).filter(Boolean))];
       // One bounded UID-or-URL candidate query per chunk; avoid scanning
       // the same MediaAnchor twice during a single import plan.
-      const existingMedia=await readImportMediaCandidates(scopeId,mediaAnchor,
+      const existingMedia=await readImportMediaCandidates(scopeId,
         explicitIds,candidateUrls,t('uiExtra.importUI.mediaIdCompareFailed'));
       const mediaKey=row=>{
         const url=String(row.url??'');
@@ -575,8 +550,12 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         linkSizer.observe(count,Date.now()-started,characters);
       };
       onProgress?.({stage:'讀取文章媒體連結',completed:0,total:linkedUids.length});
-      await readExistingByIds(galaxy,'uid,url,media_link','uid',linkedUids,
-        t('uiExtra.importUI.mediaLinkReadFailed'),async page=>{
+      for(const batch of urlSafeInBatches(linkedUids,'uid')){
+        const {data:page}=await queryImportLinkedMediaRows({
+          p_scope_id:scopeId,p_uids:batch
+        });
+        if(!Array.isArray(page)||page.length>batch.length)
+          throw Error(t('uiExtra.importUI.mediaLinkReadFailed'));
           for(const row of page){
             const uid=String(row.uid||'').trim();
             const prior=Array.isArray(row.media_link)?row.media_link:[];
@@ -593,7 +572,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
             checkedLinks++;
           }
           onProgress?.({stage:'更新文章媒體連結',completed:checkedLinks,total:linkedUids.length});
-        });
+      }
       await flushMediaLinks();
 
   return {created,connected,resolvedIds,conflicts:mediaConflicts};
@@ -615,11 +594,8 @@ async function syncImportedVisualGalaxies({
   for(const batch of urlSafeInBatches(urls,'url')){
     let cursor='';
     for(;;){
-      let query=dbAuthRelation(galaxy).select('uid,source_id,url')
-        .in('url',batch).order('uid',{ascending:true}).limit(MAX_ROWS);
-      if(cursor)query=query.gt('uid',cursor);
-      const {data,error}=await query;
-      if(error)throw Error('圖片／影片 Galaxy URL 查詢失敗：'+error.message);
+      const {data}=await queryImportImageGalaxyPage({p_scope_id:scopeId,
+        p_urls:batch,p_after_uid:cursor||null,p_limit:MAX_ROWS});
       const rows=data||[];
       if(!Array.isArray(rows)||rows.length>MAX_ROWS)throw Error('圖片／影片 Galaxy 查詢回傳不完整');
       for(const row of rows){
@@ -663,9 +639,8 @@ async function syncImportedVisualGalaxies({
     const result=await insertImportBatches(batch,{
       batchSize:imageSizer.size,
       verifyUidConflict:async uid=>{
-        const {data,error}=await dbAuthRelation(galaxy).select('uid').eq('uid',uid).limit(1);
-        if(error)throw Error('圖片／影片 UID 比對失敗：'+error.message);
-        return Boolean(data?.length);
+        const {data}=await queryImportUidConflicts({p_scope_id:scopeId,p_uids:[uid]});
+        return Array.isArray(data)&&data.includes(uid);
       },
       writeBatch:rows=>insertImportRows(galaxy,rows)
     });
@@ -1284,25 +1259,28 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const siteAvailability=new Map();
       const siteHasArticles=async site=>{
         if(!siteAvailability.has(site)){
-          const {data,error}=await dbAuthRelation(galaxy).select('uid').ieq('site',site).limit(1);
-          if(error)throw Error('網站範圍查詢失敗：'+error.message);
-          siteAvailability.set(site,Boolean(data?.length));
+          if(nativeLocal)throw new Error('Local Scope 尚未設定資料庫引擎，匯入已停止。');
+          if(site.length>512)throw Error('來源名稱長度超出匯入查詢範圍');
+          const {data}=await queryImportSitePresence({p_scope_id:scopeId,
+            p_sites:[site]});
+          if(!Array.isArray(data)||data.length>1)
+            throw Error('網站範圍查詢回傳格式錯誤');
+          siteAvailability.set(site,data.includes(site.toLowerCase()));
         }
         return siteAvailability.get(site);
       };
       const distinctSites=[...new Set(analyzed.valid.map(row=>String(row.site||'').trim()))];
       // Import source presence is a business-data question on Galaxy.site,
       // not a SiteAnchor title JOIN. Batch bounded exact site keys through
-      // the authenticated existing Kysely action instead of issuing one
-      // browser-to-SQL request for each platform in a mixed-source ZIP.
-      if(!nativeLocal&&scopeId!=='loc'){
+      // its feature-owned Server Action instead of issuing one request per
+      // platform through a generic database adapter.
+      if(!nativeLocal){
         const sites=distinctSites.filter(site=>site.length<=512);
         for(let offset=0;offset<sites.length;offset+=200){
           const chunk=sites.slice(offset,offset+200);
           const requested=new Set(chunk.map(site=>site.toLowerCase()));
-          const {data,error}=await dbAuthClient.schema('silver').managedAction(
-            'import_site_presence',{p_scope_id:scopeId,p_sites:chunk});
-          if(error)throw Error('來源集合查詢失敗：'+(error.message||error));
+          const {data}=await queryImportSitePresence({p_scope_id:scopeId,
+            p_sites:chunk});
           if(!Array.isArray(data)||data.length>requested.size||
               data.some(key=>typeof key!=='string'||!requested.has(key))||
               new Set(data).size!==data.length)
@@ -1326,10 +1304,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const readRowsByUid=async uids=>{
         const rows=[];
         for(const batch of urlSafeInBatches(uids,'uid')){
-          const {data,error}=await dbAuthRelation(galaxy)
-            .select(GALAXY_IMPORT_UID_COLUMNS)
-            .in('uid',batch);
-          if(error)throw Error('uid 比對失敗：'+error.message);
+          const {data}=await queryImportGalaxyIdentityRows({
+            p_scope_id:scopeId,p_uids:batch
+          });
+          if(!Array.isArray(data)||data.length>batch.length)
+            throw Error('uid 比對回傳格式錯誤');
           for(const row of data||[])rows.push(row);
         }
         return rows;
@@ -1341,28 +1320,31 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       const matchesById=existingCandidates.length?await matchExistingImportBySiteId(existingCandidates,{
         onProgress:p=>showProgress('依來源文章 ID 比對',p.completed,p.total),
         readSiteIds:async(ids,consumePage,site)=>{
-          if(!nativeLocal&&scopeId!=='loc'&&site.length<=512&&
+          if(!nativeLocal&&site.length<=512&&
               ids.every(id=>typeof id==='string'&&id.length<=512)){
             await readImportIdentityCandidates({scopeId,site,
               action:'import_site_id_candidates',keys:ids,onPage:consumePage});
             return;
           }
+          if(nativeLocal)throw new Error('Local Scope 尚未設定資料庫引擎，匯入已停止。');
           for(const idsPage of urlSafeInBatches(ids,'site_id')){
             // Page every stored candidate; one platform ID can map to
             // multiple legacy rows and must remain ambiguous until compared.
             const pageSize=MAX_ROWS;
-            for(let offset=0;;){
-              const {data,error}=await dbAuthRelation(galaxy)
-                .select(GALAXY_IMPORT_UID_COLUMNS)
-                .ieq('site',site).in('site_id',idsPage)
-                .order('uid',{ascending:true})
-                .range(offset,offset+pageSize-1);
-              if(error)throw Error('site_id 比對失敗：'+error.message);
+            let afterUid=null;
+            for(;;){
+              const {data}=await queryImportSiteIdRows({p_scope_id:scopeId,
+                p_site:site,p_site_ids:idsPage,p_after_uid:afterUid,
+                p_limit:pageSize});
               const page=data||[];
-              if(!Array.isArray(page))throw Error('site_id 比對回傳格式錯誤');
+              if(!Array.isArray(page)||page.length>pageSize)
+                throw Error('site_id 比對回傳格式錯誤');
               if(!page.length)break;
               consumePage(page);
-              offset+=page.length;
+              const next=String(page.at(-1)?.uid||'');
+              if(!/^[A-Za-z0-9]{8}$/.test(next)||next===afterUid)
+                throw Error('site_id 比對游標未前進');
+              afterUid=next;
               if(page.length<pageSize)break;
             }
           }
@@ -1407,54 +1389,39 @@ function UniversalImport({scopeId,format,onFormatChange}) {
                 keys:instants,onPage:consumePage});
               return;
             }
+            if(nativeLocal)throw new Error('Local Scope 尚未設定資料庫引擎，匯入已停止。');
             const pageSize=MAX_ROWS;
             const dated=async()=>{
-              let afterDate=null,afterUid=null;
+              let afterUid=null;
               for(;;){
-                let query=dbAuthRelation(galaxy)
-                  .select('uid,site,site_id,createtime,date')
-                  .ieq('site',site).gte('date',fromDate).lte('date',toDate)
-                  .order('date',{ascending:true}).order('uid',{ascending:true})
-                  .limit(pageSize);
-                if(afterDate!==null)
-                  query=query.or('date.gt.'+afterDate+
-                    ',and(date.eq.'+afterDate+',uid.gt.'+afterUid+')');
-                const {data,error}=await query;
-                if(error)throw Error('來源時間查詢失敗：'+error.message);
+                const {data}=await queryImportSourceTimePage({p_scope_id:scopeId,
+                  p_site:site,p_undated:false,p_from_date:fromDate,
+                  p_to_date:toDate,p_after_uid:afterUid,p_limit:pageSize});
                 const page=data||[];
                 if(!Array.isArray(page)||page.length>pageSize)
                   throw Error('來源時間查詢回傳格式錯誤');
                 if(!page.length)break;
                 consumePage(page);
-                const last=page.at(-1);
-                const date=String(last?.date||''),uid=String(last?.uid||'');
-                if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||
-                  !/^[A-Za-z0-9]{8}$/.test(uid)||
-                  afterDate!==null&&(date<afterDate||
-                    date===afterDate&&uid<=afterUid))
-                  throw Error('來源時間日期游標未前進，停止匯入');
-                afterDate=date;afterUid=uid;
+                const uid=String(page.at(-1)?.uid||'');
+                if(!/^[A-Za-z0-9]{8}$/.test(uid)||uid===afterUid)
+                  throw Error('來源時間 UID 游標未前進，停止匯入');
+                afterUid=uid;
                 if(page.length<pageSize)break;
               }
             };
             const undated=async()=>{
               let afterUid=null;
               for(;;){
-                let query=dbAuthRelation(galaxy)
-                  .select('uid,site,site_id,createtime,date')
-                  .ieq('site',site).is('date',null)
-                  .order('uid',{ascending:true}).limit(pageSize);
-                if(afterUid!==null)query=query.gt('uid',afterUid);
-                const {data,error}=await query;
-                if(error)throw Error('無日期文章來源時間查詢失敗：'+error.message);
+                const {data}=await queryImportSourceTimePage({p_scope_id:scopeId,
+                  p_site:site,p_undated:true,p_after_uid:afterUid,
+                  p_limit:pageSize});
                 const page=data||[];
                 if(!Array.isArray(page)||page.length>pageSize)
                   throw Error('無日期文章來源時間查詢回傳格式錯誤');
                 if(!page.length)break;
                 consumePage(page);
                 const uid=String(page.at(-1)?.uid||'');
-                if(!/^[A-Za-z0-9]{8}$/.test(uid)||
-                  afterUid!==null&&uid<=afterUid)
+                if(!/^[A-Za-z0-9]{8}$/.test(uid)||uid===afterUid)
                   throw Error('無日期文章 UID 游標未前進');
                 afterUid=uid;
                 if(page.length<pageSize)break;
@@ -1513,17 +1480,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
             const days=targetDays.slice(offset,offset+40);
             let afterDate=null,afterUid=null;
             for(;;){
-              let query=dbAuthRelation(galaxy)
-                .select('uid,createtime,date')
-                .in('date',days)
-                .order('date',{ascending:true}).order('uid',{ascending:true})
-                .limit(pageSize);
-              if(afterDate!==null)
-                query=query.gte('date',afterDate).or(
-                  'date.gt.'+afterDate+
-                  ',and(date.eq.'+afterDate+',uid.gt.'+afterUid+')');
-              const {data,error}=await query;
-              if(error)throw Error('匯入時間索引查詢失敗：'+error.message);
+              const {data}=await queryImportOccupiedDatePage({
+                p_scope_id:scopeId,p_dates:days,p_after_date:afterDate,
+                p_after_uid:afterUid,p_limit:pageSize
+              });
               const page=data||[];
               appendOccupied(page);
               if(page.length<pageSize)break;
@@ -1541,13 +1501,9 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           // Read this subset once instead of scanning it again for each day.
           let afterUndatedUid=null;
           for(;;){
-            let query=dbAuthRelation(galaxy).select('uid,createtime')
-              .is('date',null).order('uid',{ascending:true})
-              .limit(pageSize);
-            if(afterUndatedUid!==null)
-              query=query.gt('uid',afterUndatedUid);
-            const {data,error}=await query;
-            if(error)throw Error('匯入無日期時間查詢失敗：'+error.message);
+            const {data}=await queryImportUndatedTimesPage({
+              p_scope_id:scopeId,p_after_uid:afterUndatedUid,p_limit:pageSize
+            });
             const page=data||[];
             appendOccupied(page);
             if(page.length<pageSize)break;
@@ -1589,11 +1545,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       }
       const occupiedUids=new Set();
       for(const batch of urlSafeInBatches([...possiblyRebound],'uid')){
-        const {data,error}=await dbAuthRelation(galaxy).select('uid').in('uid',batch);
-        if(error)throw Error('既有 UID 主鍵核對失敗：'+(error.message||error));
+        const {data}=await queryImportUidConflicts({p_scope_id:scopeId,
+          p_uids:batch});
         const requested=new Set(batch);
         for(const row of data||[]){
-          const uid=String(row?.uid||'');
+          const uid=String(row||'');
           if(!requested.has(uid))throw Error('UID 主鍵核對回傳不屬於本次 Scope');
           occupiedUids.add(uid);
         }

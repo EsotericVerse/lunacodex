@@ -3,6 +3,7 @@ import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {transactionWrites,dbAuthClient} from '../db/db-client.mjs';
+import {readLocSourceHierarchy} from '../actions/admin/queries.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
 import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -31,9 +32,7 @@ async function fetchSources({editor=false}={}){
   if(!editor)return normalized(await readPublicSourceAnchors());
   // Protected management hierarchy must use the trusted LOC Web authorizer,
   // not a browser SELECT on silver.loc_anchor (RLS is not a SQL GRANT).
-  const {data,error}=await dbAuthClient.schema('silver')
-    .managedAction('read_loc_source_hierarchy',{});
-  if(error)throw new Error(error.message||'LOC 文章來源讀取失敗。');
+  const {data}=await readLocSourceHierarchy();
   if(!Array.isArray(data))throw new Error('LOC 文章來源資料格式不正確。');
   return normalized(data);
 }

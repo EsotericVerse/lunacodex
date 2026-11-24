@@ -2,7 +2,6 @@
 import {useMemo,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
-import {dbPublicClient} from '../../../loc/db/db-client.mjs';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
 import {readCurrentTraceAnchors,readPublishedTraceSourceScopes} from './trace-data';
 import {territoryYearWindow,territoryRegions,territoryPointReadPlan,territoryWithAnchors} from './trace-territory.mjs';
@@ -48,16 +47,17 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
     queryFn:async({signal})=>{
       setTerritoryCheckpoint(null);
       return (await mapBounded(scopes,2,async scope=>{
-      const {data,error}=await dbPublicClient.schema('silver').analytics({
-        p_scope_id:scope,p_view:'trace_territory',
-        p_start:period.startDate,p_end:period.endDate,p_options:{withPoints:true},signal
-      });
-      if(error)throw error;
-      if(!Array.isArray(data))throw Error('年度來源彙整資料格式錯誤');
-      return data.map(row=>({...row,source_scope:scope}));
-    },{signal,onCheckpoint:(batches,progress)=>{
-      if(!signal.aborted)setTerritoryCheckpoint({key:territoryKey,rows:batches.flat(),...progress});
-    }})).flat();},
+        const {queryTrace}=await import('../../../loc/actions/trace/queries.mjs');
+        const {data}=await queryTrace({
+          p_scope_id:scope,p_view:'trace_territory',
+          p_start:period.startDate,p_end:period.endDate,p_options:{withPoints:true}
+        });
+        if(!Array.isArray(data))throw Error('年度來源彙整資料格式錯誤');
+        return data.map(row=>({...row,source_scope:scope}));
+      },{signal,onCheckpoint:(batches,progress)=>{
+        if(!signal.aborted)setTerritoryCheckpoint({key:territoryKey,rows:batches.flat(),...progress});
+      }})).flat();
+    },
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const mid=totalsQuery.isPending&&!totalsQuery.error&&territoryCheckpoint?.key===territoryKey?territoryCheckpoint:null;

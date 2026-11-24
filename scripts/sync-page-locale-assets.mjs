@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const app=path.join(root,'app');
 const target=path.join(root,'public','i18n');
-const locales=['zh_tw','zh_cn','en','ja'];
+const locales=['zh_tw','en'];
 const localeSources=JSON.parse(fs.readFileSync(
   path.join(app,'i18n','page-locale-sources.json'),'utf8'));
 const routeSources=localeSources.sourceByRoute||{};
@@ -79,4 +79,4 @@ fs.writeFileSync(path.join(app,'i18n','page-locale-manifest.js'),
   'export const PAGE_LOCALE_ALIASES = Object.freeze('+JSON.stringify(aliases)+');\n','utf8');
 console.log('[page-locales] '+pages.length+' routes; '+published+' unique page assets, '+
   Object.keys(aliases).length+' exact duplicates shared, '+emptyPageLocales.length+
-  ' empty dictionaries omitted; 4 shared assets.');
+  ' empty dictionaries omitted; 2 shared assets.');

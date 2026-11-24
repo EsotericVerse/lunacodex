@@ -14,7 +14,6 @@ import {mapBounded} from '../../loc/query/bounded-parallel.mjs';
 import {traceWindow} from './trace/trace-panel-filters.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 import {annualGaugeGroups,annualGaugeValues} from './trace/trace-annual-gauges.mjs';
-import {dbPublicClient} from '../../loc/db/db-client.mjs';
 import {publicTraceMapChoices,locReferencedPointGroups,clusterLocSharedPoints} from './trace/trace-map-choices.mjs';
 import {traceRouteHierarchy} from './trace/trace-route-hierarchy.mjs';
 import {pickTraceDemoStop,traceDemoRoute} from './trace/trace-demo-route.mjs';
@@ -205,12 +204,12 @@ function ScopeTrace({scopeId='lo3rwang'}){
       ...annualGroups.map(group=>group.scope+':'+group.ids.join(','))],
     enabled:mapMode==='routes'&&annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0,
     queryFn:async()=>(await mapBounded(annualGroups,2,async({scope,ids})=>{
-      const {data,error}=await dbPublicClient.schema('silver').analytics({
+      const {queryTrace}=await import('../../loc/actions/trace/queries.mjs');
+      const {data}=await queryTrace({
         p_scope_id:scope,p_view:'trace_daily',
         p_start:annualWindow.startDate,p_end:annualWindow.endDate,
         p_options:{placeIds:ids,source:null}
       });
-      if(error)throw error;
       if(!Array.isArray(data))throw new Error('年度地點統計資料格式不正確');
       return data.map(row=>({...row,source_scope:scope}));
     })).flat(),

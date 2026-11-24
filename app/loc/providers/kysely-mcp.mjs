@@ -6,7 +6,6 @@
 import {sql} from 'kysely';
 import {schema as zmodel} from '../../../packages/zenstack/schema.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
-import {portableContainsSpec} from './portable-search.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {CAPTURE_FROM_SITES,CAPTURE_LOOKUP_SITES} from '../source/site-from-url.mjs';
 
@@ -25,24 +24,22 @@ function affected(result){
 function verifyScope(body,claims){
   const scope=String(body?.scopeid||'');
   if(!SCOPE.test(scope))reject('Invalid delegated MCP Scope',403);
-  const write=['mcp-sync','mcp-append'].includes(body.kind);
-  if(!write&&!['mcp-search','mcp-read'].includes(body.kind))
+  if(!['mcp-sync','mcp-append'].includes(body.kind))
     reject('Unsupported MCP operation',400);
-  const permission=scope+':'+(write?'write':'read');
+  const permission=scope+':write';
   if(claims?.provider!=='loc'||claims?.me!==true||
     !Array.isArray(claims.grants)||!claims.grants.includes(permission))
     reject('MCP Scope grant denied',403);
   return scope;
 }
-function relation(scope,engine,namespace,tableName=''){ 
+function relation(scope,engine,namespace){
   if(engine!=='postgres')reject('Unsupported MCP SQL engine');
   // Cloned Scopes inherit the fixed Galaxy contract; only the physical name varies.
   const model=zmodel.models[SCOPE_MODELS[scope]||'Lo3rwangGalaxy'];
   const required=['uid','title','content','createtime','site','site_id','UpdateTime',...FLAGS];
   if(!model||required.some(field=>!Object.hasOwn(model.fields,field)))
     reject('Fixed LOC ZModel Galaxy contract mismatch',503);
-  return portableRelation(tableName||scope+'_galaxy',engine,namespace||
-    'silver');
+  return portableRelation(scope+'_galaxy',engine,namespace||'silver');
 }
 function validateSync(body){
   const row=body.row;
@@ -59,9 +56,6 @@ function validateSync(body){
     reject('Unsupported MCP Galaxy field');
   return row;
 }
-function validateUid(uid){
-  if(!UID.test(String(uid||'')))reject('Invalid case-sensitive Galaxy UID');
-}
 function conversationOnly(q,site=null){
   // The parent MCP Domain is never a stored source. Legacy mcp rows remain
   // readable until separately reconciled, never accepted as new writes.
@@ -76,73 +70,9 @@ function conversationOnly(q,site=null){
     ])
   ])).where(sql`lower(${sql.ref('title')}) not like ${'%pr #%'}`);
 }
-export async function executePortableMcp(trx,body,claims,{
- engine='postgres',namespace='',tableName='',fieldMap={},scopedZModel=false
-}={}){
+export async function executePortableMcp(trx,body,claims,{engine='postgres',namespace=''}={}){
   const scope=verifyScope(body,claims);
-  const physicalTable=relation(scope,engine,namespace,tableName);
-  if(scopedZModel&&(engine!=='postgres'||tableName||
-    Object.keys(fieldMap||{}).length))
-    reject('Scoped Galaxy ZModel cannot use external SQL mapping',503);
-  // The trusted client maps "Galaxy" using the existing per-Scope ZModel.
-  // SQL expressions and visibility guards below still execute in Kysely;
-  // no row policy is invented or removed by this routing change.
-  const table=scopedZModel?'Galaxy':physicalTable;
-  const external=Boolean(tableName);
-  // An external existing article table is a read-only projection, never a
-  // destination for MCP sync or append. Explicit management rights are needed.
-  if(external&&(!claims.grants.includes(scope+':manage')||
-    !['mcp-read','mcp-search'].includes(body.kind)))
-    reject('Mapped external SQL data requires Scope manager read permission',403);
-  const safe=/^[A-Za-z][A-Za-z0-9_]{0,119}$/;
-  if(!fieldMap||typeof fieldMap!=='object'||Array.isArray(fieldMap)||
-    Object.entries(fieldMap).some(([k,v])=>!safe.test(k)||!safe.test(v)))
-    reject('Invalid trusted SQL field mapping',503);
-  const physical=name=>fieldMap[name]||name;
-  const columns=names=>names.map(name=>name===physical(name)?
-    name:sql.ref(physical(name)).as(name));
-  if(body.kind==='mcp-read'){
-    if(external){
-      if(typeof body.uid!=='string'||body.uid.length<1||body.uid.length>128||
-        /[\u0000-\u001f\u007f]/.test(body.uid))reject('Invalid mapped article ID');
-    }else validateUid(body.uid);
-    const requestedSite=body.site??null;
-    if(requestedSite!==null&&requestedSite!=='LOC'&&
-       !CAPTURE_FROM_SITES.includes(requestedSite))
-      reject('Unsupported private Galaxy site',403);
-    if(requestedSite==='LOC'&&(scope!=='lo3rwang'||external))
-      reject('LOC documentation read requires its owning Scope',403);
-    const source=external?trx.selectFrom(table):
-      requestedSite==='LOC'?trx.selectFrom(table).where('site','=','LOC'):
-      conversationOnly(trx.selectFrom(table),requestedSite);
-    // External tables need only the four canonical article fields. Optional
-    // date/url columns are selected only when the owner maps them explicitly:
-    // never assume the source schema contains LOC-specific optional columns.
-    const fields=external?
-      ['uid','title','content','createtime',
-        ...['date','url'].filter(name=>Object.hasOwn(fieldMap,name))]:
-      galaxyReadColumns('GalaxyUidRead');
-    return {data:await source.select(columns(fields))
-      .where(physical('uid'),'=',body.uid).limit(1).execute()};
-  }
-  if(body.kind==='mcp-search'){
-    if(body.user_requested!==true)
-      reject('只有使用者明確要求時，才允許搜尋對話；禁止代理自行搜尋。',403);
-    const term=String(body.query||'').trim(),limit=Number(body.limit);
-    if(term.length<2||term.length>100||/[\u0000-\u001f\u007f]/.test(term)||
-       !Number.isInteger(limit)||limit<1||limit>5)
-      reject('Invalid MCP search');
-    if(/(?:\bPR(?:[\s#:\-]*\d+)?\b|\bpull[ -]?request\b|\bgithub\b|\bcommit\b|合併請求|拉取請求)/i.test(term))
-      reject('請至github頁面找尋PR相關資料！不開放搜尋PR!',403);
-    const pattern=portableContainsSpec(term).pattern;
-    const source=external?trx.selectFrom(table):
-      conversationOnly(trx.selectFrom(table));
-    const results=await source
-      .select(columns(external?['uid','title','createtime']:galaxyReadColumns('GalaxyList')))
-      .where(sql`lower(${sql.ref(physical('content'))}) like ${pattern} escape '!'`)
-      .orderBy(physical('createtime'),'desc').limit(limit).execute();
-    return {data:results};
-  }
+  const table=relation(scope,engine,namespace);
   if(body.kind==='mcp-sync'){
     const row=validateSync(body);
     if(body.update_existing){

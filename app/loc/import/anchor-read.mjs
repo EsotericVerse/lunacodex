@@ -3,7 +3,8 @@
 // together without creating a parallel Anchor table or a semantic PK.
 import {ANCHOR_TYPE_PROJECTIONS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
-import {dbAuthClient,dbAuthRelation} from '../db/db-client.mjs';
+import {queryImportPointUidRows,queryImportAnchorPage}
+  from '../actions/import/queries.mjs';
 import {createImportPlaceIndex} from './place-anchors.mjs';
 import {createImportDateIndex} from './time-anchors.mjs';
 
@@ -15,10 +16,8 @@ async function authorizedAnchorPage({scopeId,afterUid,limit,types=TYPES}){
   // Managed actions use the existing Better Auth website Session and the
   // server's published JavaScript permission check. Never fetch private import evidence
   // through the feature-owned Trace query action.
-  const {data,error}=await dbAuthClient.schema('silver').managedAction(
-    'anchor_import_page',{p_scope_id:scopeId,p_types:types,
-      p_after_uid:afterUid,p_limit:limit});
-  if(error)throw Error('Anchor 授權讀取失敗：'+(error.message||error));
+  const {data}=await queryImportAnchorPage({p_scope_id:scopeId,p_types:types,
+    p_after_uid:afterUid,p_limit:limit});
   return data;
 }
 
@@ -26,12 +25,10 @@ async function authorizedAnchorPage({scopeId,afterUid,limit,types=TYPES}){
 // Full Point scanning is necessary only for *new* places needing discovery.
 // This is an import-only read optimization; it does not weaken Scope auth.
 async function authorizedPointUidRows({scopeId,uids}){
-  const table='silver.'+scopeId+'_anchor',rows=[];
+  const rows=[];
   for(let offset=0;offset<uids.length;offset+=MAX_ROWS){
     const chunk=uids.slice(offset,offset+MAX_ROWS);
-    const {data,error}=await dbAuthRelation(table)
-      .select('uid,type,title,attr,createtime').in('uid',chunk).eq('type','point');
-    if(error)throw Error('Point UID 主鍵核對失敗：'+(error.message||error));
+    const {data}=await queryImportPointUidRows({p_scope_id:scopeId,p_uids:chunk});
     if(!Array.isArray(data)||data.length>chunk.length)
       throw Error('Point UID 主鍵 SELECT 回傳格式錯誤');
     const requested=new Set(chunk);

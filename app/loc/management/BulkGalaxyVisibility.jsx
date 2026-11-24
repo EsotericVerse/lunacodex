@@ -4,6 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {useAccount} from '../auth/use-account';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
+import {queryGalaxyVisibilityPreview} from '../actions/trace/management-queries.mjs';
 
 const FIELDS=Object.freeze([
   ['statics','統計'],['culture','文化'],['search','搜尋'],['trace','痕跡'],
@@ -29,7 +30,7 @@ export default function BulkGalaxyVisibility({scopeId}){
   function changedSource(value){setSite(value);setPreview(null);setStatus('');}
   function changedField(key,value){setFields(previous=>({...previous,[key]:value}));setPreview(null);setStatus('');}
   const perform=async args=>{
-    const {data,error}=await dbAuthClient.schema('silver').managedAction('bulk_update_galaxy_able',args);
+    const {data,error}=await dbAuthClient.schema('silver').managedAction('apply_galaxy_visibility_flags',args);
     if(error)throw Error(error.message||'大量更新權限或資料庫操作失敗');
     const result=data?.data&&typeof data.data==='object'?data.data:data;
     if(!result||typeof result!=='object'||!Number.isInteger(Number(result.matching)))
@@ -40,8 +41,8 @@ export default function BulkGalaxyVisibility({scopeId}){
     if(!permitted||busy||!dirty)return;
     setBusy(true);setPreview(null);setProgress(0);
     try{
-      const result=await perform({p_scope_id:scopeId,p_site:site.trim().toLowerCase(),
-        p_flags:patch,p_apply:false});
+      const result=await queryGalaxyVisibilityPreview({p_scope_id:scopeId,
+        p_site:site.trim().toLowerCase(),p_flags:patch});
       setPreview({signature,count:Number(result.matching)||0});
       setStatus('已預覽 '+Number(result.matching||0).toLocaleString()+' 筆需要更新；只修改勾選的 Boolean 欄位。');
     }catch(e){setStatus(String(e.message||e));}
@@ -55,7 +56,7 @@ export default function BulkGalaxyVisibility({scopeId}){
     try{
       for(let i=0;i<10000&&remaining>0;i++){
         const result=await perform({p_scope_id:scopeId,p_site:site.trim().toLowerCase(),
-          p_flags:patch,p_apply:true,p_expected_count:remaining,p_batch_size:250});
+          p_flags:patch,p_expected_count:remaining,p_batch_size:250});
         const updated=Number(result.updated)||0;
         if(updated<=0||updated>remaining)throw Error('批次沒有進度；已中斷以避免重複處理');
         completed+=updated;remaining=Number(result.remaining)||0;

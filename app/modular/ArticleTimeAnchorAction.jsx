@@ -4,7 +4,7 @@ import {useEffect,useId,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../loc/auth/use-account';
 import {selectManagedScope} from '../loc/scope/scope-data';
-import {readAllAnchorFeature} from '../loc/model/feature-transaction-client.mjs';
+import {readAllAnchorFeature} from '../loc/model/feature-query-client.mjs';
 import {insertRows} from '../loc/db/db-client.mjs';
 import {allocateTimeUid} from '../loc/culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../loc/culture/anniversary.mjs';

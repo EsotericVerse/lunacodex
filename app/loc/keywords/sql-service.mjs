@@ -130,20 +130,20 @@ const validateKeywordFilters=({start='',end='',source=''})=>{
 };
 
 // Fixed, owner-only Keyword editor snapshot. No browser-selected SQL relation,
-// projection, filter or unrestricted SELECT. Each page and its Scope settings
-// share one read-only Transaction; the physical Anchor model is unchanged.
-export async function readKeywordWorkspace(trx,scope,{cursor='',limit=250}={}){
+// projection, filter or unrestricted SELECT. Each page uses bounded direct
+// SELECTs; the physical Anchor model is unchanged.
+export async function readKeywordWorkspace(db,scope,{cursor='',limit=250}={}){
   checkScope(scope);
   if(cursor&&!UID.test(cursor))fail('Invalid Keyword editor cursor',400);
   if(!Number.isInteger(limit)||limit<1||limit>250)
     fail('Invalid Keyword editor page size',400);
-  let q=trx.selectFrom(anchorName(scope))
+  let q=db.selectFrom(anchorName(scope))
     .select(['uid','type','title','description','attr'])
     .where('type','in',['category','class','group','item']);
   if(cursor)q=q.where('uid','>',cursor);
   const rows=await q.orderBy('uid','asc').limit(limit+1).execute();
   const page=rows.slice(0,limit);
-  const config=await trx.selectFrom(configName(scope))
+  const config=await db.selectFrom(configName(scope))
     .select(['current_keyword_class_uid','keyword_min_chars',
       'keyword_min_documents','keyword_class_share_enabled',
       'keyword_meta','staticstime'])
@@ -470,8 +470,8 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   return {...result,reusedDocuments:0,indexedWords:0};
 }
 
-// Fixed-purpose read-only completion check for a particular client operation.
-// No article contents, Pattern UIDs, or SQL authority leave this endpoint.
+// Fixed-purpose read-only completion check for one client operation.
+// No article contents, Pattern UIDs, or SQL authority leave this action.
 export async function readKeywordAnalysisCompletion(db,scope,classUid,attemptId){
   checkScope(scope);checkClass(classUid);
   if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(attemptId||'')))

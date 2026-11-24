@@ -163,8 +163,6 @@
       "deleted": "Deleted.",
       "deleteFailed": "Failed to delete.",
       "remove": "Delete",
-      "childTitleHint": "Title (blank: text bubble; filled: text card)",
-      "bubbleHint": "Leave title blank for a bubble",
       "addChild": "+ Child text card",
       "save": "Save",
       "moveUp": "↑ Move up",

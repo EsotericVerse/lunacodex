@@ -3,90 +3,56 @@
 // review generated files, commit and deploy normally (no build-time SQL).
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createKyselyPublicClient} from '../app/loc/providers/kysely-browser.mjs';
+import {directMcpKysely,closeLocDatabase} from '../app/loc/mcp/native-kysely.mjs';
+import {portableRelation} from '../app/loc/providers/sql-engine-ports.mjs';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
 import {scopeConfigColumns} from '../app/loc/scope/scope-config-fields.mjs';
-import {isLocBlockPage,locAnchorToBlock} from '../app/loc/blocks/loc-block-anchor.mjs';
 import {sourceTaxonomyFromAnchors} from '../app/loc/source/classification.mjs';
 import {publishPublicFiles} from './publish-public-files.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const validScope=/^[a-z][a-z0-9]{0,14}$/;
-const validPage=/^[a-z0-9_-]+$/;
 const encode=value=>JSON.stringify(value).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
-// Explicit public publication uses the existing Kysely Pages reader directly.
-// No ISR or background data reads are required by static output.
-const db=createKyselyPublicClient({role:'anon',
-  fetch:(route,options)=>fetch(new URL(route,'https://loc.lo3rwang.cc').href,options)
-}).schema('silver');
-const publication=await db.publicAction('read_app_bootstrap',
-  {p_scope_id:'loc',p_page_name:'index'});
-if(publication.error)throw new Error('Cannot publish public Bootstrap');
-const site=publication.data;
-if(!site||!Array.isArray(site.registry))throw new Error('Invalid public Bootstrap');
+// Publication is an explicit local operator command using the configured DB URI.
+// It does not expose a public query endpoint or use a browser SQL gateway.
+const port=await directMcpKysely(process.env);
+const db=port.db;
+const table=name=>portableRelation(name,port.engine,port.namespace);
+try{
+const site=PUBLISHED_SITE_BOOTSTRAP;
+if(!Array.isArray(site.registry))throw new Error('Invalid published Scope registry');
 console.log('[public] Source: primary');
 const routes=site.registry.filter(x=>x.active!==false&&x.scope_kind!=='system');
 if(!routes.length||routes.some(x=>!validScope.test(x.scope_id)))throw Error('Invalid public Scope list');
 // Publish typed SiteAnchor nodes; neither LOC nor Scope ArticleTag is needed.
-const {data:sourceRows,error:sourceError}=await db.from('loc_anchor')
-  .select('uid,type,title,invisible,attr')
-  .in('type',['universe','galaxy','domain','from'])
-  .order('uid').range(0,999);
-if(sourceError||!Array.isArray(sourceRows)||!sourceRows.length||sourceRows.length>=1000)
+const sourceRows=await db.selectFrom(table('loc_anchor'))
+  .select(['uid','type','title','invisible','attr'])
+  .where('type','in',['universe','galaxy','domain','from'])
+  .orderBy('uid','asc').limit(1000).execute();
+if(!sourceRows.length||sourceRows.length>=1000)
   throw Error('Cannot publish LOC SiteAnchor source hierarchy');
 const sourceTaxonomy=sourceTaxonomyFromAnchors(sourceRows);
 if(!sourceTaxonomy.categories.length)
   throw Error('LOC SiteAnchor source hierarchy has no typed categories');
 
-// This explicit publication is a byte-for-byte snapshot of authored public
-// Block fields. Do not rewrite content or erase Block entities at publish time.
-const allBlocks=new Map(),routeConfigs=[];
-const cols='uid,page_name,block_eyebrow,block_title,block_subtitle,block_text,block_order,block_entity,block_image';
+// Route configuration remains part of the existing publication contract.
+const routeConfigs=[];
+const tableForScope=id=>table(id);
 for(const row of routes){
-  const id=row.scope_id,table=id;
-  const {data:config,error:configError}=await db.from(table)
-    .select(scopeConfigColumns(id))
-    .eq('id',id).limit(1).maybeSingle();
-  if(configError||!config)throw Error('Missing published Scope Config for '+id);
+  const id=row.scope_id;
+  const config=await db.selectFrom(tableForScope(id))
+    .select(scopeConfigColumns(id).split(',').filter(Boolean))
+    .where('id','=',id).executeTakeFirst();
+  if(!config)throw Error('Missing published Scope Config for '+id);
   routeConfigs.push({scope_id:id,domain:row.domain||null,directory:row.directory||null,active:true,config});
-  // Keep the unrelated paginated Block publication change from latest main.
-  const blocks=[];
-  const pageSize=1000;
-  for(let start=0;start<65535;start+=pageSize){
-    const end=Math.min(65534,start+pageSize-1);
-    const loc=id==='loc';
-    const {data:page,error:blocksError}=await db.from(loc?'loc_anchor':id+'_blocks')
-      .select(loc?'uid,type,title,description,invisible,attr,num':cols)
-      .order(loc?'uid':'block_order').range(start,end);
-    if(blocksError)throw Error('Blocks unavailable for '+id+': '+blocksError.message);
-    blocks.push(...(loc?(page||[])
-      .filter(row=>isLocBlockPage(row.type)&&row.invisible===false)
-      .map(locAnchorToBlock):(page||[])));
-    if(!page||page.length<end-start+1)break;
-  }
-  blocks.sort((a,b)=>String(a.page_name).localeCompare(String(b.page_name))||
-    Number(a.block_order)-Number(b.block_order)||String(a.uid).localeCompare(String(b.uid)));
-  for(const block of blocks){
-    // Existing LOC Governance Blocks publish on the renamed Trace page,
-    // without altering their persisted type or creating a second source.
-    const originalPage=String(block.page_name||'').trim().toLowerCase();
-    const page=id==='loc'&&originalPage==='governance'?'trace':originalPage;
-    if(!validPage.test(page))throw Error('Invalid published page '+id+': '+page);
-    // Public group_manage is the first Hero row only. Orders 2+ are legacy
-    // management-entry placeholders; the current management panes use their
-    // own authoritative page names and never consume these published rows.
-    if(id==='loc'&&page==='group_manage'&&Number(block.block_order)!==1)continue;
-    const key=id+'/'+page;
-    if(!allBlocks.has(key))allBlocks.set(key,[]);
-    allBlocks.get(key).push({...block,scope:id,page_name:page});
-  }
 }
-const {data:locThemes,error:themesError}=await db.from('loc')
-  .select('theme').eq('id','loc').maybeSingle();
+const locThemes=await db.selectFrom(table('loc')).select('theme')
+  .where('id','=','loc').executeTakeFirst();
 const themes=Array.isArray(locThemes?.theme)
   ?locThemes.theme.slice().sort((a,b)=>Number(a.theme_order)-Number(b.theme_order))
   :[];
-if(themesError||themes.length!==8)throw Error('Cannot publish eight complete LOC Themes');
+if(themes.length!==8)throw Error('Cannot publish eight complete LOC Themes');
 const palettes=themes.map(theme=>{
   const id=Number(theme.theme_id);
   if(!Number.isInteger(id)||id<1||id>8)throw Error('Invalid Theme ID');
@@ -113,23 +79,9 @@ const entries=[
     '/* LOC Theme '+id+'; generated by sync:public. */\n'+css+'\n'
   ])
 ];
-const manifest=[];
-for(const [key,blocks] of [...allBlocks].sort(([a],[b])=>a.localeCompare(b))){
-  const [scope,page]=key.split('/');
-  entries.push(['app/modular/published-blocks/'+key+'.js',
-    '// Public '+key+' Blocks.\nexport default '+encode(blocks)+';\n']);
-  manifest.push('  '+JSON.stringify(scope+':'+page)+':()=>import(\'./'+key+'.js\')');
-}
-entries.push(['app/modular/published-blocks/index.js',
-  '// Page-level lazy-load manifest; no runtime database reads.\nconst LOADERS={\n'+manifest.join(',\n')+'\n};\n'+
-  'export function hasPublishedBlocks(scopeId,pageName=\'index\'){\n'+
-  '  const key=String(scopeId||\'\')+\':\'+String(pageName||\'index\');\n'+
-  '  return Object.prototype.hasOwnProperty.call(LOADERS,key);\n}\n'+
-  'export async function loadPublishedBlocks(scopeId,pageName=\'index\'){\n'+
-  '  const key=String(scopeId||\'\')+\':\'+String(pageName||\'index\');\n'+
-  '  const load=Object.prototype.hasOwnProperty.call(LOADERS,key)?LOADERS[key]:null;\n'+
-  '  return load?(await load()).default:[];\n}\n']);
-// Generate all files in staging; if installation fails, roll back each moved
-// file and the entire Blocks directory. No partial publication survives errors.
+// Install the remaining explicitly published assets atomically.
 publishPublicFiles(root,entries);
-console.log('[public] '+routes.length+' Scope routes + Config, '+allBlocks.size+' page JS modules, '+themes.length+' CSS palettes. Commit generated files before deploying.');
+console.log('[public] '+routes.length+' Scope routes + Config, '+themes.length+' CSS palettes. Commit generated files before deploying.');
+}finally{
+  await closeLocDatabase(port);
+}

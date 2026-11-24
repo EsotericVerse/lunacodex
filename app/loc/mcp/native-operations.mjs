@@ -5,7 +5,7 @@ import {NATIVE_WRITE_MAX_BYTES} from '../query/query-batch-size.mjs';
 import {sql} from 'kysely';
 import {classifyShortImportFailure} from '../import/import-failure-code.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
-import {readLocAccess} from '../permissions/loc_access.mjs';
+import {readLocAccess,hasLocAccess} from '../permissions/loc_access.mjs';
 import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
 import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
 import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../packages/zenstack/sql-input-shape.mjs';
@@ -14,8 +14,6 @@ import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
 import {executePortableMcp} from '../providers/kysely-mcp.mjs';
 import {executeLocConversation} from './conversations.mjs';
-import {readMemory as readPublicGalaxy} from './galaxy-read.mjs';
-import {articleDistribution} from './article-distribution.mjs';
 import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction,
   prepareManagedKyselyWrite} from '../providers/kysely-management.mjs';
@@ -25,13 +23,19 @@ import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
 import {fixedPolicyWriteModel} from '../../../packages/zenstack/policy-runtime.mjs';
-import {isManagedReadAction,MANAGED_IMPORT_READ_ACTIONS} from '../actions/managed-query-routes.mjs';
+import {isManagedReadAction,isManagedWriteAction}
+  from '../actions/managed-query-routes.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 const JWKS=AUTH+'/api/auth/jwks';
 const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=NATIVE_WRITE_MAX_BYTES;
+const LAS_WRITE_KINDS=new Set(['mcp-sync','mcp-append','mcp-conversation','short-import']);
+const bulkImportEnabled=env=>{
+  const until=Date.parse(String(env?.LOC_BULK_IMPORT_UNTIL||'').trim());
+  return Number.isFinite(until)&&until>Date.now();
+};
 const PUBLISHED_MANAGE_FIELDS=new Set([
   'email','manage_role','active','galaxy_table','anchor_table',
   'domain','directory','parent_scope_id','sort_order'
@@ -54,7 +58,49 @@ function requirePublishedManageWrite(payload){
   }
 }
 
-const KINDS=new Set(['mcp-sync','mcp-append','mcp-read','mcp-search','mcp-conversation','mcp-public-read','mcp-article-stat','short-import','managed-write','managed-transaction','managed-action']);
+const KINDS=new Set(['mcp-sync','mcp-append','mcp-conversation',
+  'short-import','managed-write','managed-transaction','managed-action']);
+export function requireManagedActionGrant(body,claims){
+  const args=body.args||{};
+  const can=(type,scope='')=>hasLocAccess(claims,type,scope);
+  const name=String(body.name||'');
+  let allowed;
+  if(['provision_scope','manage_scope_registry','delete_scope',
+    'loc_admin_settings'].includes(name))allowed=can('global');
+  else if(name==='update_group_member_name')
+    allowed=can('group',String(args.p_group_id||''));
+  else if(name==='save_blocks'){
+    const scope=String(args.p_scope_id||'');
+    const page=String(args.p_type||'').trim();
+    allowed=scope==='loc'&&page!=='index'?can('global'):can('scope',scope);
+  }else if(name==='move_scope_block'){
+    const scope=String(args.p_scope_id||'');
+    const page=String(args.p_page_name||'').trim();
+    allowed=scope==='loc'?can('global')||page==='index'&&can('group','loc'):
+      can('scope',scope);
+  }else{
+    const scope=String(name==='import_shared_keyword_class'
+      ?args.p_target_scope:args.p_scope_id||'');
+    allowed=can('scope',scope);
+  }
+  if(!allowed)throw refusal('LOC managed action Scope permission denied',403);
+}
+function requireManagedRelationGrant(payload,claims){
+  const relation=String(payload?.p_table||'');
+  if(['api.manage','silver.loc','silver.loc_anchor'].includes(relation)){
+    if(!hasLocAccess(claims,'global'))
+      throw refusal('LOC global management permission denied',403);
+    return;
+  }
+  if(relation==='silver.loc_blocks')
+    throw refusal('LOC Blocks are managed through the feature action',403);
+  const match=/^silver\.([a-z][a-z0-9]{0,14})(?:_(?:galaxy|anchor|blocks))?$/.exec(relation);
+  const scope=match?.[1]||'';
+  const allowed=relation==='silver.lrunes_daily'
+    ?hasLocAccess(claims,'scope','lrunes')
+    :Boolean(scope)&&hasLocAccess(claims,'scope',scope);
+  if(!allowed)throw refusal('LOC managed write Scope permission denied',403);
+}
 // api.manage / silver.loc are the only two fixed ZModel control relations a
 // signed global:manage delegation may UPDATE/DELETE (packages/zenstack/policy-runtime.mjs
 // ADMIN_FIXED_WRITES). No insert, no other table. The website retains its
@@ -145,14 +191,27 @@ async function signedClaims(request,fetchImpl,{trustedMcpBridge=false}={}){
 }
 export async function handleNativeLocOperation(request,env={},{
   fetchImpl=globalThis.fetch,database=directMcpKysely,waitUntil,
-  trustedMcpBridge=false,allowedManagedActions=null
+  trustedMcpBridge=false,trustedLocalAction=false,entrypoint=null
 }={}){
   if(request.method!=='POST')return reply({error:{message:'Method not allowed'}},405);
   const requestHost=new URL(request.url).hostname;
+  const requestPath=new URL(request.url).pathname;
   // Only the dedicated LAS bridge may set this server-side option.
   // The dedicated LAS Next.js route maps its trusted request to the MCP
   // audience without changing the extension OAuth claims.
   const host=trustedMcpBridge&&requestHost===WEB_HOST?MCP_HOST:requestHost;
+  // Keep each public route attached to its own fixed purpose. The LOC route
+  // is only the temporarily enabled import path; it cannot alias the LAS
+  // bridge by changing Host or dispatching another operation kind.
+  if((entrypoint==='loc-native'&&
+      (requestHost!==WEB_HOST||requestPath!=='/api/loc-native'))||
+    (entrypoint==='las-native'&&
+      (!trustedMcpBridge||host!==MCP_HOST||requestPath!=='/api/las-native')))
+    return reply({error:{message:'Not found'}},404);
+  // In the default state, reject the LOC bulk endpoint before reading a body.
+  // The route is not an active parser/SQL surface until an operator enables it.
+  if(entrypoint==='loc-native'&&!bulkImportEnabled(env))
+    return reply({error:{message:'LOC bulk write channel is closed'}},404);
   if(host!==MCP_HOST&&host!==WEB_HOST)
     return reply({error:{message:'Not found'}},404);
   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')||''))
@@ -160,6 +219,7 @@ export async function handleNativeLocOperation(request,env={},{
   if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
     return reply({error:{message:'Payload too large'}},413);
   let operationKind='',importPhase='request';
+  let shortImportActor=null;
   let selected=null;
   let releaseAbort=()=>{};
   try{
@@ -172,38 +232,42 @@ export async function handleNativeLocOperation(request,env={},{
     if(!body||typeof body!=='object'||Array.isArray(body)||
       !KINDS.has(body.kind)||typeof body.scopeid!=='string')
       throw refusal('Unsupported LOC business operation');
+    if(entrypoint==='loc-native'&&body.kind!=='short-import')
+      throw refusal('LOC route accepts temporary bulk writes only',404);
+    if(entrypoint==='las-native'&&!LAS_WRITE_KINDS.has(body.kind))
+      throw refusal('LAS bridge accepts fixed LOC write operations only',404);
     if(body.kind==='managed-action'){
       const name=String(body.name||'');
-      if(Array.isArray(allowedManagedActions)&&!allowedManagedActions.includes(name))
-        throw refusal('Managed query does not belong to this route',404);
-      if(Array.isArray(allowedManagedActions)&&name==='loc_admin_settings'&&
-        body.args?.p_operation!=='read')
-        throw refusal('Managed settings write does not belong to this query route',404);
-      if(isManagedReadAction(name,body.args)&&
-        !MANAGED_IMPORT_READ_ACTIONS.includes(name)&&
-        !Array.isArray(allowedManagedActions))
-        throw refusal('Use the feature-specific LOC query route',404);
+      if(isManagedReadAction(name,body.args))
+        throw refusal('LOC reads must use their feature-owned Server Action',404);
+      if(!isManagedWriteAction(name,body.args))
+        throw refusal('Unknown LOC managed write action',404);
     }
     operationKind=body.kind;
     if(operationKind==='short-import')importPhase='identity';
-    // The website exposes only short-import and the fixed-model managed
-    // write. MCP business operations remain restricted to the dedicated
-    // MCP hostname and their own audience.
-    if(host===WEB_HOST&&body.kind!=='short-import'&&body.kind!=='managed-write'&&body.kind!=='managed-transaction'&&body.kind!=='managed-action')
-      throw refusal('Not found',404);
+    // Bulk import is opt-in on every host. The LOC HTTP route and the LAS
+    // bridge cannot accidentally leave this fast write path enabled by default.
+    if(body.kind==='short-import'&&!bulkImportEnabled(env))
+      throw refusal('LOC bulk write channel is closed',404);
+    if(host===WEB_HOST&&!trustedLocalAction){
+      if(body.kind!=='short-import')
+        throw refusal('LOC native endpoint is reserved for temporary bulk writes',404);
+    }
+    // LAS keeps only its named synchronization/conversation write operations.
+    // The website's generic managed-write dispatcher is process-local and is
+    // never exposed as an HTTP API on the LAS bridge.
+    if(host===MCP_HOST&&!LAS_WRITE_KINDS.has(body.kind))
+      throw refusal('LAS bridge accepts fixed LOC write operations only',404);
+    // The website's HTTP channel is a temporarily enabled bulk-write path.
+    // Ordinary saves are in-process Server Actions; feature reads stay local.
     // The LOC administrator creates and removes SQL Scopes only through
     // the verified Web Session. Do not expose DDL through MCP OAuth delegates.
     if(body.kind==='managed-action'&&
       ['provision_scope','manage_scope_registry','delete_scope'].includes(body.name)&&
       host!==WEB_HOST)throw refusal('LOC Scope lifecycle is website-only',403);
-    // The media importer is a website-only read for existing behavior, NOT an
-    // additional MCP/Gateway operation or delegated authorization scope.
-    if(body.kind==='managed-action'&&
-       ['media_anchor_candidates','anchor_import_page','import_site_presence',
-         'import_site_id_candidates','import_created_at_candidates',
-         'import_occupied_createtimes','search_galaxy_private',
-         'save_scope_trace_edit'].includes(body.name)&&host!==WEB_HOST)
-      throw refusal('Not found',404);
+    if(body.kind==='mcp-conversation'&&
+      (host!==MCP_HOST||!['record','record_ordered'].includes(body.action)))
+      throw refusal('LOC native channel accepts conversation writes only',404);
     // The verified signed claim, not the HTTP body, selects the connection.
     const claims=await signedClaims(request,fetchImpl,{trustedMcpBridge:host===MCP_HOST});
     // LOC Auth verifies identity; only published JavaScript grants may
@@ -246,6 +310,18 @@ export async function handleNativeLocOperation(request,env={},{
     claims.grants=rights.grants;
     if(writeKinds.has(body.kind)&&!rights.canWrite)
       throw refusal('LOC write permission denied',403);
+    if(body.kind==='managed-action')
+      requireManagedActionGrant(body,claims);
+    if(body.kind==='managed-write')
+      requireManagedRelationGrant(body.payload,claims);
+    if(body.kind==='managed-transaction')
+      for(const item of body.operations)requireManagedRelationGrant(item,claims);
+    if(body.kind==='short-import'){
+      // Check the exact signed Scope grant and the complete import envelope
+      // before opening any database connection.
+      importPhase='delegation';
+      shortImportActor=authorizeDelegatedShortImport(body,claims);
+    }
     // Authorization is resolved from LOC's published JS before DB connection.
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
@@ -275,34 +351,9 @@ export async function handleNativeLocOperation(request,env={},{
         ?body.operations.map(payload=>prepareManagedKyselyWrite({kind:'managed-write',payload}))
         :body.kind==='managed-write'?prepareManagedKyselyWrite(body):null
       :null;
-    // Private Search is a website-only management action requiring a verified
-    // Session and Scope grants; a client-side switch grants nothing.
-    // Galaxy data and statistics remain owned by LOC. LAS only maps request
-    // envelopes and forwards a verified OAuth bearer to these fixed operations.
-    if(body.kind==='mcp-public-read'){
-      if(host!==MCP_HOST)throw refusal('MCP public read only',404);
-      const args=body.args||{};
-      if(args.scopeid!==undefined&&args.scopeid!==body.scopeid)
-        throw refusal('MCP Scope mismatch',400);
-      const data=await readPublicGalaxy({...args,scopeid:body.scopeid},env,{
-        waitUntil,databasePort:selected
-      });
-      return reply({data});
-    }
-    if(body.kind==='mcp-article-stat'){
-      if(host!==MCP_HOST||body.scopeid!=='loc')
-        throw refusal('Invalid MCP article statistics scope',400);
-      const data=await articleDistribution(body.args||{},env,{
-        database:async()=>selected,borrowed:true
-      });
-      return reply({data});
-    }
+    // Galaxy reads stay in their feature Server Actions. LAS only maps write
+    // envelopes and forwards a verified OAuth bearer to fixed write operations.
     if(body.kind==='mcp-conversation'){
-      if(host!==MCP_HOST)throw refusal('MCP conversation endpoint only',404);
-      if(body.action==='check'){
-        const result=await executeLocConversation(selected.db,body,claims);
-        return reply({data:result});
-      }
       const result=await selected.db.transaction().execute(async trx=>{
         if(writeKinds.has(body.kind)&&!claims.me)
           throw refusal('LOC write permission denied',403);
@@ -312,10 +363,8 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      importPhase='delegation';
-      const actor=authorizeDelegatedShortImport(body,claims);
       importPhase='validation';
-      const receipt=await processShortImport(body.batch,actor,{
+      const receipt=await processShortImport(body.batch,shortImportActor,{
         store:portableShortImportStore(selected.db,sql,{
           engine:selected.engine,namespace:selected.namespace,
           onPhase:phase=>{importPhase=phase;}})
@@ -395,15 +444,6 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      const readOnlyManagedAction=body.kind==='managed-action'&&
-        isManagedReadAction(body.name,body.args);
-      if(body.kind==='managed-action'&&readOnlyManagedAction){
-        if(body.name==='search_galaxy_private'&&host!==WEB_HOST)
-          throw refusal('Search is website-only',404);
-        bindLocAuthorization(selected.db,{role:claims.role,claims,engine:selected.engine});
-        const output=await executeManagedKyselyAction(selected.db,body,claims);
-        return reply({data:output?.data??null});
-      }
       const lifecycle=body.kind==='managed-action'&&
         ['provision_scope','manage_scope_registry','delete_scope'].includes(body.name);
       // Registry route uniqueness and DDL require a stable snapshot across
@@ -423,8 +463,6 @@ export async function handleNativeLocOperation(request,env={},{
         if(body.kind==='managed-action'){
           if(selected.engine!=='postgres')
             throw refusal('This LOC management action needs a portable implementation',503);
-          if(body.name==='search_galaxy_private'&&host!==WEB_HOST)
-            throw refusal('Search is website-only',404);
           return (await executeManagedKyselyAction(trx,body,claims)).data;
         }
         const payload=body.payload||{};
@@ -455,8 +493,7 @@ export async function handleNativeLocOperation(request,env={},{
       return reply({data:row});
     }
     const runMcp=db=>executePortableMcp(db,body,claims,{
-      engine:selected.engine,namespace:selected.namespace,
-      tableName:selected.tableName,fieldMap:selected.fieldMap});
+      engine:selected.engine,namespace:selected.namespace});
     // Reuse the JavaScript grants already resolved for this request.
     // Do not fetch the registry again inside each MCP business operation.
     if(body.kind==='mcp-sync'||body.kind==='mcp-append'){
@@ -468,10 +505,7 @@ export async function handleNativeLocOperation(request,env={},{
       });
       return reply({data:result.data});
     }
-    // MCP reads run directly on the selected Kysely connection. Transactions
-    // are reserved for writes that need an atomic save boundary.
-    const result=await runMcp(selected.db);
-    return reply({data:result.data});
+    throw refusal('LOC native channel accepts writes only',404);
   }catch(error){
     // A trusted Authority Profile failure has a stable, non-secret code.
     // Do not turn a missing primary connection into an unrelated HTTP 500,

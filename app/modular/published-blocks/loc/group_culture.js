@@ -1,2 +1,0 @@
-// Public loc/group_culture Blocks. One-time snapshot from authoritative Neon database.
-export default [{"uid":"956D92FA","scope":"loc","page_name":"group_culture","block_text":"\u003cp>把作品放進\u003cstrong>時間長河\u003c/strong>，以建議\u003cstrong>定錨點\u003c/strong>為基準，來找尋各項\u003cstrong>時期\u003c/strong>的變化趨勢。\u003c/p>\u003cp>\u003cbr>\u003c/p>","block_image":"{\"url\": \"https://loc.lo3rwang.cc/pics/LOC-culture.jpg\", \"source\": \"custom\"}","block_order":1,"block_title":"文化","block_entity":[],"block_eyebrow":"Culture","block_subtitle":"\u003cp>\u003cbr>\u003c/p>"}];

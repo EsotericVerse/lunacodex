@@ -1,122 +1,31 @@
 import {canLocAccess} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {sql} from 'kysely';
 import {zmodelGalaxyPointJoin} from '../../../packages/zenstack/model-column-guard.mjs';
-import {FIXED_MANAGE_ROWS} from '../permissions/fixed-manage-registry.mjs';
 import {publishedManagedScope} from './published-managed-scope.mjs';
 import {readItemKeywordProjection,itemKeywordStatistics,itemScope} from '../keywords/item-count-analysis.mjs';
-import {sourceTaxonomyFromAnchors} from '../source/classification.mjs';
 
-// Daily/overview totals scan the full requested interval; article pagination must not cap aggregates.
-// Statistics loads dimensions on demand; no periodic full-site query loop or eager Anchor/media join.
-// Statistics never read or filter Galaxy.content: content is touched only by
-// bulk keyword analysis, uid-exact article reads and search.
+// Fixed feature projections used by LOC-owned Server Actions.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const MODES=new Set(['loc','daily','overview','earliest','totals','search_summary',
-  'lane_daily','trace_places','trace_territory','keyword_summary','keyword_catalog','shared_classes','trace_daily','trace_keywords',
-  'culture_density','culture_anchors','culture_list']);
 function reject(message,status=400){
-  const error=new Error(message);error.httpStatus=status;throw error;
-}
-function dateOnly(value){
-  if(value==null||value==='')return null;
-  if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))reject('Invalid statistics date');
-  return value;
-}
-function scopeId(value){const id=String(value||'').trim().toLowerCase();
-  if(!SCOPE.test(id))reject('Invalid statistics Scope');return id;
-}
-function registry(_trx,scope){
-  // The authored JS publication is the only authority for Scope routing.
-  // Statistics never need a join against api.manage.
-  const row=publishedManagedScope(scope);
-  if(!row||row.manage_role!=='scope'||row.active!==true)
-    reject('Unknown statistics Scope');
-  return row;
-}
-function safeName(value,fallback){const name=String(value||fallback);
-  if(!/^[a-z][a-z0-9_]*$/.test(name))reject('Invalid registered SQL relation');return name;
+  throw Object.assign(new Error(message),{httpStatus:status});
 }
 function relation(scope,suffix){return sql.ref('silver.'+scope+'_'+suffix);}
 async function owns(trx,scope,role){
   return role==='authenticated'&&await canLocAccess(trx,'scope',scope);
 }
-async function dailyStats(trx,scope,start,end,includeUndated=false,
-  {withEarliest=false,totalsOnly=false}={}){
-  const galaxy=relation(scope,'galaxy');
-  // LOC landing needs only daily totals; do not group by Galaxy.site.
-  const grouped=sql`with s as (
-    select coalesce(date::text,'') as d,
-      ${totalsOnly?sql`null::text`:sql`btrim(coalesce(site,''))`} as c
-    from ${galaxy}
-    where statics is true
-      and (${includeUndated} or date is not null)
-      and (${start}::date is null or date>=${start}::date)
-      and (${end}::date is null or date<=${end}::date)
-  )
-  select s.d as day,
-    ${totalsOnly?sql`'total'::text`:sql`case when grouping(s.c)=1 then 'total'::text else 'source'::text end`} as kind,
-    ${totalsOnly?sql`'文字作品'::text`:sql`case when grouping(s.c)=1 then '文字作品'::text else s.c end`} as category,
-    count(*)::integer as item_count
-  from s
-  ${totalsOnly?sql`group by s.d`:sql`group by grouping sets ((s.d,s.c),(s.d))`}`;
-  if(!withEarliest){
-    const result=await sql`${grouped} order by 1,2,3`.execute(trx);
-    return result.rows;
-  }
-  // The date filter applies only to daily buckets, never to historical MIN.
-  // The single history row also survives when the interval has no buckets.
-  const result=await sql`with daily as (${grouped}),
-    history as (select min(date) as earliest from ${galaxy} where statics is true)
-    select history.earliest,daily.day,daily.kind,daily.category,daily.item_count
-    from history left join daily on true
-    order by daily.day,daily.kind,daily.category`.execute(trx);
-  return {earliest:result.rows[0]?.earliest??null,
-    rows:result.rows.filter(row=>row.kind!==null).map(({earliest,...row})=>row)};
-}
-async function earliest(trx,scope){
-  const galaxy=relation(scope,'galaxy');
-  const result=await sql`select min(date) as day from ${galaxy}
-    where statics is true`.execute(trx);
-  return result.rows[0]?.day??null;
-}
-async function sourceTotals(trx,scope,start,end){
-  const galaxy=relation(scope,'galaxy');
-  const response=await sql`select 'source'::text as kind,
-      btrim(coalesce(site,'')) as category,count(*)::integer as item_count
-    from ${galaxy} where statics is true
-      and (${start}::date is null or date>=${start}::date)
-      and (${end}::date is null or date<=${end}::date)
-    group by 1,2 order by 1,2`.execute(trx);
-  return response.rows;
-}
-async function scopeOverview(trx,scope,start,end){
-  const [summary,sourceAnchors]=await Promise.all([
-    dailyStats(trx,scope,start,end,false,{withEarliest:true}),
-    trx.selectFrom('silver.loc_anchor')
-      .select(['uid','type','title','invisible','attr'])
-      .where('type','in',ANCHOR_TYPE_GROUPS.source)
-      .where('invisible','=',false).execute()
-  ]);
-  // Statistics and Culture use the same UID-linked SiteAnchor hierarchy.
-  // ArticleTag must not be reinterpreted as a second source taxonomy.
-  const {categories,aliases}=sourceTaxonomyFromAnchors(sourceAnchors);
-  return {earliest:summary.earliest,rows:summary.rows,categories,aliases};
-}
-async function searchSummary(trx,options,{publishedScopeIds=null}={}){
+export async function searchSummary(trx,options,{publishedScopeIds=null,
+  engine='postgres',namespace='silver'}={}){
   const scopes=options.scopeIds;
   if(!Array.isArray(scopes)||scopes.length>100||
     scopes.some(x=>typeof x!=='string'||!SCOPE.test(x)))
     reject('Invalid Scope Search summary request');
   const requested=[...new Set(scopes)].sort();
   if(!requested.length)return {rows:[]};
-  // The published Scope index is already verified at the public boundary.
-  // Keep its membership contract and never require api.manage for anonymous
-  // Search. PG-only UNION ALL batches independent Scope configuration tables,
-  // avoiding one SQL round trip per Scope without merging their permissions.
+  // Each Scope contributes only its published search summary. Read its own
+  // fixed config relation in bounded parallel chunks; no cross-scope SQL route.
   const selected=new Set(publishedScopeIds===null?requested:publishedScopeIds);
   const scopeIds=requested.filter(scope=>{
     if(!selected.has(scope))return false;
@@ -124,12 +33,19 @@ async function searchSummary(trx,options,{publishedScopeIds=null}={}){
     return published?.manage_role==='scope'&&published.active===true;
   });
   const statusByScope=new Map();
-  for(let i=0;i<scopeIds.length;i+=20){
-    const selected=scopeIds.slice(i,i+20);
-    const queries=selected.map(scope=>sql`select ${scope}::text as scope_id,status
-      from ${sql.ref('silver.'+scope)} where id=${scope}`);
-    const response=await sql`${sql.join(queries,sql` union all `)}`.execute(trx);
-    for(const row of response.rows)statusByScope.set(row.scope_id,row.status);
+  for(let i=0;i<scopeIds.length;i+=10){
+    const batch=scopeIds.slice(i,i+10);
+    const rows=await Promise.all(batch.map(async scope=>({scope,
+      row:await trx.selectFrom(portableRelation(scope,engine,namespace))
+        .select('status').where('id','=',scope).executeTakeFirst()
+    })));
+    for(const {scope,row} of rows){
+      let status=row?.status;
+      if(typeof status==='string'){
+        try{status=JSON.parse(status)}catch{status=null}
+      }
+      statusByScope.set(scope,status);
+    }
   }
   const result=[];
   for(const scope of scopeIds){
@@ -142,7 +58,7 @@ async function searchSummary(trx,options,{publishedScopeIds=null}={}){
   }
   return {rows:result};
 }
-async function tracePlaces(trx,scope,start,end,{statisticsOnly=false}={}){
+export async function tracePlaces(trx,scope,start,end,{statisticsOnly=false}={}){
   const galaxy=relation(scope,'galaxy');
   // Trace owns its flag. A Statistics view requires both Galaxy.trace and
   // Galaxy.statics, without changing the Trace page's own counts.
@@ -173,7 +89,7 @@ async function keywordClassInfo(trx,scope,anchor,requested,role){
   const done=meta.by_class?.[uid]?.completedAt;
   return {uid,allowed,ready:Boolean(done),config};
 }
-async function sharedClasses(trx,scope,anchor,role){
+export async function sharedClasses(trx,scope,anchor,role){
   const owner=await owns(trx,scope,role);
   const cfg=await trx.selectFrom('silver.'+scope).select('keyword_meta')
     .where('id','=',scope).executeTakeFirst();
@@ -254,7 +170,7 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,{withTotals
 // A single indexed calendar-year GROUP BY includes every article with a
 // place_id, not just points belonging to the selected route or trace=true.
 // No content, article rows, unlinked source tables or coordinates leave SQL.
-async function traceTerritory(trx,scope,start,end,{withPoints=false,statisticsOnly=false}={}){
+export async function traceTerritory(trx,scope,start,end,{withPoints=false,statisticsOnly=false}={}){
   if(!start||!end)reject('Territory statistics require a bounded period');
   const galaxy=relation(scope,'galaxy');
   // Count all Galaxy articles linked to a visible Point, regardless of Galaxy
@@ -291,7 +207,7 @@ async function traceTerritory(trx,scope,start,end,{withPoints=false,statisticsOn
     .orderBy('g.site','asc').execute();
   return rows.map(row=>({...row,item_count:Number(row.item_count||0)}));
 }
-async function traceDaily(trx,scope,places,start,end,source){
+export async function traceDaily(trx,scope,places,start,end,source){
   const galaxy=relation(scope,'galaxy');
   const result=await sql`select (g.createtime at time zone 'Asia/Taipei')::date as day,
       g.place_id::text as category,count(*)::bigint as item_count
@@ -312,7 +228,7 @@ const LANE_PLATFORMS=Object.freeze({
   facebook:['%facebook%','fb'],threads:['%threads%'],
   instagram:['%instagram%','ig','%reels%']
 });
-async function laneDaily(trx,scope,start,end,options){
+export async function laneDaily(trx,scope,start,end,options){
   // The three-month Culture item comparison reads only the article's
   // canonical Galaxy.site, never a parallel MediaAnchor statistics table.
   const exact=options.exact==null||options.exact===''?null:String(options.exact);
@@ -333,7 +249,7 @@ async function laneDaily(trx,scope,start,end,options){
     from ${table} g where ${where} group by 1 order by 1`.execute(trx);
   return result.rows.map(row=>({day:row.day,item_count:Number(row.item_count||0)}));
 }
-async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,requested,role){
+export async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,requested,role){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role);
   if(!info?.allowed||!info.ready)return [];
   const catalog=await keywordCatalog(trx,scope,anchor,requested,role,{withTotals:false});
@@ -367,382 +283,4 @@ export async function keywordSummary(trx,scope,anchor,start,end,source,requested
     minChars:Math.max(0,Number(info.config?.keyword_min_chars)||0)
   });
   return res.daily;
-}
-
-// Culture reads are ordinary portable Kysely operations: no stored RPC,
-// no management-permission lookup, and no Galaxy UID in density results.
-async function simpleCultureData(db,scope,mode,start,end,{engine='postgres',namespace='silver'}={}){
-  const table=name=>engine==='postgres'?'silver.'+name:portableRelation(name,engine,namespace);
-  if(mode==='culture_anchors'){
-    const rows=await db.selectFrom(table(scope+'_anchor'))
-      .select(['uid','type','title','attr'])
-      .where('type','in',['date','period','era'])
-      .where('invisible','=',false).execute();
-    return rows.map(row=>({...row,attr:typeof row.attr==='string'
-      ?JSON.parse(row.attr||'{}'):row.attr||{}}));
-  }
-  if(!start||!end)reject('Culture density requires a bounded date range');
-  // Time River groups by the published Galaxy.date, not by upload time.
-  // Apply the same date window to WHERE so an existing Galaxy.date index can
-  // prune irrelevant articles before grouping; no full text or Anchor JOIN.
-  const rows=await db.selectFrom(table(scope+'_galaxy'))
-    .select(['date','site'])
-    .select(eb=>eb.fn.countAll().as('item_count'))
-    .where('culture','=',true)
-    .where('date','>=',start)
-    .where('date','<=',end)
-    .where('date','is not',null)
-    .groupBy(['date','site']).orderBy('date','asc').execute();
-  return rows.map(row=>({day:portableDay(row.date),site:String(row.site||''),
-    item_count:Number(row.item_count||0)}));
-}
-
-
-// One exact bounded Culture article page. This is never called by the rivers
-// or category expansion, and does not depend on the Search visibility flag.
-async function cultureListPage(db,scope,start,end,options,{engine='postgres',namespace='silver'}={}){
-  if(!start||!end||start>end)reject('Invalid Culture list dates');
-  const site=String(options?.site||'').trim();
-  const offset=Number(options?.offset||0);
-  if(!site||site.length>120||!Number.isSafeInteger(offset)||offset<0)
-    reject('Invalid Culture list selection');
-  const table=engine==='postgres'?'silver.'+scope+'_galaxy':
-    portableRelation(scope+'_galaxy',engine,namespace);
-  // Every article list uses the shared GalaxyList projection. The response
-  // still redacts hidden rows below, but the SQL boundary no longer carries
-  // a second ad-hoc list column set.
-  const raw=await db.selectFrom(table).select(galaxyReadColumns('GalaxyList'))
-    .where('date','>=',start).where('date','<=',end)
-    .where('site','=',site).where('culture','=',true)
-    .orderBy('createtime','desc').orderBy('uid','asc').limit(100).offset(offset).execute();
-  const rows=raw.map(row=>row.list===false
-    ?{hidden:true,title:'本文已隱藏',list:false}
-    :{uid:String(row.uid),date:portableDay(row.date),
-      title:String(row.title||''),list:true,hidden:false});
-  return {rows,hasMore:raw.length===100,
-    nextCursor:raw.length===100?{offset:offset+raw.length}:null};
-}
-
-export async function executeKyselyAnalytics(trx,body,{role='anon',publishedScopeIds=null}={}){
-  const args=body?.args??body;
-  const mode=String(args.p_view||'').trim().toLowerCase();
-  const scope=scopeId(args.p_scope_id);
-  const start=dateOnly(args.p_start),end=dateOnly(args.p_end);
-  const options=args.p_options??{};
-  if(!MODES.has(mode)||!options||typeof options!=='object'||Array.isArray(options)||
-     start&&end&&start>end)reject('Invalid statistics parameters');
-  if(mode==='culture_density'||mode==='culture_anchors'||mode==='culture_list'){
-    // Culture list is only a bounded UID/date/title/list projection; hidden
-    // rows are redacted before the browser receives the numeric/list payload.
-    await sql`reset role`.execute(trx);
-    return {data:mode==='culture_list'
-      ?await cultureListPage(trx,scope,start,end,options)
-      :await simpleCultureData(trx,scope,mode,start,end),count:null};
-  }
-  // Legacy summaries were SECURITY DEFINER aggregates. Keep the same public
-  // totals without exposing private article text or private keyword metadata.
-  await sql`reset role`.execute(trx);
-  if(mode==='search_summary'){
-    if(scope!=='loc'||start||end)reject('Invalid Search summary request');
-    return {data:await searchSummary(trx,options,{publishedScopeIds}),count:null};
-  }
-  if(mode==='loc'){
-    if(scope!=='loc')reject('Invalid LOC statistics Scope');
-    const groups=FIXED_MANAGE_ROWS.filter(row=>
-      row.manage_role==='scope'&&row.active===true&&
-      publishedManagedScope(row.id)?.active===true)
-      .sort((a,b)=>a.sort_order-b.sort_order||a.id.localeCompare(b.id));
-    const titles=groups.length?await trx.selectFrom('silver.loc')
-      .select(['id','display_name'])
-      .where('id','in',groups.map(group=>group.id)).execute():[];
-    const displayNames=new Map(titles.map(row=>[row.id,row.display_name]));
-    const scopes=[],rows=[];let first=null;
-    for(const group of groups){
-      if(!SCOPE.test(group.id))continue;
-      const galaxy=safeName(group.galaxy_table,'galaxy');
-      if(galaxy!=='galaxy')continue;
-      // LOC Statistics starts with Galaxy numeric data ONLY. No Anchor/Media
-      // existence probe or implicit join is allowed on the overview path.
-      const relation=await sql`select to_regclass(${'silver.'+group.id+'_'+galaxy}) is not null as galaxy_exists`.execute(trx);
-      if(!relation.rows[0]?.galaxy_exists)continue;
-      scopes.push({scope_id:group.id,
-        display_name:displayNames.get(group.id)||group.id});
-      const summary=await dailyStats(trx,group.id,start,end,false,
-        {withEarliest:true,totalsOnly:true});
-      rows.push(...summary.rows.map(r=>({scope_id:group.id,
-        day:r.day,item_count:r.item_count})));
-      const early=summary.earliest;
-      if(early&&(!first||String(early)<String(first)))first=early;
-    }
-    return {data:{earliest:first,scopes,rows},count:null};
-  }
-  const reg=publishedScopeIds?.includes(scope)
-    ?{galaxy_table:'galaxy',anchor_table:'anchor'}
-    :await registry(trx,scope);
-  const galaxy=safeName(reg.galaxy_table,'galaxy'),anchorSuffix=safeName(reg.anchor_table,'anchor');
-  if(galaxy!=='galaxy')reject('Unsupported configured Galaxy relation');
-  let data;
-  if(mode==='lane_daily')data=await laneDaily(trx,scope,start,end,options);
-  else if(mode==='daily')data=await dailyStats(trx,scope,start,end,options.includeUndated===true);
-  else if(mode==='earliest')data=await earliest(trx,scope);
-  else if(mode==='totals')data=await sourceTotals(trx,scope,start,end);
-  else if(mode==='overview')data=await scopeOverview(trx,scope,start,end);
-  else if(mode==='trace_places')data=await tracePlaces(trx,scope,start,end,{
-    statisticsOnly:options.statisticsOnly===true
-  });
-  else if(mode==='trace_territory')data=await traceTerritory(trx,scope,start,end,{
-    withPoints:options.withPoints===true,
-    statisticsOnly:options.statisticsOnly===true
-  });
-  else if(mode==='shared_classes')data=await sharedClasses(trx,scope,
-    'silver.'+scope+'_'+anchorSuffix,role);
-  else if(mode==='keyword_catalog')data=await keywordCatalog(trx,scope,
-    'silver.'+scope+'_'+anchorSuffix,options.classUid,role);
-  else if(mode==='keyword_summary')data=await keywordSummary(trx,scope,
-    'silver.'+scope+'_'+anchorSuffix,start,end,options.source||null,options.classUid,role);
-  else{
-    const ids=options.placeIds;
-    if(!Array.isArray(ids)||!ids.length||ids.length>80||
-       ids.some(uid=>!UID.test(String(uid||''))))reject('Invalid Trace Point UID list');
-    data=mode==='trace_daily'
-      ?await traceDaily(trx,scope,ids,start,end,options.source||null)
-      :await traceKeywordGroups(trx,scope,'silver.'+scope+'_'+anchorSuffix,
-        ids,start,end,options.source||null,options.classUid,role);
-  }
-  return {data,count:null};
-}
-
-function portableDay(value){
-  if(value===null||value===undefined)return '';
-  if(value instanceof Date)return value.toISOString().slice(0,10);
-  return String(value).slice(0,10);
-}
-function portableStatBase(db,table,start,end,flag='statics',includeUndated=false){
-  let query=db.selectFrom(table).where(flag,'=',true);
-  if(!includeUndated)query=query.where('date','is not',null);
-  if(start)query=query.where('date','>=',start);
-  if(end)query=query.where('date','<=',end);
-  return query;
-}
-// Portable SQL: return grouped counts and absolute earliest in a single
-// statement. The history row stays present for empty filtered periods.
-async function portableStatsWithEarliest(db,table,start,end,fields,includeUndated=false){
-  let counts=portableStatBase(db,table,start,end,'statics',includeUndated);
-  for(const field of fields){
-    if(field==='date'&&includeUndated)continue;
-    counts=counts.where(field,'is not',null);
-  }
-  const daily=counts.select(fields)
-    .select(eb=>eb.fn.countAll().as('n')).groupBy(fields).as('daily');
-  const history=db.selectFrom(table)
-    .select(eb=>eb.fn.min('date').as('earliest'))
-    .where('statics','=',true).as('history');
-  return db.selectFrom(history).leftJoin(daily,join=>join.onTrue())
-    .select(['history.earliest','daily.date','daily.n',
-      ...(fields.includes('site')?['daily.site']:[])])
-    .orderBy('daily.date','asc').execute();
-}
-// Common LOC statistics, implemented with dialect-native Kysely builders.
-export async function executePortableKyselyAnalytics(db,body,{engine,namespace='',role='anon'}={}){
-  const args=body?.args??body;
-  const scope=scopeId(args.p_scope_id),mode=String(args.p_view||'').trim().toLowerCase();
-  const start=dateOnly(args.p_start),end=dateOnly(args.p_end);
-  const options=args.p_options??{};
-  if(start&&end&&start>end||!options||typeof options!=='object'||Array.isArray(options))
-    reject('Invalid statistics range');
-  if(!MODES.has(mode))reject('Unknown LOC statistics view');
-  if(mode==='culture_density'||mode==='culture_anchors'||mode==='culture_list')
-    return {data:mode==='culture_list'
-      ?await cultureListPage(db,scope,start,end,options,{engine,namespace})
-      :await simpleCultureData(db,scope,mode,start,end,{engine,namespace}),count:null};
-  if(mode==='search_summary'){
-    if(scope!=='loc'||start||end)reject('Invalid Search summary request');
-    const ids=options.scopeIds;
-    if(!Array.isArray(ids)||ids.length>100||
-      ids.some(id=>typeof id!=='string'||!SCOPE.test(id)))
-      reject('Invalid Search summary Scope list');
-    const tables=await db.introspection.getTables();
-    const present=new Set(tables
-      .filter(t=>engine==='mysql'||!t.schema||t.schema===namespace)
-      .map(t=>t.name));
-    const rows=[];
-    for(const id of [...new Set(ids)].sort()){
-      if(!present.has(id+'_galaxy'))continue;
-      const relation=portableRelation(id+'_galaxy',engine,namespace);
-      const count=await db.selectFrom(relation).select(eb=>[
-        eb.fn.countAll().as('article_count'),
-        eb.fn.sum(eb.fn(engine==='mssql'?'len':'char_length',['content']))
-          .as('word_count'),
-        eb.fn.min('date').as('first_date'),
-        eb.fn.max('date').as('last_date')
-      ]).executeTakeFirst();
-      rows.push({scope_id:id,article_count:Number(count?.article_count||0),
-        word_count:Number(count?.word_count||0),
-        first_date:portableDay(count?.first_date)||null,
-        last_date:portableDay(count?.last_date)||null,
-        refreshed_at:null});
-    }
-    return {data:{rows},count:null};
-  }
-  if(mode==='loc'&&scope==='loc'){
-    // A self-hosted LOC database only needs Galaxy + Anchor per Scope.
-    // Kysely introspection replaces the old LOC registry RPC.
-    const tables=await db.introspection.getTables();
-    const present=new Set(tables
-      .filter(t=>engine==='mysql'||!t.schema||t.schema===namespace)
-      .map(t=>t.name));
-    const ids=[...present].filter(name=>name.endsWith('_galaxy'))
-      .map(name=>name.slice(0,-'_galaxy'.length))
-      .filter(id=>SCOPE.test(id)&&present.has(id+'_anchor')).sort();
-    const scopes=[],rows=[];let earliest=null;
-    for(const id of ids){
-      const relation=portableRelation(id+'_galaxy',engine,namespace);
-      // No Source grouping for the LOC landing; one SQL also returns
-      // the full-history earliest, regardless of the selected window.
-      const counted=await portableStatsWithEarliest(db,relation,start,end,['date']);
-      const counts=counted.filter(row=>row.n!=null);
-      const firstDay=portableDay(counted[0]?.earliest);
-      if(firstDay&&(!earliest||firstDay<earliest))earliest=firstDay;
-      scopes.push({scope_id:id,display_name:id});
-      for(const row of counts){
-        const day=portableDay(row.date);
-        rows.push({scope_id:id,day,item_count:Number(row.n||0)});
-
-      }
-    }
-    return {data:{earliest,scopes,rows},count:null};
-  }
-  if(mode==='shared_classes'||mode==='keyword_catalog'){
-    // The external SQL installation has Galaxy and Anchor, not the
-    // historical scope configuration/RPC tables. Private classifications
-    // must remain private until the verified owner authorizes them.
-    const owner=role==='authenticated'&&await canLocAccess(db,'scope',scope);
-    if(!owner)return {data:mode==='shared_classes'?[]:{},count:null};
-    const table=portableRelation(scope+'_anchor',engine,namespace);
-    const parse=row=>({...row,attr:typeof row.attr==='string'
-      ?JSON.parse(row.attr):row.attr||{}});
-    const classes=(await db.selectFrom(table)
-      .select(['uid','type','title','description','attr'])
-      .where('type','=','class').orderBy('title','asc').execute()).map(parse);
-    if(mode==='shared_classes')return {data:classes.map(row=>({
-      scopeId:scope,classUid:row.uid,name:row.title,category:row.uid
-    })),count:null};
-    const uid=String(options.classUid||classes[0]?.uid||'');
-    if(!UID.test(uid))return {data:{},count:null};
-    const root=classes.find(row=>row.uid===uid);
-    if(!root)return {data:{class_uid:uid,rows:[]},count:null};
-    const references=row=>{
-      const values=row?.attr?.uid??row?.attr?.groups??row?.attr?.items;
-      return Array.isArray(values)?values.filter(value=>UID.test(String(value))):[];
-    };
-    const groupsIds=references(root);
-    const groups=groupsIds.length?(await db.selectFrom(table)
-      .select(['uid','type','title','description','attr'])
-      .where('type','=','group').where('uid','in',groupsIds).execute()).map(parse):[];
-    const byGroup=new Map(groups.map(row=>[row.uid,row]));
-    const ordered=groupsIds.map(uid=>byGroup.get(uid)).filter(Boolean);
-    const itemIds=[...new Set(ordered.flatMap(references))];
-    const items=itemIds.length?(await db.selectFrom(table)
-      .select(['uid','type','title','description','attr'])
-      .where('type','=','item').where('uid','in',itemIds).execute()).map(parse):[];
-    const byItem=new Map(items.map(row=>[row.uid,row]));
-    const view=row=>({uid:row.uid,type:row.type,name:row.title,
-      desc:row.type==='item'?'':row.description,
-      lists:row.type==='item'?[]:references(row),uid_lists:[]});
-    return {data:{class_uid:uid,rows:[view(root),...ordered.map(view),
-      ...ordered.flatMap(group=>references(group).map(uid=>byItem.get(uid))
-        .filter(Boolean).map(view))]},count:null};
-  }
-  const galaxy=portableRelation(scope+'_galaxy',engine,namespace);
-  const anchor=portableRelation(scope+'_anchor',engine,namespace);
-  const grouped=async(flag,fields,opts={})=>{
-    let query=portableStatBase(db,galaxy,start,end,flag,opts.includeUndated);
-    if(opts.requireStatics===true)query=query.where('statics','=',true);
-    for(const field of fields){
-      // Daily's includeUndated option must retain NULL dates. Other
-      // dimensions remain non-null to preserve existing grouping contract.
-      if(field==='date'&&opts.includeUndated===true)continue;
-      query=query.where(field,'is not',null);
-    }
-    return query.select(fields)
-      .select(eb=>eb.fn.countAll().as('n'))
-      .groupBy(fields).orderBy(fields[0],'asc').execute();
-  };
-  const first=async()=>{
-    const row=await db.selectFrom(galaxy)
-      .select(eb=>eb.fn.min('date').as('day'))
-      .where('statics','=',true).executeTakeFirst();
-    return row?.day??null;
-  };
-  let data;
-  if(mode==='earliest')data=await first();
-  else if(mode==='daily'||mode==='overview'||mode==='loc'){
-    const withHistory=mode==='overview'||mode==='loc'
-      ?await portableStatsWithEarliest(db,galaxy,start,end,['date','site'],
-        options.includeUndated===true):null;
-    const rows=withHistory?withHistory.filter(row=>row.n!=null)
-      :await grouped('statics',['date','site'],
-        {includeUndated:options.includeUndated===true});
-    const source=rows.map(row=>({day:portableDay(row.date),kind:'source',
-      category:String(row.site||'').trim(),item_count:Number(row.n)}));
-    const totals=new Map();
-    for(const row of source)totals.set(row.day,(totals.get(row.day)||0)+row.item_count);
-    const summary=[...source,...[...totals].map(([day,n])=>({
-      day,kind:'total',category:'文字作品',item_count:n
-    }))].sort((a,b)=>a.day.localeCompare(b.day)||a.kind.localeCompare(b.kind));
-    if(mode==='daily')data=summary;
-    else if(mode==='overview'){
-      // Overview only summarizes visible Galaxy source/date rows.
-      // Retired multimedia counts must not touch Anchor or media_link.
-      data={earliest:withHistory[0]?.earliest??null,
-        rows:summary,categories:[],aliases:[]};
-    }else data={earliest:withHistory[0]?.earliest??null,scopes:[{
-      scope_id:scope,display_name:scope
-    }],rows:summary.filter(x=>x.kind==='total').map(x=>({
-      scope_id:scope,day:x.day,item_count:x.item_count
-    }))};
-  }else if(mode==='totals'){
-    const rows=await grouped('statics',['site'],{includeUndated:true});
-    data=rows.map(row=>({kind:'source',category:String(row.site||'').trim(),
-      item_count:Number(row.n)}));
-  }else if(mode==='trace_places'){
-    const rows=await grouped('trace',['date','location'],{
-      requireStatics:options.statisticsOnly===true
-    });
-    data=rows.filter(row=>String(row.location||'').trim()).map(row=>({
-      day:portableDay(row.date),category:String(row.location).trim(),
-      item_count:Number(row.n)
-    }));
-  }else if(mode==='trace_territory'){
-    if(!start||!end)reject('Territory statistics require a bounded period');
-    let query=db.selectFrom(galaxy)
-      .select(['place_id','site','date'])
-      .select(eb=>eb.fn.countAll().as('n'))
-      .where('place_id','is not',null).where('place_id','!=','')
-      .where('date','>=',start).where('date','<=',end);
-    if(options.statisticsOnly===true)query=query.where('statics','=',true)
-      .where('trace','=',true);
-    const rows=await query.groupBy(['place_id','site','date'])
-      .orderBy('date','asc').execute();
-    data=rows.map(row=>({place_id:String(row.place_id||''),
-      site:String(row.site||'').trim(),day:portableDay(row.date),
-      item_count:Number(row.n||0)}));
-  }else if(mode==='trace_daily'){
-    const ids=options.placeIds;
-    if(!Array.isArray(ids)||ids.length<1||ids.length>80||
-       ids.some(id=>!UID.test(String(id||''))))reject('Invalid Point IDs');
-    let query=portableStatBase(db,galaxy,start,end,'trace')
-      .where('place_id','in',ids);
-    if(options.source)query=query.where('site','=',String(options.source));
-    const rows=await query.select(['date','place_id'])
-      .select(eb=>eb.fn.countAll().as('n'))
-      .groupBy(['date','place_id']).orderBy('date','asc').execute();
-    data=rows.map(row=>({day:portableDay(row.date),category:row.place_id,
-      item_count:Number(row.n)}));
-  }else{
-    // Advanced private keyword/trace joins require a matching portable
-    // summary contract. Never silently substitute legacy provider-specific totals.
-    reject('Unsupported portable LOC analytics mode');
-  }
-  return {data,count:null};
 }

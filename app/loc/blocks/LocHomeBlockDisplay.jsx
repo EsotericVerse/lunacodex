@@ -1,47 +1,21 @@
 'use client';
 
-import {SITE_IMAGES} from '../../site-images';
 import {HomeBlock} from './home-block-model';
 
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 
-// Existing, approved site images only. New text frames have no image by default;
-// images are not uploaded to, or stored by, the block editor.
-const LOC_MEDIA=Object.freeze({
-  2:{src:SITE_IMAGES.lunarunes,alt:'LunaRunes 月之符文',position:'right',width:'420px'},
-  3:{src:SITE_IMAGES.locArchitecture,alt:'LOC 月典文化與架構示意圖',position:'left',width:'540px'},
-  5:{src:SITE_IMAGES.author,alt:'作者 Lucas Oscar Wang 政德',position:'right',width:'360px'}
-});
-const AUTHOR_MEDIA=Object.freeze({
-  5:{src:{src:'/pics/lo3rwang-3.webp'},alt:'政德、玄鑒與符韻的三魂關係圖',position:'right',width:'420px'}
-});
-
-const RUNES_MEDIA=Object.freeze({});
-
-function imageFor(slot,scopeId='loc'){
-  const assets=scopeId==='lo3rwang'?AUTHOR_MEDIA:scopeId==='lrunes'?RUNES_MEDIA:LOC_MEDIA;
-  return assets[Number(slot?.order)||0]||null;
-}
-
-export function resolveHomeImage(slot,scopeId='loc'){
-  const preset=imageFor(slot,scopeId);
+export function resolveHomeImage(slot){
   const config=slot?.image&&typeof slot.image==='object'?slot.image:null;
   const embedded=BlockNoteContent.image.firstFrameImageUrl(slot);
-  const picked=['default','custom','none'].includes(config?.source)
-    ?config.source:(embedded?'custom':preset?'default':'none');
-  const source=picked;
   const customUrl=BlockNoteContent.image.normalizeImageSource(config?.url||embedded);
-  // Scope images use their saved origin verbatim; never transfer ownership to LRS.
-  const displayCustomUrl=customUrl;
-  const src=source==='none'?'':source==='default'?preset?.src?.src||'':displayCustomUrl;
-  const position=Number(slot?.order)===1?'right':['left','right','top','bottom','only'].includes(config?.position)
-    ?config.position:(preset?.position||'right');
+  const source=config?.source==='none'?'none':customUrl?'custom':'none';
+  const src=source==='custom'?customUrl:'';
+  const position=Number(slot?.order)===1?'right':
+    ['left','right','top','bottom','only'].includes(config?.position)?config.position:'right';
   const width=Number.isFinite(Number(config?.width))&&Number(config?.width)>=160&&Number(config?.width)<=800
-    ?Math.round(Number(config.width)):parseInt(preset?.width,10)||420;
+    ?Math.round(Number(config.width)):420;
   const mode=config?.mode==='side'||config?.mode==='background'?config.mode:BlockNoteContent.image.heroImageMode(slot);
-  return {src,source,position,width,mode,preset,embedded,customUrl,
-    alt:source==='default'?preset?.alt||'框架圖片':'框架圖片',
-    small:source==='default'?preset?.small:null};
+  return {src,source,position,width,mode,preset:null,embedded,customUrl,alt:'框架圖片',small:null};
 }
 
 export function locHomeBlockClass(slot,scopeId='loc'){
@@ -83,7 +57,6 @@ function revealCachedHomeImage(node){
 
 function SharedHomeBlockDisplay(slot,scopeId='loc'){
   const hero=Number(slot?.order)===1;
-  const sign=hero?HomeBlock.heroExtraFor(scopeId):null;
   const image=resolveHomeImage(slot,scopeId);
   const imageOnly=!hero&&Boolean(image.src)&&image.position==='only';
   const children=HomeBlock.visibleEntities(slot).filter(entity=>entity.title||
@@ -122,8 +95,6 @@ function SharedHomeBlockDisplay(slot,scopeId='loc'){
       })}
     </div>:null}
     {!imageOnly?media:null}
-    {sign?<span key="identity" className={'home-hero-identity home-hero-identity--'+sign.key}
-      role="img" aria-label={sign.label}>{sign.text}</span>:null}
   </>;
 }
 
