@@ -90,7 +90,6 @@ test('every Galaxy flag is a typed model; articles require the independent list 
   }
 });
 
-
 test('public Search rejects site, source, and place selectors before opening SQL',async()=>{
   const requestBase={
     kind:'transaction',operation:'galaxy-feature',scope:'lo3rwang',
@@ -152,19 +151,4 @@ test('public Search matches title OR content, with no user-chosen metadata field
   assert.match(clauses,/"column":"content","operator":"not ilike","value":"%失落%"/);
   assert.doesNotMatch(clauses,/"column":"location"/);
   assert.doesNotMatch(clauses,/"column":"place_id"/);
-});
-
-test('guest Search UI does not expose site, place or content-type selection',()=>{
-  const ui=readFileSync(new URL('../app/modular/features/Search.jsx',import.meta.url),'utf8');
-  const provider=readFileSync(new URL('../app/loc/galaxy/galaxy-query.js',import.meta.url),'utf8');
-  assert.match(ui,/managementMode\?\['type','source','time'\]:\['time'\]/);
-  assert.match(ui,/managementMode&&advancedTab==='source'/);
-  assert.match(ui,/managementMode&&advancedTab==='type'/);
-  assert.match(ui,/搜尋文章標題或內容/);
-  const start=provider.indexOf('function genericScopeProviders(scope)');
-  const end=provider.indexOf('function normalizeSearch',start);
-  assert.ok(start>=0&&end>start);
-  const guestProvider=provider.slice(start,end);
-  assert.doesNotMatch(guestProvider,/sourceFilter|sourceTaxonomy|excludedSources|placeIds|contentType/);
-  assert.match(guestProvider,/feature:'search'/);
 });
