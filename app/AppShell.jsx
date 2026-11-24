@@ -9,7 +9,7 @@ import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,uiLo
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
 import {FEATURES,SCOPES,featureIdForPath,getScope,normalizeScopeId} from './modular/routing/scope-registry';
-import {SCOPE_ROUTE_INDEX} from './modular/routing/scope-route-index.js';
+import {selectScopeConfig} from './loc/scope/scope-data';
 import {activatePublishedTheme,THEME_SLOTS} from './modular/theme-registry';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
@@ -134,22 +134,32 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   // Scope defaults are owned by the Scope config table; the game route alone
   // has its own purpose-built temporary default, never persisted to the DB.
   const fixedDefaultThemeId=String(defaultThemeIdOverride||'').trim();
-  // Theme options and defaults are bundled with the published site.
-  const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&!scope.aggregateChildren&&scope.id!=='admin';
-  // A management entry retires its obsolete SQL readers before rendering.
-  // Published route metadata is already available synchronously and prevents
-  // the palette from falling back to day/night while Bootstrap is re-reading.
-  const publishedTheme=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId)?.config?.theme;
+  // Palette styles are published CSS; the default theme belongs to this Scope.
+  const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&scope.id!=='local'&&!scope.aggregateChildren&&scope.id!=='admin';
   const [committedScopeTheme,setCommittedScopeTheme]=useState(()=>({scopeId,themeId:readCommittedScopeTheme(scopeId)}));
   const [themePreview,setThemePreview]=useState({scopeId,themeId:''});
   const committedId=committedScopeTheme.scopeId===scopeId?committedScopeTheme.themeId:'';
-  const configuredTheme=configEnabled?(committedId||String(publishedTheme||'').trim()):'';
+  const configuredTheme=configEnabled?committedId:'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
   const [selection,setSelection]=useState(()=>({scopeId,themeId:readUserTheme(scopeId)}));
   // Decorative local feedback only when a person selects a different option.
   // Theme persistence and actual palette application remain untouched.
   const [accentPulse,setAccentPulse]=useState(0);
   const [now,setNow]=useState(()=>new Date());
+  const themeRevision=useRef(0);
+  useEffect(()=>{
+    if(!configEnabled)return undefined;
+    let active=true;
+    const revision=themeRevision.current;
+    selectScopeConfig(scopeId).then(row=>{
+      if(!active||themeRevision.current!==revision)return;
+      const themeId=String(row?.theme||'');
+      if(themeId!==SYSTEM_THEME_ID&&!THEME_SLOTS.some(slot=>slot.id===themeId))return;
+      rememberCommittedScopeTheme(scopeId,themeId);
+      setCommittedScopeTheme({scopeId,themeId});
+    }).catch(error=>console.error('Scope theme read failed',error));
+    return()=>{active=false;};
+  },[scopeId,configEnabled]);
   // Management emits a temporary preview on selection. Abandoning the
   // editor removes it. Only a committed editor read/Save updates the local
   // runtime default; CSS is always the same published theme-N.css artifact.
@@ -164,6 +174,7 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     const onCommitted=event=>{
       if(!forScope(event))return;
       const themeId=String(event.detail.themeId||'');
+      themeRevision.current++;
       if(themeId!==SYSTEM_THEME_ID&&!THEME_SLOTS.some(slot=>slot.id===themeId))return;
       rememberCommittedScopeTheme(scopeId,themeId);
       setCommittedScopeTheme({scopeId,themeId});
