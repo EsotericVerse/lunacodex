@@ -57,7 +57,7 @@ const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],i
 const GALAXY_IMPORT_TIME_COLUMNS=galaxyReadColumns('GalaxyList')
   .filter(column=>['uid','createtime','site'].includes(column)).concat('site_id').join(',');
 const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
-  .concat(['site_id']).filter((column,index,all)=>all.indexOf(column)===index).join(',');
+  .concat(['site_id','keyword']).filter((column,index,all)=>all.indexOf(column)===index).join(',');
 // Imported Anchor keys are semantic matches, not UNIQUE constraints.
 // Report unresolved duplicate UIDs without choosing an arbitrary winner.
 function importAnchorConflictSummary(...results){
