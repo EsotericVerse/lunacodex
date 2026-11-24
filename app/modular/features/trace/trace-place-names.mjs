@@ -1,4 +1,5 @@
 import {spaceCoordinates} from './space-graph.mjs';
+import {compileKeywordLiteralMatcher} from '../../../loc/keywords/literal-matcher.mjs';
 // Review candidates require identical complete name characters (including repeats)
 // and the exact same recorded coordinates and Scope. No fuzzy token matching.
 const BRANDS=['worldgym','家樂福'];
@@ -98,4 +99,51 @@ export function reviewPlaceNameGroups(anchors=[]){
   }
   return {automatic:automatic.sort((a,b)=>b.items.length-a.items.length),
     uncertain:uncertain.sort((a,b)=>b.items.length-a.items.length)};
+}
+
+// Only Point.attr.location arrays are confirmed alias lists. A legacy string
+// can be a postal address; do not promote it to a place-name identity.
+export function placeNameTerms(anchor){
+  const aliases=Array.isArray(anchor?.attr?.location)?anchor.attr.location:[];
+  return [...new Set([anchor?.title,...aliases].filter(value=>typeof value==='string')
+    .map(compactPlaceName).filter(Boolean))];
+}
+
+// Compile each Scope's distinct names once, then scan each distinct name once.
+// A hit is read-only evidence, not a rename, merge or article place_id.
+export function reviewPlaceNameCandidates(anchors=[]){
+  const scopes=new Map();
+  for(const anchor of anchors){
+    if(anchor?.trace_type!=='space_anchor'||!anchor.uid||!anchor.source_scope)continue;
+    const scope=String(anchor.source_scope);
+    if(!scopes.has(scope))scopes.set(scope,new Map());
+    scopes.get(scope).set(String(anchor.uid),anchor);
+  }
+  const results=[];
+  for(const [scope,byUid] of scopes){
+    const owners=new Map(),seen=new Set();
+    for(const anchor of byUid.values())for(const name of placeNameTerms(anchor)){
+      if(!owners.has(name))owners.set(name,[]);
+      owners.get(name).push(anchor);
+    }
+    if(owners.size===0)continue;
+    const matcher=compileKeywordLiteralMatcher([...owners.keys()]);
+    for(const [name,rows] of owners){
+      for(const [hit] of matcher.countMatches(name)){
+        // Retain the existing minimum of four characters for containment;
+        // an exact title/alias match can be shorter.
+        if(hit!==name&&(hit.length<4||name.length<4))continue;
+        for(const a of rows)for(const b of owners.get(hit)||[]){
+          if(a.uid===b.uid||a.title===b.title)continue;
+          const key=JSON.stringify([scope,...[String(a.uid),String(b.uid)].sort()]);
+          if(seen.has(key))continue;
+          seen.add(key);
+          results.push({key,a,b,matchedName:hit,sourceName:name,
+            samePosition:sameRecordedPosition(a,b),sameFloor:samePlaceFloor(a,b)});
+        }
+      }
+    }
+  }
+  return results.sort((a,b)=>Number(b.samePosition)-Number(a.samePosition)||
+    Number(b.sameFloor)-Number(a.sameFloor)||a.key.localeCompare(b.key));
 }
