@@ -1244,6 +1244,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     // Original check-in names and calendar dates are part of the import, not an optional follow-up.
     setBusy(true);setStatus('');
     let lastImportStage='準備匯入文章';
+    let confirmedMetrics=[];
     const showProgress=(stage,completed=0,total=0)=>{
       lastImportStage=stage;
       // A long read-only comparison phase never calls the database write path,
@@ -1251,7 +1252,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // even though the browser is actively working the whole time.
       if(!nativeLocal)try{touchEditorSession(window.sessionStorage);}catch{}
       setProgress(previous=>({
-        stage,completed,total,
+        stage,completed,total,metrics:confirmedMetrics,
         stageStartedAt:previous?.stage===stage&&previous.stageStartedAt
           ?previous.stageStartedAt:Date.now(),
         percent:total>0?Math.round(100*completed/total):null
@@ -1697,6 +1698,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const characters=updateQueue.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
         const result=await updateImportRows(galaxy,updateQueue);
         updated+=result.count;
+        confirmedMetrics=[{label:'已確認更新文章',value:updated}];
         if(result.count===updateQueue.length)for(const row of updateQueue)
           if(Object.hasOwn(row,'title')||Object.hasOwn(row,'content'))changedKeywordUids.add(row.uid);
         updateQueue=[];updateBytes=0;
@@ -1790,6 +1792,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         });
         result.inserted+=outcome.inserted;
         result.conflicts+=outcome.conflicts;
+        confirmedMetrics=[{label:'已確認更新文章',value:updated},{label:'已確認新增文章',value:result.inserted},{label:'UID 衝突',value:result.conflicts}];
         for(const uid of outcome.insertedUids)result.insertedUids.add(uid);
         for(const uid of outcome.conflictedUids)result.conflictedUids.add(uid);
         newArticleProcessed+=payload.length;
@@ -2055,7 +2058,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     {rows.length&&!busy&&analysisCurrent&&!analyzed.valid.length&&!analyzed.mediaOnly.length&&!eligibleArchiveMediaPlan.media.length?<p className="scope-status" role="status">目前沒有可匯入的有效紀錄。已排除 {analyzed.invalid.length.toLocaleString()} 筆格式無效資料、{analyzed.skippedByRange.toLocaleString()} 筆不在指定時間內。{analyzed.invalid[0]?.error||'請核對來源及進階資料路徑。'}</p>:null}
     {busy?<FlowProgress kind="import" stage={progress?.stage||'準備匯入資料'}
       completed={progress?.completed||0} total={progress?.total||0}
-      detail={progress?.detail||''}/>:null}
+      metrics={progress?.metrics||[]} detail={progress?.detail||''}/>:null}
     {busy&&parsingJson?<button type="button" className="loc-button"
       onClick={cancelJsonParse}>取消 JSON 解析</button>:null}
     {/* Rendered right under the import button/progress area, not after every

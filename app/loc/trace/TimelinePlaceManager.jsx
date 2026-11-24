@@ -1,6 +1,7 @@
 'use client';
 
 import {readTimelineArticlePage} from '../actions/trace/direct-query.mjs';
+import FlowProgress from '../../modular/FlowProgress';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {readAllTraceAnchors} from '../../modular/features/trace/trace-data';
@@ -133,6 +134,9 @@ export default function TimelinePlaceManager({scopeId}){
       const startDate=rangeStart;
       const nextDate=new Date(Date.parse(rangeEnd+'T00:00:00.000Z')+86400000).toISOString().slice(0,10);
       const articleMatches=[];
+      let matchedArticles=0;
+      const visitMetrics=[{label:'已匹配造訪區間',value:windows.length},{label:'無對應定錨區間',value:matched.withoutAnchor},{label:'有歧義造訪區間',value:matched.ambiguousWindows}];
+      setProgress({done:visitCount,total:visitCount,message:'造訪地點匹配完成，正在比對文章日期…',metrics:visitMetrics,phase:'visits',complete:true});
       const windowsByDay=new Map();
       for(const window of windows){
         const start=Date.parse(window.from),end=Date.parse(window.to);
@@ -156,6 +160,7 @@ export default function TimelinePlaceManager({scopeId}){
           if(!Number.isFinite(timestamp))continue;
           // Visit intervals were already filtered against Point coordinates in the worker.
           const articleDay=new Date(timestamp).toISOString().slice(0,10);
+          const before=articleMatches.length;
           for(const window of windowsByDay.get(articleDay)||[]){
             if(window.startMs<=timestamp&&timestamp<window.endMs){
               articleMatches.push({
@@ -164,11 +169,13 @@ export default function TimelinePlaceManager({scopeId}){
               });
             }
           }
+          if(articleMatches.length>before)matchedArticles++;
         }
         if(rows.length<RESULT_PAGE)break;
         offset+=RESULT_PAGE;
         if(offset>100000)throw Error('單一年度文章超過查詢上限');
-        setProgress({done:offset,total:0,message:'已讀取 '+offset.toLocaleString()+' 篇年度文章，比對造訪時間…'});
+        setProgress({done:offset,total:0,message:'比對年度文章與造訪時間…',phase:'articles',
+          metrics:[...visitMetrics,{label:'候選文章（待審查）',value:matchedArticles}]});
       }
       if(run!==runRef.current)return;
       const classified=accumulateTimelineArticles(articleMatches);
@@ -302,7 +309,8 @@ export default function TimelinePlaceManager({scopeId}){
         setAnalyzing(false);setNotice('已取消分析，尚未寫入任何資料。');
       }}>取消分析</button>:null}
     </div>
-    {progress&&analyzing?<p role="status" className="scope-status">{progress.message} {progress.total?progress.done+' / '+progress.total+' 批':''}</p>:null}
+    {progress&&analyzing?<FlowProgress stage={progress.message} completed={progress.done} total={progress.total}
+      resultKey={progress.phase||'timeline-read'} resultComplete={progress.complete===true} metrics={progress.metrics||[]}/>:null}
     {analysis?<section className="scope-card">
       <h4>Google Timeline · {pendingCount?'尚待確認／寫入':'本次預覽已處理完畢'}</h4>
       <p className="scope-status">Timeline 造訪區間：{analysis.visitCount.toLocaleString()}；

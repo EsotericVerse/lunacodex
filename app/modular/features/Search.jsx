@@ -1486,6 +1486,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     </div>:null}
     {error?<p className="scope-status scope-error">{error}</p>:null}
     {loadMoreError?<p role="alert" className="scope-status scope-error">{loadMoreError} <button type="button" className="loc-button" disabled={loadingMore} onClick={loadNextSearch}><UiText id="uiExtra.cultureView.reloadWorks"/></button></p>:null}
+    {managementMode&&status==='搜尋中請稍後'&&!results.length?<section className="loc-progressive-river-frame" aria-busy="true"><span>文章列表</span><div className="loc-progressive-river-axis" aria-hidden="true"/></section>:null}
     <div className={!managementMode&&(results.length||fullTextKey)?'loc-search-explorer':undefined}>
     <div className={!managementMode?'loc-search-explorer__results':undefined}>
     <IncrementalList

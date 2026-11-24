@@ -439,6 +439,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       });
       onProgress({phase:progress.finalizePending?'finalizing':'checkpoint',
         total:expectedCount,completed:progress.scanned,parsed:progress.parsed,
+        matchedDocuments:progress.matchedDocuments,itemMatches:progress.itemMatches,occurrences:progress.occurrences,
         targetRowsPerSecond:progress.targetRowsPerSecond,
         percent:Math.min(99,Math.round(expectedCount?
           progress.scanned/expectedCount*100:0)),
@@ -446,9 +447,9 @@ export async function analyzeKeywordScope(db,scope,classUid,{
           ?'最後不足整批的文章已存檔，正在提交統計'
           :'分析進度已保存，可接續下一批'});
     },
-    onProgress:({phase,completed=0,parsed=0,
+    onProgress:({phase,completed=0,parsed=0,matchedDocuments,itemMatches,occurrences,
       rowsPerSecond=0,targetRowsPerSecond=null})=>onProgress({
-      phase,total:expectedCount,completed,parsed,
+      phase,total:expectedCount,completed,parsed,matchedDocuments,itemMatches,occurrences,
       rowsPerSecond,targetRowsPerSecond,
       percent:phase==='completed'?100:Math.min(99,
         Math.round(expectedCount?completed/expectedCount*100:0)),
@@ -462,6 +463,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   });
   if(result.incomplete)return {incomplete:true,total:expectedCount,
     completed:result.scanned,parsed:result.parsed,reused:0,
+    matchedDocuments:result.matchedDocuments,itemMatches:result.itemMatches,occurrences:result.occurrences,
     finalizePending:result.finalizePending===true,
     rowsPerSecond:result.rowsPerSecond,
     targetRowsPerSecond:result.targetRowsPerSecond};

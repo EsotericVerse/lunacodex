@@ -1,6 +1,8 @@
 'use client';
 
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
+import {useEffect,useRef,useState} from 'react';
+import {selectProgressResult} from './progress-result.mjs';
 
 // Shared, low-cost progress presentation for keyword scans and imports.
 // The river is decorative; all numeric progress comes from real worker/SQL
@@ -10,13 +12,25 @@ const safeCount=value=>Number.isFinite(Number(value))?
 const number=value=>safeCount(value).toLocaleString();
 
 export default function FlowProgress({
-  kind='import',stage='處理中',completed=0,total=0,detail='',label=''
+  kind='import',stage='處理中',completed=0,total=0,detail='',label='',metrics=[],resultKey='',resultComplete=false
 }={}){
   const reduceMotion=useReducedMotion();
   const count=safeCount(completed),all=safeCount(total);
   const known=all>0;
   const fraction=known?Math.min(1,count/all):0;
   const currentStage=String(stage||'處理中');
+  const key=resultKey||currentStage;
+  const clock=useRef({key:null,started:0});
+  const [snapshot,setSnapshot]=useState(null);
+  const metricJson=JSON.stringify(metrics);
+  useEffect(()=>{
+    const now=Date.now();
+    if(clock.current.key!==key)clock.current={key,started:now};
+    const values=JSON.parse(metricJson);
+    setSnapshot(previous=>selectProgressResult(previous,{key,values,completed:count,total:all,
+      elapsed:now-clock.current.started,complete:resultComplete||(known&&count>=all)}));
+  },[key,metricJson,count,all,known,resultComplete]);
+  const visible=snapshot?.key===key?snapshot:null;
   return <div className={'loc-flow-progress loc-flow-progress--'+
       (kind==='keywords'?'keywords':'import')}>
     <div className="loc-flow-progress__header">
@@ -51,6 +65,12 @@ export default function FlowProgress({
         style={known?{transform:'scaleX('+fraction+')'}:undefined}/>
       <span className="loc-flow-progress__river-glint" aria-hidden="true"/>
     </div>
+    {visible?.values.length?<div className="loc-flow-progress__results" role="status" aria-live="polite">
+      <small>{visible.complete?'本階段成果':'階段性成果（尚未完成）'}</small>
+      <div style={{display:'flex',flexWrap:'wrap',gap:'.5rem 1.25rem'}}>
+        {visible.values.map(metric=><span key={metric.label}>{metric.label} <strong>{number(metric.value)}</strong></span>)}
+      </div>
+    </div>:null}
     <details className="loc-flow-progress__details">
       <summary>處理詳情</summary>
       <div className="loc-flow-progress__detail-body">

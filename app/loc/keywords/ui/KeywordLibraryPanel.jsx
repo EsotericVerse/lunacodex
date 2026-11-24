@@ -431,9 +431,11 @@ export default function KeywordLibraryPanel({scopeId,account}){
       storeUnconfirmed(null);
       if(!reset){
         const {runKeywordAnalysisBatch}=await import('../analysis');
-        await runKeywordAnalysisBatch(scopeId,{
+        const result=await runKeywordAnalysisBatch(scopeId,{
           classUid:runClassUid,analysisEpoch:cleared.resetEpoch,onProgress:setProgress
         });
+        setProgress({phase:'completed',label:'分析已完成，正在更新顯示',completed:result.analyzedDocuments,total:result.analyzedDocuments,
+          matchedDocuments:result.matchedDocuments,itemMatches:result.itemMatches,occurrences:result.occurrences});
       }
       await load(runClassUid);await invalidate();
       setNotice(reset
@@ -654,6 +656,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     {loading?<p className="scope-status" role="status">讀取關鍵字資料中…</p>:null}
     {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
+    {loading?<div className="loc-progressive-river-frame" aria-busy="true"><div className="loc-progressive-river-axis" aria-hidden="true"/></div>:null}
     {!loading&&workspace==='manual'?<section className="loc-card scope-feature-card">
       <h2>關鍵字分類與判斷詞編輯</h2>
       <div className="scope-management-fields">
@@ -781,6 +784,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
       </div>:null}
       {busy?<FlowProgress kind="keywords" stage={progress?.label||progress?.phase||'解析關鍵詞'}
         completed={progress?.completed||0} total={progress?.total||0}
+        resultKey="keyword-analysis" resultComplete={progress?.phase==='completed'}
+        metrics={[{label:'命中文章',value:progress?.matchedDocuments},{label:'Item 命中組合',value:progress?.itemMatches},{label:'累計出現次數',value:progress?.occurrences}]}
         detail={progress?.targetRowsPerSecond
           ?'目前目標 '+Number(progress.targetRowsPerSecond).toLocaleString()+
             ' 筆／秒；實測 '+Number(progress.rowsPerSecond||0).toLocaleString()+' 筆／秒'
@@ -794,6 +799,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
       {discoveryBusy?<div className="loc-work-running">
         <FlowProgress kind="keywords" stage="掃描文章與篩選新詞"
           completed={discoveryProgress?.completed||0} total={discoveryProgress?.total||0}
+          resultKey="keyword-discovery" metrics={[{label:'候選詞種類',value:discoveryProgress?.candidateCount},{label:'有內文文章',value:discoveryProgress?.withContent},{label:'既有詞彙庫種類',value:discoveryProgress?.existingCount}]}
           detail={discoveryProgress?.batchSize?'目前批次 '+Number(discoveryProgress.batchSize).toLocaleString()+' 篇':''}/>
         <button className="loc-button" type="button" onClick={()=>discoveryAbort.current?.abort()}>停止掃描</button>
       </div>:null}
