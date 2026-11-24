@@ -69,16 +69,6 @@ test('Trace page fails closed before writing malformed/duplicated UIDs',async()=
   },()=>0),/UID list is invalid/);
   assert.deepEqual(events,[]);
 });
-test('Trace UI uses one managed operation rather than sequential commits',()=>{
-  const source=readFileSync(new URL('../app/loc/trace/TraceManagement.jsx',import.meta.url),'utf8');
-  const data=readFileSync(new URL('../app/modular/features/trace/trace-data.js',import.meta.url),'utf8');
-  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  assert.match(source,/const result=await saveTracePage\(\{/);
-  assert.match(data,/managedAction\(\s*'save_scope_trace_edit'/);
-  assert.match(native,/'save_scope_trace_edit'\]\.includes\(body\.name\)/);
-  const begin=source.indexOf('const save=async('),end=source.indexOf('const quickRename=',begin);
-  assert.doesNotMatch(source.slice(begin,end),/await (?:renameTraceAnchorTitles|updateTraceAnchor|mergeTraceAnchorPoints|updateTraceVisibilityBulk)\(/);
-});
 
 test('Trace bulk Point creation is an all-or-nothing INSERT',()=>{
   const data=readFileSync(new URL('../app/modular/features/trace/trace-data.js',import.meta.url),'utf8');

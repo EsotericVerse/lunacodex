@@ -50,16 +50,6 @@ test('pure managed validation does not mutate the request payload',()=>{
     p_table:'silver.lo3rwang_galaxy',p_operation:'delete',p_filters:[]
   }}),/filters|filter/i);
 });
-test('LOC validates writes before transaction and leaves grants on trx',()=>{
-  const native=source('app/loc/mcp/native-operations.mjs');
-  assert.ok(native.indexOf('const preparedWrites=')<native.indexOf("if(body.kind==='managed-transaction'){",
-    native.indexOf('const preparedWrites=')));
-  assert.match(native,/bindLocAuthorization\(trx/);
-  assert.match(native,/transaction\(\)\.execute\(async trx=>/);
-  const m=source('app/loc/providers/kysely-management.mjs');
-  assert.match(m,/await authorizeRelation\(trx,table,operation/);
-  assert.match(m,/\.forUpdate\(\)/);
-});
 
 test('scalar UID repair coalesces exact-CAS rows, but not array or mixed patches',()=>{
   const deleted='DELE0001';

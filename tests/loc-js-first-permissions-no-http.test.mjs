@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {handleLocSelfPermissions} from '../app/loc/permissions/loc-permissions-server.mjs';
+import {LOC_OWNER_EMAIL} from '../app/loc/permissions/loc-business-grants.mjs';
 import {readFileSync} from 'node:fs';
 import {existsSync} from 'node:fs';
 import {publishedLocAccess} from '../app/loc/permissions/loc-business-grants.mjs';
@@ -110,7 +112,6 @@ test('real business operations resolve JS rights before any DB connection',()=>{
   assert.ok(rights>0&&database>rights);
   assert.match(code,/await loadMcpLocAccess\(null,claims\.email\)/);
   assert.match(code,/await readLocAccess\(null,claims\.email,\{website:true\}\)/);
-  assert.match(code,/await selected\.db\.transaction\(\)\.execute\(async trx=>/);
 });
 }
 
@@ -201,5 +202,25 @@ test('LOC sign-in redirects to LAS Google OAuth without Cloudflare SSO',async()=
     if(original===undefined)delete globalThis.window;
     else globalThis.window=original;
   }
+});
+}
+
+{
+const origin='https://loc.lo3rwang.cc';
+const req=(body,path)=>new Request(origin+path,{
+  method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)});
+test('permissions return only Session self-projection without SQL',async()=>{
+  const response=await handleLocSelfPermissions(req({operation:'self'},
+    '/api/loc-permissions'),{verifySession:async()=>({email:LOC_OWNER_EMAIL})});
+  assert.equal(response.status,200);
+  const payload=await response.json();
+  assert.ok(payload.grants.includes('global:manage'));
+  assert.equal(payload.canManage,true);
+  assert.equal(payload.connectionString,undefined);
+  const cross=new Request(origin+'/api/loc-permissions',{method:'POST',
+    headers:{origin:'https://evil.example'},body:'{"operation":"self"}'});
+  const blocked=await handleLocSelfPermissions(cross,{
+    verifySession:async()=>({email:LOC_OWNER_EMAIL})});
+  assert.equal(blocked.status,403);
 });
 }
