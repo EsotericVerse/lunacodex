@@ -124,10 +124,13 @@ try{
   // Reproduce a persistent browser profile: a previous build's LOC worker
   // and static cache can survive Git pulls and serve stale JS to localhost.
   const seeded=await call('Runtime.evaluate',{
-    expression:'(async()=>{await navigator.serviceWorker.register("/sw.js",{scope:"/"});const c=await caches.open("loc-static-next-v1");await c.put("/_next/static/chunks/loc-dev-cache-regression.js",new Response("old JS",{headers:{"content-type":"application/javascript"}}));return (await navigator.serviceWorker.getRegistrations()).length})()',
+    // The stub immediately unregisters itself on activation. Assert that the
+    // browser accepted registration instead of assuming it remains registered.
+    expression:'(async()=>{const reg=await navigator.serviceWorker.register("/sw.js",{scope:"/"});const c=await caches.open("loc-static-next-v1");await c.put("/_next/static/chunks/loc-dev-cache-regression.js",new Response("old JS",{headers:{"content-type":"application/javascript"}}));return reg.scope})()',
     awaitPromise:true,returnByValue:true
   });
-  assert.ok(seeded?.result?.value>0,'Could not seed prior LOC website worker');
+  assert.equal(seeded?.result?.value,new URL('/',url).href,
+    'Could not simulate prior LOC website worker');
   await call('Page.reload',{ignoreCache:false});
   await within(async()=>{
     const result=await call('Runtime.evaluate',{
