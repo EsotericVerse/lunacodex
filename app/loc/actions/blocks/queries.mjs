@@ -4,6 +4,15 @@ import {block_list,hero_block} from '../../providers/kysely-public.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
 import {publicScopeBlockPage} from '../../blocks/public-scope-pages.mjs';
+import {FEATURE_HERO_IDS,MANAGEMENT_HERO_SLOTS} from '../../blocks/home-block-model.js';
+
+const heroPages=new Set([
+  'search',
+  ...FEATURE_HERO_IDS.flatMap(id=>['group_'+id,'scope_'+id]),
+  ...MANAGEMENT_HERO_SLOTS.map(slot=>slot.page)
+]);
+const validHeroTypes=types=>types.length>0&&types.length<=2&&
+  new Set(types).size===types.length&&types.every(type=>heroPages.has(type));
 
 const scopeId=value=>{
   const scope=String(value||'').trim().toLowerCase();
@@ -29,9 +38,7 @@ export async function queryBlocks(name,args={}){
   }
   if(Object.keys(args).some(key=>key!=='p_type'))throw Error('Invalid Hero request');
   const types=Array.isArray(args.p_type)?args.p_type:[args.p_type];
-  if(!types.length||types.length>2||new Set(types).size!==types.length||
-    types.some(type=>typeof type!=='string'||
-      !/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(type)))
+  if(!validHeroTypes(types))
     throw Error('Invalid Hero type');
   return withAuthorizedLocRead({scope:'loc'},async(db,port)=>({
     data:await hero_block(db,types,{engine:port.engine,namespace:port.namespace}),
@@ -49,9 +56,7 @@ export async function queryBlockContent(searchParams){
   const feature=String(params.get('feature')||'');
   if(kind==='hero_block'){
     const types=feature?feature.split(','):[];
-    if(scope!=='loc'||types.length<1||types.length>2||
-      new Set(types).size!==types.length||types.some(type=>
-        !/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(type)))
+    if(scope!=='loc'||!validHeroTypes(types))
       throw Error('Invalid Hero content request');
     return withAuthorizedLocRead({scope},async(db,port)=>({
       data:await hero_block(db,types,{engine:port.engine,namespace:port.namespace}),

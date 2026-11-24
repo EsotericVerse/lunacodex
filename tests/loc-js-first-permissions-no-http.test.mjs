@@ -229,6 +229,17 @@ test('temporary bulk-write route is closed by default and still authenticates wh
       database:async()=>{connected++;throw Error('Closed route reached SQL');}});
   assert.equal(earlyClosed.status,404);
   assert.equal(closedRequest.bodyUsed,false,'default-closed route must not parse a body');
+  for(const until of ['not-a-date','2000-01-01T00:00:00Z']){
+    const request=new Request('https://loc.lo3rwang.cc/api/loc-native',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({kind:'short-import',scopeid:'lo3rwang',batch:{}})
+    });
+    const response=await handleNativeLocOperation(request,
+      {LOC_BULK_IMPORT_UNTIL:until},{entrypoint:'loc-native',
+        database:async()=>{connected++;throw Error('Expired route reached SQL');}});
+    assert.equal(response.status,404);
+    assert.equal(request.bodyUsed,false);
+  }
   const ordinary={kind:'managed-action',scopeid:'lo3rwang',
     name:'fill_galaxy_place',args:{p_scope_id:'lo3rwang',
       p_start_date:'2026-01-01',p_end_date:'2026-01-02',
@@ -256,7 +267,7 @@ test('temporary bulk-write route is closed by default and still authenticates wh
     {entrypoint:'loc-native',database});
   assert.equal(closed.status,404);
   const opened=await handleNativeLocOperation(makeRequest(),
-    {LOC_BULK_IMPORT_ENABLED:'true'}, {
+    {LOC_BULK_IMPORT_UNTIL:'2999-01-01T00:00:00Z'}, {
       database,fetchImpl:async()=>new Response(JSON.stringify({
         session:{id:'session'},user:{id:'unknown-user',email:'unknown@example.org',emailVerified:true}
     }),{status:200,headers:{'content-type':'application/json'}}),
@@ -275,7 +286,7 @@ test('temporary bulk-write route is closed by default and still authenticates wh
     {database,trustedMcpBridge:true,entrypoint:'las-native'});
   assert.equal(mcpClosed.status,404);
   const mcpEnabled=await handleNativeLocOperation(mcpRequest(),
-    {LOC_BULK_IMPORT_ENABLED:'true'},
+    {LOC_BULK_IMPORT_UNTIL:'2999-01-01T00:00:00Z'},
     {database,trustedMcpBridge:true,entrypoint:'las-native'});
   assert.equal(mcpEnabled.status,401);
   const localClosed=await handleNativeLocOperation(makeRequest(),{},
