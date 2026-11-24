@@ -127,11 +127,12 @@ test('one SiteAnchor rollup includes multimedia but offers only Galaxy/Domain',(
 test('Statistics space comparisons require both trace and statics without changing Trace territory',()=>{
   const ui=readFileSync(new URL('../app/modular/modules/statistics/ScopeSelfIntersection.jsx',import.meta.url),'utf8');
   const sql=readFileSync(new URL('../app/loc/providers/kysely-analytics.mjs',import.meta.url),'utf8');
+  const feature=readFileSync(new URL('../app/loc/actions/trace/queries.mjs',import.meta.url),'utf8');
   assert.match(ui,/p_options:\{withPoints:false,statisticsOnly:true\}/);
   assert.match(sql,/async function traceTerritory\(trx,scope,start,end,\{withPoints=false,statisticsOnly=false\}/);
   assert.match(sql,/const statisticsFilter=statisticsOnly\s*\?sql`and g\.statics is true and g\.trace is true`/);
-  assert.match(sql,/if\(options\.statisticsOnly===true\)query=query\.where\('statics','=',true\)\s*\.where\('trace','=',true\)/);
-  assert.match(sql,/statisticsOnly:options.statisticsOnly===true/);
+  assert.match(feature,/if\(options\.statisticsOnly===true\)\s*query=query\.where\('g\.statics','=',true\)\.where\('g\.trace','=',true\)/);
+  assert.match(feature,/statisticsOnly:options.statisticsOnly===true/);
 });
 
 test('feature Trace query accepts Statistics filters only on relevant views',()=>{
@@ -151,14 +152,18 @@ test('Statistics places require both switches while Trace keeps its own feature 
   const stats=readFileSync(new URL('../app/modular/features/Statistics.jsx',import.meta.url),'utf8');
   const trace=readFileSync(new URL('../app/modular/features/trace/TraceTerritoryPanel.jsx',import.meta.url),'utf8');
   const sql=readFileSync(new URL('../app/loc/providers/kysely-analytics.mjs',import.meta.url),'utf8');
+  const feature=readFileSync(new URL('../app/loc/actions/trace/queries.mjs',import.meta.url),'utf8');
   assert.ok(stats.includes("p_view:'trace_places'"));
   assert.ok(stats.includes('p_options:{statisticsOnly:true}'));
   assert.ok(trace.includes("p_view:'trace_territory'"));
   assert.ok(trace.includes('p_options:{withPoints:true}'));
   assert.ok(sql.includes('where trace is true ${statisticsFilter} and date is not null'));
-  assert.ok(sql.includes("if(opts.requireStatics===true)query=query.where('statics','=',true)"));
-  assert.ok(sql.includes("const rows=await grouped('trace',['date','location'],{"));
-  assert.ok(sql.includes('requireStatics:options.statisticsOnly===true'));
+  assert.ok(feature.includes("if(statisticsOnly)query=query.where('statics','=',true)"));
+  assert.ok(feature.includes(".where('trace','=',true).where('date','is not',null)"));
+  assert.ok(feature.includes("data=port.engine==='postgres'"));
+  assert.ok(feature.includes("await tracePlaces(db,scope,start,end"));
+  assert.ok(feature.includes("await portableTracePlaces(db,table,start,end"));
+  assert.ok(feature.includes('statisticsOnly:options.statisticsOnly===true'));
 });
 
 test('all four families are present in the cascading metric picker',()=>{

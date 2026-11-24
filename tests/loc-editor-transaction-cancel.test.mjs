@@ -7,7 +7,6 @@ import {editorTransactionLease} from '../app/loc/db/editor-transaction-lifecycle
 import {assertEditorTransactionLease} from '../app/loc/db/editor-transaction-lifecycle.mjs';
 import {registerEditorTransactionDisposer} from '../app/loc/db/editor-transaction-lifecycle.mjs';
 import {cancelEditorTransactionSession} from '../app/loc/db/editor-transaction-lifecycle.mjs';
-import {keywordService} from '../app/loc/keywords/service-client.mjs';
 import {touchEditorSession} from '../app/loc/auth/edit-session-ttl.mjs';
 import {editorSessionStatus} from '../app/loc/auth/edit-session-ttl.mjs';
 import {saveEditorManagement} from '../app/loc/auth/edit-session-ttl.mjs';
@@ -40,18 +39,15 @@ test('Cancel aborts running work, drains retry hooks, fences stale generations',
   assert.equal(cleaned,1);
 });
 
-test('Cancel aborts protected HTTP writes and denies queued continuation',async()=>{
-  let calls=0,signal;
-  const mockFetch=(_url,options)=>{
-    calls++;signal=options.signal;
-    return new Promise((_resolve,reject)=>{
-      if(signal.aborted)return reject(Object.assign(new Error('abort'),{name:'AbortError'}));
-      signal.addEventListener('abort',()=>reject(
-        Object.assign(new Error('abort'),{name:'AbortError'})),{once:true});
-    });
-  };
+test('Cancel marks an in-flight Server Action result unknown and blocks the next write',async()=>{
+  let calls=0,finishWrite;
   const adapter=createConfiguredAdapter({
-    accountAdapter:{auth:{}},fetchImpl:mockFetch
+    accountAdapter:{auth:{}},
+    fetchImpl:()=>{throw new Error('Ordinary writes must not use fetch');},
+    localWrite:()=>{
+      calls++;
+      return new Promise(resolve=>{finishWrite=resolve;});
+    }
   });
   openEditorTransactionSession();
   const pending=adapter.authClient.schema('silver').managedTransaction([{
@@ -60,8 +56,12 @@ test('Cancel aborts protected HTTP writes and denies queued continuation',async(
   }]);
   assert.equal(calls,1);
   cancelEditorTransactionSession();
-  assert.equal(signal.aborted,true);
-  await assert.rejects(pending,{code:'LOC_EDITOR_CANCELLED'});
+  assert.equal(typeof finishWrite,'function');
+  // The Server Action request cannot receive the browser AbortSignal. Let its
+  // response settle, then verify the caller is told to reread before retrying.
+  finishWrite({data:{results:[],count:0},error:null});
+  await assert.rejects(pending,error=>error.code==='LOC_EDITOR_CANCELLED'&&
+    /結果須重新讀取確認/.test(error.message));
   await assert.rejects(
     adapter.authClient.schema('silver').managedWrite({
       p_table:'silver.lo3rwang_anchor',p_operation:'insert',
@@ -70,30 +70,13 @@ test('Cancel aborts protected HTTP writes and denies queued continuation',async(
   assert.equal(calls,1,'Cancel must never send queued/retried editor writes');
 });
 
-test('Canceled keyword streams never issue a follow-up confirmation request',async()=>{
-  let fetchCount=0;
-  const previous=globalThis.fetch;
-  globalThis.fetch=(_url,{signal})=>{
-    fetchCount++;
-    return new Promise((_resolve,reject)=>{
-      if(signal?.aborted)return reject(Object.assign(new Error('cancel'),{name:'AbortError'}));
-      signal?.addEventListener('abort',()=>reject(
-        Object.assign(new Error('cancel'),{name:'AbortError'})),{once:true});
-    });
-  };
-  try{
-    openEditorTransactionSession();
-    const pending=keywordService('analyze',{scopeId:'lo3rwang',classUid:'AAAAAAAA'},{
-      onProgress:()=>{}
-    });
-    assert.equal(fetchCount,1);
-    cancelEditorTransactionSession();
-    await assert.rejects(pending,{code:'LOC_EDITOR_CANCELLED'});
-    assert.equal(fetchCount,1);
-  }finally{
-    cancelEditorTransactionSession();
-    globalThis.fetch=previous;
-  }
+test('canceled Keyword Server Actions skip confirmation reads and HTTP retries',()=>{
+  const source=readFileSync(new URL('../app/loc/keywords/service-client.mjs',import.meta.url),'utf8');
+  const cancellation=source.indexOf('if(isEditorTransactionCancelled(lease))assertEditorTransactionLease(lease);');
+  const receipt=source.indexOf('const receipt=await queryKeywordAnalysisCompletion',cancellation);
+  assert.ok(cancellation>=0);
+  assert.ok(receipt>cancellation,'cancellation guard must run before the receipt read');
+  assert.doesNotMatch(source,/fetch\s*\(/);
 });
 
 }

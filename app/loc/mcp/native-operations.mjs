@@ -32,6 +32,8 @@ const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=NATIVE_WRITE_MAX_BYTES;
 const LAS_WRITE_KINDS=new Set(['mcp-sync','mcp-append','mcp-conversation','short-import']);
+const bulkImportEnabled=env=>
+  String(env?.LOC_BULK_IMPORT_ENABLED||'').trim().toLowerCase()==='true';
 const PUBLISHED_MANAGE_FIELDS=new Set([
   'email','manage_role','active','galaxy_table','anchor_table',
   'domain','directory','parent_scope_id','sort_order'
@@ -187,14 +189,27 @@ async function signedClaims(request,fetchImpl,{trustedMcpBridge=false}={}){
 }
 export async function handleNativeLocOperation(request,env={},{
   fetchImpl=globalThis.fetch,database=directMcpKysely,waitUntil,
-  trustedMcpBridge=false,trustedLocalAction=false
+  trustedMcpBridge=false,trustedLocalAction=false,entrypoint=null
 }={}){
   if(request.method!=='POST')return reply({error:{message:'Method not allowed'}},405);
   const requestHost=new URL(request.url).hostname;
+  const requestPath=new URL(request.url).pathname;
   // Only the dedicated LAS bridge may set this server-side option.
   // The dedicated LAS Next.js route maps its trusted request to the MCP
   // audience without changing the extension OAuth claims.
   const host=trustedMcpBridge&&requestHost===WEB_HOST?MCP_HOST:requestHost;
+  // Keep each public route attached to its own fixed purpose. The LOC route
+  // is only the temporarily enabled import path; it cannot alias the LAS
+  // bridge by changing Host or dispatching another operation kind.
+  if((entrypoint==='loc-native'&&
+      (requestHost!==WEB_HOST||requestPath!=='/api/loc-native'))||
+    (entrypoint==='las-native'&&
+      (!trustedMcpBridge||host!==MCP_HOST||requestPath!=='/api/las-native')))
+    return reply({error:{message:'Not found'}},404);
+  // In the default state, reject the LOC bulk endpoint before reading a body.
+  // The route is not an active parser/SQL surface until an operator enables it.
+  if(entrypoint==='loc-native'&&!bulkImportEnabled(env))
+    return reply({error:{message:'LOC bulk write channel is closed'}},404);
   if(host!==MCP_HOST&&host!==WEB_HOST)
     return reply({error:{message:'Not found'}},404);
   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')||''))
@@ -202,6 +217,7 @@ export async function handleNativeLocOperation(request,env={},{
   if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
     return reply({error:{message:'Payload too large'}},413);
   let operationKind='',importPhase='request';
+  let shortImportActor=null;
   let selected=null;
   let releaseAbort=()=>{};
   try{
@@ -214,6 +230,10 @@ export async function handleNativeLocOperation(request,env={},{
     if(!body||typeof body!=='object'||Array.isArray(body)||
       !KINDS.has(body.kind)||typeof body.scopeid!=='string')
       throw refusal('Unsupported LOC business operation');
+    if(entrypoint==='loc-native'&&body.kind!=='short-import')
+      throw refusal('LOC route accepts temporary bulk writes only',404);
+    if(entrypoint==='las-native'&&!LAS_WRITE_KINDS.has(body.kind))
+      throw refusal('LAS bridge accepts fixed LOC write operations only',404);
     if(body.kind==='managed-action'){
       const name=String(body.name||'');
       if(isManagedReadAction(name,body.args))
@@ -225,8 +245,7 @@ export async function handleNativeLocOperation(request,env={},{
     if(operationKind==='short-import')importPhase='identity';
     // Bulk import is opt-in on every host. The LOC HTTP route and the LAS
     // bridge cannot accidentally leave this fast write path enabled by default.
-    if(body.kind==='short-import'&&
-      String(env?.LOC_BULK_IMPORT_ENABLED||'').trim().toLowerCase()!=='true')
+    if(body.kind==='short-import'&&!bulkImportEnabled(env))
       throw refusal('LOC bulk write channel is closed',404);
     if(host===WEB_HOST&&!trustedLocalAction){
       if(body.kind!=='short-import')
@@ -295,6 +314,12 @@ export async function handleNativeLocOperation(request,env={},{
       requireManagedRelationGrant(body.payload,claims);
     if(body.kind==='managed-transaction')
       for(const item of body.operations)requireManagedRelationGrant(item,claims);
+    if(body.kind==='short-import'){
+      // Check the exact signed Scope grant and the complete import envelope
+      // before opening any database connection.
+      importPhase='delegation';
+      shortImportActor=authorizeDelegatedShortImport(body,claims);
+    }
     // Authorization is resolved from LOC's published JS before DB connection.
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
@@ -336,10 +361,8 @@ export async function handleNativeLocOperation(request,env={},{
     }
     if(body.kind==='short-import'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
-      importPhase='delegation';
-      const actor=authorizeDelegatedShortImport(body,claims);
       importPhase='validation';
-      const receipt=await processShortImport(body.batch,actor,{
+      const receipt=await processShortImport(body.batch,shortImportActor,{
         store:portableShortImportStore(selected.db,sql,{
           engine:selected.engine,namespace:selected.namespace,
           onPhase:phase=>{importPhase=phase;}})

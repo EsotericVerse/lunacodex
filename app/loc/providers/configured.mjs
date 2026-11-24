@@ -22,7 +22,8 @@ function errorFromResponse(result,response){
 export function createConfiguredAdapter({
   accountAdapter,
   authorityUrl=AUTH,
-  fetchImpl=globalThis.fetch
+  fetchImpl=globalThis.fetch,
+  localWrite=runLocalLocWrite
 }={}){
   const identity=accountAdapter||createLocAccountAdapter({
     authorityOrigin:authorityUrl,fetchImpl
@@ -49,11 +50,36 @@ export function createConfiguredAdapter({
         result=await response.json().catch(()=>null);
         if(!response.ok)throw errorFromResponse(result,response);
       }else{
-        result=await runLocalLocWrite({kind,scopeid,...fields});
+        result=await localWrite({kind,scopeid,...fields});
       }
       assertEditorTransactionLease(lease);
     }catch(error){
       if(isEditorTransactionCancelled(lease)){
+        // A Server Action cannot receive the editor's AbortSignal. The SQL
+        // write may already have committed, so retire derived reads and report
+        // an unconfirmed result instead of claiming the save was rolled back.
+        invalidateCachedReadPrefix('scope-aggregate:');
+        if(kind==='managed-write'&&typeof fields.payload?.p_table==='string')
+          invalidateScopedReadCache(fields.payload.p_table);
+        if(kind==='managed-transaction')
+          for(const item of fields.operations||[])
+            if(typeof item?.p_table==='string')invalidateScopedReadCache(item.p_table);
+        if(kind==='managed-action'){
+          const scope=String(fields.args?.p_scope_id||'').trim().toLowerCase();
+          if(/^[a-z][a-z0-9]{0,14}$/.test(scope)){
+            if(['save_blocks','move_scope_block'].includes(fields.name))
+              invalidateScopedReadCache('silver.'+(scope==='loc'?'loc_anchor':scope+'_blocks'));
+            else if(['save_scope_trace_place_names','merge_scope_trace_place_names',
+              'import_shared_keyword_class'].includes(fields.name))
+              invalidateScopedReadCache('silver.'+scope+'_anchor');
+            else if(['provision_scope','delete_scope'].includes(fields.name)){
+              invalidateScopedReadCache('silver.'+scope+'_anchor');
+              invalidateScopedReadCache('silver.'+scope+'_blocks');
+            }
+          }
+        }
+        if(kind==='short-import')
+          invalidateScopedReadCache('silver.'+scopeid+'_anchor');
         const stopped=new Error('編輯已取消；已送出的交易結果須重新讀取確認。');
         stopped.code='LOC_EDITOR_CANCELLED';
         throw stopped;

@@ -20,6 +20,7 @@ import {createLocAccountAdapter} from '../app/loc/auth/loc-browser.mjs';
 import {withAuthorizedLocRead} from '../app/loc/actions/read-context.mjs';
 import {withKeywordScope} from '../app/loc/actions/keywords/context.mjs';
 import {executeManagedKyselyAction} from '../app/loc/providers/kysely-management.mjs';
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 {
 
@@ -94,7 +95,10 @@ test('managed writes check the requested Scope grant before opening the database
 
 test('authorized feature reads use one direct connection without a read transaction',async()=>{
   let connected=0,closed=0,read=0,transaction=0;
-  const db={transaction(){transaction++;throw Error('Read transaction forbidden');}};
+  const db={
+    selectFrom(){throw Error('Read callback owns the only query');},
+    transaction(){transaction++;throw Error('Read transaction forbidden');}
+  };
   const dependencies={
     getHeaders:async()=>new Headers({cookie:'loc_session=opaque'}),
     verifySession:async()=>({userId:'USER_OWNER',email:LOC_OWNER_EMAIL}),
@@ -209,13 +213,22 @@ test('write dispatcher has no generic read action, including settings reads',asy
     ['bulk_update_galaxy_able',{p_scope_id:'loc',p_apply:false}]
   ]){
     await assert.rejects(executeManagedKyselyAction(db,{name,args}),
-      /Unknown Kysely action|LOC settings read actions are closed/);
+      /Unknown Kysely action|LOC settings read actions are closed|Unexpected Kysely action argument/);
   }
   assert.equal(queried,0);
 });
 
 test('temporary bulk-write route is closed by default and still authenticates when enabled',async()=>{
   let connected=0;
+  const closedRequest=new Request('https://loc.lo3rwang.cc/api/loc-native',{
+    method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({kind:'short-import',scopeid:'lo3rwang',batch:{}})
+  });
+  const earlyClosed=await handleNativeLocOperation(closedRequest,{},
+    {entrypoint:'loc-native',
+      database:async()=>{connected++;throw Error('Closed route reached SQL');}});
+  assert.equal(earlyClosed.status,404);
+  assert.equal(closedRequest.bodyUsed,false,'default-closed route must not parse a body');
   const ordinary={kind:'managed-action',scopeid:'lo3rwang',
     name:'fill_galaxy_place',args:{p_scope_id:'lo3rwang',
       p_start_date:'2026-01-01',p_end_date:'2026-01-02',
@@ -226,19 +239,28 @@ test('temporary bulk-write route is closed by default and still authenticates wh
       body:JSON.stringify(ordinary)
     }),{}, {database:async()=>{connected++;throw Error('HTTP save must stay closed');}});
   assert.equal(ordinaryResponse.status,404);
+  const alias=await handleNativeLocOperation(new Request(
+    'https://mcp.lo3rwang.cc/api/loc-native',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({kind:'mcp-sync',scopeid:'lo3rwang'})
+    }),{}, {entrypoint:'loc-native',
+      database:async()=>{connected++;throw Error('LOC route alias reached SQL');}});
+  assert.equal(alias.status,404,'the LOC import URL must not alias LAS writes');
   const body={kind:'short-import',scopeid:'lo3rwang',batch:{}};
   const makeRequest=()=>new Request('https://loc.lo3rwang.cc/api/loc-native',{
     method:'POST',headers:{'content-type':'application/json','cookie':'loc_session=present'},
     body:JSON.stringify(body)
   });
   const database=async()=>{connected++;throw Error('Permission gate must run before SQL');};
-  const closed=await handleNativeLocOperation(makeRequest(),{}, {database});
+  const closed=await handleNativeLocOperation(makeRequest(),{},
+    {entrypoint:'loc-native',database});
   assert.equal(closed.status,404);
   const opened=await handleNativeLocOperation(makeRequest(),
     {LOC_BULK_IMPORT_ENABLED:'true'}, {
       database,fetchImpl:async()=>new Response(JSON.stringify({
         session:{id:'session'},user:{id:'unknown-user',email:'unknown@example.org',emailVerified:true}
-      }),{status:200,headers:{'content-type':'application/json'}})
+    }),{status:200,headers:{'content-type':'application/json'}}),
+      entrypoint:'loc-native'
     });
   assert.equal(opened.status,403);
   assert.equal(connected,0);
@@ -250,10 +272,11 @@ test('temporary bulk-write route is closed by default and still authenticates wh
     body:JSON.stringify(body)
   });
   const mcpClosed=await handleNativeLocOperation(mcpRequest(),{},
-    {database,trustedMcpBridge:true});
+    {database,trustedMcpBridge:true,entrypoint:'las-native'});
   assert.equal(mcpClosed.status,404);
   const mcpEnabled=await handleNativeLocOperation(mcpRequest(),
-    {LOC_BULK_IMPORT_ENABLED:'true'}, {database,trustedMcpBridge:true});
+    {LOC_BULK_IMPORT_ENABLED:'true'},
+    {database,trustedMcpBridge:true,entrypoint:'las-native'});
   assert.equal(mcpEnabled.status,401);
   const localClosed=await handleNativeLocOperation(makeRequest(),{},
     {trustedLocalAction:true,database});
@@ -271,7 +294,7 @@ test('temporary bulk-write route is closed by default and still authenticates wh
       'https://loc.lo3rwang.cc/api/las-native',{
         method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify(generic)
-      }),{}, {database,trustedMcpBridge:true});
+      }),{}, {database,trustedMcpBridge:true,entrypoint:'las-native'});
     assert.equal(response.status,404,generic.kind);
   }
   assert.equal(connected,0);
@@ -313,13 +336,21 @@ test('standalone MCP role and Scope status operations are retired',async()=>{
 }
 
 {
-const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-
 test('browser database adapter cannot execute generic SELECT or publicAction calls',()=>{
   const client=read('app/loc/providers/kysely-browser.mjs');
   assert.match(client,/LOC database reads must use their feature query action/);
   assert.doesNotMatch(client,/publicAction/);
   assert.doesNotMatch(client,/analytics/);
+});
+
+test('explicit Keyword discovery uses bounded owner-authorized feature actions',()=>{
+  const source=read('app/loc/actions/keywords/queries.mjs');
+  assert.match(source,/export async function queryKeywordDiscoveryCount/);
+  assert.match(source,/export async function queryKeywordDiscoveryPage/);
+  assert.match(source,/withKeywordScope\(scopeId,\{write:true,owner:true\}/);
+  assert.match(source,/KEYWORD_DISCOVERY_MAX_ROWS/);
+  assert.match(source,/DISCOVERY_COLUMNS=Object\.freeze\(\['uid','date','title','content'\]\)/);
+  assert.doesNotMatch(source,/transaction\(\)/);
 });
 
 test('fixed JS Manage catalog has unique Scope identifiers',()=>{

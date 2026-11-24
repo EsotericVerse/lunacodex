@@ -203,16 +203,18 @@ test('Import candidate reads are fixed, scope-authorized and UID-paginated',asyn
   assert.match(backend,/wholeSeconds&&ms%1000!==0/);
 });
 
-test('occupied-time import lookup is exact-second, website-only and scope-bounded',async()=>{
-  const backend=await readFile(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+test('occupied-time import lookup stays paged, Scope-authorized and exact-time matched',async()=>{
+  const queries=await readFile(new URL('../app/loc/actions/import/queries.mjs',import.meta.url),'utf8');
   const panel=await readFile(new URL('../app/loc/import/ManagementImportPanel.jsx',import.meta.url),'utf8');
-  const guard=await readFile(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  assert.match(backend,/import_occupied_createtimes/);
-  assert.match(backend,/ms%1000!==0/);
-  assert.match(backend,/withinImportInstants\(/);
-  assert.match(backend,/seconds,1000,/);
-  assert.match(backend,/return readImportCandidatePage\(/);
-  assert.match(panel,/action:'import_occupied_createtimes'/);
+  const matcher=await readFile(new URL('../app/loc/import/duplicate-check.mjs',import.meta.url),'utf8');
+  assert.match(queries,/export async function queryImportOccupiedDatePage/);
+  assert.match(queries,/stringList\(args\.p_dates,\{max:40,length:10\}\)/);
+  assert.match(queries,/withImportScope\(args,async\(db,_args,port\)=>/);
+  assert.match(queries,/\.where\('date','in',days\)/);
+  assert.match(queries,/\.orderBy\('date','asc'\)\.orderBy\('uid','asc'\)/);
+  assert.match(queries,/assertZModelSelectRows\('silver\.'\+scope\+'_galaxy'/);
+  assert.match(panel,/queryImportOccupiedDatePage\(/);
   assert.match(panel,/new Date\(Math\.floor\(instant\/1000\)\*1000\)\.toISOString\(\)/);
-  assert.match(guard,/import_occupied_createtimes/);
+  assert.match(matcher,/const key=importTimeKey\(row\),milli=importMillisKey\(row\)/);
+  assert.match(matcher,/const candidates=\[\.\.\.\(stored\.get\(key\)\?\.values\(\)\|\|\[\]\)\]/);
 });

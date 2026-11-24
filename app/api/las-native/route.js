@@ -27,7 +27,7 @@ export async function POST(request){
   if(origin&&origin!==EXTENSION)return new Response(null,{status:403});
   try{
     return cors(request,await handleNativeLocOperation(request,process.env,
-      {trustedMcpBridge:true}));
+      {trustedMcpBridge:true,entrypoint:'las-native'}));
   }catch{
     return cors(request,new Response(JSON.stringify({error:{
       code:'LOC_LAS_BRIDGE_UNAVAILABLE',message:'LOC business bridge unavailable'
