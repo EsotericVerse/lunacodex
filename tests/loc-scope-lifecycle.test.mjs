@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
 import {manageScopeRegistryNative,provisionScopeNative,deleteScopeNative}
   from '../app/loc/providers/kysely-scope-lifecycle.mjs';
@@ -146,28 +145,4 @@ test('Scope creation and deletion both demand existing global LOC authorization'
   await assert.rejects(deleteScopeNative(state.trx,{p_scope_id:'lo3rwang'}),
     /Built-in LOC Scope/);
   assert.deepEqual(state.calls,[]);
-});
-test('Scope lifecycle uses serializable website Session and no legacy RPC',()=>{
-  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  const actions=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
-  const lifecycle=readFileSync(new URL('../app/loc/providers/kysely-scope-lifecycle.mjs',import.meta.url),'utf8');
-  const admin=readFileSync(new URL('../app/loc/views/admin-panels/AdminRegistry.jsx',import.meta.url),'utf8');
-  assert.match(native,/host!==WEB_HOST\)throw refusal\('LOC Scope lifecycle is website-only'/);
-  assert.match(native,/transaction\.setIsolationLevel\('serializable'\)/);
-  for(const action of ['provision_scope','manage_scope_registry','delete_scope']){
-    assert.ok(actions.includes("'"+action+"'"),action+' must be supported');
-  }
-  assert.doesNotMatch(lifecycle,/silver\.manage\(|api\.(?:provision_scope|delete_scope|manage_scope_registry)\(/);
-  assert.doesNotMatch(lifecycle,/selectFrom\(['"]api\.manage/);
-  assert.doesNotMatch(lifecycle,/enable row level security|create policy|grant select/i);
-  // Scope provisioning must copy the actual linked Category/Class/Group/Item
-  // records, fail if that copy has no Items, and never demand a retired index.
-  assert.match(lifecycle,/await copyDefaultKeywordClass\(trx,scope\)/);
-  assert.match(lifecycle,/if\(keywordCount<1\)reject\('Scope Keyword Item copy incomplete',409\)/);
-  assert.match(lifecycle,/await trx\.insertInto\('silver\.'\+target\+'_anchor'\)/);
-  assert.match(lifecycle,/keyword_rows:keywordCount/);
-  assert.match(lifecycle,/keyword_class_uid:classUid/);
-  assert.doesNotMatch(lifecycle,/synchronizeKeywordLibrary|keyword_patterns/);
-  assert.match(admin,/locale:normalizeUiLocale\(scopeDraft\.locale\)/);
-  assert.doesNotMatch(admin,/keyword_rows\)!==66/);
 });

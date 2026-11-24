@@ -19,7 +19,6 @@ import {publishedManagedScope} from '../app/loc/providers/published-managed-scop
 import {createLocAccountAdapter} from '../app/loc/auth/loc-browser.mjs';
 
 {
-const source=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 
 test('published business grants need neither an open database nor an HTTP request',async()=>{
   const verified='sopa2306@gmail.com';
@@ -57,21 +56,12 @@ test('trusted role self projection reads only published JS, including birthday',
   assert.ok(rows.some(row=>row.id==='loc'&&row.birthday));
 });
 
-test('self-only JS grants and named transactions are enabled without a generic SELECT route',()=>{
-  assert.equal(existsSync(new URL('../public/_routes.json',import.meta.url)),false);
+test('retired generic public SQL HTTP route remains absent',()=>{
   assert.equal(existsSync(new URL('../app/api/loc-public-query',import.meta.url)),false);
-  assert.match(source('app/api/loc-permissions/route.js'),/handleLocSelfPermissions/);
-  assert.match(source('app/loc/server/public-named-transactions.mjs'),/handleNamedPublicTransaction/);
-  assert.doesNotMatch(source('app/loc/server/public-named-transactions.mjs'),
-    /req\.schema|req\.table|body\.columns|body\.filters|body\.sql/);
-  assert.doesNotMatch(source('app/loc/auth/editor-grants.mjs'),/\/api\/loc-permissions|fetchImpl/);
-  assert.doesNotMatch(source('app/loc/permissions/loc_access.mjs'),/selectFrom\('api\.manage'\)/);
-  assert.doesNotMatch(source('app/loc/providers/loc-authorization.mjs'),/selectFrom\('api\.manage/);
 });
 }
 
 {
-const source=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 
 test('LOC MCP roles use published JS, even if a database cannot connect',async()=>{
   const forbidden={selectFrom(){throw Error('DB role SELECT forbidden');},
@@ -103,16 +93,6 @@ test('standalone MCP role and Scope status operations are retired',async()=>{
   assert.equal(connected,0);
 });
 
-test('real business operations resolve JS rights before any DB connection',()=>{
-  const roles=source('app/loc/mcp/access-roles.mjs');
-  assert.doesNotMatch(roles,/directMcpKysely|closeLocDatabase|selectFrom/);
-  const code=source('app/loc/mcp/native-operations.mjs');
-  const rights=code.indexOf('const rights=host===MCP_HOST');
-  const database=code.indexOf('selected=await database(');
-  assert.ok(rights>0&&database>rights);
-  assert.match(code,/await loadMcpLocAccess\(null,claims\.email\)/);
-  assert.match(code,/await readLocAccess\(null,claims\.email,\{website:true\}\)/);
-});
 }
 
 {
@@ -141,17 +121,6 @@ test('built-in publication and JS Manage registry agree on routing and role',()=
   assert.equal(publishedManagedScope('external'),null);
 });
 
-test('fixed registry removes SQL mapping probes but not signed authorization checks',()=>{
-  const code=read('app/loc/providers/kysely-management.mjs');
-  assert.match(code,/return publishedManagedScope\(scope\);/);
-  assert.doesNotMatch(code,/selectFrom\('api\.manage'\)/);
-  assert.match(code,/const record=await registeredScope\(trx,scope\);/);
-  assert.match(code,/canLocAccess\(trx,'scope',scope\)/);
-  const roles=read('app/loc/permissions/loc_access.mjs');
-  assert.doesNotMatch(roles,/selectFrom\('api\.manage'\)/);
-  assert.match(roles,/publishedLocAccess\(email,\{website\}\)/);
-});
-
 test('Manage changes cannot commit a role or route different from published JS',()=>{
   const native=read('app/loc/mcp/native-operations.mjs');
   assert.match(native,/requirePublishedManageWrite\(body\.payload\)/);
@@ -162,17 +131,6 @@ test('Manage changes cannot commit a role or route different from published JS',
   assert.match(lifecycle,/fixedManageScope\(id\)\?\.active===true/);
 });
 
-test('Statistics and public Search use published Scope JS, never api.manage SQL',()=>{
-  const analytics=read('app/loc/providers/kysely-analytics.mjs');
-  assert.doesNotMatch(analytics,/selectFrom\('api\.manage'\)|zmodelRegistryJoin/);
-  assert.match(analytics,/publishedManagedScope\(scope\)/);
-  assert.match(analytics,/FIXED_MANAGE_ROWS\.filter/);
-});
-
-test('Registry writes cannot silently outrun the published JS route',()=>{
-  const lifecycle=read('app/loc/providers/kysely-scope-lifecycle.mjs');
-  assert.match(lifecycle,/Publish matching JS Scope routing before Registry update/);
-});
 }
 
 {

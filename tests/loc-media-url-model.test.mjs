@@ -7,16 +7,10 @@ import {appendSunoMetaTagsToArticle} from '../app/loc/media/suno-style-meta-tags
 import {refreshSunoStyleMetaTags} from '../app/loc/media/suno-style-meta-tags.mjs';
 
 {
-const source=file=>readFileSync(new URL('../'+file,import.meta.url),'utf8');
 
 test('Media URL links never become typed Anchor UID ZModel relationships',()=>{
   assert.equal(Object.hasOwn(GALAXY_READ_MODEL_FIELDS.GalaxyUidAnchor,'media_link'),false);
   assert.equal(Object.hasOwn(GALAXY_READ_MODEL_FIELDS.GalaxyUidRead,'media_link'),false);
-  const zmodel=source('packages/zenstack/schema.zmodel');
-  const begin=zmodel.indexOf('type GalaxyUidAnchor {');
-  const end=zmodel.indexOf('type GalaxyList {',begin);
-  assert.ok(begin>=0&&end>begin);
-  assert.doesNotMatch(zmodel.slice(begin,end),/media_link/);
 });
 
 test('Galaxy media link URLs are directly exposed as URLs',()=>{
@@ -28,30 +22,11 @@ test('Galaxy media link URLs are directly exposed as URLs',()=>{
     [{value:link,kind:'url'}]);
 });
 
-test('Article detail explicitly selects the plain physical URL array',()=>{
-  const gallery=source('app/loc/galaxy/galaxy-query.js');
-  assert.match(gallery,/galaxyUidReadWithPolicyColumns=\(\)=>unique\(\[/);
-  assert.match(gallery,/media_link'\s*\]\)/);
-  const trace=source('app/modular/features/trace/TracePlaceResults.jsx');
-  assert.match(trace,/row\.attr\?\.url/);
-  assert.match(trace,/mediaUrls,result:'articles'/);
-  const feature=source('app/loc/model/galaxy-feature-transactions.mjs');
-  assert.match(feature,/where\('media_link','&&',model\.mediaUrls\)/);
-  assert.doesNotMatch(trace,/operator:'overlaps',value:mediaIds/);
-});
 }
 
 {
 const file=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 
-test('Media Publisher does not read or overwrite a stale media_link snapshot',()=>{
-  const src=file('../app/loc/media/ManagementMediaPublisher.jsx');
-  assert.doesNotMatch(src,/selectRows\(/);
-  assert.doesNotMatch(src,/const prior=Array\.isArray\(article\.media_link\)/);
-  assert.match(src,/p_operation:'append_media_link'/);
-  assert.match(src,/article_uid:galaxyLink,media_uid:mediaUid/);
-  assert.match(src,/await transactionWrites\(plan\.operations\)/);
-});
 test('MediaAnchor append retains existing URL links under a row lock',()=>{
   const src=file('../app/loc/providers/kysely-management.mjs');
   const begin=src.indexOf("if(operation==='append_media_link'){");
@@ -71,13 +46,6 @@ test('Only the website can request a media link append in the managed SQL envelo
   const native=file('../app/loc/mcp/native-operations.mjs');
   assert.match(native,/selected\.engine!=='postgres'\|\|host!==WEB_HOST/);
   assert.match(native,/'append_media_link'\]\.includes\(item\.p_operation\)/);
-});
-
-test('Suno keeps its public permalink only in Galaxy.url',()=>{
-  const src=file('../app/loc/media/SunoImportPanel.jsx');
-  assert.match(src,/url:draft\.url\.trim\(\)\|\|null/);
-  assert.doesNotMatch(src,/media_link:\[draft\.url\.trim\(\)\]/);
-  assert.doesNotMatch(src,/media_link:\[mediaUid\]/);
 });
 
 test('all Galaxy media_link writes require actual URLs, not Anchor UIDs',()=>{

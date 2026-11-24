@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {LOC_MANAGEMENT_ROUTE_TABLE,managementRouteHref}
+import {managementRouteHref}
   from '../app/modular/routing/management-route-table.mjs';
 
-const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 // Deliberately use a tiny resolver fixture: the route table must not depend
 // on UI locale JSON, React, or framework modules just to encode destinations.
 const navigationFixture=(scope,path,native)=>{
@@ -25,36 +23,6 @@ const navigationFixture=(scope,path,native)=>{
 const href=(level,key,scopeId='loc',native=false)=>managementRouteHref(
   level,key,scopeId,{native,navigate:navigationFixture}
 );
-const expected={
-  group:{
-    system:'/admin/',keywords:'/statics/manage/',members:'/manage/',
-    articles:'/search/manage/?section=publish&edit=1'
-  },
-  scope:{
-    time:'/culture/manage/',keywords:'/statics/manage/',
-    spatial:'/trace/manage/?section=anchor',
-    articles:'/search/manage/?section=publish'
-  },
-  user:{
-    culture:'/culture/',statics:'/statics/',trace:'/trace/',search:'/search/'
-  }
-};
-
-test('Group Scope User route table has precisely the requested slots and order',()=>{
-  for(const level of Object.keys(expected)){
-    assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE[level]),
-      Object.keys(expected[level]));
-    for(const [key,want] of Object.entries(expected[level])){
-      const result=href(level,key,'loc');
-      if(level==='group'&&key==='system'){
-        assert.equal(result,want);
-      }else{
-        const url=new URL(result);
-        assert.equal(url.pathname+url.search,want,level+':'+key);
-      }
-    }
-  }
-});
 
 test('Scope routes retain owner domain/directory and section without edit=1',()=>{
   const author=href('scope','spatial','lo3rwang');

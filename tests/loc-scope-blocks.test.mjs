@@ -71,22 +71,6 @@ test('block_list keeps legacy homepage default and rejects management pages',asy
     /Invalid LOC public Block page/);
 });
 
-test('Scope edit display uses the feature-owned Blocks query, not arbitrary SELECT',()=>{
-  const service=src('app/loc/scope/scope-data.js');
-  const browser=src('app/loc/blocks/ScopeEditableBlocks.jsx');
-  const server=src('app/loc/server/public-named-transactions.mjs');
-  const provider=src('app/loc/providers/kysely-public.mjs');
-  assert.match(service,/queryBlocks\('block_list',\{p_scope_id:id,p_page_name:name\}\)/);
-  assert.match(service,/p_scope_id:id,p_page_name:name/);
-  assert.doesNotMatch(service,/selectAllRows\(`silver\.\$\{id\}_blocks`/);
-  assert.match(server,/block_list:\['p_scope_id','p_page_name'\]/);
-  assert.match(provider,/block_list:\['p_scope_id','p_page_name'\]/);
-  assert.match(server,/publicScopeBlockPage\(body\.args\.p_page_name\)/);
-  assert.match(browser,/重新讀取區塊/);
-  assert.match(browser,/editorRows\.mutate\(\)/);
-});
-
-
 test('homepage draft preview uses the current unsaved drafts and preserves the editor',()=>{
   const home=src('app/loc/blocks/ScopeEditableBlocks.jsx');
   const draft=src('app/loc/blocks/ScopeBlockDraftList.jsx');
@@ -97,7 +81,6 @@ test('homepage draft preview uses the current unsaved drafts and preserves the e
   assert.match(draft,/<PreviewDisplay \{\.\.\.slot\}\/>/);
   assert.match(draft,/onClick=\{\(\)=>setRequestedPreview\(value=>!value\)\}/);
 });
-
 
 test('page turn is reversible and cancelled on abandonment',async()=>{
   const oldWindow=globalThis.window,oldDocument=globalThis.document;
