@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import UiText from '../../../i18n/UiText';
 import FieldText from '../../../i18n/FieldText';
 import {useUiSection} from '../../../i18n/ui-locale';
-import {THEME_SLOTS,THEME_TOKEN_KEYS,applyTheme,getThemeSlot} from '../../../modular/theme-registry';
+import {THEME_SLOTS,THEME_TOKEN_KEYS} from '../../../modular/theme-registry';
 import {mergeThemeSlot,THEME_DB_COLUMNS,themeColumnForToken,themeUiId,themeNumber,normalizeThemeHex,deriveThemeTokens} from '../../preferences/theme-data';
 import {dbAuthClient} from '../../db/db-client.mjs';
 import {readLocAdminSettings} from '../../actions/admin/queries.mjs';
@@ -48,16 +48,6 @@ export default function ThemeEditor(){
     const override=rows.find(row=>row.theme_id===themeId)||null;
     setDraft(mergeThemeSlot(themeId,override));
   },[themeId,rows]);
-
-  // Preview the edited palette on the current page; the published CSS stays
-  // authoritative for other visits until the next theme publication.
-  useEffect(()=>{
-    if(readState==='ready'&&draft)applyTheme(draft);
-  },[draft,readState]);
-  useEffect(()=>()=>{
-    const id=document.getElementById('loc-theme-stylesheet')?.dataset.themeId;
-    if(id)applyTheme(getThemeSlot(id));
-  },[]);
 
   const options=(rows.length?rows:THEME_SLOTS).map(theme=>({
     value:theme.theme_id||theme.id,
@@ -167,7 +157,7 @@ export default function ThemeEditor(){
       </div>
       <section className="scope-inline-card admin-theme-local-preview" aria-label="主題色彩預覽" style={{...draft.tokens,background:'var(--loc-bg)',color:'var(--loc-text)',borderColor:'var(--loc-line)'}}>
         <strong style={{color:'var(--loc-heading)'}}>色彩預覽：{draft.label||themeId}</strong>
-        <p style={{color:'var(--loc-muted)'}}>目前頁面即時預覽主題草稿。</p>
+        <p style={{color:'var(--loc-muted)'}}>預覽整套主題草稿；這裡的變更尚未套用到網站。</p>
         <div className="admin-theme-preview-sample" style={{background:'var(--loc-panel)',border:'1px solid var(--loc-line)'}}>
           <strong style={{color:'var(--loc-accent)'}}>強調色文字</strong>
           <span style={{color:draft.identityColor||'var(--loc-accent)'}}>主色基準</span>
