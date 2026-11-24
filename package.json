@@ -7,6 +7,8 @@
     "prebuild": "node scripts/sync-page-locale-assets.mjs && node scripts/sync-zenstack-schema-contract.mjs && node scripts/stage-loc-pics.mjs && node scripts/check-js-syntax.mjs",
     "dev": "next dev",
     "build": "next build",
+    "build:worker": "opennextjs-cloudflare build",
+    "preview:worker": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
@@ -14,8 +16,8 @@
     "predev": "node scripts/print-local-code-revision.mjs && node scripts/sync-page-locale-assets.mjs && node scripts/sync-zenstack-schema-contract.mjs && node scripts/stage-loc-pics.mjs"
   },
   "dependencies": {
-    "@blocknote/core": "0.55.0",
     "@blocknote/ariakit": "0.55.0",
+    "@blocknote/core": "0.55.0",
     "@blocknote/react": "0.55.0",
     "@capacitor/core": "8.5.3",
     "@capacitor/filesystem": "8.0.0",
@@ -46,11 +48,13 @@
   "devDependencies": {
     "@babel/parser": "7.29.14",
     "@capacitor/ios": "8.5.3",
+    "@opennextjs/cloudflare": "1.20.17",
     "@types/node": "26.6.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "sharp": "0.35.5",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wrangler": "4.167.0"
   },
   "packageManager": "pnpm@10.30.3",
   "pnpm": {
@@ -64,7 +68,8 @@
       "@parcel/watcher",
       "@swc/core",
       "esbuild",
-      "sharp"
+      "sharp",
+      "workerd"
     ]
   }
 }

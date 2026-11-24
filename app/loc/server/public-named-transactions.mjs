@@ -176,13 +176,13 @@ export async function handleNamedPublicTransaction(request,env={},{
       const data=operation.operation==='galaxy-records'
         ?await executeGalaxyRecordTransaction(port.db,operation)
         :await executeAnchorFeatureTransaction(port.db,operation);
-      return respond({data,transaction:receipt});
+      return respond({data,audit:receipt});
     }catch(error){
       status=error?.httpStatus||503;
       console.error('[LOC fixed record transaction failed]',{...receipt,
         code:String(error?.code||'FAILED').slice(0,40)});
-      return respond({error:'Fixed record transaction unavailable',
-        transaction:receipt},status);
+      return respond({error:'Fixed record query unavailable',
+        audit:receipt},status);
     }finally{
       console.info('[LOC fixed record transaction]',{
         ...receipt,status,elapsedMs:Date.now()-initiated});
@@ -226,13 +226,13 @@ export async function handleNamedPublicTransaction(request,env={},{
       unbind=bindLocRequestAbort(port,request.signal);
       if(!port?.db||port.engine!=='postgres')throw Error('LOC PostgreSQL unavailable');
       const data=await executeGalaxyFeatureTransaction(port.db,operation);
-      return respond({data,transaction:receipt});
+      return respond({data,audit:receipt});
     }catch(error){
       status=503;
       console.error('[LOC Galaxy feature failed]',{...receipt,
         code:String(error?.code||'FAILED').slice(0,40)});
-      return respond({error:'LOC Galaxy feature transaction unavailable',
-        transaction:receipt},status);
+      return respond({error:'LOC Galaxy feature query unavailable',
+        audit:receipt},status);
     }finally{
       console.info('[LOC Galaxy feature transaction]',{
         ...receipt,status,elapsedMs:Date.now()-started});
@@ -300,7 +300,7 @@ export async function handleNamedPublicTransaction(request,env={},{
         const page=assertZModelAnchorFeatureRows(rows.slice(0,operation.limit));
         return {data:page,nextCursor:rows.length>operation.limit
           ?String(page.at(-1).uid):null};
-      });
+      })();
     return respond(result);
   }catch(error){
     console.error('[LOC named TimeAnchor transaction]',{

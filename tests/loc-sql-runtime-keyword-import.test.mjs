@@ -71,12 +71,15 @@ test('Keyword SQL writer updates only cached totals and keeps Item rules outside
 test('Native import candidate queries are fixed, scoped and not generic SQL',async()=>{
   const src=await readFile(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
   const client=await readFile(new URL('../app/loc/providers/configured.mjs',import.meta.url),'utf8');
+  const routes=await readFile(new URL('../app/loc/actions/managed-query-routes.mjs',import.meta.url),'utf8');
   assert.match(src,/import_site_id_candidates/);
   assert.match(src,/import_created_at_candidates/);
   assert.match(src,/canLocAccess\(trx,'scope',scope\)/);
   assert.match(src,/where\(sql`lower\(\$\{sql\.ref\('site'\)\}\)`/);
   assert.match(src,/eb\('createtime','>='/);
-  assert.match(client,/import_site_id_candidates','import_created_at_candidates'/);
+  assert.match(routes,/MANAGED_IMPORT_READ_ACTIONS=Object\.freeze/);
+  assert.match(routes,/import_site_id_candidates','import_created_at_candidates'/);
+  assert.match(client,/isManagedReadAction/);
 });
 
 test('occupied-time import lookup is exact-second, website-only and scope-bounded',async()=>{
