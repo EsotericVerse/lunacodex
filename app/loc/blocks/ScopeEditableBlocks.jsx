@@ -302,12 +302,14 @@ export default function ScopeEditableBlocks({
             &&!slot.entities.some(entity=>recommendationTerm(entity.text)))return [];
         const level=Number(headingLevel);
         const Heading=level===1?'h1':level===2?'h2':level===4?'h4':'h3';
+        // Keep key BEFORE the prop spread. Next's JSX dev transform can
+        // otherwise report this mapped motion.section as unkeyed.
         const node=<HomeDisplayTag
+          key={slot.uid||'order:'+slot.order}
           {...homeMotionProps(slot)}
           id={slotId||undefined}
           className={(typeof resolveSlotClassName==='function'?resolveSlotClassName(slot):slotClassName)+' scope-editable-block'+(empty?' is-empty':'')+(motionHome?' loc-home-motion-block':'')}
           style={typeof resolveSlotStyle==='function'?resolveSlotStyle(slot):undefined}
-          key={slot.uid||'order:'+slot.order}
           data-page-name={pageName}
           data-block-order={slot.order}
           onClick={onSuggestionClick&&!slot.entities.some(entity=>recommendationTerm(entity.text))
