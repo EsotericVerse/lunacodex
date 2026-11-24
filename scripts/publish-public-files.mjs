@@ -2,14 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // Explicit publishing happens outside normal builds. Stage first and restore
-// previously published files if an install step throws (including Blocks).
+// previously published files if an install step throws.
 export function publishPublicFiles(root,entries){
   const temp=fs.mkdtempSync(path.join(root,'.loc-public-stage-'));
   const stage=path.join(temp,'stage'),backup=path.join(temp,'backup');
-  const blockPrefix='app/modular/published-blocks/';
-  const blockDir=blockPrefix.slice(0,-1);
-  const nonBlock=entries.filter(([file])=>!file.startsWith(blockPrefix));
-  const install=[...nonBlock.map(([file])=>file),blockDir];
+  const install=entries.map(([file])=>file);
   const moved=[];
   try{
     for(const [file,content] of entries){

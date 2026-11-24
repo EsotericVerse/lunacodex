@@ -1,2 +1,0 @@
-// Public lrunes/game Blocks; this module loads only when its page is requested.
-export default [{"uid":"4D978298","scope":"lrunes","page_name":"game","block_text":"\u003cp>以 66 枚符文、事件回應、De 與共鳴互動構成的本機多人桌遊。\u003c/p>","block_image":"{\"url\": \"https://loc.lo3rwang.cc/pics/LunaRunesGame.jpg\", \"mode\": \"background\", \"source\": \"custom\"}","block_order":1,"block_title":"月之符文桌上遊戲","block_entity":[],"block_eyebrow":"LUNARUNES · TABLETOP","block_subtitle":""}];

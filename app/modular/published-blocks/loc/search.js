@@ -1,2 +1,0 @@
-// Public loc/search Blocks; this module loads only when its page is requested.
-export default [{"uid":"4250963F","scope":"loc","page_name":"search","block_text":"\u003cp>搜尋建議，按下面的框框就有了！\u003c/p>","block_image":null,"block_order":1,"block_title":"搜尋建議","block_entity":[{"uid":"R8TRVP7Y","text":"\u003cp>lo3rwang\u003c/p>","title":"作者"},{"uid":"ZVUTRH7A","text":"\u003cp>Suno\u003c/p>","title":"歌曲"},{"uid":"92P3KQ6Y","text":"\u003cp>月之符文\u003c/p>","title":"符文"}],"block_eyebrow":"Suggestion","block_subtitle":""}];
