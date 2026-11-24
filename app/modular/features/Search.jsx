@@ -622,6 +622,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     beginRequest();
     matchedQueryRef.current='';
     setError('');setLoadMoreError('');setHasMore(false);setNextCursor(null);setLoadingMore(false);
+    setResults([]);setReaderResult(null);setFullTextKey('');
     setFullText('');setFullTextRow(null);setFullTextError('');setFullTextLoading(true);
     setStatus(UI_COPY.search.loadingRelation);
     try{
@@ -702,9 +703,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
 
 
   async function toggleFullText(result){
+    if(!managementMode&&fullTextKey===result.key&&!fullTextError)return;
     const request=++detailEpoch.current;
-    if(fullTextKey===result.key){
-      if(!managementMode)return;
+    if(managementMode&&fullTextKey===result.key){
       setFullTextLoading(false);
       setFullTextKey('');
       setFullText('');
@@ -892,7 +893,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
 
   function resetSearchState(){
     ++detailEpoch.current;
-    setFullTextKey('');setFullText('');setFullTextRow(null);
+    setReaderResult(null);setFullTextKey('');setFullText('');setFullTextRow(null);
     setFullTextError('');setFullTextLoading(false);
     ++searchId.current;
     abortRef.current?.abort();
@@ -1512,6 +1513,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         transition={{duration:reduceMotion?0:.2}}>
         {fullTextLoading?<p className="scope-status" role="status">正在讀取文章… <ActivityMotion kind="hourglass"/></p>:null}
         {renderSearchArticle(readerResult,0,true)}
+        {fullTextError?<button type="button" className="loc-button" onClick={()=>void toggleFullText(readerResult)}>重新讀取文章</button>:null}
       </motion.div>:<p className="scope-status">選擇左側文章，閱讀全文及探索關聯。</p>}
     </section>:null}
     </div>
