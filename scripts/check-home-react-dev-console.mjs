@@ -110,6 +110,30 @@ try{
     return data?.count>=5&&data?.heading?data:null;
   },100000,'five published LOC homepage blocks and hero heading');
 
+  // Reproduce a persistent browser profile: a previous build's LOC worker
+  // and static cache can survive Git pulls and serve stale JS to localhost.
+  const seeded=await call('Runtime.evaluate',{
+    expression:'(async()=>{await navigator.serviceWorker.register("/sw.js",{scope:"/"});const c=await caches.open("loc-static-next-v1");await c.put("/_next/static/chunks/loc-dev-cache-regression.js",new Response("old JS",{headers:{"content-type":"application/javascript"}}));return (await navigator.serviceWorker.getRegistrations()).length})()',
+    awaitPromise:true,returnByValue:true
+  });
+  assert.ok(seeded?.result?.value>0,'Could not seed prior LOC website worker');
+  await call('Page.reload',{ignoreCache:false});
+  await within(async()=>{
+    const result=await call('Runtime.evaluate',{
+      expression:'({count:document.querySelectorAll("'+homeClass+'").length,heading:document.querySelector(".loc-home-block__header h1")?.textContent?.trim()||""})',
+      returnByValue:true
+    });
+    return result?.result?.value?.count>=5&&result?.result?.value?.heading;
+  },100000,'reloaded homepage in persisted Service Worker browser profile');
+  await within(async()=>{
+    const result=await call('Runtime.evaluate',{
+      expression:'Promise.all([navigator.serviceWorker.getRegistrations(),caches.keys()]).then(([registrations,names])=>({workers:registrations.filter(r=>r.scope===location.origin+"/").length,stale:names.filter(n=>n.startsWith("loc-static-next-")).length}))',
+      returnByValue:true,awaitPromise:true
+    });
+    const value=result?.result?.value;
+    return value?.workers===0&&value?.stale===0;
+  },30000,'retired dev worker and stale static cache');
+
   // The warning can arrive after async published Blocks resolve/hydrate.
   await sleep(3000);
   const captured=[...notes,serverLog].join('\n');
