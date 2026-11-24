@@ -258,7 +258,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
   const rate=()=>Math.round((scanned-startedScanned)*1000/
     Math.max(1,now()-started));
   const incomplete=(finalizePending=false)=>({
-    incomplete:true,scanned,parsed:a.state.parsed,finalizePending,
+    incomplete:true,scanned,parsed:a.state.parsed,matchedDocuments:a.state.matchedDocuments,itemMatches:a.state.itemMatches,occurrences:a.state.occurrences,finalizePending,
     rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null
   });
   const checkpoint=async(finalizePending=false)=>{
@@ -272,7 +272,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
   const finish=async()=>{
     const result=a.totals();
     await finalize(result);
-    onProgress({phase:'completed',completed:scanned,parsed:a.state.parsed,
+    onProgress({phase:'completed',completed:scanned,parsed:a.state.parsed,matchedDocuments:a.state.matchedDocuments,itemMatches:a.state.itemMatches,occurrences:a.state.occurrences,
       rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
     return result;
   };
@@ -359,7 +359,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
       const canFinalizeNow=expectedCount<=KEYWORD_SCAN_CHECKPOINT_ROWS&&
         startedScanned===0&&
         (timeBudgetMs===null||now()-started<=timeBudgetMs*0.5);
-      onProgress({phase:'finalizing',completed:scanned,parsed:a.state.parsed,
+      onProgress({phase:'finalizing',completed:scanned,parsed:a.state.parsed,matchedDocuments:a.state.matchedDocuments,itemMatches:a.state.itemMatches,occurrences:a.state.occurrences,
         rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
       if(canFinalizeNow)return finish();
       // Large Scopes and slow short Scopes first persist the exact tail,
@@ -373,7 +373,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
       // remaining time cannot safely handle another 4096, otherwise at 8192.
       if(timeBudgetMs!==null&&elapsed*2>timeBudgetMs*0.65){
         await checkpoint();
-        onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,
+        onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,matchedDocuments:a.state.matchedDocuments,itemMatches:a.state.itemMatches,occurrences:a.state.occurrences,
           rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
         return incomplete();
       }
@@ -381,7 +381,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
     }
     if(onCheckpoint&&scanned-lastCheckpoint>=checkpointRows)
       await checkpoint();
-    onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,
+    onProgress({phase:'reading',completed:scanned,parsed:a.state.parsed,matchedDocuments:a.state.matchedDocuments,itemMatches:a.state.itemMatches,occurrences:a.state.occurrences,
       rowsPerSecond:rate(),targetRowsPerSecond:pace?.target??null});
     if(onCheckpoint&&(
       runLimit!==null&&scanned-startedScanned>=runLimit||

@@ -22,7 +22,10 @@ export default function UnifiedSpatialManagement({scopeId,initialType='point',in
     setSelected(current=>({type,uid,serial:current.serial+1}));
   },[selected]);
   if(query.error)return <p role="alert" className="scope-status scope-error">{String(query.error.message||query.error)}</p>;
-  if(query.isPending||!query.data)return <p className="scope-status" role="status">正在載入空間定錨列表…</p>;
+  if(query.isPending||!query.data)return <section className="loc-unified-spatial-manager" aria-busy="true" aria-label="空間定錨管理">
+    <div className="scope-culture-record-browser"><h3>空間定錨列表</h3><p className="scope-status" role="status">正在載入空間定錨列表…</p></div>
+    <div className="loc-progressive-river-frame"><span>空間資料與地圖</span><div className="loc-progressive-river-axis" aria-hidden="true"/></div>
+  </section>;
   const spatial=query.data,route=selected.type==='path'||selected.type==='trace';
   return <section className="loc-unified-spatial-manager" aria-label="空間定錨管理">
     <div className="scope-culture-record-browser">

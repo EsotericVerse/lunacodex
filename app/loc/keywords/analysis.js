@@ -63,6 +63,7 @@ export async function selectAvailableKeywordClasses(scopeId){
     Math.max(0,Number(progress?.percent)||0),
     String(progress?.label||'正在逐批分析文章'),
     {parsed:Number(progress?.parsed)||0,reused:Number(progress?.reused)||0,
+      matchedDocuments:progress?.matchedDocuments,itemMatches:progress?.itemMatches,occurrences:progress?.occurrences,
       rowsPerSecond:Math.max(0,Number(progress?.rowsPerSecond)||0),
       targetRowsPerSecond:Math.max(0,Number(progress?.targetRowsPerSecond)||0)});
   let result,lastScanned=-1;
@@ -81,12 +82,14 @@ export async function selectAvailableKeywordClasses(scopeId){
     forward({phase:'reading',completed:scanned,total,
       percent:total?scanned/total*100:0,label:'本次新分析進度已存檔，正在繼續下一批',
       parsed:result.parsed,reused:result.reused,
+      matchedDocuments:result.matchedDocuments,itemMatches:result.itemMatches,occurrences:result.occurrences,
       rowsPerSecond:result.rowsPerSecond,
       targetRowsPerSecond:result.targetRowsPerSecond});
   }
   reportBatchProgress(onProgress,'completed',
     Number(result?.analyzedDocuments)||0,
-    Number(result?.analyzedDocuments)||0,100,'分析已完成');
+    Number(result?.analyzedDocuments)||0,100,'分析已完成',{
+      matchedDocuments:result?.matchedDocuments,itemMatches:result?.itemMatches,occurrences:result?.occurrences});
   clearKeywordAnalysisCache();
   return {...result,documentCount:Number(result?.analyzedDocuments)||0,
     keywordDocumentCount:Number(result?.matchedDocuments)||0,skipped:false};

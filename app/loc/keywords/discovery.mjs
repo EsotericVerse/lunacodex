@@ -103,7 +103,7 @@ export function createNewKeywordDiscovery(rows=[]){
         }
       }
     }
-    return {read,withContent,limited:false};
+    return {read,withContent,limited:false,candidateCount:totals.size,existingCount:existing.size};
   }
   function finish(){
     // Counts are observed facts, not preference weights. All candidates are

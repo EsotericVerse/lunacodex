@@ -128,6 +128,7 @@ export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onP
           throw new Error('關鍵詞背景分析回應異常');
         completed+=fresh.length;
         onProgress({completed,total,withContent:reply.withContent,
+          candidateCount:reply.candidateCount,existingCount:reply.existingCount,
           lanes:1,batchSize:requested,nextPageSize:queue.readLimit});
       }
       return lookahead;
