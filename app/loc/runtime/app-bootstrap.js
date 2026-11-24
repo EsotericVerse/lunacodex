@@ -2,7 +2,6 @@
 
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {invalidatePublicScopeMetadata,selectScopeRegistry,selectScopeBlocks} from '../scope/scope-data';
-import {hasPublishedBlocks,loadPublishedBlocks} from '../../modular/published-blocks/index.js';
 import {selectThemeRegistry,themeUiId} from '../preferences/theme-data';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 
@@ -21,9 +20,8 @@ export function appBootstrapKey(scopeId,pageName='index'){
   return ['app-bootstrap',SCOPE_ID.test(id)?id:'',PAGE_NAME.test(page)?page:'index'];
 }
 
-// Published pages need no Bootstrap SQL, ISR or Auth. Unpublished pages
-// retain their original on-demand public read instead of showing nothing.
-// Editors use selectLiveScopeBlocks directly after explicit authorization.
+// Registry and theme metadata remain static; authored presentation Blocks
+// use the existing page-exact live reader. No ISR or Auth is required.
 export async function selectAppBootstrap(scopeId,pageName='index',{configHint=null}={}){
   const [,id,page]=appBootstrapKey(scopeId,pageName);
   // Local Scope is a native IndexedDB workspace, not a cloud Registry or
@@ -40,7 +38,7 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
         row.scope_id===id&&row.active!==false)?.config||null)
       :Promise.resolve(null),
     id&&id!=='admin'
-      ?(hasPublishedBlocks(id,page)?loadPublishedBlocks(id,page):selectScopeBlocks(id,page))
+      ?selectScopeBlocks(id,page)
       :Promise.resolve([])
   ]);
   return {

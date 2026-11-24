@@ -37,6 +37,9 @@ export default function ScopeBlockEditorSession({
   async function updateBlockCaches(rows){
     invalidateScopeBlockPage(scopeId,pageName);
     await queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows);
+    await queryClient.setQueryData(['scope-public-blocks',scopeId,pageName],rows);
+    if(scopeId==='loc'&&/^(group|scope)_/.test(pageName))
+      await queryClient.invalidateQueries({queryKey:['scope-public-hero',pageName.replace(/^(group|scope)_/,'')]});
   }
   async function refreshBlockQueries(){
     // Reordering changes another row's order; read one committed page, not two.

@@ -106,7 +106,8 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
       await Promise.all([
         queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page]}),
         queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]})
+        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]}),
+        queryClient.invalidateQueries({queryKey:['scope-public-hero',page.replace(/^(group|scope)_/,'')]})
       ]);
       setStatus('首頁圖連結已儲存並讀回確認。');
       setRevision(n=>n+1);
@@ -191,7 +192,8 @@ function ManagementHeroDetails({slot,onDirtyChange}){
       await Promise.all([
         queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page]}),
         queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]})
+        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]}),
+        queryClient.invalidateQueries({queryKey:['scope-public-hero',page.replace(/^(group|scope)_/,'')]})
       ]);
       setStatus('管理區塊已儲存並讀回確認。');
       setRevision(v=>v+1);

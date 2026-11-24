@@ -11,11 +11,8 @@ import {useEditDock} from '../../modular/edit-dock';
 import {navigationHref} from '../../modular/routing/scope-registry';
 import useNativeNavigation from '../../modular/use-native-navigation';
 import dynamic from 'next/dynamic';
-import {useAppBootstrap} from '../runtime/app-bootstrap';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {loadPublishedBlocks} from '../../modular/published-blocks/index.js';
-import {selectLiveScopeBlocks} from '../scope/scope-data';
-import {useQueryClient} from '../../../packages/zenstack/client-queries';
+import {selectScopeBlocks,selectLiveScopeBlocks} from '../scope/scope-data';
 import {useAccount} from '../auth/use-account';
 // Read-only home blocks must not eagerly import editor UI or BlockNote.
 const ScopeBlockEditorSession=dynamic(()=>import('./ScopeBlockEditorSession'),{loading:()=>null});
@@ -88,12 +85,10 @@ export default function ScopeEditableBlocks({
   const account=useAccount({enabled:false});
   const editDock=useEditDock();
   const native=useNativeNavigation();
-  const queryClient=useQueryClient();
   const homeEditActive=isScopeHomepageBlock&&editDock?.active&&editDock.scopeId===scopeId;
   const [editingSlot,setEditingSlot]=useState(null);
   const [message,setMessage]=useState('');
   const [editMode,setEditMode]=useState(Boolean(startInEditMode));
-  const [recentlySavedBlocks,setRecentlySavedBlocks]=useState(null);
   const editingContent=Boolean(homeEditActive||editMode||authorizedByParent);
   const homePageTurn=scopeId==='loc'&&pageName==='index'&&explicitEditButton;
   const wantsHomeEditor=homePageTurn&&editingContent;
@@ -102,24 +97,18 @@ export default function ScopeEditableBlocks({
   const [homeDraftError,setHomeDraftError]=useState(false);
   const lastPublished=useRef(null);
 
-  // Published presentation and the authoritative editor are mutually
-  // exclusive on EVERY page, not only on Scope homepages. A management editor
-  // must never draft from a release snapshot that another browser already
-  // changed, nor run both readers at the same time.
-  const bootstrap=useAppBootstrap(scopeId,pageName,{
-    enabled:!isScopeHomepageBlock&&!editingContent
-  });
-  const published=useAsyncResource(['published-home-page',scopeId,pageName],
-    ()=>loadPublishedBlocks(scopeId,pageName),{
-      enabled:isScopeHomepageBlock&&!editingContent
-    });
+  // The shell is static; authored Blocks are always read from SQL on page
+  // entry. Public and editor reads are mutually exclusive. Entering the
+  // editor always obtains its own fresh authoritative rows.
+  const publicRows=useAsyncResource(['scope-public-blocks',scopeId,pageName],
+    ()=>selectScopeBlocks(scopeId,pageName),{enabled:!editingContent});
   const editorRows=useAsyncResource(['scope-blocks',scopeId,pageName],
     ()=>selectLiveScopeBlocks(scopeId,pageName),{
       enabled:editingContent
     });
   const editingReady=editorRows.isSuccess;
   const editingError=editorRows.isError;
-  const publicBlocks=recentlySavedBlocks??(isScopeHomepageBlock?published.data:bootstrap.data?.blocks);
+  const publicBlocks=publicRows.data;
   const showEditor=editingContent&&(!homePageTurn||homeTurned);
   // Keep only the outgoing public face while the authoritative draft is read.
   // Disabling the public reader must not blank the page during the turn.
@@ -160,12 +149,6 @@ export default function ScopeEditableBlocks({
     return()=>window.removeEventListener('pagehide',leave);
   },[wantsHomeEditor,editDock?.end]);
   const DraftList=homePageTurn?homeDraftComponent:ScopeBlockDraftList;
-  const rememberSavedRows=()=>{
-    if(isScopeHomepageBlock){
-      const saved=queryClient.getQueryData(['scope-blocks',scopeId,pageName]);
-      if(Array.isArray(saved))setRecentlySavedBlocks(saved);
-    }
-  };
   // Editing and writes still require LOC's existing verified authorization.
   // A cached management role must not enable homepage editing until the
   // user explicitly enters this Scope's edit mode.
@@ -257,7 +240,7 @@ export default function ScopeEditableBlocks({
   }
   const movableSlots=!normalizedOrders.length&&allowDelete?slots.filter(slot=>slot.stored):[];
   const SlotTag=slotTag==='header'?'header':'section';
-  // Only the published LOC/Author homepage receives motion. The unified
+  // Only the LOC/Author homepage receives motion. The unified
   // BlockNote draft view remains exactly as before, with no animated ancestors.
   const motionHome=pageName==='index'&&['loc','lo3rwang'].includes(scopeId)&&SlotTag==='section';
   const HomeDisplayTag=motionHome?motion.section:SlotTag;
@@ -288,12 +271,16 @@ export default function ScopeEditableBlocks({
     const heroSlotOrder=Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0?placeholderFirstOrder:null;
     const contents=<>
       {!editing&&!heroSlotOrder?toggleButton:null}
+      {!editingContent&&publicRows.isError?<div className="scope-status" role="alert">
+        <p>區塊資料讀取失敗，請重試。</p>
+        <button type="button" className="loc-button" onClick={()=>void publicRows.refetch().catch(()=>{})}>重新讀取區塊</button>
+      </div>:null}
       {wantsHomeEditor&&homeDraftError?<p className="scope-status scope-error" role="alert">編輯器載入失敗，請退出後重新進入編輯模式。</p>:null}
       {editing&&!editingReady?<div className="scope-status"
         role={editingError?'alert':'status'}>
         {editingError?<>
           <p>區塊資料讀取失敗：{String(editorRows.error?.message||'請重試')}</p>
-          <button type="button" className="loc-button" onClick={()=>void editorRows.mutate()}>
+          <button type="button" className="loc-button" onClick={()=>void editorRows.mutate().catch(()=>{})}>
             重新讀取區塊
           </button>
         </>:<p>正在讀取最新編輯資料…</p>}
@@ -324,7 +311,6 @@ export default function ScopeEditableBlocks({
           }else onEditorExit?.();
         }}
         onDone={(notice,{switching=false}={})=>{
-          rememberSavedRows();
           setMessage(notice);
           // Real Save never tears down an active Edit Dock on a management page,
           // and page switching/canceling remains the Dock's explicit responsibility.
@@ -390,6 +376,10 @@ export default function ScopeEditableBlocks({
   }
 
   const contents=<>
+    {!editingContent&&publicRows.isError?<div className="scope-status" role="alert">
+      <p>區塊資料讀取失敗，請重試。</p>
+      <button type="button" className="loc-button" onClick={()=>void publicRows.refetch().catch(()=>{})}>重新讀取區塊</button>
+    </div>:null}
     {slots.map(slot=>{
       const active=editingSlot?.uid&&(editingSlot.uid===slot.uid||(!slot.stored&&editingSlot.order===slot.order));
       const movableIndex=movableSlots.findIndex(item=>item.uid===slot.uid);
@@ -428,7 +418,7 @@ export default function ScopeEditableBlocks({
           allowImages={allowImages}
           editEyebrow={editEyebrow}
           onClose={cancel}
-          onDone={notice=>{rememberSavedRows();setEditingSlot(null);setMessage(notice)}}
+          onDone={notice=>{setEditingSlot(null);setMessage(notice)}}
         />:<>
           {DisplayComponent
             ?<DisplayComponent key="slot-display" {...slot}/>

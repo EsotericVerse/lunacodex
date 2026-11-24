@@ -109,17 +109,18 @@ try{
   await within(()=>notes.some(text=>text.includes(probe)),5000,'browser console observer');
   await call('Page.navigate',{url});
 
-  // The public snapshot contains five actual LOC homepage blocks. A single
-  // placeholder is rendered before the async snapshot resolves and must NOT
-  // count as proof that the real homepage has hydrated.
-  const hydrated=await within(async()=>{
+  // Public Blocks now come from SQL. CI has no production DB credential:
+  // check the hydrated shell and a completed live read OR its explicit error.
+  // Never treat the initial empty placeholder as proof of a successful read.
+  const homepageState=async()=>{
     const result=await call('Runtime.evaluate',{
-      expression:'({count:document.querySelectorAll("'+homeClass+'").length,heading:document.querySelector(".loc-home-block__header h1")?.textContent?.trim()||""})',
+      expression:'({count:document.querySelectorAll("'+homeClass+'").length,heading:document.querySelector(".loc-home-block__header h1")?.textContent?.trim()||"",readError:[...document.querySelectorAll("[role=alert]")].some(n=>n.textContent.includes("區塊資料讀取失敗"))})',
       returnByValue:true
     });
     const data=result?.result?.value;
-    return data?.count>=5&&data?.heading?data:null;
-  },100000,'five published LOC homepage blocks and hero heading');
+    return data&&(data.readError||data.count>=1&&data.heading)?data:null;
+  };
+  const hydrated=await within(homepageState,100000,'homepage live Blocks or explicit read error');
 
   // Reproduce a persistent browser profile: a previous build's LOC worker
   // and static cache can survive Git pulls and serve stale JS to localhost.
@@ -132,13 +133,7 @@ try{
   assert.equal(seeded?.result?.value,new URL('/',url).href,
     'Could not simulate prior LOC website worker');
   await call('Page.reload',{ignoreCache:false});
-  await within(async()=>{
-    const result=await call('Runtime.evaluate',{
-      expression:'({count:document.querySelectorAll("'+homeClass+'").length,heading:document.querySelector(".loc-home-block__header h1")?.textContent?.trim()||""})',
-      returnByValue:true
-    });
-    return result?.result?.value?.count>=5&&result?.result?.value?.heading;
-  },100000,'reloaded homepage in persisted Service Worker browser profile');
+  await within(homepageState,100000,'reloaded homepage in persisted Service Worker browser profile');
   // The unregistered worker still controls the document it was attached to.
   // It may recreate its old cache until a subsequent navigation creates an
   // uncontrolled client. Do not demand empty caches from the old client.
@@ -152,13 +147,7 @@ try{
   // Navigate to a new document so the unregistered worker can no longer
   // intercept Next assets. The dev app will then retire its remaining cache.
   await call('Page.navigate',{url:url+'?loc-dev-sw-retirement-check=1'});
-  await within(async()=>{
-    const result=await call('Runtime.evaluate',{
-      expression:'({count:document.querySelectorAll("'+homeClass+'").length,heading:document.querySelector(".loc-home-block__header h1")?.textContent?.trim()||""})',
-      returnByValue:true
-    });
-    return result?.result?.value?.count>=5&&result?.result?.value?.heading;
-  },100000,'new document after previous SW unregistration');
+  await within(homepageState,100000,'new document after previous SW unregistration');
   let lastSwState=null;
   try{
     await within(async()=>{
@@ -173,12 +162,12 @@ try{
     throw new Error(error.message+'; SW state='+JSON.stringify(lastSwState)+'; browser console='+notes.slice(-8).join(' | '));
   }
 
-  // The warning can arrive after async published Blocks resolve/hydrate.
+  // The warning can arrive after the live read settles.
   await sleep(3000);
   const captured=[...notes,serverLog].join('\n');
   assert.doesNotMatch(captured,keyWarning,
     'React key warning still occurs in the real developer console');
-  console.log('LOC development React console: '+hydrated.count+' published homepage blocks, hero '+JSON.stringify(hydrated.heading)+'; no missing key warning');
+  console.log('LOC development React console: '+(hydrated.readError?'live Blocks unavailable (shell/error path only)':hydrated.count+' live homepage blocks, hero '+JSON.stringify(hydrated.heading))+'; no missing key warning');
 }finally{
   try{socket?.close();}catch{}
   // Stop Chromium's process group before removing its live user-data profile.

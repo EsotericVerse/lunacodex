@@ -66,9 +66,12 @@ export default function ScopeBlockDraftList({
   async function publishSavedBlocks(rows){
     // The rows were committed by SQL. Update the active viewer from those exact
     // saved values: do not start two independent SELECTs on every Dock Save.
-    // Future visits to this edited page read the live provider, not published JS.
+    // Future visits read the live provider; mounted public readers adopt the saved rows.
     invalidateScopeBlockPage(scopeId,pageName);
     await queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows);
+    await queryClient.setQueryData(['scope-public-blocks',scopeId,pageName],rows);
+    if(scopeId==='loc'&&/^(group|scope)_/.test(pageName))
+      await queryClient.invalidateQueries({queryKey:['scope-public-hero',pageName.replace(/^(group|scope)_/,'')]});
   }
 
   function patchDraft(uid,patch){
