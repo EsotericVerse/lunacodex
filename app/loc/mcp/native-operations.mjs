@@ -32,8 +32,10 @@ const MCP_HOST='mcp.lo3rwang.cc';
 const WEB_HOST='loc.lo3rwang.cc';
 const MAX_BYTES=NATIVE_WRITE_MAX_BYTES;
 const LAS_WRITE_KINDS=new Set(['mcp-sync','mcp-append','mcp-conversation','short-import']);
-const bulkImportEnabled=env=>
-  String(env?.LOC_BULK_IMPORT_ENABLED||'').trim().toLowerCase()==='true';
+const bulkImportEnabled=env=>{
+  const until=Date.parse(String(env?.LOC_BULK_IMPORT_UNTIL||'').trim());
+  return Number.isFinite(until)&&until>Date.now();
+};
 const PUBLISHED_MANAGE_FIELDS=new Set([
   'email','manage_role','active','galaxy_table','anchor_table',
   'domain','directory','parent_scope_id','sort_order'

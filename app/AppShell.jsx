@@ -14,7 +14,6 @@ import {activatePublishedTheme,THEME_SLOTS} from './modular/theme-registry';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
 import {PUBLISHED_SITE_BOOTSTRAP} from './modular/published-site-bootstrap.js';
-import {getDbSourceStatus,subscribeDbSourceStatus} from './loc/providers/db-source-status.mjs';
 import {getLocalDeadline,subscribeLocalDeadline,stopLocalDeadline,hasExpiredLocalDeadline} from './loc/local/session.mjs';
 import {navigationHref} from './modular/routing/scope-registry.js';
 import {managementRouteHref} from './modular/routing/management-route-table.mjs';
@@ -40,36 +39,7 @@ const NAV_SCOPES=Object.values(SCOPES)
 
 import FlashMessage from './loc/notifications/FlashMessage';
 
-function DataSourceStatus({local=false}){
-  const {copy}=useUiLocale();
-  useUiSection('uiExtra.dataSourceStatus');
-  const section=copy.uiExtra.dataSourceStatus||{};
-  const status=useSyncExternalStore(subscribeDbSourceStatus,getDbSourceStatus,getDbSourceStatus);
-  if(local)return <div className="scope-data-source-global">
-    <details className="scope-data-source-details">
-      <summary>{section.localTitle||UI_COPY.uiExtra.dataSourceStatus.localTitle}</summary>
-      <div className="scope-data-source-values"><span>{section.localActive||UI_COPY.uiExtra.dataSourceStatus.localActive}</span></div>
-    </details>
-  </div>;
-  const current=status.unavailable
-    ?section.unavailable||''
-    :status.degraded
-      ?`${section.backup||''}（${status.backupLabel}）`
-      :`${section.primary||''}（${status.primaryLabel}）`;
-  return <div className={'scope-data-source-global'+(status.unavailable?' is-unavailable':status.degraded?' is-backup':'')}>
-    <details className="scope-data-source-details" open={status.degraded||undefined}>
-      <summary>{section.detailsTitle}</summary>
-      <div className="scope-data-source-values">
-        <span><FieldText text="主要資料來源："/>{status.primaryLabel}</span>
-        <span><FieldText text="備用資料來源："/>{status.backupLabel||'未設定（選配）'}</span>
-        <span><FieldText text="目前使用："/>{current}</span>
-      </div>
-    </details>
-    {status.unavailable
-      ?<span role="status"><FieldText text={status.backupLabel?"主要與備援資料來源目前皆無法讀取，部分內容可能暫時無法顯示。":"主要資料來源暫時無法讀取，且未設定備援資料庫。部分內容可能暫時無法顯示。"}/></span>
-      :status.degraded?<span role="status"><FieldText text="備援資料可能有同步時間差。"/></span>:null}
-  </div>;
-}
+
 
 function taipeiHour(date=new Date()){
   try{
@@ -487,12 +457,14 @@ function AppShellInner({children,runtime}){
     .filter(([,label])=>label));
   useEffect(()=>setNative(Capacitor.isNativePlatform()),[]);
   const currentScope=scope||getScope(scopeId);
-  // Traditional Chinese is the default on every page. Manual selection is
-  // transient React state: no Cookie, Session or cross-page persistence.
-  const [manualLocale,setManualLocale]=useState(null);
-  const activeLocale=manualLocale?.scopeId===scopeId&&manualLocale?.pathname===pathname
-    ?manualLocale.locale:'zh-Hant';
-  const localeReady=useLoadedUiLocale(activeLocale,pathname);
+  const [activeLocale,setActiveLocale]=useState('zh-Hant');
+  const [localePreferenceReady,setLocalePreferenceReady]=useState(false);
+  useEffect(()=>{
+    try{setActiveLocale(normalizeUiLocale(window.localStorage.getItem('loc-interface-locale-v1')));}
+    catch{}
+    setLocalePreferenceReady(true);
+  },[]);
+  const localeReady=useLoadedUiLocale(activeLocale,pathname,localePreferenceReady);
   const copy=useMemo(()=>uiCopy(activeLocale,pathname),[activeLocale,pathname,localeReady]);
   useEffect(()=>{document.documentElement.lang=activeLocale;},[activeLocale]);
   const isMyPhone=native&&['/my-phone','/my-phone/index.html'].includes(normalizePath(pathname));
@@ -694,13 +666,15 @@ function AppShellInner({children,runtime}){
         <LanguageSelect
           locale={activeLocale}
           copy={copy}
-          onChange={locale=>setManualLocale({scopeId,pathname,locale:normalizeUiLocale(locale)})}
+          onChange={locale=>{
+            try{window.localStorage.setItem('loc-interface-locale-v1',normalizeUiLocale(locale));}catch{}
+            window.location.reload();
+          }}
         />
         <small className="scope-footer-date-basis" aria-label={({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}>
           {({'zh-Hant':'日期基準','zh-Hans':'日期基准',en:'Date basis',ja:'日付基準'}[activeLocale]||'日期基準')+'：Asia/Taipei (UTC+08:00)'}
         </small>
       </div>
-      <DataSourceStatus local={localNavigation}/>
       <FlashMessage/>
     </footer>
   </UiLocaleProvider>;

@@ -5,28 +5,6 @@
   --scope-text:var(--loc-text);
   --scope-muted:var(--loc-muted);
 }
-.scope-data-source-global{
-  display:flex;
-  justify-content:flex-start;
-  gap:.35rem .8rem;
-  flex-wrap:wrap;
-  margin:.45rem 0 0;
-  padding:.45rem 0 0;
-  border-top:var(--scope-border);
-  color:var(--scope-muted);
-  font-size:.72rem;
-  opacity:.82;
-}
-.scope-data-source-global.is-backup{
-  color:var(--scope-text);
-  font-weight:650;
-  opacity:1;
-}
-.scope-data-source-global.is-unavailable{
-  color:var(--loc-danger);
-  font-weight:650;
-  opacity:1;
-}
 .scope-nav a,.scope-nav-current{text-decoration:none;white-space:nowrap;border-radius:999px}
 .scope-nav-current{font-weight:700;}
 
@@ -899,10 +877,6 @@
   flex-direction:column;
   align-items:flex-start;
 }
-.scope-data-source-details{min-width:0;width:100%}
-.scope-data-source-details>summary{width:max-content;max-width:100%;min-height:32px;display:flex;align-items:center;cursor:pointer;font-size:.82rem;font-weight:600;color:var(--loc-muted)}
-.scope-data-source-details>summary:focus-visible{outline:2px solid var(--loc-accent);outline-offset:2px;border-radius:3px}
-.scope-data-source-values{display:flex;flex-wrap:wrap;gap:.35rem .8rem;padding:.3rem 0 .15rem}
 
 
 /* Advanced statistics: dimension tabs + exactly two compact selectors per
