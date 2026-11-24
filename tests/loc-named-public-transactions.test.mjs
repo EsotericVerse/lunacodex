@@ -37,19 +37,17 @@ test('editor TimeAnchor read denies missing Session before SQL',async()=>{
   assert.equal(response.status,401);
 });
 
-test('authorized TimeAnchor page reads exactly one repeatable-read transaction',async()=>{
+test('authorized TimeAnchor page reads directly on the selected connection',async()=>{
   const used={transactions:0,tables:[],levels:[],limits:[]};
   const rows=[{uid:'AAAA0001',type:'date',title:'First',description:'',
     attr:{date:'2026-01-01'},invisible:false}];
   const query={select(){return this;},where(){return this;},
     orderBy(){return this;},limit(n){used.limits.push(n);return this},
     async execute(){return rows}};
-  const trx={selectFrom(name){used.tables.push(name);return query}};
   const database=async()=>({engine:'postgres',namespace:'silver',
-    db:{transaction(){used.transactions++;return {
-      setIsolationLevel(level){used.levels.push(level);return this},
-      async execute(fn){return fn(trx)}
-    }},async destroy(){}},
+    db:{selectFrom(name){used.tables.push(name);return query},
+      transaction(){used.transactions++;throw Error('Read query opened a transaction')},
+      async destroy(){}},
     pool:{async end(){}}
   });
   const response=await handleNamedPublicTransaction(req({
@@ -58,8 +56,8 @@ test('authorized TimeAnchor page reads exactly one repeatable-read transaction',
   }),{},{database,verifySession:async()=>({email:LOC_OWNER_EMAIL})});
   assert.equal(response.status,200);
   assert.deepEqual((await response.json()).data,rows);
-  assert.equal(used.transactions,1);
-  assert.deepEqual(used.levels,['repeatable read']);
+  assert.equal(used.transactions,0);
+  assert.deepEqual(used.levels,[]);
   assert.deepEqual(used.tables,['silver.lo3rwang_anchor']);
   assert.deepEqual(used.limits,[51]);
 });
@@ -117,11 +115,11 @@ test('public reading protects content even with direct UID and no database RLS',
 });
 
 
-test('MySQL and MSSQL public analytics share one repeatable-read Scope snapshot',async()=>{
+test('MySQL and MSSQL public analytics query directly without a SQL transaction',async()=>{
   for(const engine of ['mysql','mssql']){
-    const observed={begins:0,isolation:[],queries:[],introspections:0};
+    const observed={begins:0,queries:[],introspections:0};
     const namespace=engine==='mysql'?'locdb':'dbo';
-    const trx={
+    const db={
       introspection:{async getTables(){
         observed.introspections++;
         return ['lo3rwang_galaxy','lrunes_galaxy'].map(name=>({name,schema:namespace}));
@@ -135,17 +133,13 @@ test('MySQL and MSSQL public analytics share one repeatable-read Scope snapshot'
               first_date:'2026-01-01',last_date:'2026-11-22'};
           }
         };
-      }
+      },
+      transaction(){observed.begins++;throw Error('Read query opened a transaction')},
+      async destroy(){}
     };
     const database=async()=>({
       engine,namespace,
-      db:{
-        transaction(){observed.begins++;return {
-          setIsolationLevel(level){observed.isolation.push(level);return this},
-          async execute(callback){return callback(trx)}
-        }},
-        async destroy(){}
-      },
+      db,
       pool:{async end(){}}
     });
     const response=await handleNamedPublicTransaction(req({
@@ -157,29 +151,24 @@ test('MySQL and MSSQL public analytics share one repeatable-read Scope snapshot'
     assert.equal(response.status,200,engine);
     const result=await response.json();
     assert.equal(result.data.rows.length,2,engine);
-    assert.equal(observed.begins,1,engine);
-    assert.deepEqual(observed.isolation,['repeatable read'],engine);
+    assert.equal(observed.begins,0,engine);
     assert.equal(observed.introspections,1,engine);
     assert.equal(observed.queries.length,2,engine);
   }
 });
 
-test('MySQL and MSSQL public Blocks actions also use repeatable-read',async()=>{
+test('MySQL and MSSQL public Blocks actions query directly without a SQL transaction',async()=>{
   for(const engine of ['mysql','mssql']){
-    const observed={isolation:[],transactions:0,tables:[]};
+    const observed={transactions:0,tables:[]};
     const query={
       select(){return this},where(){return this},orderBy(){return this},
       async execute(){return []}
     };
-    const trx={
-      selectFrom(table){observed.tables.push(table);return query}
-    };
     const database=async()=>({
       engine,namespace:engine==='mysql'?'locdb':'dbo',
-      db:{transaction(){observed.transactions++;return {
-        setIsolationLevel(value){observed.isolation.push(value);return this},
-        async execute(callback){return callback(trx)}
-      }},async destroy(){}},
+      db:{selectFrom(table){observed.tables.push(table);return query},
+        transaction(){observed.transactions++;throw Error('Read query opened a transaction')},
+        async destroy(){}},
       pool:{async end(){}}
     });
     const response=await handleNamedPublicTransaction(req({
@@ -188,8 +177,7 @@ test('MySQL and MSSQL public Blocks actions also use repeatable-read',async()=>{
     }),{},{database});
     assert.equal(response.status,200,engine);
     assert.deepEqual((await response.json()).data,[]);
-    assert.equal(observed.transactions,1,engine);
-    assert.deepEqual(observed.isolation,['repeatable read'],engine);
+    assert.equal(observed.transactions,0,engine);
     assert.equal(observed.tables.length,1,engine);
   }
 });

@@ -376,13 +376,13 @@ test('borrowed article analytics reuse transaction without nested BEGIN',async()
   });
   assert.equal(result.total,3);
 });
-test('every multi-statement MCP public read verifies grants in its own transaction',()=>{
+test('MCP reads reuse JS grants and execute directly on the selected connection',()=>{
   const source=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
   for(const kind of ['mcp-public-read','mcp-article-stat','mcp-read','mcp-search'])
-    assert.ok(source.includes("'"+kind+"'"),kind+' must be grant-bound');
-  assert.match(source,/databasePort:\{\.\.\.selected,db:trx,dialect:null\}/);
-  assert.match(source,/borrowed:true,inTransaction:true/);
-  assert.match(source,/return runMcp\(trx\)/);
+    assert.ok(source.includes("'"+kind+"'"),kind+' must stay within the fixed read allowlist');
+  assert.match(source,/databasePort:selected/);
+  assert.match(source,/database:async\(\)=>selected,borrowed:true/);
+  assert.match(source,/runMcp\(selected\.db\)/);
 });
 
 test('import special Galaxy fields share one native typed update batch',()=>{

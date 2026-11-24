@@ -1,4 +1,4 @@
-import {headers} from 'next/headers';
+import {headers} from 'next/headers.js';
 
 export async function invokeHandler(handler,{path,method='POST',body,options}={}){
   const incoming=await headers();

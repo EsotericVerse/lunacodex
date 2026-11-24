@@ -7,7 +7,7 @@ import {handleNamedPublicTransaction} from '../app/loc/server/public-named-trans
 
 const base={kind:'transaction',operation:'galaxy-feature',scope:'lo3rwang',
   feature:'culture',startDate:'2026-01-01',endDate:'2026-12-31',result:'uids'};
-const request=body=>new Request('https://loc.lo3rwang.cc/api/loc-public-query',{
+const request=body=>new Request('https://loc.lo3rwang.cc/trace/query',{
   method:'POST',headers:{'content-type':'application/json'},
   body:JSON.stringify(body)});
 
@@ -36,29 +36,28 @@ test('UID list defaults to 100 and rejects larger limits',()=>{
   assert.equal(parseGalaxyFeatureTransaction(base).limit,100);
   assert.equal(parseGalaxyFeatureTransaction({...base,limit:5}).limit,5);
 });
-test('one feature transaction includes audited request model and scope',async()=>{
-  const observed={tables:[],filters:[],levels:[],transactions:0};
+test('feature query runs directly on the selected connection and includes its audit context',async()=>{
+  const observed={tables:[],filters:[],transactions:0};
   const query={where(...args){observed.filters.push(args);return this},
     select(){return this},orderBy(){return this},limit(){return this},
     async execute(){return [{uid:'AAAA0001'}]}};
-  const trx={selectFrom(table){observed.tables.push(table);return query}};
-  const db={transaction(){observed.transactions++;return {
-    setIsolationLevel(level){observed.levels.push(level);return this},
-    execute(fn){return fn(trx)}
-  }},async destroy(){}};
+  const db={
+    selectFrom(table){observed.tables.push(table);return query},
+    transaction(){observed.transactions++;throw Error('Read query opened a transaction')},
+    async destroy(){}
+  };
   const response=await handleNamedPublicTransaction(request({
     ...base,feature:'trace',category:{type:'place',value:'BBBB0001'}
   }),{},{database:async()=>({engine:'postgres',db,pool:{end:async()=>{}}})});
   assert.equal(response.status,200);
   const payload=await response.json();
   assert.deepEqual(payload.data.uids,['AAAA0001']);
-  assert.equal(payload.transaction.requestedBy,'trace');
-  assert.equal(payload.transaction.model,'GalaxyTrace');
+  assert.equal(payload.audit.requestedBy,'trace');
+  assert.equal(payload.audit.model,'GalaxyTrace');
   assert.deepEqual(observed.tables,['silver.lo3rwang_galaxy']);
   assert.ok(observed.filters.some(args=>args[0]==='trace'&&args[2]===true));
   assert.ok(observed.filters.some(args=>args[0]==='place_id'&&args[2]==='BBBB0001'));
-  assert.deepEqual(observed.levels,['repeatable read']);
-  assert.equal(observed.transactions,1);
+  assert.equal(observed.transactions,0);
 });
 
 test('the daily-source model returns source groups and daily total in one query',async()=>{
