@@ -136,14 +136,19 @@ try{
     });
     return result?.result?.value?.count>=5&&result?.result?.value?.heading;
   },100000,'reloaded homepage in persisted Service Worker browser profile');
-  await within(async()=>{
-    const result=await call('Runtime.evaluate',{
-      expression:'Promise.all([navigator.serviceWorker.getRegistrations(),caches.keys()]).then(([registrations,names])=>({workers:registrations.filter(r=>r.scope===location.origin+"/").length,stale:names.filter(n=>n.startsWith("loc-static-next-")).length}))',
-      returnByValue:true,awaitPromise:true
-    });
-    const value=result?.result?.value;
-    return value?.workers===0&&value?.stale===0;
-  },30000,'retired dev worker and stale static cache');
+  let lastSwState=null;
+  try{
+    await within(async()=>{
+      const result=await call('Runtime.evaluate',{
+        expression:'Promise.all([navigator.serviceWorker.getRegistrations(),caches.keys()]).then(([registrations,names])=>({workers:registrations.filter(r=>r.scope===location.origin+"/").length,stale:names.filter(n=>n.startsWith("loc-static-next-")).length,controller:navigator.serviceWorker.controller?.scriptURL||null,registered:registrations.map(r=>({scope:r.scope,active:r.active?.scriptURL,waiting:r.waiting?.scriptURL,installing:r.installing?.scriptURL})),caches:names}))',
+        returnByValue:true,awaitPromise:true
+      });
+      lastSwState=result?.result?.value??{exception:result?.exceptionDetails?.text||'no result'};
+      return lastSwState?.workers===0&&lastSwState?.stale===0;
+    },30000,'retired dev worker and stale static cache');
+  }catch(error){
+    throw new Error(error.message+'; SW state='+JSON.stringify(lastSwState)+'; browser console='+notes.slice(-8).join(' | '));
+  }
 
   // The warning can arrive after async published Blocks resolve/hydrate.
   await sleep(3000);
