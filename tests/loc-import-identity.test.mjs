@@ -1,26 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
-import {createIndexedDateKeywordReader} from '../app/loc/keywords/article-reader.mjs';
-import {dedupeIncomingImport,matchExistingImportByCreatedAt} from '../app/loc/import/duplicate-check.mjs';
+import {readFile} from 'node:fs/promises';
+import {dedupeIncomingImport,matchExistingImportByCreatedAt,matchExistingImportBySiteId} from '../app/loc/import/duplicate-check.mjs';
 import {finalizeImportCreatedTimes,importTimeMicroseconds} from '../app/loc/import/unique-createtime.mjs';
 import {extractImportUpdatedAt} from '../app/loc/import/batch.mjs';
 import {importWithinTimeRange} from '../app/loc/import/time-range.mjs';
-
-test('discovery retains single-use terms and question punctuation without weighting',()=>{
-  const discovery=createNewKeywordDiscovery([]);
-  discovery.consume([{uid:'GALA0001',title:'月光',content:'我很好？'},
-    {uid:'GALA0002',title:'標題',content:'我很好！'}]);
-  const results=discovery.finish();
-  const words=new Set(results.candidates.map(row=>row.word));
-  assert.equal(results.read,2);
-  assert.ok(words.has('?'));
-  assert.ok(words.has('!'));
-  assert.ok(words.has('月光'));
-  assert.ok(words.has('？'.normalize('NFKC')));
-  assert.equal(results.candidates.some(row=>row.documents===1),true);
-  assert.ok(results.candidates.every(row=>!Object.hasOwn(row,'score')));
-});
 
 test('source creation time, not new Galaxy UID or different text, identifies same article',()=>{
   const make=(uid,content,createtime='2026-11-20T00:00:00.000Z',more={})=>({
@@ -40,43 +24,6 @@ test('source creation time, not new Galaxy UID or different text, identifies sam
     make('GALA0005','乙', '2026-11-20T00:00:00Z',{__importTimeSource:'update'})
   ]);
   assert.equal(fallback.unique.length,2);
-});
-
-test('date + UID scan streams same-day rows and undated rows without buffering/sorting',async()=>{
-  const dated=[
-    {uid:'GALA0001',date:'2026-11-18'},
-    {uid:'GALA0002',date:'2026-11-18'},
-    {uid:'GALA0003',date:'2026-11-18'},
-    {uid:'GALA0004',date:'2026-11-19'}
-  ];
-  const undated=[{uid:'GALA0005',date:null},{uid:'GALA0006',date:null}];
-  let dateCalls=0,undatedCalls=0;
-  const reader=createIndexedDateKeywordReader({
-    readDateBatch:async({afterDate,afterUid,limit})=>{
-      dateCalls++;
-      return dated.filter(row=>afterDate===null||row.date>afterDate||
-        row.date===afterDate&&row.uid>afterUid).slice(0,limit);
-    },
-    readUndatedBatch:async({afterUid,limit})=>{
-      undatedCalls++;
-      return undated.filter(row=>afterUid===null||row.uid>afterUid).slice(0,limit);
-    }
-  });
-  const found=[];
-  let cursor=null;
-  for(let n=0;n<20;n++){
-    const result=await reader({cursor,limit:2});
-    found.push(...result.rows.map(row=>row.uid));
-    cursor=result.nextCursor;
-    if(!result.rows.length)break;
-  }
-  assert.deepEqual(found,[
-    'GALA0001','GALA0002','GALA0003','GALA0004','GALA0005','GALA0006'
-  ]);
-  assert.ok(dateCalls>=3);
-  assert.ok(undatedCalls>=1);
-  assert.equal(Object.keys(cursor).includes('pending'),false);
-  assert.equal(Object.keys(cursor).includes('currentDay'),false);
 });
 
 test('site plus genuine createtime matches existing article without comparing text',async()=>{
@@ -147,7 +94,6 @@ test('missing createtime uses source update time; wholly undated rows reach fina
   assert.equal(row.createtime,'2026-11-20T02:12:00.000000Z');
 });
 
-
 test('precise source microseconds remain separate even within one millisecond',()=>{
   const make=(uid,createtime)=>({
     uid,site:'Threads',createtime,title:'不同篇',content:'文字'
@@ -202,4 +148,71 @@ test('existing Galaxy UID already claimed by source ID is not matched twice by t
   });
   assert.equal(matches.size,0);
   assert.deepEqual(matches.ambiguous,[]);
+});
+
+const STAMP='2026-11-20T02:12:00.123Z';
+const incoming=(uid,createtime=STAMP,more={})=>({
+  uid,site:'Threads',createtime,...more
+});
+
+test('SQL candidate reader receives only requested site IDs and retains ambiguous matches',async()=>{
+  const requested=[incoming('IN000001',STAMP,{site_id:'post-1'})];
+  const seen=[];
+  const result=await matchExistingImportBySiteId(requested,{
+    readSiteIds:async(ids,consume,site)=>{
+      seen.push({ids,site});
+      consume([
+        incoming('SV000001',STAMP,{site_id:'post-1'}),
+        incoming('SV000002',STAMP,{site_id:'post-1'})
+      ]);
+    }
+  });
+  assert.deepEqual(seen,[{ids:['post-1'],site:'Threads'}]);
+  assert.equal(result.size,0);
+  assert.equal(result.ambiguous.length,1);
+  assert.deepEqual(result.ambiguous[0].saved_uids,['SV000001','SV000002']);
+});
+
+test('source-time lookup receives bounded original millisecond instants, not date scans',async()=>{
+  const rows=[
+    incoming('IN000001','2026-11-20T02:12:00.123001Z'),
+    incoming('IN000002','2026-11-20T02:12:00.123999Z'),
+    incoming('IN000003','2026-11-20T02:12:00.124001Z'),
+    incoming('IN000004',STAMP,{__importTimeSource:'update'})
+  ];
+  const called=[];
+  const result=await matchExistingImportByCreatedAt(rows,{
+    readSourceRows:async({site,instants,consumePage})=>{
+      called.push({site,instants});
+      consumePage([]);
+    }
+  });
+  assert.deepEqual(called,[{site:'Threads',instants:[
+    '2026-11-20T02:12:00.123Z','2026-11-20T02:12:00.124Z'
+  ]}]);
+  assert.equal(result.size,0);
+});
+
+test('Import candidate reads are fixed, scope-authorized and UID-paginated',async()=>{
+  const backend=await readFile(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const routes=await readFile(new URL('../app/loc/actions/managed-query-routes.mjs',import.meta.url),'utf8');
+  assert.match(routes,/import_site_id_candidates','import_created_at_candidates'/);
+  assert.match(backend,/canLocAccess\(trx,'scope',scope\)/);
+  assert.match(backend,/\.orderBy\('uid','asc'\)\.limit\(limit\+1\)/);
+  assert.match(backend,/assertZModelSelectRows\(table,columns,rows\)/);
+  assert.match(backend,/wholeSeconds&&ms%1000!==0/);
+});
+
+test('occupied-time import lookup is exact-second, website-only and scope-bounded',async()=>{
+  const backend=await readFile(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
+  const panel=await readFile(new URL('../app/loc/import/ManagementImportPanel.jsx',import.meta.url),'utf8');
+  const guard=await readFile(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
+  assert.match(backend,/import_occupied_createtimes/);
+  assert.match(backend,/ms%1000!==0/);
+  assert.match(backend,/withinImportInstants\(/);
+  assert.match(backend,/seconds,1000,/);
+  assert.match(backend,/return readImportCandidatePage\(/);
+  assert.match(panel,/action:'import_occupied_createtimes'/);
+  assert.match(panel,/new Date\(Math\.floor\(instant\/1000\)\*1000\)\.toISOString\(\)/);
+  assert.match(guard,/import_occupied_createtimes/);
 });

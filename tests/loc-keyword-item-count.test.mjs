@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
+import {createIndexedDateKeywordReader} from '../app/loc/keywords/article-reader.mjs';
+import {planKeywordTotalWrites} from '../app/loc/keywords/sql-service.mjs';
 import {createItemCountAccumulator,analyzeItemKeywordCounts,
   itemKeywordSuggestions,createKeywordScanRate,
   KEYWORD_SCAN_START_RATE,KEYWORD_SCAN_MAX_RATE,
@@ -563,4 +567,86 @@ test('Pattern CPU work yields in 256-row slices without reducing the second-rate
   assert.equal(checkpointed,0);
   assert.ok(yields>=3,'CPU must yield between 256-document slices');
   assert.equal(result.patternCounts.PATT0001,count*2);
+});
+
+test('discovery retains single-use terms and question punctuation without weighting',()=>{
+  const discovery=createNewKeywordDiscovery([]);
+  discovery.consume([{uid:'GALA0001',title:'月光',content:'我很好？'},
+    {uid:'GALA0002',title:'標題',content:'我很好！'}]);
+  const results=discovery.finish();
+  const words=new Set(results.candidates.map(row=>row.word));
+  assert.equal(results.read,2);
+  assert.ok(words.has('?'));
+  assert.ok(words.has('!'));
+  assert.ok(words.has('月光'));
+  assert.ok(words.has('？'.normalize('NFKC')));
+  assert.equal(results.candidates.some(row=>row.documents===1),true);
+  assert.ok(results.candidates.every(row=>!Object.hasOwn(row,'score')));
+});
+
+test('date + UID scan streams same-day rows and undated rows without buffering/sorting',async()=>{
+  const dated=[
+    {uid:'GALA0001',date:'2026-11-18'},
+    {uid:'GALA0002',date:'2026-11-18'},
+    {uid:'GALA0003',date:'2026-11-18'},
+    {uid:'GALA0004',date:'2026-11-19'}
+  ];
+  const undated=[{uid:'GALA0005',date:null},{uid:'GALA0006',date:null}];
+  let dateCalls=0,undatedCalls=0;
+  const reader=createIndexedDateKeywordReader({
+    readDateBatch:async({afterDate,afterUid,limit})=>{
+      dateCalls++;
+      return dated.filter(row=>afterDate===null||row.date>afterDate||
+        row.date===afterDate&&row.uid>afterUid).slice(0,limit);
+    },
+    readUndatedBatch:async({afterUid,limit})=>{
+      undatedCalls++;
+      return undated.filter(row=>afterUid===null||row.uid>afterUid).slice(0,limit);
+    }
+  });
+  const found=[];
+  let cursor=null;
+  for(let n=0;n<20;n++){
+    const result=await reader({cursor,limit:2});
+    found.push(...result.rows.map(row=>row.uid));
+    cursor=result.nextCursor;
+    if(!result.rows.length)break;
+  }
+  assert.deepEqual(found,[
+    'GALA0001','GALA0002','GALA0003','GALA0004','GALA0005','GALA0006'
+  ]);
+  assert.ok(dateCalls>=3);
+  assert.ok(undatedCalls>=1);
+  assert.equal(Object.keys(cursor).includes('pending'),false);
+  assert.equal(Object.keys(cursor).includes('currentDay'),false);
+});
+
+test('keyword aggregate writes normalize repeated physical Item UIDs',()=>{
+  const rows=planKeywordTotalWrites([
+    {uid:'ITEM0001',total:7},{uid:'GROUP001',total:10},
+    {uid:'ITEM0001',total:7}
+  ]);
+  assert.deepEqual(rows,[
+    {uid:'ITEM0001',total:7},{uid:'GROUP001',total:10}
+  ]);
+  assert.deepEqual(planKeywordTotalWrites([]),[]);
+  assert.deepEqual(planKeywordTotalWrites([
+    {uid:'PATT0001',total:42},{uid:'PATT0001',total:42}
+  ]),[{uid:'PATT0001',total:42}]);
+  assert.throws(()=>planKeywordTotalWrites([
+    {uid:'ITEM0001',total:7},{uid:'ITEM0001',total:8}
+  ]),/Conflicting Keyword counts/);
+  assert.throws(()=>planKeywordTotalWrites([
+    {uid:'INVALID_UID',total:8}
+  ]),/Invalid Keyword aggregate counts/);
+  assert.throws(()=>planKeywordTotalWrites([
+    {uid:'ITEM0001',total:1.2}
+  ]),/Invalid Keyword aggregate counts/);
+});
+
+test('Keyword aggregate writes preserve num and update Item, Group and Pattern attr.total',async()=>{
+  const src=await readFile(new URL('../app/loc/keywords/sql-service.mjs',import.meta.url),'utf8');
+  assert.match(src,/set attr=jsonb_set/);
+  assert.match(src,/a\.type in \('item','group','pattern'\)/);
+  assert.doesNotMatch(src,/set\s+num\s*=/);
 });
