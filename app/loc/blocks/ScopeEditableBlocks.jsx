@@ -124,9 +124,10 @@ export default function ScopeEditableBlocks({
   // Keep only the outgoing public face while the authoritative draft is read.
   // Disabling the public reader must not blank the page during the turn.
   useLayoutEffect(()=>{
+    if(!homePageTurn)return;
     if(!wantsHomeEditor&&Array.isArray(publicBlocks))lastPublished.current=publicBlocks;
     if(homeTurned)lastPublished.current=null;
-  },[wantsHomeEditor,publicBlocks,homeTurned]);
+  },[homePageTurn,wantsHomeEditor,publicBlocks,homeTurned]);
   const blocks=showEditor?editorRows.data
     :(wantsHomeEditor?(publicBlocks??lastPublished.current):publicBlocks);
   useLayoutEffect(()=>{
