@@ -500,3 +500,29 @@
 @media(max-width:1000px){.loc-home-block__children{grid-template-columns:repeat(min(3,var(--loc-bubble-columns,3)),minmax(0,1fr));}}
 @media(max-width:680px){.loc-home-block__children{grid-template-columns:repeat(min(2,var(--loc-bubble-columns,3)),minmax(0,1fr));}}
 @media(max-width:420px){.loc-home-block__children{grid-template-columns:minmax(0,1fr);}}
+
+/* LOC home: the frame is available immediately. Text and media reveal independently;
+   no image-ready gate or layout wrapper around the public content. */
+@media(prefers-reduced-motion:no-preference){
+  .loc-next-main[data-loc-scope="loc"][data-loc-view="home"] .loc-home>.loc-home-block:not(.scope-block-draft)>.loc-home-block__header>.loc-eyebrow{
+    animation:loc-home-copy-reveal .22s ease-out both;
+  }
+  .loc-next-main[data-loc-scope="loc"][data-loc-view="home"] .loc-home>.loc-home-block:not(.scope-block-draft)>.loc-home-block__header>:is(h1,h2,.loc-home-block__subtitle){
+    animation:loc-home-copy-reveal .36s ease-out both;
+  }
+  .loc-next-main[data-loc-scope="loc"][data-loc-view="home"] .loc-home>.loc-home-block:not(.scope-block-draft)>.loc-home-block__body:not(.loc-home-block__body--image){
+    animation:loc-home-copy-reveal .42s ease-out both;
+  }
+  .loc-next-main[data-loc-scope="loc"][data-loc-view="home"] .loc-home>.loc-home-block:not(.scope-block-draft) .loc-home-block__child{
+    animation:loc-home-child-reveal .36s ease-out both;
+  }
+  .loc-next-main[data-loc-scope="loc"][data-loc-view="home"] .loc-home>.loc-home-block .loc-home-block__child:nth-child(2n){animation-duration:.46s}
+  .loc-next-main[data-loc-scope="loc"][data-loc-view="home"] .loc-home>.loc-home-block img[data-home-media-ready="true"]{
+    animation:loc-home-image-reveal .48s ease-out both;
+  }
+  .loc-home-preview-hero-line{animation:loc-home-line-reveal .65s ease-out both}
+}
+@keyframes loc-home-copy-reveal{from{opacity:.65;translate:0 5px}to{opacity:1;translate:0 0}}
+@keyframes loc-home-child-reveal{from{opacity:.65;translate:0 9px}to{opacity:1;translate:0 0}}
+@keyframes loc-home-image-reveal{from{opacity:.25}to{opacity:1}}
+@keyframes loc-home-line-reveal{from{scale:0 1}to{scale:1 1}}
