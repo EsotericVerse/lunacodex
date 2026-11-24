@@ -197,18 +197,21 @@ function specialRuneKeywordTexts(texts,masks,rune){
 // Reanalysis keeps one immutable compiled Class for every article page.
 // Public one-off calls retain the existing API and identical scoring behavior.
 export function createKeywordDocumentClassifier(catalogRows=[],{
-  collectKeywordTerms=false,selectedTerms=null,onNormalizedText=null
+  collectKeywordTerms=false,selectedTerms=null,onNormalizedText=null,observedTerms=[]
 }={}){
   const prepared=compileCatalog(catalogRows);
   const selected=selectedTerms==null?null:new Set([...selectedTerms].map(normalizeText));
-  const literalMatcher=selected?compileKeywordLiteralMatcher([...selected]):null;
+  const vocabulary=selected?[...selected]:prepared.runes.flatMap(rune=>[
+    ...rune.keywords.map(normalizeText),...rune.rules.map(rule=>normalizeText(rule.source))]);
+  const observed=new Set(observedTerms.map(normalizeText).filter(Boolean));
+  const literalMatcher=compileKeywordLiteralMatcher([...vocabulary,...observed]);
   return documents=>classifyKeywordDocumentsWithCompiled(
-    documents,prepared,collectKeywordTerms,selected,literalMatcher,onNormalizedText);
+    documents,prepared,collectKeywordTerms,selected,literalMatcher,onNormalizedText,observed);
 }
 export function classifyKeywordDocuments(documents=[],catalogRows=[]){
-  return classifyKeywordDocumentsWithCompiled(documents,compileCatalog(catalogRows));
+  return createKeywordDocumentClassifier(catalogRows)(documents);
 }
-function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false,selectedTerms=null,literalMatcher=null,onNormalizedText=null){
+function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywordTerms=false,selectedTerms=null,literalMatcher=null,onNormalizedText=null,observed=new Set()){
   const source=Array.isArray(documents)?documents:[];
   const {runes,nameToRune,groupOrder,fallbackGroup,maskSources}=prepared;
   if(!source.length||!runes.length)return {
@@ -223,18 +226,19 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
     unsupportedRules:[]
   };
 
+  const candidateWordsByDocument=[];
   const normalizedTexts=source.map((row,index)=>{
     const normalized=normalizeText(textOf(row));
-    // Pattern count belongs to this same classifier normalization pass.
-    // The observer receives no article UID index or a second text scan.
-    onNormalizedText?.(normalized,row,index);
+    if(observed.size){
+      const hits=literalMatcher.countMatches(normalized);
+      candidateWordsByDocument.push(new Set(hits.map(([word])=>word)));
+      onNormalizedText?.(normalized,row,index,hits.filter(([word])=>observed.has(word)));
+    }else{
+      candidateWordsByDocument.push(literalMatcher.matched(normalized));
+      onNormalizedText?.(normalized,row,index);
+    }
     return normalized;
   });
-  // Incremental word lookups only need to evaluate articles containing at
-  // least one selected literal. Item NOR/NAME/TO/AND and masking still run
-  // through the original rule-preserving evaluator for those articles.
-  const candidateWordsByDocument=literalMatcher
-    ?normalizedTexts.map(text=>literalMatcher.matched(text)):null;
 
   const states=source.map(()=>createState());
   // Reanalysis optionally collects exactly the literal words that matched
@@ -245,10 +249,13 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
 
   for(const rune of runes){
     let relevantIndices=null;
-    if(selectedTerms){
+    {
       const words=rune.keywords.map(normalizeText)
-        .filter(word=>word&&selectedTerms.has(word));
-      if(!words.length)continue;
+        .filter(word=>word&&(!selectedTerms||selectedTerms.has(word)));
+      if(!selectedTerms)for(const rule of rune.rules)
+        if(rule.operator!=='NOR'&&normalizeText(rule.source))words.push(normalizeText(rule.source));
+      if(!words.length&&!rune.rules.length)continue;
+      if(selectedTerms&&!words.length)continue;
       // The existing NAME/NOR/date masking replaces text with spaces. It
       // can create a newly adjacent *whitespace-containing* literal (e.g.
       // "dark jazz" from "darknoisejazz"). Such words must be evaluated
@@ -258,7 +265,8 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
         for(let index=0;index<normalizedTexts.length;index++)
           if(words.some(word=>candidateWordsByDocument[index].has(word)))
             relevantIndices.push(index);
-        if(!relevantIndices.length)continue;
+        // Full analysis still reports unsupported rules even without hits.
+        if(!relevantIndices.length&&selectedTerms)continue;
       }
     }
     // NOR excludes the exact combined expression for this Item, across all
@@ -275,7 +283,7 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
     const keywordTexts=specialRuneKeywordTexts(
       relevantIndices?relevantIndices.map(index=>normalizedTexts[index]):normalizedTexts,
       maskSources,rune).map(withoutBlockedPhrases);
-    const ruleTexts=selectedTerms?[]:normalizedTexts.map(withoutBlockedPhrases);
+    const ruleTexts=selectedTerms?[]:(relevantIndices?relevantIndices.map(index=>normalizedTexts[index]):normalizedTexts).map(withoutBlockedPhrases);
     const orderedRules=(selectedTerms?[]:[...rune.rules]).sort((a,b)=>
       normalizeText(b.source).length-normalizeText(a.source).length
       ||String(a.token||'').localeCompare(String(b.token||''))
@@ -293,7 +301,7 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
         :[];
       for(let localIndex=0;localIndex<keywordTexts.length;localIndex+=1){
         const index=relevantIndices?relevantIndices[localIndex]:localIndex;
-        if(selectedTerms&&!/\s/u.test(normalizedKeyword)&&
+        if(!/\s/u.test(normalizedKeyword)&&
           !candidateWordsByDocument[index].has(normalizedKeyword))continue;
         if(!states[index])continue;
         let text=keywordTexts[localIndex]||'';
@@ -318,12 +326,14 @@ function classifyKeywordDocumentsWithCompiled(documents=[],prepared,collectKeywo
         unsupportedRules.push({rune_id:rune.runeId,rune:rune.label,rule:rule.token});
         continue;
       }
-      for(let index=0;index<normalizedTexts.length;index+=1){
+      for(let localIndex=0;localIndex<ruleTexts.length;localIndex+=1){
+        const index=relevantIndices?relevantIndices[localIndex]:localIndex;
         if(!states[index])continue;
-        const remaining=ruleTexts[index]||'';
+        if(!/\s/u.test(ruleSource)&&!candidateWordsByDocument[index].has(ruleSource))continue;
+        const remaining=ruleTexts[localIndex]||'';
         if(!remaining.includes(ruleSource))continue;
 
-        ruleTexts[index]=replaceAllLiteral(remaining,ruleSource,' ');
+        ruleTexts[localIndex]=replaceAllLiteral(remaining,ruleSource,' ');
 
         if(rule.operator==='NAME')continue;
         if(rule.operator==='AND'){

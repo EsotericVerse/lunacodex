@@ -12,6 +12,7 @@ import ActivityMotion from '../../../modular/ActivityMotion';
 import FlowProgress from '../../../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from '../class-state.mjs';
 import {classSkipArticleWords} from '../class-exceptions.mjs';
+import {existingKeywordSet,createDiscoveryKnownMatcher} from '../discovery.mjs';
 
 const LazyKeywordNetworkEditor=lazy(()=>import('./KeywordNetworkEditor'));
 function KeywordNetworkEditor(props){return <Suspense fallback={null}><LazyKeywordNetworkEditor {...props}/></Suspense>;}
@@ -582,19 +583,19 @@ export default function KeywordLibraryPanel({scopeId,account}){
       isBusy:()=>dockActions.current.isBusy()
     });
   },[dock?.active,dock?.scopeId,dock?.register,scopeId,canEdit]);
+  const knownSuggestionMatcher=useMemo(()=>workspace==='analysis'&&discovery?createDiscoveryKnownMatcher(rows):null,[workspace,discovery,rows]);
   if(!canEdit)return null;
   const selectedClass=activeClass;
   const allClassNodes=[...tree.index.values()].filter(x=>x.type==='class');
-  const knownTerms=new Set((workspace==='analysis'&&discovery?rows:[]).filter(item=>item.type==='item').flatMap(item=>[
-    item.name,...(Array.isArray(item.lists)?item.lists:[])
-  ]).map(value=>String(value||'').normalize('NFKC').trim().toLocaleLowerCase()));
+  const knownTerms=existingKeywordSet(workspace==='analysis'&&discovery?rows:[]);
   const suggestedCandidates=(workspace==='analysis'?discovery?.candidates||[]:[]).filter(item=>
     !knownTerms.has(String(item.word||'').normalize('NFKC').trim().toLocaleLowerCase()));
   const suggestionPageSize=20;
   const suggestionPages=Math.max(1,Math.ceil(suggestedCandidates.length/suggestionPageSize));
   const currentSuggestionPage=Math.min(discoveryPage,suggestionPages);
   const visibleSuggestions=suggestedCandidates.slice(
-    (currentSuggestionPage-1)*suggestionPageSize,currentSuggestionPage*suggestionPageSize);
+    (currentSuggestionPage-1)*suggestionPageSize,currentSuggestionPage*suggestionPageSize)
+    .map(term=>({...term,knownParts:knownSuggestionMatcher?.(term.word)||[]}));
   // Keep vis-network's data stable while typing in the adjacent inspector.
   const graphItems=useMemo(()=>workspace==='network'&&selectedClass?descendantsOfKeyword(rows,selectedClass.uid,{type:'item'}).map(node=>{
     const group=parentOf(tree,node.uid);
@@ -819,6 +820,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
                 {!discovery.cachedOnly?<p className="scope-status">
                   {Number(term.occurrences||0).toLocaleString()} 次出現
                 </p>:null}
+                {term.knownParts.length?<p className="scope-status">包含既有詞彙：{term.knownParts.join('、')}</p>:null}
                 {term.sample?<p className="scope-status">{term.sample}</p>:null}
               </details>:null}
             </li>)}

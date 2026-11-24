@@ -1,4 +1,5 @@
 import {content_filter,keywordScanText} from './content-filter.mjs';
+import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 
 // Discovery only observes literal text. It never ranks a word by presumed
 // meaning, language, length, frequency threshold or publication period.
@@ -17,15 +18,25 @@ function admissibleNormalized(value){
 export function existingKeywordSet(rows=[]){
   const found=new Set();
   for(const row of rows){
-    if(row?.type!=='item')continue;
+    if(!['item','pattern'].includes(row?.type))continue;
     const name=normalize(row.name);
     if(name)found.add(name);
-    for(const term of Array.isArray(row.lists)?row.lists:[]){
+    for(const term of row.type==='item'&&Array.isArray(row.lists)?row.lists:[]){
       const key=normalize(term);
       if(key)found.add(key);
     }
   }
   return found;
+}
+
+// Match known literals inside new candidates without discarding longer
+// unregistered phrases. Compile once; only the visible suggestion page is annotated.
+export function createDiscoveryKnownMatcher(rows=[]){
+  const known=existingKeywordSet(rows);
+  const matcher=compileKeywordLiteralMatcher([...known]);
+  return word=>[...matcher.matched(normalize(word))]
+    .filter(term=>term!==normalize(word))
+    .sort((a,b)=>b.length-a.length||a.localeCompare(b)).slice(0,5);
 }
 
 export function createNewKeywordDiscovery(rows=[]){

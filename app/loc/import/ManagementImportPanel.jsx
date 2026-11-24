@@ -1687,6 +1687,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         });
         if(receipt)setCheckpointHint(receipt);
       };
+      const changedKeywordUids=new Set();
       let updateQueue=[],updateBytes=0;
       const existingCount=existingBySiteId.size;
       if(existingCount)showProgress('更新既有文章',0,existingCount);
@@ -1696,6 +1697,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         const characters=updateQueue.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
         const result=await updateImportRows(galaxy,updateQueue);
         updated+=result.count;
+        if(result.count===updateQueue.length)for(const row of updateQueue)
+          if(Object.hasOwn(row,'title')||Object.hasOwn(row,'content'))changedKeywordUids.add(row.uid);
         updateQueue=[];updateBytes=0;
         updateSizer.observe(count,Date.now()-started,characters);
         // A receipt's confirmed count is rows examined, not only rows
@@ -1873,6 +1876,45 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // persisted Search summary once. A summary error must not turn a
       // successful import into a retry-all error.
       if(!nativeLocal)await refreshImportedSearchSummary();
+      let keywordReviewText='';
+      if(!nativeLocal&&(result.insertedUids.size||changedKeywordUids.size)){
+        try{
+          showProgress('核對匯入文章關鍵詞');
+          const [{keywordService},{createImportKeywordReview}]=await Promise.all([
+            import('../keywords/service-client.mjs'),import('./keyword-review.mjs')]);
+          const vocabulary=[],seenCursors=new Set();
+          let cursor='',config=null;
+          do{
+            if(seenCursors.has(cursor))throw Error('關鍵詞續讀游標重複');
+            seenCursors.add(cursor);
+            const page=await keywordService('workspace',{scopeId,cursor,limit:250});
+            if(!Array.isArray(page?.rows)||!page.config)throw Error('關鍵詞資料無效');
+            config??=page.config;
+            vocabulary.push(...page.rows);
+            cursor=page.nextCursor||'';
+          }while(cursor);
+          const review=createImportKeywordReview(vocabulary,{minChars:Math.max(0,Number(config?.keyword_min_chars)||0)});
+          let batch=[];
+          for(const record of unique){
+            const saved=existingBySiteId.get(record.uid);
+            if(result.insertedUids.has(record.uid))batch.push(record);
+            else if(saved&&changedKeywordUids.has(String(saved.uid)))
+              batch.push({...record,keyword:saved.keyword});
+            if(batch.length>=256){
+              review.consume(batch);batch=[];
+              await new Promise(resolve=>setTimeout(resolve,0));
+            }
+          }
+          review.consume(batch);
+          const receipt=review.finish();
+          if(receipt.vocabulary)keywordReviewText='；本次關鍵詞文字命中 '+receipt.matched.toLocaleString()+
+            ' / '+receipt.scanned.toLocaleString()+' 篇，涵蓋 '+receipt.termCount.toLocaleString()+
+            ' 個既有詞彙'+(receipt.top.length?'（'+receipt.top.map(([word,n])=>word+' '+n+' 篇').join('、')+'）':'')+
+            '。正式分類統計仍以關鍵詞解析為準。';
+        }catch(error){
+          keywordReviewText='；本次關鍵詞文字核對未完成，文章匯入結果不受影響。';
+        }
+      }
       // SiteAnchor is the global silver.loc_anchor source taxonomy, NOT an
       // article foreign key or a second publisher identity. Audit the source
       // labels once after successful writes; ambiguity is informational and
@@ -1895,7 +1937,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         images.existing.toLocaleString()+' 筆'+
         (images.conflicts?'，重複關聯待確認 '+images.conflicts.toLocaleString()+' 筆':'')+'。'+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
-        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。'+importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+
+        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。' +importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+keywordReviewText+
         (missingPointUids.size?'；發現 '+missingPointUids.size.toLocaleString()+' 個既有 place_id 在 Point UID 索引中不存在，未依 location 重建或改指向其他地點。UID：'+[...missingPointUids].slice(0,5).join(',')+(missingPointUids.size>5?' 等':'')+'。':'')+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
