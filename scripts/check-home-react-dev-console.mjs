@@ -1,7 +1,7 @@
 // CI smoke test: visit the real Next.js *development* homepage and capture
 // React's key warnings through Chromium DevTools. No Playwright/npm package added.
 import assert from 'node:assert/strict';
-import {spawn} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {existsSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -11,15 +11,21 @@ import {setTimeout as sleep} from 'node:timers/promises';
 const url='http://localhost:3000/';
 const homeClass='.loc-home-motion-block';
 const keyWarning=/Each child in a list should have a unique ["']key["'] prop/i;
-const chromeBin=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable',
-  '/usr/bin/chromium','/usr/bin/chromium-browser'].find(existsSync);
+const chromeBin=[
+  process.env.CHROME_PATH,
+  '/usr/bin/google-chrome','/usr/bin/google-chrome-stable',
+  '/usr/bin/chromium','/usr/bin/chromium-browser',
+  process.env.PROGRAMFILES&&join(process.env.PROGRAMFILES,'Google','Chrome','Application','chrome.exe'),
+  process.env['PROGRAMFILES(X86)']&&join(process.env['PROGRAMFILES(X86)'],'Google','Chrome','Application','chrome.exe'),
+  process.env.LOCALAPPDATA&&join(process.env.LOCALAPPDATA,'Google','Chrome','Application','chrome.exe')
+].filter(Boolean).find(existsSync);
 if(!chromeBin)throw new Error('Chrome/Chromium missing: developer-console smoke test cannot run');
 if(typeof WebSocket!=='function')throw new Error('Node 22 WebSocket API is required');
 
 const directory=mkdtempSync(join(tmpdir(),'loc-react-console-'));
 const pnpm=process.platform==='win32'?'pnpm.cmd':'pnpm';
 const server=spawn(pnpm,['run','dev'],{
-  cwd:process.cwd(),detached:process.platform!=='win32',
+  cwd:process.cwd(),detached:process.platform!=='win32',shell:process.platform==='win32',
   env:{...process.env,CI:'true',NEXT_TELEMETRY_DISABLED:'1',PORT:'3000'},
   stdio:['ignore','pipe','pipe']
 });
@@ -38,7 +44,12 @@ const within=async(fn,ms,label)=>{
   throw new Error('Timed out waiting for '+label+': '+serverLog.slice(-2000));
 };
 function stopServer(){
-  if(process.platform!=='win32'&&server.pid){
+  if(process.platform==='win32'&&server.pid){
+    spawnSync('taskkill',['/PID',String(server.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+    try{server.stdout?.destroy();server.stderr?.destroy();}catch{}
+    return;
+  }
+  if(server.pid){
     try{process.kill(-server.pid,'SIGTERM');return;}catch{}
   }
   try{server.kill('SIGTERM');}catch{}
