@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {timeRecordHierarchy} from '../app/loc/culture/time-record-hierarchy-options.mjs';
 import {buildEraRiver} from '../app/loc/culture/time-trace-river.mjs';
 import {nextEditorEraExpansion} from '../app/loc/culture/time-trace-river.mjs';
@@ -122,7 +121,6 @@ test('management Era lanes retain all dated anchors and unclassified dates',()=>
 }
 
 {
-const file=name=>readFileSync(new URL('../'+name,import.meta.url),'utf8');
 const scope='lo3rwang';
 const dates=[
   {uid:'DATE0001',scope_id:scope,type:'anchor',entry_type:'anchor',
@@ -161,6 +159,25 @@ test('management expands Era -> Period -> dated anchors using the existing snaps
     'era','period','anchor','anchor'
   ]);
 });
+const rect=(left,top,width,height)=>({left,top,width,height,right:left+width,bottom:top+height});
+function fakeTimeline({hidden=false,clipped=false,noBars=false}={}){
+  const root={getBoundingClientRect:()=>rect(0,0,700,300)};
+  const vis={parentElement:root,getBoundingClientRect:()=>rect(0,0,700,300)};
+  const left={parentElement:vis,getBoundingClientRect:()=>rect(0,0,140,300)};
+  const center={parentElement:vis,getBoundingClientRect:()=>rect(140,0,560,300)};
+  const label={parentElement:left,getBoundingClientRect:()=>rect(0,25,140,35)};
+  const item={parentElement:center,getBoundingClientRect:()=>rect(clipped?710:170,25,clipped?90:150,30)};
+  root.querySelector=selector=>({
+    '.vis-timeline':vis,'.vis-panel.vis-left':left,'.vis-panel.vis-center':center
+  })[selector]||null;
+  root.querySelectorAll=selector=>({
+    '.vis-panel.vis-left .vis-label':[label],
+    '.vis-panel.vis-center .vis-item':noBars?[]:[item]
+  })[selector]||[];
+  return {root,getStyle:node=>({display:'block',visibility:'visible',
+    contentVisibility:'visible',opacity:hidden&&node===item?'0':'1'})};
+}
+
 test('Time river paint health requires visible labels and on-screen bars',()=>{
   let t=fakeTimeline();
   assert.equal(timelinePainted(t.root,t.getStyle),true);
