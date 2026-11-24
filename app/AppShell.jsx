@@ -74,59 +74,14 @@ function nextThemeChangeDelay(date=new Date()){
   return Math.max(1,boundary-date.getTime()+25);
 }
 
-// A user-selected palette is a preference, not a query payload. It must
-// survive management's mandatory dynamic-read disposal and full static
-// management entry navigation without caching SQL, Session or private data.
-const USER_THEME_SESSION_KEY='loc-user-theme-selection-v1';
-const LAST_ACTIVE_THEME_KEY='loc-active-theme-id-v1';
-// The public JS registry is immutable until explicit publication. An
-// authorized management read/Save can immediately override only this
-// browser Session; no ordinary visitor performs a Theme SQL read.
-const COMMITTED_SCOPE_THEME_KEY='loc-committed-scope-theme-v1';
-function readCommittedScopeTheme(scopeId){
-  try{
-    const map=JSON.parse(window.sessionStorage.getItem(COMMITTED_SCOPE_THEME_KEY)||'{}');
-    const value=String(map?.[scopeId]||'');
-    return value===SYSTEM_THEME_ID||THEME_SLOTS.some(slot=>slot.id===value)?value:'';
-  }catch{return '';}
-}
-function rememberCommittedScopeTheme(scopeId,themeId){
-  const valid=themeId===SYSTEM_THEME_ID||THEME_SLOTS.some(slot=>slot.id===themeId);
-  if(!valid)return;
-  try{
-    const map=JSON.parse(window.sessionStorage.getItem(COMMITTED_SCOPE_THEME_KEY)||'{}');
-    map[scopeId]=themeId;
-    window.sessionStorage.setItem(COMMITTED_SCOPE_THEME_KEY,JSON.stringify(map));
-  }catch{}
-}
-
+// The active selection belongs only to this browser document.
+let activeDocumentTheme='';
 function readLastActiveTheme(){
-  try{
-    const candidate=String(window.sessionStorage.getItem(LAST_ACTIVE_THEME_KEY)||'');
-    return THEME_SLOTS.some(slot=>slot.id===candidate)?candidate:'';
-  }catch{return '';}
+  return typeof window==='undefined'?'':activeDocumentTheme;
 }
 function rememberActiveTheme(themeId){
-  if(!THEME_SLOTS.some(slot=>slot.id===themeId))return;
-  try{window.sessionStorage.setItem(LAST_ACTIVE_THEME_KEY,themeId);}catch{}
-}
-function readUserTheme(scopeId){
-  try{
-    const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
-    const stored=prefs?.[scopeId];
-    // RFC 9110 browser Session keeps only the 1..8 palette number per Scope.
-    // Accept previous theme-N values without discarding an existing choice.
-    const candidate=/^[1-8]$/.test(String(stored??''))?'theme-'+stored:String(stored||'');
-    return THEME_SLOTS.some(slot=>slot.id===candidate)?candidate:SYSTEM_THEME_ID;
-  }catch{return SYSTEM_THEME_ID;}
-}
-function rememberUserTheme(scopeId,themeId){
-  try{
-    const prefs=JSON.parse(window.sessionStorage.getItem(USER_THEME_SESSION_KEY)||'{}');
-    if(themeId===SYSTEM_THEME_ID)delete prefs[scopeId];
-    else if(THEME_SLOTS.some(slot=>slot.id===themeId))prefs[scopeId]=Number(themeId.slice(6));
-    window.sessionStorage.setItem(USER_THEME_SESSION_KEY,JSON.stringify(prefs));
-  }catch{}
+  if(typeof window!=='undefined'&&THEME_SLOTS.some(slot=>slot.id===themeId))
+    activeDocumentTheme=themeId;
 }
 function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride='',pageName='index'}){
   const reduceMotion=useReducedMotion();
@@ -136,12 +91,12 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   const fixedDefaultThemeId=String(defaultThemeIdOverride||'').trim();
   // Palette styles are published CSS; the default theme belongs to this Scope.
   const configEnabled=!fixedDefaultThemeId&&scope.id!=='loc'&&scope.id!=='local'&&!scope.aggregateChildren&&scope.id!=='admin';
-  const [committedScopeTheme,setCommittedScopeTheme]=useState(()=>({scopeId,themeId:readCommittedScopeTheme(scopeId)}));
+  const [committedScopeTheme,setCommittedScopeTheme]=useState({scopeId,themeId:''});
   const [themePreview,setThemePreview]=useState({scopeId,themeId:''});
   const committedId=committedScopeTheme.scopeId===scopeId?committedScopeTheme.themeId:'';
   const configuredTheme=configEnabled?committedId:'';
   const configuredDefaultThemeId=configuredTheme===SYSTEM_THEME_ID?'':configuredTheme;
-  const [selection,setSelection]=useState(()=>({scopeId,themeId:readUserTheme(scopeId)}));
+  const [selection,setSelection]=useState({scopeId,themeId:SYSTEM_THEME_ID});
   // Decorative local feedback only when a person selects a different option.
   // Theme persistence and actual palette application remain untouched.
   const [accentPulse,setAccentPulse]=useState(0);
@@ -155,7 +110,6 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
       if(!active||themeRevision.current!==revision)return;
       const themeId=String(row?.theme||'');
       if(themeId!==SYSTEM_THEME_ID&&!THEME_SLOTS.some(slot=>slot.id===themeId))return;
-      rememberCommittedScopeTheme(scopeId,themeId);
       setCommittedScopeTheme({scopeId,themeId});
     }).catch(error=>console.error('Scope theme read failed',error));
     return()=>{active=false;};
@@ -176,13 +130,11 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
       const themeId=String(event.detail.themeId||'');
       themeRevision.current++;
       if(themeId!==SYSTEM_THEME_ID&&!THEME_SLOTS.some(slot=>slot.id===themeId))return;
-      rememberCommittedScopeTheme(scopeId,themeId);
       setCommittedScopeTheme({scopeId,themeId});
     };
     const onSaved=event=>{
       if(!forScope(event))return;
       onCommitted(event);
-      rememberUserTheme(scopeId,SYSTEM_THEME_ID);
       setSelection({scopeId,themeId:SYSTEM_THEME_ID});
       setThemePreview({scopeId,themeId:''});
     };
@@ -229,10 +181,9 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
   },[selectedThemeId,fixedDefaultThemeId,configuredDefaultThemeId]);
 
   useEffect(()=>{
-    // Switching Scope preserves each Scope's own explicitly chosen palette.
-    // Entering /manage must never silently reset that choice to system.
-    setSelection({scopeId,themeId:readUserTheme(scopeId)});
-    setCommittedScopeTheme({scopeId,themeId:readCommittedScopeTheme(scopeId)});
+    // A visitor's temporary choice is not persisted across Scope changes.
+    setSelection({scopeId,themeId:SYSTEM_THEME_ID});
+    setCommittedScopeTheme({scopeId,themeId:''});
     setThemePreview({scopeId,themeId:''});
     setAccentPulse(0);
   },[scopeId]);
@@ -251,7 +202,6 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     <select value={selectedThemeId} onChange={event=>{
       const next=event.target.value;
       if(next===selectedThemeId)return;
-      rememberUserTheme(scopeId,next);
       setSelection({scopeId,themeId:next});
       if(!reduceMotion)setAccentPulse(count=>count+1);
     }} aria-label={copy.common.theme}>
@@ -350,20 +300,6 @@ export default function AppShell({children}){
 
 function AppShellInner({children,runtime}){
   const queryClient=useQueryClient();
-  useEffect(()=>{
-    // Retire pre-existing browser copies of unfinished Timeline reviews and
-    // settings snapshots. Do not touch LOC Auth or editor TTL session keys.
-    try{
-      const storage=window.sessionStorage;
-      for(let i=storage.length-1;i>=0;i--){
-        const key=storage.key(i);
-        if(key&&(key.startsWith('loc-timeline-review:')||
-            key==='loc-navigation-setting-snapshot-v1'||
-            key==='loc-public-cache-policy-v1'))
-          storage.removeItem(key);
-      }
-    }catch{}
-  },[]);
   useEffect(()=>{
     // LOC Web Service Worker is temporarily disabled in ALL environments.
     // Retire only this site's former worker and its own static asset caches.

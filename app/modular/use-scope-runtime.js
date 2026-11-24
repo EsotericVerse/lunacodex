@@ -2,7 +2,7 @@
 
 import {useEffect,useMemo,useState} from 'react';
 import {usePathname} from 'next/navigation';
-import {getScope,isKnownScope,normalizeScopeId,resolveScope,rememberCurrentBrowserRoute} from './routing/scope-registry';
+import {getScope,isKnownScope,normalizeScopeId,resolveScope} from './routing/scope-registry';
 import {PUBLISHED_SITE_BOOTSTRAP} from './published-site-bootstrap.js';
 import {SCOPE_ROUTE_INDEX} from './routing/scope-route-index.js';
 
@@ -40,10 +40,7 @@ export function useScopeRuntime(){
     [pathname,location.search]);
   const scopeId=genericId||(genericShell?'':resolveScope(location.host,pathname));
   const dynamic=Boolean(genericShell&&(!genericId||!isKnownScope(genericId)));
-  useEffect(()=>{
-    if(!location.mounted||!scopeId)return;
-    rememberCurrentBrowserRoute(window.sessionStorage,scopeId,pathname);
-  },[location.mounted,scopeId,pathname]);
+
 
   // The route's display data is selected synchronously from the published file.
   // No component can accidentally trigger an HTTP / SQL read merely to
