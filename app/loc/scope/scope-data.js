@@ -242,7 +242,7 @@ async function nativePublicContent(kind,scope,feature=''){
   const params=new URLSearchParams({kind,scope});
   if(feature)params.set('feature',feature);
   const payload=kind==='config'||kind==='block_list'||kind==='hero_block'
-    ?await queryBlockContent(params)
+    ?await queryBlockContent(params.toString())
     :kind==='culture_anchors'||kind==='culture_density'
       ?await queryCultureContent(params.toString())
       :await queryStaticsContent(params.toString());

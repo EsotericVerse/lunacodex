@@ -10,7 +10,6 @@ export async function queryBlocks(name,args){
 }
 
 export async function queryBlockContent(params){
-  const kind=params.get('kind');
   return invokeHandler(handleNativePublicContent,{path:'/blocks/content?'+params,
     method:'GET',options:{allowedKinds:['config','block_list','hero_block']}});
 }
