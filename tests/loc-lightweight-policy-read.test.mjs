@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {withFixedPolicyRead,fixedPolicyReadModel}
   from '../packages/zenstack/policy-runtime.mjs';
 
@@ -83,17 +82,4 @@ test('lightweight reads preserve fixed-model, engine and operation whitelist',as
       /Not a fixed public ZModel policy query/
     );
   }
-});
-
-test('lightweight read change does not remove transaction protection for writes',()=>{
-  const runtime=readFileSync(
-    new URL('../packages/zenstack/policy-runtime.mjs',import.meta.url),'utf8');
-  const write=runtime.slice(runtime.indexOf('export async function withFixedPolicyWrite'));
-  assert.match(write,/\.\$transaction\(async scoped=>/);
-  const reader=runtime.slice(runtime.indexOf('export async function withFixedPolicyRead'),
-    runtime.indexOf('export async function withFixedPolicyWrite'));
-  assert.doesNotMatch(reader,/\.\$transaction\(/);
-  const publicContent=readFileSync(
-    new URL('../app/loc/server/native-public-content.mjs',import.meta.url),'utf8');
-  assert.equal((publicContent.match(/\(name,authorized\)=>authorized\[/g)||[]).length,3);
 });

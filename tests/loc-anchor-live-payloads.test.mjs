@@ -4,7 +4,9 @@ import {readFileSync} from 'node:fs';
 import {assertZModelAnchorFeatureRows} from '../packages/zenstack/import-validation.mjs';
 import {schema} from '../packages/zenstack/schema.mjs';
 import {parseAnchorFeatureTransaction} from '../app/loc/model/anchor-feature-transactions.mjs';
-import {indexZModelAnchorHierarchy,nextZModelAnchorType} from '../packages/zenstack/anchor-hierarchy.mjs';
+import {anchorUidListCount,indexZModelAnchorHierarchy,nextZModelAnchorType} from '../packages/zenstack/anchor-hierarchy.mjs';
+
+import {locAnchorToBlock,locBlockToAnchor} from '../app/loc/blocks/loc-block-anchor.mjs';
 
 const anchor=(type,attr,uid='AAAA0001')=>({uid,type,attr,invisible:false,num:0});
 
@@ -101,4 +103,23 @@ test('Pattern attr.total stores occurrence counts without changing terminal num'
       anchor('pattern',bad)
     ]),/Pattern.attr/);
   }
+});
+
+test('LOC Block order lives in attr.order, not in num',()=>{
+  const original={uid:'ABCD1234',page_name:'index',block_order:5,
+    block_title:'Example',block_text:'',block_entity:[3,{uid:'AAAA0001',text:'a'}]};
+  const anchor=locBlockToAnchor(original);
+  assert.equal(anchor.attr.order,5);
+  assert.equal(anchor.num,1);
+  assert.equal(locAnchorToBlock({...anchor,num:99}).block_order,5);
+});
+test('num counts the UID references in each semantic Anchor payload',()=>{
+  assert.equal(anchorUidListCount('universe',{uid:['AAAA0001','BBBB0002']}),2);
+  assert.equal(anchorUidListCount('period',{uid:['AAAA0001']}),1);
+  assert.equal(anchorUidListCount('era',{period:['AAAA0001','BBBB0002']}),2);
+  assert.equal(anchorUidListCount('trace',{path:['AAAA0001'],point:['BBBB0002','CCCC0003']}),3);
+  assert.equal(anchorUidListCount('pattern',{}),0);
+  assert.equal(anchorUidListCount('from',{uid:[],counts:{lo3rwang:123}}),0);
+  assert.equal(anchorUidListCount('index',{order:2,uidlist:[3,{uid:'AAAA0001'}]}),1);
+  assert.equal(anchorUidListCount('date',{date:'2026-11-23'}),0);
 });

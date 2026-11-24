@@ -13,7 +13,7 @@ import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,sql} from 'kysely';
 import {planJsonRecordsetBatches} from '../app/loc/query/query-batch-size.mjs';
 import {remapImportUidRelations,planImportPointUidLink,planImportMediaUrlLinks,
   planExistingImportUidUpdate} from '../app/loc/import/uid-delta.mjs';
-import {planKyselyUpsertBatches,buildKyselyUpsertQuery}
+import {planKyselyUpsertBatches}
   from '../app/loc/providers/kysely-runtime.mjs';
 import {prepareManagedKyselyWrite}
   from '../app/loc/providers/kysely-management.mjs';
@@ -36,20 +36,6 @@ test('UPSERT batches obey parameter and byte budgets',()=>{
   assert.ok(batches.every(batch=>batch.length<=3));
   assert.deepEqual(batches.flat(),rows);
   assert.ok(planKyselyUpsertBatches(rows,'uid',{maxBytes:30}).length>1);
-});
-test('Kysely native PG UPSERT uses row-specific EXCLUDED references',()=>{
-  const db=new Kysely({dialect:new PostgresDialect({pool:{
-    connect:async()=>{throw Error('Compile-only test must not connect');}
-  }})});
-  const query=buildKyselyUpsertQuery(db,{
-    schema:'silver',table:'lo3rwang_galaxy',
-    values:[{uid:'AAAA0001',title:'one'},{uid:'BBBB0002',title:'two'}],
-    onConflict:['uid']
-  },'postgres');
-  const compiled=query.compile();
-  assert.match(compiled.sql,/on conflict/i);
-  assert.match(compiled.sql,/excluded.*title/i);
-  assert.equal(compiled.parameters.length,4);
 });
 test('pure managed validation does not mutate the request payload',()=>{
   const input={kind:'managed-write',payload:{

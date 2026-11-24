@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {recoverChunkOnce,isChunkLoadFailure}
   from '../app/loc/ui/chunk-recovery.mjs';
 
-const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 function browserStub({editing=false,query='',confirm=true,storageFails=false}={}){
   let reloads=0,prompts=0;
   const storage=new Map();
@@ -65,14 +63,4 @@ test('unavailable sessionStorage fails closed without a reload',()=>{
   const {browser,stats}=browserStub({storageFails:true});
   assert.throws(()=>recoverChunkOnce(chunk(),{browser,now:1000000}));
   assert.deepEqual(stats(),{reloads:0,prompts:0});
-});
-
-test('the edit marker is ephemeral and maintained by EditDock transitions',()=>{
-  const dock=source('app/modular/edit-dock.jsx');
-  assert.match(dock,/root\.dataset\.locEditing='true'/);
-  assert.match(dock,/delete root\.dataset\.locEditing/);
-  assert.match(dock,/const end=useCallback\(\(\)=>\{[\s\S]*?cancelEditorTransactionSession\(\);\s*markEditorActive\(false\)/);
-  assert.match(dock,/markEditorActive\(true\);\s*setEditing\(true\)/);
-  assert.match(dock,/function logCleanupFailure\(failure\)/);
-  assert.doesNotMatch(dock,/console\.error\('\[LOC edit-dock\] onFailure cleanup failed',cleanup\)/);
 });

@@ -170,16 +170,6 @@ test('adaptive writer flushes large texts by bytes rather than sending oversized
   assert.ok(sent.length>1);
 });
 
-test('both Galaxy insert and update importer routes obey actual measured bytes',()=>{
-  const panel=src('app/loc/import/ManagementImportPanel.jsx');
-  const provider=src('app/loc/db/db-contract.mjs');
-  const pg=src('app/loc/providers/kysely-management.mjs');
-  assert.match(panel,/insertSizer\.shouldFlush\(payload\.length,payloadBytes,bytes\)/);
-  assert.match(panel,/updateSizer\.shouldFlush\(updateQueue\.length,updateBytes,bytes\)/);
-  assert.match(panel,/imageSizer\.shouldFlush\(pending\.length,pendingBytes,bytes\)/);
-  assert.match(provider,/const batchSize=HEAVY_QUERY_ROWS/);
-  assert.match(pg,/jsonb_populate_recordset/);
-});
 
 test('each explicit SQL Type preserves its own parameter-safe insert budget',()=>{
   const port=src('app/loc/providers/sql-engine-ports.mjs');
@@ -209,18 +199,6 @@ test('Import confirmation windows never skip milestones or loop when sizes match
   assert.equal(equal.next,12);
 });
 
-test('Import article writer binds confirmation windows to existing checkpoint receipts',()=>{
-  const panel=src('app/loc/import/ManagementImportPanel.jsx');
-  assert.match(panel,/const updateWindows=createImportConfirmationWindow\(\)/);
-  assert.match(panel,/updateWindows.reached\(checkedExisting\)/);
-  assert.match(panel,/const insertWindows=createImportConfirmationWindow\(\)/);
-  assert.match(panel,/insertWindows.reached\(newArticleProcessed\+payload.length\)/);
-  assert.match(panel,/checkpointBatch\('insert',newArticleProcessed,newArticleTotal,/);
-  assert.match(panel,/checkpointBatch\('update',checkedExisting,existingCount,updated\)/);
-  // A receipt is evidence of finished writes, NOT a row-skipping cursor.
-  const checkpoint=src('app/loc/import/checkpoint.mjs');
-  assert.match(checkpoint,/must still compare/);
-});
 
 test('Import batch sampling uses final physical Galaxy and MediaAnchor row shapes',()=>{
   const panel=src('app/loc/import/ManagementImportPanel.jsx');

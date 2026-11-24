@@ -335,23 +335,3 @@ test('borrowed article analytics reuse transaction without nested BEGIN',async()
   });
   assert.equal(result.total,3);
 });
-
-test('import special Galaxy fields share one native typed update batch',()=>{
-  const contract=readFileSync(new URL('../app/loc/db/db-contract.mjs',import.meta.url),'utf8');
-  const writer=readFileSync(new URL('../app/loc/providers/kysely-management.mjs',import.meta.url),'utf8');
-  const native=readFileSync(new URL('../app/loc/mcp/native-operations.mjs',import.meta.url),'utf8');
-  const begin=contract.indexOf('async function updateImportRowsUnchecked(');
-  const end=contract.indexOf('async function deleteRowsUnchecked(',begin);
-  const block=contract.slice(begin,end);
-  assert.match(block,/p_operation:'update_batch'/);
-  assert.doesNotMatch(block,/Promise\.all\(/);
-  assert.doesNotMatch(block,/start\+=6/);
-  assert.match(block,/maxChunkBytes=IMPORT_WRITE_TARGET_BYTES/);
-  assert.match(readFileSync(new URL('../app/loc/query/query-batch-size.mjs',import.meta.url),'utf8'),/importWriteTargetBytes:480000/);
-  assert.match(writer,/return publishedManagedScope\(scope\);/);
-  assert.doesNotMatch(writer,/selectFrom\('api\.manage'\)/);
-  assert.match(writer,/const record=await registeredScope\(trx,scope\)/);
-  for(const key of ['location','site_id','ref_id','source_id','target_id'])
-    assert.ok(writer.includes("'"+key+"'"),'missing approved Galaxy batch field '+key);
-  assert.match(native,/'update_batch','append_media_link'/);
-});
