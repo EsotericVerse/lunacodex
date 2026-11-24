@@ -62,7 +62,8 @@ const GALAXY_IMPORT_UID_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead')
 // Report unresolved duplicate UIDs without choosing an arbitrary winner.
 function importAnchorConflictSummary(...results){
   const conflicts=results.flatMap(result=>Array.isArray(result?.conflicts)?result.conflicts:[]);
-  if(!conflicts.length)return '';
+  const nameCandidates=results.flatMap(result=>
+    Array.isArray(result?.nameCandidates)?result.nameCandidates:[]);
   const sample=conflicts.slice(0,5).map(row=>
     (row.type==='date'?'日期 '+String(row.date||''):
       row.type==='point'?'地點 '+String(row.place||''):
@@ -70,9 +71,14 @@ function importAnchorConflictSummary(...results){
         '媒體 '+String(row.type||'')+' '+String(row.url||row.uid||'未提供網址'))+
     (row.saved_uids?.length?'，候選 UID '+row.saved_uids.slice(0,5).join(',')+
       (row.saved_uids.length>5?'…':''):'，缺少唯一識別'));
-  return '；Anchor 比對衝突 '+conflicts.length.toLocaleString()+
+  const conflictText=conflicts.length?'；Anchor 比對衝突 '+conflicts.length.toLocaleString()+
     ' 組，已保留待人工核對：'+sample.join('、')+
-    (conflicts.length>5?' 等':'')+'。';
+    (conflicts.length>5?' 等':'')+'。':'';
+  const candidateText=nameCandidates.length?'；地點名稱包含候選 '+nameCandidates.length.toLocaleString()+
+    ' 組（僅供人工核對，不作為 place_id 證據）：'+nameCandidates.slice(0,5)
+      .map(row=>String(row.place||'')+' ↔ '+(row.saved_titles||[]).slice(0,3).join('／'))
+      .join('、')+(nameCandidates.length>5?' 等':'')+'。':'';
+  return conflictText+candidateText;
 }
 const ZIP_LAYOUT_KEYS=Object.freeze({
   'conversation-tree':'conversationTree','message-list':'messageList','post-list':'postList',

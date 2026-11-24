@@ -5,6 +5,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {reviewPlaceNameGroups,compactPlaceName} from '../../modular/features/trace/trace-place-names.mjs';
 import {renameTraceAnchorTitles} from '../../modular/features/trace/trace-data';
+import {matchPlaceNameCandidates,placeCandidateKey} from './place-name-candidates.mjs';
 
 const canonical=items=>[...items].sort((a,b)=>
   String(a.createtime||a.created_at||'9999').localeCompare(String(b.createtime||b.created_at||'9999'))||
@@ -14,6 +15,38 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   const anchors=useMemo(()=>(spatial.anchors||[]).filter(item=>
     item.trace_type==='space_anchor'&&item.source_scope===scopeId),[spatial.anchors,scopeId]);
   const {automatic,uncertain}=useMemo(()=>reviewPlaceNameGroups(anchors),[anchors]);
+  // Read-only name-overlap suggestions use the same compiled matcher as
+  // import reviews. They never enter the automatic/bulk rename selection.
+  const nameOverlapPairs=useMemo(()=>{
+    const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
+    const matches=matchPlaceNameCandidates(
+      anchors.map(row=>({key:String(row.uid),name:row.title})),
+      anchors.map(row=>({uid:row.uid,title:row.title,aliases:row.attr?.location})),
+      {maxCandidates:16});
+    const pairs=[],seen=new Set();
+    for(const row of anchors){
+      for(const candidate of matches.get(String(row.uid))||[]){
+        const other=byUid.get(candidate.uid);
+        if(!other||other.uid===row.uid||
+          placeCandidateKey(other.title)===placeCandidateKey(row.title))continue;
+        const ids=[String(row.uid),String(other.uid)].sort();
+        const key=ids.join(':');
+        if(seen.has(key))continue;
+        seen.add(key);
+        const a=byUid.get(ids[0]),b=byUid.get(ids[1]);
+        const first=Array.isArray(a?.address)?a.address:null;
+        const second=Array.isArray(b?.address)?b.address:null;
+        const sameCoordinates=Boolean(first?.length===2&&second?.length===2&&
+          first[0]!=null&&first[1]!=null&&second[0]!=null&&second[1]!=null&&
+          Number(first[0])===Number(second[0])&&Number(first[1])===Number(second[1]));
+        pairs.push({key,a,b,sameCoordinates});
+        if(pairs.length>=200)break;
+      }
+      if(pairs.length>=200)break;
+    }
+    return pairs.sort((a,b)=>Number(b.sameCoordinates)-Number(a.sameCoordinates)||
+      a.key.localeCompare(b.key));
+  },[anchors]);
   const [dismissed,setDismissed]=useState([]);
   const [keepers,setKeepers]=useState({});
   useEffect(()=>{
@@ -224,6 +257,22 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
         </details>;
       })}
       {reviewGroups.length>80?<p className="scope-status">目前展開前 80 組；「全部勾選」涵蓋所有 {reviewGroups.length} 組，批次套用前請確認。</p>:null}
+    </section>
+    <section className="scope-card">
+      <h4>3. 部分名稱重疊候選（僅供人工查閱）</h4>
+      <p className="scope-status">一次比對現有地點名稱及可用別名。文字包含不代表相同地點，不會自動改名、合併或修改文章 place_id。</p>
+      {!nameOverlapPairs.length?<p className="scope-status">目前沒有名稱包含候選。</p>:null}
+      {nameOverlapPairs.slice(0,40).map(pair=><div key={pair.key} className="loc-trace-quick-update-group">
+        <p className="scope-status">{pair.a.title}（{pair.a.uid}） ／ {pair.b.title}（{pair.b.uid}）
+          · {pair.sameCoordinates?'同座標，仍需確認':'未確認為同一座標'}</p>
+        <div className="scope-stat-controls">
+          {[pair.a,pair.b].map(item=><button type="button" className="loc-button" key={item.uid}
+            onClick={()=>{setSelectedUid(String(item.uid));setPlaceName(String(item.title||''));}}>
+            查看 {item.title}
+          </button>)}
+        </div>
+      </div>)}
+      {nameOverlapPairs.length>40?<p className="scope-status">僅顯示前 40 組名稱候選。</p>:null}
     </section>
     {notice?<p role={error?'alert':'status'} className={'scope-status'+(error?' scope-error':'')}>{notice}</p>:null}
   </section>;
