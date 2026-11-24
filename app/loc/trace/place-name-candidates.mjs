@@ -54,11 +54,11 @@ export function matchPlaceNameCandidates(incoming=[],known=[],{maxCandidates=8}=
       matches.set(uid,{...target,matchedName,score:length});
   };
   for(const [id,name] of sourceNames){
-    for(const matchedName of knownMatcher.matched(name))
+    for(const [matchedName] of knownMatcher.countMatches(name))
       for(const uid of uidsByName.get(matchedName)||[])add(id,uid,matchedName);
   }
   for(const [knownName,uids] of uidsByName){
-    for(const sourceName of incomingMatcher.matched(knownName))
+    for(const [sourceName] of incomingMatcher.countMatches(knownName))
       for(const id of sourcesByName.get(sourceName)||[])
         for(const uid of uids)add(id,uid,sourceName);
   }
