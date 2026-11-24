@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {testLocAuthConnection} from '../functions/api/loc-auth-connectivity.js';
+import {testLocAuthConnection} from '../app/api/loc-auth-connectivity/route.js';
 import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
 import {closeLocDatabase,bindLocRequestAbort} from '../app/loc/mcp/native-kysely.mjs';
 import {readFileSync} from 'node:fs';
@@ -90,7 +90,7 @@ test('request cancellation closes active connection and refuses future acquisiti
   await assert.rejects(pool.connect(),/already closed/);
 });
 test('Keyword streamed analysis awaits cancelled SQL ownership cleanup',()=>{
-  const handler=readFileSync(new URL('../functions/api/keywords.js',import.meta.url),'utf8');
+  const handler=readFileSync(new URL('../app/loc/keywords/api.mjs',import.meta.url),'utf8');
   assert.match(handler,/cancel\(\)\{return entry\?\.pool\?\.abort\?\.\(\);\}/,
     'ReadableStream cancellation must return its pool-close Promise');
   assert.match(handler,/finally\{[\s\S]*?await closeLocDatabase\(entry\)/,
@@ -272,12 +272,12 @@ test('retired Keyword sync is rejected by client and API before database access'
   const {keywordService}=await import('../app/loc/keywords/service-client.mjs');
   await assert.rejects(keywordService('syncLibrary',{scopeId:'lo3rwang'}),
     /Unsupported Keyword operation/);
-  const {onRequestPost}=await import('../functions/api/keywords.js');
+  const {handleKeywordRequest}=await import('../app/loc/keywords/api.mjs');
   const req=new Request('https://loc.lo3rwang.cc/api/keywords',{
     method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({operation:'syncLibrary',args:{scopeId:'lo3rwang'}})
   });
-  const response=await onRequestPost({request:req,env:{}});
+  const response=await handleKeywordRequest(req,{});
   assert.equal(response.status,400);
   assert.match((await response.json()).error,/Unknown Keyword operation/);
 });

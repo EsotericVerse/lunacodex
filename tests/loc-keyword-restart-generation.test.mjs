@@ -56,7 +56,7 @@ test('new analysis refuses tokenless or invalid reset generations',async()=>{
 test('restart button must commit reset before starting the new epoch of batches',()=>{
   const ui=source('app/loc/keywords/ui/KeywordLibraryPanel.jsx');
   const runner=source('app/loc/keywords/analysis.js');
-  const backend=source('functions/api/keywords.js');
+  const backend=source('app/loc/keywords/api.mjs');
   const service=source('app/loc/keywords/sql-service.mjs');
   const run=ui.slice(ui.indexOf('  const run=async(reset=false)=>{'),
     ui.indexOf('  const checkUnconfirmed=async()=>{'));

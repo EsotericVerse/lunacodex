@@ -13,8 +13,8 @@ if(TYPES.some(type=>!ANCHOR_TYPE_PROJECTIONS[type]))
 
 async function authorizedAnchorPage({scopeId,afterUid,limit,types=TYPES}){
   // Managed actions use the existing Better Auth website Session and the
-  // server's api.manage permission check. Never fetch private import evidence
-  // via the anonymous /api/loc-public-query reader.
+  // server's published JavaScript permission check. Never fetch private import evidence
+  // through the feature-owned Trace query action.
   const {data,error}=await dbAuthClient.schema('silver').managedAction(
     'anchor_import_page',{p_scope_id:scopeId,p_types:types,
       p_after_uid:afterUid,p_limit:limit});

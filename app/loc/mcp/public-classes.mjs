@@ -27,11 +27,10 @@ export async function handleNativePublicClasses(request,env={},{
     // browser-selected database ID, credentials or arbitrary relation.
     port=await database(env,'',{waitUntil});
     releaseAbort=bindLocRequestAbort(port,request.signal);
-    return port.db.transaction().execute(async trx=>{
     const namespace=port.namespace||'silver';
     const control=portableRelation(scope,port.engine,namespace);
     const anchor=portableRelation(scope+'_anchor',port.engine,namespace);
-    const config=await trx.selectFrom(control)
+    const config=await port.db.selectFrom(control)
       .select('keyword_meta').where('id','=',scope).limit(1).executeTakeFirst();
     let meta=config?.keyword_meta||{};
     if(typeof meta==='string'){
@@ -41,13 +40,12 @@ export async function handleNativePublicClasses(request,env={},{
       .filter(([uid,flag])=>UID.test(uid)&&flag===true)
       .slice(0,100).map(([uid])=>uid);
     if(!shared.length)return reply({data:[]});
-    const rows=await trx.selectFrom(anchor)
+    const rows=await port.db.selectFrom(anchor)
       .select(['uid','title']).where('type','=','class')
       .where('uid','in',shared).orderBy('title','asc').limit(100).execute();
     const allowed=new Set(shared);
     return reply({data:rows.filter(row=>allowed.has(String(row.uid||'')))
       .map(row=>({scopeId:scope,classUid:row.uid,name:row.title}))});
-    });
   }catch(error){
     console.error('[LOC public Class directory]',String(error?.message||error));
     return reply({error:'Public Class directory unavailable'},503);

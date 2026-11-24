@@ -1,6 +1,6 @@
 'use client';
 
-import {dbPublicClient,dbAuthClient,transactionWrites} from '../../../loc/db/db-client.mjs';
+import {dbAuthClient,transactionWrites} from '../../../loc/db/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
 import {allocateAnchorUid} from '../../../loc/model/uid.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -33,6 +33,7 @@ const VALID_ID=/^[A-Za-z0-9]{8}$/;
 const TRACE_TYPES=ANCHOR_TYPE_GROUPS.space;
 const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
 import {readAnchorFeature,readAllAnchorFeature} from '../../../loc/model/feature-transaction-client.mjs';
+import {readTracePoint,readTraceRouteUids} from '../../../loc/actions/trace/direct-query.mjs';
 const physicalPoint=id=>dbAuthClient.schema('silver').from(id+'_anchor');
 const pointAttr=({address,longitude,latitude})=>{
   const coords=coordinateArray(longitude,latitude),attr={};
@@ -208,8 +209,7 @@ export async function addTraceAnchor({scopeId,title,description='',address='',lo
 export async function updateTraceAnchor({scopeId,uid,title,description='',address='',longitude,latitude,invisible=false}){
   const id=writableScope(scopeId),selected=textValue(uid);
   if(!VALID_ID.test(selected))throw Error('地點 UID 必須是八碼');
-  const before=checked(await physicalPoint(id).select('uid,attr').eq('uid',selected)
-    .eq('type','point').maybeSingle(),'讀取空間定錨點');
+  const before=await readTracePoint(id,selected);
   if(!before)throw Error('空間定錨點不存在，請重新載入');
   const attr={...(before.attr||{})};
   const coords=coordinateArray(longitude,latitude);
@@ -307,8 +307,7 @@ async function validatedRouteList(scopeId,type,routeUids=[]){
     return [];
   }
   if(!ids.length)return [];
-  const rows=checked(await dbAuthClient.schema('silver').from(scopeId+'_anchor')
-    .select('uid').eq('type','path').in('uid',ids).limit(81),'確認下層路線圖')||[];
+  const rows=await readTraceRouteUids(scopeId,ids);
   if(rows.length!==ids.length)throw Error('包含不存在或跨 Scope 的路線圖');
   return ids;
 }
@@ -327,8 +326,9 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
   if(!validUid(key))throw Error('無效 UID');
   const route_list=await validatedRouteList(id,type,routeUids);
   const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
-  const current=checked(await dbAuthClient.schema('silver').from(id+'_anchor')
-    .select('uid,attr').eq('uid',key).eq('type',type).maybeSingle(),'讀取路線／痕跡圖');
+  const current=type==='point'?await readTracePoint(id,key):
+    (await readAnchorFeature({scope:id,family:'space',types:[type],uids:[key],limit:1},
+      {editor:true})).rows[0]||null;
   if(!current)throw Error('指定的路線／痕跡圖不存在');
   const attr={...(current.attr||{}),point:type==='trace'?anchor_list.flat():anchor_list};
   if(type==='trace')attr.path=route_list;

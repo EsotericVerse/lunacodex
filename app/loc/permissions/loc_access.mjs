@@ -7,8 +7,9 @@ export {loc_access,publishedLocAccess,LOC_OWNER_EMAIL} from './loc-business-gran
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 
-// Preserve the existing call signature for transaction-bound consumers.
-// Neither a DB outage nor an unpublished Registry row can override fixed JS.
+// Preserve the existing call signature for request handlers. The DB argument
+// is intentionally ignored: neither DB state nor an unpublished Registry row
+// may override the fixed JavaScript grants.
 export async function readLocAccess(_db,email,{website=false}={}){
   return publishedLocAccess(email,{website});
 }

@@ -5,20 +5,17 @@ import {searchOrderedScopeProviders} from '../search/ordered-scope-providers.mjs
 
 
 import {DEFAULT_LIST_BATCH_SIZE} from '../db/db-contract.mjs';
-import {parseSearchQuery} from '../search/query.mjs';
 import {normalizeRelationIds,publicContentFilters} from '../content/content-policy';
 import {timePeriodContainsDate} from '../culture/time-anchor-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../culture/anniversary.mjs';
-import {DB_QUERY_BATCH_SIZE,applyFilters,applyOrders,executePublicRead,selectCount,selectRows} from '../db/db-query.mjs';
+import {selectRows} from '../db/db-query.mjs';
 import {dbAuthClient,readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
 import {cachedRead} from '../db/semi-dynamic-cache.mjs';
 import {readGalaxyFeature} from './feature-transaction-client.mjs';
 import {readGalaxyRecords,readAnchorFeature} from '../model/feature-transaction-client.mjs';
 import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
-import {portableContainsTerm} from '../providers/portable-search.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
-const galaxyListColumns=()=>galaxyReadColumns('GalaxyList');
 const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
 const galaxyUidReadWithPolicyColumns=()=>unique([
   ...galaxyUidReadColumns(),...galaxyReadColumns('GalaxyAttr'),
@@ -42,10 +39,6 @@ function scopeOf(scope){
 }
 const dayColumn=table=>
   /^silver\.[a-z][a-z0-9]*_galaxy$/.test(String(table||''))?'date':'createtime';
-async function selectRowById(table,{idColumn,id,columns,authenticated=false,expectedDbId=''}={}){
-  const page=await selectRows(table,{columns,filters:[{column:idColumn,operator:'eq',value:String(id)}],limit:1,authenticated,expectedDbId});
-  return page.rows[0]||null;
-}
 function countBy(rows,keyOf,{includeEmpty=false}={}){
   const counts=new Map();
   for(const row of Array.isArray(rows)?rows:[]){
@@ -340,88 +333,8 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
     article_day:day};
 }
 
-function literalPattern(value){
-  return '%'+String(value||'').trim().replace(/\\/g,'\\\\').replace(/%/g,'\\%').replace(/_/g,'\\_')+'%';
-}
-function orExpression(fields,term){
-  const literal=portableContainsTerm(term);
-  return fields.map(field=>field+'.contains."'+literal+'"').join(',');
-}
-function applyParsedTerms(query,fields,parsed,and=[],nor=[]){
-  const groups=(parsed.groups.length?parsed.groups:[[]]).map(group=>unique([...group,...and])).filter(group=>group.length);
-  if(groups.length===1){
-    for(const term of groups[0])query=query.or(orExpression(fields,term));
-  }else if(groups.length>1){
-    query=query.or(groups.map(group=>'and('+group.map(term=>'or('+orExpression(fields,term)+')').join(',')+')').join(','));
-  }
-  for(const term of unique([...parsed.excludes,...nor])){
-    for(const field of fields)query=query.not(field,'contains',term);
-  }
-  return query;
-}
-function dateSearchFilters(dateColumn,startDate,endDate){
-  const filters=[];
-  if(dateColumn&&startDate)filters.push({column:dateColumn,operator:'gte',value:dateColumn==='createtime'?startDate+'T00:00:00+08:00':startDate});
-  if(dateColumn&&endDate)filters.push({column:dateColumn,operator:'lte',value:dateColumn==='createtime'?endDate+'T23:59:59.999+08:00':endDate});
-  return filters;
-}
 function recordFor(row,source,providerId,scope,table){
   return {row:{...row,scope_id:row?.scope_id||scope.id,__table:table,__media_anchor_table:scope.anchor},source,providerId};
-}
-
-function makeProvider({id,table,source,scope,idColumn,columns,searchFields,filters=[],dateColumn='',exactColumn='',batchSize=DEFAULT_LIST_BATCH_SIZE,sourceClause='',authenticated=false,uidFastPath=false}){
-  const outputColumns=Object.freeze(unique(columns));
-  const frozenFields=Object.freeze(unique(searchFields));
-  const frozenFilters=Object.freeze(filters.map(item=>Object.freeze({...item})));
-  const pageSize=Math.max(1,Math.min(100,Math.floor(Number(batchSize)||DEFAULT_LIST_BATCH_SIZE)));
-  return Object.freeze({
-    id,table,source,scope,idColumn,columns:outputColumns,searchFields:frozenFields,filters:frozenFilters,
-    async search(query,{cursor=0,startDate='',endDate='',and=[],nor=[],source='auto',browse=false,signal=null,sortDirection='asc'}={}){
-      const offset=Math.max(0,Math.floor(Number(cursor)||0));
-      const activeTable=table;
-      const parsed=parseSearchQuery(query);
-      // Exact-match stages only apply to a plain keyword or a single "quoted phrase".
-      if(!browse&&exactColumn&&!parsed.exact)return {rows:[],hasMore:false,nextCursor:null,totalCount:null,dataSource:source||'auto'};
-      const activeFilters=[...frozenFilters,...dateSearchFilters(dateColumn,startDate,endDate)];
-      if(uidFastPath&&!browse&&/^[A-Za-z0-9]{8}$/.test(String(query||'').trim())){
-        // Authenticated UID primary-key lookup, independent of public search flags.
-        const {rows=[],dataSource}=await selectRows(table,{
-          columns:outputColumns.join(','),
-          filters:[{column:idColumn,operator:'eq',value:String(query).trim()}],
-          limit:1,authenticated,signal
-        });
-        return {rows:rows.map(row=>recordFor(row,source,id,scope,table)),
-          hasMore:false,nextCursor:null,totalCount:null,dataSource};
-      }
-      const ascending=sortDirection!=='desc';
-      const orders=[
-        ...(dateColumn?[{column:dateColumn,ascending}]:[]),
-        // Opaque UIDs are only a deterministic tie-breaker, never a date.
-        {column:idColumn,ascending:true}
-      ];
-
-      // The exact COUNT(*) query can time out on ILIKE against article content.
-      // Fetch one extra row instead; ordinary searching never needs a total count.
-      const dataResult=await executePublicRead(activeTable,relation=>{
-        let dataQuery=relation.select(outputColumns.join(','));
-        dataQuery=applyFilters(dataQuery,activeFilters);
-        if(sourceClause)dataQuery=dataQuery.or(sourceClause);
-        if(!browse&&exactColumn){
-          const exact=literalPattern(parsed.exact).slice(1,-1);
-          dataQuery=dataQuery.ilike(exactColumn,exact);
-        }else if(!browse)dataQuery=applyParsedTerms(dataQuery,frozenFields,parsed,and,nor);
-        dataQuery=applyOrders(dataQuery,orders);
-        return dataQuery.range(offset,offset+pageSize-1);
-      },{source,authenticated,signal});
-      const dataSource=dataResult.__dataSource||source||'auto';
-      const found=dataResult.data||[];
-      // A full page may have a successor; only the next requested page probes it.
-      const hasMore=found.length===pageSize;
-      const rows=found.slice(0,pageSize).map(row=>recordFor(row,source,id,scope,activeTable));
-      const nextOffset=offset+rows.length;
-      return {rows,hasMore,nextCursor:hasMore?nextOffset:null,totalCount:null,dataSource};
-    }
-  });
 }
 
 // Search selections use the same enabled categories and alias assignments as
@@ -449,49 +362,6 @@ function resolveSourceSelection(value,taxonomy={}){
   const names=[...new Set(rows.filter(row=>String(row.category_code||'').toLowerCase()===code)
     .map(row=>String(row.source_key).trim()))];
   return {kind:names.length?'names':'none',names};
-}
-function sourceNameClause(selection){
-  if(selection.kind==='all')return '';
-  // JSON string quoting keeps PostgREST's OR grammar intact for unusual
-  // administrator-configured source names (commas, quotes and parentheses).
-  const item=name=>'site.ilike.'+
-    JSON.stringify(String(name).replace(/[\\%_*]/g,match=>'\\'+match));
-  if(selection.kind==='names')return selection.names.map(item).join(',');
-  if(selection.kind==='others'){
-    if(!selection.names.length)return '';
-    return 'site.is.null,and('+selection.names.map(name=>
-      item(name).replace('site.ilike.','site.not.ilike.')
-    ).join(',')+')';
-  }
-  return '';
-}
-
-// Management is a separate article query, not the public Search provider
-// cascade. It uses only the authorized Scope's Galaxy table, including rows
-// with searchable=false, and does not scan unrelated Media/Time tables.
-function managementArticleProviders(scope,{contentType='',sourceFilter='',sourceTaxonomy=null,placeOnly=false}={}){
-  const selection=resolveSourceSelection(sourceFilter,sourceTaxonomy||{});
-  if(selection.kind==='none')return [];
-  const current=scopeOf(scope);
-  const filters=[
-    ...(contentType==='lyrics_work'?[{column:'site',operator:'ilike',value:'suno'}]:[]),
-    ...(contentType==='text_work'?[{column:'site',operator:'neq',value:'suno'}]:[])
-  ];
-  const base={
-    table:current.galaxy,source:current.id+' 文章',scope:current,idColumn:'uid',
-    // Every article list uses the same ZModel read projection. Visibility
-    // flags are part of GalaxyList, never a second ad-hoc column list.
-    columns:galaxyListColumns().join(','),dateColumn:dayColumn(current.galaxy),filters,sourceClause:sourceNameClause(selection),
-    authenticated:true
-  };
-  if(placeOnly)return [makeProvider({
-    ...base,id:current.id+':management-place',searchFields:['location']
-  })];
-  // Management searches article body content only. Exact UID remains an
-  // explicit identity lookup, not a title-search mode.
-  return [makeProvider({
-    ...base,id:current.id+':management-content',searchFields:['content']
-  })];
 }
 
 // Public Search uses the fixed GalaxySearch model, never a browser-supplied

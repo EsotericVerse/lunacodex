@@ -1,6 +1,6 @@
 // Server-side verification against Better Auth's own /get-session endpoint.
 // This is a relying-party call, not a second Session/JWT implementation.
-// LOC Auth verifies identity only; LOC Web independently evaluates api.manage/Scope grants.
+// LOC Auth verifies identity only; LOC Web evaluates published JS Scope grants.
 const ISSUER='https://auth.lo3rwang.cc';
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function err(message,status,reason){

@@ -2,7 +2,7 @@ import {DATABASE_ROUTING_CONFIG,resolveDatabaseRouting} from './config.mjs';
 
 // Database routing is a server-controlled decision. Public browser storage
 // must never override the LOC primary target, even if a legacy key remains.
-// The privileged admin target is managed and checked by the trusted gateway.
+// The privileged admin target is managed and checked by the trusted backend.
 export function runtimeDatabaseRouting(){
   return resolveDatabaseRouting(DATABASE_ROUTING_CONFIG);
 }

@@ -58,8 +58,8 @@ async function fetchManagementAccount(queryClient){
   const obsolete=()=>startedAt!==authRevision;
   let verifiedIdentity=null;
   try{
-    // One protected request: the Web endpoint validates Better Auth Session
-    // and ZModel/PolicyPlugin api.manage roles together. No preliminary
+    // One protected request: the Web endpoint validates the Better Auth
+    // Session and published JavaScript grants together. No preliminary
     // browser getSession(), no duplicate Auth round trip, no independent ACL.
     const permissions=await readLocEditorGrants();
     if(obsolete())return signedOutState;

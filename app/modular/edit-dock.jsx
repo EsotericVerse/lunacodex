@@ -196,7 +196,7 @@ export function EditDockProvider({children,scopeId}){
     if(!target)return;
     const url=new URL(String(target),window.location.href);
     // Static management exports need a real HTML entrypoint, not an App Router
-    // RSC transition: Cloudflare Pages does not serve that dynamic RSC request.
+    // Preserve a standard Next.js RSC transition for the current runtime.
     // Only the edit-session timestamp is stored, never form input or drafts.
     const documentExit=url.origin!==window.location.origin||
       /\/index\.html$/i.test(url.pathname)||isManagementHref(url.href);

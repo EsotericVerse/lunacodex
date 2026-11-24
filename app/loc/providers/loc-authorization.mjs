@@ -1,5 +1,5 @@
-// Trusted transaction-bound LOC business authorization. LOC Auth identifies
-// the user; the single ZModel-backed loc_access projection grants resources.
+// Request-bound LOC business authorization. LOC Auth identifies the user;
+// published JavaScript grants determine resource access without a SQL lookup.
 import {hasLocAccess} from '../permissions/loc_access.mjs';
 import {LocAccessRowSchema} from '../permissions/loc-access-schema.mjs';
 import {FIXED_MANAGE_ROWS} from '../permissions/fixed-manage-registry.mjs';
@@ -13,7 +13,7 @@ function deny(message='LOC access denied'){
   throw Object.assign(new Error(message),{httpStatus:403});
 }
 export function bindLocAuthorization(db,{role='anon',claims={},engine='postgres'}={}){
-  if(!db||typeof db.selectFrom!=='function')throw new Error('Invalid Kysely transaction');
+  if(!db||typeof db.selectFrom!=='function')throw new Error('Invalid Kysely connection');
   if(role==='authenticated'&&(
     claims?.provider!=='loc'||claims?.me!==true||!SUBJECT.test(String(claims?.sub||''))||
     !EMAIL.test(String(claims?.email||'').trim().toLowerCase())||

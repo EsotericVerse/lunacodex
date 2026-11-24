@@ -1,6 +1,6 @@
 // Website data, presentation and public reads never depend on an Auth service.
-// A protected write sends the opaque Better Auth cookie to the website's
-// business API; that API validates identity, then queries api.manage for roles.
+// Protected requests send the opaque Better Auth cookie to a LOC Next.js
+// route; identity is verified there and business grants come from published JS.
 import {createLocAccountAdapter} from '../auth/loc-browser.mjs';
 import {createKyselyPublicClient} from './kysely-browser.mjs';
 import {transientReadSignal} from '../../../packages/zenstack/transient-read-epoch.mjs';
@@ -8,17 +8,9 @@ import {editorTransactionLease,assertEditorTransactionLease,isEditorTransactionC
   from '../db/editor-transaction-lifecycle.mjs';
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 import {invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
+import {managedQueryRoute,isManagedReadAction} from '../actions/managed-query-routes.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
-// Only confirmed read actions participate in management-page cancellation.
-// Mutations/import writes are never aborted by a navigation reset.
-const READ_ACTIONS=new Set([
-  'read_group_members','read_loc_source_hierarchy','read_scope_registry_admin',
-  'find_galaxy_duplicates','keyword_pattern_statistics','suggest_search_patterns',
-  'media_anchor_candidates','anchor_import_page','import_site_presence',
-  'import_site_id_candidates','import_created_at_candidates',
-  'import_occupied_createtimes','search_galaxy_private'
-]);
 function errorFromResponse(result,response){
   const error=new Error(result?.error?.message||
     'LOC data operation failed (HTTP '+response.status+')');
@@ -40,7 +32,7 @@ export function createConfiguredAdapter({
     // section switching still never cancels writes; protected reads retain
     // their independent transient signal. Request abort reaches the backend's
     // request-scoped SQL connection and uncommitted transaction.
-    const readOnly=kind==='managed-action'&&READ_ACTIONS.has(String(fields.name||''));
+    const readOnly=kind==='managed-action'&&isManagedReadAction(fields.name,fields.args);
     const lease=readOnly?null:editorTransactionLease();
     assertEditorTransactionLease(lease);
     const signal=readOnly
@@ -50,7 +42,10 @@ export function createConfiguredAdapter({
     // Cookies still authenticate every request; no extra Auth round-trip.
     let response;
     try{
-      response=await fetchImpl('/api/loc-native',{
+      const path=kind==='managed-action'
+        ?managedQueryRoute(fields.name,fields.args)||'/api/loc-native'
+        :'/api/loc-native';
+      response=await fetchImpl(path,{
         method:'POST',credentials:'include',cache:'no-store',
         headers:{'content-type':'application/json',accept:'application/json'},
         body:JSON.stringify({kind,scopeid,...fields}),signal
@@ -84,7 +79,7 @@ export function createConfiguredAdapter({
     // LOC group aggregates can depend on multiple Scopes, so invalidate the
     // shared numeric family rather than guessing a single physical relation.
     if(kind==='short-import'||kind==='managed-write'||kind==='managed-transaction'||
-       (kind==='managed-action'&&!READ_ACTIONS.has(String(fields.name||''))))
+       (kind==='managed-action'&&!isManagedReadAction(fields.name,fields.args)))
       invalidateCachedReadPrefix('scope-aggregate:');
     return result;
   }

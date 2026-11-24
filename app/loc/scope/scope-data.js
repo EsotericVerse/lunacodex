@@ -1,6 +1,9 @@
 'use client';
 
 
+import {queryBlockContent,queryBlocks} from '../actions/blocks/queries.mjs';
+import {queryCultureContent} from '../actions/culture/queries.mjs';
+import {queryStaticsContent} from '../actions/statics/queries.mjs';
 import {selectRows} from '../db/db-query.mjs';
 import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
@@ -13,20 +16,9 @@ import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/z
 // Public page copy (Title_TW/Desc_TW) now travels inside the shared
 // app-bootstrap request (see app/loc/runtime/app-bootstrap.js); there is no
 // standalone per-page RPC call for it any more.
-// api.manage owns system authorization and routing; silver.loc is the
-// Group Scope List and owns display_name/title_tw/desc_tw/birthday.
-// Public birthday metadata is explicitly published, never read from manage.
-// 公開查詢絕不包含 email；權限驗證由受保護的管理 RPC 提供。
-// 以下只對非機密欄位使用 PostgREST alias，
-// buildScopeData/scopeDataFromManageRows 完全不需要改動。
-export const MANAGE_TABLE='api.manage';
-// No PostgREST-style "alias:column" renaming here -- the Kysely edge
-// function's column validator (kysely-runtime.mjs validateQuery) only
-// accepts plain identifiers and rejects anything containing ':' with
-// "Invalid selected column". Select the real column names and rename
-// them in buildScopeData() below instead.
-const MANAGE_COLUMNS='id,manage_role,galaxy_table,anchor_table';
-const MANAGE_ROLE_COLUMN='manage_role';
+// Scope identity, membership, routing and grants come from the published
+// JavaScript snapshot. silver.loc supplies public display metadata.
+// Public queries never fetch the private api.manage relation.
 
 const SCOPE_ID_PATTERN=/^[a-z][a-z0-9]{0,14}$/;
 const TABLE_TOKEN_PATTERN=/^[a-z][a-z0-9_]*$/;
@@ -242,19 +234,18 @@ export async function selectManagedScope(scopeId){
 
 
 // One per-session public metadata request, read only when its feature opens.
-// GitHub Pages uses published static assets; no remote ISR worker is required.
+// Public metadata is read lazily when its feature opens.
 // Authorized metadata writes explicitly clear these per-session snapshots.
 // The browser sends a fixed business request to the existing LOC application.
 // No SQL, relation, filter, dialect, credentials or connection URL are accepted.
 async function nativePublicContent(kind,scope,feature=''){
   const params=new URLSearchParams({kind,scope});
   if(feature)params.set('feature',feature);
-  const response=await fetch('/api/loc-public-content?'+params,{
-    method:'GET',cache:'no-store',credentials:'omit',
-    headers:{accept:'application/json'}
-  });
-  if(!response.ok)throw new Error('Native LOC Kysely read HTTP '+response.status);
-  const payload=await response.json();
+  const payload=kind==='config'||kind==='block_list'||kind==='hero_block'
+    ?await queryBlockContent(params)
+    :kind==='culture_anchors'||kind==='culture_density'
+      ?await queryCultureContent(params.toString())
+      :await queryStaticsContent(params.toString());
   return payload.data;
 }
 const publishedConfig=id=>SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id&&row.active!==false)?.config||null;
@@ -323,17 +314,12 @@ export async function selectLiveScopeBlocks(scopeId,page='index'){
     const rows=await nativePublicContent('block_list',id);
     return Array.isArray(rows)?rows:[];
   }
-  // /api/loc-public-query no longer exposes arbitrary table SELECT.
+  // The blocks action reads only approved public presentation data.
   // Scope Block pages are presentation content: use the existing, fixed,
   // page-exact block_list action. It reads only approved public Block pages,
   // never requests Manage/Auth data and never performs a write.
-  const {dbPublicClient}=await import('../db/db-client.mjs');
-  const {data,error}=await dbPublicClient.schema('silver').publicAction('block_list',{
-    p_scope_id:id,p_page_name:name
-  });
-  if(error)throw new Error(error.message||'Scope 區塊讀取失敗');
-  if(!Array.isArray(data))throw new Error('Scope 區塊回傳資料格式錯誤');
-  return data.filter(row=>String(row.page_name||'')===name)
+  const payload=await queryBlocks('block_list',{p_scope_id:id,p_page_name:name});
+  return payload.data.filter(row=>String(row.page_name||'')===name)
     .sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
 }
 export async function selectScopeBlocks(scopeId,page='index'){

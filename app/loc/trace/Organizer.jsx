@@ -1,5 +1,6 @@
 'use client';
 
+import {readTracePoint} from '../../loc/actions/trace/direct-query.mjs';
 import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {reviewPlaceNameGroups,compactPlaceName} from '../../modular/features/trace/trace-place-names.mjs';
@@ -42,11 +43,9 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   useEffect(()=>{
     let live=true;
     if(!selectedUid||scopeId==='loc'){setAliases([]);return;}
-    dbAuthClient.schema('silver').from(scopeId+'_anchor')
-      .select('attr').eq('uid',selectedUid).eq('type','point').maybeSingle()
-      .then(({data,error:loadError})=>{
+    readTracePoint(scopeId,selectedUid)
+      .then(data=>{
         if(!live)return;
-        if(loadError){setError(true);setNotice(String(loadError.message||loadError));return;}
         const location=data?.attr?.location;
         setAliases(Array.isArray(location)?location:
           typeof location==='string'&&location?[location]:[]);
@@ -63,10 +62,8 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
         .managedAction('save_scope_trace_place_names',{p_scope_id:scopeId,p_uid:selectedUid,
           p_names:[...new Set([...list,place?.title].filter(Boolean))]});
       if(saveError||written!==1)throw saveError||Error('名稱對照儲存結果未確認');
-      const {data:current,error:readError}=await dbAuthClient.schema('silver')
-        .from(scopeId+'_anchor').select('attr')
-        .eq('uid',selectedUid).eq('type','point').maybeSingle();
-      if(readError||!current)throw readError||Error('名稱對照讀回未完成');
+      const current=await readTracePoint(scopeId,selectedUid);
+      if(!current)throw Error('名稱對照讀回未完成');
       const names=current.attr?.location;
       setAliases(Array.isArray(names)?names:typeof names==='string'?[names]:[]);
       setNewAlias('');setNotice('已儲存 '+place.title+' 的名稱對照。');

@@ -15,8 +15,8 @@ export default function ScopeGroupAccessPanel({groupId}){
   return <section className="loc-card scope-feature-card" aria-label="Scope Group 權限">
     <h2>Scope Group 權限</h2>
     <p className="scope-status">群組：{String(groupId||'')}</p>
-    <p className="scope-status">網站的 Scope 與角色由主要資料庫
-      <code>api.manage</code> 決定；LOC Auth 不處理或複製任何角色。</p>
+    <p className="scope-status">網站的 Scope 與角色由已發布的 JavaScript 權限表
+      決定；LOC Auth 只驗證身分，不處理角色。</p>
     <p className="scope-status" role="status">{status}</p>
   </section>;
 }

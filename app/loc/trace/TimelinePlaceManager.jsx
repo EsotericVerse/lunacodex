@@ -1,5 +1,6 @@
 'use client';
 
+import {readTimelineArticlePage} from '../actions/trace/direct-query.mjs';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {readAllTraceAnchors} from '../../modular/features/trace/trace-data';
@@ -8,7 +9,6 @@ import {revalidateServerMetadata} from '../scope/scope-data';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession} from '../auth/edit-session-ttl.mjs';
 import {TIMELINE_IO,MAX_TIMELINE_BYTES} from '../query/query-batch-size.mjs';
 import {accumulateTimelineArticles,groupTimelineMissingPlaces,selectedTimelineArticleUpdates} from './timeline-place-matcher.mjs';
-import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 
 // Keep request and response sizes bounded during browser-side review.
 const RESULT_PAGE=Math.min(TIMELINE_IO.previewPage,500);
@@ -147,12 +147,8 @@ export default function TimelinePlaceManager({scopeId}){
       let offset=0;
       while(true){
         if(run!==runRef.current)return;
-        const result=await dbAuthClient.schema('silver').from(scopeId+'_galaxy')
-          .select(galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor').join(','))
-          .gte('date',startDate).lt('date',nextDate)
-          .order('date',{ascending:true}).order('createtime',{ascending:true})
-          .range(offset,offset+RESULT_PAGE-1);
-        const rows=checked(result,'查詢年度文章');
+        const rows=await readTimelineArticlePage(scopeId,startDate,nextDate,
+          offset,RESULT_PAGE);
         if(!Array.isArray(rows))throw Error('年度文章查詢結果無效');
         for(const row of rows){
           if(row.place_id&&String(row.place_id).trim())continue;

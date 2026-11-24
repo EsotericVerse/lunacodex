@@ -1,4 +1,4 @@
-// Fixed public LOC business reads in the EXISTING Pages application runtime.
+// Fixed public LOC business reads in the EXISTING Next.js application runtime.
 // Kysely talks to the database itself. No generic SQL endpoint, arbitrary
 // table/column/operator input, connection URL, or browser-selected driver.
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
@@ -127,13 +127,15 @@ async function readGalaxyNumeric(db,scope,kind,start,end,port){
 }
 
 export async function handleNativePublicContent(request,env={},{
-  database=directMcpKysely,waitUntil
+  database=directMcpKysely,waitUntil,allowedKinds=null
 }={}){
   if(request.method!=='GET')return respond({error:'GET required'},405);
   const url=new URL(request.url);
   const kind=url.searchParams.get('kind');
   const scope=String(url.searchParams.get('scope')||'');
   const feature=String(url.searchParams.get('feature')||'');
+  if(allowedKinds&&!allowedKinds.includes(kind))
+    return respond({error:'Content query does not belong to this route'},404);
   const heroTypes=feature?feature.split(','):[];
   const validHero=heroTypes.length>0&&heroTypes.length<=2&&
     new Set(heroTypes).size===heroTypes.length&&heroTypes.every(type=>
@@ -183,11 +185,8 @@ export async function handleNativePublicContent(request,env={},{
         engine:port.engine,namespace:port.namespace||'silver'}):null;
     if(numeric){
       // Each single-Scope numeric view is already one atomic SQL statement.
-      // Only combined LOC totals need a repeatable-read snapshot across
-      // multiple Scope queries; avoid BEGIN/COMMIT on simple public reads.
       const data=kind==='loc'
-        ?await query.transaction().setIsolationLevel('repeatable read')
-            .execute(trx=>readLocGroupNumeric(trx,start,end,port))
+        ?await readLocGroupNumeric(query,start,end,port)
         :await readGalaxyNumeric(query,scope,kind,start,end,port);
       return respond({data});
     }

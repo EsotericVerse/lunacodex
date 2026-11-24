@@ -60,22 +60,19 @@ export function aggregateArticleMonths(months,rows){
 }
 export async function articleDistribution(args={},env={},{
   database=directMcpKysely,analytics=executeKyselyAnalytics,now=new Date(),
-  borrowed=false,inTransaction=false
+  borrowed=false
 }={}){
   const {period,start,end,months}=articleWindow(args,now);
   const port=await database(env);
   try{
     const db=port.db;
   // "loc" uses the website's published, aggregate-only Galaxy statistics.
-  // The active api.manage email eligibility is verified once by the caller.
+  // Published JavaScript email eligibility is verified once by the caller.
   // No user supplied ScopeID; no private article text or arbitrary SQL.
   const read=trx=>analytics(trx,{args:{
     p_scope_id:'loc',p_view:'loc',p_start:start,p_end:end,p_options:{}
   }},{role:'anon'});
-  // A native MCP request may already own a grant-bound read transaction.
-  // Borrow that snapshot without a nested BEGIN or another SQL connection.
-  const result=inTransaction?await read(db)
-    :await db.transaction().setIsolationLevel('repeatable read').execute(read);
+  const result=await read(db);
   const rows=aggregateArticleMonths(months,result?.data?.rows);
   return {function:'analytics.article_distribution',metric:'article_count',
     period,start,end,timezone:'Asia/Taipei',group_by:'month',

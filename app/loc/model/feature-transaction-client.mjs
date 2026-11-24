@@ -1,22 +1,12 @@
+import {queryGalaxyRecords,queryAnchorFeature} from '../actions/galaxy/queries.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Named fixed record/Anchor projections. All variable values are validated
 // by the server against published Scope and ZModel model families.
 async function readFixedOperation(operation,params,{signal=null,editor=false}={}){
-  const requestSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(20000)]):
-    AbortSignal.timeout(20000);
-  const response=await fetch('/api/loc-public-query',{
-    method:'POST',credentials:editor?'include':'omit',cache:'no-store',
-    redirect:'error',headers:{accept:'application/json',
-      'content-type':'application/json'},
-    body:JSON.stringify({kind:'transaction',operation,...params,
-      mode:editor?'editor':'public'}),signal:requestSignal
-  });
-  const json=await response.json().catch(()=>null);
-  if(!response.ok){
-    const error=new Error('LOC '+operation+' failed (HTTP '+response.status+')');
-    error.status=response.status;throw error;
-  }
-  if(!json?.data||json.transaction?.model!==operation)
+  const body={kind:'transaction',operation,...params,mode:editor?'editor':'public'};
+  const json=operation==='galaxy-records'
+    ?await queryGalaxyRecords(body):await queryAnchorFeature(body);
+  if(!json?.data||json.query?.model!==operation)
     throw Error('Invalid LOC fixed model response');
   return json.data;
 }

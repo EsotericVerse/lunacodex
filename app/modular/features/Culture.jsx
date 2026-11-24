@@ -33,11 +33,9 @@ import {buildLocCultureScopePreview} from '../../loc/culture/loc-scope-preview.m
 import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-anchor-ranges.mjs';
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy/galaxy-query';
-import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {defaultScopeData,revalidateServerMetadata} from '../../loc/scope/scope-data';
 
 import {deleteRows,insertRows,updateRows} from '../../loc/db/db-client.mjs';
-import {selectAllRows,selectRows} from '../../loc/db/db-query.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 import {sourceOutlineOptions,groupedSourceOutline} from '../../loc/source/outline-options.mjs';
@@ -56,6 +54,7 @@ const CulturePlaceRiver=dynamic(()=>import('./trace/CulturePlaceRiver'),{loading
 import {workDisplayHeading,workDisplayText} from '../work-display-model';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
+import {readGalaxyRecords} from '../../loc/model/feature-transaction-client.mjs';
 const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
 
 function isInteractiveTarget(target){
@@ -1200,13 +1199,11 @@ export default function Culture(){
       if(!verified?.authorizer?.canLocAccessSync('scope',scopeId))throw new Error('請先登入具有此 Scope 編輯權限的帳號。');
       setAuthorizedWorkKey(key);
       if(!scopeData)throw new Error(l.sourceUnresolved);
-      const {rows=[]}=await selectRows(scopeData.galaxy,{
-        // Exact article editing reads use GalaxyUidRead plus the visibility
-        // flags needed by the trusted editor gate. Lists never read content.
-        columns:galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr').join(','),
-        filters:[{column:'uid',operator:'eq',value:uid}],
-        limit:1
-      });
+      // The editor uses the fixed GalaxyUidRead action, which verifies the
+      // Scope grant on the server and selects only this article UID.
+      const {rows=[]}=await readGalaxyRecords({
+        scope:scopeId,view:'detail',uids:[uid]
+      },{editor:true});
       const row=rows[0];
       if(!row)throw new Error(l.workNotFound);
       const {plainTextToBlocks}=await import('../../loc/editor/blocknote-content.mjs');
