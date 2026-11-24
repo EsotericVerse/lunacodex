@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
+import {useReducedMotion} from 'motion/react';
 import {
   CartesianGrid,Line,LineChart,ReferenceDot,ReferenceLine,
   ResponsiveContainer,Tooltip,XAxis,YAxis
@@ -27,6 +28,7 @@ export default function StatisticsInsightsPanel({
 }){
   // The current/partial bucket is visible on the chart but does not distort
   // PELT segmentation, median, minima or extrema.
+  const reduceMotion=useReducedMotion();
   const completed=useMemo(()=>rows.filter(row=>row&&!row.partial),[rows]);
   const hasPartial=completed.length<rows.length;
   const stats=useMemo(()=>totalPeriodStats(completed),[completed]);
@@ -106,7 +108,7 @@ export default function StatisticsInsightsPanel({
             x={insight.boundary} stroke="var(--loc-accent)" strokeWidth={2}
             strokeDasharray="3 4"/>:null}
           <Line type="linear" dataKey="value" name="作品數" stroke="var(--loc-accent)"
-            strokeWidth={3} dot={rows.length<=32} isAnimationActive={false}/>
+            strokeWidth={3} dot={rows.length<=32} isAnimationActive={!reduceMotion&&rows.length<=600} animationDuration={480} animationEasing="ease-out"/>
           {stats.maximum?<ReferenceDot x={stats.maximum.period} y={stats.maximum.value}
             r={5} fill="var(--loc-accent)" stroke="var(--loc-panel)"
             label={{value:'最高',position:'top',fill:'var(--loc-text)',fontSize:11}}/>:null}

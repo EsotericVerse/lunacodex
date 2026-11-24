@@ -59,6 +59,8 @@ export default function StatisticsMultiChart({
   const categories=useMemo(()=>normalizeDistribution(distribution,time,fields),[distribution,time,fields]);
   const usable=availableStatisticChartTypes({rows:time,series:fields,distribution:categories,totalKey});
   const actual=usable.some(([id])=>id===type)?type:(usable[0]?.[0]||'line');
+  const animateData=!reduceMotion&&time.length*Math.max(1,fields.length)<=600&&categories.length<=100;
+  const animation={isAnimationActive:animateData,animationDuration:480,animationEasing:'ease-out'};
   const timeFields=totalKey?[{key:totalKey,label:t('uiExtra.chartLabels.total')}]:fields;
   const {rows:display,gaps}=useMemo(()=>foldBlank&&['line','bar','area','stacked','composed'].includes(actual)
     ?foldEmptyTimeBuckets(time,timeFields,units):{rows:time,gaps:[]},[foldBlank,actual,time,timeFields,locale]);
@@ -82,7 +84,7 @@ export default function StatisticsMultiChart({
   let chart=null;
   if(actual==='pie')chart=<PieChart>
     <Tooltip contentStyle={TOOLTIP}/><Legend wrapperStyle={{fontSize:11}}/>
-    <Pie data={colored} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="73%">
+    <Pie {...animation} data={colored} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="73%">
       {colored.map(item=><Cell key={item.name} fill={item.fill}/>)}
     </Pie>
   </PieChart>;
@@ -94,12 +96,12 @@ export default function StatisticsMultiChart({
   else if(actual==='radar'&&comparison)chart=<RadarChart data={comparison} outerRadius="67%">
     <PolarGrid stroke={GRID}/><PolarAngleAxis dataKey="name" tick={{fill:TEXT,fontSize:11}}/>
     <PolarRadiusAxis domain={[0,100]} tick={{fill:TEXT,fontSize:10}}/>
-    <Radar name={t('uiExtra.chartLabels.firstHalf')} dataKey="early" stroke={color(0)} fill={color(0)} strokeWidth={3} fillOpacity={.10}/>
-    <Radar name={t('uiExtra.chartLabels.lastHalf')} dataKey="late" stroke={color(3)} fill={color(3)} strokeDasharray="7 4" strokeWidth={3} fillOpacity={.10}/>
+    <Radar {...animation} name={t('uiExtra.chartLabels.firstHalf')} dataKey="early" stroke={color(0)} fill={color(0)} strokeWidth={3} fillOpacity={.10}/>
+    <Radar {...animation} name={t('uiExtra.chartLabels.lastHalf')} dataKey="late" stroke={color(3)} fill={color(3)} strokeDasharray="7 4" strokeWidth={3} fillOpacity={.10}/>
     <Legend/><Tooltip contentStyle={TOOLTIP} formatter={v=>Number(v).toFixed(1)+'%'}/>
   </RadarChart>;
   else if(actual==='radial'&&coverage)chart=<RadialBarChart data={coverage} innerRadius="16%" outerRadius="82%" startAngle={90} endAngle={-270}>
-    <RadialBar dataKey="value" background cornerRadius={4}/>
+    <RadialBar {...animation} dataKey="value" background cornerRadius={4}/>
     <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize:11}}/>
     <Tooltip contentStyle={TOOLTIP} formatter={v=>Number(v).toFixed(1)+'%'}/>
   </RadialBarChart>;
@@ -115,7 +117,7 @@ export default function StatisticsMultiChart({
         <div>{paired.x.label}: {payload[0]?.payload?.x}</div>
         <div>{paired.y.label}: {payload[0]?.payload?.y}</div>
       </div>:null}/>
-    <Scatter name={paired.x.label+' × '+paired.y.label} data={paired.data} fill={pointColor(0)}>
+    <Scatter {...animation} name={paired.x.label+' × '+paired.y.label} data={paired.data} fill={pointColor(0)}>
       {paired.data.map((row,i)=><Cell key={row.period||i} fill={pointColor(i)}/>)}
     </Scatter>
   </ScatterChart>;
@@ -125,18 +127,18 @@ export default function StatisticsMultiChart({
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
     <Tooltip contentStyle={TOOLTIP}/><Legend/>
     {composed.length>32?<Brush dataKey="period" height={24} travellerWidth={9} stroke={CHART_ACCENT}/>:null}
-    <Bar dataKey="__stat_total" name={t('uiExtra.chartLabels.periodTotal')} fill={color(0)} opacity={.8} maxBarSize={30}>
+    <Bar {...animation} dataKey="__stat_total" name={t('uiExtra.chartLabels.periodTotal')} fill={color(0)} opacity={.8} maxBarSize={30}>
       {composed.map((_,i)=><Cell key={i} fill={pointColor(i)}/>)}
     </Bar>
-    <Line dataKey="__stat_average" name={t('uiExtra.chartLabels.movingAverage')} stroke={color(3)} strokeWidth={3} strokeDasharray="8 4" dot={false} connectNulls={false}/>
+    <Line {...animation} dataKey="__stat_average" name={t('uiExtra.chartLabels.movingAverage')} stroke={color(3)} strokeWidth={3} strokeDasharray="8 4" dot={false} connectNulls={false}/>
   </ComposedChart>;
   else if(actual==='stacked')chart=<AreaChart data={display} margin={margin}>
     {axes}{fields.map((f,i)=><Area key={f.key} type="linear" dataKey={f.key} name={f.label} stackId="parts"
-      stroke={color(i)} fill={color(i)} fillOpacity={.65} connectNulls={false} isAnimationActive={false}/>)}
+      stroke={color(i)} fill={color(i)} fillOpacity={.65} connectNulls={false} {...animation}/>)}
   </AreaChart>;
   else if(actual==='area')chart=<AreaChart data={display} margin={margin}>
     {axes}{timeFields.map((f,i)=><Area key={f.key} type="linear" dataKey={f.key} name={f.label}
-      stroke={color(i)} fill={color(i)} fillOpacity={.25} connectNulls={false} isAnimationActive={false}/>)}
+      stroke={color(i)} fill={color(i)} fillOpacity={.25} connectNulls={false} {...animation}/>)}
   </AreaChart>;
   else if(actual==='bar'&&barLayout==='vertical'&&categories.length)chart=<BarChart data={colored}
     layout="vertical" margin={{top:10,right:20,bottom:14,left:6}}>
@@ -145,14 +147,14 @@ export default function StatisticsMultiChart({
     <YAxis dataKey="name" type="category" width={150} tick={{fill:TEXT,fontSize:11}}
       tickFormatter={value=>String(value).length>12?String(value).slice(0,11)+'…':String(value)}/>
     <Tooltip contentStyle={TOOLTIP}/>
-    <Bar dataKey="value" fill="var(--loc-accent)" maxBarSize={28}
+    <Bar {...animation} dataKey="value" fill="var(--loc-accent)" maxBarSize={28}
       cursor={onCategoryClick?'pointer':undefined}
       onClick={onCategoryClick?(_,index)=>onCategoryClick(colored[index]?.key):undefined}>
       {colored.map(item=><Cell key={item.key} fill={item.fill}/>)}
     </Bar>
   </BarChart>;
   else if(actual==='bar')chart=<BarChart data={display} margin={margin}>
-    {axes}{timeFields.map((f,i)=><Bar key={f.key} dataKey={f.key} name={f.label} fill={color(i)} maxBarSize={32}>
+    {axes}{timeFields.map((f,i)=><Bar {...animation} key={f.key} dataKey={f.key} name={f.label} fill={color(i)} maxBarSize={32}>
       {display.map((_,j)=><Cell key={j} fill={pointColor(j*timeFields.length+i)}/>)}
     </Bar>)}
   </BarChart>;
@@ -160,7 +162,7 @@ export default function StatisticsMultiChart({
     {axes}{timeFields.map((f,i)=><Line key={f.key} type="linear" dataKey={f.key} name={f.label}
       stroke={color(i)} strokeWidth={2.5} dot={display.length<25} connectNulls={false}
       activeDot={onSeriesClick?{onClick:()=>onSeriesClick(f.key)}:undefined}
-      isAnimationActive={false}/>)}
+      {...animation}/>)}
   </LineChart>;
   if(!usable.length)return <p className="scope-status">{t('uiExtra.chartLabels.noComparable')}</p>;
   return <div className="scope-multichart" role="group" aria-label={t('uiExtra.chartLabels.chartAria')}>

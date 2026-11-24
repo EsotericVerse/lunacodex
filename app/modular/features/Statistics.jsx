@@ -569,9 +569,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     <>
     {/* The total-only landing never loads Source taxonomy, article lists or
          category grouping. Advanced Source charts remain explicit. */}
-    {totalChart&&totalDaily.isPending?<p className="scope-status" role="status">
-      正在統計作品總數… <ActivityMotion kind="numbers"/>
-    </p>:null}
+    {totalChart&&totalDaily.isPending?<div className="loc-progressive-chart-frame" role="status" aria-busy="true">
+      <span>正在統計作品總數… <ActivityMotion kind="numbers"/></span>
+      <div className="loc-progressive-chart-axis" aria-hidden="true"/>
+      <small>{queryRange.startDate} ～ {queryRange.endDate}</small>
+    </div>:null}
     {totalChart&&totalDaily.error?<p className="scope-status scope-error" role="alert">
       {featureDataErrorMessage(totalDaily.error,UI_COPY)}
     </p>:null}
@@ -596,8 +598,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         </section>}
       </StatisticsDetails>
     </>:null}
-    {(sourceChart||placeChart)&&categoryPending&&!categoryError?<div className="scope-stat-data-pending">
+    {(sourceChart||placeChart)&&categoryPending&&!categoryError?<div className="scope-stat-data-pending loc-progressive-chart-frame">
       <p className="scope-status" role="status">統計中請稍後 <ActivityMotion kind="numbers"/></p>
+      <div className="loc-progressive-chart-axis" aria-hidden="true"/>
+      <small>{queryRange.startDate} ～ {queryRange.endDate}</small>
     </div>:null}
     {(sourceChart||placeChart)&&categoryError?<p className="scope-status scope-error">{featureDataErrorMessage(categoryError,UI_COPY)}</p>:null}
     {showCategoryOverview?<>

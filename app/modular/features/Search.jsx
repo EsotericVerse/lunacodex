@@ -22,6 +22,7 @@ import SearchSummary from '../../loc/search/Summary';
 const LazyArticle=lazy(()=>import('../Article'));
 function Article(props){return <Suspense fallback={null}><LazyArticle {...props}/></Suspense>;}
 // Mount the Inter-Net only for an explicitly opened Galaxy detail.
+const LazySearchRelationNetwork=lazy(()=>import('../SearchRelationNetwork'));
 const LazyGalaxyInterNetBranches=lazy(()=>import('../GalaxyInterNetBranches'));
 function GalaxyInterNetBranches(props){return <Suspense fallback={null}><LazyGalaxyInterNetBranches {...props}/></Suspense>;}
 import {useScopeRuntime} from '../use-scope-runtime';
@@ -313,6 +314,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const [editDraft,setEditDraft]=useState(null);
   const [editBusy,setEditBusy]=useState(false);
   const [editError,setEditError]=useState('');
+  const [readerResult,setReaderResult]=useState(null);
   const [fullTextKey,setFullTextKey]=useState('');
   const [fullText,setFullText]=useState('');
   const [fullTextRow,setFullTextRow]=useState(null);
@@ -635,9 +637,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       if(!detail)throw new Error(UI_COPY.search.notFound);
       const result=toResult({...detail,resolved_links:detail.links||[]},detail.site||UI_COPY.search.displaySource,detailScope);
       setResults([result]);
+      setReaderResult(result);
       setFullTextKey(result.key);
       setFullText(workDisplayText(detail.content||''));
-      setFullTextRow(null);
+      setFullTextRow(detail);
       setStatus('');
     }catch(exception){
       if(id!==searchId.current)return;
@@ -701,6 +704,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   async function toggleFullText(result){
     const request=++detailEpoch.current;
     if(fullTextKey===result.key){
+      if(!managementMode)return;
       setFullTextLoading(false);
       setFullTextKey('');
       setFullText('');
@@ -709,6 +713,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return;
     }
     if(result.resourceType!=='galaxy'||!result.editableTable)return;
+    setReaderResult(result);
     setFullTextKey(result.key);
     setFullText('');
     setFullTextRow(null);
@@ -720,12 +725,24 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       if(!fullRow)throw new Error(UI_COPY.search.fullTextNotFound);
       setFullText(workDisplayText(fullRow.content||''));
       setFullTextRow(fullRow);
+      setReaderResult({...toResult(fullRow,fullRow.site||result.source,result.scopeId),key:result.key});
     }catch(exception){
       if(request===detailEpoch.current)
         setFullTextError(String(exception?.message||exception||UI_COPY.search.fullTextFailed));
     }finally{
       if(request===detailEpoch.current)setFullTextLoading(false);
     }
+  }
+
+  function followReaderGalaxy(uid){
+    const current=readerResult;
+    if(!current||current.federated||!/^[A-Za-z0-9]{8}$/.test(String(uid)))return;
+    const existing=orderedResults.find(row=>row.scopeId===current.scopeId&&
+      row.resourceId===uid&&row.resourceType==='galaxy'&&!row.federated);
+    if(existing){void toggleFullText(existing);return;}
+    void toggleFullText({...current,key:current.scopeId+':relation:'+uid,resourceId:uid,
+      editResourceId:uid,title:fullTextRow?.relation_titles?.[uid]||'關聯文章',
+      editRow:null,dbId:'',federated:false});
   }
 
   async function startEditing(result){
@@ -1126,6 +1143,130 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       {patternSuggestions.map(word=><option key={word} value={word}/>)}
     </datalist>:null}
   </>;
+  function renderSearchArticle(row,index,exploration=false){
+        const rowScopeData=account.scopeDataFor(row.scopeId)||defaultScopeData(row.scopeId);
+        const editableTable=row.editableTable||(
+          row.resourceType==='galaxy'?rowScopeData?.galaxy:
+          row.resourceType==='media_anchor'?rowScopeData?.anchor:''
+        );
+        const editTarget={
+          ...row,
+          editableTable,
+          editableIdColumn:row.editableIdColumn||(row.resourceType==='galaxy'?'uid':row.resourceType==='media_anchor'?'uid':''),
+          editResourceId:row.editResourceId||row.resourceId,
+          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='media_anchor'?'description':'')
+        };
+        // Page blocks have no Galaxy attributes. Article editing and typed
+        // metadata are available only to authorized Scope managers; guest
+        // search and article reading cannot reveal metadata controls.
+        const canOfferEdit=Boolean(!adminSearchActive&&adminListRequested&&editTarget.resourceType==='galaxy'&&editTarget.editableTable&&
+          editTarget.editableIdColumn&&editTarget.editResourceId);
+        const editable=Boolean(!adminSearchActive&&
+          ((adminListRequested&&managementMode&&canManageSearchScope(account,row.scopeId)&&editTarget.resourceType&&editTarget.editableTable&&editTarget.editableIdColumn&&editTarget.editResourceId)
+          ||canOfferEdit)
+        );
+        const draft=editingKey===row.key?editDraft:null;
+        const selectedDetail=fullTextKey===row.key&&!fullTextLoading?fullTextRow:null;
+        const identityReader=!exploration&&Boolean(searchParams?.get('identity'))&&row.resourceType==='galaxy';
+        const expandedReader=Boolean(selectedDetail)&&row.resourceType==='galaxy';
+        // Direct UID navigation already has the authorized Galaxy detail in
+        // toResult.editRow; ordinary expanded reading uses fullTextRow.
+        const readerRow=selectedDetail||(identityReader?row.editRow:null);
+        const tracePlace=readerRow?.trace_place||row.tracePlace;
+        const locationName=String(readerRow?.location||row.locationName||'').trim();
+        const readingLinks=readerRow?galaxyRelationLinks(row.scopeId,readerRow):row.relationLinks||[];
+        const relatedMedia=readerRow?.related_media||row.relatedMedia||[];
+        return <Fragment key={row.key}>
+          {managementMode&&row.resourceType==='galaxy'&&canManageSearchScope(account,row.scopeId)?
+            <label className="loc-search-bulk-article-choice">
+              <input type="checkbox" checked={selectedPlaceArticles.some(item=>item.uid===row.resourceId&&item.scopeId===row.scopeId)}
+                disabled={bulkBusy||Boolean(row.checkInPlace)||(Boolean(selectedScope)&&selectedScope!==row.scopeId)||selectedPlaceArticles.length>=200&&!selectedPlaceArticles.some(item=>item.uid===row.resourceId&&item.scopeId===row.scopeId)}
+                onChange={event=>togglePlaceArticle(row,event.target.checked)}/>
+              {row.checkInPlace?'已設定地點，無法補寫':'可補寫地點'}
+            </label>:null}
+          {!exploration&&scopeId==='loc'&&scopeLabel(row.scopeId)&&(index===0||orderedResults[index-1]?.scopeId!==row.scopeId)
+            ?<h2 className="scope-search-scope-heading">{scopeLabel(row.scopeId)}</h2>:null}
+        <Article
+          key={row.key}
+          editOnCardClick={false}
+          managerMode={managementMode}
+          uid={editTarget.editResourceId}
+          title={!privateResultMode&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
+          articleHref={!exploration&&row.resourceType==='galaxy'&&(managementMode||row.list!==false)
+            ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
+            :''}
+          detailReading={!exploration&&(identityReader||expandedReader)}
+          source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
+          date={row.date}
+          body={''}
+          hidden={false}
+          relationLinks={!exploration&&(identityReader||expandedReader)?readingLinks:[]}
+          relatedMedia={!exploration&&(identityReader||expandedReader)?relatedMedia:[]}
+          relatedTime={!exploration&&(identityReader||expandedReader)?readerRow?.related_time||row.relatedTime:null}
+          relatedSpace={!exploration&&(identityReader||expandedReader)?readerRow?.related_space||row.relatedSpace:null}
+          relatedStatistics={!exploration&&(identityReader||expandedReader)?readerRow?.related_statistics||row.relatedStatistics:null}
+          articleScopeId={row.scopeId}
+          articleDate={identityReader||expandedReader?readerRow?.article_day||readerRow?.date||row.articleDay||row.date:''}
+          articleCreateTime={identityReader||expandedReader?readerRow?.createtime||row.createtime:row.createtime}
+          tracePlace={!exploration&&(identityReader||expandedReader)?tracePlace:null}
+          traceHref={tracePlace?featureNavigationHref(row.scopeId,'trace',{place:tracePlace.uid}):''}
+          locationName={identityReader||expandedReader?locationName:''}
+          links={!exploration&&(identityReader||expandedReader)?readerRow?.links||row.links||[]:[]}
+          destinations={row.destinations}
+          editable={editable}
+          editing={editingKey===row.key}
+          onEdit={uid=>startEditing({...editTarget,editResourceId:uid})}
+          editorDraft={draft}
+          onDraftChange={setEditDraft}
+          onSave={()=>saveEditing(editTarget)}
+          onDelete={()=>deleteEditing(editTarget)}
+          onCancel={()=>{setEditingKey('');setEditDraft(null);setAuthorizedEditingKey('');setEditError('')}}
+          editBusy={editBusy}
+          editError={editError}
+          showInlineEditorActions={!editDock?.active}
+          showHidden={privateResultMode}
+          attributeFields={managementMode&&editable?(row.resourceType==='galaxy'?GALAXY_ATTR_FIELDS:row.resourceType==='media_anchor'?MEDIA_ATTR_FIELDS:null):null}
+          mediaScopeId={editable&&row.resourceType==='galaxy'?row.scopeId:''}
+          attributeTitle={row.resourceType==='media_anchor'?t('uiExtra.searchUI.mediaAttributes'):t('uiExtra.searchUI.attributeTitle')}
+          showBodyEditor={row.resourceType==='galaxy'}
+          styleTag={row.styleTagMatch}
+          styleTagKicker={row.styleTagMatch?<UiText id="uiExtra.searchUI.styleRecommendations"/>:null}
+          styleIntroText={row.styleIntroText}
+        >
+          {managementMode&&editable&&editingKey!==row.key?<div className="scope-work-fulltext-row">
+            {searchParams?.get('identity')&&row.resourceType==='galaxy'?<WorkFullText
+              open={fullTextKey===row.key}
+              loading={fullTextLoading&&fullTextKey===row.key}
+              error={fullTextKey===row.key?fullTextError:''}
+              content={fullTextKey===row.key?fullText:''}
+              showToggle={false}
+            />:null}
+            <button type="button" className="loc-button scope-work-edit-button" onClick={()=>startEditing(editTarget)}>
+              {row.resourceType==='galaxy'?'展開內文並編輯':'編輯媒體連結'}
+            </button>
+          </div>:!managementMode&&row.resourceType==='galaxy'&&row.list!==false&&editingKey!==row.key?<div className="scope-work-fulltext-row">
+            <WorkFullText
+              open={fullTextKey===row.key}
+              loading={fullTextLoading&&fullTextKey===row.key}
+              error={fullTextKey===row.key?fullTextError:''}
+              content={fullTextKey===row.key?fullText:''}
+              onToggle={()=>toggleFullText(row)}
+              showToggle={!exploration&&!searchParams?.get('identity')}
+            />
+            {fullTextKey===row.key&&canOfferEdit?<button type="button" className="loc-button scope-work-edit-button"
+              onClick={()=>startEditing(editTarget)}>
+              <UiText id="uiExtra.editBlocks.edit"/>
+            </button>:null}
+          </div>:null}
+
+          {readerRow?.uid&&row.resourceType==='galaxy'?
+            exploration?<Suspense fallback={<p className="scope-status">正在繪製關聯網絡…</p>}>
+              <LazySearchRelationNetwork key={row.scopeId+':'+readerRow.uid}
+                scopeId={row.scopeId} row={readerRow} onGalaxySelect={followReaderGalaxy}/>
+            </Suspense>:<GalaxyInterNetBranches scopeId={row.scopeId} row={readerRow} managementMode={managementMode}/>:null}
+        </Article>
+        </Fragment>;
+  }
   const pageContent=<>
     {managementMode?<section className="scope-search-workspace" aria-label="管理搜尋">
       <h2>管理搜尋</h2>
@@ -1287,8 +1428,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           </div>:null}
         </div>:null}
       </div>
-    {!managementMode?<SearchSummary scopeIds={summaryScopeIds}/>:null}
-    {!managementMode?<section className="scope-search-reference-editor" aria-label="搜尋建議">
+    {!managementMode&&!results.length&&!fullTextKey?<SearchSummary scopeIds={summaryScopeIds}/>:null}
+    {!managementMode&&!results.length&&!fullTextKey?<section className="scope-search-reference-editor" aria-label="搜尋建議">
       <h2>搜尋建議</h2>
       <ScopeEditableBlocks
         scopeId={scopeId}
@@ -1344,6 +1485,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     </div>:null}
     {error?<p className="scope-status scope-error">{error}</p>:null}
     {loadMoreError?<p role="alert" className="scope-status scope-error">{loadMoreError} <button type="button" className="loc-button" disabled={loadingMore} onClick={loadNextSearch}><UiText id="uiExtra.cultureView.reloadWorks"/></button></p>:null}
+    <div className={!managementMode&&(results.length||fullTextKey)?'loc-search-explorer':undefined}>
+    <div className={!managementMode?'loc-search-explorer__results':undefined}>
     <IncrementalList
       items={orderedResults}
       className={managementMode?'scope-list':'scope-list loc-public-article-list'}
@@ -1353,128 +1496,25 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       loading={loadingMore}
       error={error||loadMoreError}
       onLoadMore={loadNextSearch}
-      renderItem={(row,index)=>{
-        const rowScopeData=account.scopeDataFor(row.scopeId)||defaultScopeData(row.scopeId);
-        const editableTable=row.editableTable||(
-          row.resourceType==='galaxy'?rowScopeData?.galaxy:
-          row.resourceType==='media_anchor'?rowScopeData?.anchor:''
-        );
-        const editTarget={
-          ...row,
-          editableTable,
-          editableIdColumn:row.editableIdColumn||(row.resourceType==='galaxy'?'uid':row.resourceType==='media_anchor'?'uid':''),
-          editResourceId:row.editResourceId||row.resourceId,
-          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='media_anchor'?'description':'')
-        };
-        // Page blocks have no Galaxy attributes. Article editing and typed
-        // metadata are available only to authorized Scope managers; guest
-        // search and article reading cannot reveal metadata controls.
-        const canOfferEdit=Boolean(!adminSearchActive&&adminListRequested&&editTarget.resourceType==='galaxy'&&editTarget.editableTable&&
-          editTarget.editableIdColumn&&editTarget.editResourceId);
-        const editable=Boolean(!adminSearchActive&&
-          ((adminListRequested&&managementMode&&canManageSearchScope(account,row.scopeId)&&editTarget.resourceType&&editTarget.editableTable&&editTarget.editableIdColumn&&editTarget.editResourceId)
-          ||canOfferEdit)
-        );
-        const draft=editingKey===row.key?editDraft:null;
-        const selectedDetail=fullTextKey===row.key&&!fullTextLoading?fullTextRow:null;
-        const identityReader=Boolean(searchParams?.get('identity'))&&row.resourceType==='galaxy';
-        const expandedReader=Boolean(selectedDetail)&&row.resourceType==='galaxy';
-        // Direct UID navigation already has the authorized Galaxy detail in
-        // toResult.editRow; ordinary expanded reading uses fullTextRow.
-        const readerRow=selectedDetail||(identityReader?row.editRow:null);
-        const tracePlace=readerRow?.trace_place||row.tracePlace;
-        const locationName=String(readerRow?.location||row.locationName||'').trim();
-        const readingLinks=readerRow?galaxyRelationLinks(row.scopeId,readerRow):row.relationLinks||[];
-        const relatedMedia=readerRow?.related_media||row.relatedMedia||[];
-        return <Fragment key={row.key}>
-          {managementMode&&row.resourceType==='galaxy'&&canManageSearchScope(account,row.scopeId)?
-            <label className="loc-search-bulk-article-choice">
-              <input type="checkbox" checked={selectedPlaceArticles.some(item=>item.uid===row.resourceId&&item.scopeId===row.scopeId)}
-                disabled={bulkBusy||Boolean(row.checkInPlace)||(Boolean(selectedScope)&&selectedScope!==row.scopeId)||selectedPlaceArticles.length>=200&&!selectedPlaceArticles.some(item=>item.uid===row.resourceId&&item.scopeId===row.scopeId)}
-                onChange={event=>togglePlaceArticle(row,event.target.checked)}/>
-              {row.checkInPlace?'已設定地點，無法補寫':'可補寫地點'}
-            </label>:null}
-          {scopeId==='loc'&&scopeLabel(row.scopeId)&&(index===0||orderedResults[index-1]?.scopeId!==row.scopeId)
-            ?<h2 className="scope-search-scope-heading">{scopeLabel(row.scopeId)}</h2>:null}
-        <Article
-          key={row.key}
-          editOnCardClick={false}
-          managerMode={managementMode}
-          uid={editTarget.editResourceId}
-          title={!privateResultMode&&row.resourceType==='galaxy'&&row.list===false?'（使用者隱藏）':row.title}
-          articleHref={row.resourceType==='galaxy'&&(managementMode||row.list!==false)
-            ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
-            :''}
-          detailReading={identityReader||expandedReader}
-          source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
-          date={row.date}
-          body={''}
-          hidden={false}
-          relationLinks={identityReader||expandedReader?readingLinks:[]}
-          relatedMedia={identityReader||expandedReader?relatedMedia:[]}
-          relatedTime={identityReader||expandedReader?readerRow?.related_time||row.relatedTime:null}
-          relatedSpace={identityReader||expandedReader?readerRow?.related_space||row.relatedSpace:null}
-          relatedStatistics={identityReader||expandedReader?readerRow?.related_statistics||row.relatedStatistics:null}
-          articleScopeId={row.scopeId}
-          articleDate={identityReader||expandedReader?readerRow?.article_day||readerRow?.date||row.articleDay||row.date:''}
-          articleCreateTime={identityReader||expandedReader?readerRow?.createtime||row.createtime:row.createtime}
-          tracePlace={identityReader||expandedReader?tracePlace:null}
-          traceHref={tracePlace?featureNavigationHref(row.scopeId,'trace',{place:tracePlace.uid}):''}
-          locationName={identityReader||expandedReader?locationName:''}
-          links={identityReader||expandedReader?readerRow?.links||row.links||[]:[]}
-          destinations={row.destinations}
-          editable={editable}
-          editing={editingKey===row.key}
-          onEdit={uid=>startEditing({...editTarget,editResourceId:uid})}
-          editorDraft={draft}
-          onDraftChange={setEditDraft}
-          onSave={()=>saveEditing(editTarget)}
-          onDelete={()=>deleteEditing(editTarget)}
-          onCancel={()=>{setEditingKey('');setEditDraft(null);setAuthorizedEditingKey('');setEditError('')}}
-          editBusy={editBusy}
-          editError={editError}
-          showInlineEditorActions={!editDock?.active}
-          showHidden={privateResultMode}
-          attributeFields={managementMode&&editable?(row.resourceType==='galaxy'?GALAXY_ATTR_FIELDS:row.resourceType==='media_anchor'?MEDIA_ATTR_FIELDS:null):null}
-          mediaScopeId={editable&&row.resourceType==='galaxy'?row.scopeId:''}
-          attributeTitle={row.resourceType==='media_anchor'?t('uiExtra.searchUI.mediaAttributes'):t('uiExtra.searchUI.attributeTitle')}
-          showBodyEditor={row.resourceType==='galaxy'}
-          styleTag={row.styleTagMatch}
-          styleTagKicker={row.styleTagMatch?<UiText id="uiExtra.searchUI.styleRecommendations"/>:null}
-          styleIntroText={row.styleIntroText}
-        >
-          {managementMode&&editable&&editingKey!==row.key?<div className="scope-work-fulltext-row">
-            {searchParams?.get('identity')&&row.resourceType==='galaxy'?<WorkFullText
-              open={fullTextKey===row.key}
-              loading={fullTextLoading&&fullTextKey===row.key}
-              error={fullTextKey===row.key?fullTextError:''}
-              content={fullTextKey===row.key?fullText:''}
-              showToggle={false}
-            />:null}
-            <button type="button" className="loc-button scope-work-edit-button" onClick={()=>startEditing(editTarget)}>
-              {row.resourceType==='galaxy'?'展開內文並編輯':'編輯媒體連結'}
-            </button>
-          </div>:!managementMode&&row.resourceType==='galaxy'&&row.list!==false&&editingKey!==row.key?<div className="scope-work-fulltext-row">
-            <WorkFullText
-              open={fullTextKey===row.key}
-              loading={fullTextLoading&&fullTextKey===row.key}
-              error={fullTextKey===row.key?fullTextError:''}
-              content={fullTextKey===row.key?fullText:''}
-              onToggle={()=>toggleFullText(row)}
-              showToggle={!searchParams?.get('identity')}
-            />
-            {fullTextKey===row.key&&canOfferEdit?<button type="button" className="loc-button scope-work-edit-button"
-              onClick={()=>startEditing(editTarget)}>
-              <UiText id="uiExtra.editBlocks.edit"/>
-            </button>:null}
-          </div>:null}
-
-          {readerRow?.uid&&row.resourceType==='galaxy'?
-            <GalaxyInterNetBranches scopeId={row.scopeId} row={readerRow} managementMode={managementMode}/>:null}
-        </Article>
-        </Fragment>;
-      }}
+      renderItem={(row,index)=>managementMode||row.resourceType!=='galaxy'
+        ?renderSearchArticle(row,index):<button type="button" className="loc-search-result-choice"
+          disabled={row.list===false&&!privateResultMode}
+          aria-pressed={fullTextKey===row.key}
+          onClick={()=>void toggleFullText(row)}>
+          <strong>{row.list===false&&!privateResultMode?'（使用者隱藏）':row.title}</strong>
+          <small>{[scopeLabel(row.scopeId),String(row.date||'').slice(0,10)].filter(Boolean).join(' · ')}</small>
+        </button>}
     />
+    </div>
+    {!managementMode&&(results.length||fullTextKey)?<section className="loc-search-explorer__reader" aria-label="文章全文與關聯">
+      {fullTextKey&&readerResult?<motion.div key={fullTextKey}
+        initial={reduceMotion?false:{opacity:0,x:8}} animate={{opacity:1,x:0}}
+        transition={{duration:reduceMotion?0:.2}}>
+        {fullTextLoading?<p className="scope-status" role="status">正在讀取文章… <ActivityMotion kind="hourglass"/></p>:null}
+        {renderSearchArticle(readerResult,0,true)}
+      </motion.div>:<p className="scope-status">選擇左側文章，閱讀全文及探索關聯。</p>}
+    </section>:null}
+    </div>
     </div>
   </>;
   // The management workspace owns its Hero even when the user's management

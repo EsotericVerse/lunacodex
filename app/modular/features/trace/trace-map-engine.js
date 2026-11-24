@@ -413,13 +413,15 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(territoryMode)map.addLayer({id:'loc-trace-territory-halo',type:'circle',
       source:'loc-trace-saved-anchors',paint:{
         'circle-radius':['step',['get','territoryTotal'],19,3,23,10,29,30,35,100,43],
-        'circle-color':'#ffc979','circle-opacity':0.13,
-        'circle-stroke-width':1,'circle-stroke-color':'#ffc979','circle-stroke-opacity':0.55
+        'circle-color':'#ffc979','circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.04,3,.1,10,.18,30,.28,100,.42],
+        'circle-blur':.75,
+        'circle-stroke-width':0
       }});
     map.addLayer({id:'loc-trace-saved-point-layer',type:'circle',source:'loc-trace-saved-anchors',
       paint:territoryMode?{
         'circle-radius':['step',['get','territoryTotal'],7,3,10,10,14,30,18,100,23],
-        'circle-color':'#f8b963','circle-opacity':0.91,
+        'circle-color':['interpolate',['linear'],['get','territoryTotal'],0,'#987747',3,'#b58e56',10,'#e6b96d',30,'#ffd78b',100,'#fff0bb'],
+        'circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.45,10,.75,100,1],
         'circle-stroke-width':2,'circle-stroke-color':'#fff4cd'
       }:{'circle-radius':6,'circle-color':'#6ce4ce','circle-opacity':0.95,
         'circle-stroke-width':1.5,'circle-stroke-color':'#153739'}});

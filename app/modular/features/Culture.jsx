@@ -1418,7 +1418,9 @@ export default function Culture(){
       {isLocItemView?<LocItemConfluence/>:<>
       <p className='loc-eyebrow'>{UI_COPY.culture.distribution}</p>
       <h2>{UI_COPY.culture.river}</h2>
-      {query.isPending?<p className="scope-status" role="status" aria-live="polite">{UI_COPY.common.loading}</p>:null}
+      {query.isPending?<div className="loc-progressive-river-frame" role="status" aria-busy="true">
+        <span>{UI_COPY.common.loading}</span><div className="loc-progressive-river-axis" aria-hidden="true"/>
+      </div>:null}
       {query.error?<p className='scope-status scope-error'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
       {!query.isPending&&!query.error&&!hasTimelineSurface?<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>:null}
       {!query.isPending&&!query.error&&hasTimelineSurface?<>
@@ -1632,7 +1634,10 @@ export default function Culture(){
                         onChange={event=>setKeywordCustomEnd(event.target.value)}/></label>
                     </>:null}
                   </div>
-                  {usesSourceRiver&&riverRangeLoading?<CultureTimeLoading label={UI_COPY.common.loading}/>:null}
+                  {usesSourceRiver&&riverRangeLoading?<div className="loc-progressive-river-frame" role="status" aria-busy="true">
+                    <CultureTimeLoading label={UI_COPY.common.loading}/><div className="loc-progressive-river-axis" aria-hidden="true"/>
+                    <small>{classificationWindowStart} ～ {classificationWindowEnd}</small>
+                  </div>:null}
                   {riverAnalysis.error?<span className='scope-status scope-error' role='status'>{riverAnalysis.error}</span>:null}
                 </div>
                 {styleFilter==='rune66'?<section className='scope-culture-style-filter'>
