@@ -20,7 +20,7 @@ import {navigationHref} from './modular/routing/scope-registry.js';
 import {managementRouteHref} from './modular/routing/management-route-table.mjs';
 import PageResourceBoundary from './modular/PageResourceBoundary';
 import {recoverChunkOnce} from './loc/ui/chunk-recovery.mjs';
-import BottomNavIcon,{DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
+import {DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
 // Only individual Scope homepages download the opt-in management entry.
 const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{loading:()=>null});
@@ -646,22 +646,34 @@ function AppShellInner({children,runtime}){
     <motion.div layoutRoot className="scope-feature-dock scope-floating-edit-buttons" role="toolbar"
       aria-label={translateUiField(activeLocale,editingDockVisible?'編輯功能選單':'Scope 功能選單')}
       data-scope={localNavigation?'local':scopeId} data-local-core={localCoreActive?'active':undefined} data-action-count={editingDockVisible?editTabs.length:6}>
-      {editingDockVisible?editTabs.map(tab=>tab.action
-        ?<button type="button" key={tab.id} className="scope-edit-dock-action"
-          disabled={editDock.busy&&tab.action!=='cancel'}
-          onClick={()=>tab.action==='save'
-            ?editDock.save({exitOnSuccess:isScopeHomepage})
-            :editDock.discard(navigationHref(navScopeId,isFeatureEditMode?featureEditReturn:'',native),
-              {confirmOnlyWhenDirty:isFeatureEditMode})}>
-          <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-        </button>
-        :tab.href?<button type="button" key={tab.id} disabled={editDock.busy}
-            onClick={()=>editDock.switchTo(tab.href)}>
-            <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-          </button>
-          :<button type="button" key={tab.id} disabled>
-            <BottomNavIcon name={tab.icon}/><span>{tab.label}</span>
-          </button>)
+      {editingDockVisible?editTabs.map(tab=>{
+        const selected=Boolean(tab.href&&targetIsCurrent(tab.href,host,pathname));
+        const isSave=tab.action==='save';
+        const disabled=tab.action?editDock.busy&&tab.action!=='cancel':!tab.href||editDock.busy;
+        const effectName=tab.id==='manage'?'spatial':
+          tab.id==='time'||tab.id==='members'?tab.id:tab.icon;
+        return <motion.button type="button" key={tab.id}
+          className={tab.action?'scope-edit-dock-action':undefined}
+          disabled={disabled}
+          aria-current={selected?'page':undefined}
+          whileTap={disabled?undefined:'dockPressed'}
+          onClick={()=>{
+            if(isSave){void editDock.save({exitOnSuccess:isScopeHomepage});return;}
+            if(tab.action==='cancel'){
+              editDock.discard(navigationHref(navScopeId,isFeatureEditMode?featureEditReturn:'',native),
+                {confirmOnlyWhenDirty:isFeatureEditMode});return;
+            }
+            if(tab.href){
+              setDockActivation(prev=>({id:tab.id,count:prev.count+1}));
+              editDock.switchTo(tab.href);
+            }
+          }}>
+          <DockMotionIcon name={tab.icon} effectName={effectName} management
+            active={isSave?editDock.saveRevision>0:selected}
+            activation={isSave?editDock.saveRevision:dockActivation.id===tab.id?dockActivation.count:0}/>
+          <span>{tab.label}</span>
+        </motion.button>;
+      })
       :<LayoutGroup id={'loc-six-key-dock-'+(localNavigation?'local':scopeId)}>
         {featureTabs.map(tab=>{
           const selected=tab.id==='settings'?isSettings:

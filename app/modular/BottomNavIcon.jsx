@@ -14,8 +14,8 @@ export default function BottomNavIcon({name}){
   return <svg {...common}><path d="M10.5 2.8h3l.5 2.3 1.7.7 2-1.3 2.1 2.1-1.3 2 .7 1.7 2.3.5v3l-2.3.5-.7 1.7 1.3 2-2.1 2.1-2-1.3-1.7.7-.5 2.3h-3l-.5-2.3-1.7-.7-2 1.3-2.1-2.1 1.3-2-.7-1.7-2.3-.5v-3l2.3-.5.7-1.7-1.3-2 2.1-2.1 2 1.3 1.7-.7z"/><circle cx="12" cy="12" r="3"/></svg>;
 }
 
-/* Only the six normal feature destinations use these short, one-shot motions.
-   The original SVG icon remains the same; edit dock buttons never animate.
+/* Feature and management destinations use one-shot icon motions.
+   Save completion uses confirmed save; Cancel only gives press feedback.
    No timers, route interception, layout animation, or animation loops. */
 const DOCK_EFFECTS=Object.freeze({
   // Quiet, directional motion on navigation only. No spins, loops or large scaling.
@@ -24,20 +24,30 @@ const DOCK_EFFECTS=Object.freeze({
   statics:{initial:{y:1,scale:.99},frames:{y:[1,-1,0],scale:[.99,1.02,1]},duration:.34},
   trace:{initial:{x:-2,scaleX:.96,opacity:.88},frames:{x:[-2,.7,0],scaleX:[.96,1.015,1],opacity:[.88,1,1]},duration:.4},
   search:{initial:{x:-1.5,rotate:-4},frames:{x:[-1.5,.8,0],rotate:[-4,2,0]},duration:.39},
-  settings:{initial:{rotate:-3,y:1},frames:{rotate:[-3,1,0],y:[1,-.5,0]},duration:.36}
+  settings:{initial:{rotate:-3,y:1},frames:{rotate:[-3,1,0],y:[1,-.5,0]},duration:.36},
+  time:{initial:{rotate:-12},frames:{rotate:[-12,5,0]},duration:.4},
+  keywords:{initial:{x:-2,opacity:.8},frames:{x:[-2,1,-.5,0],opacity:[.8,1,1,1]},duration:.38},
+  spatial:{initial:{y:-2},frames:{y:[-2,1,0]},duration:.38},
+  members:{initial:{x:-2},frames:{x:[-2,1,0]},duration:.35},
+  save:{initial:{scale:.94,y:1},frames:{scale:[.94,1.06,1],y:[1,-1,0]},duration:.32},
+  cancel:{initial:{scale:1},frames:{scale:1},duration:0}
 });
 
-export function DockMotionIcon({name,active=false,activation=0}){
+export function DockMotionIcon({name,effectName=name,active=false,activation=0,management=false}){
   const reduceMotion=useReducedMotion();
-  const effect=DOCK_EFFECTS[name==='phone'?'home':name]||DOCK_EFFECTS.home;
+  const effect=DOCK_EFFECTS[effectName==='phone'?'home':effectName]||DOCK_EFFECTS.home;
   const play=active&&!reduceMotion;
-  const key=name+':'+(active?'active-'+activation:'idle');
-  return <span className="scope-dock-motion-icon" aria-hidden="true">
+  const key=effectName+':'+(active?'active-'+activation:'idle');
+  return <motion.span className="scope-dock-motion-icon" aria-hidden="true"
+    variants={management?{dockPressed:{scale:reduceMotion?1:effectName==='cancel' ? .88 : .94,
+      transition:{duration:reduceMotion?0:.12,ease:'easeOut'}}}:undefined}
+    animate={management?{scale:1}:undefined}
+    transition={{duration:reduceMotion?0:.12,ease:'easeOut'}}>
     <motion.span key={key} className="scope-dock-motion-icon__glyph"
       initial={play?effect.initial:false}
       animate={play?effect.frames:{x:0,y:0,rotate:0,scale:1,scaleX:1,opacity:1}}
       transition={{duration:play?effect.duration:0,ease:'easeOut'}}
-      whileTap={reduceMotion?undefined:{scale:.98}}>
+      whileTap={management||reduceMotion?undefined:{scale:.98}}>
       <BottomNavIcon name={name}/>
     </motion.span>
     {(name==='home'||name==='phone')&&play?<motion.span
@@ -51,7 +61,7 @@ export function DockMotionIcon({name,active=false,activation=0}){
       animate={{opacity:[0,.7,.7,0],x:[-1,0,.5,0],y:[1,0,-.5,0]}}
       transition={{duration:.36,ease:'easeOut'}}
       aria-hidden="true">123</motion.span>:null}
-  </span>;
+  </motion.span>;
 }
 
 

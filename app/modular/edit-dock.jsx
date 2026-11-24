@@ -49,6 +49,7 @@ export function EditDockProvider({children,scopeId}){
   const [canManageGlobal,setCanManageGlobal]=useState(false);
   const [hasSave,setHasSave]=useState(false);
   const [busy,setBusy]=useState(false);
+  const [saveRevision,setSaveRevision]=useState(0);
   const committing=useRef(false);
   const operationEpoch=useRef(0);
   const operationTimer=useRef(null);
@@ -128,6 +129,7 @@ export function EditDockProvider({children,scopeId}){
     releaseOperation();
     clearEditor();
     setEditing(false);
+    setSaveRevision(0);
     setCanManageGlobal(false);
     setNotice('');
   },[clearEditor,releaseOperation]);
@@ -324,7 +326,9 @@ export function EditDockProvider({children,scopeId}){
         }});
         // Exit only when every dirty form returned confirmed success.
         // A failed write leaves current in-memory input mounted for correction.
+        if(epoch!==operationEpoch.current)return;
         if(exitOnSuccess){end();return;}
+        setSaveRevision(previous=>previous+1);
         setNotice('目前修改已儲存。');
       }
     }catch(error){
@@ -370,9 +374,9 @@ export function EditDockProvider({children,scopeId}){
     commit(next);
   },[releaseOperation,clearEditor]);
   const value=useMemo(()=>({
-    active:editing,exiting,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,
+    active:editing,exiting,scopeId,canManageGlobal,hasSave,busy,saveRevision,notice,begin,end,
     register,save,discard,complete,switchTo,switchSection,setNotice
-  }),[editing,exiting,scopeId,canManageGlobal,hasSave,busy,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
+  }),[editing,exiting,scopeId,canManageGlobal,hasSave,busy,saveRevision,notice,begin,end,register,save,discard,complete,switchTo,switchSection]);
   return <EditDockContext.Provider value={value}>{children}</EditDockContext.Provider>;
 }
 
