@@ -1,6 +1,7 @@
 'use client';
 
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
+import {scrollHomeTop,turnHomeBlocks} from './home-page-turn.mjs';
 import {useEditDock} from '../../modular/edit-dock';
 import dynamic from 'next/dynamic';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
@@ -52,6 +53,13 @@ export default function ScopeBlockDraftList({
     return initial;
   });
   const [preview,setPreview]=useState(false);
+  const [requestedPreview,setRequestedPreview]=useState(false);
+  const turning=Boolean(PreviewDisplay&&requestedPreview!==preview);
+  useLayoutEffect(()=>{
+    if(!turning)return;
+    scrollHomeTop();
+    return turnHomeBlocks(requestedPreview?'preview':'edit',()=>setPreview(requestedPreview));
+  },[turning,requestedPreview]);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
 
@@ -264,7 +272,7 @@ export default function ScopeBlockDraftList({
     const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
     const image=isHomeFrame?resolveHomeImage(draft,scopeId):null;
     const pinnedHero=HomeBlock.isPinnedHomeHero(pageName,draft);
-    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'} key={draft.uid}
+    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'+(PreviewDisplay?' loc-home-turn-in-edit':'')} key={draft.uid}
       style={showingPreview?{display:'none'}:undefined}>
       <div className="scope-inline-editbar">
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index-1)} onClick={()=>moveBlock(draft.uid,-1)}><UiText id="uiExtra.editBlocks.moveUp"/></button>:null}
@@ -340,8 +348,8 @@ export default function ScopeBlockDraftList({
   return <>
     <div className="scope-block-draft-toolbar">
       {toolbar}
-      {PreviewDisplay?<button type="button" className="loc-button" aria-pressed={showingPreview} disabled={busy}
-        onClick={()=>setPreview(value=>!value)}><FieldText text={showingPreview?'返回編輯':'預覽'}/></button>:null}
+      {PreviewDisplay?<button type="button" className="loc-button" aria-pressed={showingPreview} disabled={busy||turning}
+        onClick={()=>setRequestedPreview(value=>!value)}><FieldText text={showingPreview?'返回編輯':'預覽'}/></button>:null}
       {!inDock?<div className="scope-block-draft-actions">
         <button type="button" className="loc-button primary" disabled={busy} onClick={save}>{busy?t('uiExtra.editBlocks.saving'):t('uiExtra.editBlocks.save')}</button>
         <button type="button" className="loc-button" disabled={busy} onClick={()=>{if(window.confirm(t('uiExtra.editBlocks.cancelConfirm')))onCancel();}}><UiText id="uiExtra.editBlocks.cancel"/></button>
@@ -351,8 +359,8 @@ export default function ScopeBlockDraftList({
     {visibleDrafts.map((draft,index)=>renderDraft(draft,index,visibleDrafts))}
     {canAddBlock&&!showingPreview?<button type="button" className="loc-button scope-add-page-block" onClick={addBlock} disabled={busy}><UiText id="uiExtra.editBlocks.addBlock"/></button>:null}
     {showingPreview?previewRows.filter(slot=>BlockNoteContent.text.hasBlockNoteFrameContent(slot)).map(slot=>
-      <section key={slot.uid||'order:'+slot.order}
-        className={(previewClassName?.(slot)||slotClassName)+' scope-editable-block loc-home-motion-block'}
+      <section key={'preview:'+(slot.uid||'order:'+slot.order)}
+        className={(previewClassName?.(slot)||slotClassName)+' scope-editable-block loc-home-motion-block loc-home-turn-in-preview'}
         style={previewStyle?.(slot)}
         onClickCapture={event=>{if(event.target.closest?.('a'))event.preventDefault()}}>
         {slot.order===1?<span className="loc-home-motion-hero-line loc-home-preview-hero-line" aria-hidden="true"/>:null}
