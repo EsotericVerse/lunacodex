@@ -165,7 +165,7 @@ export const MANAGEMENT_HERO_SLOTS=Object.freeze([
   {key:'time',label:'時間定錨',audience:'scope',featureId:'culture',page:'TimeAnchor',englishTitle:'TimeAnchor'},
   {key:'keywords',label:'關鍵詞',audience:'scope',featureId:'statics',page:'ScopeKeyword',englishTitle:'ScopeKeyword'},
   {key:'spatial',label:'空間定錨',audience:'scope',featureId:'trace',page:'SpaceAnchor',englishTitle:'SpaceAnchor'},
-  {key:'advanced',label:'進階搜尋',audience:'scope',featureId:'search',page:'ScopeAdvSearch',englishTitle:'ScopeAdvSearch'},
+  {key:'advanced',label:'文章管理',audience:'scope',featureId:'search',page:'ScopeArticle',englishTitle:'Article Management'},
   {key:'system',label:'系統管理',audience:'loc',page:'scope_admin',englishTitle:'Administration'},
   {key:'members',label:'人員作品管理',audience:'loc',page:'GalaxyManage',englishTitle:'GalaxyManage'},
   {key:'locKeywords',label:'關鍵詞',audience:'loc',page:'Groupkeyword',englishTitle:'Groupkeyword'},
@@ -190,46 +190,20 @@ export function managementHeroDefaultImage(slot){
     :MANAGEMENT_HERO_IMAGE_URL;
 }
 
-export function managementHeroSlot(pathname='',scopeId='',editing=false,featureId=''){
-  const parts=String(pathname||'').toLowerCase().split('/').filter(Boolean);
-  const loc=scopeId==='loc'||scopeId==='admin';
-  let key='';
-  if(loc){
-    // Admin is system-only; article management belongs to the Scope entry.
-    if(parts[0]==='admin')return null;
-    else if(parts[0]==='culture'&&parts.includes('manage'))key='members';
-    else if(parts[0]==='statics'&&parts.includes('manage'))key='locKeywords';
-    else if(parts[0]==='trace'&&parts.includes('manage'))key='trace';
-    else if(parts[0]==='search'&&parts.includes('manage'))key='articles';
-    else if(editing)key=parts.includes('culture')?'members':parts.includes('statics')?'locKeywords':parts.includes('search')?'articles':'trace';
-  }else{
-    // Prefer the actual feature instead of the generic /manage pathname:
-    // culture, statistics, trace and search need four distinct editor Heroes.
-    const featureSlots={culture:'time',statics:'keywords',trace:'spatial',search:'advanced'};
-    if(featureId==='setting'||parts.includes('setting'))return null;
-    if(featureSlots[featureId]&&(editing||parts.includes('manage')||parts.includes('keywords')))
-      key=featureSlots[featureId];
-    else if(featureId==='manage')key=parts.includes('search')?'advanced':'spatial';
-    else if(parts.includes('manage')&&parts.includes('search'))key='advanced';
-    else if(parts.includes('manage')&&parts.includes('culture'))key='time';
-    else if(parts.includes('manage')&&parts.includes('statics'))key='keywords';
-    else if(parts.includes('manage'))key='spatial';
-    else if(parts.includes('keywords'))key='keywords';
-  }
-  const slot=MANAGEMENT_HERO_SLOTS.find(item=>item.key===key)||null;
-  // /search/manage is Article Control, not a Search landing page. The first
-  // paint and the fully loaded workspace must use the same Hero identity.
-  // Keep its existing editable ScopeAdvSearch content page unchanged.
-  if(slot&&!loc&&parts.includes('search')&&parts.includes('manage'))
-    return {...slot,label:'文章管理',englishTitle:'Article Management'};
-  return slot;
+export function managementHeroSlot(view='',scopeId=''){
+  const group=scopeId==='loc'||scopeId==='admin';
+  const key=group
+    ?({admin:'system',sourceManage:'members',keywordManage:'locKeywords',searchManage:'articles',manage:'trace'}[view])
+    :({timeManage:'time',keywords:'keywords',manage:'spatial',searchManage:'advanced'}[view]);
+  return MANAGEMENT_HERO_SLOTS.find(item=>item.key===key)||null;
 }
 export function managementHeroCopy(rows,slot){
   if(!slot)return null;
   const row=(Array.isArray(rows)?rows:[]).find(item=>Number(item?.block_order)===1);
+  if(!row)return null;
   return {
-    eyebrow:String(row?.block_eyebrow||slot.englishTitle||'').trim(),
-    title:String(row?.block_title||'').trim()||slot.label,
+    eyebrow:String(row.block_eyebrow||'').trim(),
+    title:String(row.block_title||'').trim(),
     subtitle:String(row?.block_subtitle||'').trim(),
     description:String(row?.block_text||'').trim()
   };
@@ -267,17 +241,6 @@ export function shouldUseSharedFeatureHero(scopeId,featureId){
   return scopeId!=='lrunes'||['culture','statics','search','trace'].includes(id);
 }
 
-// Three fixed personal signs; no public editor, image field, or DB setting can select them.
-const FIXED_HERO_SIGNS=Object.freeze({
-  loc:Object.freeze({key:'codex',label:'LOC 圓環中心實心點標誌',text:''}),
-  lo3rwang:Object.freeze({key:'anchor',label:'光之定錨點',text:'光之定錨點'}),
-  lrunes:Object.freeze({key:'moon',label:'玄韻家黃色圓點標誌',text:''})
-});
-
-export function heroExtraFor(scopeId=''){
-  return FIXED_HERO_SIGNS[String(scopeId||'')]||null;
-}
-
 /** Composable home frames, children and feature-page headers share one object. */
 export const HomeBlock=Object.freeze({
   entityLimit:HOME_BLOCK_ENTITY_LIMIT,
@@ -292,7 +255,6 @@ export const HomeBlock=Object.freeze({
   rows:homeBlockRows,
   visibleEntities:visibleHomeEntities,
   stripLocHomeEditorPlaceholders,
-  heroExtraFor,
   childPresentation,
   removeDuplicatedLegacySubtitle,
   plainBlockLine,

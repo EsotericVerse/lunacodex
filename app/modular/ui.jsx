@@ -1,7 +1,7 @@
 'use client';
 import UiText,{useUiText} from '../i18n/UiText';
 
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {createContext,useContext,useEffect,useMemo,useRef,useState} from 'react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname} from 'next/navigation';
@@ -22,8 +22,9 @@ import {scopeHref} from './routing/scope-registry';
 const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const ArticleTimeAnchorAction=dynamic(()=>import('./ArticleTimeAnchorAction'),{loading:()=>null});
 
+export const ManagementHeroContext=createContext('');
+
 function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=false,scopeId=''}){
-  const sign=HomeBlock.heroExtraFor(scopeId);
   return <>
     {eyebrow?<p className="loc-eyebrow">{eyebrow}</p>:null}
     <div className="home-title-row">
@@ -33,8 +34,6 @@ function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=fa
     {description?(rich
       ?<div className="scope-hero-description scope-shared-hero-rich" dangerouslySetInnerHTML={{__html:description}}/>
       :<div className="scope-hero-description">{description}</div>):null}
-    {sign?<span className={'home-hero-identity home-hero-identity--'+sign.key}
-      role="img" aria-label={sign.label}>{sign.text}</span>:null}
   </>;
 }
 
@@ -51,7 +50,8 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const pathname=usePathname();
   const editDock=useEditDock();
   const editing=Boolean(editDock?.active&&editDock.scopeId===scopeId);
-  const managementSlot=HomeBlock.managementHeroSlot(pathname,scopeId,editing,featureId);
+  const managementView=useContext(ManagementHeroContext);
+  const managementSlot=HomeBlock.managementHeroSlot(managementView,scopeId);
   const managementMode=Boolean(managementSlot);
   const sharedEnabled=HomeBlock.shouldUseSharedFeatureHero(scopeId,featureId);
   const artworkId=managementMode?'manage':featureId;
@@ -82,7 +82,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     :(featureId==='admin'?groupHeroRows:
       (scopeId==='loc'&&!HomeBlock.shouldUseSingleFeatureHeroImage(featureId))
         ?groupHeroRows:scopeHeroRows).find(row=>Number(row.block_order)===1);
-  const heroImageOverride=heroImageUrlOf(heroImageRow)||(managementMode?HomeBlock.managementHeroDefaultImage(managementSlot):'');
+  const heroImageOverride=heroImageUrlOf(heroImageRow);
   const heroStyle=heroImageOverride?{'--scope-feature-hero-image':`url("${heroImageOverride}")`}:undefined;
   const shared=managementMode?HomeBlock.managementHeroCopy(managementTextQuery.data,managementSlot)
     :sharedEnabled?HomeBlock.featureHeroFor(groupHeroRows):null;
@@ -99,11 +99,15 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
         <FeatureHeroContent
           scopeId={scopeId}
           eyebrow={shared?.eyebrow||''}
-          title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
-          subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
-          description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
+          title={managementMode?shared?.title||'':titleOverride||shared?.title||(hasFeatureHero?'':fallbackCopy.title)}
+          subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:hasFeatureHero?'':fallbackCopy.subtitle}
+          description={managementMode?shared?.description||'':shared?shared.description:hasFeatureHero?'':fallbackCopy.description}
           rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
         />
+        {(managementMode?(managementTextQuery.isError||managementImageQuery.isError):publicHeroQuery.isError)
+          ?<p className="scope-status scope-error" role="alert">主視覺資料讀取失敗，請重新整理。</p>:null}
+        {(managementMode?managementTextQuery.isSuccess&&!shared:hasFeatureHero&&publicHeroQuery.isSuccess&&sharedEnabled&&!shared)
+          ?<p className="scope-status" role="status">尚無主視覺資料。</p>:null}
       </header>
       <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
         {children}

@@ -168,10 +168,10 @@ test('all published Blocks have an exact lazy manifest entry and a stable typed 
 const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('author Article Control Hero has stable identity even before live blocks arrive',()=>{
-  const slot=managementHeroSlot('/lo3rwang/search/manage','lo3rwang',false,'search');
+  const slot=managementHeroSlot('searchManage','lo3rwang');
   assert.equal(slot.label,'文章管理');
-  assert.equal(slot.page,'ScopeAdvSearch');
-  assert.equal(managementHeroSlot('/lo3rwang/search','lo3rwang',false,'search'),null);
+  assert.equal(slot.page,'ScopeArticle');
+  assert.equal(managementHeroSlot('search','lo3rwang'),null);
 });
 }
 

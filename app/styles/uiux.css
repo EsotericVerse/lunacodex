@@ -470,7 +470,7 @@ button,a,.loc-control,.loc-button,
   background-color:#101725;
   background-image:
     linear-gradient(90deg,rgba(3,6,15,.76) 0%,rgba(3,6,15,.34) 46%,rgba(3,6,15,.08) 100%),
-    var(--scope-feature-hero-image);
+    var(--scope-feature-hero-image,none);
   background-position:center center,center center;
   background-repeat:no-repeat,no-repeat;
   background-size:100% 100%,cover;
@@ -514,17 +514,6 @@ button,a,.loc-control,.loc-button,
   align-self:flex-start;
   text-align:start;
 }
-.scope-feature-hero--culture{--scope-feature-hero-image:url('../../assets/pics/scope-culture.jpg')}
-.scope-feature-hero--statics{--scope-feature-hero-image:url('../../assets/pics/scope-statics.jpg')}
-.scope-feature-hero--search{--scope-feature-hero-image:url('../../assets/pics/scope-search.jpg')}
-.scope-feature-hero--trace{--scope-feature-hero-image:url('../../assets/pics/scope-gn.jpg')}
-.loc-next-main[data-loc-scope="loc"] .scope-feature-hero--culture{--scope-feature-hero-image:url('../../assets/pics/LOC-culture.jpg')}
-.loc-next-main[data-loc-scope="loc"] .scope-feature-hero--statics{--scope-feature-hero-image:url('../../assets/pics/LOC-statics.jpg')}
-.loc-next-main[data-loc-scope="loc"] .scope-feature-hero--search{--scope-feature-hero-image:url('../../assets/pics/LOC-search.jpg')}
-.loc-next-main[data-loc-scope="loc"] .scope-feature-hero--trace{--scope-feature-hero-image:url('../../assets/pics/LOC-gn.jpg')}
-.scope-feature-hero--admin{--scope-feature-hero-image:url('../../assets/pics/LOC-admin.jpg')}
-.scope-feature-hero--manage{--scope-feature-hero-image:url('../../assets/pics/scope-gn.jpg')}
-.scope-feature-hero--setting{--scope-feature-hero-image:url('../../assets/pics/local-setting.jpg')}
 
 .loc-card,.loc-panel,.scope-card,.scope-feature-card{
   padding:clamp(1.15rem,2.4vw,1.8rem);
