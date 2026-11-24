@@ -74,6 +74,13 @@ function RichHtml({html,className='',stripImage=false,scopeId='loc'}){
   return content.trim()?<div className={className} dangerouslySetInnerHTML={{__html:content}}/>:null;
 }
 
+function revealHomeImage(event){
+  event.currentTarget.dataset.homeMediaReady='true';
+}
+function revealCachedHomeImage(node){
+  if(node?.complete&&node.naturalWidth>0)node.dataset.homeMediaReady='true';
+}
+
 function SharedHomeBlockDisplay(slot,scopeId='loc'){
   const hero=Number(slot?.order)===1;
   const sign=hero?HomeBlock.heroExtraFor(scopeId):null;
@@ -90,16 +97,19 @@ function SharedHomeBlockDisplay(slot,scopeId='loc'){
   const body=<RichHtml key="body" html={slot.text} stripImage scopeId={scopeId} className="loc-home-block__body"/>;
   const media=image.src?(hero?<figure key="media" className="loc-home-block__media home-hero-visual" aria-label={image.alt}>
     <picture>{image.small?<source media="(max-width: 760px)" srcSet={image.small.src}/>:null}
-      <img src={image.src} alt="" aria-hidden="true" loading="eager" fetchPriority="high" decoding="async"/></picture>
+      <img key={image.src} src={image.src} alt="" aria-hidden="true" loading="eager" fetchPriority="high" decoding="async"
+        ref={revealCachedHomeImage} onLoad={revealHomeImage}/></picture>
   </figure>:<article key="media" className="loc-home-block__media loc-home-block__media-bubble loc-bubble"
     style={{'--loc-home-media-max':image.width+'px'}}>
-    <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/>
+    <img key={image.src} src={image.src} alt={image.alt} loading="lazy" decoding="async"
+      ref={revealCachedHomeImage} onLoad={revealHomeImage}/>
   </article>):null;
   return <>
     {header}
     {imageOnly?<div key="body" className="loc-home-block__body loc-home-block__body--image"
       style={{'--loc-home-media-max':image.width+'px'}}>
-      <img src={image.src} alt={image.alt} loading="lazy" decoding="async"/>
+      <img key={image.src} src={image.src} alt={image.alt} loading="lazy" decoding="async"
+      ref={revealCachedHomeImage} onLoad={revealHomeImage}/>
     </div>:body}
     {children.length?<div key="children" className="loc-home-block__children" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([slot.bubbleColumns],slot.pageName||'index')}}>
       {children.map((entity,index)=>{
