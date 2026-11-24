@@ -123,3 +123,14 @@ test('LOC has disabled SW registration while retaining scoped cleanup',()=>{
   assert.match(shell,/reg\.unregister\(\)/);
   assert.match(shell,/name\.startsWith\('loc-static-next-'\)/);
 });
+
+test('mapped motion.section key precedes every JSX spread',()=>{
+  const source=src('app/loc/blocks/ScopeEditableBlocks.jsx');
+  const section=source.split('const node=<HomeDisplayTag')[1]?.split('>')[0];
+  assert.ok(section,'mapped motion.section opening tag missing');
+  const keyAt=section.indexOf("key={slot.uid||'order:'+slot.order}");
+  const spreadAt=section.indexOf('{...homeMotionProps(slot)}');
+  assert.ok(keyAt>=0&&spreadAt>=0&&keyAt<spreadAt,
+    'React/Next can report a missing list key if key comes after a props spread');
+  assert.equal(section.match(/\bkey=/g)?.length,1,'mapped section must have one key');
+});
