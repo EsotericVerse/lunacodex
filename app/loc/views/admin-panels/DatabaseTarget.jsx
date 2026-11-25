@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {resolveDatabaseRouting} from '../../providers/routing/config.mjs';
-import {readBackupReadiness} from '../../actions/admin/queries.mjs';
+import {readBackupReadiness,readLocModelCache,updateLocModelCache} from '../../actions/admin/queries.mjs';
 
 const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
 const ACCESS_FILE='app/loc/providers/access.js';
@@ -10,6 +10,21 @@ const routing=resolveDatabaseRouting();
 
 export default function DatabaseTarget(){
   const [backupHealth,setBackupHealth]=useState({state:'idle'});
+  const [r2,setR2]=useState(null);
+  const [r2Busy,setR2Busy]=useState(false);
+  const [r2Error,setR2Error]=useState('');
+  useEffect(()=>{
+    let active=true;
+    readLocModelCache().then(data=>{if(active)setR2(data);})
+      .catch(()=>{if(active)setR2Error('無法讀取 R2 設定。');});
+    return()=>{active=false;};
+  },[]);
+  const toggleR2=async enabled=>{
+    setR2Busy(true);setR2Error('');
+    try{setR2(await updateLocModelCache(enabled));}
+    catch{setR2Error('無法儲存 R2 設定。');}
+    finally{setR2Busy(false);}
+  };
   useEffect(()=>{
     let active=true;
     if(!DATABASE_ACCESS_LIST.some(item=>item.backup_selected===true)){
@@ -47,6 +62,16 @@ export default function DatabaseTarget(){
     <p><a className="loc-button" href={FILE_URL} target="_blank" rel="noopener noreferrer">
       在 GitHub 查看預設 access.js
     </a></p>
+    <section className="scope-management-wide-field">
+      <h3 className="admin-workspace-section-heading">Hyperdrive / R2</h3>
+      <label><input type="checkbox" checked={r2?.enabled===true}
+        disabled={!r2?.available||r2Busy}
+        onChange={event=>void toggleR2(event.target.checked)}/> 啟用 R2 Model Cache</label>
+      <p className="scope-status" role="status">{r2Error||
+        (!r2?'讀取設定中…':!r2.available?'R2 未綁定':
+          r2.pending?'資料異動中，暫時使用即時查詢':
+          r2.enabled?'已啟用':'已停用')}</p>
+    </section>
     <p className="scope-status" role="status">備援：
       {backupHealth.state==='absent'?'未設定':
         backupHealth.state==='checking'?'檢查中…':

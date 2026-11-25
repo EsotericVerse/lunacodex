@@ -71,7 +71,8 @@ export async function queryCultureContent(searchParams){
   if(kind==='culture_density'&&(!start||!end||start>end)||
     kind==='culture_anchors'&&(start||end))
     throw Error('Invalid Culture query range');
-  return withPublicLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope,modelCache:{model:kind,args:[start,end]}},
+    async(db,port)=>{
     if(kind==='culture_anchors'){
       const table=relation(scope,'anchor',port);
       const rows=await db.selectFrom(table).select(['uid','type','title','attr'])
@@ -127,6 +128,7 @@ export async function queryTimeAnchors({scope:scopeValue,mode='public',
       const data=assertZModelAnchorFeatureRows(rows.slice(0,limit));
       return {data,nextCursor:rows.length>limit?String(data.at(-1).uid):null};
     };
-  return mode==='public'?withPublicLocRead({scope},read):
+  return mode==='public'?withPublicLocRead({scope,modelCache:{
+    model:'time_anchors',args:[cursor,limit]}},read):
     withAuthorizedLocRead({scope,writeScopes:[scope]},read);
 }

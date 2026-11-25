@@ -212,7 +212,8 @@ export async function queryTrace(args={}){
     throw Error('Invalid Trace options');
   if(options.classUid!=null&&(!/^[A-Za-z0-9]{8}$/.test(String(options.classUid))))
     throw Error('Invalid Keyword Class UID');
-  return withPublicLocRead({scope},async(db,port)=>{
+  const modelCache=view==='lane_daily'?null:{model:view,args:[start,end,options]};
+  return withPublicLocRead({scope,modelCache},async(db,port)=>{
     const table=galaxyTable(scope,port);
     let data;
     if(view==='trace_places')

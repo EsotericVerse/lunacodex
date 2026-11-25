@@ -11,6 +11,12 @@
       "localConnectionString": "postgresql://loc_local:loc_local@127.0.0.1:1/loc_local"
       }
     ],
+    "r2_buckets": [
+      {
+        "binding": "LOC_MODEL_CACHE",
+        "bucket_name": "loc-isr-incremental-cache"
+      }
+    ],
     "observability": {
       "logs": {
         "enabled": true,
@@ -49,6 +55,12 @@
       "binding": "LOC_HYPERDRIVE",
       "id": "4305ed11e9f841b7ac0d19e7daecaf9a",
         "localConnectionString": "postgresql://loc_local:loc_local@127.0.0.1:1/loc_local"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "LOC_MODEL_CACHE",
+      "bucket_name": "loc-isr-incremental-cache"
     }
   ],
   "services": [

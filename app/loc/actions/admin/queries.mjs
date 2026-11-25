@@ -5,6 +5,7 @@ import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
+import {modelCacheStatus,setModelCacheEnabled} from '../../db/model-cache.mjs';
 
 export async function readLocSourceHierarchy(){
   return withAuthorizedLocRead({global:true},async db=>{
@@ -70,4 +71,12 @@ export async function readBackupReadiness(){
       return {online:true,schema:false};
     }
   });
+}
+
+export async function readLocModelCache(){
+  return withAuthorizedLocRead({global:true},()=>modelCacheStatus());
+}
+export async function updateLocModelCache(enabled){
+  if(typeof enabled!=='boolean')throw Error('Invalid R2 Model Cache setting');
+  return withAuthorizedLocRead({global:true},()=>setModelCacheEnabled(enabled));
 }

@@ -1,5 +1,6 @@
 import {withAuthorizedLocRead} from '../read-context.mjs';
 import {canLocAccess,bindLocAuthorization} from '../../providers/loc-authorization.mjs';
+import {beginModelCacheWrite} from '../../db/model-cache.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 function scopeId(value){
@@ -28,6 +29,9 @@ export function withKeywordScope(value,{write=false,owner=false}={},run,dependen
           throw Object.assign(new Error('Scope Keyword authorization expired'),
             {httpStatus:403});
       };
-      return run({db,port,scope,owner:owns,authorizeTransaction});
+      if(!write)return run({db,port,scope,owner:owns,authorizeTransaction});
+      const finish=await beginModelCacheWrite();
+      try{return await run({db,port,scope,owner:owns,authorizeTransaction});}
+      finally{await finish();}
     },dependencies);
 }

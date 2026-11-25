@@ -38,7 +38,8 @@ export async function queryStatics(args={}){
     !options||typeof options!=='object'||Array.isArray(options)||
     Object.keys(options).some(key=>!['classUid','source'].includes(key))||
     start&&end&&start>end)throw Error('Invalid Keyword query');
-  return withPublicLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope,modelCache:{model:view,args:[start,end,options]}},
+    async(db,port)=>{
     const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
     const anchor=relation(scope,'anchor',port);
     const configTable=portableRelation(scope,port.engine,namespace);
@@ -198,13 +199,14 @@ export async function queryStaticsContent(searchParams){
   const config=active.get(scope)?.config;
   if(!scopeFeatureEnabled(config,'statistics_able'))
     throw Error('Statistics feature is not published');
-  if(kind==='loc')return withPublicLocRead({scope:'loc',scopes:
+  const modelCache={model:'statics_'+kind,args:[start,end]};
+  if(kind==='loc')return withPublicLocRead({scope:'loc',modelCache,scopes:
     [...active.keys()].filter(id=>id!=='loc'&&id!=='admin'&&
       scopeFeatureEnabled(active.get(id)?.config,'statistics_able'))
   },async(db,port)=>({
     data:await locStatistics(db,start,end,port),count:null
   }));
-  return withPublicLocRead({scope},async(db,port)=>({
+  return withPublicLocRead({scope,modelCache},async(db,port)=>({
     data:await scopeStatistics(db,scope,kind,start,end,port),count:null
   }));
 }

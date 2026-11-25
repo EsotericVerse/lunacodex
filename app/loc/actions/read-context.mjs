@@ -5,6 +5,7 @@ import {bindLocAuthorization} from '../providers/loc-authorization.mjs';
 import {publishedLocAccess} from '../permissions/loc-business-grants.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
+import {readPublicModelCache} from '../db/model-cache.mjs';
 
 const activeScopes=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false)
   .map(row=>row.scope_id));
@@ -69,7 +70,7 @@ export async function withAuthorizedLocRead({scope,scopes=[],global=false,
 // Public feature readers use their own fixed projections and filters. This
 // connection helper deliberately accepts no SQL, table, columns or query
 // options from the caller; it does not create a public query endpoint.
-export async function withPublicLocRead({scope,scopes=[],targetId=null},read,
+export async function withPublicLocRead({scope,scopes=[],targetId=null,modelCache=null},read,
   dependencies={}){
   const requested=[...new Set([scope,...scopes].filter(Boolean).map(String))];
   if(!requested.length||requested.some(id=>!activeScopes.has(id)||id==='admin'))
@@ -86,12 +87,17 @@ export async function withPublicLocRead({scope,scopes=[],targetId=null},read,
     ?DATABASE_ACCESS_LIST.find(row=>row.backup_selected===true&&row.target_id===targetId)
     :DATABASE_ACCESS_LIST.find(row=>row.selected===true);
   if(!primary)throw Object.assign(new Error('LOC database unavailable'),{httpStatus:503});
-  const port=await openDatabase(process.env,primary.target_id);
-  try{
-    bindLocAuthorization(port.db,{role:'anon',engine:port.engine,claims:{}});
-    return await read(port.db,port,{session:null,grants:[],scopes:requested});
-  }
-  finally{await closeDatabase(port);}
+  const load=async()=>{
+    const port=await openDatabase(process.env,primary.target_id);
+    try{
+      bindLocAuthorization(port.db,{role:'anon',engine:port.engine,claims:{}});
+      return await read(port.db,port,{session:null,grants:[],scopes:requested});
+    }finally{await closeDatabase(port);}
+  };
+  if(!modelCache||targetId)return load();
+  return readPublicModelCache({scope,model:modelCache.model,args:modelCache.args,
+    publication:[primary.target_id,primary.engine,primary.schema_name,
+      SCOPE_ROUTE_INDEX.filter(row=>requested.includes(row.scope_id))]},load);
 }
 
 export function assertLocReadGrant(grants,scope){

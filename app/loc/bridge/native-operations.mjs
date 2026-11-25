@@ -19,6 +19,7 @@ import {executeManagedKyselyWrite,executeManagedKyselyAction,
   prepareManagedKyselyWrite} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
 import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../db/native-kysely.mjs';
+import {beginModelCacheWrite} from '../db/model-cache.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
@@ -225,6 +226,7 @@ export async function handleNativeLocOperation(request,env={},{
   let shortImportActor=null;
   let selected=null;
   let releaseAbort=()=>{};
+  let finishModelCacheWrite=async()=>{};
   try{
     let body;
     try{body=await readBoundedJson(request.body,MAX_BYTES)}
@@ -354,6 +356,7 @@ export async function handleNativeLocOperation(request,env={},{
         ?body.operations.map(payload=>prepareManagedKyselyWrite({kind:'managed-write',payload}))
         :body.kind==='managed-write'?prepareManagedKyselyWrite(body):null
       :null;
+    if(writeKinds.has(body.kind))finishModelCacheWrite=await beginModelCacheWrite(env);
     // Galaxy reads stay in their feature Server Actions. LAS only maps write
     // envelopes and forwards a verified OAuth bearer to fixed write operations.
     if(body.kind==='mcp-conversation'){
@@ -543,6 +546,7 @@ export async function handleNativeLocOperation(request,env={},{
       ...(profileFailure?{code,stage:'db_connection'}:{})}},
       status>=400&&status<=599?status:500);
   }finally{
+    await finishModelCacheWrite();
     releaseAbort();
     // The transaction has completed or thrown before this cleanup; every
     // rejected authorization, read, import and write releases its connection.
