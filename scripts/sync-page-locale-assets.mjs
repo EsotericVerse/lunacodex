@@ -51,7 +51,7 @@ const aliases={};
 const byContent=new Map();
 let published=0;
 for(const dir of pages){
-  const route=path.relative(app,dir).replace(/\\/g,'/')||'index';
+  const route=path.relative(app,dir).replace(/\\/g,'/').split('/').filter(segment=>!/^\([^/]+\)$/.test(segment)).join('/')||'index';
   for(const locale of locales){
     const key=route+'/'+locale;
     const {bytes,empty}=readLocale(localeSource(route,locale));

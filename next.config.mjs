@@ -14,9 +14,11 @@ const nextConfig = {
   // LRS owns the full card namespace. Web requests leave LOC before rendering.
   ...(process.env.NEXT_PUBLIC_LOC_NATIVE_BUNDLE==='1'?{}:{
     async redirects(){
-      return ['/card/:path*','/lrunes/card/:path*'].map(source=>({
-        source,destination:LOC_SERVICE_ORIGINS.lrs+'/card/:path*',permanent:false
-      }));
+      return [
+        ...['/card/:path*','/lrunes/card/:path*'].map(source=>[source,'/card/:path*']),
+        ...['/daily/:path*','/lrunes/daily/:path*'].map(source=>[source,'/card/daily/:path*']),
+        ...['/game/:path*','/lrunes/game/:path*'].map(source=>[source,'/game/:path*'])
+      ].map(([source,path])=>({source,destination:LOC_SERVICE_ORIGINS.lrs+path,permanent:false}));
     }
   })
 };

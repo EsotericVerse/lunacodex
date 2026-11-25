@@ -1,5 +1,5 @@
-import LrsWebRedirect from '../loc/views/LrsWebRedirect';
-import {lrsMetadata} from '../seo/metadata';
+import LrsWebRedirect from '../LrsWebRedirect';
+import {lrsMetadata} from '../../seo/metadata';
 
 export const metadata=lrsMetadata({
   title:'月之符文桌遊｜本機牌局',

@@ -1,6 +1,6 @@
 'use client';
 import {useEffect} from 'react';
-import {locServiceHref} from '../../modular/routing/service-route-index.mjs';
+import {locServiceHref} from '../modular/routing/service-route-index.mjs';
 export default function LrsWebRedirect({path='/'}){
  const suffix=String(path||'/').split('/').filter(Boolean).join('/');
  const target=locServiceHref('lrs','/'+(suffix?suffix+'/':''));

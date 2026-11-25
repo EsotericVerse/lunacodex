@@ -1,5 +1,5 @@
-import LrsWebRedirect from '../../loc/views/LrsWebRedirect';
-import {lrsMetadata} from '../../seo/metadata';
+import LrsWebRedirect from '../../LrsWebRedirect';
+import {lrsMetadata} from '../../../seo/metadata';
 
 export const metadata=lrsMetadata({
   title:'符文圖鑑 · 2D／3D｜月之符文',

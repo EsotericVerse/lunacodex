@@ -1,5 +1,5 @@
-import LrsWebRedirect from '../loc/views/LrsWebRedirect';
-import {lrsMetadata} from '../seo/metadata';
+import LrsWebRedirect from '../LrsWebRedirect';
+import {lrsMetadata} from '../../seo/metadata';
 
 // LOC owns the Scope; LRS serves /daily and its standalone subroutes.
 export const metadata=lrsMetadata({

@@ -1,5 +1,5 @@
-import LrsWebRedirect from '../loc/views/LrsWebRedirect';
-import {lrsMetadata} from '../seo/metadata';
+import LrsWebRedirect from '../LrsWebRedirect';
+import {lrsMetadata} from '../../seo/metadata';
 
 export const metadata=lrsMetadata({
   title:'符文美術場域｜月之符文',

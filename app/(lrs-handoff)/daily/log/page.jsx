@@ -1,5 +1,5 @@
-import LrsWebRedirect from '../../loc/views/LrsWebRedirect';
-import {lrsMetadata} from '../../seo/metadata';
+import LrsWebRedirect from '../../LrsWebRedirect';
+import {lrsMetadata} from '../../../seo/metadata';
 
 // Historical daily URLs belong to the independent LRS /daily namespace.
 export const metadata=lrsMetadata({
