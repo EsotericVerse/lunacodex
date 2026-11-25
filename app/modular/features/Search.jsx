@@ -40,7 +40,7 @@ import {locGlobalUid} from '../../../packages/zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {galaxyAble} from '../../loc/model/galaxy-able.mjs';
-import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity,selectStyleKeywordMatches} from '../../loc/galaxy/galaxy-query';
+import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity} from '../../loc/galaxy/galaxy-query';
 import {readPublicSourceTaxonomy as selectSourceTaxonomy} from '../../loc/source/catalog-public.mjs';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope/scope-data';
 
@@ -375,6 +375,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         return data?{...data,display_name:String(item.display_name||item.scope_id)}:null;
       }).filter(Boolean);
   },[scopeId,scopesQuery.data,privilegedSearch,account.authorizer]);
+  const scopeById=useMemo(()=>new Map(availableScopes.map(item=>[item.id,item])),[availableScopes]);
   const targetScopes=useMemo(()=>scopeId==='loc'&&managementMode&&scopeFilter
     ?availableScopes.filter(item=>item.id===scopeFilter)
     :availableScopes,[scopeId,managementMode,scopeFilter,availableScopes]);
@@ -555,19 +556,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           :options.browse?t('uiExtra.searchUI.browsingResults'):UI_COPY.format.searchResult({label:'「'+searchCollectionLabel+'」',query:q,hasMore:search.hasMore,partial}));
         scrollToResults();
       }
-      if(wantsStyleTags&&!styleResult){
-        // Append optional matches only while the original query and filters are current.
-        void stylePromise.then(({rows})=>{
-          if(signal.aborted||activeSearchOptionsRef.current!==options||!rows?.length)return;
-          const additional=rows.map(({row,source})=>toResult(row,source,scopeId,UI_COPY)).filter(Boolean);
-          if(!additional.length)return;
-          setResults(current=>prioritizeStyleTagResults(mergeSummaryResults([...additional,...current],UI_COPY)).slice(0,pageSize));
-          setStatus(UI_COPY.format.searchResult({
-            label:'「'+searchCollectionLabel+'」',query:q,hasMore:search.hasMore,
-            partial:search.failures?.length?t('uiExtra.searchUI.partialExtendedData'):''
-          }));
-        });
-      }
     }catch(exception){
       if(id!==searchId.current||controller.signal.aborted)return;
       if(timeout.aborted){
@@ -698,7 +686,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(managementMode)setScopeFilter(filters.scopeFilter);
     const term=place||value;
     setPlaceOnly(Boolean(place));
-    if(term){setQuery(term);executeSearch(term,null,{overrideOptions:{...filters,placeOnly:managementMode&&Boolean(place),browse:false}});}
+    if(term){setQuery(term);void executeSearch(term,null,{overrideOptions:{...filters,placeOnly:managementMode&&Boolean(place),browse:false,sortDirection:articleSort}});}
   },[searchParams,scopeId,scopesQuery.isSuccess,scopesQuery.data,managementMode,managementAuthorized]);
 
 
