@@ -1,10 +1,12 @@
 import {KEYWORD_SCAN_START_ROWS,KEYWORD_SCAN_CHECKPOINT_ROWS}
   from './item-count-analysis.mjs';
 import {sql} from 'kysely';
-// LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
+// LOC native Keywords: Pattern owns literals and per-Item rules;
 // Anchor.num is UID-list cardinality; Item/Group/Pattern.attr.total stores
 // verified hit totals. Class completion remains in Scope keyword_meta.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
+import {projectPatternWords,readItemPatternRows,planItemPatternLinks,keywordIdentity} from './pattern-catalog.mjs';
+import {allocateAnchorUid} from '../model/uid.js';
 import {analyzeItemKeywordCounts,readItemKeywordProjection,
   itemKeywordStatistics,itemScope} from './item-count-analysis.mjs';
 import {createIndexedDateKeywordReader} from './article-reader.mjs';
@@ -102,25 +104,14 @@ async function classTree(db,scope,classUid,{withPatterns=false}={}){
     .where('uid','in',itemUids).execute():[];
   const byItem=new Map(items.map(item=>[item.uid,item]));
   if(itemUids.some(uid=>!byItem.has(uid)))fail('Keyword Item relationship incomplete');
+  const rows=await readItemPatternRows(db,anchor,items,{all:withPatterns});
+  const byPattern=new Map(rows.map(row=>[row.uid,row]));
   const words=ordered.flatMap(group=>children(group).map(uid=>{
     const item=byItem.get(uid);
     return {uid,item_name:String(item.title||''),group_uid:group.uid,
-      keywords:Array.isArray(attr(item).keyword)?attr(item).keyword:[]};
+      patternBacked:true,keywords:projectPatternWords(item,byPattern)};
   }));
-  // Fetch Pattern labels only for the actual analysis, not every public
-  // statistics/catalog read. Item.attr.uid already stores the canonical
-  // terminal Pattern UIDs. One query covers every distinct linked Pattern.
-  let patterns=[];
-  if(withPatterns){
-    const patternIds=[...new Set(items.flatMap(children))].sort();
-    const matches=patternIds.length?await db.selectFrom(anchor)
-      .select(['uid','title']).where('type','=','pattern')
-      .where('uid','in',patternIds).execute():[];
-    const byPattern=new Map(matches.map(row=>[row.uid,row]));
-    if(patternIds.some(uid=>!byPattern.has(uid)))
-      fail('Keyword Pattern relationship incomplete',409);
-    patterns=patternIds.map(uid=>({uid,title:String(byPattern.get(uid).title||'')}));
-  }
+  const patterns=rows.map(row=>({uid:row.uid,title:String(row.title||'')}));
   return {root,groups:ordered,items:words,itemRows:items,patterns};
 }
 
@@ -143,13 +134,15 @@ export async function readKeywordWorkspace(db,scope,{cursor='',limit=250}={}){
   if(cursor)q=q.where('uid','>',cursor);
   const rows=await q.orderBy('uid','asc').limit(limit+1).execute();
   const page=rows.slice(0,limit);
+  const patterns=await readItemPatternRows(db,anchorName(scope),page.filter(row=>row.type==='item'));
+  const byPattern=new Map(patterns.map(row=>[row.uid,row]));
   const config=await db.selectFrom(configName(scope))
     .select(['current_keyword_class_uid','keyword_min_chars',
       'keyword_min_documents','keyword_class_share_enabled',
       'keyword_meta','staticstime'])
     .where('id','=',scope).executeTakeFirst();
   if(!config)fail('Keyword Scope not configured',404);
-  return {rows:page,config,nextCursor:rows.length>limit
+  return {rows:page.map(row=>row.type==='item'?{...row,words:projectPatternWords(row,byPattern)}:row),config,nextCursor:rows.length>limit
     ?String(page.at(-1).uid):null};
 }
 
@@ -229,7 +222,7 @@ export async function readKeywordCatalog(db,scope,classUid,{owner=false}={}){
     uid:node.uid,type:node.type,name:String(node.title||''),
     desc:node.type==='item'?'':String(node.description||''),
     lists:node.type==='class'?children(node):node.type==='group'?children(node):
-      Array.isArray(attr(node).keyword)?attr(node).keyword:[],
+      tree.items.find(item=>item.uid===node.uid)?.keywords||[],
     uid_lists:[],total:node.type==='item'?indexed.get(node.uid)?.hit_count||0:
       node.type==='group'?groups.get(node.uid)?.hit_count||0:0
   });
@@ -276,16 +269,18 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
     // A literal autocomplete lookup on Pattern.title. No language translation,
     // English/Chinese mapping, Galaxy content scan, or article UID index.
     const rows=await db.selectFrom(anchorName(scope))
-      .select(['uid','title']).where('type','=','pattern').execute();
+      .select(['uid','title','attr']).where('type','=','pattern').execute();
     for(const row of rows){
       const literal=String(row.title||'').trim(),key=norm(literal);
       if(!key.includes(prefix)||!literal)continue;
-      if(!found.has(key))found.set(key,{pattern:literal,count:0});
+      const total=Math.max(0,Number(attr(row).total)||0);
+      const previous=found.get(key);
+      found.set(key,{pattern:previous?.pattern||literal,count:(previous?.count||0)+total});
     }
   }
   return [...found.values()].sort((a,b)=>
     Number(norm(b.pattern).startsWith(prefix))-Number(norm(a.pattern).startsWith(prefix))||
-    a.pattern.localeCompare(b.pattern)).slice(0,10);
+    b.count-a.count||a.pattern.localeCompare(b.pattern)).slice(0,10);
 }
 
 // PostgreSQL row lock makes Reset, Checkpoint and Finalize linearizable.
@@ -515,7 +510,7 @@ export async function resetKeywordScope(db,scope,classUid,{
     if(!cfg)fail('Keyword Scope not configured',404);
     const tree=await classTree(trx,scope,classUid,{withPatterns:true});
     const ids=[...new Set([...tree.groups.map(x=>x.uid),
-      ...tree.items.map(x=>x.uid),...tree.patterns.map(x=>x.uid)])];
+      ...tree.items.map(x=>x.uid)])];
     // Reset only analyzed counts: preserve every structural UID and num.
     // Same row-locked metadata transaction as completion, but one SQL
     // statement clears all cached counts without changing Anchor.num.
@@ -536,7 +531,7 @@ export async function resetKeywordScope(db,scope,classUid,{
     }).where('id','=',scope).execute();
     return {count:changed,retainedShared:0,cleared:true,
       resetEpoch:keywordClassEpoch(meta,classUid),
-      clearedPatterns:tree.patterns.length};
+      clearedPatterns:0};
   });
 }
 

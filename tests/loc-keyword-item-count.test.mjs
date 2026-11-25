@@ -104,7 +104,7 @@ test('tail checkpoint survives finalization failure and retries without reclassi
   assert.equal(reads,fetched,'retrying finalization must not SELECT Galaxy again');
 });
 
-test('Pattern Anchor UIDs count occurrences during the same article pass, shared once',()=>{
+test('Pattern Anchor UIDs count articles during the same article pass, shared once',()=>{
   const linked=[
     {uid:'PATT0001',title:'月光'},
     {uid:'PATT0002',title:'光'},
@@ -122,9 +122,9 @@ test('Pattern Anchor UIDs count occurrences during the same article pass, shared
     {uid:'GALAXY03',keyword:false,title:'',content:'月光月光'}
   ]);
   assert.deepEqual(acc.totals().patternCounts,{
-    PATT0001:2,PATT0002:3,PATT0003:1
+    PATT0001:1,PATT0002:2,PATT0003:1
   });
-  assert.equal(acc.totals().patternCounts.PATT0001,2,
+  assert.equal(acc.totals().patternCounts.PATT0001,1,
     'Shared Pattern UID must not be added once per Item');
   assert.equal(JSON.stringify(acc.state).includes('GALAXY01'),false,
     'Checkpoint must not carry article UID postings');
@@ -189,3 +189,14 @@ test('keyword aggregate writes normalize repeated physical Item UIDs',()=>{
   ]),/Invalid Keyword aggregate counts/);
 });
 
+
+test('shared Pattern article counts and Item totals do not multiply repeated occurrences',()=>{
+  const items=[{uid:'ITEM0001',item_name:'靈',group_uid:'GROUP001',patternBacked:true,keywords:['靈魂','精神']},
+    {uid:'ITEM0002',item_name:'魂',group_uid:'GROUP001',patternBacked:true,keywords:['靈魂']}];
+  const a=createItemCountAccumulator(items,groups,null,{patterns:[{uid:'PATT0001',title:'靈魂'}]});
+  a.absorb([doc('GALAXY01','靈魂靈魂精神')]);
+  assert.deepEqual(a.totals().patternCounts,{PATT0001:1});
+  assert.deepEqual(a.totals().itemCounts,{ITEM0001:1,ITEM0002:1});
+  assert.equal(a.totals().groupCounts.GROUP001,2);
+  assert.equal(a.totals().groupDocuments.GROUP001,1);
+});

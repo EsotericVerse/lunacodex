@@ -69,7 +69,8 @@ function compileCatalog(catalogRows=[]){
       order,
       classEnable,
       principle:String(row?.principle||'').trim(),
-      keywords:[...new Set([label,...keywords].filter(Boolean))],
+      patternBacked:row?.patternBacked===true,
+      keywords:[...new Set([...(row?.patternBacked===true?[]:[label]),...keywords].filter(Boolean))],
       rules:rules.filter((rule,index,all)=>all.findIndex(other=>
         other.operator===rule.operator&&other.source===rule.source&&other.target===rule.target
       )===index),
@@ -177,7 +178,9 @@ function compileKeywordMaskSources(runes){
         .map(({rule})=>normalizeText(rule.source))
         .filter(source=>source&&source.includes(normalizeText(rune.label)))
       :[];
-    masks.set(rune.runeId,[...new Set([...names,...targets,...dayMoon])]
+    const ownNames=rune.patternBacked?entries.filter(({item,rule})=>item.runeId===rune.runeId&&rule.operator==='NAME').map(({rule})=>normalizeText(rule.source)):names;
+    const ownRedirects=rune.patternBacked?entries.filter(({item,rule})=>item.runeId===rune.runeId&&rule.operator==='TO'&&normalizeText(rule.target)!==normalizeText(rune.label)).map(({rule})=>normalizeText(rule.source)):[];
+    masks.set(rune.runeId,[...new Set([...ownNames,...ownRedirects,...targets,...dayMoon])]
       .sort((a,b)=>b.length-a.length));
   }
   return masks;
