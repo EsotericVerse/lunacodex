@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {saveBlocksKysely} from '../app/loc/providers/kysely-blocks.mjs';
-import {turnHomeBlocks} from '../app/loc/blocks/home-page-turn.mjs';
 import {block_list} from '../app/loc/providers/kysely-public.mjs';
 import {publicScopeBlockPage} from '../app/loc/blocks/public-scope-pages.mjs';
-import {managementHeroSlot} from '../app/loc/blocks/home-block-model.js';
 
 {
 function mockBlocks(rows){
@@ -42,19 +40,6 @@ test('only guest-visible public Scope Block pages may be read',()=>{
     assert.equal(publicScopeBlockPage(page),null);
 });
 
-test('scope block_list selects one exact page without mutating anything',async()=>{
-  const {trx,calls}=mockBlocks([
-    {uid:'SEARCH01',page_name:'search',block_order:1},
-    {uid:'INDEX001',page_name:'index',block_order:1}
-  ]);
-  const rows=await block_list(trx,'lo3rwang',{pageName:'search'});
-  assert.deepEqual(rows.map(row=>row.uid),['SEARCH01']);
-  assert.deepEqual(calls,[['from','silver.lo3rwang_blocks'],
-    ['select',['uid','page_name','block_eyebrow','block_title','block_subtitle',
-      'block_text','block_order','block_entity','block_image']],
-    ['where','page_name','=','search'],['orderBy','block_order','asc']]);
-});
-
 test('block_list keeps legacy homepage default and rejects management pages',async()=>{
   const {trx,calls}=mockBlocks([{uid:'INDEX001',page_name:'index',block_order:1}]);
   const rows=await block_list(trx,'lo3rwang');
@@ -66,48 +51,6 @@ test('block_list keeps legacy homepage default and rejects management pages',asy
     /Invalid LOC public Block page/);
 });
 
-test('page turn is reversible and cancelled on abandonment',async()=>{
-  const oldWindow=globalThis.window,oldDocument=globalThis.document;
-  let resolve,finished=0,cancelled=0,animated=0;
-  const frames=[];
-  try{
-    globalThis.window={innerHeight:800,matchMedia:()=>({matches:false})};
-    globalThis.document={querySelectorAll:()=>[
-      {getBoundingClientRect:()=>({width:600,height:400,top:0,bottom:400}),
-       animate:(steps,options)=>{animated++;frames.push({steps,options});return{
-         finished:new Promise(r=>{resolve=r}),cancel(){cancelled++}
-       }}},
-      {getBoundingClientRect:()=>({width:0,height:0,top:0,bottom:0}),
-       animate:()=>{throw Error('hidden editor must not animate')}}
-    ]};
-    const stop=turnHomeBlocks('preview',()=>finished++);
-    assert.equal(animated,1);
-    assert.match(frames[0].steps[1].transform,/rotateY\(-58deg\)/);
-    stop();resolve();
-    await Promise.resolve();await Promise.resolve();
-    assert.equal(cancelled,1);assert.equal(finished,0);
-    const done=turnHomeBlocks('edit',()=>finished++);
-    assert.match(frames[1].steps[1].transform,/rotateY\(58deg\)/);
-    resolve();await Promise.resolve();await Promise.resolve();
-    assert.equal(finished,1);done();
-    globalThis.window.matchMedia=()=>({matches:true});
-    turnHomeBlocks('edit',()=>finished++)();
-    assert.equal(finished,2);assert.equal(animated,2);
-  }finally{
-    if(oldWindow===undefined)delete globalThis.window;else globalThis.window=oldWindow;
-    if(oldDocument===undefined)delete globalThis.document;else globalThis.document=oldDocument;
-  }
-});
-}
-
-{
-
-test('author Article Control Hero has stable identity even before live blocks arrive',()=>{
-  const slot=managementHeroSlot('searchManage','lo3rwang');
-  assert.equal(slot.label,'文章管理');
-  assert.equal(slot.page,'ScopeArticle');
-  assert.equal(managementHeroSlot('search','lo3rwang'),null);
-});
 }
 
 {

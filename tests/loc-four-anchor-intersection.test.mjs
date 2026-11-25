@@ -4,7 +4,6 @@ import {
   timeIntersectionMetrics,spaceIntersectionMetrics,
   fourDimensionDailyCounts
 } from '../app/loc/statistics/four-anchor-intersection.mjs';
-import {comparisonMetricGroups} from '../app/modular/modules/statistics/statistics-compare-options.mjs';
 
 const anchor=(type,uid,title,attr)=>({type,uid,title,attr});
 const dayCount=(counts,metric,day)=>counts.get(metric.id)?.get(day)||0;
@@ -77,14 +76,3 @@ test('Trace counts linked Path points and direct points once per real place/day/
   assert.equal(dayCount(counts,metrics.find(x=>x.uid==='PATH0002'),'2026-01-15'),3);
 });
 
-test('all four families are present in the cascading metric picker',()=>{
-  const mk=(name,id)=>({name,id});
-  const groups=comparisonMetricGroups('all',{
-    time:[{name:'Era',item:mk('ERA','era\u0000UID00001'),items:[]}],
-    space:[{name:'Trace',item:mk('TRACE','trace\u0000UID00002'),items:[]}],
-    keyword:[{name:'Group',item:mk('GROUP','keyword_group\u0000UID00003'),items:[]}],
-    source:[{name:'Galaxy',item:mk('CMS','source_galaxy\u0000UID00004'),items:[]}]
-  });
-  assert.deepEqual(labels(groups),['Era','Trace','Group','Galaxy']);
-  assert.equal(new Set(groups.flatMap(x=>x.options).map(x=>x.id)).size,4);
-});

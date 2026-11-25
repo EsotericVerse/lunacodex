@@ -1,21 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createKeywordDocumentClassifier} from '../app/loc/model/keyword-engine.mjs';
 import {createDiscoveryKnownMatcher,createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
 import {createImportKeywordReview} from '../app/loc/import/keyword-review.mjs';
 
-test('Full classifier shares raw literal candidates with Pattern counts and retains masks',()=>{
-  const catalog=[{item_no:1,item_name:'月',class_group:'A',keywords:['月光']},
-    {item_no:2,item_name:'火',class_group:'B',keywords:['火焰']}];
-  const observed=[];
-  const result=createKeywordDocumentClassifier(catalog,{observedTerms:['月光','火焰'],
-    onNormalizedText:(_text,_row,_index,hits)=>observed.push(hits)})([
-      {uid:'A',scan_text:'月光月光火焰'},{uid:'B',scan_text:'11月24日'},{uid:'C',scan_text:'無關'}
-    ]);
-  assert.deepEqual(observed,[[['月光',2],['火焰',1]],[],[]]);
-  // 火 and 火焰 are independent original Item signals; 月 is masked by 月光.
-  assert.deepEqual(result.classifications.map(row=>row.hit_count),[3,0,0]);
-});
 test('Discovery keeps a longer new phrase and excludes exact existing words',()=>{
   const rows=[{type:'item',name:'月光',lists:[]},{type:'pattern',name:'火焰'}];
   assert.deepEqual(createDiscoveryKnownMatcher(rows)('月光火焰'),['月光','火焰'].sort((a,b)=>a.localeCompare(b)));

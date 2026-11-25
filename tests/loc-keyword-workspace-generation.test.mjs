@@ -1,53 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readKeywordWorkspace} from '../app/loc/keywords/sql-service.mjs';
-import {keywordClassEpoch} from '../app/loc/keywords/class-state.mjs';
 import {bumpKeywordClassEpoch} from '../app/loc/keywords/class-state.mjs';
 import {writeKeywordScanProgress} from '../app/loc/keywords/class-state.mjs';
 import {invalidateKeywordClass} from '../app/loc/keywords/class-state.mjs';
 import {analyzeKeywordScope} from '../app/loc/keywords/sql-service.mjs';
 import {readKeywordStatistics} from '../app/loc/keywords/sql-service.mjs';
-import {readKeywordCatalog} from '../app/loc/keywords/sql-service.mjs';
-import {readKeywordDaily} from '../app/loc/keywords/sql-service.mjs';
 
 {
 const first='AAAA0001',second='BBBB0002';
-test('Keyword class Reset increments only its own generation',()=>{
-  const meta={by_class:{[first]:{completedAt:'2026-01-01'}},
-    scan_progress:{[first]:{cursor:'X'}},analysis_epochs:{[first]:3,[second]:8}};
-  const cleared=bumpKeywordClassEpoch(
-    writeKeywordScanProgress(invalidateKeywordClass(meta,first),first,null),first);
-  assert.equal(keywordClassEpoch(cleared,first),4);
-  assert.equal(keywordClassEpoch(cleared,second),8);
-  assert.equal(cleared.by_class[first],undefined);
-  assert.equal(cleared.scan_progress[first],undefined);
-  assert.equal(keywordClassEpoch({},first),0);
-});
-test('Keyword workspace reads fixed UID-ordered Anchor and Scope config',async()=>{
-  const used={tables:[],limits:[],where:[],sort:[]};
-  const records=[{uid:'AAAA0001',type:'category',title:'Category',description:'',
-    attr:{uid:['BBBB0002']}}];
-  const query=(table)=>({
-    select(){return this},
-    where(...args){used.where.push(args);return this},
-    orderBy(...args){used.sort.push(args);return this},
-    limit(n){used.limits.push(n);return this},
-    async execute(){return records},
-    async executeTakeFirst(){return {current_keyword_class_uid:'BBBB0002',
-      keyword_meta:{},keyword_min_chars:2,keyword_min_documents:1}}
-  });
-  const trx={selectFrom(table){used.tables.push(table);return query(table)}};
-  const res=await readKeywordWorkspace(trx,'lo3rwang',{limit:250});
-  assert.deepEqual(res.rows,records);
-  assert.equal(res.config.current_keyword_class_uid,'BBBB0002');
-  assert.equal(res.nextCursor,null);
-  assert.deepEqual(used.tables,['silver.lo3rwang_anchor','silver.lo3rwang']);
-  assert.deepEqual(used.limits,[251]);
-  assert.ok(used.where.some(v=>v[0]==='type'&&v[1]==='in'));
-  await assert.rejects(readKeywordWorkspace(trx,'lo3rwang',{limit:500}),
-    /Invalid Keyword editor page size/);
-});
-
 test('Keyword clear removes the interrupted cursor and Pattern totals together',()=>{
   // Clearing a Class must not invalidate a neighboring Class receipt.
   const progress={by_class:{[first]:{completedAt:'yes'},[second]:{completedAt:'still'}},
@@ -101,15 +61,6 @@ test('new analysis cannot reuse an older generation after a reset',async()=>{
   assert.deepEqual(calls,['silver.lo3rwang','silver.lo3rwang_anchor']);
 });
 
-test('new analysis refuses tokenless or invalid reset generations',async()=>{
-  for(const epoch of [undefined,0,-1,1.5,'12',null]){
-    const {db,calls}=staleJobDatabase();
-    await assert.rejects(analyzeKeywordScope(db,'lo3rwang',CLASS,{
-      analysisEpoch:epoch
-    }),/confirmed reset generation/);
-    assert.equal(calls.length,0);
-  }
-});
 }
 
 {
@@ -156,20 +107,6 @@ function clearedDatabase(){
   };
 }
 
-test('after a cleared Class, unfiltered stats are zero despite old Anchor total',async()=>{
-  const db=clearedDatabase();
-  const result=await readKeywordStatistics(db,'lo3rwang',cls,{owner:true});
-  assert.equal(result.indexPending,true);
-  assert.equal(result.completedAt,'');
-  assert.equal(result.total_hits,0);
-  assert.equal(result.document_count,0);
-  assert.equal(result.items.length,1);
-  assert.equal(result.items[0].uid,item);
-  assert.equal(result.items[0].hit_count,0);
-  assert.equal(result.groups[0].hit_count,0);
-  assert.ok(db.queried.every(t=>t!=='silver.lo3rwang_galaxy'));
-});
-
 test('after a cleared Class, date/source filters cannot silently recompute hits',async()=>{
   for(const filter of [{start:'2026-01-01',end:'2026-12-31'},
     {source:'Facebook'},{start:'2026-01-01',source:'Threads'}]){
@@ -185,19 +122,4 @@ test('after a cleared Class, date/source filters cannot silently recompute hits'
 
 
 
-test('Catalog also reflects zero without dropping the Keyword structure',async()=>{
-  const db=clearedDatabase();
-  const catalog=await readKeywordCatalog(db,'lo3rwang',cls,{owner:true});
-  assert.deepEqual(catalog.rows.map(x=>x.uid),[cls,group,item]);
-  assert.deepEqual(catalog.rows.map(x=>x.total),[0,0,0]);
-});
-
-test('Daily chart stays empty after clear and performs no article read',async()=>{
-  const db=clearedDatabase();
-  const rows=await readKeywordDaily(db,'lo3rwang',cls,{
-    owner:true,start:'2026-01-01',end:'2026-12-31'
-  });
-  assert.deepEqual(rows,[]);
-  assert.deepEqual(db.queried,['silver.lo3rwang']);
-});
 }

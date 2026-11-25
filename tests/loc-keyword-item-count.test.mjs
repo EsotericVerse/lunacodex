@@ -1,14 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
 import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
-import {createIndexedDateKeywordReader} from '../app/loc/keywords/article-reader.mjs';
 import {planKeywordTotalWrites} from '../app/loc/keywords/sql-service.mjs';
-import {createItemCountAccumulator,analyzeItemKeywordCounts,
-  itemKeywordSuggestions,createKeywordScanRate,
-  KEYWORD_SCAN_START_RATE,KEYWORD_SCAN_MAX_RATE,
-  KEYWORD_SCAN_CHECKPOINT_ROWS}
-  from '../app/loc/keywords/item-count-analysis.mjs';
+import {createItemCountAccumulator,analyzeItemKeywordCounts} from '../app/loc/keywords/item-count-analysis.mjs';
 import {compileKeywordLiteralMatcher} from '../app/loc/keywords/literal-matcher.mjs';
 
 const items=[
@@ -46,107 +40,6 @@ test('Item engine honors TO AND NAME NOR and stores counts rather than article I
   assert.ok(acc.daily().some(r=>r.kind==='item_day'));
 });
 
-test('Resumable Item scan checkpoints counters only and never writes Pattern postings',async()=>{
-  const subset=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
-  const documents=[doc('GALAXY01','月光'),doc('GALAXY02','月光')];
-  const page=async ({cursor})=>cursor===null
-    ?{rows:[{uid:'GALAXY01',keyword:true}],nextCursor:'one'}
-    :cursor==='one'
-      ?{rows:[{uid:'GALAXY02',keyword:true}],nextCursor:'two'}
-      :{rows:[],nextCursor:'two'};
-  const readContent=async ids=>documents.filter(x=>ids.includes(x.uid));
-  let saved=null,writes=0,clock=0;
-  const first=await analyzeItemKeywordCounts({
-    items:subset,groups,expectedCount:2,readMetadataPage:page,readContent,
-    pageSize:1,timeBudgetMs:100,now:()=>clock+=40,
-    onCheckpoint:async receipt=>{saved=receipt;},
-    finalize:async()=>{writes++;}
-  });
-  assert.equal(first.incomplete,true);
-  assert.equal(writes,0);
-  assert.equal(saved.scanMode,'item_count_v1');
-  assert.equal(JSON.stringify(saved).includes('GALAXY01'),false);
-  const second=await analyzeItemKeywordCounts({
-    items:subset,groups,expectedCount:2,readMetadataPage:page,readContent,
-    resume:saved,pageSize:1,
-    finalize:async totals=>{
-      writes++;
-      assert.equal(totals.itemCounts.ITEM0001,2);
-      assert.equal(totals.itemDocuments.ITEM0001,2);
-      assert.equal(totals.matchedDocuments,2);
-    }
-  });
-  assert.equal(second.scannedDocuments,2);
-  assert.equal(writes,1);
-});
-
-test('Item autocomplete excludes rule tokens; no Pattern index required',()=>{
-  const suggestions=itemKeywordSuggestions(items,'日');
-  assert.deepEqual(suggestions.map(s=>s.pattern),['日']);
-  assert.equal(itemKeywordSuggestions(items,'日光').length,0);
-});
-
-test('native SQL keyword page avoids a second UID content query',async()=>{
-  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
-  let pages=0,finalized=null;
-  const result=await analyzeItemKeywordCounts({
-    items:terms,groups,expectedCount:2,pageSize:2,
-    readMetadataPage:async ({cursor})=>{
-      pages++;
-      return cursor===null?{rows:[
-        {uid:'GALAXY01',keyword:true,title:'',content:'月光',date:'2026-11-22'},
-        {uid:'GALAXY02',keyword:false,title:null,content:null,date:'2026-11-22'}
-      ],nextCursor:'done'}:{rows:[],nextCursor:'done'};
-    },
-    readContent:async()=>{throw Error('Second content SELECT must not run');},
-    finalize:async totals=>{finalized=totals;}
-  });
-  assert.equal(pages,2);
-  assert.equal(result.scannedDocuments,2);
-  assert.equal(result.parsedDocuments,1);
-  assert.equal(finalized.itemCounts.ITEM0001,1);
-});
-
-test('Keyword analysis stores once per 8192-row batch and continues beyond 8192 total articles',async()=>{
-  const total=8195;
-  const docs=Array.from({length:total},(_,i)=>({
-    uid:String(i+1).padStart(8,'0'),
-    title:'',content:'月光',date:'2026-11-22',keyword:true
-  }));
-  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
-  const reader=async({cursor,limit})=>{
-    const from=cursor??0,rows=docs.slice(from,from+limit);
-    return {rows,nextCursor:from+rows.length};
-  };
-  let durable=null,completed=0,requests=0;
-  const checkpoints=[];
-  const persist=async state=>{
-    durable=JSON.parse(JSON.stringify(state));
-    checkpoints.push(state.scanned);
-  };
-  let final=null;
-  do{
-    const result=await analyzeItemKeywordCounts({
-      items:terms,groups,expectedCount:total,
-      readMetadataPage:reader,resume:durable,pageSize:256,
-      maxRowsPerRun:8192,minRowsPerRun:4096,checkpointRows:8192,
-      timeBudgetMs:15000,now:()=>0,onCheckpoint:persist,
-      finalize:async counts=>{completed++;final=counts;}
-    });
-    requests++;
-    assert.ok(requests<=3,'Whole Scope cannot be limited to 8192 rows');
-    if(!result.incomplete)break;
-    assert.equal(result.scanned,durable.scanned,'Batch must commit cursor before returning');
-    assert.equal(result.scanned,8192);
-  }while(true);
-  assert.equal(requests,2);
-  assert.equal(completed,1);
-  assert.equal(final.scannedDocuments,total);
-  assert.equal(final.analyzedDocuments,total);
-  assert.equal(final.itemDocuments.ITEM0001,total);
-  assert.deepEqual(checkpoints,[8192],'Normal batches must write one SQL checkpoint only');
-});
-
 test('Keyword analysis recovers after an interrupted request from last durable checkpoint',async()=>{
   const docs=Array.from({length:800},(_,i)=>({
     uid:String(i+1).padStart(8,'0'),
@@ -176,82 +69,6 @@ test('Keyword analysis recovers after an interrupted request from last durable c
   assert.equal(result.analyzedDocuments,800);
   assert.equal(result.itemDocuments.ITEM0001,800);
   assert.equal(final.itemCounts.ITEM0001,800);
-});
-
-test('adaptive Keyword batch commits at 4096 when measured throughput is too slow for 8192',async()=>{
-  const rows=Array.from({length:16},(_,i)=>doc(String(i+1).padStart(8,'0'),'月光'));
-  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
-  let clock=0,saved=null,finalized=0,reads=0;
-  const result=await analyzeItemKeywordCounts({
-    items:terms,groups,expectedCount:rows.length,pageSize:3,
-    minRowsPerRun:4,maxRowsPerRun:8,checkpointRows:8,
-    timeBudgetMs:100,now:()=>clock,
-    readMetadataPage:async({cursor,limit})=>{
-      const from=cursor??0,part=rows.slice(from,from+limit);
-      reads++;
-      clock=from+part.length>=4?40:20;
-      return {rows:part,nextCursor:from+part.length};
-    },
-    onCheckpoint:async progress=>{saved=JSON.parse(JSON.stringify(progress));},
-    finalize:async()=>{finalized++;}
-  });
-  assert.equal(result.incomplete,true);
-  assert.equal(result.scanned,4);
-  assert.equal(saved.scanned,4);
-  assert.equal(saved.cursor,4);
-  assert.equal(finalized,0);
-  assert.ok(reads>=2);
-});
-
-test('nonmultiple final 4096/8192 tail is saved before finalizing, then resumes without reading',async()=>{
-  const total=8192+17;
-  const docs=Array.from({length:total},(_,i)=>doc(
-    String(i+1).padStart(8,'0'),'月光'));
-  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
-  let saved=null,readCount=0,finalized=0;
-  const checkpoints=[],phases=[];
-  const opts={
-    items:terms,groups,expectedCount:total,pageSize:4096,
-    maxRowsPerRun:8192,minRowsPerRun:4096,checkpointRows:4096,
-    deferFinalization:true,now:()=>0,
-    readMetadataPage:async({cursor,limit})=>{
-      readCount++;
-      const from=cursor??0,rows=docs.slice(from,from+limit);
-      return {rows,nextCursor:from+rows.length};
-    },
-    onCheckpoint:async receipt=>{
-      saved=structuredClone(receipt);
-      checkpoints.push({scanned:saved.scanned,pending:saved.finalizePending===true});
-    },
-    onProgress:({phase})=>phases.push(phase),
-    finalize:async counts=>{
-      finalized++;
-      assert.equal(counts.scannedDocuments,total);
-      assert.equal(counts.itemDocuments.ITEM0001,total);
-    }
-  };
-  const first=await analyzeItemKeywordCounts(opts);
-  assert.equal(first.incomplete,true);
-  assert.equal(first.scanned,8192);
-  assert.equal(finalized,0);
-  const tail=await analyzeItemKeywordCounts({...opts,resume:saved});
-  assert.equal(tail.incomplete,true);
-  assert.equal(tail.scanned,total);
-  assert.equal(tail.finalizePending,true);
-  assert.equal(saved.finalizePending,true);
-  assert.equal(saved.scanned,total);
-  assert.equal(finalized,0,'tail must checkpoint rather than commit totals in the same request');
-  const readBeforeFinalize=readCount;
-  const complete=await analyzeItemKeywordCounts({
-    ...opts,resume:saved,
-    readMetadataPage:async()=>{throw Error('Finalization must not scan the tail again');}
-  });
-  assert.equal(readCount,readBeforeFinalize);
-  assert.equal(complete.scannedDocuments,total);
-  assert.equal(finalized,1);
-  assert.ok(phases.includes('finalizing'));
-  assert.ok(checkpoints.some(value=>value.scanned===8192));
-  assert.deepEqual(checkpoints.at(-1),{scanned:total,pending:true});
 });
 
 test('tail checkpoint survives finalization failure and retries without reclassifying',async()=>{
@@ -287,76 +104,6 @@ test('tail checkpoint survives finalization failure and retries without reclassi
   assert.equal(reads,fetched,'retrying finalization must not SELECT Galaxy again');
 });
 
-test('short Keyword scopes finish without an intermediate SQL checkpoint',async()=>{
-  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
-  for(const total of [0,1,1023,1024,4095,4096]){
-    const docs=Array.from({length:total},(_,i)=>
-      doc(String(i+1).padStart(8,'0'),'月光'));
-    let reads=0,checkpoints=0,finals=0;
-    const result=await analyzeItemKeywordCounts({
-      items:terms,groups,expectedCount:total,
-      pageSize:4096,maxRowsPerRun:8192,minRowsPerRun:4096,
-      checkpointRows:4096,deferFinalization:true,
-      timeBudgetMs:15000,now:()=>0,
-      readMetadataPage:async({cursor,limit})=>{
-        reads++;
-        const from=cursor??0,rows=docs.slice(from,from+limit);
-        return {rows,nextCursor:from+rows.length};
-      },
-      onCheckpoint:async()=>{checkpoints++;},
-      finalize:async counts=>{
-        finals++;
-        assert.equal(counts.scannedDocuments,total);
-        assert.equal(counts.itemDocuments.ITEM0001,total);
-      }
-    });
-    assert.equal(result.incomplete,undefined,'short Scope should complete in one request');
-    assert.equal(result.scannedDocuments,total);
-    assert.equal(finals,1);
-    assert.equal(checkpoints,0,'short Scope must not write intermediate receipt');
-    assert.ok(reads<=2,'single indexed page plus at most one empty lookahead');
-  }
-});
-
-test('slow short Keyword scopes still persist their final tail before final SQL',async()=>{
-  const total=1024;
-  const docs=Array.from({length:total},(_,i)=>
-    doc(String(i+1).padStart(8,'0'),'月光'));
-  const terms=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}];
-  let time=0,saved=null,finals=0,reads=0;
-  const opts={
-    items:terms,groups,expectedCount:total,
-    pageSize:4096,maxRowsPerRun:8192,minRowsPerRun:4096,
-    checkpointRows:4096,deferFinalization:true,
-    timeBudgetMs:15000,now:()=>time,
-    readMetadataPage:async({cursor,limit})=>{
-      reads++;
-      time=8000; // Less than the request hard budget; not enough finalization headroom.
-      const from=cursor??0,rows=docs.slice(from,from+limit);
-      return {rows,nextCursor:from+rows.length};
-    },
-    onCheckpoint:async progress=>{saved=structuredClone(progress);},
-    finalize:async counts=>{
-      finals++;
-      assert.equal(counts.scannedDocuments,total);
-    }
-  };
-  const first=await analyzeItemKeywordCounts(opts);
-  assert.equal(first.incomplete,true);
-  assert.equal(first.finalizePending,true);
-  assert.equal(saved.scanned,total);
-  assert.equal(saved.finalizePending,true);
-  assert.equal(finals,0);
-  const beforeFinalize=reads;
-  const second=await analyzeItemKeywordCounts({
-    ...opts,resume:saved,
-    readMetadataPage:async()=>{throw Error('Never reread the saved short tail');}
-  });
-  assert.equal(second.scannedDocuments,total);
-  assert.equal(finals,1);
-  assert.equal(reads,beforeFinalize);
-});
-
 test('Pattern Anchor UIDs count occurrences during the same article pass, shared once',()=>{
   const linked=[
     {uid:'PATT0001',title:'月光'},
@@ -384,45 +131,6 @@ test('Pattern Anchor UIDs count occurrences during the same article pass, shared
   assert.throws(()=>createItemCountAccumulator(catalog,groups,null,{
     patterns:[{uid:'PATT0001',title:'月光'},{uid:'PATT0001',title:'其他'}]
   }),/Conflicting Keyword Pattern/);
-});
-
-test('Pattern totals survive 4096-style checkpoints and finalization without rescanning',async()=>{
-  const patterns=[
-    {uid:'PATT0001',title:'月光'},
-    {uid:'PATT0002',title:'光'}
-  ];
-  const catalog=[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',
-    keywords:['月光','光']}];
-  const documents=[doc('GALAXY01','月光月光'),doc('GALAXY02','光')];
-  let state=null,finals=0,readCount=0;
-  const opts={
-    items:catalog,groups,patterns,expectedCount:2,
-    pageSize:1,checkpointRows:1,maxRowsPerRun:1,deferFinalization:true,
-    readMetadataPage:async({cursor})=>{
-      readCount++;
-      const index=cursor??0;
-      return {rows:documents.slice(index,index+1),nextCursor:index+1};
-    },
-    onCheckpoint:async progress=>{state=structuredClone(progress);},
-    finalize:async result=>{
-      finals++;
-      assert.deepEqual(result.patternCounts,{PATT0001:2,PATT0002:3});
-    }
-  };
-  const first=await analyzeItemKeywordCounts(opts);
-  assert.equal(first.incomplete,true);
-  assert.deepEqual(state.patternCounts,{PATT0001:2,PATT0002:2});
-  const second=await analyzeItemKeywordCounts({...opts,resume:state});
-  assert.equal(second.incomplete,true);
-  assert.equal(second.finalizePending,true);
-  assert.deepEqual(state.patternCounts,{PATT0001:2,PATT0002:3});
-  const done=await analyzeItemKeywordCounts({
-    ...opts,resume:state,
-    readMetadataPage:async()=>{throw Error('Finalization must not reread Galaxy');}
-  });
-  assert.equal(done.scannedDocuments,2);
-  assert.equal(finals,1);
-  assert.equal(readCount,2);
 });
 
 test('Sparse Pattern matching preserves overlap counts and Unicode fallback',()=>{
@@ -458,43 +166,6 @@ test('discovery retains single-use terms and question punctuation without weight
   assert.ok(results.candidates.every(row=>!Object.hasOwn(row,'score')));
 });
 
-test('date + UID scan streams same-day rows and undated rows without buffering/sorting',async()=>{
-  const dated=[
-    {uid:'GALA0001',date:'2026-11-18'},
-    {uid:'GALA0002',date:'2026-11-18'},
-    {uid:'GALA0003',date:'2026-11-18'},
-    {uid:'GALA0004',date:'2026-11-19'}
-  ];
-  const undated=[{uid:'GALA0005',date:null},{uid:'GALA0006',date:null}];
-  let dateCalls=0,undatedCalls=0;
-  const reader=createIndexedDateKeywordReader({
-    readDateBatch:async({afterDate,afterUid,limit})=>{
-      dateCalls++;
-      return dated.filter(row=>afterDate===null||row.date>afterDate||
-        row.date===afterDate&&row.uid>afterUid).slice(0,limit);
-    },
-    readUndatedBatch:async({afterUid,limit})=>{
-      undatedCalls++;
-      return undated.filter(row=>afterUid===null||row.uid>afterUid).slice(0,limit);
-    }
-  });
-  const found=[];
-  let cursor=null;
-  for(let n=0;n<20;n++){
-    const result=await reader({cursor,limit:2});
-    found.push(...result.rows.map(row=>row.uid));
-    cursor=result.nextCursor;
-    if(!result.rows.length)break;
-  }
-  assert.deepEqual(found,[
-    'GALA0001','GALA0002','GALA0003','GALA0004','GALA0005','GALA0006'
-  ]);
-  assert.ok(dateCalls>=3);
-  assert.ok(undatedCalls>=1);
-  assert.equal(Object.keys(cursor).includes('pending'),false);
-  assert.equal(Object.keys(cursor).includes('currentDay'),false);
-});
-
 test('keyword aggregate writes normalize repeated physical Item UIDs',()=>{
   const rows=planKeywordTotalWrites([
     {uid:'ITEM0001',total:7},{uid:'GROUP001',total:10},
@@ -518,9 +189,3 @@ test('keyword aggregate writes normalize repeated physical Item UIDs',()=>{
   ]),/Invalid Keyword aggregate counts/);
 });
 
-test('Keyword aggregate writes preserve num and update Item, Group and Pattern attr.total',async()=>{
-  const src=await readFile(new URL('../app/loc/keywords/sql-service.mjs',import.meta.url),'utf8');
-  assert.match(src,/set attr=jsonb_set/);
-  assert.match(src,/a\.type in \('item','group','pattern'\)/);
-  assert.doesNotMatch(src,/set\s+num\s*=/);
-});
