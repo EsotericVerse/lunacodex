@@ -26,16 +26,34 @@ function mainUri(env){
     throw unavailable('LOC primary PostgreSQL URI incomplete');
   return value;
 }
-// OpenNext server actions pass process.env, which cannot carry object bindings.
-export async function locHyperdriveBinding(env={}){
-  const isCloudflareWorkers=Boolean(process.versions?.workerd)||
-    globalThis.navigator?.userAgent==='Cloudflare-Workers';
+function isCloudflareWorkerRuntime(){
+  return Boolean(process.versions?.workerd)||
+    globalThis.navigator?.userAgent==='Cloudflare-Workers'||
+    Boolean(globalThis.Cloudflare);
+}
+// OpenNext Server Actions receive process.env, so read object bindings from the
+// current Cloudflare request context. Production must never silently reconnect
+// directly to Neon when the configured Hyperdrive binding cannot be resolved.
+export async function locHyperdriveBinding(env={},{
+  requireBinding=isCloudflareWorkerRuntime()||process.env.NODE_ENV==='production',
+  getContext=getCloudflareContext
+}={}){
   let binding=env?.LOC_HYPERDRIVE||null;
-  if(!binding&&isCloudflareWorkers){
-    try{binding=(await getCloudflareContext({async:true})).env?.LOC_HYPERDRIVE||null;}
-    catch{/* Local Next.js and non-Worker callers use LOC_DATABASE_URI. */}
+  if(!binding){
+    let context;
+    try{context=await getContext({async:true});}
+    catch{
+      if(requireBinding)
+        throw unavailable('LOC Hyperdrive request context unavailable');
+      return null;
+    }
+    binding=context?.env?.LOC_HYPERDRIVE||null;
   }
-  if(!binding)return null;
+  if(!binding){
+    if(requireBinding)
+      throw unavailable('LOC_HYPERDRIVE binding unavailable in Cloudflare Worker');
+    return null;
+  }
   const uri=binding?.connectionString;
   let url;
   try{url=new URL(uri);}catch{throw unavailable('LOC Hyperdrive binding invalid');}
@@ -87,8 +105,7 @@ export async function db_connection(env={},verifiedAlias='',{
   if(!primary||primary.engine!=='postgres'||
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
-  const isCloudflareWorkers=Boolean(process.versions?.workerd)||
-    globalThis.navigator?.userAgent==='Cloudflare-Workers';
+  const isCloudflareWorkers=isCloudflareWorkerRuntime();
   const hyperdriveUri=await locHyperdriveBinding(env);
   if(hyperdriveUri){
     // Hyperdrive owns the cross-request origin pool. Each Worker request still

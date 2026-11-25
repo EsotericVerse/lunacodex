@@ -163,3 +163,25 @@ test('LOC Hyperdrive selection is dedicated, validated and optional outside Work
     LOC_DATABASE_URI:'postgresql://direct/db'
   }),/LOC Hyperdrive binding invalid/);
 });
+
+test('Cloudflare Worker reads configured Hyperdrive context before any direct connection',async()=>{
+  const direct='postgresql://direct:secret@neon-pooler.invalid/db';
+  const hyperdrive='postgresql://hyperdrive-user:secret@hyperdrive.invalid/db';
+  assert.equal(await locHyperdriveBinding(
+    {LOC_DATABASE_URI:direct},
+    {requireBinding:true,getContext:async()=>({
+      env:{LOC_HYPERDRIVE:{connectionString:hyperdrive}}
+    })}
+  ),hyperdrive);
+});
+test('Cloudflare Worker fails closed instead of using unstable direct URI when Hyperdrive is unavailable',async()=>{
+  const direct='postgresql://direct:secret@neon-pooler.invalid/db';
+  await assert.rejects(locHyperdriveBinding(
+    {LOC_DATABASE_URI:direct},
+    {requireBinding:true,getContext:async()=>{throw Error('context missing');}}
+  ),/LOC Hyperdrive request context unavailable/);
+  await assert.rejects(locHyperdriveBinding(
+    {LOC_DATABASE_URI:direct},
+    {requireBinding:true,getContext:async()=>({env:{}})}
+  ),/LOC_HYPERDRIVE binding unavailable in Cloudflare Worker/);
+});
