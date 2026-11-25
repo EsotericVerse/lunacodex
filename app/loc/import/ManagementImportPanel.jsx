@@ -43,7 +43,7 @@ import {galaxyAble} from '../model/galaxy-able.mjs';
 import BulkGalaxyVisibility from '../management/BulkGalaxyVisibility';
 import {touchEditorSession} from '../auth/edit-session-ttl.mjs';
 import {publishedSourceTaxonomy} from '../../modular/published-source-taxonomy.js';
-import {runeDrawText} from '../runes/rune-draw-text.mjs';
+import {runeDrawText} from './rune-draw-text.mjs';
 import {sourceImportModel,IMPORT_SOURCE_MODEL_LABELS} from '../../../packages/zenstack/import-source-models.mjs';
 import {queryImportSitePresence,queryImportSiteIdCandidates,
   queryImportCreatedAtCandidates,queryImportOccupiedTimes,

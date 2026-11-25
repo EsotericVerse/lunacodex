@@ -2,7 +2,7 @@
 // Archive size limits are configuration, not proof of successful large-file import E2E.
 import {MAX_ROWS,HEAVY_INITIAL_ROWS,HEAVY_QUERY_ROWS,IMPORT_WRITE_TARGET_BYTES,createTextAdaptiveRows,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
-import {runeDrawText} from '../runes/rune-draw-text.mjs';
+import {runeDrawText} from './rune-draw-text.mjs';
 import {sourceImportModel} from '../../../packages/zenstack/import-source-models.mjs';
 // Lightweight file-selection contracts remain separate from parser implementations.
 export const UNIVERSAL_IMPORT_ACCEPT='.zip,.json,.md';

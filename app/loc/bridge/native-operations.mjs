@@ -7,12 +7,12 @@ import {classifyShortImportFailure} from '../import/import-failure-code.mjs';
 import {verifyAccessTokenRequest,requestToResourceInput} from 'better-auth/oauth2';
 import {readLocAccess,hasLocAccess} from '../permissions/loc_access.mjs';
 import {fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
-import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from './access-roles.mjs';
+import {loadMcpLocAccess,VerifiedLocUserInfoSchema} from '../permissions/access-roles.mjs';
 import {MANAGED_FILTER_SQL,managedFiltersValid} from '../../../packages/zenstack/sql-input-shape.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';
 import {authorizeDelegatedShortImport} from '../import/short-edge-authorization.mjs';
 import {processShortImport,portableShortImportStore} from '../import/short-append-service.mjs';
-import {executePortableMcp} from '../providers/kysely-mcp.mjs';
+import {executePortableMcp} from '../providers/kysely-galaxy-ingest.mjs';
 import {executeLocConversation} from './conversations.mjs';
 import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.mjs';
 import {executeManagedKyselyWrite,executeManagedKyselyAction,
