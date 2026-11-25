@@ -42,3 +42,6 @@ public/vendor/rune-semantic-icons/
 # .claude/skills 由 scripts/sync-claude-skills.mjs 連結至 .agents/skills 的逐項 Junction／Symlink（npm prepare）
 # 不進版控：這是產生物，來源是 .agents/skills；改 skill 一律改 .agents，重跑腳本即可同步
 .claude/skills
+
+# Generated from the authoritative assets/pics files at prebuild/predev.
+/workers/hero-source-manifest.generated.mjs
