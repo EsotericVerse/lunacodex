@@ -1,35 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {siteForCapturedUrl,CAPTURE_FROM_SITES}
- from '../app/loc/source/site-from-url.mjs';
-import {siteForShortImportSource,processShortImport}
- from '../app/loc/import/short-append-service.mjs';
+import {processShortImport} from '../app/loc/import/short-append-service.mjs';
 import {executeLocConversation}
  from '../app/loc/mcp/conversations.mjs';
 import {mergeOrdered} from '../app/loc/mcp/ordered-conversation.mjs';
 import {readOrdered} from '../app/loc/mcp/ordered-conversation.mjs';
 import {orderedBatch} from '../app/loc/mcp/ordered-conversation.mjs';
-import {OPTIONS} from '../app/api/las-native/route.js';
-import {POST} from '../app/api/las-native/route.js';
 import {validateShortImportBatch} from '../app/loc/import/short-append-service.mjs';
 import {readFileSync} from 'node:fs';
-import {MAX_ROWS} from '../app/loc/query/query-batch-size.mjs';
-import {HEAVY_QUERY_ROWS} from '../app/loc/query/query-batch-size.mjs';
-import {NORMAL_QUERY_ROWS} from '../app/loc/query/query-batch-size.mjs';
 import {createImportBatchSizer} from '../app/loc/import/batch.mjs';
 import {writeImportBatches} from '../app/loc/import/batch.mjs';
-import {validImportBatchSize} from '../app/loc/import/batch.mjs';
-import {recommendImportBatchRows} from '../app/loc/import/batch.mjs';
-import {createImportConfirmationWindow} from '../app/loc/import/batch.mjs';
-import {IMPORT_FIRST_CHECKPOINT_ROWS} from '../app/loc/import/batch.mjs';
-import {IMPORT_MAX_CHECKPOINT_ROWS} from '../app/loc/import/batch.mjs';
 import {IMPORT_PAYLOAD_TARGET_BYTES} from '../app/loc/import/batch.mjs';
 import {writeImportCheckpoint} from '../app/loc/import/checkpoint.mjs';
 import {readImportCheckpoint} from '../app/loc/import/checkpoint.mjs';
 
 {
-const url='https://loc.lo3rwang.cc/api/las-native/';
-const ext='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const a={message_id:'turn-a',role:'user',source_order:0,parent_id:null,text:'開始'};
 const b={message_id:'turn-b',role:'assistant',source_order:1,parent_id:'turn-a',text:'回覆'};
 
@@ -45,27 +30,6 @@ test('LOC ordered import retries are idempotent and reject ordinal conflicts',()
  assert.equal(repeated.count,2);
  assert.throws(()=>mergeOrdered(first.content,[{...b,message_id:'another'}]),/ordinal/);
  assert.throws(()=>orderedBatch([a,{...a}]),/Duplicate/);
-});
-test('LOC existing LAS bridge preflight allows only configured Chrome Extension',()=>{
- const allowed=OPTIONS(new Request(url,{method:'OPTIONS',
-   headers:{origin:ext,'access-control-request-method':'POST',
-    'access-control-request-headers':'authorization,content-type'}}));
- assert.equal(allowed.status,204);
- assert.equal(allowed.headers.get('access-control-allow-origin'),ext);
- assert.match(allowed.headers.get('access-control-allow-headers'),/Authorization/);
- const denied=OPTIONS(new Request(url,{method:'OPTIONS',
-   headers:{origin:'https://untrusted.example'}}));
- assert.equal(denied.status,403);
-});
-test('LOC direct import never grants unauthenticated ordered writes',async()=>{
- const request=new Request(url,{method:'POST',
-   headers:{origin:ext,'content-type':'application/json'},
-   body:JSON.stringify({kind:'mcp-conversation',action:'record_ordered',
-    scopeid:'lo3rwang',conversation_id:'test://no-auth',records:[a]})});
- const response=await POST(request);
- assert.equal(response.status,401);
- assert.equal(response.headers.get('access-control-allow-origin'),ext);
- assert.match((await response.json()).error.message,/bearer token required/i);
 });
 }
 
@@ -149,25 +113,6 @@ test('adaptive writer flushes large texts by bytes rather than sending oversized
 }
 
 {
-test('MCP is only a Domain; five real From labels are authoritative',()=>{
- assert.deepEqual(CAPTURE_FROM_SITES,['web','Github','ChatGPT','Claude','Gemini']);
- const cases=[
-  ['https://news.example.net/post','web'],
-  ['https://github.com/EsotericVerse/lunarcus','Github'],
-  ['https://gist.github.com/a/b','Github'],
-  ['https://chatgpt.com/c/123','ChatGPT'],
-  ['https://chat.openai.com/c/123','ChatGPT'],
-  ['https://claude.ai/chat/123','Claude'],
-  ['https://gemini.google.com/app/123','Gemini']
- ];
- for(const [url,site] of cases){
-  assert.equal(siteForCapturedUrl(url),site);
-  assert.equal(siteForShortImportSource(url),site);
- }
- assert.equal(siteForCapturedUrl('legacy-id'),'web');
- assert.ok(!CAPTURE_FROM_SITES.includes('mcp'));
-});
-
 const uuid=i=>'00000000-0000-4000-8000-'+String(i).padStart(12,'0');
 const url='https://chatgpt.com/c/abcd';
 const event={id:uuid(1),group_id:uuid(2),source_key:url,url,

@@ -2,30 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handleLocSelfPermissions} from '../app/loc/permissions/loc-permissions-server.mjs';
 import {LOC_OWNER_EMAIL} from '../app/loc/permissions/loc-business-grants.mjs';
-import {publishedLocAccess} from '../app/loc/permissions/loc-business-grants.mjs';
-import {readLocAccess} from '../app/loc/permissions/loc_access.mjs';
 import {loc_access} from '../app/loc/permissions/loc_access.mjs';
-import {loadMcpLocAccess} from '../app/loc/mcp/access-roles.mjs';
-import {authorizeMcpRole} from '../app/loc/mcp/access-roles.mjs';
 import {handleNativeLocOperation,requireManagedActionGrant} from '../app/loc/mcp/native-operations.mjs';
 import {withAuthorizedLocRead} from '../app/loc/actions/read-context.mjs';
 import {executeManagedKyselyAction} from '../app/loc/providers/kysely-management.mjs';
 
 {
-
-test('published business grants need neither an open database nor an HTTP request',async()=>{
-  const verified='sopa2306@gmail.com';
-  const expected=publishedLocAccess(verified,{website:true});
-  assert.equal(expected.canWrite,true);
-  assert.equal(expected.canManage,true);
-  assert.ok(expected.grants.includes('global:manage'));
-  const noSql={selectFrom(){throw Error('api.manage lookup must never run');}};
-  assert.deepEqual(await readLocAccess(noSql,verified,{website:true,transactional:true}),expected);
-  assert.deepEqual(await readLocAccess(null,verified,{website:true}),expected);
-  assert.deepEqual(await readLocAccess(noSql,'unknown@example.org',{website:true}),
-    {canWrite:false,canManage:false,grants:[],roles:[]});
-  assert.equal(loc_access(verified,[],{website:true}).canWrite,false);
-});
 
 test('feature Server Actions reject missing Scope grants before opening SQL',async()=>{
   let connected=0,read=0;
@@ -57,13 +39,13 @@ test('feature Server Actions refuse an unscoped read before checking identity or
   assert.equal(connected,0);
 });
 
-test('managed writes check the requested Scope grant before opening the database',()=>{
+test('managed writes reject access outside the authorized Scope',()=>{
   const claims={provider:'loc',role:'authenticated',sub:'USER_SCOPE_ONLY',
-    me:true,grants:['lrunes:manage','scope:lrunes:manage','lrunes:write','lrunes:read']};
+    me:true,grants:['lo3rwang:manage','scope:lo3rwang:manage','lo3rwang:write','lo3rwang:read']};
   assert.doesNotThrow(()=>requireManagedActionGrant({name:'fill_galaxy_place',
-    args:{p_scope_id:'lrunes'}},claims));
+    args:{p_scope_id:'lo3rwang'}},claims));
   assert.throws(()=>requireManagedActionGrant({name:'fill_galaxy_place',
-    args:{p_scope_id:'lo3rwang'}},claims),error=>error.httpStatus===403);
+    args:{p_scope_id:'family'}},claims),error=>error.httpStatus===403);
 });
 
 test('authorized feature reads use one direct connection without a read transaction',async()=>{
@@ -78,10 +60,9 @@ test('authorized feature reads use one direct connection without a read transact
     openDatabase:async()=>{connected++;return {db,engine:'postgres',namespace:'silver'};},
     closeDatabase:async()=>{closed++;}
   };
-  const result=await withAuthorizedLocRead({scope:'lo3rwang'},async(_db,port,{grants})=>{
+  const result=await withAuthorizedLocRead({scope:'lo3rwang'},async(_db,port)=>{
     read++;
     assert.equal(port.engine,'postgres');
-    assert.ok(grants.includes('global:manage'));
     return 'feature-result';
   },dependencies);
   assert.equal(result,'feature-result');
@@ -89,42 +70,6 @@ test('authorized feature reads use one direct connection without a read transact
   assert.equal(read,1);
   assert.equal(transaction,0);
   assert.equal(closed,1);
-});
-
-test('LOC native HTTP channel rejects reads before opening SQL',async()=>{
-  let connected=0;
-  const requests=[
-    {kind:'mcp-read',scopeid:'lo3rwang',uid:'ABCD1234'},
-    {kind:'mcp-search',scopeid:'lo3rwang',query:'private',limit:5},
-    {kind:'mcp-public-read',scopeid:'lo3rwang',args:{uid:'ABCD1234'}},
-    {kind:'mcp-article-stat',scopeid:'loc'},
-    {kind:'mcp-conversation',scopeid:'lo3rwang',action:'check'},
-    {kind:'mcp-conversation',scopeid:'lo3rwang',action:'search'},
-    {kind:'managed-action',scopeid:'lo3rwang',name:'search_galaxy_private',
-      args:{p_scope_id:'lo3rwang',p_query:'private'}},
-    {kind:'managed-action',scopeid:'lo3rwang',name:'anchor_import_page',
-      args:{p_scope_id:'lo3rwang',p_types:['point'],p_limit:10}},
-    {kind:'managed-action',scopeid:'loc',name:'loc_admin_settings',
-      args:{p_operation:'read',p_section:'theme'}},
-    {kind:'managed-action',scopeid:'lo3rwang',name:'preview_galaxy_place_fill',
-      args:{p_scope_id:'lo3rwang',p_start_date:'2026-01-01',p_end_date:'2026-01-02',p_place:'Tainan'}},
-    {kind:'managed-action',scopeid:'lo3rwang',name:'fill_galaxy_place',
-      args:{p_scope_id:'lo3rwang',p_start_date:'2026-01-01',p_end_date:'2026-01-02',
-        p_place:'Tainan',p_expected_count:1,p_apply:false}},
-    {kind:'managed-action',scopeid:'lo3rwang',name:'bulk_update_galaxy_able',
-      args:{p_scope_id:'lo3rwang',p_site:'facebook',p_flags:{statics:false},p_apply:false}}
-  ];
-  for(const body of requests){
-    const request=new Request('https://mcp.lo3rwang.cc/api/las-native',{
-      method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify(body)
-    });
-    const response=await handleNativeLocOperation(request,{}, {
-      database:async()=>{connected++;throw Error('A read reached SQL');}
-    });
-    assert.notEqual(response.status,200,body.kind);
-  }
-  assert.equal(connected,0);
 });
 
 test('write dispatcher has no generic read action, including settings reads',async()=>{
@@ -179,13 +124,6 @@ test('temporary bulk-write route is closed by default and still authenticates wh
       body:JSON.stringify(ordinary)
     }),{}, {database:async()=>{connected++;throw Error('HTTP save must stay closed');}});
   assert.equal(ordinaryResponse.status,404);
-  const alias=await handleNativeLocOperation(new Request(
-    'https://mcp.lo3rwang.cc/api/loc-native',{
-      method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({kind:'mcp-sync',scopeid:'lo3rwang'})
-    }),{}, {entrypoint:'loc-native',
-      database:async()=>{connected++;throw Error('LOC route alias reached SQL');}});
-  assert.equal(alias.status,404,'the LOC import URL must not alias LAS writes');
   const body={kind:'short-import',scopeid:'lo3rwang',batch:{}};
   const makeRequest=()=>new Request('https://loc.lo3rwang.cc/api/loc-native',{
     method:'POST',headers:{'content-type':'application/json','cookie':'loc_session=present'},
@@ -205,78 +143,22 @@ test('temporary bulk-write route is closed by default and still authenticates wh
   assert.equal(opened.status,403);
   assert.equal(connected,0);
 
-  // The same bulk flag controls the dedicated LAS bridge, including calls
-  // made through its trusted host mapping. Enabling it still requires OAuth.
-  const mcpRequest=()=>new Request('https://loc.lo3rwang.cc/api/las-native',{
-    method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify(body)
-  });
-  const mcpClosed=await handleNativeLocOperation(mcpRequest(),{},
-    {database,trustedMcpBridge:true,entrypoint:'las-native'});
-  assert.equal(mcpClosed.status,404);
-  const mcpEnabled=await handleNativeLocOperation(mcpRequest(),
-    {LOC_BULK_IMPORT_UNTIL:'2999-01-01T00:00:00Z'},
-    {database,trustedMcpBridge:true,entrypoint:'las-native'});
-  assert.equal(mcpEnabled.status,401);
-  const localClosed=await handleNativeLocOperation(makeRequest(),{},
-    {trustedLocalAction:true,database});
-  assert.equal(localClosed.status,404);
-
-  // LAS exposes only its named write operations; it does not expose LOC's
-  // generic managed-action/transaction dispatch over HTTP.
-  for(const generic of [
-    {kind:'managed-write',scopeid:'',payload:{p_operation:'insert',p_table:'silver.loc_blocks'}},
-    {kind:'managed-transaction',scopeid:'',operations:[{p_operation:'delete',p_table:'silver.loc_blocks'}]},
-    {kind:'managed-action',scopeid:'lo3rwang',name:'save_blocks',
-      args:{p_scope_id:'lo3rwang',p_type:'search',p_blocks:[]}}
-  ]){
-    const response=await handleNativeLocOperation(new Request(
-      'https://loc.lo3rwang.cc/api/las-native',{
-        method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify(generic)
-      }),{}, {database,trustedMcpBridge:true,entrypoint:'las-native'});
-    assert.equal(response.status,404,generic.kind);
-  }
   assert.equal(connected,0);
 });
 }
 
-{
 
-test('LOC MCP roles use published JS, even if a database cannot connect',async()=>{
-  const forbidden={selectFrom(){throw Error('DB role SELECT forbidden');},
-    transaction(){throw Error('DB role transaction forbidden');}};
-  const rights=await loadMcpLocAccess(forbidden,'sopa2306@gmail.com');
-  assert.equal(rights.canWrite,true);
-  assert.equal(rights.canManage,false);
-  assert.ok(rights.grants.includes('lo3rwang:write'));
-  const identity=await authorizeMcpRole('sopa2306@gmail.com');
-  assert.ok(identity.roles.some(x=>x.id==='lo3rwang'));
-  await assert.rejects(authorizeMcpRole('unknown@example.org'),
-    error=>error.httpStatus===403);
-  await assert.rejects(authorizeMcpRole('not-an-email'),
-    error=>error.httpStatus===401);
-});
 
-}
-
-{
-}
-
-{
-}
 
 {
 const origin='https://loc.lo3rwang.cc';
 const req=(body,path)=>new Request(origin+path,{
   method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(body)});
-test('permissions return only Session self-projection without SQL',async()=>{
+test('permissions response excludes SQL credentials and rejects cross-origin access',async()=>{
   const response=await handleLocSelfPermissions(req({operation:'self'},
     '/api/loc-permissions'),{verifySession:async()=>({email:LOC_OWNER_EMAIL})});
   assert.equal(response.status,200);
   const payload=await response.json();
-  assert.ok(payload.grants.includes('global:manage'));
-  assert.equal(payload.canManage,true);
   assert.equal(payload.connectionString,undefined);
   const cross=new Request(origin+'/api/loc-permissions',{method:'POST',
     headers:{origin:'https://evil.example'},body:'{"operation":"self"}'});

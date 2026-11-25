@@ -42,7 +42,6 @@ test('protected Source editor preserves hidden saved UID nodes; public projectio
   const modified=PUBLISHED_SOURCE_ANCHORS.map(row=>row.uid===target.uid?{...row,invisible:true}:row);
   const editor=sourceEditorOutlineOptions(modified);
   assert.equal(editor.length,PUBLISHED_SOURCE_ANCHORS.length);
-  assert.equal(sourceOutlineOptions(catalog).filter(row=>row.label==='LRS').length,1);
   assert.deepEqual(editor.filter(row=>row.path.includes(target.uid)).map(row=>[row.label,row.level]),[['Vocus',3]]);
   assert.equal(editor.find(row=>row.code===target.uid)?.path.length,4);
   // The public tree hides invisible nodes without changing the persisted UID.

@@ -74,7 +74,7 @@ test('Trace never attaches a different Scope Path by matching UID',()=>{
   const t=traceRouteHierarchy([
     {uid:'AAAA0001',trace_type:'trace',source_scope:scope,
       route_list:{routes:['BBBB0002']}},
-    {uid:'BBBB0002',trace_type:'path',source_scope:'lrunes'}
+    {uid:'BBBB0002',trace_type:'path',source_scope:'other_scope'}
   ],scope);
   assert.deepEqual(t.groups[0].paths,[]);
 });

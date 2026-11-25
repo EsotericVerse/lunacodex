@@ -32,14 +32,14 @@ test('anonymous reads cannot expose the private api.manage authority registry',a
 });
 
 test('anonymous reads cannot expose raw Scope configuration rows',()=>{
-  for(const table of ['loc','lo3rwang','lrunes','family']){
+  for(const table of ['loc','lo3rwang','family']){
     assert.throws(()=>assertCrossEnginePublicRead(read('silver',table)),
       error=>error?.httpStatus===403);
   }
 });
 
 test('public SQL policy restricts Galaxy and Anchor to published rows and denies writes',()=>{
-  for(const table of ['lo3rwang_galaxy','lrunes_anchor']){
+  for(const table of ['lo3rwang_galaxy','lo3rwang_anchor']){
     assert.deepEqual(assertCrossEnginePublicRead(read('silver',table)),{publicOnly:true});
   }
   assert.throws(()=>assertCrossEnginePublicRead({

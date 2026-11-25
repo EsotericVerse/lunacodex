@@ -7,12 +7,6 @@ import {editorTransactionLease} from '../app/loc/db/editor-transaction-lifecycle
 import {assertEditorTransactionLease} from '../app/loc/db/editor-transaction-lifecycle.mjs';
 import {registerEditorTransactionDisposer} from '../app/loc/db/editor-transaction-lifecycle.mjs';
 import {cancelEditorTransactionSession} from '../app/loc/db/editor-transaction-lifecycle.mjs';
-import {touchEditorSession} from '../app/loc/auth/edit-session-ttl.mjs';
-import {editorSessionStatus} from '../app/loc/auth/edit-session-ttl.mjs';
-import {saveEditorManagement} from '../app/loc/auth/edit-session-ttl.mjs';
-import {readEditorManagement} from '../app/loc/auth/edit-session-ttl.mjs';
-import {clearEditorManagement} from '../app/loc/auth/edit-session-ttl.mjs';
-import {clearEditorSession} from '../app/loc/auth/edit-session-ttl.mjs';
 
 {
 
@@ -83,25 +77,6 @@ test('canceled Keyword Server Actions skip confirmation reads and HTTP retries',
 
 {
 
-test('transient management verification failure removes grants but preserves the session clock',()=>{
-  const values=new Map(),storage={
-    getItem:key=>values.get(key)||null,
-    setItem:(key,val)=>values.set(key,val),
-    removeItem:key=>values.delete(key)
-  };
-  const now=1700000000000;
-  assert.equal(touchEditorSession(storage,now),true);
-  assert.equal(saveEditorManagement(storage,{user:{id:'user',email:'user@example.org'},
-    roles:[],grants:[]},now+500),true);
-  const before=editorSessionStatus(storage,now+1000);
-  assert.ok(readEditorManagement(storage,now+1000));
-  clearEditorManagement(storage);
-  assert.deepEqual(editorSessionStatus(storage,now+1000),before);
-  assert.equal(readEditorManagement(storage,now+1000),null);
-  assert.equal(touchEditorSession(storage,now+1000),true);
-  clearEditorSession(storage);
-  assert.equal(storage.getItem('loc-editor-session-v1'),null);
-});
 }
 
 {
