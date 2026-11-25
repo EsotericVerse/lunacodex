@@ -191,10 +191,12 @@ export function managementHeroDefaultImage(slot){
 }
 
 export function managementHeroSlot(view='',scopeId=''){
+  // The LOC Scope shell shares the aggregate Scope ID, but time management
+  // still owns its dedicated TimeAnchor Hero slot.
   const group=scopeId==='loc'||scopeId==='admin';
-  const key=group
+  const key=view==='timeManage'?'time':group
     ?({admin:'system',sourceManage:'members',keywordManage:'locKeywords',searchManage:'articles',manage:'trace'}[view])
-    :({timeManage:'time',keywords:'keywords',manage:'spatial',searchManage:'advanced'}[view]);
+    :({keywords:'keywords',manage:'spatial',searchManage:'advanced'}[view]);
   return MANAGEMENT_HERO_SLOTS.find(item=>item.key===key)||null;
 }
 export function managementHeroCopy(rows,slot){
