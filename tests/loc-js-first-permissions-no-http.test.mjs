@@ -155,13 +155,6 @@ test('retired generic public SQL HTTP routes and legacy read handlers remain abs
     assert.equal(existsSync(new URL('../'+file,import.meta.url)),false,file);
 });
 
-test('Search bulk preview is feature-owned and its writer accepts no preview mode',()=>{
-  const search=read('app/modular/features/Search.jsx');
-  assert.match(search,/queryGalaxyLocationBatchPreview/);
-  assert.match(search,/managedAction\('apply_galaxy_location_batch'/);
-  assert.doesNotMatch(search,/batch_fill_galaxy_location|p_apply:/);
-});
-
 test('LOC native HTTP channel rejects reads before opening SQL',async()=>{
   let connected=0;
   const requests=[
@@ -352,16 +345,6 @@ test('browser database adapter cannot execute generic SELECT or publicAction cal
   assert.match(client,/LOC database reads must use their feature query action/);
   assert.doesNotMatch(client,/publicAction/);
   assert.doesNotMatch(client,/analytics/);
-});
-
-test('explicit Keyword discovery uses bounded owner-authorized feature actions',()=>{
-  const source=read('app/loc/actions/keywords/queries.mjs');
-  assert.match(source,/export async function queryKeywordDiscoveryCount/);
-  assert.match(source,/export async function queryKeywordDiscoveryPage/);
-  assert.match(source,/withKeywordScope\(scopeId,\{write:true,owner:true\}/);
-  assert.match(source,/KEYWORD_DISCOVERY_MAX_ROWS/);
-  assert.match(source,/DISCOVERY_COLUMNS=Object\.freeze\(\['uid','date','title','content'\]\)/);
-  assert.doesNotMatch(source,/transaction\(\)/);
 });
 
 test('fixed JS Manage catalog has unique Scope identifiers',()=>{

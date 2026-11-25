@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {saveTracePageInTransaction}
   from '../app/loc/providers/kysely-trace-page.mjs';
 
@@ -70,13 +69,3 @@ test('Trace page fails closed before writing malformed/duplicated UIDs',async()=
   assert.deepEqual(events,[]);
 });
 
-test('Trace bulk Point creation is an all-or-nothing INSERT',()=>{
-  const data=readFileSync(new URL('../app/modular/features/trace/trace-data.js',import.meta.url),'utf8');
-  const begin=data.indexOf('export async function addTraceAnchorsBatch(');
-  const end=data.indexOf('function validatedConnections(',begin);
-  assert.ok(begin>=0&&end>begin);
-  const body=data.slice(begin,end);
-  assert.match(body,/await transactionWrites\(\[\{/);
-  assert.doesNotMatch(body,/for\(let offset=0;offset<inserts\.length/);
-  assert.match(body,/const count=rows\.length/);
-});

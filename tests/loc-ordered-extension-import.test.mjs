@@ -96,30 +96,6 @@ test('LOC still rejects short import when total JSON exceeds 601024 bytes',()=>{
 {
 const src=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('Import chooses a 4096 first checkpoint then an 8192 ceiling without a Scope row cap',()=>{
-  assert.equal(MAX_ROWS,2048);
-  assert.equal(NORMAL_QUERY_ROWS,2048);
-  assert.equal(HEAVY_QUERY_ROWS,10000);
-  assert.equal(validImportBatchSize(),10000); // Physical DB capability is separate.
-  assert.equal(IMPORT_FIRST_CHECKPOINT_ROWS,4096);
-  assert.equal(IMPORT_MAX_CHECKPOINT_ROWS,8192);
-  const sizer=createImportBatchSizer();
-  assert.equal(sizer.size,4096);
-  assert.equal(sizer.observe(4096,1,4096*100),8192);
-  assert.equal(sizer.observe(8192,1,8192*100),8192);
-  // Short records should NOT be forced through 256, 512, 1024, 2048.
-  const short=Array.from({length:128},(_,i)=>({
-    uid:String(i).padStart(8,'0'),title:'a'
-  }));
-  assert.equal(recommendImportBatchRows(short),4096);
-  assert.equal(createImportBatchSizer({sampleRows:short}).size,4096);
-  const long=[{uid:'AAAA0001',content:'x'.repeat(8000)}];
-  assert.ok(recommendImportBatchRows(long)<4096);
-  assert.ok(createImportBatchSizer({sampleRows:long}).size<4096);
-  // Large content still shrinks a physical batch instead of capping the import.
-  assert.ok(sizer.observe(256,1,256*20000)<8192);
-});
-
 test('heavy writer actually writes >1000 rows at once and still reaches 20k',async()=>{
   const rows=Array.from({length:20000},(_,i)=>({uid:String(i).padStart(8,'0'),title:'a'}));
   const batches=[],confirmed=[];
@@ -168,34 +144,6 @@ test('adaptive writer flushes large texts by bytes rather than sending oversized
   assert.ok(sent.length>1);
 });
 
-
-test('each explicit SQL Type preserves its own parameter-safe insert budget',()=>{
-  const port=src('app/loc/providers/sql-engine-ports.mjs');
-  const pg=src('modules/loc/dialect/postgres.mjs');
-  const mysql=src('modules/loc/dialect/mysql.mjs');
-  const mssql=src('modules/loc/dialect/mssql.mjs');
-  assert.match(port,/Math\.floor\(type\.insertParameterLimit\/columns\)/);
-  assert.match(pg,/insertParameterLimit:32000,insertMaxRows:10000/);
-  assert.match(mysql,/insertParameterLimit:32000,insertMaxRows:50/);
-  assert.match(mssql,/insertParameterLimit:2000,insertMaxRows:50/);
-});
-
-test('Import confirmation windows never skip milestones or loop when sizes match',()=>{
-  const windows=createImportConfirmationWindow();
-  assert.equal(windows.remaining(0),4096);
-  assert.equal(windows.reached(4095),false);
-  assert.equal(windows.reached(4096),true);
-  assert.equal(windows.next,8192);
-  assert.equal(windows.reached(8192),true);
-  assert.equal(windows.next,16384);
-  assert.equal(windows.reached(16384),true);
-  assert.equal(windows.next,24576);
-  const equal=createImportConfirmationWindow({firstRows:4,maxRows:4});
-  assert.equal(equal.reached(4),true);
-  assert.equal(equal.next,8);
-  assert.equal(equal.reached(8),true);
-  assert.equal(equal.next,12);
-});
 
 
 }

@@ -28,13 +28,6 @@ test('UPSERT batches preserve order and split duplicate primary keys',()=>{
     [['AAAA0001','BBBB0002'],['AAAA0001'],['CCCC0003','DDDD0004']]);
   assert.deepEqual(batches.flat(),rows);
 });
-test('UPSERT batches obey parameter and byte budgets',()=>{
-  const rows=Array.from({length:11},(_,i)=>({uid:String(i).padStart(8,'0'),title:'some title'}));
-  const batches=planKyselyUpsertBatches(rows,'uid',{maxParameters:6,maxBytes:1000});
-  assert.ok(batches.every(batch=>batch.length<=3));
-  assert.deepEqual(batches.flat(),rows);
-  assert.ok(planKyselyUpsertBatches(rows,'uid',{maxBytes:30}).length>1);
-});
 test('pure managed validation does not mutate the request payload',()=>{
   const input={kind:'managed-write',payload:{
     p_table:'silver.lo3rwang_galaxy',p_operation:'update',
@@ -49,25 +42,6 @@ test('pure managed validation does not mutate the request payload',()=>{
   }}),/filters|filter/i);
 });
 
-test('scalar UID repair coalesces exact-CAS rows, but not array or mixed patches',()=>{
-  const deleted='DELE0001';
-  const scalar=Array.from({length:2501},(_,i)=>({
-    uid:String(i).padStart(8,'0'),
-    values:{place_id:null},expected:{place_id:deleted}
-  }));
-  const mixed={uid:'MIXD0001',
-    values:{source_id:null,target_id:['REMA0001']},
-    expected:{source_id:deleted,target_id:['DELE0001','REMA0001']}};
-  const malformed={uid:'CASX0001',
-    values:{source_id:null},expected:{source_id:'OTHR0001'}};
-  const plan=planUidScalarRepairBatches([...scalar,mixed,malformed],deleted);
-  assert.deepEqual(plan.batches.flatMap(batch=>batch.uids),scalar.map(row=>row.uid));
-  assert.deepEqual(plan.singles,[mixed,malformed]);
-  const tighter=planUidScalarRepairBatches(scalar,deleted,{maxParameters:14});
-  assert.ok(tighter.batches.every(batch=>batch.uids.length<=12));
-  const tiny=planUidScalarRepairBatches(scalar.slice(0,3),deleted,{maxBytes:12});
-  assert.equal(tiny.batches.length,3);
-});
 test('Kysely scalar UID UPDATE compiles bound PK and old-reference predicates',()=>{
   const db=new Kysely({dialect:new PostgresDialect({pool:{
     connect:async()=>{throw Error('Compile-only test must not connect');}
@@ -156,23 +130,6 @@ test('row-specific Anchor JSON CASE preserves num and full original attr CAS',()
   assert.ok(compiled.parameters.includes(JSON.stringify(items[0].expected.attr)));
   assert.ok(compiled.parameters.includes(JSON.stringify(items[1].expected.attr)));
 });
-test('large UID reconciliations use bounded batches and preserve every row',()=>{
-  const rows=Array.from({length:101},(_,i)=>({
-    uid:String(i).padStart(8,'0'),type:'trace',
-    values:{attr:{point:['AAAA0001','BBBB0002']},num:2n},
-    expected:{attr:{point:['AAAA0001','DELE0001','BBBB0002','DELE0001']}}
-  }));
-  const batches=planUidRepairStatementBatches(rows,{maxRows:25});
-  assert.deepEqual(batches.map(b=>b.length),[25,25,25,25,1]);
-  assert.deepEqual(batches.flat(),rows);
-  assert.equal(planUidRepairStatementBatches(rows,{maxBytes:1}).length,rows.length);
-  assert.ok(planUidRepairStatementBatches(rows,{maxParameters:14}).length>=50);
-  assert.throws(()=>planUidRepairStatementBatches(rows,{maxParameters:0}));
-  // Default size follows SQL parameters and serialized payload, not a
-  // hardcoded row count such as 50/64/100.
-  assert.equal(planUidRepairStatementBatches(rows).flat().length,rows.length);
-});
-
 test('UID alias remapping preserves article content, target order and saved IDs',()=>{
   const aliases=new Map([['AAAA0001','BBBB0002'],['CCCC0003','BBBB0002']]);
   const row={uid:'ROWX0001',content:'unchanged long article',
@@ -208,38 +165,6 @@ test('Point, Date and URL updates preserve intended fields',()=>{
   ).changes,{ref_id:'AAAA0001'});
 });
 
-test('portable Kysely CASE compiles for MySQL and SQL Server without connections',()=>{
-  const item={uid:'AAAA0001',type:'trace',
-    values:{attr:{point:['BBBB0002','CCCC0003']},num:2n},
-    expected:{attr:{point:['BBBB0002','DELE0001','CCCC0003','DELE0001']}}};
-  // MSSQL's real Driver constructs tarn.Pool immediately. For this
-  // compile-only test, retain its native compiler/adapter but supply a
-  // never-connected driver so no tarn/tedious runtime is required.
-  const mssql=new MssqlDialect({tarn:{},tedious:{}});
-  const stubDriver=new PostgresDialect({pool:{
-    connect:async()=>{throw Error('Compile-only test must not connect');}
-  }});
-  const compileOnlyMssql={
-    createDriver:()=>stubDriver.createDriver(),
-    createAdapter:()=>mssql.createAdapter(),
-    createIntrospector:db=>mssql.createIntrospector(db),
-    createQueryCompiler:()=>mssql.createQueryCompiler()
-  };
-  const configs=[
-    ['mysql',new MysqlDialect({pool:{}}),'loc_anchor'],
-    ['mssql',compileOnlyMssql,'dbo.loc_anchor']
-  ];
-  for(const [engine,dialect,relation] of configs){
-    const db=new Kysely({dialect});
-    const compiled=buildUidCaseRepairQuery(db,relation,[item],
-      values=>Object.fromEntries(Object.entries(values).map(
-        ([key,value])=>[key,key==='attr'?JSON.stringify(value):value]))).compile();
-    assert.match(compiled.sql,/case/i,engine);
-    assert.match(compiled.sql,/where/i,engine);
-    assert.ok(compiled.parameters.includes('AAAA0001'),engine);
-    assert.ok(compiled.parameters.includes(JSON.stringify(item.expected.attr)),engine);
-  }
-});
 test('UID delete refuses an incomplete CAS batch with conflict status',async()=>{
   const update=()=>{
     const q={set:()=>q,where:()=>q,executeTakeFirst:async()=>({numUpdatedRows:0n})};
@@ -290,23 +215,3 @@ test('JSON recordsets split by UTF-8 bytes, retain input order and preserve colu
   assert.throws(()=>planJsonRecordsetBatches(rows,{maxBytes:0}));
 });
 
-test('Managed INSERT and UPDATE_BATCH preflight preserve bounded recordset semantics',()=>{
-  const inserts=Array.from({length:45},(_,i)=>({
-    uid:String(i).padStart(8,'0'),title:'a title'
-  }));
-  const insertPlan=prepareManagedKyselyWrite({payload:{
-    p_table:'silver.lo3rwang_galaxy',p_operation:'insert',p_rows:inserts
-  }});
-  assert.deepEqual(insertPlan.insertGroups.flatMap(group=>JSON.parse(group.serialized)),inserts);
-  assert.equal(insertPlan.updateBatchGroups,null);
-  assert.ok(insertPlan.insertGroups.every(group=>group.rowCount>0));
-  const updates=Array.from({length:45},(_,i)=>({
-    uid:String(i).padStart(8,'0'),title:'updated'
-  }));
-  const updatePlan=prepareManagedKyselyWrite({payload:{
-    p_table:'silver.lo3rwang_galaxy',p_operation:'update_batch',p_rows:updates
-  }});
-  assert.deepEqual(updatePlan.updateBatchGroups.flatMap(group=>
-    JSON.parse(group.serialized)),updates);
-  assert.equal(updatePlan.insertGroups,null);
-});

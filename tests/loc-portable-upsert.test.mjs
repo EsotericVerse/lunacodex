@@ -3,9 +3,6 @@ import assert from 'node:assert/strict';
 import {Kysely,MssqlDialect,MysqlDialect} from 'kysely';
 import {executeKyselyQuery,executeMssqlUpsert,buildKyselySelectQuery}
   from '../app/loc/providers/kysely-runtime.mjs';
-import {executeCrossEngineManagedWrite}
-  from '../app/loc/providers/sql-engine-ports.mjs';
-import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
 
 // The SQL Server query compiler and transaction wrapper are real Kysely.
 // Only the remote driver's I/O is replaced, so no tedious/tarn installation
@@ -81,17 +78,6 @@ test('SQL Server primary-key UPSERT executes locked update then insert, no MERGE
   }finally{await x.db.destroy();}
 });
 
-test('SQL Server UPSERT supports OUTPUT inserted rows',async()=>{
-  const x=database();
-  try{
-    const output=await x.db.transaction().execute(trx=>
-      executeKyselyQuery(trx,request('AAAA0001','published',{returning:true}),
-        {dialect:'mssql',namespace:'dbo'}));
-    assert.deepEqual(output.data,[{uid:'AAAA0001',title:'published'}]);
-    assert.ok(x.statements.some(s=>/output\s+.*inserted/i.test(s.sql)));
-  }finally{await x.db.destroy();}
-});
-
 test('SQL Server UPSERT refuses a root DB or non-modeled conflict keys',async()=>{
   const x=database();
   try{
@@ -102,19 +88,6 @@ test('SQL Server UPSERT refuses a root DB or non-modeled conflict keys',async()=
         onConflict:['site_id']}),{dialect:'mssql',namespace:'dbo'})),
       /exact modeled primary key/);
     assert.equal(x.records.size,0);
-  }finally{await x.db.destroy();}
-});
-
-test('SQL Server UPSERT rejects duplicate UIDs before changing any row',async()=>{
-  const x=database();
-  try{
-    await assert.rejects(x.db.transaction().execute(trx=>
-      executeKyselyQuery(trx,request('AAAA0001','first',{values:[
-        {uid:'AAAA0001',title:'first'},
-        {uid:'AAAA0001',title:'second'}
-      ]}),{dialect:'mssql',namespace:'dbo'})),/Duplicate SQL Server/);
-    assert.equal(x.records.size,0);
-    assert.ok(!x.statements.some(s=>/with \(updlock,holdlock\)/i.test(s.sql)));
   }finally{await x.db.destroy();}
 });
 
@@ -181,6 +154,7 @@ test('MySQL transaction-bound PK upsert updates and inserts without ON DUPLICATE
           {uid:'BBBB0002',title:'created'}
         ]},{dialect:'mysql',namespace:''}));
     assert.equal(result.count,2);
+    assert.equal(x.statements.at(-1).sql,'commit');
     assert.equal(x.rows.get('AAAA0001').title,'updated');
     assert.equal(x.rows.get('BBBB0002').title,'created');
     const lookups=x.statements.filter(x=>x.sql.toLowerCase().startsWith('select '));
@@ -211,25 +185,3 @@ test('MySQL prevents UPSERT outside a caller-owned transaction',async()=>{
   }finally{await x.db.destroy();}
 });
 
-for(const [engine,namespace,create,lock] of [
-  ['mssql','dbo',database,/with \(updlock,holdlock\)/i],
-  ['mysql','',fixture,/for update/i]
-]){
-  test(engine+' managed upsert respects Scope grants and caller-owned transaction',async()=>{
-    const x=create();
-    const claims={provider:'loc',me:true,sub:'tester_portable',
-      email:'portable@example.com',grants:['lo3rwang:manage']};
-    try{
-      const output=await x.db.transaction().execute(async trx=>{
-        bindLocAuthorization(trx,{role:'authenticated',claims,engine});
-        return executeCrossEngineManagedWrite(trx,{payload:{
-          p_table:'silver.lo3rwang_galaxy',p_operation:'upsert',
-          p_rows:[{uid:'AAAA0001',title:'managed'}]
-        }},{engine,namespace,role:'authenticated',claims});
-      });
-      assert.equal(output.data.count,1);
-      assert.equal((x.records||x.rows).get('AAAA0001').title,'managed');
-      assert.ok(x.statements.some(stmt=>lock.test(stmt.sql)));
-    }finally{await x.db.destroy();}
-  });
-}

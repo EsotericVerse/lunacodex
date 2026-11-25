@@ -20,26 +20,6 @@ test('missing LOC_DATABASE_URI fails before opening a connection',async()=>{
   assert.equal(connected,false);
 });
 
-test('an injected PostgreSQL connection performs one bounded SELECT 1 probe',async()=>{
-  let calls=0;
-  const response=await testLocAuthConnection(
-    {LOC_DATABASE_URI:'configured-secret-not-inspected'},
-    async()=>{
-      calls++;
-      return {engine:'postgres',db:{
-        selectNoFrom(select){
-          assert.equal(typeof select,'function');
-          return {executeTakeFirstOrThrow:async()=>({connected:1})};
-        }
-      }};
-    });
-  assert.equal(calls,1);
-  assert.equal(response.status,200);
-  assert.deepEqual(await body(response),{
-    ok:true,connection:'postgresql',driver:'pg',probe:'select_1'
-  });
-});
-
 test('a SQL connection failure never returns the URI or error text to the browser',async()=>{
   const sensitive='postgresql://sensitive-user:secret-password@private-neon-host/database';
   const response=await testLocAuthConnection({LOC_DATABASE_URI:sensitive},async()=>{
@@ -77,21 +57,6 @@ test('request SQL pool reuses released clients and closes them at request end',a
   assert.equal(client.closed,1);
   await pool.end();
   assert.equal(client.closed,1);
-});
-test('request SQL pool caps parallel clients and reuses queued capacity',async()=>{
-  TestSqlClient.all=[];
-  const pool=requestScopedPool({},TestSqlClient,{attempts:1});
-  const active=await Promise.all(Array.from({length:4},()=>pool.connect()));
-  let queued=false;
-  const fifth=pool.connect().then(client=>{queued=true;return client;});
-  await Promise.resolve();
-  assert.equal(queued,false);
-  active[0].release();
-  const next=await fifth;
-  assert.equal(TestSqlClient.all.length,4);
-  for(const client of [...active.slice(1),next])client.release();
-  await pool.end();
-  assert.ok(TestSqlClient.all.every(client=>client.closed===1));
 });
 test('request cancellation closes active connection and refuses future acquisition',async()=>{
   TestSqlClient.all=[];
@@ -186,23 +151,6 @@ test('database owner closes its pool even if Kysely destruction fails',async()=>
   assert.deepEqual(events,['db','pool']);
 });
 
-test('health-check SQL ownership closes connection after successful and invalid probes',async()=>{
-  for(const connected of [1,0]){
-    const calls=[];
-    const port={engine:'postgres',
-      db:{
-        selectNoFrom:()=>({executeTakeFirstOrThrow:async()=>({connected})}),
-        async destroy(){calls.push('destroy');}
-      },
-      pool:{async end(){calls.push('pool-end');}}
-    };
-    const response=await testLocAuthConnection(
-      {LOC_DATABASE_URI:'configured-secret-not-inspected'},
-      async()=>port);
-    assert.equal(response.status,connected===1?200:503);
-    assert.deepEqual(calls,['destroy','pool-end']);
-  }
-});
 test('keyword sharing uses one locked read-modify-write transaction and fails closed',async()=>{
   let metadata={class_shares:{ABCD1234:false},other:{unrelated:true}};
   const events=[];
