@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {testLocAuthConnection} from '../app/loc/db/native-connectivity-check.mjs';
 import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
-import {closeLocDatabase,bindLocRequestAbort} from '../app/loc/mcp/native-kysely.mjs';
+import {closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from '../app/loc/mcp/native-kysely.mjs';
 
 const body=async response=>JSON.parse(await response.text());
 
@@ -150,3 +150,16 @@ test('database owner closes its pool even if Kysely destruction fails',async()=>
   assert.deepEqual(events,['db','pool']);
 });
 
+
+test('LOC Hyperdrive selection is dedicated, validated and optional outside Workers',async()=>{
+  const uri='postgresql://test:pass@hyperdrive.invalid/db';
+  assert.equal(await locHyperdriveBinding({LOC_DATABASE_URI:'postgresql://direct/db'}),null);
+  assert.equal(await locHyperdriveBinding({
+    LOC_HYPERDRIVE:{connectionString:uri},
+    LOC_DATABASE_URI:'postgresql://direct/db'
+  }),uri);
+  await assert.rejects(locHyperdriveBinding({
+    LOC_HYPERDRIVE:{connectionString:'mysql://wrong/db'},
+    LOC_DATABASE_URI:'postgresql://direct/db'
+  }),/LOC Hyperdrive binding invalid/);
+});

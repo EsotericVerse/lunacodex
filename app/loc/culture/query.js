@@ -323,16 +323,22 @@ export async function selectLocCultureDensity({
       (startDate||!intersectionWindows.length||intersectionWindows.some(shared=>
         day>=shared.startDate&&day<=shared.endDate));
   };
-  const aggregateRows=(await mapBounded(scopes,async scope=>{
-    const {text}=await selectScopeDailyCounts(scope,{
-      startDate:start,endDate:end,requireAggregate:true
-    });
-    return {scopeId:scope.id,rows:text.filter(validDate).map(row=>({...row,scope_id:scope.id}))};
-  },{signal,onCheckpoint:onCheckpoint?(batches,progress)=>onCheckpoint({
-    scopeRanges:buildLocScopeDistribution(batches.flatMap(batch=>batch.rows)),
-    completedScopeIds:batches.map(batch=>batch.scopeId),...progress
-  }):null})).flatMap(batch=>batch.rows);
-  const taxonomy=await readPublicSourceTaxonomy();
+  const [aggregates,taxonomyResult]=await Promise.allSettled([
+    mapBounded(scopes,async scope=>{
+      const {text}=await selectScopeDailyCounts(scope,{
+        startDate:start,endDate:end,requireAggregate:true
+      });
+      return {scopeId:scope.id,rows:text.filter(validDate).map(row=>({...row,scope_id:scope.id}))};
+    },{signal,onCheckpoint:onCheckpoint?(batches,progress)=>onCheckpoint({
+      scopeRanges:buildLocScopeDistribution(batches.flatMap(batch=>batch.rows)),
+      completedScopeIds:batches.map(batch=>batch.scopeId),...progress
+    }):null}),
+    readPublicSourceTaxonomy()
+  ]);
+  if(aggregates.status==='rejected')throw aggregates.reason;
+  if(taxonomyResult.status==='rejected')throw taxonomyResult.reason;
+  const aggregateRows=aggregates.value.flatMap(batch=>batch.rows);
+  const taxonomy=taxonomyResult.value;
   const built=buildLocSourceRiver(aggregateRows,taxonomy);
   return {
     scopeRanges:buildLocScopeDistribution(aggregateRows),

@@ -4,6 +4,12 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-24",
   "previews": {
+    "hyperdrive": [
+      {
+        "binding": "LOC_HYPERDRIVE",
+        "id": "4305ed11e9f841b7ac0d19e7daecaf9a"
+      }
+    ],
     "observability": {
       "logs": {
         "enabled": true,
@@ -23,7 +29,8 @@
   },
   "compatibility_flags": [
     "nodejs_compat",
-    "global_fetch_strictly_public"
+    "global_fetch_strictly_public",
+    "global_navigator"
   ],
   "limits": {
     "cpu_ms": 300000
@@ -32,6 +39,12 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "hyperdrive": [
+    {
+      "binding": "LOC_HYPERDRIVE",
+      "id": "4305ed11e9f841b7ac0d19e7daecaf9a"
+    }
+  ],
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",

@@ -8,6 +8,7 @@ import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
 import {createKyselyDialect,getSqlType,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
 import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
+import {getCloudflareContext} from '@opennextjs/cloudflare';
 
 // The trusted Kysely dialect and its request-owned pg.Client share the
 // current request lifetime. No platform-specific background cleanup is needed.
@@ -24,6 +25,23 @@ function mainUri(env){
      !url.username||!url.password||url.pathname.length<=1)
     throw unavailable('LOC primary PostgreSQL URI incomplete');
   return value;
+}
+// OpenNext server actions pass process.env, which cannot carry object bindings.
+export async function locHyperdriveBinding(env={}){
+  const isCloudflareWorkers=Boolean(process.versions?.workerd)||
+    globalThis.navigator?.userAgent==='Cloudflare-Workers';
+  let binding=env?.LOC_HYPERDRIVE||null;
+  if(!binding&&isCloudflareWorkers){
+    try{binding=(await getCloudflareContext({async:true})).env?.LOC_HYPERDRIVE||null;}
+    catch{/* Local Next.js and non-Worker callers use LOC_DATABASE_URI. */}
+  }
+  if(!binding)return null;
+  const uri=binding?.connectionString;
+  let url;
+  try{url=new URL(uri);}catch{throw unavailable('LOC Hyperdrive binding invalid');}
+  if(!['postgres:','postgresql:'].includes(url.protocol)||!url.hostname)
+    throw unavailable('LOC Hyperdrive binding invalid');
+  return uri;
 }
 export {requestScopedPool};
 const NODE_POOL_KEY=Symbol.for('loc.native-kysely.node-pool');
@@ -66,11 +84,28 @@ export async function db_connection(env={},verifiedAlias='',{
   }
   if(trustedTarget||trustedDialectConfig)
     throw unavailable('The LOC control database cannot be replaced');
-  const uri=mainUri(env);
   if(!primary||primary.engine!=='postgres'||
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
-  const isCloudflareWorkers=Boolean(process.versions?.workerd);
+  const isCloudflareWorkers=Boolean(process.versions?.workerd)||
+    globalThis.navigator?.userAgent==='Cloudflare-Workers';
+  const hyperdriveUri=await locHyperdriveBinding(env);
+  if(hyperdriveUri){
+    // Hyperdrive owns the cross-request origin pool. Each Worker request still
+    // owns its pg.Client and closes it at the normal/error/abort boundary.
+    const pool=requestScopedPool({
+      connectionString:hyperdriveUri,
+      connectionTimeoutMillis:6000
+    },pg.Client,{
+      attempts:2,attemptTimeoutMs:4000,maxElapsedMs:6500,
+      baseDelayMs:200,maxDelayMs:500
+    });
+    const dialect=createKyselyDialect(primary.engine,{pool});
+    return {db:new Kysely({dialect}),dialect,pool,
+      engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{},
+      connectionMode:'hyperdrive'};
+  }
+  const uri=mainUri(env);
   if(!isCloudflareWorkers){
     const pool=nodeProcessPool(uri);
     const dialect=createKyselyDialect(primary.engine,{pool});
