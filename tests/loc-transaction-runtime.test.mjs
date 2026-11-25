@@ -8,7 +8,7 @@ import {planUidDependencyRepair}
   from '../app/loc/providers/uid-dependency-immer.mjs';
 import {planImportPointCreate,planImportDateCreate,planImportDateTitleDelta}
   from '../app/loc/import/point-date-immer.mjs';
-import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,sql} from 'kysely';
+import {Kysely,PostgresDialect,sql} from 'kysely';
 import {planJsonRecordsetBatches} from '../app/loc/query/query-batch-size.mjs';
 import {remapImportUidRelations,planImportPointUidLink,
   planExistingImportUidUpdate} from '../app/loc/import/uid-delta.mjs';

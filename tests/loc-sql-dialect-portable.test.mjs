@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertCrossEnginePublicRead,authorizeCrossEngineQuery,
-  executeCrossEngineManagedWrite}
+import {assertCrossEnginePublicRead,authorizeCrossEngineQuery}
   from '../app/loc/providers/sql-engine-ports.mjs';
 import {Kysely,PostgresDialect} from 'kysely';
 import {buildKyselyUpsertQuery}
@@ -25,14 +24,14 @@ const read=(schema,table)=>({
   kind:'query',operation:'select',schema,table,columns:['uid']
 });
 
-test('cross-engine anonymous reads cannot expose the private api.manage authority registry',async()=>{
+test('anonymous reads cannot expose the private api.manage authority registry',async()=>{
   assert.throws(()=>assertCrossEnginePublicRead(read('api','manage')),
     error=>error?.httpStatus===403);
   await assert.rejects(authorizeCrossEngineQuery(null,read('api','manage'),
     {role:'anon'}),error=>error?.httpStatus===403);
 });
 
-test('cross-engine anonymous reads cannot expose raw Scope configuration rows',()=>{
+test('anonymous reads cannot expose raw Scope configuration rows',()=>{
   for(const table of ['loc','lo3rwang','lrunes','family']){
     assert.throws(()=>assertCrossEnginePublicRead(read('silver',table)),
       error=>error?.httpStatus===403);
@@ -46,17 +45,6 @@ test('public SQL policy restricts Galaxy and Anchor to published rows and denies
   assert.throws(()=>assertCrossEnginePublicRead({
     ...read('silver','lo3rwang_galaxy'),operation:'update'
   }),error=>error?.httpStatus===403);
-});
-
-test('portable managed SQL rejects unmodeled relation before calling the driver',async()=>{
-  const db=new Proxy({},{
-    get(){throw new Error('Database must not be accessed');}
-  });
-  await assert.rejects(executeCrossEngineManagedWrite(db,{payload:{
-    p_table:'silver.unknown_data',p_operation:'insert',
-    p_rows:[{uid:'AAAA0001'}]
-  }},{engine:'mssql',role:'authenticated',claims:{grants:[]}}),
-  /not modeled/);
 });
 
 }

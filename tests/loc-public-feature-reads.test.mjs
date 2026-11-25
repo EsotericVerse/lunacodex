@@ -65,14 +65,13 @@ test('lightweight fixed Config, Hero and Blocks use one policy delegate without 
     .map(([name])=>name),['config','hero','blocks']);
 });
 
-test('lightweight reads preserve fixed-model, engine and operation whitelist',async()=>{
+test('lightweight reads preserve fixed-model and operation whitelist',async()=>{
   const db={},opts={
     dialect:{},
     ZenStackClient:class {constructor(){throw Error('must not construct denied client');}},
     PolicyPlugin:class {}
   };
   for(const [engine,body] of [
-    ['mysql',model('loc')],
     ['postgres',model('lo3rwang_galaxy')],
     ['postgres',{...model('loc'),operation:'update'}],
     ['postgres',{...model('loc'),schema:'api'}]
