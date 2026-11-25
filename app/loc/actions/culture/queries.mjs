@@ -1,4 +1,5 @@
 'use server';
+import {requirePublicFeature} from '../../permissions/public-feature-policy.mjs';
 import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../../packages/zenstack/galaxy-read-models.mjs';
@@ -43,6 +44,7 @@ export async function queryCulture(args={}){
   if(!start||!end||start>end||!site||site.length>120||
     !Number.isSafeInteger(offset)||offset<0||offset>100000)
     throw Error('Invalid Culture list selection');
+  requirePublicFeature(scope,'culture_able');
   return withPublicLocRead({scope,onMissingGalaxy:()=>({data:{rows:[],hasMore:false,nextCursor:null},count:null})},async(db,port)=>{
     const rows=await db.selectFrom(relation(scope,'galaxy',port))
       .select(galaxyReadColumns('GalaxyList'))
@@ -71,6 +73,7 @@ export async function queryCultureContent(searchParams){
   if(kind==='culture_density'&&(!start||!end||start>end)||
     kind==='culture_anchors'&&(start||end))
     throw Error('Invalid Culture query range');
+  requirePublicFeature(scope,'culture_able');
   return withPublicLocRead({scope,onMissingGalaxy:kind==='culture_density'?()=>({data:[],count:null}):null},async(db,port)=>{
     if(kind==='culture_anchors'){
       const table=relation(scope,'anchor',port);
@@ -127,6 +130,7 @@ export async function queryTimeAnchors({scope:scopeValue,mode='public',
       const data=assertZModelAnchorFeatureRows(rows.slice(0,limit));
       return {data,nextCursor:rows.length>limit?String(data.at(-1).uid):null};
     };
+  if(mode==='public')requirePublicFeature(scope,'culture_able');
   return mode==='public'?withPublicLocRead({scope},read):
     withAuthorizedLocRead({scope,writeScopes:[scope]},read);
 }

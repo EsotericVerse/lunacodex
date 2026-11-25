@@ -1,4 +1,5 @@
 'use server';
+import {requirePublicFeature} from '../../permissions/public-feature-policy.mjs';
 import {sql} from 'kysely';
 import {withPublicLocRead} from '../read-context.mjs';
 import {traceKeywordGroups} from '../../providers/kysely-analytics.mjs';
@@ -212,6 +213,7 @@ export async function queryTrace(args={}){
     throw Error('Invalid Trace options');
   if(options.classUid!=null&&(!/^[A-Za-z0-9]{8}$/.test(String(options.classUid))))
     throw Error('Invalid Keyword Class UID');
+  requirePublicFeature(scope,'trace');
   return withPublicLocRead({scope,onMissingGalaxy:()=>({data:[],count:null})},async(db,port)=>{
     const table=galaxyTable(scope,port);
     let data;
@@ -253,6 +255,7 @@ export async function queryTracePlaceNames(args={}){
   const scope=scopeId(args.p_scope_id);
   const term=String(args.p_term||'').trim().slice(0,100);
   const limit=Math.max(1,Math.min(8,Number(args.p_limit)||8));
+  requirePublicFeature(scope,'trace');
   if(!term)return {data:[],count:null};
   return withPublicLocRead({scope},async(db)=>{
     const pattern='%'+term.replace(/[\\%_]/g,char=>'\\'+char)+'%';

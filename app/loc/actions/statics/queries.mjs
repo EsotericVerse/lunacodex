@@ -5,7 +5,7 @@ import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {sharedClasses,keywordCatalog,keywordSummary}
   from '../../providers/kysely-analytics.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
-import {scopeFeatureEnabled} from '../../scope/scope-config-fields.mjs';
+import {publicFeatureAllowed,requirePublicFeature} from '../../permissions/public-feature-policy.mjs';
 import {mapBounded} from '../../query/bounded-parallel.mjs';
 import {readDateRangeAggregates}
   from '../../query/date-range-aggregate.mjs';
@@ -39,6 +39,7 @@ export async function queryStatics(args={}){
     !options||typeof options!=='object'||Array.isArray(options)||
     Object.keys(options).some(key=>!['classUid','source'].includes(key))||
     start&&end&&start>end)throw Error('Invalid Keyword query');
+  requirePublicFeature(scope,'statistics_able');
   return withPublicLocRead({scope,onMissingGalaxy:view==='keyword_summary'?()=>({data:[],count:null}):null},async(db,port)=>{
     const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
     const anchor=relation(scope,'anchor',port);
@@ -140,7 +141,7 @@ async function scopeStatistics(db,scope,kind,start,end,port){
 async function locStatistics(db,start,end,port){
   const entries=SCOPE_ROUTE_INDEX.filter(row=>row.scope_id!=='loc'&&
     row.scope_id!=='admin'&&row.active!==false&&
-    scopeFeatureEnabled(row.config,'statistics_able'));
+    publicFeatureAllowed(row.scope_id,'statistics_able'));
   const results=await mapBounded(entries,async entry=>{
     const scope=entry.scope_id,table=relation(scope,'galaxy',port);
     return withOptionalGalaxy(db,scope,async()=>{
@@ -199,11 +200,9 @@ export async function queryStaticsContent(searchParams){
     throw Error('Invalid Statistics query range');
   if(kind==='loc'&&scope!=='loc'||kind!=='loc'&&scope==='loc')
     throw Error('Invalid Statistics query Scope');
-  const config=active.get(scope)?.config;
-  if(!scopeFeatureEnabled(config,'statistics_able'))
-    throw Error('Statistics feature is not published');
+  requirePublicFeature(scope,'statistics_able');
   const scopes=[...active.keys()].filter(id=>id!=='loc'&&id!=='admin'&&
-    scopeFeatureEnabled(active.get(id)?.config,'statistics_able'));
+    publicFeatureAllowed(id,'statistics_able'));
   if(kind==='loc')return withPublicLocRead({scope:'loc',scopes},async(db,port)=>({
     data:await locStatistics(db,start,end,port),count:null
   }));

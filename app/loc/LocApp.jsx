@@ -13,7 +13,7 @@ import {getScope} from '../modular/routing/scope-registry';
 import ManagementAccess from './management/ManagementAccess';
 import ReturnLocHome from './ui/ReturnLocHome';
 import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
-import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
+import {explicitFeatureEnabled} from './permissions/public-feature-policy.mjs';
 import {FeaturePage,ManagementHeroContext} from '../modular/ui';
 // Tiny, CSS-only marks live only inside the already-existing loading slot.
 // No assets, libraries, timers, layout shifts, or delayed navigation.
@@ -121,7 +121,7 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   // for a config SQL request must not block the Hero or content.
   if(!enabled)return children;
   const config=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId&&row.active!==false)?.config;
-  if(!config||!scopeFeatureEnabled(config,flag))return <ReturnLocHome reason="feature"/>;
+  if(!config||!explicitFeatureEnabled(config,flag))return <ReturnLocHome reason="feature"/>;
   return children;
 }
 

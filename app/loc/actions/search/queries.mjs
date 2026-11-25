@@ -1,4 +1,5 @@
 'use server';
+import {requirePublicFeature} from '../../permissions/public-feature-policy.mjs';
 import {withPublicLocRead} from '../read-context.mjs';
 import {searchSummary} from '../../providers/kysely-analytics.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
@@ -19,6 +20,7 @@ export async function querySearch(args={}){
     throw Error('Invalid Search Scope list');
   const scopeIds=[...new Set(requested)];
   if(!scopeIds.length)return {data:{rows:[]},count:null};
+  for(const scope of scopeIds)requirePublicFeature(scope,'search');
   return withPublicLocRead({scopes:scopeIds},async(db,port)=>({
     data:await searchSummary(db,{scopeIds},{publishedScopeIds:scopeIds,
       engine:port.engine,namespace:port.namespace}),count:null
