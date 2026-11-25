@@ -1,5 +1,9 @@
 'use server';
 import {sql} from 'kysely';
+import {headers} from 'next/headers.js';
+import {verifiedLocWebsiteSession} from '../../auth/verified-session.mjs';
+import {publishedLocAccess} from '../../permissions/loc-business-grants.mjs';
+import {runtimeBucket,readRuntimeControl,patchRuntimeControl} from '../../runtime/r2-runtime.mjs';
 import {directMcpKysely,closeLocDatabase} from '../../db/native-kysely.mjs';
 import {bindLocAuthorization} from '../../providers/loc-authorization.mjs';
 import {readLocHyperdriveMode,writeLocHyperdriveMode}
@@ -10,7 +14,34 @@ import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
 
+async function requireRuntimeAdmin(){
+  const incoming=await headers();
+  const cookie=incoming.get('cookie')||'';
+  const request=new Request('https://loc.lo3rwang.cc/_loc-internal-read',{headers:{cookie}});
+  const session=await verifiedLocWebsiteSession(request);
+  const {grants}=publishedLocAccess(session.email,{website:true});
+  if(!grants.includes('global:manage'))throw Object.assign(Error('LOC 管理權限不足'),{httpStatus:403});
+  return {session,grants};
+}
+
+export async function readRuntimeR2State(){
+  await requireRuntimeAdmin();
+  const bucket=await runtimeBucket(process.env);
+  if(!bucket)return {available:false,enabled:false};
+  const control=await readRuntimeControl(process.env);
+  return {available:true,enabled:control?.r2Enabled!==false};
+}
+export async function setRuntimeR2Mode(enabled){
+  await requireRuntimeAdmin();
+  if(typeof enabled!=='boolean')throw Error('無效的 R2 模式');
+  const result=await patchRuntimeControl({r2Enabled:enabled},{env:process.env});
+  return {available:true,enabled:result.r2Enabled};
+}
 export async function readHyperdriveMode(){
+  await requireRuntimeAdmin();
+  const control=await readRuntimeControl(process.env);
+  if(control)return {enabled:control.hyperdriveEnabled,
+    connectionMode:control.hyperdriveEnabled?'hyperdrive':'direct',source:'r2'};
   return withAuthorizedLocRead({global:true},async(db,port)=>{
     return {enabled:await readLocHyperdriveMode(db),
       connectionMode:port.connectionMode||'direct'};
@@ -19,6 +50,25 @@ export async function readHyperdriveMode(){
 
 export async function setHyperdriveMode(enabled){
   if(typeof enabled!=='boolean')throw Error('Invalid Hyperdrive mode');
+  await requireRuntimeAdmin();
+  if(await runtimeBucket(process.env)){
+    // Probe only the target connection, never the failed source database or a Galaxy table.
+    const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+    const expected=enabled?'hyperdrive':'direct';
+    let probe=null;
+    try{
+      probe=await directMcpKysely(process.env,primary?.target_id,{
+        forceDirect:!enabled,forceHyperdrive:enabled
+      });
+      if(probe.connectionMode!==expected)throw Error('Connection mode mismatch');
+      await sql`select 1 as connection_ready`.execute(probe.db);
+    }catch{
+      throw Error(enabled?'Hyperdrive 連線預檢失敗，設定未變更。':
+        'LOC_DATABASE_URI 直連預檢失敗，設定未變更。');
+    }finally{if(probe)try{await closeLocDatabase(probe);}catch{}}
+    const control=await patchRuntimeControl({hyperdriveEnabled:enabled},{env:process.env});
+    return {enabled:control.hyperdriveEnabled,connectionMode:expected,source:'r2'};
+  }
   return withAuthorizedLocRead({global:true},async(db,port,{session,grants})=>{
     const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
     if(!primary)throw Error('LOC primary database unavailable');

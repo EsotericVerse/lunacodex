@@ -1,5 +1,6 @@
 'use server';
 import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
+import {emptyGalaxyFeature} from '../../runtime/r2-runtime.mjs';
 import {parseGalaxyFeatureQuery,executeGalaxyFeatureQuery}
   from '../../model/galaxy-feature-queries.mjs';
 import {parseGalaxyRecordQuery,executeGalaxyRecordQuery}
@@ -14,9 +15,9 @@ const featureFlag={culture:'culture_able',statics:'statistics_able',
 
 const featureAuthorization=operation=>({scope:operation.scope,
   writeScopes:operation.mode==='editor'?[operation.scope]:[]});
-async function withFeatureConnection(operation,work,{publicRead=false}={}){
+async function withFeatureConnection(operation,work,{publicRead=false,onUnavailable=null}={}){
   const scope=operation.scope;
-  if(publicRead)return withPublicLocRead({scope},async(db,port)=>work(db,port));
+  if(publicRead)return withPublicLocRead({scope,onUnavailable},async(db,port)=>work(db,port));
   if(scope==='loc')return withAuthorizedLocRead({global:true},
     async(db,port)=>work(db,port));
   return withAuthorizedLocRead(featureAuthorization(operation),async(db,port)=>work(db,port));
@@ -31,7 +32,8 @@ export async function queryGalaxyFeature(body){
   return withFeatureConnection(operation,async(db)=>({
     data:await executeGalaxyFeatureQuery(db,operation),
     query:{requestedBy:operation.feature,scope:operation.scope,result:operation.result}
-  }),{publicRead:true});
+  }),{publicRead:true,onUnavailable:()=>({data:emptyGalaxyFeature(operation),
+    query:{requestedBy:operation.feature,scope:operation.scope,result:operation.result}})});
 }
 export async function queryGalaxyRecords(body){
   const operation=parseGalaxyRecordQuery(body);
@@ -39,5 +41,6 @@ export async function queryGalaxyRecords(body){
     data:await executeGalaxyRecordQuery(db,operation),
     query:{requestedBy:'galaxy',scope:operation.scope,
       model:'galaxy-records',view:operation.view}
-  }),{publicRead:operation.mode==='public'});
+  }),{publicRead:operation.mode==='public',onUnavailable:()=>({data:{rows:[]},
+    query:{requestedBy:'galaxy',scope:operation.scope,model:'galaxy-records',view:operation.view}})});
 }

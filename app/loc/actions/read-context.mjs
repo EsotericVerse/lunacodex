@@ -1,4 +1,5 @@
 import {headers} from 'next/headers.js';
+import {isDataUnavailable,standaloneResult} from '../runtime/r2-runtime.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {directMcpKysely,closeLocDatabase} from '../db/native-kysely.mjs';
 import {bindLocAuthorization} from '../providers/loc-authorization.mjs';
@@ -29,7 +30,7 @@ function hasWriteGrant(grants,scope){
 }
 
 export async function withAuthorizedLocRead({scope,scopes=[],global=false,
-  writeScopes=[],targetId=null},read,dependencies={}){
+  writeScopes=[],targetId=null,onUnavailable=null},read,dependencies={}){
   const requested=[...new Set([scope,...scopes].filter(Boolean).map(String))];
   const writes=[...new Set(writeScopes.map(String))];
   if(requested.some(id=>!activeScopes.has(id))||
@@ -56,20 +57,27 @@ export async function withAuthorizedLocRead({scope,scopes=[],global=false,
     ?DATABASE_ACCESS_LIST.find(row=>row.backup_selected===true&&row.target_id===targetId)
     :DATABASE_ACCESS_LIST.find(row=>row.selected===true);
   if(!primary)throw Object.assign(new Error('LOC database unavailable'),{httpStatus:503});
-  const port=await openDatabase(process.env,primary.target_id);
+  let port=null;
   try{
+    port=await openDatabase(process.env,primary.target_id);
     bindLocAuthorization(port.db,{role:'authenticated',engine:port.engine,
       claims:{provider:'loc',role:'authenticated',sub:session.userId,
         email:session.email,me:true,grants}});
     return await read(port.db,port,{session,grants});
+  }catch(error){
+    if(!targetId&&!writes.length&&onUnavailable&&isDataUnavailable(error)){
+      console.warn('LOC authorized read unavailable',error.code||'backend');
+      return standaloneResult(await onUnavailable({session,grants}));
+    }
+    throw error;
   }
-  finally{await closeDatabase(port);}
+  finally{if(port)await closeDatabase(port);}
 }
 
 // Public feature readers use their own fixed projections and filters. This
 // connection helper deliberately accepts no SQL, table, columns or query
 // options from the caller; it does not create a public query endpoint.
-export async function withPublicLocRead({scope,scopes=[],targetId=null},read,
+export async function withPublicLocRead({scope,scopes=[],targetId=null,onUnavailable=null},read,
   dependencies={}){
   const requested=[...new Set([scope,...scopes].filter(Boolean).map(String))];
   if(!requested.length||requested.some(id=>!activeScopes.has(id)||id==='admin'))
@@ -86,12 +94,19 @@ export async function withPublicLocRead({scope,scopes=[],targetId=null},read,
     ?DATABASE_ACCESS_LIST.find(row=>row.backup_selected===true&&row.target_id===targetId)
     :DATABASE_ACCESS_LIST.find(row=>row.selected===true);
   if(!primary)throw Object.assign(new Error('LOC database unavailable'),{httpStatus:503});
-  const port=await openDatabase(process.env,primary.target_id);
+  let port=null;
   try{
+    port=await openDatabase(process.env,primary.target_id);
     bindLocAuthorization(port.db,{role:'anon',engine:port.engine,claims:{}});
     return await read(port.db,port,{session:null,grants:[],scopes:requested});
+  }catch(error){
+    if(!targetId&&onUnavailable&&isDataUnavailable(error)){
+      console.warn('LOC public read unavailable',error.code||'backend');
+      return standaloneResult(await onUnavailable());
+    }
+    throw error;
   }
-  finally{await closeDatabase(port);}
+  finally{if(port)await closeDatabase(port);}
 }
 
 export function assertLocReadGrant(grants,scope){

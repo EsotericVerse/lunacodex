@@ -8,6 +8,7 @@ import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';
 import {FIXED_MANAGE_ROWS,fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
 import {allocateAnchorUid} from '../model/uid.js';
+import {readDefaultKeywordTemplate} from '../runtime/r2-runtime.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -210,12 +211,14 @@ function keywordSource(rows,uid){
   return row;
 }
 async function copyDefaultKeywordClass(trx,target){
-  const source=await trx.selectFrom('silver.lo3rwang')
+  const template=await readDefaultKeywordTemplate();
+  const source=template?null:await trx.selectFrom('silver.lo3rwang')
     .select('current_keyword_class_uid').where('id','=','lo3rwang')
     .executeTakeFirst();
-  const classUid=text(source?.current_keyword_class_uid);
+  const classUid=text(template?.classUid||source?.current_keyword_class_uid);
   if(!classUid)reject('Default Keyword Class is not configured',409);
-  const rows=await trx.selectFrom('silver.lo3rwang_anchor')
+  const rows=template?template.rows.filter(row=>row.type!=='pattern'):
+    await trx.selectFrom('silver.lo3rwang_anchor')
     .select(['uid','type','title','description','attr'])
     .where('type','in',['category','class','group','item']).execute();
   const root=keywordSource(rows,classUid);

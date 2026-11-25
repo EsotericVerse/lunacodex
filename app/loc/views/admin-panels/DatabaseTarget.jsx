@@ -2,7 +2,7 @@
 import {useEffect,useState} from 'react';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {resolveDatabaseRouting} from '../../providers/routing/config.mjs';
-import {readBackupReadiness,readHyperdriveMode,setHyperdriveMode}
+import {readBackupReadiness,readHyperdriveMode,setHyperdriveMode,readRuntimeR2State,setRuntimeR2Mode}
   from '../../actions/admin/queries.mjs';
 
 const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
@@ -14,6 +14,8 @@ export default function DatabaseTarget(){
   const [hyperdrive,setHyperdrive]=useState({state:'loading',enabled:true});
   const [modeMessage,setModeMessage]=useState('');
   const [savingMode,setSavingMode]=useState(false);
+  const [r2,setR2]=useState({state:'loading',enabled:true,available:false});
+  const [r2Message,setR2Message]=useState('');
   useEffect(()=>{
     let active=true;
     if(!DATABASE_ACCESS_LIST.some(item=>item.backup_selected===true)){
@@ -27,6 +29,9 @@ export default function DatabaseTarget(){
             ?{state:data.schema?'online':'schema-error'}:{state:'offline'});
         }).catch(()=>{if(active)setBackupHealth({state:'offline'});});
     }
+    readRuntimeR2State().then(data=>{
+      if(active)setR2({state:'ready',...data});
+    }).catch(()=>{if(active)setR2({state:'error',enabled:false,available:false});});
     readHyperdriveMode().then(data=>{
       if(!active)return;
       setHyperdrive({state:'ready',enabled:data?.enabled!==false,
@@ -51,6 +56,11 @@ export default function DatabaseTarget(){
       setModeMessage(error?.message||'連線預檢失敗，模式未變更。');
     }finally{setSavingMode(false);}
   };
+  const changeR2=async enabled=>{
+    setR2(old=>({...old,state:'saving'}));setR2Message('');
+    try{const data=await setRuntimeR2Mode(enabled);setR2({state:'ready',...data});}
+    catch(error){setR2(old=>({...old,state:'ready'}));setR2Message(error?.message||'R2 設定失敗');}
+  };
   const ready=DATABASE_ACCESS_LIST;
   return <section className="loc-card admin-workspace">
     <h2>資料庫連線與部署設定</h2>
@@ -73,6 +83,14 @@ export default function DatabaseTarget(){
           '；實際路徑：'+(hyperdrive.connectionMode==='hyperdrive'
             ?'Hyperdrive':'LOC_DATABASE_URI 直連'))}</p>
       <p className="scope-status">切換前會先以目標連線檢查連線與 silver.loc；檢查失敗時設定不變。</p>
+    </section>
+    <section className="scope-management-wide-field">
+      <label><input type="checkbox" role="switch" aria-label="開啟 R2 模式"
+        checked={r2.enabled} disabled={r2.state!=='ready'||!r2.available}
+        onChange={event=>{void changeR2(event.currentTarget.checked);}} />{' '}開啟 R2 模式</label>
+      <p className="scope-status" role="status">{r2Message||(r2.state==='loading'?'讀取設定中…':
+        r2.state==='saving'?'儲存中…':!r2.available?'R2 未設定或無法使用。':
+        r2.enabled?'R2 基礎結構及新增 Scope 範本已啟用。':'使用既有 SQL 範本。')}</p>
     </section>
     <p className="scope-status">主要：{ready.find(item=>item.target_id===routing.primaryId)?.label||routing.primaryId}
       ｜備援：{ready.find(item=>item.target_id===routing.backupId)?.label||'未啟用'}</p>

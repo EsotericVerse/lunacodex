@@ -15,6 +15,10 @@
       {
         "binding": "LOC_HERO_ASSETS",
         "bucket_name": "loc-hero-assets"
+      },
+      {
+        "binding": "LOC_RUNTIME",
+        "bucket_name": "loc-framework-opennext-cache"
       }
     ],
     "observability": {
@@ -72,6 +76,10 @@
     {
       "binding": "LOC_HERO_ASSETS",
       "bucket_name": "loc-hero-assets"
+    },
+    {
+      "binding": "LOC_RUNTIME",
+      "bucket_name": "loc-framework-opennext-cache"
     }
   ],
   "services": [

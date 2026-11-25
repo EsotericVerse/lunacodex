@@ -19,7 +19,7 @@ export async function querySearch(args={}){
     throw Error('Invalid Search Scope list');
   const scopeIds=[...new Set(requested)];
   if(!scopeIds.length)return {data:{rows:[]},count:null};
-  return withPublicLocRead({scopes:scopeIds},async(db,port)=>({
+  return withPublicLocRead({scopes:scopeIds,onUnavailable:()=>({data:{rows:[]},count:null})},async(db,port)=>({
     data:await searchSummary(db,{scopeIds},{publishedScopeIds:scopeIds,
       engine:port.engine,namespace:port.namespace}),count:null
   }));

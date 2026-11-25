@@ -212,7 +212,7 @@ export async function queryTrace(args={}){
     throw Error('Invalid Trace options');
   if(options.classUid!=null&&(!/^[A-Za-z0-9]{8}$/.test(String(options.classUid))))
     throw Error('Invalid Keyword Class UID');
-  return withPublicLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope,onUnavailable:()=>({data:[],count:null})},async(db,port)=>{
     const table=galaxyTable(scope,port);
     let data;
     if(view==='trace_places')
@@ -254,7 +254,7 @@ export async function queryTracePlaceNames(args={}){
   const term=String(args.p_term||'').trim().slice(0,100);
   const limit=Math.max(1,Math.min(8,Number(args.p_limit)||8));
   if(!term)return {data:[],count:null};
-  return withPublicLocRead({scope},async(db)=>{
+  return withPublicLocRead({scope,onUnavailable:()=>({data:[],count:null})},async(db)=>{
     const pattern='%'+term.replace(/[\\%_]/g,char=>'\\'+char)+'%';
     const anchor=sql.ref('silver.'+scope+'_anchor');
     const result=await sql`select a.uid::varchar as uid,a.title,

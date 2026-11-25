@@ -4,6 +4,7 @@
 // Neither HTTP parameters nor OAuth claims supply raw connection credentials.
 import {Kysely} from 'kysely';
 import {readLocHyperdriveMode} from './hyperdrive-mode.mjs';
+import {readRuntimeControl} from '../runtime/r2-runtime.mjs';
 import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
@@ -110,7 +111,11 @@ export async function db_connection(env={},verifiedAlias='',{
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
   const isCloudflareWorkers=isCloudflareWorkerRuntime();
-  const hyperdriveUri=forceDirect?null:await locHyperdriveBinding(env);
+  // The Admin control setting must be readable even before opening SQL.
+  const control=!forceDirect&&!forceHyperdrive&&modeReader===readLocHyperdriveMode
+    ?await readRuntimeControl(env):null;
+  const hyperdriveUri=forceDirect||control?.hyperdriveEnabled===false
+    ?null:await locHyperdriveBinding(env);
   if(hyperdriveUri){
     // Hyperdrive owns the cross-request origin pool. Each Worker request still
     // owns its pg.Client and closes it at the normal/error/abort boundary.
@@ -125,7 +130,7 @@ export async function db_connection(env={},verifiedAlias='',{
     const connection={db:new Kysely({dialect}),dialect,pool,
       engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{},
       connectionMode:'hyperdrive'};
-    if(!forceHyperdrive){
+    if(!forceHyperdrive&&!control){
       let enabled;
       try{enabled=await modeReader(connection.db);}
       catch{
