@@ -5,7 +5,6 @@ import {verifiedLocWebsiteSession} from '../../auth/verified-session.mjs';
 import {publishedLocAccess} from '../../permissions/loc-business-grants.mjs';
 import {runtimeBucket,readRuntimeControl,patchRuntimeControl,runtimeSourceAnchors} from '../../runtime/r2-runtime.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../../modular/published-site-bootstrap.js';
-import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
 import {directMcpKysely,closeLocDatabase} from '../../db/native-kysely.mjs';
 import {bindLocAuthorization} from '../../providers/loc-authorization.mjs';
 import {readLocHyperdriveMode,writeLocHyperdriveMode}
@@ -143,8 +142,7 @@ export async function readAdminScopeConfig(scopeId){
   const row=FIXED_MANAGE_ROWS.find(item=>item.id===scope&&
     item.manage_role==='scope'&&item.active===true);
   if(!row)throw Error('Invalid admin Scope configuration');
-  return withAuthorizedLocRead({global:true,onUnavailable:()=>
-    SCOPE_ROUTE_INDEX.find(entry=>entry.scope_id===scope&&entry.active!==false)?.config||null},async db=>{
+  return withAuthorizedLocRead({global:true},async db=>{
     const result=await db.selectFrom('silver.'+scope)
       .select(scopeConfigColumns(scope)).where('id','=',scope).executeTakeFirst();
     return result||null;

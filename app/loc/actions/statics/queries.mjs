@@ -1,5 +1,6 @@
 'use server';
 import {withPublicLocRead} from '../read-context.mjs';
+import {withOptionalGalaxy} from '../../runtime/optional-galaxy.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {sharedClasses,keywordCatalog,keywordSummary}
   from '../../providers/kysely-analytics.mjs';
@@ -38,7 +39,7 @@ export async function queryStatics(args={}){
     !options||typeof options!=='object'||Array.isArray(options)||
     Object.keys(options).some(key=>!['classUid','source'].includes(key))||
     start&&end&&start>end)throw Error('Invalid Keyword query');
-  return withPublicLocRead({scope,onUnavailable:()=>({data:view==='keyword_catalog'?{}:[],count:null})},async(db,port)=>{
+  return withPublicLocRead({scope,onMissingGalaxy:view==='keyword_summary'?()=>({data:[],count:null}):null},async(db,port)=>{
     const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
     const anchor=relation(scope,'anchor',port);
     const configTable=portableRelation(scope,port.engine,namespace);
@@ -142,6 +143,7 @@ async function locStatistics(db,start,end,port){
     scopeFeatureEnabled(row.config,'statistics_able'));
   const results=await mapBounded(entries,async entry=>{
     const scope=entry.scope_id,table=relation(scope,'galaxy',port);
+    return withOptionalGalaxy(db,scope,async()=>{
     const build=()=>db.selectFrom(table).where('statics','=',true)
       .where('date','is not',null)
       .where('date','>=',start||'0001-01-01')
@@ -169,6 +171,8 @@ async function locStatistics(db,start,end,port){
     });
     return {scope,display_name:String(entry.config?.display_name||scope),
       rows:[...totals].map(([day,item_count])=>({day,item_count})),first};
+    },()=>({scope,display_name:String(entry.config?.display_name||scope),rows:[],first:null}),
+      {engine:port.engine,namespace:port.namespace});
   });
   let earliest='';
   const scopes=[],rows=[];
@@ -200,13 +204,10 @@ export async function queryStaticsContent(searchParams){
     throw Error('Statistics feature is not published');
   const scopes=[...active.keys()].filter(id=>id!=='loc'&&id!=='admin'&&
     scopeFeatureEnabled(active.get(id)?.config,'statistics_able'));
-  if(kind==='loc')return withPublicLocRead({scope:'loc',scopes,
-    onUnavailable:()=>({data:{earliest:'',scopes:scopes.map(id=>({scope_id:id,
-      display_name:String(active.get(id)?.config?.display_name||id)})),rows:[]},count:null})
-  },async(db,port)=>({
+  if(kind==='loc')return withPublicLocRead({scope:'loc',scopes},async(db,port)=>({
     data:await locStatistics(db,start,end,port),count:null
   }));
-  return withPublicLocRead({scope,onUnavailable:()=>({data:kind==='earliest'?'':
+  return withPublicLocRead({scope,onMissingGalaxy:()=>({data:kind==='earliest'?'':
     kind==='overview'?{earliest:'',rows:[],categories:[],aliases:[]}:
     kind==='daily_total'?{earliest:'',rows:[]}:[],count:null})},async(db,port)=>({
     data:await scopeStatistics(db,scope,kind,start,end,port),count:null

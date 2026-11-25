@@ -43,7 +43,7 @@ export async function queryCulture(args={}){
   if(!start||!end||start>end||!site||site.length>120||
     !Number.isSafeInteger(offset)||offset<0||offset>100000)
     throw Error('Invalid Culture list selection');
-  return withPublicLocRead({scope,onUnavailable:()=>({data:{rows:[],hasMore:false,nextCursor:null},count:null})},async(db,port)=>{
+  return withPublicLocRead({scope,onMissingGalaxy:()=>({data:{rows:[],hasMore:false,nextCursor:null},count:null})},async(db,port)=>{
     const rows=await db.selectFrom(relation(scope,'galaxy',port))
       .select(galaxyReadColumns('GalaxyList'))
       .where('date','>=',start).where('date','<=',end)
@@ -71,7 +71,7 @@ export async function queryCultureContent(searchParams){
   if(kind==='culture_density'&&(!start||!end||start>end)||
     kind==='culture_anchors'&&(start||end))
     throw Error('Invalid Culture query range');
-  return withPublicLocRead({scope,onUnavailable:()=>({data:[],count:null})},async(db,port)=>{
+  return withPublicLocRead({scope,onMissingGalaxy:kind==='culture_density'?()=>({data:[],count:null}):null},async(db,port)=>{
     if(kind==='culture_anchors'){
       const table=relation(scope,'anchor',port);
       const rows=await db.selectFrom(table).select(['uid','type','title','attr'])
@@ -127,6 +127,6 @@ export async function queryTimeAnchors({scope:scopeValue,mode='public',
       const data=assertZModelAnchorFeatureRows(rows.slice(0,limit));
       return {data,nextCursor:rows.length>limit?String(data.at(-1).uid):null};
     };
-  return mode==='public'?withPublicLocRead({scope,onUnavailable:()=>({data:[],nextCursor:null})},read):
+  return mode==='public'?withPublicLocRead({scope},read):
     withAuthorizedLocRead({scope,writeScopes:[scope]},read);
 }
