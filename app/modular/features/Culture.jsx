@@ -25,6 +25,7 @@ const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTim
   loading:()=> <CultureTimeLoading label='正在準備時間長河…'/>
 });
 import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
+import {visualKeyColor} from '../visual-palette.mjs';
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
 import {buildEraRiver,nextEditorEraExpansion} from '../../loc/culture/time-trace-river.mjs';
@@ -182,8 +183,8 @@ function CultureSourceRootSummary({items,groups,windowStart,windowEnd,onGroupTog
               border:'1px solid var(--loc-line)',borderRadius:'.5rem',background:'var(--loc-panel-2)'}}
               role={row?'img':undefined} aria-label={row?group.label+'，'+count+'筆':''}>
               {row?<div style={{width:'100%',height:Math.max(11,Math.round(11+19*count/largest)),
-                borderRadius:'999px',background:'var(--loc-accent)',
-                opacity:Math.max(.38,Math.min(1,count/largest)),boxShadow:'0 0 9px var(--loc-accent-border)'}}/>:null}
+                borderRadius:'999px',background:visualKeyColor(group.id),
+                opacity:Math.max(.65,Math.min(1,count/largest)),boxShadow:'0 0 6px var(--loc-accent-border)'}}/>:null}
             </div>
           </div>;
         })}
@@ -1764,6 +1765,7 @@ export default function Culture(){
                       onGroupSelect={selectCultureRiverGroup}
                     />:<CultureTimeline
                     items={cultureRiver.items}
+                    eraRanges={eraRiver.items}
                     extraGroups={cultureRiver.groups}
                     onGroupToggle={toggleCultureRiverGroup}
                     onGroupSelect={selectCultureRiverGroup}

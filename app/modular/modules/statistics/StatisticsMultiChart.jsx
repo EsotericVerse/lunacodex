@@ -4,7 +4,8 @@ import {cloneElement,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
-import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,semanticStatisticChartTypes,preferredStatisticChartType,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color,pointColor} from './statistics-time-zoom.mjs';
+import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,semanticStatisticChartTypes,preferredStatisticChartType,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
+import {themedDataColor} from '../../visual-palette.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
 import UiText,{useUiText} from '../../../i18n/UiText';
@@ -23,6 +24,19 @@ const CHART_TOOLTIP={background:'var(--loc-panel)',border:'1px solid var(--loc-l
 
 const TOOLTIP={background:'var(--loc-panel)',border:'1px solid var(--loc-line)',color:'var(--loc-text)',borderRadius:'8px'};
 const GRID='var(--loc-line)',TEXT='var(--loc-text)',DAY=86400000;
+const color=i=>themedDataColor(baseColor(i));
+const pointColor=i=>themedDataColor(basePointColor(i));
+function StatTreemapCell({x,y,width,height,depth,index,fill,name}){
+  if(!depth||width<=0||height<=0)return null;
+  const label=String(name||'');
+  return <g><rect x={x} y={y} width={width} height={height} rx={2}
+    fill={fill||pointColor(index||0)} stroke="var(--loc-panel)" strokeWidth={1.5}/>
+    {width>=70&&height>=23?<text x={x+width/2} y={y+height/2}
+      textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}
+      fill="var(--loc-text)" stroke="var(--loc-panel)" strokeWidth={2.5} paintOrder="stroke">
+      {label.slice(0,Math.max(3,Math.floor(width/12)))}</text>:null}
+    <title>{label}</title></g>;
+}
 
 // Display-only compression: one marked gap, never an invented zero-count data point.
 export function foldEmptyTimeBuckets(rows=[],series=[],units={}){
@@ -72,7 +86,7 @@ export default function StatisticsMultiChart({
     {display.length>32?<Brush dataKey="period" height={24} travellerWidth={9} stroke={CHART_ACCENT}/>:null}
     {fields.length>1&&!['bar','composed'].includes(actual)?<Legend wrapperStyle={{fontSize:12}}/>:null}
   </>);
-  const colored=categories.map((item,i)=>({...item,fill:item.fill||pointColor(i)}));
+  const colored=categories.map((item,i)=>({...item,fill:item.fill?themedDataColor(item.fill):pointColor(i)}));
   const comparison=useMemo(()=>radarPeriodComparison(time,fields),[time,fields]);
   const coverage=useMemo(()=>activePeriodCoverage(time,fields),[time,fields]);
   const paired=useMemo(()=>scatterPair(time,fields),[time,fields]);
@@ -89,8 +103,10 @@ export default function StatisticsMultiChart({
     </Pie>
   </PieChart>;
   else if(actual==='treemap')chart=<Treemap data={colored.map(item=>({...item,size:item.value}))}
-    dataKey="size" nameKey="name" stroke="var(--loc-bg)" fill={pointColor(0)}
-    colorPanel={colored.map(item=>item.fill)} aspectRatio={4/3}>
+    dataKey="size" nameKey="name" stroke="var(--loc-bg)"
+    content={props=><StatTreemapCell {...props}
+      fill={colored[props.index]?.fill||pointColor(props.index||0)}/>}
+    aspectRatio={4/3}>
       <Tooltip contentStyle={TOOLTIP}/>
     </Treemap>;
   else if(actual==='radar'&&comparison)chart=<RadarChart data={comparison} outerRadius="67%">
@@ -100,8 +116,10 @@ export default function StatisticsMultiChart({
     <Radar {...animation} name={t('uiExtra.chartLabels.lastHalf')} dataKey="late" stroke={color(3)} fill={color(3)} strokeDasharray="7 4" strokeWidth={3} fillOpacity={.10}/>
     <Legend/><Tooltip contentStyle={TOOLTIP} formatter={v=>Number(v).toFixed(1)+'%'}/>
   </RadarChart>;
-  else if(actual==='radial'&&coverage)chart=<RadialBarChart data={coverage} innerRadius="16%" outerRadius="82%" startAngle={90} endAngle={-270}>
-    <RadialBar {...animation} dataKey="value" background cornerRadius={4}/>
+  else if(actual==='radial'&&coverage)chart=<RadialBarChart data={coverage.map((row,i)=>({...row,fill:color(i)}))} innerRadius="16%" outerRadius="82%" startAngle={90} endAngle={-270}>
+    <RadialBar {...animation} dataKey="value" background={{fill:'var(--loc-panel-2)'}} cornerRadius={4}>
+      {coverage.map((row,i)=><Cell key={row.name} fill={color(i)}/>)}
+    </RadialBar>
     <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize:11}}/>
     <Tooltip contentStyle={TOOLTIP} formatter={v=>Number(v).toFixed(1)+'%'}/>
   </RadialBarChart>;
@@ -155,12 +173,13 @@ export default function StatisticsMultiChart({
   </BarChart>;
   else if(actual==='bar')chart=<BarChart data={display} margin={margin}>
     {axes}{timeFields.map((f,i)=><Bar {...animation} key={f.key} dataKey={f.key} name={f.label} fill={color(i)} maxBarSize={32}>
-      {display.map((_,j)=><Cell key={j} fill={pointColor(j*timeFields.length+i)}/>)}
+      {display.map((_,j)=><Cell key={j} fill={timeFields.length===1?pointColor(j):color(i)}/>)}
     </Bar>)}
   </BarChart>;
   else chart=<LineChart data={display} margin={margin}>
     {axes}{timeFields.map((f,i)=><Line key={f.key} type="linear" dataKey={f.key} name={f.label}
-      stroke={color(i)} strokeWidth={2.5} dot={display.length<25} connectNulls={false}
+      stroke={color(i)} strokeWidth={2.5}
+      dot={display.length<25?{r:3,fill:color(i),stroke:'var(--loc-panel)',strokeWidth:1}:false} connectNulls={false}
       activeDot={onSeriesClick?{onClick:()=>onSeriesClick(f.key)}:undefined}
       {...animation}/>)}
   </LineChart>;
@@ -292,7 +311,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
         key:'class:'+groupId,
         name:group?classLabel(group.group,t):'未歸類',
         value:group?Number(group.document_count||0):0,
-        fill:color(combinedDistribution.length)
+        fill:baseColor(combinedDistribution.length)
       });
       lastGroupId=groupId;
     }
@@ -301,7 +320,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
       name:(group&&Number(group.document_count||0)<=0?
         classLabel(group.group,t)+'｜':'　↳ ')+groupLabel(item.label,t),
       value:Number(item.document_count)||0,
-      fill:color(combinedDistribution.length)
+      fill:baseColor(combinedDistribution.length)
     });
   }
   const trend=keywordGroupTrend(data.classifications,classRows,range?.bucket||'month');
