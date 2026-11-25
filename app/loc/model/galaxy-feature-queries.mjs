@@ -6,6 +6,8 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {galaxyReadColumns,galaxyReadColumnsFor}
   from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {parseSearchQuery} from '../search/query.mjs';
+import {readAdaptiveSqlPages} from '../query/adaptive-sql-read.mjs';
+import {mapBounded} from '../query/bounded-parallel.mjs';
 
 export const GALAXY_FEATURE_MODELS=Object.freeze({
   culture:Object.freeze({flag:'culture',name:'GalaxyCulture'}),
@@ -155,8 +157,9 @@ export async function executeGalaxyFeatureQuery(db,model){
     // direct connection. Each Scope projection is an independent SELECT;
     // there is no read transaction. Scope identifiers come from published JS.
     const sums=new Map();
-    for(const scope of published){
-      const result=await executeGalaxyFeatureQuery(db,{...model,scope});
+    const results=await mapBounded([...published],scope=>
+      executeGalaxyFeatureQuery(db,{...model,scope}));
+    for(const result of results){
       for(const row of result.rows){
         if(row.kind!=='source')continue;
         const key=row.day+'\u0000'+row.category;
@@ -181,22 +184,42 @@ export async function executeGalaxyFeatureQuery(db,model){
     return {total:Number(row?.total||0)};
   }
   if(model.result==='daily'){
-    const rows=await q.select('date').select(eb=>eb.fn.countAll().as('count'))
-      .groupBy('date').orderBy('date','asc').execute();
-    return {rows:rows.map(row=>({day:row.date instanceof Date
-      ?row.date.toISOString().slice(0,10):String(row.date||'').slice(0,10),
-      count:Number(row.count||0)}))};
+    const days=new Map();
+    await readAdaptiveSqlPages({
+      countRows:async()=>Number((await q
+        .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
+      fetchPage:({offset,limit})=>q.select(['date','createtime'])
+        .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+      consumePage:rows=>{
+        for(const row of rows){
+          const day=row.date instanceof Date?row.date.toISOString().slice(0,10):
+            String(row.date||'').slice(0,10);
+          days.set(day,(days.get(day)||0)+1);
+        }
+      }
+    });
+    return {rows:[...days].map(([day,count])=>({day,count}))
+      .sort((a,b)=>a.day.localeCompare(b.day))};
   }
   if(model.result==='daily-sources'){
-    const rows=await q.select(['date','site'])
-      .select(eb=>eb.fn.countAll().as('count'))
-      .groupBy(['date','site']).orderBy('date','asc').orderBy('site','asc')
-      .execute();
+    const grouped=new Map();
+    await readAdaptiveSqlPages({
+      countRows:async()=>Number((await q
+        .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
+      fetchPage:({offset,limit})=>q.select(['date','site','createtime'])
+        .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+      consumePage:rows=>{
+        for(const row of rows){
+          const day=row.date instanceof Date?row.date.toISOString().slice(0,10):
+            String(row.date||'').slice(0,10);
+          const category=String(row.site||'').trim(),key=JSON.stringify([day,category]);
+          grouped.set(key,(grouped.get(key)||0)+1);
+        }
+      }
+    });
     const totals=new Map(),entries=[];
-    for(const row of rows){
-      const day=row.date instanceof Date?row.date.toISOString().slice(0,10):
-        String(row.date||'').slice(0,10);
-      const category=String(row.site||'').trim(),item_count=Number(row.count||0);
+    for(const [key,item_count] of grouped){
+      const [day,category]=JSON.parse(key);
       entries.push({day,kind:'source',category,item_count});
       totals.set(day,(totals.get(day)||0)+item_count);
     }
@@ -208,9 +231,21 @@ export async function executeGalaxyFeatureQuery(db,model){
     return {rows:entries};
   }
   if(model.result==='sources'){
-    const rows=await q.select('site').select(eb=>eb.fn.countAll().as('count'))
-      .groupBy('site').orderBy('site','asc').execute();
-    return {rows:rows.map(row=>({source:row.site??'',count:Number(row.count||0)}))};
+    const sources=new Map();
+    await readAdaptiveSqlPages({
+      countRows:async()=>Number((await q
+        .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
+      fetchPage:({offset,limit})=>q.select(['site','createtime'])
+        .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+      consumePage:rows=>{
+        for(const row of rows){
+          const source=String(row.site??'');
+          sources.set(source,(sources.get(source)||0)+1);
+        }
+      }
+    });
+    return {rows:[...sources].map(([source,count])=>({source,count}))
+      .sort((a,b)=>a.source.localeCompare(b.source))};
   }
   if(model.result==='articles'){
     // Fixed GalaxyList and UID Anchor projection; article CONTENT is never

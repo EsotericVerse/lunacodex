@@ -1,16 +1,13 @@
 'use server';
 import {sql} from 'kysely';
-import {withPublicLocRead} from '../read-context.mjs';
-import {tracePlaces,traceTerritory,traceDaily,laneDaily,
-  traceKeywordGroups} from '../../providers/kysely-analytics.mjs';
+import {withAuthorizedLocRead} from '../read-context.mjs';
+import {traceKeywordGroups} from '../../providers/kysely-analytics.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
-import {scopeFeatureEnabled} from '../../scope/scope-config-fields.mjs';
+import {readAdaptiveSqlPages} from '../../query/adaptive-sql-read.mjs';
 
 const published=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&
   row.scope_id!=='loc'&&row.scope_id!=='admin').map(row=>row.scope_id));
-const publishedConfig=new Map(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false)
-  .map(row=>[row.scope_id,row.config]));
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const VIEWS=new Set(['trace_places','trace_territory','trace_daily',
@@ -35,62 +32,111 @@ function galaxyTable(scope,port){
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
 }
 async function portableTracePlaces(db,table,start,end,statisticsOnly){
-  let query=db.selectFrom(table).select(['date','location'])
-    .select(eb=>eb.fn.countAll().as('item_count'))
-    .where('trace','=',true).where('date','is not',null)
-    .where('location','is not',null).where('location','!=','');
-  if(statisticsOnly)query=query.where('statics','=',true);
-  if(start)query=query.where('date','>=',start);
-  if(end)query=query.where('date','<=',end);
-  const rows=await query.groupBy(['date','location'])
-    .orderBy('date','asc').orderBy('location','asc').execute();
-  return rows.map(row=>({day:day(row.date),category:String(row.location||'').trim(),
-    item_count:Number(row.item_count||0)})).filter(row=>row.category);
+  const build=()=>{
+    let query=db.selectFrom(table).where('trace','=',true)
+      .where('date','is not',null).where('location','is not',null)
+      .where('location','!=','');
+    if(statisticsOnly)query=query.where('statics','=',true);
+    if(start)query=query.where('date','>=',start);
+    if(end)query=query.where('date','<=',end);
+    return query;
+  };
+  const grouped=new Map();
+  await readAdaptiveSqlPages({
+    countRows:async()=>Number((await build()
+      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
+    fetchPage:({offset,limit})=>build().select(['date','location','createtime'])
+      .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+    consumePage:rows=>{
+      for(const row of rows){
+        const category=String(row.location||'').trim();
+        if(!category)continue;
+        const key=JSON.stringify([day(row.date),category]);
+        grouped.set(key,(grouped.get(key)||0)+1);
+      }
+    }
+  });
+  return [...grouped].map(([key,item_count])=>{
+    const [dayValue,category]=JSON.parse(key);
+    return {day:dayValue,category,item_count};
+  }).sort((a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category));
 }
 async function portableTraceTerritory(db,scope,start,end,options,port){
   if(!start||!end)throw Error('Territory statistics require a bounded period');
   const galaxy=galaxyTable(scope,port);
   const anchor=portableRelation(scope+'_anchor',port.engine,
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
-  let query=db.selectFrom(galaxy+' as g').innerJoin(anchor+' as a',join=>join
+  const build=()=>{
+    let query=db.selectFrom(galaxy+' as g').innerJoin(anchor+' as a',join=>join
     .onRef('a.uid','=','g.place_id').on('a.type','=','point')
     .on('a.invisible','=',false))
-    .select(['g.place_id as place_id','g.site as site','g.date as date'])
-    .select(eb=>eb.fn.countAll().as('item_count'))
     .where('g.place_id','is not',null).where('g.place_id','!=','')
     .where('g.date','>=',start).where('g.date','<=',end);
-  if(options.statisticsOnly===true)
-    query=query.where('g.statics','=',true).where('g.trace','=',true);
-  if(options.withPoints===true)
-    query=query.select(['a.uid as point_uid','a.title as point_title','a.attr as point_attr']);
-  const rows=await query.groupBy(['g.place_id','g.site','g.date',
-      ...(options.withPoints===true?['a.uid','a.title','a.attr']:[])])
-    .orderBy('g.date','asc').orderBy('g.place_id','asc').orderBy('g.site','asc')
-    .execute();
-  return rows.map(row=>{
-    let attr=row.point_attr;
-    if(typeof attr==='string'){try{attr=JSON.parse(attr)}catch{attr={}}}
-    attr=attr&&typeof attr==='object'?attr:{};
-    return {place_id:String(row.place_id||''),site:String(row.site||'').trim(),
-      day:day(row.date),item_count:Number(row.item_count||0),
-      ...(options.withPoints===true?{point_uid:row.point_uid,
-        point_title:row.point_title,
-        point_longitude:attr.longitude??attr.lng??null,
-        point_latitude:attr.latitude??attr.lat??null}: {})};
+    if(options.statisticsOnly===true)
+      query=query.where('g.statics','=',true).where('g.trace','=',true);
+    return query;
+  };
+  const grouped=new Map();
+  await readAdaptiveSqlPages({
+    countRows:async()=>Number((await build()
+      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
+    fetchPage:({offset,limit})=>{
+      let query=build().select(['g.place_id as place_id','g.site as site',
+        'g.date as date','g.createtime as createtime']);
+      if(options.withPoints===true)
+        query=query.select(['a.uid as point_uid','a.title as point_title',
+          'a.attr as point_attr']);
+      return query.orderBy('g.createtime','asc').limit(limit).offset(offset).execute();
+    },
+    consumePage:rows=>{
+      for(const row of rows){
+        let attr=row.point_attr;
+        if(typeof attr==='string'){try{attr=JSON.parse(attr)}catch{attr={}}}
+        attr=attr&&typeof attr==='object'?attr:{};
+        const item={place_id:String(row.place_id||''),site:String(row.site||'').trim(),
+          day:day(row.date),item_count:0,
+          ...(options.withPoints===true?{point_uid:row.point_uid,
+            point_title:row.point_title,
+            point_longitude:attr.longitude??attr.lng??null,
+            point_latitude:attr.latitude??attr.lat??null}: {})};
+        const key=JSON.stringify(options.withPoints===true
+          ?[item.place_id,item.day,item.site,item.point_uid]
+          :[item.place_id,item.day,item.site]);
+        const current=grouped.get(key)||item;
+        current.item_count++;
+        grouped.set(key,current);
+      }
+    }
   });
+  return [...grouped.values()].sort((a,b)=>a.day.localeCompare(b.day)||
+    a.place_id.localeCompare(b.place_id)||a.site.localeCompare(b.site));
 }
 async function portableTraceDaily(db,table,places,start,end,source){
-  let query=db.selectFrom(table).select(['date','place_id'])
-    .select(eb=>eb.fn.countAll().as('item_count'))
-    .where('trace','=',true).where('place_id','in',places)
-    .where('date','is not',null);
-  if(start)query=query.where('date','>=',start);
-  if(end)query=query.where('date','<=',end);
-  if(source)query=query.where('site','=',source);
-  const rows=await query.groupBy(['date','place_id'])
-    .orderBy('date','asc').execute();
-  return rows.map(row=>({day:day(row.date),category:String(row.place_id||''),
-    item_count:Number(row.item_count||0)}));
+  const build=()=>{
+    let query=db.selectFrom(table).where('trace','=',true)
+      .where('place_id','in',places).where('date','is not',null);
+    if(start)query=query.where('date','>=',start);
+    if(end)query=query.where('date','<=',end);
+    if(source)query=query.where('site','=',source);
+    return query;
+  };
+  const grouped=new Map();
+  await readAdaptiveSqlPages({
+    countRows:async()=>Number((await build()
+      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
+    fetchPage:({offset,limit})=>build().select(['date','place_id','createtime'])
+      .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+    consumePage:rows=>{
+      for(const row of rows){
+        const key=JSON.stringify([day(row.date),String(row.place_id||'')]);
+        grouped.set(key,(grouped.get(key)||0)+1);
+      }
+    }
+  });
+  return [...grouped].map(([key,item_count])=>{
+    const [dayValue,category]=JSON.parse(key);
+    return {day:dayValue,category,item_count};
+  }).sort((a,b)=>a.day.localeCompare(b.day)||a.category.localeCompare(b.category));
 }
 async function portableLaneDaily(db,table,start,end,options){
   if(!start||!end||(Date.parse(end)-Date.parse(start))/864e5>366)
@@ -101,19 +147,33 @@ async function portableLaneDaily(db,table,start,end,options){
     instagram:['%instagram%','ig','%reels%']};
   if(platform&&(!Object.hasOwn(patterns,platform)||exact!==null))
     throw Error('Invalid lane platform');
-  let query=db.selectFrom(table).select('date')
-    .select(eb=>eb.fn.countAll().as('item_count'))
-    .where('date','>=',start).where('date','<=',end)
-    .where('date','is not',null);
-  if(exact!==null)query=query.where('site','=',exact);
-  if(platform){
-    const choices=patterns[platform].map(pattern=>pattern==='fb'||pattern==='ig'
-      ?eb=>eb(sql`lower(site)`,'=',pattern)
-      :eb=>eb(sql`lower(site)`,'like',pattern));
-    query=query.where(eb=>eb.or(choices.map(choice=>choice(eb))));
-  }
-  const rows=await query.groupBy('date').orderBy('date','asc').execute();
-  return rows.map(row=>({day:day(row.date),item_count:Number(row.item_count||0)}));
+  const build=()=>{
+    let query=db.selectFrom(table).where('date','>=',start)
+      .where('date','<=',end).where('date','is not',null);
+    if(exact!==null)query=query.where('site','=',exact);
+    if(platform){
+      const choices=patterns[platform].map(pattern=>pattern==='fb'||pattern==='ig'
+        ?eb=>eb(sql`lower(site)`,'=',pattern)
+        :eb=>eb(sql`lower(site)`,'like',pattern));
+      query=query.where(eb=>eb.or(choices.map(choice=>choice(eb))));
+    }
+    return query;
+  };
+  const totals=new Map();
+  await readAdaptiveSqlPages({
+    countRows:async()=>Number((await build()
+      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
+    fetchPage:({offset,limit})=>build().select(['date','createtime'])
+      .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+    consumePage:rows=>{
+      for(const row of rows){
+        const key=day(row.date);
+        totals.set(key,(totals.get(key)||0)+1);
+      }
+    }
+  });
+  return [...totals].map(([dayValue,item_count])=>({day:dayValue,item_count}))
+    .sort((a,b)=>a.day.localeCompare(b.day));
 }
 
 export async function queryTrace(args={}){
@@ -121,8 +181,6 @@ export async function queryTrace(args={}){
     Object.keys(args).some(key=>!['p_scope_id','p_view','p_start','p_end','p_options'].includes(key)))
     throw Error('Invalid Trace query');
   const scope=scopeId(args.p_scope_id),view=String(args.p_view||'');
-  if(!scopeFeatureEnabled(publishedConfig.get(scope),'trace'))
-    throw Error('Trace feature is not published');
   const start=date(args.p_start),end=date(args.p_end);
   const options=args.p_options??{};
   if(!VIEWS.has(view)||!options||typeof options!=='object'||Array.isArray(options)||
@@ -136,40 +194,34 @@ export async function queryTrace(args={}){
     throw Error('Invalid Trace options');
   if(options.classUid!=null&&(!/^[A-Za-z0-9]{8}$/.test(String(options.classUid))))
     throw Error('Invalid Keyword Class UID');
-  return withPublicLocRead({scope},async(db,port)=>{
+  return withAuthorizedLocRead({scope},async(db,port)=>{
     const table=galaxyTable(scope,port);
     let data;
     if(view==='trace_places')
-      data=port.engine==='postgres'
-        ?await tracePlaces(db,scope,start,end,{statisticsOnly:options.statisticsOnly===true})
-        :await portableTracePlaces(db,table,start,end,options.statisticsOnly===true);
+      data=await portableTracePlaces(db,table,start,end,options.statisticsOnly===true);
     else if(view==='trace_territory')
-      data=port.engine==='postgres'?await traceTerritory(db,scope,start,end,{
-        withPoints:options.withPoints===true,
-        statisticsOnly:options.statisticsOnly===true
-      }):await portableTraceTerritory(db,scope,start,end,options,port);
+      data=await portableTraceTerritory(db,scope,start,end,options,port);
     else if(view==='lane_daily')
-      data=port.engine==='postgres'?await laneDaily(db,scope,start,end,options):
-        await portableLaneDaily(db,table,start,end,options);
+      data=await portableLaneDaily(db,table,start,end,options);
     else if(view==='trace_daily'){
       const ids=options.placeIds;
       if(!Array.isArray(ids)||ids.length<1||ids.length>80||
         ids.some(uid=>!UID.test(String(uid||''))))throw Error('Invalid Trace Point UID list');
       const source=options.source?String(options.source).trim():null;
       if(source&&source.length>120)throw Error('Invalid Trace Source');
-      data=port.engine==='postgres'
-        ?await traceDaily(db,scope,[...new Set(ids.map(String))],start,end,source)
-        :await portableTraceDaily(db,table,[...new Set(ids.map(String))],start,end,source);
+      data=await portableTraceDaily(db,table,[...new Set(ids.map(String))],start,end,source);
     }else{
       const ids=options.placeIds;
       if(!Array.isArray(ids)||ids.length<1||ids.length>80||
         ids.some(uid=>!UID.test(String(uid||''))))throw Error('Invalid Trace Point UID list');
       const source=options.source?String(options.source).trim():null;
       if(source&&source.length>120)throw Error('Invalid Trace Source');
-      if(port.engine!=='postgres')throw Error('Keyword trace aggregation needs PostgreSQL');
-      data=await traceKeywordGroups(db,scope,'silver.'+scope+'_anchor',
+      const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
+      const anchor=portableRelation(scope+'_anchor',port.engine,namespace);
+      const configTable=portableRelation(scope,port.engine,namespace);
+      data=await traceKeywordGroups(db,scope,anchor,
         [...new Set(ids.map(String))],start,end,source,options.classUid||null,
-        'anon');
+        'authenticated',{configTable,galaxyTable:table});
     }
     return {data,count:null};
   });
@@ -184,7 +236,7 @@ export async function queryTracePlaceNames(args={}){
   const term=String(args.p_term||'').trim().slice(0,100);
   const limit=Math.max(1,Math.min(8,Number(args.p_limit)||8));
   if(!term)return {data:[],count:null};
-  return withPublicLocRead({scope},async(db)=>{
+  return withAuthorizedLocRead({scope},async(db)=>{
     const pattern='%'+term.replace(/[\\%_]/g,char=>'\\'+char)+'%';
     const anchor=sql.ref('silver.'+scope+'_anchor');
     const result=await sql`select a.uid::varchar as uid,a.title,

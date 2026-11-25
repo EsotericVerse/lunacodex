@@ -1,10 +1,12 @@
 'use server';
-import {withPublicLocRead} from '../read-context.mjs';
+import {withAuthorizedLocRead} from '../read-context.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {sharedClasses,keywordCatalog,keywordSummary}
   from '../../providers/kysely-analytics.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
 import {scopeFeatureEnabled} from '../../scope/scope-config-fields.mjs';
+import {readAdaptiveSqlPages} from '../../query/adaptive-sql-read.mjs';
+import {mapBounded} from '../../query/bounded-parallel.mjs';
 
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const KINDS=new Set(['daily','daily_total','overview','earliest','totals','loc']);
@@ -35,18 +37,20 @@ export async function queryStatics(args={}){
     !options||typeof options!=='object'||Array.isArray(options)||
     Object.keys(options).some(key=>!['classUid','source'].includes(key))||
     start&&end&&start>end)throw Error('Invalid Keyword query');
-  if(!scopeFeatureEnabled(active.get(scope)?.config,'statistics_able'))
-    throw Error('Statistics feature is not published');
-  return withPublicLocRead({scope},async(db)=>{
-    const anchor='silver.'+scope+'_anchor';
+  return withAuthorizedLocRead({scope},async(db,port)=>{
+    const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
+    const anchor=relation(scope,'anchor',port);
+    const configTable=portableRelation(scope,port.engine,namespace);
+    const galaxyTable=relation(scope,'galaxy',port);
     let data;
     if(view==='shared_classes')
-      data=await sharedClasses(db,scope,anchor,'anon');
+      data=await sharedClasses(db,scope,anchor,'authenticated',{configTable});
     else if(view==='keyword_catalog')
       data=await keywordCatalog(db,scope,anchor,options.classUid||null,
-        'anon');
+        'authenticated',{configTable});
     else data=await keywordSummary(db,scope,anchor,start||null,end||null,
-      options.source||null,options.classUid||null,'anon');
+      options.source||null,options.classUid||null,'authenticated',
+      {configTable,galaxyTable});
     return {data,count:null};
   });
 }
@@ -59,45 +63,51 @@ async function scopeStatistics(db,scope,kind,start,end,port){
       .where('statics','=',true).where('date','is not',null).executeTakeFirst();
     return valueDay(first?.earliest)||'';
   }
-  if(kind==='totals'){
-    let query=db.selectFrom(table).select('site')
-      .select(eb=>eb.fn.countAll().as('item_count'))
-      .where('statics','=',true).where('date','is not',null);
+  const build=()=>{
+    let query=db.selectFrom(table).where('statics','=',true)
+      .where('date','is not',null);
     if(start)query=query.where('date','>=',start);
     if(end)query=query.where('date','<=',end);
-    const rows=await query.groupBy('site').orderBy('site','asc').execute();
-    return rows.map(row=>({kind:'source',category:String(row.site||''),
-      item_count:count(row.item_count)}));
-  }
+    return query;
+  };
+  const groupBySite=kind==='totals';
+  const groupByDateSite=kind!=='daily_total';
+  const byKey=new Map();
+  await readAdaptiveSqlPages({
+    countRows:async()=>{
+      const row=await build().select(eb=>eb.fn.countAll().as('row_count'))
+        .executeTakeFirst();
+      return count(row?.row_count);
+    },
+    fetchPage:({offset,limit})=>build()
+      .select(groupBySite?['site','createtime']:
+        groupByDateSite?['date','site','createtime']:['date','createtime'])
+      .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+    consumePage:rows=>{
+      for(const row of rows){
+        const key=groupBySite?String(row.site||''):
+          groupByDateSite?JSON.stringify([valueDay(row.date),String(row.site||'')]):
+            valueDay(row.date);
+        byKey.set(key,(byKey.get(key)||0)+1);
+      }
+    }
+  });
+  if(groupBySite)return [...byKey].map(([category,item_count])=>({
+    kind:'source',category,item_count
+  })).sort((a,b)=>a.category.localeCompare(b.category));
+
+  const earliest=kind==='overview'||kind==='daily_total'
+    ?await db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
+      .where('statics','=',true).executeTakeFirst():null;
   if(kind==='daily_total'){
-    const [rows,first]=await Promise.all([
-      db.selectFrom(table).select('date')
-        .select(eb=>eb.fn.countAll().as('item_count'))
-        .where('statics','=',true).where('date','is not',null)
-        .where('date','>=',start).where('date','<=',end)
-        .groupBy('date').orderBy('date','asc').execute(),
-      db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
-        .where('statics','=',true).executeTakeFirst()
-    ]);
-    return {earliest:valueDay(first?.earliest)||'',rows:rows.map(row=>({
-      day:valueDay(row.date),item_count:count(row.item_count)
-    }))};
+    return {earliest:valueDay(earliest?.earliest)||'',rows:[...byKey]
+      .sort(([a],[b])=>a.localeCompare(b))
+      .map(([day,item_count])=>({day,item_count}))};
   }
-  const daily=db.selectFrom(table).select(['date','site'])
-    .select(eb=>eb.fn.countAll().as('item_count'))
-    .where('statics','=',true).where('date','is not',null)
-    .where('date','>=',start).where('date','<=',end)
-    .groupBy(['date','site']).orderBy('date','asc');
-  const [grouped,first]=await Promise.all([
-    daily.execute(),
-    kind==='overview'?db.selectFrom(table)
-      .select(eb=>eb.fn.min('date').as('earliest'))
-      .where('statics','=',true).executeTakeFirst():Promise.resolve(null)
-  ]);
-  const totals=new Map(),rows=[];
-  for(const row of grouped){
-    const day=valueDay(row.date),item_count=count(row.item_count);
-    rows.push({day,kind:'source',category:String(row.site||''),item_count});
+  const rows=[],totals=new Map();
+  for(const [key,item_count] of byKey){
+    const [day,category]=JSON.parse(key);
+    rows.push({day,kind:'source',category,item_count});
     totals.set(day,(totals.get(day)||0)+item_count);
   }
   rows.push(...[...totals].map(([day,item_count])=>({
@@ -105,7 +115,7 @@ async function scopeStatistics(db,scope,kind,start,end,port){
   })));
   rows.sort((a,b)=>a.day.localeCompare(b.day)||a.kind.localeCompare(b.kind)||
     a.category.localeCompare(b.category));
-  return kind==='overview'?{earliest:valueDay(first?.earliest)||'',rows,
+  return kind==='overview'?{earliest:valueDay(earliest?.earliest)||'',rows,
     categories:[],aliases:[]}:rows;
 }
 
@@ -113,19 +123,33 @@ async function locStatistics(db,start,end,port){
   const entries=SCOPE_ROUTE_INDEX.filter(row=>row.scope_id!=='loc'&&
     row.scope_id!=='admin'&&row.active!==false&&
     scopeFeatureEnabled(row.config,'statistics_able'));
-  const results=await Promise.all(entries.map(async entry=>{
+  const results=await mapBounded(entries,async entry=>{
     const scope=entry.scope_id,table=relation(scope,'galaxy',port);
-    const daily=db.selectFrom(table).select('date')
-      .select(eb=>eb.fn.countAll().as('item_count'))
-      .where('statics','=',true).where('date','is not',null)
+    const build=()=>db.selectFrom(table).where('statics','=',true)
+      .where('date','is not',null)
       .where('date','>=',start||'0001-01-01')
-      .where('date','<=',end||'9999-12-31')
-      .groupBy('date').orderBy('date','asc');
-    const [rows,first]=await Promise.all([daily.execute(),
-      db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
-        .where('statics','=',true).executeTakeFirst()]);
-    return {scope,display_name:String(entry.config?.display_name||scope),rows,first};
-  }));
+      .where('date','<=',end||'9999-12-31');
+    const totals=new Map();
+    await readAdaptiveSqlPages({
+      countRows:async()=>{
+        const row=await build().select(eb=>eb.fn.countAll().as('row_count'))
+          .executeTakeFirst();
+        return count(row?.row_count);
+      },
+      fetchPage:({offset,limit})=>build().select(['date','createtime'])
+        .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+      consumePage:rows=>{
+        for(const row of rows){
+          const day=valueDay(row.date);
+          totals.set(day,(totals.get(day)||0)+1);
+        }
+      }
+    });
+    const first=await db.selectFrom(table).select(eb=>eb.fn.min('date').as('earliest'))
+        .where('statics','=',true).executeTakeFirst();
+    return {scope,display_name:String(entry.config?.display_name||scope),
+      rows:[...totals].map(([day,item_count])=>({day,item_count})),first};
+  });
   let earliest='';
   const scopes=[],rows=[];
   for(const result of results){
@@ -133,7 +157,7 @@ async function locStatistics(db,start,end,port){
     const first=valueDay(result.first?.earliest);
     if(first&&(!earliest||first<earliest))earliest=first;
     rows.push(...result.rows.map(row=>({scope_id:result.scope,
-      day:valueDay(row.date),item_count:count(row.item_count)})));
+      day:row.day,item_count:count(row.item_count)})));
   }
   return {earliest,scopes,rows};
 }
@@ -154,10 +178,10 @@ export async function queryStaticsContent(searchParams){
   const config=active.get(scope)?.config;
   if(!scopeFeatureEnabled(config,'statistics_able'))
     throw Error('Statistics feature is not published');
-  if(kind==='loc')return withPublicLocRead({scope:'loc'},async(db,port)=>({
+  if(kind==='loc')return withAuthorizedLocRead({global:true},async(db,port)=>({
     data:await locStatistics(db,start,end,port),count:null
   }));
-  return withPublicLocRead({scope},async(db,port)=>({
+  return withAuthorizedLocRead({scope},async(db,port)=>({
     data:await scopeStatistics(db,scope,kind,start,end,port),count:null
   }));
 }

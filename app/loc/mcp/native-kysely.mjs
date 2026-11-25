@@ -7,6 +7,7 @@ import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
 import {createKyselyDialect,getSqlType,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
+import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
 
 // The trusted Kysely dialect and its request-owned pg.Client share the
 // current request lifetime. Never share its waitUntil closure across requests.
@@ -25,6 +26,17 @@ function mainUri(env){
   return value;
 }
 export {requestScopedPool};
+const NODE_POOL_KEY=Symbol.for('loc.native-kysely.node-pool');
+function nodeProcessPool(uri){
+  const current=globalThis[NODE_POOL_KEY];
+  if(current?.uri===uri&&!current.pool.ended)return current.pool;
+  if(current?.pool)void current.pool.end().catch(()=>{});
+  const pool=new pg.Pool({connectionString:uri,
+    max:SQL_WORKLOAD_POLICY.nodePoolMax,idleTimeoutMillis:30000,
+    connectionTimeoutMillis:6000});
+  globalThis[NODE_POOL_KEY]={uri,pool};
+  return pool;
+}
 
 export async function db_connection(env={},verifiedAlias='',{
   probeTicket='',waitUntil,trustedTarget=null,trustedDialectConfig=null
@@ -60,11 +72,11 @@ export async function db_connection(env={},verifiedAlias='',{
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
   const isCloudflareWorkers=Boolean(process.versions?.workerd);
   if(!isCloudflareWorkers){
-    const pool=new pg.Pool({connectionString:uri});
+    const pool=nodeProcessPool(uri);
     const dialect=createKyselyDialect(primary.engine,{pool});
     return {db:new Kysely({dialect}),dialect,
       engine:primary.engine,namespace:primary.schema_name,
-      tableName:'',fieldMap:{}};
+      tableName:'',fieldMap:{},pool,sharedPool:true};
   }
   // Cloudflare Workers' Node TLS shim does not support the certificate
   // options node-postgres derives from sslmode/channel_binding URL options.
@@ -116,6 +128,10 @@ export {db_connection as directMcpKysely};
  */
 export async function closeLocDatabase(port){
   if(!port)return;
+  // The Node/VPS pool belongs to this process, not to one Server Action.
+  // Kysely releases each query connection normally; destroying this per-action
+  // Kysely wrapper would otherwise close the shared pool for every request.
+  if(port.sharedPool)return;
   try{await port.db?.destroy?.();}
   finally{await port.pool?.end?.();}
 }

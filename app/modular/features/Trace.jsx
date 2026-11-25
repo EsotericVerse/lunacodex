@@ -99,7 +99,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
     queryKey:['loc-trace-referenced-points-50',...locPointGroups.map(group=>group.scope+':'+group.ids.join(','))],
     enabled:isLoc&&supported&&mapMode==='routes'&&traceIndex.data!==undefined,
     // Cross-Scope intersections remain bounded even when members grow.
-    queryFn:async()=>(await mapBounded(locPointGroups,3,group=>
+    queryFn:async()=>(await mapBounded(locPointGroups,group=>
       readCurrentTraceAnchors(group.scope,group.ids))).flat(),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
@@ -203,7 +203,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
     queryKey:['trace-annual-place-days-v1',annualWindow.startDate,annualWindow.endDate,
       ...annualGroups.map(group=>group.scope+':'+group.ids.join(','))],
     enabled:mapMode==='routes'&&annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0,
-    queryFn:async()=>(await mapBounded(annualGroups,2,async({scope,ids})=>{
+    queryFn:async()=>(await mapBounded(annualGroups,async({scope,ids})=>{
       const {queryTrace}=await import('../../loc/actions/trace/queries.mjs');
       const {data}=await queryTrace({
         p_scope_id:scope,p_view:'trace_daily',
