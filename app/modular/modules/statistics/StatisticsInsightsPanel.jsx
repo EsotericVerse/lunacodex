@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import {explainPeltChange,rankInsightPeriods,totalPeriodStats} from './statistics-insights.mjs';
 import StatisticsChartFrame from './StatisticsChartFrame';
+import {visualColor} from '../../visual-palette.mjs';
 
 const amount=value=>Number(value||0).toLocaleString('zh-TW',{
   maximumFractionDigits:1
@@ -68,10 +69,10 @@ export default function StatisticsInsightsPanel({
   const top=ranked.up.slice(0,upCount);
   const bottom=ranked.down.slice(0,downCount);
   const metric=[
-    {key:'highest',label:'最高',value:stats.maximum?.value,period:stats.maximum?.period},
-    {key:'lowest',label:'最低',value:stats.minimum?.value,period:stats.minimum?.period},
-    {key:'mean',label:'平均',value:stats.mean},
-    {key:'median',label:'中位數',value:stats.median}
+    {key:'highest',label:'最高',value:stats.maximum?.value,period:stats.maximum?.period,color:visualColor(2)},
+    {key:'lowest',label:'最低',value:stats.minimum?.value,period:stats.minimum?.period,color:visualColor(4)},
+    {key:'mean',label:'平均',value:stats.mean,color:visualColor(1)},
+    {key:'median',label:'中位數',value:stats.median,color:visualColor(3)}
   ];
   // Preserve the established Dashboard composition: a main chart and a
   // separate Insights rail. PELT adds analytical meaning, not a new layout.
@@ -97,23 +98,23 @@ export default function StatisticsInsightsPanel({
             tick={{fill:'var(--loc-text)',fontSize:11}}/>
           <Tooltip contentStyle={{background:'var(--loc-panel)',color:'var(--loc-text)',
             border:'1px solid var(--loc-line)',borderRadius:8}}/>
-          <ReferenceLine y={stats.mean} stroke="var(--loc-accent)"
+          <ReferenceLine y={stats.mean} stroke={visualColor(1)} strokeWidth={1.5}
             strokeDasharray="6 4" label={{value:'平均',position:'insideTopRight',
               fill:'var(--loc-text)',fontSize:10}}/>
           {Math.abs(stats.mean-stats.median)>.001?<ReferenceLine y={stats.median}
-            stroke="var(--loc-text)" strokeDasharray="2 5"
+            stroke={visualColor(3)} strokeWidth={1.5} strokeDasharray="2 5"
             label={{value:'中位',position:'insideBottomRight',
               fill:'var(--loc-text)',fontSize:10}}/>:null}
           {insight.detected&&insight.boundary?<ReferenceLine
-            x={insight.boundary} stroke="var(--loc-accent)" strokeWidth={2}
+            x={insight.boundary} stroke={visualColor(6)} strokeWidth={2}
             strokeDasharray="3 4"/>:null}
-          <Line type="linear" dataKey="value" name="作品數" stroke="var(--loc-accent)"
+          <Line type="linear" dataKey="value" name="作品數" stroke={visualColor(0)}
             strokeWidth={3} dot={rows.length<=32} isAnimationActive={!reduceMotion&&rows.length<=600} animationDuration={480} animationEasing="ease-out"/>
           {stats.maximum?<ReferenceDot x={stats.maximum.period} y={stats.maximum.value}
-            r={5} fill="var(--loc-accent)" stroke="var(--loc-panel)"
+            r={6} fill={visualColor(2)} stroke="var(--loc-panel)"
             label={{value:'最高',position:'top',fill:'var(--loc-text)',fontSize:11}}/>:null}
           {stats.minimum?<ReferenceDot x={stats.minimum.period} y={stats.minimum.value}
-            r={5} fill="var(--loc-text)" stroke="var(--loc-panel)"
+            r={6} fill={visualColor(4)} stroke="var(--loc-panel)"
             label={{value:'最低',position:'bottom',fill:'var(--loc-text)',fontSize:11}}/>:null}
         </LineChart>
       </ResponsiveContainer>
@@ -137,7 +138,7 @@ export default function StatisticsInsightsPanel({
       </header>
     <div className="statistics-dashboard__insight-overview">
       <div className="statistics-dashboard__insight-metrics" aria-label="極值與典型值">
-        {metric.map(item=><div key={item.key} className="statistics-dashboard__kpi">
+        {metric.map(item=><div key={item.key} className="statistics-dashboard__kpi" style={{borderInlineStart:'3px solid '+item.color}}>
           <span className="statistics-dashboard__kpi-label">{item.label}</span>
           <strong className="statistics-dashboard__kpi-value">
             {item.value===undefined?'—':amount(item.value)}
