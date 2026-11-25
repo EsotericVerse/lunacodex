@@ -10,6 +10,7 @@ import {invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {isManagedReadAction,isManagedWriteAction}
   from '../actions/managed-query-routes.mjs';
 import {runLocalLocWrite} from '../actions/local-write.mjs';
+import {bulkImportEnvelope,encodeBulkImport,closedGateImportChunks} from '../import/bulk-write-contract.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 function errorFromResponse(result,response){
@@ -34,18 +35,19 @@ export function createConfiguredAdapter({
       throw Error('LOC reads must call their feature-owned Server Action');
     if(kind==='managed-action'&&!isManagedWriteAction(fields.name,fields.args))
       throw Error('Unknown LOC managed write action');
-    const bulkEndpoint=kind==='short-import';
+    const bulkEndpoint=kind==='short-import'||kind==='bulk-import';
     const lease=editorTransactionLease();
     assertEditorTransactionLease(lease);
     let result;
     try{
       if(bulkEndpoint){
-        const signal=lease?AbortSignal.any([lease.signal,AbortSignal.timeout(30000)])
-          :AbortSignal.timeout(30000);
-        const response=await fetchImpl('/api/loc-native',{
-          method:'POST',credentials:'include',cache:'no-store',
+        const timeout=kind==='bulk-import'?120000:30000;
+        const signal=lease?AbortSignal.any([lease.signal,AbortSignal.timeout(timeout)])
+          :AbortSignal.timeout(timeout);
+        const response=await fetchImpl('/api/loc-native/',{
+          method:'POST',credentials:'include',cache:'no-store',redirect:'error',
           headers:{'content-type':'application/json',accept:'application/json'},
-          body:JSON.stringify({kind,scopeid,...fields}),signal
+          body:kind==='bulk-import'?encodeBulkImport(fields.payload):JSON.stringify({kind,scopeid,...fields}),signal
         });
         result=await response.json().catch(()=>null);
         if(!response.ok)throw errorFromResponse(result,response);
@@ -59,7 +61,7 @@ export function createConfiguredAdapter({
         // write may already have committed, so retire derived reads and report
         // an unconfirmed result instead of claiming the save was rolled back.
         invalidateCachedReadPrefix('scope-aggregate:');
-        if(kind==='managed-write'&&typeof fields.payload?.p_table==='string')
+        if((kind==='managed-write'||kind==='bulk-import')&&typeof fields.payload?.p_table==='string')
           invalidateScopedReadCache(fields.payload.p_table);
         if(kind==='managed-transaction')
           for(const item of fields.operations||[])
@@ -86,7 +88,9 @@ export function createConfiguredAdapter({
       }
       // A lost HTTP response does NOT prove the database rolled back. Do not
       // tell the editor to retry blindly or leave an ambiguous stale cache.
-      if(kind==='managed-transaction'||kind==='managed-write'||
+      if(kind==='bulk-import'&&[400,401,403,404,409,413,415,422].includes(error?.status))
+        throw error;
+      if(kind==='managed-transaction'||kind==='managed-write'||kind==='bulk-import'||
          kind==='short-import'||kind==='managed-action'){
         invalidateCachedReadPrefix('scope-aggregate:');
         const uncertain=new Error('儲存回應中斷，提交結果未確認；請重新讀取後再決定是否重試。');
@@ -100,7 +104,7 @@ export function createConfiguredAdapter({
     // no extra COUNT, poll or cache-version SQL is ever triggered here.
     // LOC group aggregates can depend on multiple Scopes, so invalidate the
     // shared numeric family rather than guessing a single physical relation.
-    if(kind==='short-import'||kind==='managed-write'||kind==='managed-transaction'||
+    if(kind==='short-import'||kind==='bulk-import'||kind==='managed-write'||kind==='managed-transaction'||
        kind==='managed-action')
       invalidateCachedReadPrefix('scope-aggregate:');
     return result;
@@ -152,6 +156,38 @@ export function createConfiguredAdapter({
     invalidateScopedReadCache(payload?.p_table);
     return {data:result?.data,error:null};
   };
+  const bulkImportWrite=async payload=>{
+    const {scopeid}=bulkImportEnvelope(payload);
+    let result;
+    try{
+      result=await operation('bulk-import',scopeid,{payload});
+    }catch(error){
+      if(error?.status!==404||error?.code!=='LOC_BULK_IMPORT_CLOSED'){
+        invalidateScopedReadCache(payload.p_table);
+        throw error;
+      }
+      // Explicit closed-before-body receipt is the only safe fallback.
+      let count=0;
+      try{
+        for(const chunk of closedGateImportChunks(payload)){
+          const receipt=await managedWrite(chunk);
+          const affected=Number(receipt?.data?.count);
+          if(affected!==chunk.p_rows.length)
+            throw Object.assign(new Error('LOC 普通匯入筆數未確認'),{code:'LOC_WRITE_RESULT_UNKNOWN'});
+          count+=affected;
+        }
+      }catch(cause){
+        if(!count)throw cause;
+        throw Object.assign(new Error('已確認提交 '+count+' 筆；請重新比對後再匯入。'),
+          {code:'LOC_WRITE_RESULT_UNKNOWN',cause});
+      }
+      return {data:{count},error:null};
+    }
+    invalidateScopedReadCache(payload.p_table);
+    if(Number(result?.data?.count)!==payload.p_rows.length)
+      throw Object.assign(new Error('LOC 大量匯入回執未確認'),{code:'LOC_WRITE_RESULT_UNKNOWN'});
+    return {data:result.data,error:null};
+  };
   const authenticatedClient=createKyselyPublicClient({
     role:'authenticated',fetch:fetchImpl,mutate:managedWrite
   });
@@ -165,7 +201,7 @@ export function createConfiguredAdapter({
   };
   const authClient={...authenticatedClient,shortImport,
     schema(name){return {...authenticatedClient.schema(name),
-      managedWrite,managedTransaction,managedAction};}
+      managedWrite,bulkImportWrite,managedTransaction,managedAction};}
   };
   return {publicClient,authClient,auth:identity.auth,
     configuredPublicClient:publicClient,backupPublicClient:null,

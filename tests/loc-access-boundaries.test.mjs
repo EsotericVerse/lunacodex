@@ -167,3 +167,44 @@ test('permissions response excludes SQL credentials and rejects cross-origin acc
   assert.equal(blocked.status,403);
 });
 }
+
+
+test('LOC bulk import is bounded, website-only and cannot dispatch arbitrary SQL operations',async()=>{
+  const {bulkImportEnvelope,validateBulkImportEnvelope,encodeBulkImport,closedGateImportChunks}=await import('../app/loc/import/bulk-write-contract.mjs');
+  const {BULK_IMPORT_MAX_ROWS,BULK_IMPORT_TARGET_BYTES,BULK_IMPORT_MAX_BYTES,IMPORT_WRITE_TARGET_BYTES}=await import('../app/loc/query/query-batch-size.mjs');
+  assert.equal(BULK_IMPORT_MAX_ROWS,8192);
+  assert.equal(BULK_IMPORT_TARGET_BYTES,16*1024*1024);
+  assert.equal(BULK_IMPORT_MAX_BYTES,32*1024*1024);
+  const rows=Array.from({length:20},(_,i)=>({uid:String(i).padStart(8,'0'),content:'字'.repeat(16000)}));
+  const payload={p_table:'silver.lo3rwang_galaxy',p_operation:'insert',p_rows:rows,p_values:null,p_filters:[]};
+  const envelope=bulkImportEnvelope(payload);
+  assert.equal(validateBulkImportEnvelope(envelope).kind,'managed-write');
+  assert.ok(new TextEncoder().encode(encodeBulkImport(payload)).byteLength>700000);
+  const chunks=[...closedGateImportChunks(payload)];
+  assert.ok(chunks.length>1);
+  assert.deepEqual(chunks.flatMap(chunk=>chunk.p_rows),rows);
+  for(const chunk of chunks)assert.ok(new TextEncoder().encode(JSON.stringify(chunk)).byteLength<IMPORT_WRITE_TARGET_BYTES);
+  for(const operation of ['delete','upsert','update','append_media_link'])
+    assert.throws(()=>bulkImportEnvelope({...payload,p_operation:operation}));
+  assert.throws(()=>bulkImportEnvelope({...payload,p_table:'api.manage'}));
+  assert.throws(()=>validateBulkImportEnvelope({...envelope,scopeid:'family'}));
+  assert.throws(()=>bulkImportEnvelope({...payload,p_rows:Array(8193).fill(rows[0])}));
+  let connected=0;
+  const database=async()=>{connected++;throw Error('must not connect');};
+  const request=(path='/api/loc-native/',extra={})=>new Request('https://loc.lo3rwang.cc'+path,{
+    method:'POST',headers:{'content-type':'application/json',...extra},body:JSON.stringify(envelope)});
+  const closedRequest=request();
+  const closed=await handleNativeLocOperation(closedRequest,{}, {entrypoint:'loc-native',database});
+  assert.equal(closed.status,404);
+  assert.equal((await closed.json()).error.code,'LOC_BULK_IMPORT_CLOSED');
+  assert.equal(closedRequest.bodyUsed,false);
+  const open={LOC_BULK_IMPORT_UNTIL:'2999-01-01T00:00:00Z'};
+  const anonymous=request();
+  assert.equal((await handleNativeLocOperation(anonymous,open,{entrypoint:'loc-native',database})).status,401);
+  assert.equal(anonymous.bodyUsed,false);
+  const cross=request('/api/loc-native/',{origin:'https://evil.example'});
+  assert.equal((await handleNativeLocOperation(cross,open,{entrypoint:'loc-native',database})).status,403);
+  assert.equal(cross.bodyUsed,false);
+  assert.equal((await handleNativeLocOperation(request('/api/las-native/'),open,{entrypoint:'las-native',trustedMcpBridge:true,database})).status,413);
+  assert.equal(connected,0);
+});

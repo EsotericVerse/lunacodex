@@ -1,4 +1,5 @@
-import {NATIVE_WRITE_MAX_BYTES} from '../query/query-batch-size.mjs';
+import {NATIVE_WRITE_MAX_BYTES,BULK_IMPORT_MAX_BYTES,BULK_IMPORT_SQL_TARGET_BYTES} from '../query/query-batch-size.mjs';
+import {validateBulkImportEnvelope} from '../import/bulk-write-contract.mjs';
 // Fixed LOC business operations inside the application backend. This is NOT a
 // generic SQL endpoint: no caller-provided SQL, relation, database alias,
 // connection URL, or query AST is accepted.
@@ -214,28 +215,43 @@ export async function handleNativeLocOperation(request,env={},{
   // In the default state, reject the LOC bulk endpoint before reading a body.
   // The route is not an active parser/SQL surface until an operator enables it.
   if(entrypoint==='loc-native'&&!bulkImportEnabled(env))
-    return reply({error:{message:'LOC bulk write channel is closed'}},404);
+    return reply({error:{code:'LOC_BULK_IMPORT_CLOSED',message:'LOC bulk write channel is closed'}},404);
+  if(entrypoint==='loc-native'&&request.headers.get('origin')&&
+    request.headers.get('origin')!=='https://'+WEB_HOST)
+    return reply({error:{message:'LOC bulk import requires same-origin access'}},403);
   if(host!==MCP_HOST&&host!==WEB_HOST)
     return reply({error:{message:'Not found'}},404);
   if(!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')||''))
     return reply({error:{message:'JSON body required'}},415);
-  if(Number(request.headers.get('content-length')||0)>MAX_BYTES)
+  const maxBytes=entrypoint==='loc-native'?BULK_IMPORT_MAX_BYTES:MAX_BYTES;
+  if(Number(request.headers.get('content-length')||0)>maxBytes)
     return reply({error:{message:'Payload too large'}},413);
   let operationKind='',importPhase='request';
   let shortImportActor=null;
   let selected=null;
   let releaseAbort=()=>{};
   try{
+    // Verify the website principal before allocating a large JSON payload.
+    let claims=null,rights=null,isBulkImport=false;
+    if(entrypoint==='loc-native'){
+      claims=await signedClaims(request,fetchImpl);
+      rights=await readLocAccess(null,claims.email,{website:true});
+      if(!rights.canWrite)throw refusal('LOC write permission denied',403);
+    }
     let body;
-    try{body=await readBoundedJson(request.body,MAX_BYTES)}
+    try{body=await readBoundedJson(request.body,maxBytes)}
     catch(error){
       throw error instanceof BodyTooLargeError
         ?refusal('Payload too large',413):refusal('Invalid JSON',400);
     }
+    if(entrypoint==='loc-native'&&body?.kind==='bulk-import'){
+      body=validateBulkImportEnvelope(body);
+      isBulkImport=true;
+    }
     if(!body||typeof body!=='object'||Array.isArray(body)||
       !KINDS.has(body.kind)||typeof body.scopeid!=='string')
       throw refusal('Unsupported LOC business operation');
-    if(entrypoint==='loc-native'&&body.kind!=='short-import')
+    if(entrypoint==='loc-native'&&body.kind!=='short-import'&&!isBulkImport)
       throw refusal('LOC route accepts temporary bulk writes only',404);
     if(entrypoint==='las-native'&&!LAS_WRITE_KINDS.has(body.kind))
       throw refusal('LAS bridge accepts fixed LOC write operations only',404);
@@ -252,7 +268,7 @@ export async function handleNativeLocOperation(request,env={},{
     // bridge cannot accidentally leave this fast write path enabled by default.
     if(body.kind==='short-import'&&!bulkImportEnabled(env))
       throw refusal('LOC bulk write channel is closed',404);
-    if(host===WEB_HOST&&!trustedLocalAction){
+    if(host===WEB_HOST&&!trustedLocalAction&&!isBulkImport){
       if(body.kind!=='short-import')
         throw refusal('LOC native endpoint is reserved for temporary bulk writes',404);
     }
@@ -272,7 +288,7 @@ export async function handleNativeLocOperation(request,env={},{
       (host!==MCP_HOST||!['record','record_ordered'].includes(body.action)))
       throw refusal('LOC native channel accepts conversation writes only',404);
     // The verified signed claim, not the HTTP body, selects the connection.
-    const claims=await signedClaims(request,fetchImpl,{trustedMcpBridge:host===MCP_HOST});
+    claims??=await signedClaims(request,fetchImpl,{trustedMcpBridge:host===MCP_HOST});
     // LOC Auth verifies identity; only published JavaScript grants may
     // authorize MCP/Extension writes, never a role supplied by the request body.
     const writeKinds=new Set(['short-import','mcp-sync','mcp-append',
@@ -306,7 +322,7 @@ export async function handleNativeLocOperation(request,env={},{
     // Business grants come from the published JS snapshot, not SQL.
     // Fail closed before opening any database connection.
     if(operationKind==='short-import')importPhase='permission';
-    const rights=host===MCP_HOST
+    rights??=host===MCP_HOST
       ?await loadMcpLocAccess(null,claims.email)
       :await readLocAccess(null,claims.email,{website:true});
     claims.me=rights.canWrite;
@@ -317,6 +333,8 @@ export async function handleNativeLocOperation(request,env={},{
       requireManagedActionGrant(body,claims);
     if(body.kind==='managed-write')
       requireManagedRelationGrant(body.payload,claims);
+    if(isBulkImport&&!bulkImportEnabled(env))
+      throw refusal('LOC bulk import window expired before execution',403);
     if(body.kind==='managed-transaction')
       for(const item of body.operations)requireManagedRelationGrant(item,claims);
     if(body.kind==='short-import'){
@@ -329,7 +347,7 @@ export async function handleNativeLocOperation(request,env={},{
     // External user-selected connections are READ ONLY, whether they map an
     // existing table or expose the ordinary Scope schema. This includes the
     // extension import path and MCP append/sync. OAuth never changes this.
-    const writesToSelectedDatabase=['short-import','mcp-sync','mcp-append']
+    const writesToSelectedDatabase=isBulkImport||['short-import','mcp-sync','mcp-append']
       .includes(body.kind);
     const primaryId=DATABASE_ACCESS_LIST.find(item=>item.selected===true)?.target_id;
     if(writesToSelectedDatabase&&claims.db_target&&claims.db_target!==primaryId)
@@ -352,7 +370,8 @@ export async function handleNativeLocOperation(request,env={},{
     const preparedWrites=selected.engine==='postgres'
       ?body.kind==='managed-transaction'
         ?body.operations.map(payload=>prepareManagedKyselyWrite({kind:'managed-write',payload}))
-        :body.kind==='managed-write'?prepareManagedKyselyWrite(body):null
+        :body.kind==='managed-write'?prepareManagedKyselyWrite(body,isBulkImport?
+          {sqlTargetBytes:BULK_IMPORT_SQL_TARGET_BYTES}:{}):null
       :null;
     // Galaxy reads stay in their feature Server Actions. LAS only maps write
     // envelopes and forwards a verified OAuth bearer to fixed write operations.
@@ -485,13 +504,16 @@ export async function handleNativeLocOperation(request,env={},{
             return applyManagedWrite(trx,registryRelationForEngine(selected.engine),payload);
           }
         }
-        return selected.engine==='postgres'
+        const result=selected.engine==='postgres'
           ?(await executeManagedKyselyWrite(trx,body,{
             prepared:preparedWrites})).data
           :(await executeCrossEngineManagedWrite(trx,body,{
             engine:selected.engine,namespace:selected.namespace,
             role:claims.role,claims
           })).data;
+        if(isBulkImport&&Number(result?.count)!==body.payload.p_rows.length)
+          throw refusal('LOC bulk import affected-row count mismatch',409);
+        return result;
       });
       return reply({data:row});
     }

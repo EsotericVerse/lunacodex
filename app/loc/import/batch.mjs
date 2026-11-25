@@ -1,6 +1,6 @@
 // One format contract for JSON Import and Source Refresh. No database authority lives here.
 // Archive size limits are configuration, not proof of successful large-file import E2E.
-import {MAX_ROWS,HEAVY_INITIAL_ROWS,HEAVY_QUERY_ROWS,IMPORT_WRITE_TARGET_BYTES,createTextAdaptiveRows,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
+import {MAX_ROWS,HEAVY_INITIAL_ROWS,HEAVY_QUERY_ROWS,BULK_IMPORT_INITIAL_BYTES,BULK_IMPORT_TARGET_BYTES,createTextAdaptiveRows,MAX_ARCHIVE_BYTES,MAX_JSON_BYTES} from '../query/query-batch-size.mjs';
 import {unwrapArchiveArrayRows} from '../archive/array-layout.mjs';
 import {runeDrawText} from './rune-draw-text.mjs';
 import {sourceImportModel} from '../../../packages/zenstack/import-source-models.mjs';
@@ -350,10 +350,10 @@ export function extractImportCreatedAt(value,depth=0){
   return null;
 }
 // Imported rows are sized by the text actually present, not row count alone.
-// The existing Native managed-write request envelope is 700 KB; this smaller
-// transport payload target leaves room for the operation's JSON wrapper and
-// ZModel normalization. 10k rows is only a ceiling, not a forced SQL LIMIT.
-export const IMPORT_PAYLOAD_TARGET_BYTES=IMPORT_WRITE_TARGET_BYTES;
+// Browser transport and physical SQL statements have separate budgets.
+// The gated LOC-only import route accepts a 32 MiB envelope; ordinary writes
+// retain their smaller limits. Confirmed checkpoints remain independent.
+export const IMPORT_PAYLOAD_TARGET_BYTES=BULK_IMPORT_TARGET_BYTES;
 // A checkpoint is a receipt for CONFIRMED batches, never a forced 8192-row
 // SQL request or permission to skip live UID comparison on retry.
 export const IMPORT_FIRST_CHECKPOINT_ROWS=4096;
@@ -418,21 +418,22 @@ export function createImportBatchSizer({
   maxPayloadBytes=IMPORT_PAYLOAD_TARGET_BYTES,sampleRows=null
 }={}){
   const guess=Array.isArray(sampleRows)&&sampleRows.length
-    ?recommendImportBatchRows(sampleRows,{maxBytes:maxPayloadBytes,
+    ?recommendImportBatchRows(sampleRows,{maxBytes:Math.min(maxPayloadBytes,BULK_IMPORT_INITIAL_BYTES),
       maximum:Math.min(initial,maximum)}):initial;
-  const adaptive=createTextAdaptiveRows({initial:guess,minimum,maximum});
+  const adaptive=createTextAdaptiveRows({initial:guess,minimum,maximum,
+    targetChars:maxPayloadBytes});
   return {
     get size(){return adaptive.size;},
     get maxBytes(){return maxPayloadBytes;},
-    byteSize:importRowBytes,
-    // A larger logical window is safe only when EACH actual HTTP payload
-    // stays below the existing byte target.
+    byteSize:row=>importRowBytes(row)+1,
+    // A larger logical window still has a bounded UTF-8 transport budget.
+    // The final HTTP envelope is checked separately before dispatch.
     shouldFlush(count,bytes,nextBytes=0){
       return count>0&&(count>=adaptive.size||
         bytes+nextBytes>maxPayloadBytes);
     },
     observe(rows,elapsedMs,characters=rows){
-      return adaptive.observe(rows,characters);
+      return adaptive.observe(rows,Math.max(0,characters)*3);
     }
   };
 }

@@ -1,6 +1,6 @@
 import {flashMessage} from '../notifications/flash-message.js';
 import {assertPlainGalaxyAttributes} from '../content/content-policy.js';
-import {DB_QUERY_BATCH_SIZE,MAX_ROWS,HEAVY_QUERY_ROWS,ARTICLE_UID_PAGE_ROWS,IMPORT_WRITE_TARGET_BYTES} from '../query/query-batch-size.mjs';
+import {DB_QUERY_BATCH_SIZE,MAX_ROWS,HEAVY_QUERY_ROWS,ARTICLE_UID_PAGE_ROWS,BULK_IMPORT_TARGET_BYTES,BULK_IMPORT_MAX_ROWS} from '../query/query-batch-size.mjs';
 import {clearAuthorization,readAuthorization,canAuthorizeLocAccess} from '../auth/authorization-runtime.mjs';
 import {assertEditorSession} from '../auth/edit-session-ttl.mjs';
 import {editorTransactionLease,assertEditorTransactionLease}
@@ -137,7 +137,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     return data;
   }
 
-  async function managementWriteUnchecked(payload,{normalizedGalaxy=false}={}){
+  async function managementWriteUnchecked(payload,{normalizedGalaxy=false,importBatch=false}={}){
     const lease=editorTransactionLease();
     assertEditorTransactionLease(lease);
     preflightWrite(payload?.p_table);
@@ -149,7 +149,9 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       payload={...payload,p_values:prepareGalaxyUpdateValues(payload.p_table,payload.p_values)};
     // ZModel physical relations only; the server rejects retired SQL names.
     assertEditorTransactionLease(lease);
-    const {data,error}=await authClient.schema('silver').managedWrite(payload);
+    const schema=authClient.schema('silver');
+    const {data,error}=await (importBatch&&typeof schema.bulkImportWrite==='function'?
+      schema.bulkImportWrite(payload):schema.managedWrite(payload));
     assertEditorTransactionLease(lease);
     if(error)throw new Error(error.message||'Management write failed');
     if(payload?.p_table==='api.manage'){
@@ -185,7 +187,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     }
     // Heavy import rows are already bounded by the caller's real payload
     // bytes. Do not silently re-split them at the ordinary 1k ceiling.
-    const batchSize=HEAVY_QUERY_ROWS;
+    const batchSize=BULK_IMPORT_MAX_ROWS;
     let count=0;
     for(let offset=0;offset<list.length;offset+=batchSize){
       assertEditorTransactionLease(lease);
@@ -196,7 +198,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
         p_rows:batch,
         p_values:null,
         p_filters:[]
-      },{normalizedGalaxy});
+      },{normalizedGalaxy,importBatch:true});
       assertEditorTransactionLease(lease);
       const affected=Number(result?.count||0);
       if(affected!==batch.length)throw new Error(`DB INSERT ${table} incomplete: expected ${batch.length}, affected ${affected}`);
@@ -239,9 +241,9 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     }
     // Keep each authorized import chunk atomic. A single typed update_batch
     // handles ordinary and special Galaxy fields in ONE PostgreSQL statement.
-    // Bound the serialized payload below LOC Native's 700k request limit.
+    // Bound the serialized payload below the gated LOC import limit.
     // Never retry a batch whose COMMIT receipt may already have been lost.
-    const maxChunkBytes=IMPORT_WRITE_TARGET_BYTES;
+    const maxChunkBytes=BULK_IMPORT_TARGET_BYTES;
     const encoder=new TextEncoder();
     let pending=[],bytes=0,count=0,committed=0;
     const flush=async()=>{
@@ -249,7 +251,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       if(!pending.length)return;
       const payload={p_table:table,p_operation:'update_batch',
         p_rows:pending,p_values:null,p_filters:[]};
-      const result=await managementWriteUnchecked(payload);
+      const result=await managementWriteUnchecked(payload,{importBatch:true});
       assertEditorTransactionLease(lease);
       count+=Number(result?.count||0);
       committed+=pending.length;
@@ -260,7 +262,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
         assertEditorTransactionLease(lease);
         const size=encoder.encode(JSON.stringify(row)).length+1;
         if(size>maxChunkBytes)throw Error('單筆文章更新超出批次傳輸限制');
-        if(pending.length>=HEAVY_QUERY_ROWS||bytes+size>maxChunkBytes)await flush();
+        if(pending.length>=BULK_IMPORT_MAX_ROWS||bytes+size>maxChunkBytes)await flush();
         pending.push(row);bytes+=size;
       }
       await flush();

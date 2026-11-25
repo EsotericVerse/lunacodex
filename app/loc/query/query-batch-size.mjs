@@ -23,6 +23,11 @@ export const SQL_BATCH_POLICY=Object.freeze({
   keywordWorkerTargetBytes:256*1024,
   importWriteTargetBytes:480000,
   nativeWriteMaxBytes:700000,
+  bulkImportInitialBytes:8*MiB,
+  bulkImportTargetBytes:16*MiB,
+  bulkImportMaxBytes:32*MiB,
+  bulkImportSqlTargetBytes:4*MiB,
+  bulkImportMaxRows:8192,
   timeAnchorTargetBytes:2*1024*1024,
   timeAnchorEditorMaxBytes:32*1024*1024
 });
@@ -40,6 +45,11 @@ export const KEYWORD_WORKER_TARGET_CHARS=SQL_BATCH_POLICY.keywordWorkerTargetCha
 export const KEYWORD_WORKER_TARGET_BYTES=SQL_BATCH_POLICY.keywordWorkerTargetBytes;
 export const IMPORT_WRITE_TARGET_BYTES=SQL_BATCH_POLICY.importWriteTargetBytes;
 export const NATIVE_WRITE_MAX_BYTES=SQL_BATCH_POLICY.nativeWriteMaxBytes;
+export const BULK_IMPORT_INITIAL_BYTES=SQL_BATCH_POLICY.bulkImportInitialBytes;
+export const BULK_IMPORT_TARGET_BYTES=SQL_BATCH_POLICY.bulkImportTargetBytes;
+export const BULK_IMPORT_MAX_BYTES=SQL_BATCH_POLICY.bulkImportMaxBytes;
+export const BULK_IMPORT_SQL_TARGET_BYTES=SQL_BATCH_POLICY.bulkImportSqlTargetBytes;
+export const BULK_IMPORT_MAX_ROWS=SQL_BATCH_POLICY.bulkImportMaxRows;
 export const TIME_ANCHOR_TARGET_BYTES=SQL_BATCH_POLICY.timeAnchorTargetBytes;
 export const TIME_ANCHOR_EDITOR_MAX_BYTES=SQL_BATCH_POLICY.timeAnchorEditorMaxBytes;
 export const clampRows=(n,min,max)=>Math.max(min,Math.min(max,n));

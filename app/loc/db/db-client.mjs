@@ -29,6 +29,10 @@ function routedSchema(schemaName,cloudSchema){
       if(isUnprovisionedLocal(payload?.p_table,schemaName))return unavailableLocal();
       return cloudSchema.managedWrite(payload);
     },
+    bulkImportWrite(payload){
+      if(isUnprovisionedLocal(payload?.p_table,schemaName))return unavailableLocal();
+      return cloudSchema.bulkImportWrite(payload);
+    },
     managedTransaction(operations){
       if(schemaName==='local'||operations?.some(item=>
         isUnprovisionedLocal(item?.p_table,schemaName)))return unavailableLocal();

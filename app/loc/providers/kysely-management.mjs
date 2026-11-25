@@ -194,7 +194,7 @@ async function writeBatch(trx,table,rowCount,serialized){
 }
 // Prepare pure ZModel and row-shape validation before opening a SQL transaction.
 // This never grants access: transaction-bound authorizeRelation() still decides.
-export function prepareManagedKyselyWrite(body,{modelName=''}={}){
+export function prepareManagedKyselyWrite(body,{modelName='',sqlTargetBytes}={}){
 
   const original=body?.payload;
   if(!original||typeof original!=='object'||Array.isArray(original))
@@ -285,10 +285,11 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
       .map(batch=>batch.map(row=>postgresManagedJsonbValues(row,relation)));
   }
   if(operation==='insert')
-    insertGroups=planJsonRecordsetBatches(rows,{groupByShape:true});
+    insertGroups=planJsonRecordsetBatches(rows,{groupByShape:true,
+      ...(sqlTargetBytes===undefined?{}:{maxBytes:sqlTargetBytes})});
   // Split only the SQL statement; all chunks retain ONE caller transaction.
   const updateBatchGroups=operation==='update_batch'
-    ?planJsonRecordsetBatches(payload.p_rows):null;
+    ?planJsonRecordsetBatches(payload.p_rows,sqlTargetBytes===undefined?{}:{maxBytes:sqlTargetBytes}):null;
   return {payload,table,operation,rows,values,filters,isAnchor,namespace,
     upsertBatches,insertGroups,updateBatchGroups};
 }
