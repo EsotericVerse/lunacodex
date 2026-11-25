@@ -6,7 +6,6 @@ export const SQL_WORKLOAD_POLICY=Object.freeze({
   chunkRows:10000,
   maxParallelChunks:4,
   nodePoolMax:12,
-  workerRuntimeMaxConnections:8,
   workerRequestMaxConnections:4
 });
 

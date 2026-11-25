@@ -47,39 +47,32 @@ export function postgresMutationReturning(query,req){
 const NON_RETRYABLE_CONNECTION_CODES=new Set([
   '28P01','28000','3D000','3F000','42501','ENOTFOUND'
 ]);
-// Request pools are short-lived, but concurrent requests in the same Worker
-// isolate share this socket budget. A separate per-request cap prevents one
-// adaptive scan from taking every lane. The database-side pooler remains the
-// aggregate limit across distinct isolates.
-let runtimeActive=0;
-const connectionWaiters=[];
-function dispatchConnectionWaiters(){
-  while(runtimeActive<SQL_WORKLOAD_POLICY.workerRuntimeMaxConnections&&
-      connectionWaiters.length){
-    const index=connectionWaiters.findIndex(waiter=>
-      waiter.pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections);
-    if(index<0)return;
-    const [waiter]=connectionWaiters.splice(index,1);
-    if(waiter.pool.ended){
-      waiter.reject(new Error('LOC request database connection already closed'));
-      continue;
-    }
-    waiter.pool.active++;
-    runtimeActive++;
+// Bound only one action's parallel SQL work. Do not share a semaphore between
+// Worker requests: an unrelated slow feature must not queue homepage reads.
+function dispatchRequestConnections(pool){
+  while(!pool.ended&&pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections&&
+      pool.waiters.length){
+    const waiter=pool.waiters.shift();
+    pool.active++;
     waiter.resolve();
   }
 }
-function acquireRuntimeConnection(pool){
+function acquireRequestConnection(pool){
   if(pool.ended)return Promise.reject(
     new Error('LOC request database connection already closed'));
+  if(pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections&&
+      !pool.waiters.length){
+    pool.active++;
+    return Promise.resolve();
+  }
   return new Promise((resolve,reject)=>{
-    connectionWaiters.push({pool,resolve,reject});
-    dispatchConnectionWaiters();
+    pool.waiters.push({resolve,reject});
+    dispatchRequestConnections(pool);
   });
 }
-function releaseRuntimeConnection(pool){
-  if(pool.active>0){pool.active--;runtimeActive=Math.max(0,runtimeActive-1);}
-  dispatchConnectionWaiters();
+function releaseRequestConnection(pool){
+  if(pool.active>0)pool.active--;
+  dispatchRequestConnections(pool);
 }
 export function requestScopedPostgresPool(options,ClientClass,{
   attempts=7,baseDelayMs=350,maxDelayMs=1400,
@@ -89,7 +82,7 @@ export function requestScopedPostgresPool(options,ClientClass,{
 }={}){
   let currentWaitUntil=null;
   let ended=false;
-  const poolState={active:0,ended:false};
+  const poolState={active:0,ended:false,waiters:[]};
   const acquired=new Set();
   const connecting=new Set();
   const closing=new Map();
@@ -105,7 +98,7 @@ export function requestScopedPostgresPool(options,ClientClass,{
     const task=Promise.resolve().then(()=>client.end?.()).catch(()=>{})
       .finally(()=>{
         closing.delete(client);
-        if(ownsLease)releaseRuntimeConnection(poolState);
+        if(ownsLease)releaseRequestConnection(poolState);
       });
     closing.set(client,task);
     return task;
@@ -120,7 +113,7 @@ export function requestScopedPostgresPool(options,ClientClass,{
     setWaitUntil(fn){currentWaitUntil=typeof fn==='function'?fn:null;},
     async connect(){
       if(ended)throw new Error('LOC request database connection already closed');
-      await acquireRuntimeConnection(poolState);
+      await acquireRequestConnection(poolState);
       let clientOwnsPermit=false;
       let lastError;
       const started=now();
@@ -171,18 +164,14 @@ export function requestScopedPostgresPool(options,ClientClass,{
       throw lastError||new Error('LOC database connection retry budget exhausted');
       }finally{
         // A successful client owns the permit until its request-scoped close.
-        if(!clientOwnsPermit)releaseRuntimeConnection(poolState);
+        if(!clientOwnsPermit)releaseRequestConnection(poolState);
       }
     },
     async end(){
       ended=true;
       poolState.ended=true;
-      for(let index=connectionWaiters.length-1;index>=0;index--){
-        if(connectionWaiters[index].pool===poolState){
-          const [waiter]=connectionWaiters.splice(index,1);
-          waiter.reject(new Error('LOC request database connection already closed'));
-        }
-      }
+      for(const waiter of poolState.waiters.splice(0))
+        waiter.reject(new Error('LOC request database connection already closed'));
       await Promise.all([
         ...[...acquired,...connecting].map(close),
         ...closing.values()
