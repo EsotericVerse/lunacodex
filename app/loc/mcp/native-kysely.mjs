@@ -8,6 +8,7 @@ import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
 import {createKyselyDialect,getSqlType,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
 import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
+import {getCloudflareContext} from '@opennextjs/cloudflare';
 
 // The trusted Kysely dialect and its request-owned pg.Client share the
 // current request lifetime. No platform-specific background cleanup is needed.
@@ -66,12 +67,32 @@ export async function db_connection(env={},verifiedAlias='',{
   }
   if(trustedTarget||trustedDialectConfig)
     throw unavailable('The LOC control database cannot be replaced');
-  const uri=mainUri(env);
   if(!primary||primary.engine!=='postgres'||
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
   const isCloudflareWorkers=Boolean(process.versions?.workerd)||
     globalThis.navigator?.userAgent==='Cloudflare-Workers';
+  let hyperdrive=env?.HYPERDRIVE||null;
+  if(!hyperdrive?.connectionString&&isCloudflareWorkers){
+    try{hyperdrive=getCloudflareContext().env?.HYPERDRIVE||null;}
+    catch{/* Local Next.js and non-Worker callers use LOC_DATABASE_URI. */}
+  }
+  if(hyperdrive?.connectionString){
+    // Hyperdrive owns the cross-request origin pool. Each Worker request still
+    // owns its pg.Client and closes it at the normal/error/abort boundary.
+    const pool=requestScopedPool({
+      connectionString:hyperdrive.connectionString,
+      connectionTimeoutMillis:6000
+    },pg.Client,{
+      attempts:2,attemptTimeoutMs:4000,maxElapsedMs:6500,
+      baseDelayMs:200,maxDelayMs:500
+    });
+    const dialect=createKyselyDialect(primary.engine,{pool});
+    return {db:new Kysely({dialect}),dialect,pool,
+      engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{},
+      connectionMode:'hyperdrive'};
+  }
+  const uri=mainUri(env);
   if(!isCloudflareWorkers){
     const pool=nodeProcessPool(uri);
     const dialect=createKyselyDialect(primary.engine,{pool});
