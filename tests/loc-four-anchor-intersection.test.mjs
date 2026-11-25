@@ -154,8 +154,7 @@ test('Statistics places require both switches while Trace keeps its own feature 
   assert.ok(trace.includes("p_view:'trace_territory'"));
   assert.ok(trace.includes('p_options:{withPoints:true}'));
   assert.ok(feature.includes("if(statisticsOnly)query=query.where('statics','=',true)"));
-  assert.ok(feature.includes(".where('trace','=',true).where('date','is not',null)"));
-  assert.ok(feature.includes("await portableTracePlaces(db,table,start,end"));
+  assert.match(feature,/\.where\('trace','=',true\)\s*\.where\('date','is not',null\)/);
   assert.ok(feature.includes('await portableTracePlaces(db,table,start,end,options.statisticsOnly===true)'));
 });
 
