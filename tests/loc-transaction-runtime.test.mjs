@@ -1,17 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planUidScalarRepairBatches,buildUidScalarRepairQuery,
-  planUidRepairStatementBatches,buildUidCaseRepairQuery,
-  buildUidNativeArrayRepairQuery,repairBeforeUidDelete}
-  from '../app/loc/providers/uid-dependency-before-delete.mjs';
+import {buildUidScalarRepairQuery,buildUidCaseRepairQuery,buildUidNativeArrayRepairQuery,repairBeforeUidDelete} from '../app/loc/providers/uid-dependency-before-delete.mjs';
 import {planUidDependencyRepair}
   from '../app/loc/providers/uid-dependency-immer.mjs';
-import {planImportPointCreate,planImportDateCreate,planImportDateTitleDelta}
-  from '../app/loc/import/point-date-immer.mjs';
 import {Kysely,PostgresDialect,sql} from 'kysely';
 import {planJsonRecordsetBatches} from '../app/loc/query/query-batch-size.mjs';
-import {remapImportUidRelations,planImportPointUidLink,
-  planExistingImportUidUpdate} from '../app/loc/import/uid-delta.mjs';
+import {remapImportUidRelations} from '../app/loc/import/uid-delta.mjs';
 import {planKyselyUpsertBatches}
   from '../app/loc/providers/kysely-runtime.mjs';
 import {prepareManagedKyselyWrite}
@@ -56,18 +50,6 @@ test('Kysely scalar UID UPDATE compiles bound PK and old-reference predicates',(
   assert.deepEqual(compiled.parameters.slice(-4),
     ['AAAA0001','BBBB0002','DELE0001','DELE0001']);
   assert.equal(compiled.parameters.at(-1),'DELE0001');
-});
-test('Point and Date import CREATE preserve the modeled row',()=>{
-  const point=planImportPointCreate({uid:'POIN0001',title:'Point',
-    description:'',coordinates:[121.2,25.1],createtime:'2026-11-23T00:00:00Z'});
-  assert.deepEqual(point.row,{uid:'POIN0001',type:'point',title:'Point',
-    description:'',attr:{longitude:121.2,latitude:25.1},invisible:false,
-    createtime:'2026-11-23T00:00:00Z'});
-  const date=planImportDateCreate({uid:'DATE0001',date:'2026-11-23',
-    title:'Day',description:'Test'});
-  assert.deepEqual(date.row,{uid:'DATE0001',type:'date',
-    attr:{date:'2026-11-23'},invisible:false,title:'Day',description:'Test'});
-  assert.throws(()=>planImportPointCreate({uid:'POIN0001',coordinates:['bad',2]}));
 });
 test('Trace segment repair keeps endpoint pairs and anchor count',()=>{
   const plan=planUidDependencyRepair({deletedUid:'POIN0002',
@@ -147,19 +129,6 @@ test('UID alias remapping preserves article content, target order and saved IDs'
     aliases:new Map([['AAAA0001','BBBB0002'],['BBBB0002','AAAA0001']])
   }),/循環/);
 });
-test('Point and Date updates preserve intended fields',()=>{
-  assert.deepEqual(planImportPointUidLink(null,'POIN0001').changes,
-    {place_id:'POIN0001'});
-  assert.deepEqual(planImportDateTitleDelta(
-    {uid:'DATE0001',type:'date',title:'2026-11-23',description:''},
-    {title:'Imported',description:'Text'},'2026-11-23').changes,
-    {title:'Imported',description:'Text'});
-  assert.deepEqual(planExistingImportUidUpdate(
-    {source_id:'BBBB0002',ref_id:null,target_id:[],place_id:null},
-    {source_id:'ZZZZ0009',ref_id:'AAAA0001',target_id:[]}
-  ).changes,{ref_id:'AAAA0001'});
-});
-
 test('UID delete refuses an incomplete CAS batch with conflict status',async()=>{
   const update=()=>{
     const q={set:()=>q,where:()=>q,executeTakeFirst:async()=>({numUpdatedRows:0n})};

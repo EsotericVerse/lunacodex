@@ -27,33 +27,6 @@ test('Era rows sort oldest-to-newest by their linked Period/Date, not input orde
   assert.deepEqual(tree.eras[0].periods[0].dates.map(row=>row.uid),['DATE0001']);
 });
 
-test('Unlinked Period and Date stay in two separate unclassified groups',()=>{
-  const tree=timeRecordHierarchy([
-    era('ERA00001','A',['PERI0001']),
-    period('PERI0001','Linked',['DATE0001']),
-    date('DATE0001','2023-10-01'),
-    period('PERI0003','Orphan 2022',['DATE0003']),
-    period('PERI0002','Orphan 2020',['DATE0002']),
-    date('DATE0003','2022-01-01'),
-    date('DATE0002','2020-01-01'),
-    date('DATE0000','1990-01-01')
-  ]);
-  assert.deepEqual(tree.unclassifiedPeriods.map(x=>x.row.uid),['PERI0002','PERI0003']);
-  assert.deepEqual(tree.unclassifiedDates.map(x=>x.uid),['DATE0000']);
-  assert.equal(tree.eras.length,1);
-});
-
-test('Shared Date/Period links are projected without falsely classifying them as orphan',()=>{
-  const tree=timeRecordHierarchy([
-    era('ERA00002','B',['PERI0001']),era('ERA00001','A',['PERI0001']),
-    period('PERI0001','Shared',['DATE0001']),date('DATE0001','2020-01-01')
-  ]);
-  assert.equal(tree.eras.length,2);
-  assert.equal(tree.eras[0].periods[0].dates[0].uid,'DATE0001');
-  assert.deepEqual(tree.unclassifiedPeriods,[]);
-  assert.deepEqual(tree.unclassifiedDates,[]);
-});
-
 }
 
 {

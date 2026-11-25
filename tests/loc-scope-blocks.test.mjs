@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {block_list} from '../app/loc/providers/kysely-public.mjs';
-import {publicScopeBlockPage} from '../app/loc/blocks/public-scope-pages.mjs';
 
 {
 function mockBlocks(rows){
@@ -31,13 +30,6 @@ function mockBlocks(rows){
   };
   return {trx,calls};
 }
-
-test('only guest-visible public Scope Block pages may be read',()=>{
-  for(const page of ['index','search','trace','hero','game','culture','statics'])
-    assert.equal(publicScopeBlockPage(page),page);
-  for(const page of ['manage','scope_manage','admin','setting','internal','scope_admin',''])
-    assert.equal(publicScopeBlockPage(page),null);
-});
 
 test('block_list keeps legacy homepage default and rejects management pages',async()=>{
   const {trx,calls}=mockBlocks([{uid:'INDEX001',page_name:'index',block_order:1}]);

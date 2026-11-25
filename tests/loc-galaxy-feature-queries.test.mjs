@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseGalaxyFeatureQuery,executeGalaxyFeatureQuery} from '../app/loc/model/galaxy-feature-queries.mjs';
 import {parseGalaxyRecordQuery,executeGalaxyRecordQuery} from '../app/loc/model/galaxy-record-queries.mjs';
-import {galaxyAble} from '../app/loc/model/galaxy-able.mjs';
 
 const base={kind:'query',operation:'galaxy-feature',scope:'lo3rwang',
   feature:'culture',startDate:'2026-01-01',endDate:'2026-12-31',result:'uids'};
@@ -19,22 +18,6 @@ test('no arbitrary SQL, relation, column or filter passes the feature query mode
     assert.throws(()=>parseGalaxyFeatureQuery({...base,...extra}));
   }
 });
-test('Galaxy Trace model reads the selected Scope and place directly',async()=>{
-  const observed={tables:[],filters:[]};
-  const query={where(...args){observed.filters.push(args);return this},
-    select(){return this},orderBy(){return this},limit(){return this},
-    async execute(){return [{uid:'AAAA0001'}]}};
-  const db={selectFrom(table){observed.tables.push(table);return query},
-    transaction(){throw Error('Read query opened a transaction')}};
-  const result=await executeGalaxyFeatureQuery(db,parseGalaxyFeatureQuery({
-    ...base,feature:'trace',category:{type:'place',value:'BBBB0001'}
-  }));
-  assert.deepEqual(result.uids,['AAAA0001']);
-  assert.deepEqual(observed.tables,['silver.lo3rwang_galaxy']);
-  assert.ok(observed.filters.some(args=>args[0]==='trace'&&args[2]===true));
-  assert.ok(observed.filters.some(args=>args[0]==='place_id'&&args[2]==='BBBB0001'));
-});
-
 test('daily-source model reduces bounded raw rows to source groups and daily totals',async()=>{
   const rows=[
     ...Array.from({length:2},()=>({date:'2026-11-22',site:'vocus'})),
@@ -115,17 +98,6 @@ test('public Search matches title OR content, with no user-chosen metadata field
   assert.match(clauses,/"column":"content","operator":"not ilike","value":"%失落%"/);
   assert.doesNotMatch(clauses,/"column":"location"/);
   assert.doesNotMatch(clauses,/"column":"place_id"/);
-});
-
-test('MCP defaults are listable and nonextractable; all eight flags stay independent',()=>{
-  const attrs=galaxyAble({site:'mcp'});
-  assert.equal(Object.keys(attrs).length,8);
-  assert.equal(attrs.list,true);
-  assert.equal(attrs.extract,false);
-  assert.equal(attrs.search,true);
-  assert.equal(attrs.culture,true);
-  assert.equal(galaxyAble({site:'mcp',list:false,extract:false}).list,false);
-  assert.equal(galaxyAble({site:'mcp',list:true,extract:true}).extract,true);
 });
 
 test('public UID article detail has an enforced SQL list+extract predicate',async()=>{

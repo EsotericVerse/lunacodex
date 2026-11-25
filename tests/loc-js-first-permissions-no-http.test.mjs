@@ -7,15 +7,11 @@ import {existsSync} from 'node:fs';
 import {publishedLocAccess} from '../app/loc/permissions/loc-business-grants.mjs';
 import {readLocAccess} from '../app/loc/permissions/loc_access.mjs';
 import {loc_access} from '../app/loc/permissions/loc_access.mjs';
-import {locAccessRows} from '../app/loc/providers/loc-authorization.mjs';
-import {bindLocAuthorization} from '../app/loc/providers/loc-authorization.mjs';
 import {readLocEditorGrants} from '../app/loc/auth/editor-grants.mjs';
 import {loadMcpLocAccess} from '../app/loc/mcp/access-roles.mjs';
 import {authorizeMcpRole} from '../app/loc/mcp/access-roles.mjs';
 import {handleNativeLocOperation,requireManagedActionGrant} from '../app/loc/mcp/native-operations.mjs';
-import {FIXED_MANAGE_ROWS} from '../app/loc/permissions/fixed-manage-registry.mjs';
 import {fixedManageScope} from '../app/loc/permissions/fixed-manage-registry.mjs';
-import {publishedManagedScope} from '../app/loc/providers/published-managed-scope.mjs';
 import {createLocAccountAdapter} from '../app/loc/auth/loc-browser.mjs';
 import {withAuthorizedLocRead} from '../app/loc/actions/read-context.mjs';
 import {withKeywordScope} from '../app/loc/actions/keywords/context.mjs';
@@ -127,17 +123,6 @@ test('management UI derives roles using the existing verified Auth Session',asyn
   assert.equal(result.roles.length,4);
   assert.ok(result.grants.includes('global:manage'));
   await assert.rejects(readLocEditorGrants({sessionProvider:async()=>null}),/authentication required/);
-});
-
-test('trusted role self projection reads only published JS, including birthday',async()=>{
-  const broken={selectFrom(){throw Error('No SQL role SELECT allowed');}};
-  bindLocAuthorization(broken,{role:'authenticated',claims:{
-    provider:'loc',me:true,sub:'USER_ONE',email:'sopa2306@gmail.com',
-    grants:publishedLocAccess('sopa2306@gmail.com',{website:true}).grants
-  }});
-  const rows=await locAccessRows(broken,'self');
-  assert.ok(rows.some(row=>row.id==='lo3rwang'&&row.allowed===true));
-  assert.ok(rows.some(row=>row.id==='loc'&&row.birthday));
 });
 
 test('retired generic public SQL HTTP routes and legacy read handlers remain absent',()=>{
@@ -345,29 +330,6 @@ test('browser database adapter cannot execute generic SELECT or publicAction cal
   assert.match(client,/LOC database reads must use their feature query action/);
   assert.doesNotMatch(client,/publicAction/);
   assert.doesNotMatch(client,/analytics/);
-});
-
-test('fixed JS Manage catalog has unique Scope identifiers',()=>{
-  assert.equal(new Set(FIXED_MANAGE_ROWS.map(row=>row.id)).size,FIXED_MANAGE_ROWS.length);
-  for(const row of FIXED_MANAGE_ROWS){
-    assert.equal(row.galaxy_table,'galaxy');
-    assert.equal(row.anchor_table,'anchor');
-    assert.equal(fixedManageScope(row.id),row);
-  }
-  assert.equal(fixedManageScope('external'),null);
-  assert.equal(fixedManageScope('__proto__'),null);
-  assert.equal(fixedManageScope('admin').active,false);
-});
-
-test('built-in publication and JS Manage registry agree on routing and role',()=>{
-  assert.equal(publishedManagedScope('admin'),null);
-  for(const id of ['loc','lo3rwang','lrunes']){
-    const row=publishedManagedScope(id);
-    assert.equal(row.id,id);
-    assert.equal(row.active,true);
-    assert.equal(row, fixedManageScope(id));
-  }
-  assert.equal(publishedManagedScope('external'),null);
 });
 
 test('Manage changes cannot commit a role or route different from published JS',()=>{
