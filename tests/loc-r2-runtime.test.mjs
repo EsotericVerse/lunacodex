@@ -43,11 +43,30 @@ test('malformed keyword links cannot seed a new scope',()=>{
   assert.equal(validateKeywordTemplate(sample).rows[3].num,1);
 });
 test('only typed database availability failures may degrade; never auth errors',()=>{
-  assert.equal(isDataUnavailable({code:'42P01'}),true);
+  assert.equal(Boolean(isDataUnavailable({code:'42P01'})),false);
+  assert.equal(Boolean(isDataUnavailable({code:'3F000'})),false);
   assert.equal(isDataUnavailable({code:'BACKEND_UNAVAILABLE'}),true);
   assert.equal(Boolean(isDataUnavailable({code:'42501',httpStatus:403})),false);
   assert.equal(Boolean(isDataUnavailable(new Error('bug'))),false);
   assert.deepEqual(emptyGalaxyFeature({result:'count'}),{total:0});
   assert.deepEqual(emptyGalaxyFeature({result:'articles',includeTotal:true}),{
     rows:[],hasMore:false,nextCursor:null,totalCount:0});
+});
+
+import {withOptionalGalaxy,isMissingGalaxyRelation} from '../app/loc/runtime/optional-galaxy.mjs';
+test('only verified missing expected Galaxy can return zero',async()=>{
+  const err=(code,message)=>Object.assign(Error(message),{code});
+  const missing=err('42P01','relation "silver.lo3rwang_galaxy" does not exist');
+  const empty=()=>({total:0});
+  const absent=async()=>({schema_present:true,table_present:false});
+  const fail=error=>async()=>{throw error;};
+  assert.equal(isMissingGalaxyRelation(missing,'lo3rwang'),true);
+  assert.deepEqual(await withOptionalGalaxy({},'lo3rwang',fail(missing),empty,{inspect:absent}),{total:0});
+  for(const error of [err('42P01','relation "silver.lo3rwang_anchor" does not exist'),err('42P01','relation "silver.lrunes_galaxy" does not exist'),err('42501','permission denied'),err('08006','connection lost'),err('42703','column absent')]){
+    await assert.rejects(withOptionalGalaxy({},'lo3rwang',fail(error),empty,{inspect:async()=>{throw Error('must not probe');}}),e=>e===error);
+  }
+  for(const state of [{schema_present:false,table_present:false},{schema_present:true,table_present:true}]){
+    await assert.rejects(withOptionalGalaxy({},'lo3rwang',fail(missing),empty,{inspect:async()=>state}),e=>e===missing);
+  }
+  await assert.rejects(withOptionalGalaxy({},'lo3rwang',fail(missing),empty,{inspect:async()=>{throw Error('probe offline');}}),/probe offline/);
 });

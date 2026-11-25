@@ -124,20 +124,19 @@ export async function readRuntimeStructure(env={},getContext){
 export async function readDefaultKeywordTemplate(env={},getContext){
   return (await readRuntimeStructure(env,getContext))?.keywordTemplate||null;
 }
-// Only a typed missing relation or backend connectivity failure is degradable.
-// Auth errors, invalid arguments and unknown programming failures stay errors.
+// Only typed connectivity failures permit structural fallback, not missing relations.
 export function isDataUnavailable(error){
   const code=String(error?.code||'');
   if(error?.httpStatus===401||error?.httpStatus===403)return false;
   return code==='BACKEND_UNAVAILABLE'||/^08[0-9A-Z]{3}$/.test(code)||
-    ['42P01','3F000','57P01','57P02','57P03','53300','ECONNREFUSED',
+    ['57P01','57P02','57P03','53300','ECONNREFUSED',
      'ECONNRESET','ETIMEDOUT','ENOTFOUND','EPIPE','EHOSTUNREACH',
      'ENETUNREACH','CONNECT_TIMEOUT'].includes(code)||
     (error?.cause&&error.cause!==error&&isDataUnavailable(error.cause));
 }
 export function standaloneResult(result){
   return result&&typeof result==='object'&&!Array.isArray(result)
-    ?{...result,runtimeMode:'standalone'}:result;
+    ?{...result,runtimeMode:'standalone',dataState:'unavailable'}:result;
 }
 export function emptyGalaxyFeature(operation){
   if(operation.result==='count')return {total:0};
