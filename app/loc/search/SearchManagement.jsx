@@ -33,7 +33,8 @@ export const ARTICLE_CONTROL_SECTIONS=Object.freeze([
 const LOC_OPTIONS=Object.freeze([
   {value:'publish',label:'文章管理',shortLabel:'文章'},
   {value:'media',label:'發表多媒體',shortLabel:'媒體'},
-  {value:'trace',label:'治理原則',shortLabel:'治理原則'}
+  {value:'trace',label:'治理原則',shortLabel:'治理原則'},
+  {value:'import',label:'匯入',shortLabel:'匯入'}
 ]);
 const GROUP_OPTION={value:'groupAccess',label:'群組權限',shortLabel:'授權'};
 // LOC no longer has a separate management search. Keep old links functional.
@@ -127,6 +128,8 @@ export default function SearchManagement(){
           ?<ManagementContentTarget scopeId={scopeId} mode="article" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='media'
           ?<ManagementContentTarget scopeId={scopeId} mode="media" globalAdmin/>:null}
+        {isLocAdmin&&activeSection==='import'
+          ?<ManagementContentTarget scopeId={scopeId} mode="import" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='trace'?<ScopeEditableBlocks key={scopeId+'-trace'}
           scopeId={scopeId} page="trace"
           className="loc-grid two trace-grid trace-grid-loc"
