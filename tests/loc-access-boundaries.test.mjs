@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {handleLocSelfPermissions} from '../app/loc/permissions/loc-permissions-server.mjs';
 import {LOC_OWNER_EMAIL} from '../app/loc/permissions/loc-business-grants.mjs';
 import {loc_access} from '../app/loc/permissions/loc_access.mjs';
-import {handleNativeLocOperation,requireManagedActionGrant} from '../app/loc/mcp/native-operations.mjs';
+import {handleNativeLocOperation,requireManagedActionGrant} from '../app/loc/bridge/native-operations.mjs';
 import {withAuthorizedLocRead} from '../app/loc/actions/read-context.mjs';
 import {executeManagedKyselyAction} from '../app/loc/providers/kysely-management.mjs';
 

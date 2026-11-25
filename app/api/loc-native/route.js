@@ -1,4 +1,4 @@
-import {handleNativeLocOperation} from '../../loc/mcp/native-operations.mjs';
+import {handleNativeLocOperation} from '../../loc/bridge/native-operations.mjs';
 
 export const runtime='nodejs';
 export const dynamic='force-dynamic';

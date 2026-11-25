@@ -1,6 +1,6 @@
 'use server';
 import {headers} from 'next/headers.js';
-import {handleNativeLocOperation} from '../mcp/native-operations.mjs';
+import {handleNativeLocOperation} from '../bridge/native-operations.mjs';
 import {isManagedReadAction,isManagedWriteAction}
   from './managed-query-routes.mjs';
 

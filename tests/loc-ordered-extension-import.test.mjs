@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {processShortImport} from '../app/loc/import/short-append-service.mjs';
 import {executeLocConversation}
- from '../app/loc/mcp/conversations.mjs';
-import {mergeOrdered} from '../app/loc/mcp/ordered-conversation.mjs';
-import {readOrdered} from '../app/loc/mcp/ordered-conversation.mjs';
-import {orderedBatch} from '../app/loc/mcp/ordered-conversation.mjs';
+ from '../app/loc/bridge/conversations.mjs';
+import {mergeOrdered} from '../app/loc/bridge/ordered-conversation.mjs';
+import {readOrdered} from '../app/loc/bridge/ordered-conversation.mjs';
+import {orderedBatch} from '../app/loc/bridge/ordered-conversation.mjs';
 import {validateShortImportBatch} from '../app/loc/import/short-append-service.mjs';
 import {readFileSync} from 'node:fs';
 import {createImportBatchSizer} from '../app/loc/import/batch.mjs';
