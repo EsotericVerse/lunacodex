@@ -7,11 +7,6 @@ import {galaxyAble} from '../app/loc/model/galaxy-able.mjs';
 
 const base={kind:'query',operation:'galaxy-feature',scope:'lo3rwang',
   feature:'culture',startDate:'2026-01-01',endDate:'2026-12-31',result:'uids'};
-test('eight fixed Galaxy feature flags match the ZModel contracts',()=>{
-  assert.deepEqual(Object.keys(GALAXY_FEATURE_MODELS),
-    ['culture','statics','search','trace','list','keyword','extract','others']);
-  assert.equal(GALAXY_FEATURE_MODELS.statics.flag,'statics');
-});
 test('no arbitrary SQL, relation, column or filter passes the feature query model',()=>{
   for(const extra of [
     {sql:'DELETE FROM silver.lo3rwang_galaxy'},
@@ -45,25 +40,29 @@ test('Galaxy Trace model reads the selected Scope and place directly',async()=>{
   assert.ok(observed.filters.some(args=>args[0]==='place_id'&&args[2]==='BBBB0001'));
 });
 
-test('the daily-source model returns source groups and daily total in one query',async()=>{
-  const rows=[{date:'2026-11-22',site:'vocus',count:2},
-    {date:'2026-11-22',site:'suno',count:3}];
-  let queries=0;
+test('daily-source model reduces bounded raw rows to source groups and daily totals',async()=>{
+  const rows=[
+    ...Array.from({length:2},()=>({date:'2026-11-22',site:'vocus'})),
+    ...Array.from({length:3},()=>({date:'2026-11-22',site:'suno'}))
+  ];
+  const calls=[];
   const builder={select(){return this},where(){return this},
-    groupBy(){return this},orderBy(){return this},
-    async execute(){queries++;return rows}};
-  const trx={selectFrom(){return builder}};
-  const data=await executeGalaxyFeatureQuery(trx,{
-    ...parseGalaxyFeatureQuery({...base,result:'daily-sources'})
-  });
-  assert.equal(queries,1);
+    orderBy(...args){calls.push(['orderBy',...args]);return this},
+    limit(value){calls.push(['limit',value]);return this},
+    offset(value){calls.push(['offset',value]);return this},
+    async executeTakeFirst(){calls.push(['count']);return {row_count:rows.length}},
+    async execute(){calls.push(['page']);return rows}};
+  const data=await executeGalaxyFeatureQuery({selectFrom(){return builder}},
+    parseGalaxyFeatureQuery({...base,result:'daily-sources'}));
+  assert.equal(calls.filter(x=>x[0]==='count').length,1);
+  assert.equal(calls.filter(x=>x[0]==='page').length,1);
+  assert.ok(calls.some(x=>x[0]==='orderBy'&&x[1]==='createtime'));
   assert.deepEqual(data.rows,[
     {day:'2026-11-22',kind:'source',category:'suno',item_count:3},
     {day:'2026-11-22',kind:'source',category:'vocus',item_count:2},
     {day:'2026-11-22',kind:'total',category:'文字作品',item_count:5}
   ]);
 });
-
 test('every Galaxy flag is a typed model; articles require the independent list gate',()=>{
   for(const flag of ['culture','statics','search','trace','list','keyword','extract','others']){
     const parsed=parseGalaxyFeatureQuery({...base,feature:flag});

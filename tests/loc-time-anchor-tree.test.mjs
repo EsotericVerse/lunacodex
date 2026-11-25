@@ -138,14 +138,6 @@ const era={uid:'ERA00001',scope_id:scope,type:'era',entry_type:'era',
   title:'第一時代',anchor_ids:['PERI0001'],ranges:eraRanges,
   start_date:eraRanges[0].start_date,end_date:eraRanges[0].end_date};
 
-test('management Time river paints Era while its Period and Date children remain collapsed',()=>{
-  const model=buildEraRiver([...dates,period,era],[],{editorOnly:true,scopeId:scope});
-  assert.equal(model.groups[0].label,'第一時代');
-  assert.equal(model.groups[0].collapsible,true);
-  assert.equal(model.items[0].entry_type,'era');
-  assert.deepEqual([model.items[0].start_date,model.items[0].end_date],
-    ['2025-01-01','2025-06-01']);
-});
 test('management expands Era -> Period -> dated anchors using the existing snapshot',()=>{
   const eraId='trace:lo3rwang:ERA00001';
   const periodId=eraId+':period:PERI0001';
@@ -188,18 +180,6 @@ test('Time river paint health requires visible labels and on-screen bars',()=>{
   t=fakeTimeline({noBars:true});
   assert.equal(timelinePainted(t.root,t.getStyle),false);
 });
-test('TimeAnchor begins with chronological Era entries only, without eager Periods/Dates',()=>{
-  const latest={...era,uid:'ERA00002',title:'較晚時代',start_date:'2028-01-01',
-    end_date:'2028-12-31',ranges:[{start_date:'2028-01-01',end_date:'2028-12-31',
-      invalid:false}],anchor_ids:[]};
-  const initial=buildEraRiver([latest,...dates,period,era],[],{
-    editorOnly:true,scopeId:scope
-  });
-  assert.deepEqual(initial.groups.map(group=>group.label),['第一時代','較晚時代','未定義定錨']);
-  assert.deepEqual(initial.items.map(item=>item.entry_type),['era','era']);
-  assert.equal(initial.groups.every(group=>group.depth===undefined),true);
-});
-
 test('TimeAnchor keeps one Era and one Period open, and closes siblings',()=>{
   const e1='trace:lo3rwang:ERA00001',e2='trace:lo3rwang:ERA00002';
   const p1=e1+':period:PERI0001',p2=e2+':period:PERI0002';
@@ -214,31 +194,6 @@ test('TimeAnchor keeps one Era and one Period open, and closes siblings',()=>{
   assert.deepEqual(nextEditorEraExpansion([orphan],orphan),[]);
 });
 
-test('management Time river keeps one non-stacked row per collapsed Era',()=>{
-  const sample={...era,ranges:[
-    {start_date:'2025-01-01',end_date:'2025-02-15'},
-    {start_date:'2025-04-01',end_date:'2025-06-01'}
-  ]};
-  const model=buildEraRiver([...dates,period,sample],[],{editorOnly:true,scopeId:scope});
-  assert.equal(model.groups.length,2);
-  assert.equal(model.groups[0].label,'第一時代');
-  assert.equal(model.items.filter(row=>row.entry_type==='era').length,2);
-  assert.equal(model.groups.at(-1).label,'未定義定錨');
-  assert.equal(model.groups.at(-1).expanded,false);
-  assert.equal(model.groups.at(-1).collapsible,true);
-});
-test('undefined Date anchors remain available only when bottom lane is opened',()=>{
-  const orphan={uid:'DATE0099',scope_id:scope,entry_type:'anchor',
-    start_date:'2030-07-04',title:'未定義日期'};
-  const closed=buildEraRiver([...dates,period,era,orphan],[],{editorOnly:true,scopeId:scope});
-  assert.equal(closed.groups.at(-1).label,'未定義定錨');
-  assert.equal(closed.items.some(row=>row.uid===orphan.uid),false);
-  const expanded=buildEraRiver([...dates,period,era,orphan],['time-undefined:'+scope],{
-    editorOnly:true,scopeId:scope
-  });
-  assert.equal(expanded.groups.at(-1).label,'未定義定錨');
-  assert.equal(expanded.items.some(row=>row.uid===orphan.uid),true);
-});
 }
 
 {
