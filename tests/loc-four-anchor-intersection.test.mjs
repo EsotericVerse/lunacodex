@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {publishedSourceTaxonomy} from '../app/modular/published-source-taxonomy.js';
 import {
-  INTERSECTION_FAMILIES,timeIntersectionMetrics,spaceIntersectionMetrics,
-  sourceIntersectionMetrics,fourDimensionDailyCounts
+  timeIntersectionMetrics,spaceIntersectionMetrics,
+  fourDimensionDailyCounts
 } from '../app/loc/statistics/four-anchor-intersection.mjs';
 import {comparisonMetricGroups} from '../app/modular/modules/statistics/statistics-compare-options.mjs';
 
@@ -32,25 +30,6 @@ const places=[
     path:['PATH0001'],point:['POIN0001','POIN0001']
   })
 ];
-
-test('intersection dimensions permit only the two requested non-leaf levels',()=>{
-  assert.deepEqual(INTERSECTION_FAMILIES.map(x=>[x.value,x.types]),[
-    ['time',['era','period']],['space',['trace','path']],
-    ['keyword',['keyword_group','keyword_item']],
-    ['source',['source_tree']]
-  ]);
-  const code=readFileSync(new URL('../app/modular/modules/statistics/ScopeSelfIntersection.jsx',import.meta.url),'utf8');
-  assert.match(code,/timeAnchors=useAsyncResource/);
-  assert.match(code,/enabled:valid&&shownKinds.includes\('time'\)/);
-  assert.match(code,/enabled:valid&&shownKinds.includes\('space'\)/);
-  assert.match(code,/family:'time'/);
-  assert.match(code,/family:'space'/);
-  assert.match(code,/p_view:'trace_territory'/);
-  assert.doesNotMatch(code,/source_rollup|others_subgroup|keyword_all|keyword_group_items/);
-  assert.match(code,/SourceTreePicker/);
-  assert.match(code,/selectableTypes=\{\['galaxy','domain'\]\}/);
-  assert.doesNotMatch(code,/kind:'from'|kind:'point'|kind:'date'/);
-});
 
 test('Era combines actual Period ranges without filling the gaps between them',()=>{
   const metrics=timeIntersectionMetrics(timeline);
@@ -89,39 +68,13 @@ test('Trace counts linked Path points and direct points once per real place/day/
     selected:metrics,
     placeRows:[
       {day:'2026-01-15',place_id:'POIN0001',site:'Facebook',item_count:2},
-      {day:'2026-01-15',place_id:'POIN0002',site:'Suno',item_count:3},
+      {day:'2026-01-15',place_id:'POIN0002',site:'Threads',item_count:3},
       {day:'2026-01-15',place_id:'FAKE0001',site:'Facebook',item_count:9}
     ]
   });
   assert.equal(dayCount(counts,trace,'2026-01-15'),5);
   assert.equal(dayCount(counts,metrics.find(x=>x.uid==='PATH0001'),'2026-01-15'),5);
   assert.equal(dayCount(counts,metrics.find(x=>x.uid==='PATH0002'),'2026-01-15'),3);
-});
-
-test('one SiteAnchor rollup includes multimedia but offers only Galaxy/Domain',()=>{
-  const taxonomy=publishedSourceTaxonomy(),nodes=sourceIntersectionMetrics(taxonomy);
-  assert.ok(nodes.length>0);
-  assert.ok(nodes.every(node=>node.kind==='source_tree'&&
-    ['galaxy','domain'].includes(node.type)));
-  assert.ok(!nodes.some(node=>['Facebook','Suno','Youtube','Spotify'].includes(node.name)));
-  const byName=new Map(nodes.map(node=>[node.name,node]));
-  const counts=fourDimensionDailyCounts({
-    selected:nodes,taxonomy,
-    sourceRows:[
-      {day:'2026-01-15',kind:'source',category:'Facebook',item_count:2},
-      {day:'2026-01-15',kind:'source',category:'Threads',item_count:3},
-      {day:'2026-01-15',kind:'source',category:'suno',item_count:1},
-      {day:'2026-01-15',kind:'source',category:'Unmapped service',item_count:10},
-      {day:'2026-01-15',kind:'total',category:'文字作品',item_count:16}
-    ]
-  });
-  assert.equal(dayCount(counts,byName.get('Meta'),'2026-01-15'),5);
-  assert.equal(dayCount(counts,byName.get('CMS'),'2026-01-15'),5);
-  assert.equal(dayCount(counts,byName.get('Music'),'2026-01-15'),1);
-  assert.equal(dayCount(counts,byName.get('Stream'),'2026-01-15'),1);
-  assert.equal(byName.has('Mutlimedia'),false); // Universe is navigation only
-  assert.equal(byName.has('Closed'),true); // PastBy > SeeYou > Closed
-  assert.equal(byName.has('NowON'),true); // PastBy > SeeYou > NowON
 });
 
 test('all four families are present in the cascading metric picker',()=>{

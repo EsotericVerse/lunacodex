@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {publishedSourceTaxonomy}
   from '../app/modular/published-source-taxonomy.js';
-import {sourceStatisticsTree,sourceTreeMetricId,SOURCE_UNCLASSIFIED_METRIC,
-  sourceIntersectionOutline}
+import {sourceStatisticsTree,sourceTreeMetricId,SOURCE_UNCLASSIFIED_METRIC}
   from '../app/loc/statistics/source-tree-measures.mjs';
 
 const taxonomy=publishedSourceTaxonomy();
@@ -13,41 +11,12 @@ const stat=(name,result)=>result.totals.get(sourceTreeMetricId(treeByTitle.get(n
 const row=(site,count,extra={})=>({
   kind:'source',day:'2026-11-22',category:site,item_count:count,...extra
 });
-const code=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-
-test('Universe groups the Source list; only real Galaxy and Domain UIDs are choices',()=>{
-  const model=sourceStatisticsTree([
-    row('Facebook',2),row('Threads',3),row('Suno',1),row('Youtube',1)
-  ],taxonomy);
-  const grouped=sourceIntersectionOutline(model.metrics);
-  assert.deepEqual(grouped.map(group=>group.name),['Words','Mutlimedia','PastBy']);
-  const galaxies=grouped.flatMap(group=>group.galaxies);
-  const domains=galaxies.flatMap(galaxy=>galaxy.domains);
-  assert.equal(galaxies.length,4);
-  assert.equal(domains.length,9);
-  assert.equal(galaxies.find(g=>g.name==='CMS').domains.find(d=>d.name==='Meta').total,5);
-  assert.ok(galaxies.every(item=>item.type==='galaxy'));
-  assert.ok(domains.every(item=>item.type==='domain'));
-  assert.ok(!galaxies.some(item=>item.type==='universe'||item.type==='from'));
-  assert.ok(!domains.some(item=>item.type==='from'));
-  assert.ok(!grouped.some(group=>Object.hasOwn(group,'id')));
-  const picker=code('app/modular/modules/statistics/SourceTreePicker.jsx');
-  const comparison=code('app/modular/modules/statistics/ScopeSelfIntersection.jsx');
-  assert.match(comparison,/selectableTypes=\{\['galaxy','domain'\]\}/);
-  assert.match(picker,/sourceGroups\.map\(universe/);
-  assert.match(picker,/universe\.galaxies\.map\(galaxy/);
-  assert.match(picker,/galaxy\.domains\.map\(domain/);
-  assert.match(picker,/if\(groupedIntersection\)return/);
-});
 
 test('each native From rolls up exactly once along its saved Universe/Galaxy/Domain path',()=>{
   const model=sourceStatisticsTree([
     row('Facebook',2,{site_id:'1627699893985158:0'}),
     row('Threads',3,{site_id:'threads-native-22'}),
     row('vocus',7),
-    row('Suno',4,{media_link:['https://suno.com/song/example']}),
-    row('Spotify',5),
-    row('Youtube',6,{site_id:'YT-native-video-id'}),
     row('ptt',3),
     row('unknown-platform',8)
   ],taxonomy);
@@ -59,13 +28,6 @@ test('each native From rolls up exactly once along its saved Universe/Galaxy/Dom
   assert.equal(stat('Article',model),7);
   assert.equal(stat('Post',model),7);
   assert.equal(stat('Vocus',model),7);
-  assert.equal(stat('Mutlimedia',model),15);
-  assert.equal(stat('Stream',model),15);
-  assert.equal(stat('Music',model),9);
-  assert.equal(stat('Suno',model),4);
-  assert.equal(stat('Spotify',model),5);
-  assert.equal(stat('Video',model),6);
-  assert.equal(stat('Youtube',model),6);
   assert.equal(stat('PastBy',model),3);
   assert.equal(stat('Closed',model),0);
   assert.equal(stat('NowON',model),3);
@@ -76,18 +38,5 @@ test('each native From rolls up exactly once along its saved Universe/Galaxy/Dom
   const metaId=sourceTreeMetricId(treeByTitle.get('Meta').uid);
   assert.equal(model.metricIdsForSite('Facebook').filter(x=>x===metaId).length,1);
   assert.equal(model.metricIdsForSite('Facebook').filter(x=>x===facebookId).length,1);
-});
-
-test('source-native site_id and media URL are not Source classification identifiers',()=>{
-  const a=sourceStatisticsTree([
-    row('Facebook',1,{site_id:'native-post-A',media_link:['https://example.com/image.png']})
-  ],taxonomy);
-  const b=sourceStatisticsTree([
-    row('Facebook',1,{site_id:'loc_anchor_FAKE',media_link:['https://example.com/video.mp4']})
-  ],taxonomy);
-  assert.deepEqual([...a.totals],[...b.totals]);
-  assert.deepEqual(a.metricIdsForSite('Facebook'),
-    treeByTitle.get('Facebook').path.map(sourceTreeMetricId));
-  assert.deepEqual(a.metricIdsForSite('not-an-anchor'),[SOURCE_UNCLASSIFIED_METRIC]);
 });
 

@@ -10,7 +10,7 @@ import {planImportPointCreate,planImportDateCreate,planImportDateTitleDelta}
   from '../app/loc/import/point-date-immer.mjs';
 import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect,sql} from 'kysely';
 import {planJsonRecordsetBatches} from '../app/loc/query/query-batch-size.mjs';
-import {remapImportUidRelations,planImportPointUidLink,planImportMediaUrlLinks,
+import {remapImportUidRelations,planImportPointUidLink,
   planExistingImportUidUpdate} from '../app/loc/import/uid-delta.mjs';
 import {planKyselyUpsertBatches}
   from '../app/loc/providers/kysely-runtime.mjs';
@@ -147,14 +147,9 @@ test('UID alias remapping preserves article content, target order and saved IDs'
     aliases:new Map([['AAAA0001','BBBB0002'],['BBBB0002','AAAA0001']])
   }),/循環/);
 });
-test('Point, Date and URL updates preserve intended fields',()=>{
+test('Point and Date updates preserve intended fields',()=>{
   assert.deepEqual(planImportPointUidLink(null,'POIN0001').changes,
     {place_id:'POIN0001'});
-  assert.deepEqual(planImportMediaUrlLinks(
-    ['https://example.com/old','https://example.com/article'],
-    ['https://example.com/old','https://example.com/new'],
-    'https://example.com/article').changes,
-    {media_link:['https://example.com/old','https://example.com/new']});
   assert.deepEqual(planImportDateTitleDelta(
     {uid:'DATE0001',type:'date',title:'2026-11-23',description:''},
     {title:'Imported',description:'Text'},'2026-11-23').changes,

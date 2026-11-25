@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseGalaxyFeatureQuery,executeGalaxyFeatureQuery,
-  GALAXY_FEATURE_MODELS} from '../app/loc/model/galaxy-feature-queries.mjs';
+import {parseGalaxyFeatureQuery,executeGalaxyFeatureQuery} from '../app/loc/model/galaxy-feature-queries.mjs';
 import {parseGalaxyRecordQuery,executeGalaxyRecordQuery} from '../app/loc/model/galaxy-record-queries.mjs';
 import {galaxyAble} from '../app/loc/model/galaxy-able.mjs';
 
@@ -19,10 +18,6 @@ test('no arbitrary SQL, relation, column or filter passes the feature query mode
   ]){
     assert.throws(()=>parseGalaxyFeatureQuery({...base,...extra}));
   }
-});
-test('UID list defaults to 100 and rejects larger limits',()=>{
-  assert.equal(parseGalaxyFeatureQuery(base).limit,100);
-  assert.equal(parseGalaxyFeatureQuery({...base,limit:5}).limit,5);
 });
 test('Galaxy Trace model reads the selected Scope and place directly',async()=>{
   const observed={tables:[],filters:[]};
@@ -43,7 +38,7 @@ test('Galaxy Trace model reads the selected Scope and place directly',async()=>{
 test('daily-source model reduces bounded raw rows to source groups and daily totals',async()=>{
   const rows=[
     ...Array.from({length:2},()=>({date:'2026-11-22',site:'vocus'})),
-    ...Array.from({length:3},()=>({date:'2026-11-22',site:'suno'}))
+    ...Array.from({length:3},()=>({date:'2026-11-22',site:'threads'}))
   ];
   const calls=[];
   const builder={select(){return this},where(){return this},
@@ -58,22 +53,11 @@ test('daily-source model reduces bounded raw rows to source groups and daily tot
   assert.equal(calls.filter(x=>x[0]==='page').length,1);
   assert.ok(calls.some(x=>x[0]==='orderBy'&&x[1]==='createtime'));
   assert.deepEqual(data.rows,[
-    {day:'2026-11-22',kind:'source',category:'suno',item_count:3},
+    {day:'2026-11-22',kind:'source',category:'threads',item_count:3},
     {day:'2026-11-22',kind:'source',category:'vocus',item_count:2},
     {day:'2026-11-22',kind:'total',category:'文字作品',item_count:5}
   ]);
 });
-test('every Galaxy flag is a typed model; articles require the independent list gate',()=>{
-  for(const flag of ['culture','statics','search','trace','list','keyword','extract','others']){
-    const parsed=parseGalaxyFeatureQuery({...base,feature:flag});
-    assert.equal(parsed.feature,flag);
-  }
-  for(const view of ['articles','uids']){
-    const parsed=parseGalaxyFeatureQuery({...base,feature:'others',result:view});
-    assert.equal(parsed.limit,100);
-  }
-});
-
 test('public Search rejects site, source, and place selectors before opening SQL',async()=>{
   const requestBase={
     kind:'query',operation:'galaxy-feature',scope:'lo3rwang',

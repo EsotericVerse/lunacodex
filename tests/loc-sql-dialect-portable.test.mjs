@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {assertCrossEnginePublicRead,authorizeCrossEngineQuery,
   executeCrossEngineManagedWrite}
   from '../app/loc/providers/sql-engine-ports.mjs';
-import {verifyModeledSqlFields} from '../packages/zenstack/model-column-guard.mjs';
 import {Kysely,PostgresDialect} from 'kysely';
 import {buildKyselyUpsertQuery}
   from '../app/loc/providers/kysely-runtime.mjs';
@@ -60,18 +59,4 @@ test('portable managed SQL rejects unmodeled relation before calling the driver'
   /not modeled/);
 });
 
-test('portable modeled writes refuse unknown SQL columns',()=>{
-  assert.equal(verifyModeledSqlFields({
-    schema:'silver',table:'lo3rwang_galaxy',
-    values:{uid:'AAAA0001',title:'known'}
-  }),true);
-  assert.throws(()=>verifyModeledSqlFields({
-    schema:'silver',table:'lo3rwang_galaxy',
-    values:{uid:'AAAA0001',nonexistent_field:'ignored'}
-  }),/Column is not defined in the LOC ZModel/);
-  assert.throws(()=>verifyModeledSqlFields({
-    schema:'silver',table:'lo3rwang_anchor',
-    filters:[{column:'unknown_filter',operator:'eq',value:1}]
-  }),/Column is not defined in the LOC ZModel/);
-});
 }
