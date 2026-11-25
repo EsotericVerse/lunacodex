@@ -26,6 +26,23 @@ function mainUri(env){
     throw unavailable('LOC primary PostgreSQL URI incomplete');
   return value;
 }
+// OpenNext server actions pass process.env, which cannot carry object bindings.
+export async function locHyperdriveBinding(env={}){
+  const isCloudflareWorkers=Boolean(process.versions?.workerd)||
+    globalThis.navigator?.userAgent==='Cloudflare-Workers';
+  let binding=env?.LOC_HYPERDRIVE||null;
+  if(!binding&&isCloudflareWorkers){
+    try{binding=(await getCloudflareContext({async:true})).env?.LOC_HYPERDRIVE||null;}
+    catch{/* Local Next.js and non-Worker callers use LOC_DATABASE_URI. */}
+  }
+  if(!binding)return null;
+  const uri=binding?.connectionString;
+  let url;
+  try{url=new URL(uri);}catch{throw unavailable('LOC Hyperdrive binding invalid');}
+  if(!['postgres:','postgresql:'].includes(url.protocol)||!url.hostname)
+    throw unavailable('LOC Hyperdrive binding invalid');
+  return uri;
+}
 export {requestScopedPool};
 const NODE_POOL_KEY=Symbol.for('loc.native-kysely.node-pool');
 function nodeProcessPool(uri){
@@ -72,16 +89,12 @@ export async function db_connection(env={},verifiedAlias='',{
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
   const isCloudflareWorkers=Boolean(process.versions?.workerd)||
     globalThis.navigator?.userAgent==='Cloudflare-Workers';
-  let hyperdrive=env?.HYPERDRIVE||null;
-  if(!hyperdrive?.connectionString&&isCloudflareWorkers){
-    try{hyperdrive=getCloudflareContext().env?.HYPERDRIVE||null;}
-    catch{/* Local Next.js and non-Worker callers use LOC_DATABASE_URI. */}
-  }
-  if(hyperdrive?.connectionString){
+  const hyperdriveUri=await locHyperdriveBinding(env);
+  if(hyperdriveUri){
     // Hyperdrive owns the cross-request origin pool. Each Worker request still
     // owns its pg.Client and closes it at the normal/error/abort boundary.
     const pool=requestScopedPool({
-      connectionString:hyperdrive.connectionString,
+      connectionString:hyperdriveUri,
       connectionTimeoutMillis:6000
     },pg.Client,{
       attempts:2,attemptTimeoutMs:4000,maxElapsedMs:6500,
