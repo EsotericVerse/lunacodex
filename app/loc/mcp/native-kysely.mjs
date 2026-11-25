@@ -70,14 +70,8 @@ export async function db_connection(env={},verifiedAlias='',{
   if(!primary||primary.engine!=='postgres'||
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
-  const workerdVersion=Boolean(process.versions?.workerd);
-  const cloudflareNavigator=globalThis.navigator?.userAgent==='Cloudflare-Workers';
-  const isCloudflareWorkers=workerdVersion||cloudflareNavigator;
-  if(cloudflareNavigator&&!workerdVersion&&
-      !globalThis[Symbol.for('loc.native-kysely.runtime-fallback-logged')]){
-    globalThis[Symbol.for('loc.native-kysely.runtime-fallback-logged')]=true;
-    console.warn('[LOC database runtime] Cloudflare detected through navigator; process.versions.workerd is absent');
-  }
+  const isCloudflareWorkers=Boolean(process.versions?.workerd)||
+    globalThis.navigator?.userAgent==='Cloudflare-Workers';
   if(!isCloudflareWorkers){
     const pool=nodeProcessPool(uri);
     const dialect=createKyselyDialect(primary.engine,{pool});
