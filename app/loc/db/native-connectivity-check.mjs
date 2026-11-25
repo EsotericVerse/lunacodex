@@ -1,7 +1,7 @@
 // Read-only connectivity check for the native PostgreSQL driver.
 // Reuses LOC's Kysely/pg.Client transport and server LOC_DATABASE_URI.
 // No credentials, SQL input, target selection or arbitrary parameters exposed.
-import {db_connection,closeLocDatabase,bindLocRequestAbort} from '../mcp/native-kysely.mjs';
+import {db_connection,closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from '../mcp/native-kysely.mjs';
 
 const json=(body,status=200)=>new Response(JSON.stringify(body),{
   status,headers:{'content-type':'application/json; charset=utf-8',
@@ -37,11 +37,12 @@ function failureCode(error){
 }
 
 export async function testLocAuthConnection(env={},database=db_connection,{signal}={}){
- if(!String(env.LOC_DATABASE_URI||'').trim())
-  return json({ok:false,stage:'configuration',code:'LOC_DATABASE_URI_MISSING'},503);
+
  let connection=null;
  let releaseAbort=()=>{};
  try{
+  if(!String(env.LOC_DATABASE_URI||'').trim()&&!await locHyperdriveBinding(env))
+   return json({ok:false,stage:'configuration',code:'LOC_DATABASE_URI_MISSING'},503);
   connection=await database(env,'loc-main');
   releaseAbort=bindLocRequestAbort(connection,signal);
   if(connection.engine!=='postgres')return json({ok:false,stage:'driver',code:'NOT_POSTGRES'},503);
