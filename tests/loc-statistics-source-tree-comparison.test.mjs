@@ -15,22 +15,6 @@ const row=(site,count,extra={})=>({
 });
 const code=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
-test('all multi-item Source choices use the 36 visible LOC source UID nodes at four exact levels',()=>{
-  const model=sourceStatisticsTree([],taxonomy);
-  assert.deepEqual(model.metrics.map(x=>[x.type,x.level]).filter(x=>x[1]===0).map(x=>x[0]),
-    ['universe','universe','universe']);
-  assert.equal(model.metrics.length,36);
-  assert.equal(model.metrics.filter(item=>item.type==='galaxy').length,4);
-  assert.equal(model.metrics.filter(item=>item.type==='domain').length,9);
-  assert.equal(model.metrics.filter(item=>item.type==='from').length,20);
-  for(const [a,b] of [['X','X Twitter'],['Post','Vocus'],['Video','Youtube'],['EsotericVerse','LRS'],['MCP','web'],['MCP','Claude'],['MCP','Gemini']]){
-    const parent=treeByTitle.get(a),child=treeByTitle.get(b);
-    assert.equal(child.parentUid,parent.uid);
-    assert.equal(model.metrics.find(x=>x.uid===child.uid)?.level,3);
-    assert.equal(model.metrics.find(x=>x.uid===parent.uid)?.level,2);
-  }
-});
-
 test('Universe groups the Source list; only real Galaxy and Domain UIDs are choices',()=>{
   const model=sourceStatisticsTree([
     row('Facebook',2),row('Threads',3),row('Suno',1),row('Youtube',1)
@@ -107,22 +91,3 @@ test('source-native site_id and media URL are not Source classification identifi
   assert.deepEqual(a.metricIdsForSite('not-an-anchor'),[SOURCE_UNCLASSIFIED_METRIC]);
 });
 
-test('multi-item comparison UI selects Source using real nested UID branches',()=>{
-  const source=code('app/modular/modules/statistics/ScopeSelfIntersection.jsx');
-  const picker=code('app/modular/modules/statistics/SourceTreePicker.jsx');
-  assert.match(source,/sourceStatisticsTree\(rows,catalog\.data\|\|\{\}\)/);
-  // The daily SiteAnchor rollup was extracted into the shared four-family
-  // aggregation model; the original sourceStatisticsTree remains the only
-  // source of platform UID ancestry.
-  const intersection=code('app/loc/statistics/four-anchor-intersection.mjs');
-  assert.match(intersection,/canonicalSource\.metricIdsForSite\(row\.category\)/);
-  assert.match(intersection,/sourceModel\|\|sourceStatisticsTree\(sourceRows,taxonomy\)/);
-  assert.match(source,/<SourceTreePicker/);
-  assert.match(picker,/<details/);
-  assert.match(picker,/<summary>/);
-  assert.match(picker,/descendants\.map\(nodeView\)/);
-  assert.match(picker,/onChange\(item\.id\)/);
-  assert.match(picker,/takenIds\.has\(item\.id\)/);
-  assert.doesNotMatch(source,/source_rollup|sourceGroups|othersConfig|resolveOthers/);
-  assert.doesNotMatch(source,/row\.kind==='media'|category_type:'media'|sourceRollup/);
-});

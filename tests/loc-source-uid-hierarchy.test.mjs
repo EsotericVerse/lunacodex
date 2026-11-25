@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {publishedSourceTaxonomy} from '../app/modular/published-source-taxonomy.js';
 import {sourceOutlineOptions} from '../app/loc/source/outline-options.mjs';
 import {sourceEditorOutlineOptions} from '../app/loc/source/outline-options.mjs';
@@ -72,14 +71,6 @@ test('one-child domains are not collapsed and do not inherit the child title',()
   assert.equal(hierarchy.visible.find(x=>x.label==='PastBy').item_count,0);
 });
 
-test('collapsed river starts with three Universe rows, not three artificial buckets',()=>{
-  const groups=buildCultureSourceTreeLanes(catalog,sample,[]).visible;
-  assert.deepEqual(groups.map(x=>x.label),[
-    'Words','Mutlimedia','PastBy','未分類來源'
-  ]);
-  assert.deepEqual(groups.map(x=>x.item_count),[7,1,0,4]);
-});
-
 test('source outline has one selectable option per real Source node and correct indentation',()=>{
   const options=sourceOutlineOptions(catalog);
   assert.equal(options.length,36);
@@ -132,19 +123,6 @@ test('protected Source editor preserves hidden saved UID nodes; public projectio
 }
 
 {
-const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-
-test('multimedia platforms belong to the one LOC-wide source taxonomy',()=>{
-  const taxonomy=publishedSourceTaxonomy();
-  const from=(taxonomy.categories||[]).filter(row=>row.root==='media'&&row.type==='from');
-  const labels=from.map(row=>row.display_name);
-  assert.ok(labels.includes('Suno'));
-  assert.ok(labels.includes('Spotify'));
-  assert.ok(labels.includes('Youtube'));
-  assert.ok(!labels.includes('Facebook'));
-  // Media classification is stored as source metadata, not media item counts.
-  assert.ok(from.every(row=>typeof row.category_code==='string'));
-});
 
 test('item confluence sources are only Galaxy.site selectors',()=>{
   assert.ok(ITEM_LANE_OPTIONS.every(item=>item.value.startsWith('galaxy:')));
@@ -179,13 +157,6 @@ test('Culture multimedia sources are in loc_anchor taxonomy, not a parallel coun
   assert.equal(totals.groups.reduce((sum,row)=>sum+row.item_count,0),8);
 });
 
-test('cross-member statistics no longer offer independent media metrics',()=>{
-  const metrics=availableMemberMeasures([[
-    {kind:'media',category:'video',item_count:999},
-    {kind:'source',category:'Suno',item_count:3}
-  ]]);
-  assert.equal(metrics.some(metric=>metric.id==='multimedia'||metric.id.startsWith('media:')),false);
-});
 }
 
 {

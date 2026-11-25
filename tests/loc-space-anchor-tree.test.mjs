@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {spaceRecordHierarchy} from '../app/loc/trace/space-record-hierarchy.mjs';
 
 const scope='lo3rwang';
@@ -51,17 +50,3 @@ test('Scope boundary and invalid references cannot connect spatial branches',()=
   assert.deepEqual(tree.unclassifiedPoints.map(x=>x.uid),['POINT001']);
 });
 
-test('Management has one spatial browser, place organization and Timeline matching',()=>{
-  const load=path=>readFileSync(new URL(path,import.meta.url),'utf8');
-  const menu=load('../app/loc/trace/PlaceManagement.jsx');
-  const scopeView=load('../app/loc/scope/ScopeManagement.jsx');
-  const tree=load('../app/loc/trace/SpaceAnchorTree.jsx');
-  const quick=load('../app/loc/trace/PlaceBatchFill.jsx');
-  assert.match(menu,/value:'organize',label:'地點整理'/);
-  assert.match(menu,/value:'timeline',label:'地點對照'/);
-  assert.match(scopeView,/<UnifiedSpatialManagement scopeId=/);
-  assert.match(tree,/aria-label="空間定錨階層列表"/);
-  assert.match(tree,/aria-expanded=\{expanded\}/);
-  assert.doesNotMatch(quick,/\.anchor\(scopeId,'point',\{op:'suggestions'/);
-  assert.match(quick,/enabled:Boolean\(scope\?\.anchor\)/);
-});

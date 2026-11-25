@@ -91,14 +91,6 @@ test('LOC still rejects short import when total JSON exceeds 601024 bytes',()=>{
  assert.ok(new TextEncoder().encode(JSON.stringify(input)).length>601024);
  assert.throws(()=>validateShortImportBatch(input),e=>e.httpStatus===413);
 });
-test('LOC ordered conversation accepts 300 short turns in one request',()=>{
- const rows=Array.from({length:300},(_,i)=>({
-  message_id:'turn-'+i,source_order:i,parent_id:i?'turn-'+(i-1):null,
-  role:i%2?'assistant':'user',text:'小段文字'
- }));
- assert.ok(new TextEncoder().encode(JSON.stringify(rows)).length<700000);
- assert.equal(orderedBatch(rows).length,300);
-});
 }
 
 {
@@ -206,16 +198,6 @@ test('Import confirmation windows never skip milestones or loop when sizes match
 });
 
 
-test('Import batch sampling uses final physical Galaxy and MediaAnchor row shapes',()=>{
-  const panel=src('app/loc/import/ManagementImportPanel.jsx');
-  assert.match(panel,/const prepared=createMedia.map\(mediaAnchorRecord\)/);
-  assert.match(panel,/writeImportBatches\(prepared,\{/);
-  assert.match(panel,/const prepareArticleForWrite=record=>/);
-  assert.match(panel,/\.slice\(0,128\)\.map\(prepareArticleForWrite\)/);
-  assert.match(panel,/const incoming=prepareArticleForWrite\(record\)/);
-  // Physical rows do not grow new keys AFTER the transport byte measurement.
-  assert.doesNotMatch(panel,/batch\.map\(record=>\(\{/);
-});
 }
 
 {

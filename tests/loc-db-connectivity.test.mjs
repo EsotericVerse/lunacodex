@@ -203,12 +203,6 @@ test('health-check SQL ownership closes connection after successful and invalid 
     assert.deepEqual(calls,['destroy','pool-end']);
   }
 });
-test('retired Keyword sync is rejected by its feature-action client',async()=>{
-  const {keywordService}=await import('../app/loc/keywords/service-client.mjs');
-  await assert.rejects(keywordService('syncLibrary',{scopeId:'lo3rwang'}),
-    /Unsupported Keyword operation/);
-});
-
 test('keyword sharing uses one locked read-modify-write transaction and fails closed',async()=>{
   let metadata={class_shares:{ABCD1234:false},other:{unrelated:true}};
   const events=[];

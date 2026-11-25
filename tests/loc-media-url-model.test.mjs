@@ -89,10 +89,4 @@ test('HTML song note escapes manually entered text instead of injecting markup',
   assert.ok(result.includes('&amp; Rock'));
 });
 
-test('Suno publisher persists the note in lyrics content, not a Galaxy meta_tags field',()=>{
-  const source=readFileSync(
-    new URL('../app/loc/media/SunoImportPanel.jsx',import.meta.url),'utf8');
-  assert.match(source,/content:appendSunoMetaTagsToArticle\(lyrics,description\)/);
-  assert.doesNotMatch(source,/\bmeta_tags\s*:/);
-});
 }

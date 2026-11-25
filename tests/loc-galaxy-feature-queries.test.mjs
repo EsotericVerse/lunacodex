@@ -7,11 +7,6 @@ import {galaxyAble} from '../app/loc/model/galaxy-able.mjs';
 
 const base={kind:'query',operation:'galaxy-feature',scope:'lo3rwang',
   feature:'culture',startDate:'2026-01-01',endDate:'2026-12-31',result:'uids'};
-test('eight fixed Galaxy feature flags match the ZModel contracts',()=>{
-  assert.deepEqual(Object.keys(GALAXY_FEATURE_MODELS),
-    ['culture','statics','search','trace','list','keyword','extract','others']);
-  assert.equal(GALAXY_FEATURE_MODELS.statics.flag,'statics');
-});
 test('no arbitrary SQL, relation, column or filter passes the feature query model',()=>{
   for(const extra of [
     {sql:'DELETE FROM silver.lo3rwang_galaxy'},

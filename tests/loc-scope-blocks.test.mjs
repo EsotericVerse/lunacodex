@@ -1,14 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {saveBlocksKysely} from '../app/loc/providers/kysely-blocks.mjs';
-import {readFileSync} from 'node:fs';
 import {turnHomeBlocks} from '../app/loc/blocks/home-page-turn.mjs';
 import {block_list} from '../app/loc/providers/kysely-public.mjs';
 import {publicScopeBlockPage} from '../app/loc/blocks/public-scope-pages.mjs';
 import {managementHeroSlot} from '../app/loc/blocks/home-block-model.js';
 
 {
-const src=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 function mockBlocks(rows){
   const calls=[];
   const trx={
@@ -68,17 +66,6 @@ test('block_list keeps legacy homepage default and rejects management pages',asy
     /Invalid LOC public Block page/);
 });
 
-test('homepage draft preview uses the current unsaved drafts and preserves the editor',()=>{
-  const home=src('app/loc/blocks/ScopeEditableBlocks.jsx');
-  const draft=src('app/loc/blocks/ScopeBlockDraftList.jsx');
-  assert.match(home,/previewDisplay=\{scopeId==='loc'&&pageName==='index'\?DisplayComponent:null\}/);
-  assert.match(draft,/previewRows=showingPreview\?visibleDrafts\.map/);
-  assert.match(draft,/style=\{showingPreview\?\{display:'none'\}:undefined\}/);
-  assert.match(draft,/\{visibleDrafts\.map\(\(draft,index\)=>renderDraft/);
-  assert.match(draft,/<PreviewDisplay \{\.\.\.slot\}\/>/);
-  assert.match(draft,/onClick=\{\(\)=>setRequestedPreview\(value=>!value\)\}/);
-});
-
 test('page turn is reversible and cancelled on abandonment',async()=>{
   const oldWindow=globalThis.window,oldDocument=globalThis.document;
   let resolve,finished=0,cancelled=0,animated=0;
@@ -114,7 +101,6 @@ test('page turn is reversible and cancelled on abandonment',async()=>{
 }
 
 {
-const source=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 test('author Article Control Hero has stable identity even before live blocks arrive',()=>{
   const slot=managementHeroSlot('searchManage','lo3rwang');

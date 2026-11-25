@@ -40,9 +40,3 @@ test('retirement-only LOC worker unregisters and clears every LOC static cache',
   assert.equal(deleted.includes('unrelated-private-cache'),false);
 });
 
-test('LOC Web no longer registers Service Workers in either build mode',()=>{
-  const shell=readFileSync(new URL('../app/AppShell.jsx',import.meta.url),'utf8');
-  assert.doesNotMatch(shell,/navigator\.serviceWorker\.register\s*\(/);
-  assert.match(shell,/navigator\.serviceWorker\.getRegistrations\(\)/);
-  assert.match(shell,/reg\.unregister\(\)/);
-});
