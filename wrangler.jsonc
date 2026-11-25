@@ -33,6 +33,12 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "4305ed11e9f841b7ac0d19e7daecaf9a"
+    }
+  ],
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
