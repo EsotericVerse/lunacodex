@@ -22,6 +22,7 @@ function fakeBucket(){
 }
 test('R2 optional and explicit switch, preserving separate Hyperdrive preference',async()=>{
   const bucket=fakeBucket(),env={LOC_RUNTIME:bucket};
+  assert.deepEqual(await readRuntimeControl(env),{version:1,r2Enabled:true,hyperdriveEnabled:true});
   const compact={classUid:sample.classUid,rows:sample.rows.filter(row=>row.type!=='pattern').map(({invisible,...row})=>row),patterns:[['Pattern1','word']]};
   await bucket.put(RUNTIME_STRUCTURE_KEY,JSON.stringify({version:1,keywordTemplate:compact}));
   assert.equal(expandKeywordTemplate(compact).rows.length,5);

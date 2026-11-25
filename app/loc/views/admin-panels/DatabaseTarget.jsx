@@ -82,7 +82,7 @@ export default function DatabaseTarget(){
         '目前設定：'+(hyperdrive.enabled?'Hyperdrive 開啟':'Hyperdrive 關閉')+
           '；實際路徑：'+(hyperdrive.connectionMode==='hyperdrive'
             ?'Hyperdrive':'LOC_DATABASE_URI 直連'))}</p>
-      <p className="scope-status">切換前會先以目標連線檢查連線與 silver.loc；檢查失敗時設定不變。</p>
+      <p className="scope-status">切換前會預檢目標連線；檢查失敗時設定不變。R2 已設定時，連線模式不依賴 Galaxy 或 silver.loc。</p>
     </section>
     <section className="scope-management-wide-field">
       <label><input type="checkbox" role="switch" aria-label="開啟 R2 模式"

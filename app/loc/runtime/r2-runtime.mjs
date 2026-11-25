@@ -21,7 +21,8 @@ export async function readRuntimeControl(env={},getContext){
   if(!bucket)return null;
   try{
     const object=await bucket.get(RUNTIME_CONTROL_KEY);
-    return object?normalizeRuntimeControl(await object.json()):null;
+    if(!object)return {...RUNTIME_DEFAULTS};
+    return normalizeRuntimeControl(await object.json());
   }catch{
     console.warn('LOC runtime settings unavailable');
     return null;
@@ -95,8 +96,8 @@ export async function readRuntimeStructure(env={},getContext){
   const bucket=await runtimeBucket(env,getContext);
   if(!bucket)return null;
   try{
-    const control=await readRuntimeControl(env,getContext);
-    if(control?.r2Enabled===false)return null;
+    const control=await readRuntimeControl({LOC_RUNTIME:bucket},getContext);
+    if(!control||control.r2Enabled===false)return null;
     const object=await bucket.get(RUNTIME_STRUCTURE_KEY);
     if(!object||object.size>4*1024*1024)return null;
     const data=await object.json();

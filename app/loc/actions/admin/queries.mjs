@@ -31,7 +31,7 @@ export async function readRuntimeR2State(){
   const bucket=await runtimeBucket(process.env);
   if(!bucket)return {available:false,enabled:false};
   const control=await readRuntimeControl(process.env);
-  return {available:true,enabled:control?.r2Enabled!==false};
+  return {available:Boolean(control),enabled:control?.r2Enabled===true};
 }
 export async function setRuntimeR2Mode(enabled){
   await requireRuntimeAdmin();
@@ -56,6 +56,7 @@ export async function setHyperdriveMode(enabled){
   if(await runtimeBucket(process.env)){
     // Probe only the target connection, never the failed source database or a Galaxy table.
     const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+    if(!primary)throw Error('LOC primary database unavailable');
     const expected=enabled?'hyperdrive':'direct';
     let probe=null;
     try{
