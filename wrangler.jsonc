@@ -2,6 +2,12 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "lunacodex",
   "main": ".open-next/worker.js",
+  "hyperdrive": [
+    {
+      "binding": "LOC_HYPERDRIVE",
+      "id": "4305ed11e9f841b7ac0d19e7daecaf9a"
+    }
+  ],
   "compatibility_date": "2026-11-24",
   "previews": {
     "observability": {
