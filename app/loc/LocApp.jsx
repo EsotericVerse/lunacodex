@@ -11,6 +11,7 @@ import {Capacitor} from '@capacitor/core';
 import {useScopeRuntime} from '../modular/use-scope-runtime';
 import {getScope} from '../modular/routing/scope-registry';
 import ManagementAccess from './management/ManagementAccess';
+import ReturnLocHome from './ui/ReturnLocHome';
 import {SCOPE_ROUTE_INDEX} from '../modular/routing/scope-route-index.js';
 import {scopeFeatureEnabled} from './scope/scope-config-fields.mjs';
 import {FeaturePage,ManagementHeroContext} from '../modular/ui';
@@ -120,8 +121,7 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   // for a config SQL request must not block the Hero or content.
   if(!enabled)return children;
   const config=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===scopeId&&row.active!==false)?.config;
-  if(!config)return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status scope-error">Scope 設定尚未發布。</p></section></section></main>;
-  if(!scopeFeatureEnabled(config,flag))return <main className="scope-main"><section className="scope-page"><section className="loc-card"><p className="scope-status"><UiText id="uiExtra.feature.unpublished"/></p></section></section></main>;
+  if(!config||!scopeFeatureEnabled(config,flag))return <ReturnLocHome reason="feature"/>;
   return children;
 }
 
@@ -170,12 +170,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   if(!forcedScope&&runtime.dynamic&&!runtime.registryResolved){
     return <div className="loc-next-main" data-loc-scope={scopeId}><div className="loc-loading"><UiText id="uiExtra.feature.registryLoading"/></div></div>;
   }
-  if(!forcedScope&&runtime.dynamic&&(runtime.registryError||!runtime.registryRow)){
-    return <main className="scope-main"><section className="scope-page"><section className="loc-card">
-      <h1><UiText id="uiExtra.feature.registryUnavailable"/></h1>
-      <p className="scope-status scope-error">{runtime.registryError||t('uiExtra.feature.registryNotFound')}</p>
-    </section></section></main>;
-  }
+  if(!forcedScope&&runtime.dynamic&&(runtime.registryError||!runtime.registryRow))return <ReturnLocHome/>;
 
   const managementRoute=['manage','searchManage','sourceManage','keywordManage','keywords'].includes(forcedView)||
     (forcedView==='culture'&&forcedSection==='timeManage');
