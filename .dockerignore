@@ -7,3 +7,16 @@
 !packages/**
 !services
 !services/**
+
+# LOC compute image: Wrangler uses the root context ignore file.
+!container
+!container/loc-compute
+!container/loc-compute/Dockerfile
+!container/loc-compute/Dockerfile.dockerignore
+!container/loc-compute/package.json
+!container/loc-compute/pnpm-lock.yaml
+!container/loc-compute/server.mjs
+!modules
+!modules/loc
+!modules/loc/dialect
+!modules/loc/dialect/sql-workload-policy.mjs
