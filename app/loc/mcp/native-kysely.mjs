@@ -25,6 +25,21 @@ function mainUri(env){
     throw unavailable('LOC primary PostgreSQL URI incomplete');
   return value;
 }
+// OpenNext server actions pass process.env, which cannot carry object bindings.
+export async function locHyperdriveBinding(env={}){
+  let binding=env.LOC_HYPERDRIVE;
+  if(binding===undefined&&process.versions?.workerd){
+    const {getCloudflareContext}=await import('@opennextjs/cloudflare');
+    binding=(await getCloudflareContext({async:true})).env.LOC_HYPERDRIVE;
+  }
+  if(binding===undefined)return null;
+  const uri=binding?.connectionString;
+  let url;
+  try{url=new URL(uri);}catch{throw unavailable('LOC Hyperdrive binding invalid');}
+  if(!['postgres:','postgresql:'].includes(url.protocol)||!url.hostname)
+    throw unavailable('LOC Hyperdrive binding invalid');
+  return uri;
+}
 export {requestScopedPool};
 const NODE_POOL_KEY=Symbol.for('loc.native-kysely.node-pool');
 function nodeProcessPool(uri){
@@ -66,10 +81,23 @@ export async function db_connection(env={},verifiedAlias='',{
   }
   if(trustedTarget||trustedDialectConfig)
     throw unavailable('The LOC control database cannot be replaced');
-  const uri=mainUri(env);
   if(!primary||primary.engine!=='postgres'||
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
+  // Only the fixed primary target may use this deployment-owned binding.
+  // External verified targets keep their own dialect and driver configuration.
+  const hyperdriveUri=await locHyperdriveBinding(env);
+  if(hyperdriveUri){
+    const pool=requestScopedPool({connectionString:hyperdriveUri,
+      connectionTimeoutMillis:6000},pg.Client,{
+      attempts:2,attemptTimeoutMs:4000,maxElapsedMs:6500,
+      baseDelayMs:200,maxDelayMs:500
+    });
+    const dialect=createKyselyDialect(primary.engine,{pool});
+    return {db:new Kysely({dialect}),dialect,pool,
+      engine:primary.engine,namespace:primary.schema_name,tableName:'',fieldMap:{}};
+  }
+  const uri=mainUri(env);
   const isCloudflareWorkers=Boolean(process.versions?.workerd);
   if(!isCloudflareWorkers){
     const pool=nodeProcessPool(uri);
