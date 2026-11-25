@@ -75,6 +75,11 @@ export async function withPublicLocRead({scope,scopes=[],targetId=null},read,
   if(!requested.length||requested.some(id=>!activeScopes.has(id)||id==='admin'))
     throw Object.assign(new Error('LOC public read requires a published Scope'),
       {httpStatus:400});
+  // Bindings for public Server Action reads must resolve against the incoming
+  // request context. Access a Next dynamic API before opening Hyperdrive; an
+  // anonymous read must never use build-time/empty context for its DB binding.
+  const getHeaders=dependencies.getHeaders||headers;
+  await getHeaders();
   const openDatabase=dependencies.openDatabase||directMcpKysely;
   const closeDatabase=dependencies.closeDatabase||closeLocDatabase;
   const primary=targetId
