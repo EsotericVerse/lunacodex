@@ -190,7 +190,7 @@ async function signedClaims(request,fetchImpl,{trustedMcpBridge=false}={}){
     delegatedScopes:String(claims.scope||'').split(/\s+/).filter(Boolean)};
 }
 export async function handleNativeLocOperation(request,env={},{
-  fetchImpl=globalThis.fetch,database=directMcpKysely,waitUntil,
+  fetchImpl=globalThis.fetch,database=directMcpKysely,
   trustedMcpBridge=false,trustedLocalAction=false,entrypoint=null
 }={}){
   if(request.method!=='POST')return reply({error:{message:'Method not allowed'}},405);
@@ -341,7 +341,7 @@ export async function handleNativeLocOperation(request,env={},{
     const externalTarget=claims.db_target&&claims.db_target!==primaryId
       ?claims.db_target:'';
     if(operationKind==='short-import')importPhase='database';
-    selected=await database(env,control?'':externalTarget,{waitUntil});
+    selected=await database(env,control?'':externalTarget);
     // Cancellation belongs to the request, not to whichever page initiated it.
     // Closing an in-flight client aborts its uncommitted SQL transaction.
     releaseAbort=bindLocRequestAbort(selected,request.signal);

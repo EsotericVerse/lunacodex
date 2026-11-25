@@ -1,10 +1,11 @@
 'use server';
 import {sql} from 'kysely';
-import {withAuthorizedLocRead} from '../read-context.mjs';
+import {withPublicLocRead} from '../read-context.mjs';
 import {traceKeywordGroups} from '../../providers/kysely-analytics.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
-import {readAdaptiveSqlPages} from '../../query/adaptive-sql-read.mjs';
+import {readDateRangeAggregates}
+  from '../../query/date-range-aggregate.mjs';
 
 const published=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&
   row.scope_id!=='loc'&&row.scope_id!=='admin').map(row=>row.scope_id));
@@ -27,32 +28,41 @@ const date=value=>{
 };
 const day=value=>value instanceof Date?value.toISOString().slice(0,10):
   String(value??'').slice(0,10);
+async function completeRange(build,start,end){
+  if(start&&end)return {start,end};
+  const bounds=await build(start,end).select(eb=>[
+    eb.fn.min('date').as('range_start'),eb.fn.max('date').as('range_end')
+  ]).executeTakeFirst();
+  return {start:start||day(bounds?.range_start),end:end||day(bounds?.range_end)};
+}
 function galaxyTable(scope,port){
   return portableRelation(scope+'_galaxy',port.engine,
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
 }
 async function portableTracePlaces(db,table,start,end,statisticsOnly){
-  const build=()=>{
+  const build=(rangeStart=start,rangeEnd=end)=>{
     let query=db.selectFrom(table).where('trace','=',true)
       .where('date','is not',null).where('location','is not',null)
       .where('location','!=','');
     if(statisticsOnly)query=query.where('statics','=',true);
-    if(start)query=query.where('date','>=',start);
-    if(end)query=query.where('date','<=',end);
+    if(rangeStart)query=query.where('date','>=',rangeStart);
+    if(rangeEnd)query=query.where('date','<=',rangeEnd);
     return query;
   };
   const grouped=new Map();
-  await readAdaptiveSqlPages({
-    countRows:async()=>Number((await build()
-      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
-    fetchPage:({offset,limit})=>build().select(['date','location','createtime'])
-      .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
-    consumePage:rows=>{
+  const {start:rangeStart,end:rangeEnd}=await completeRange(build,start,end);
+  if(rangeStart&&rangeEnd)await readDateRangeAggregates({
+    start:rangeStart,end:rangeEnd,
+    query:({start:chunkStart,end:chunkEnd})=>build(chunkStart,chunkEnd)
+      .select(['date','location'])
+      .select(eb=>eb.fn.countAll().as('item_count'))
+      .groupBy(['date','location']).execute(),
+    consume:rows=>{
       for(const row of rows){
         const category=String(row.location||'').trim();
         if(!category)continue;
         const key=JSON.stringify([day(row.date),category]);
-        grouped.set(key,(grouped.get(key)||0)+1);
+        grouped.set(key,(grouped.get(key)||0)+Number(row.item_count||0));
       }
     }
   });
@@ -66,35 +76,42 @@ async function portableTraceTerritory(db,scope,start,end,options,port){
   const galaxy=galaxyTable(scope,port);
   const anchor=portableRelation(scope+'_anchor',port.engine,
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
-  const build=()=>{
+  const build=(rangeStart,rangeEnd)=>{
     let query=db.selectFrom(galaxy+' as g').innerJoin(anchor+' as a',join=>join
     .onRef('a.uid','=','g.place_id').on('a.type','=','point')
     .on('a.invisible','=',false))
     .where('g.place_id','is not',null).where('g.place_id','!=','')
-    .where('g.date','>=',start).where('g.date','<=',end);
+    .where('g.date','>=',rangeStart).where('g.date','<=',rangeEnd);
     if(options.statisticsOnly===true)
       query=query.where('g.statics','=',true).where('g.trace','=',true);
     return query;
   };
   const grouped=new Map();
-  await readAdaptiveSqlPages({
-    countRows:async()=>Number((await build()
-      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
-    fetchPage:({offset,limit})=>{
-      let query=build().select(['g.place_id as place_id','g.site as site',
-        'g.date as date','g.createtime as createtime']);
-      if(options.withPoints===true)
-        query=query.select(['a.uid as point_uid','a.title as point_title',
-          'a.attr as point_attr']);
-      return query.orderBy('g.createtime','asc').limit(limit).offset(offset).execute();
+  const range=await completeRange(build,start,end);
+  if(range.start&&range.end)await readDateRangeAggregates({start:range.start,end:range.end,
+    query:({start:chunkStart,end:chunkEnd})=>{
+      const aggregate=build(chunkStart,chunkEnd)
+        .select(['g.place_id as place_id','g.site as site','g.date as date'])
+        .select(eb=>eb.fn.countAll().as('item_count'))
+        .groupBy(['g.place_id','g.site','g.date']).as('aggregate');
+      let query=db.selectFrom(aggregate);
+      if(options.withPoints===true){
+        query=query.innerJoin(anchor+' as a','a.uid','aggregate.place_id')
+          .select(['aggregate.place_id as place_id','aggregate.site as site',
+            'aggregate.date as date','aggregate.item_count as item_count',
+            'a.uid as point_uid','a.title as point_title','a.attr as point_attr']);
+      }else query=query.select(['aggregate.place_id as place_id',
+        'aggregate.site as site','aggregate.date as date',
+        'aggregate.item_count as item_count']);
+      return query.execute();
     },
-    consumePage:rows=>{
+    consume:rows=>{
       for(const row of rows){
         let attr=row.point_attr;
         if(typeof attr==='string'){try{attr=JSON.parse(attr)}catch{attr={}}}
         attr=attr&&typeof attr==='object'?attr:{};
         const item={place_id:String(row.place_id||''),site:String(row.site||'').trim(),
-          day:day(row.date),item_count:0,
+          day:day(row.date),item_count:Number(row.item_count||0),
           ...(options.withPoints===true?{point_uid:row.point_uid,
             point_title:row.point_title,
             point_longitude:attr.longitude??attr.lng??null,
@@ -103,7 +120,7 @@ async function portableTraceTerritory(db,scope,start,end,options,port){
           ?[item.place_id,item.day,item.site,item.point_uid]
           :[item.place_id,item.day,item.site]);
         const current=grouped.get(key)||item;
-        current.item_count++;
+        if(current!==item)current.item_count+=item.item_count;
         grouped.set(key,current);
       }
     }
@@ -112,24 +129,26 @@ async function portableTraceTerritory(db,scope,start,end,options,port){
     a.place_id.localeCompare(b.place_id)||a.site.localeCompare(b.site));
 }
 async function portableTraceDaily(db,table,places,start,end,source){
-  const build=()=>{
+  const build=(rangeStart=start,rangeEnd=end)=>{
     let query=db.selectFrom(table).where('trace','=',true)
       .where('place_id','in',places).where('date','is not',null);
-    if(start)query=query.where('date','>=',start);
-    if(end)query=query.where('date','<=',end);
+    if(rangeStart)query=query.where('date','>=',rangeStart);
+    if(rangeEnd)query=query.where('date','<=',rangeEnd);
     if(source)query=query.where('site','=',source);
     return query;
   };
   const grouped=new Map();
-  await readAdaptiveSqlPages({
-    countRows:async()=>Number((await build()
-      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
-    fetchPage:({offset,limit})=>build().select(['date','place_id','createtime'])
-      .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
-    consumePage:rows=>{
+  const range=await completeRange(build,start,end);
+  if(range.start&&range.end)await readDateRangeAggregates({
+    start:range.start,end:range.end,
+    query:({start:chunkStart,end:chunkEnd})=>build(chunkStart,chunkEnd)
+      .select(['date','place_id'])
+      .select(eb=>eb.fn.countAll().as('item_count'))
+      .groupBy(['date','place_id']).execute(),
+    consume:rows=>{
       for(const row of rows){
         const key=JSON.stringify([day(row.date),String(row.place_id||'')]);
-        grouped.set(key,(grouped.get(key)||0)+1);
+        grouped.set(key,(grouped.get(key)||0)+Number(row.item_count||0));
       }
     }
   });
@@ -147,9 +166,9 @@ async function portableLaneDaily(db,table,start,end,options){
     instagram:['%instagram%','ig','%reels%']};
   if(platform&&(!Object.hasOwn(patterns,platform)||exact!==null))
     throw Error('Invalid lane platform');
-  const build=()=>{
-    let query=db.selectFrom(table).where('date','>=',start)
-      .where('date','<=',end).where('date','is not',null);
+  const build=(rangeStart,rangeEnd)=>{
+    let query=db.selectFrom(table).where('date','>=',rangeStart)
+      .where('date','<=',rangeEnd).where('date','is not',null);
     if(exact!==null)query=query.where('site','=',exact);
     if(platform){
       const choices=patterns[platform].map(pattern=>pattern==='fb'||pattern==='ig'
@@ -160,15 +179,14 @@ async function portableLaneDaily(db,table,start,end,options){
     return query;
   };
   const totals=new Map();
-  await readAdaptiveSqlPages({
-    countRows:async()=>Number((await build()
-      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
-    fetchPage:({offset,limit})=>build().select(['date','createtime'])
-      .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
-    consumePage:rows=>{
+  await readDateRangeAggregates({start,end,
+    query:({start:chunkStart,end:chunkEnd})=>build(chunkStart,chunkEnd)
+      .select('date').select(eb=>eb.fn.countAll().as('item_count'))
+      .groupBy('date').execute(),
+    consume:rows=>{
       for(const row of rows){
         const key=day(row.date);
-        totals.set(key,(totals.get(key)||0)+1);
+        totals.set(key,(totals.get(key)||0)+Number(row.item_count||0));
       }
     }
   });
@@ -194,7 +212,7 @@ export async function queryTrace(args={}){
     throw Error('Invalid Trace options');
   if(options.classUid!=null&&(!/^[A-Za-z0-9]{8}$/.test(String(options.classUid))))
     throw Error('Invalid Keyword Class UID');
-  return withAuthorizedLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope},async(db,port)=>{
     const table=galaxyTable(scope,port);
     let data;
     if(view==='trace_places')
@@ -221,7 +239,7 @@ export async function queryTrace(args={}){
       const configTable=portableRelation(scope,port.engine,namespace);
       data=await traceKeywordGroups(db,scope,anchor,
         [...new Set(ids.map(String))],start,end,source,options.classUid||null,
-        'authenticated',{configTable,galaxyTable:table});
+        'public',{configTable,galaxyTable:table});
     }
     return {data,count:null};
   });
@@ -236,7 +254,7 @@ export async function queryTracePlaceNames(args={}){
   const term=String(args.p_term||'').trim().slice(0,100);
   const limit=Math.max(1,Math.min(8,Number(args.p_limit)||8));
   if(!term)return {data:[],count:null};
-  return withAuthorizedLocRead({scope},async(db)=>{
+  return withPublicLocRead({scope},async(db)=>{
     const pattern='%'+term.replace(/[\\%_]/g,char=>'\\'+char)+'%';
     const anchor=sql.ref('silver.'+scope+'_anchor');
     const result=await sql`select a.uid::varchar as uid,a.title,

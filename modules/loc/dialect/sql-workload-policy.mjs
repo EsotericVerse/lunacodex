@@ -1,11 +1,12 @@
-// Shared SQL workload limits for every explicitly selected dialect. The
-// chunk target limits each returned batch; the lane cap bounds simultaneous
-// work without turning a large scan into either thousands of tiny requests
-// or one unbounded result set.
+// Shared SQL limits for explicitly selected dialects. `chunkRows` applies to
+// raw row pages only; it never caps COUNT(*) or date-grouped aggregates.
 export const SQL_WORKLOAD_POLICY=Object.freeze({
   chunkRows:10000,
+  // Per-operation fan-out. There is no process-global query semaphore.
   maxParallelChunks:4,
   nodePoolMax:12,
+  // Cloudflare request-owned clients; other Worker requests have their own
+  // pool and can proceed independently.
   workerRequestMaxConnections:4
 });
 
