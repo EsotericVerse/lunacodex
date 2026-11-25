@@ -1,10 +1,57 @@
 'use server';
 import {sql} from 'kysely';
+import {directMcpKysely,closeLocDatabase} from '../../db/native-kysely.mjs';
+import {bindLocAuthorization} from '../../providers/loc-authorization.mjs';
+import {readLocHyperdriveMode,writeLocHyperdriveMode}
+  from '../../db/hyperdrive-mode.mjs';
 import {withAuthorizedLocRead} from '../read-context.mjs';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
+
+export async function readHyperdriveMode(){
+  return withAuthorizedLocRead({global:true},async(db,port)=>{
+    return {enabled:await readLocHyperdriveMode(db),
+      connectionMode:port.connectionMode||'direct'};
+  });
+}
+
+export async function setHyperdriveMode(enabled){
+  if(typeof enabled!=='boolean')throw Error('Invalid Hyperdrive mode');
+  return withAuthorizedLocRead({global:true},async(db,port,{session,grants})=>{
+    const primary=DATABASE_ACCESS_LIST.find(item=>item.selected===true);
+    if(!primary)throw Error('LOC primary database unavailable');
+    const expected=enabled?'hyperdrive':'direct';
+    let probe=port,ownsProbe=false;
+    try{
+      if(probe.connectionMode!==expected){
+        probe=await directMcpKysely(process.env,primary.target_id,{
+          forceDirect:!enabled,forceHyperdrive:enabled
+        });
+        ownsProbe=true;
+      }
+      if(probe.connectionMode!==expected)throw Error('Connection mode mismatch');
+      bindLocAuthorization(probe.db,{role:'authenticated',engine:probe.engine,
+        claims:{provider:'loc',role:'authenticated',sub:session.userId,
+          email:session.email,me:true,grants}});
+      await sql`select 1 as connection_ready`.execute(probe.db);
+      const row=await probe.db.selectFrom('silver.loc').select('id')
+        .where('id','=','loc').executeTakeFirst();
+      if(!row)throw Error('LOC settings row unavailable');
+    }catch{
+      throw Error(enabled
+        ?'Hyperdrive 連線預檢失敗，設定未變更。'
+        :'LOC_DATABASE_URI 直連預檢失敗，設定未變更。');
+    }finally{
+      if(ownsProbe&&probe){
+        try{await closeLocDatabase(probe);}catch{}
+      }
+    }
+    await writeLocHyperdriveMode(db,enabled);
+    return {enabled,connectionMode:expected};
+  });
+}
 
 export async function readLocSourceHierarchy(){
   return withAuthorizedLocRead({global:true},async db=>{

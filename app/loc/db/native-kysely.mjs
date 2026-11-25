@@ -3,6 +3,7 @@
 // alias and a trusted, server-supplied profile plus the engine's native driver.
 // Neither HTTP parameters nor OAuth claims supply raw connection credentials.
 import {Kysely} from 'kysely';
+import {readLocHyperdriveMode} from './hyperdrive-mode.mjs';
 import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
@@ -75,10 +76,13 @@ function nodeProcessPool(uri){
 }
 
 export async function db_connection(env={},verifiedAlias='',{
-  probeTicket='',trustedTarget=null,trustedDialectConfig=null
+  probeTicket='',trustedTarget=null,trustedDialectConfig=null,
+  forceDirect=false,forceHyperdrive=false,modeReader=readLocHyperdriveMode
 }={}){
   if(!env||typeof env!=='object')throw unavailable('LOC backend environment missing');
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
+  if(forceDirect&&forceHyperdrive)
+    throw unavailable('Conflicting LOC connection mode request');
   const external=Boolean(verifiedAlias&&verifiedAlias!==primary?.target_id&&
     verifiedAlias!==primary?.connection_alias);
   if(external){
@@ -106,7 +110,7 @@ export async function db_connection(env={},verifiedAlias='',{
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
   const isCloudflareWorkers=isCloudflareWorkerRuntime();
-  const hyperdriveUri=await locHyperdriveBinding(env);
+  const hyperdriveUri=forceDirect?null:await locHyperdriveBinding(env);
   if(hyperdriveUri){
     // Hyperdrive owns the cross-request origin pool. Each Worker request still
     // owns its pg.Client and closes it at the normal/error/abort boundary.
@@ -118,9 +122,25 @@ export async function db_connection(env={},verifiedAlias='',{
       baseDelayMs:200,maxDelayMs:500
     });
     const dialect=createKyselyDialect(primary.engine,{pool});
-    return {db:new Kysely({dialect}),dialect,pool,
+    const connection={db:new Kysely({dialect}),dialect,pool,
       engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{},
       connectionMode:'hyperdrive'};
+    if(!forceHyperdrive){
+      let enabled;
+      try{enabled=await modeReader(connection.db);}
+      catch{
+        try{await closeLocDatabase(connection);}catch{}
+        throw unavailable('LOC Hyperdrive mode unavailable');
+      }
+      if(enabled===false){
+        await closeLocDatabase(connection);
+        return db_connection(env,verifiedAlias,{
+          probeTicket,trustedTarget,trustedDialectConfig,
+          forceDirect:true,modeReader
+        });
+      }
+    }
+    return connection;
   }
   const uri=mainUri(env);
   if(!isCloudflareWorkers){
@@ -128,7 +148,7 @@ export async function db_connection(env={},verifiedAlias='',{
     const dialect=createKyselyDialect(primary.engine,{pool});
     return {db:new Kysely({dialect}),dialect,
       engine:primary.engine,namespace:primary.schema_name,
-      tableName:'',fieldMap:{},pool,sharedPool:true};
+      tableName:'',fieldMap:{},pool,sharedPool:true,connectionMode:'direct'};
   }
   // Cloudflare Workers' Node TLS shim does not support the certificate
   // options node-postgres derives from sslmode/channel_binding URL options.
@@ -168,7 +188,8 @@ export async function db_connection(env={},verifiedAlias='',{
   // SQL Server targets when their caller-supplied pool is enabled.
   const dialect=createKyselyDialect(primary.engine,{pool});
   const connection={db:new Kysely({dialect}),dialect,pool,
-    engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{}};
+    engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{},
+    connectionMode:'direct'};
   return connection;
 }
 export {db_connection as directMcpKysely};

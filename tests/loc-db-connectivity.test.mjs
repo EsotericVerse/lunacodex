@@ -2,7 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {testLocAuthConnection} from '../app/loc/db/native-connectivity-check.mjs';
 import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
-import {closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from '../app/loc/db/native-kysely.mjs';
+import {db_connection,closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from '../app/loc/db/native-kysely.mjs';
+import {SQL_WORKLOAD_POLICY} from '../modules/loc/dialect/sql-workload-policy.mjs';
 
 const body=async response=>JSON.parse(await response.text());
 
@@ -184,4 +185,72 @@ test('Cloudflare Worker fails closed instead of using unstable direct URI when H
     {LOC_DATABASE_URI:direct},
     {requireBinding:true,getContext:async()=>({env:{}})}
   ),/LOC_HYPERDRIVE binding unavailable in Cloudflare Worker/);
+});
+
+
+// The mode switch uses the existing LOC_DATABASE_URI for direct SQL and does
+// not fall back silently when the mode setting itself cannot be read.
+test('disabled Hyperdrive setting routes the primary connection to LOC_DATABASE_URI',async()=>{
+  const env={
+    LOC_DATABASE_URI:'postgresql://loc_user:loc_password@127.0.0.1:5432/loc',
+    LOC_HYPERDRIVE:{connectionString:'postgresql://hyper_user:hyper_password@hyperdrive.invalid/loc'}
+  };
+  let modeReads=0;
+  const port=await db_connection(env,'',{modeReader:async()=>{modeReads++;return false;}});
+  assert.equal(modeReads,1);
+  assert.equal(port.connectionMode,'direct');
+  assert.equal(port.sharedPool,true);
+  await port.pool.end();
+});
+
+test('enabled Hyperdrive setting keeps the primary connection on Hyperdrive',async()=>{
+  const env={
+    LOC_DATABASE_URI:'postgresql://loc_user:loc_password@127.0.0.1:5432/loc',
+    LOC_HYPERDRIVE:{connectionString:'postgresql://hyper_user:hyper_password@hyperdrive.invalid/loc'}
+  };
+  let modeReads=0;
+  const port=await db_connection(env,'',{modeReader:async()=>{modeReads++;return true;}});
+  assert.equal(modeReads,1);
+  assert.equal(port.connectionMode,'hyperdrive');
+  await closeLocDatabase(port);
+});
+
+test('forced Hyperdrive is available for a mode preflight even when stored mode is off',async()=>{
+  const env={
+    LOC_DATABASE_URI:'postgresql://loc_user:loc_password@127.0.0.1:5432/loc',
+    LOC_HYPERDRIVE:{connectionString:'postgresql://hyper_user:hyper_password@hyperdrive.invalid/loc'}
+  };
+  let modeReads=0;
+  const port=await db_connection(env,'',{
+    forceHyperdrive:true,modeReader:async()=>{modeReads++;return false;}
+  });
+  assert.equal(modeReads,0);
+  assert.equal(port.connectionMode,'hyperdrive');
+  await closeLocDatabase(port);
+});
+
+test('explicit direct connection bypasses Hyperdrive and uses the existing URI',async()=>{
+  const port=await db_connection({
+    LOC_DATABASE_URI:'postgresql://loc_user:loc_password@127.0.0.1:5432/loc',
+    LOC_HYPERDRIVE:{connectionString:'not-a-valid-hyperdrive-uri'}
+  },'',{forceDirect:true});
+  assert.equal(port.connectionMode,'direct');
+  assert.equal(port.sharedPool,true);
+  await port.pool.end();
+});
+
+test('Worker request owns one SQL client while Hyperdrive pools origin connections',()=>{
+  assert.equal(SQL_WORKLOAD_POLICY.workerRequestMaxConnections,1);
+});
+
+
+test('Hyperdrive mode lookup failure fails closed and never silently uses the direct URI',async()=>{
+  const env={
+    LOC_DATABASE_URI:'postgresql://loc_user:loc_password@127.0.0.1:5432/loc',
+    LOC_HYPERDRIVE:{connectionString:'postgresql://hyper_user:hyper_password@hyperdrive.invalid/loc'}
+  };
+  await assert.rejects(db_connection(env,'',{
+    modeReader:async()=>{throw Error('private query failure');}
+  }),error=>error?.code==='BACKEND_UNAVAILABLE'&&
+    error?.message==='LOC Hyperdrive mode unavailable');
 });

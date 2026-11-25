@@ -5,9 +5,9 @@ export const SQL_WORKLOAD_POLICY=Object.freeze({
   // Per-operation fan-out. There is no process-global query semaphore.
   maxParallelChunks:4,
   nodePoolMax:12,
-  // Cloudflare request-owned clients; other Worker requests have their own
-  // pool and can proceed independently.
-  workerRequestMaxConnections:4
+  // One request-owned SQL client; Hyperdrive manages the shared origin pool
+  // across requests, while separate Worker requests remain independent.
+  workerRequestMaxConnections:1
 });
 
 export function planSqlChunks(totalRows,{

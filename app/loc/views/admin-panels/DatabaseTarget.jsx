@@ -2,7 +2,8 @@
 import {useEffect,useState} from 'react';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {resolveDatabaseRouting} from '../../providers/routing/config.mjs';
-import {readBackupReadiness} from '../../actions/admin/queries.mjs';
+import {readBackupReadiness,readHyperdriveMode,setHyperdriveMode}
+  from '../../actions/admin/queries.mjs';
 
 const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
 const ACCESS_FILE='app/loc/providers/access.js';
@@ -10,6 +11,9 @@ const routing=resolveDatabaseRouting();
 
 export default function DatabaseTarget(){
   const [backupHealth,setBackupHealth]=useState({state:'idle'});
+  const [hyperdrive,setHyperdrive]=useState({state:'loading',enabled:true});
+  const [modeMessage,setModeMessage]=useState('');
+  const [savingMode,setSavingMode]=useState(false);
   useEffect(()=>{
     let active=true;
     if(!DATABASE_ACCESS_LIST.some(item=>item.backup_selected===true)){
@@ -23,14 +27,53 @@ export default function DatabaseTarget(){
             ?{state:data.schema?'online':'schema-error'}:{state:'offline'});
         }).catch(()=>{if(active)setBackupHealth({state:'offline'});});
     }
+    readHyperdriveMode().then(data=>{
+      if(!active)return;
+      setHyperdrive({state:'ready',enabled:data?.enabled!==false,
+        connectionMode:data?.connectionMode||'direct'});
+    }).catch(()=>{
+      if(!active)return;
+      setHyperdrive({state:'error',enabled:true});
+      setModeMessage('HyperDrive 模式讀取失敗。');
+    });
     return()=>{active=false;};
   },[]);
+  const changeHyperdriveMode=async enabled=>{
+    setSavingMode(true);
+    setModeMessage(enabled?'正在驗證 HyperDrive 連線…':'正在驗證 LOC_DATABASE_URI 直連…');
+    try{
+      const result=await setHyperdriveMode(enabled);
+      setHyperdrive({state:'ready',enabled:result?.enabled===true,
+        connectionMode:result?.connectionMode||'direct'});
+      setModeMessage(enabled?'HyperDrive 已啟用。':
+        'HyperDrive 已關閉，LOC 使用 LOC_DATABASE_URI 直連。');
+    }catch(error){
+      setModeMessage(error?.message||'連線預檢失敗，模式未變更。');
+    }finally{setSavingMode(false);}
+  };
   const ready=DATABASE_ACCESS_LIST;
   return <section className="loc-card admin-workspace">
     <h2>資料庫連線與部署設定</h2>
     <p className="scope-status">本頁僅顯示預設控制資料庫連線；每位使用者的資料庫選擇由 LOC Auth
       即時管理，切換 PostgreSQL／MySQL／SQL Server 無需重新部署，亦不讀寫
       <code>api.manage.database</code>。</p>
+    <section className="scope-management-wide-field">
+      <label>
+        <input type="checkbox" role="switch" aria-label="開啟 HyperDrive 模式"
+          checked={hyperdrive.enabled} disabled={hyperdrive.state!=='ready'||savingMode}
+          onChange={event=>{void changeHyperdriveMode(event.currentTarget.checked);}} />
+        {' '}開啟 HyperDrive 模式
+      </label>
+      <p className="scope-status">開啟時，LOC 查詢、關鍵詞分析與建議、批次匯入沿用 Hyperdrive
+        連線池；Query Cache 維持關閉。關閉時，業務 SQL 改走現有 LOC_DATABASE_URI。</p>
+      <p className="scope-status">{modeMessage||(
+        hyperdrive.state==='loading'?'正在讀取模式…':
+        hyperdrive.state==='error'?'模式未確認。':
+        '目前設定：'+(hyperdrive.enabled?'Hyperdrive 開啟':'Hyperdrive 關閉')+
+          '；實際路徑：'+(hyperdrive.connectionMode==='hyperdrive'
+            ?'Hyperdrive':'LOC_DATABASE_URI 直連'))}</p>
+      <p className="scope-status">切換前會先以目標連線檢查連線與 silver.loc；檢查失敗時設定不變。</p>
+    </section>
     <p className="scope-status">主要：{ready.find(item=>item.target_id===routing.primaryId)?.label||routing.primaryId}
       ｜備援：{ready.find(item=>item.target_id===routing.backupId)?.label||'未啟用'}</p>
     <div className="scope-management-fields">
