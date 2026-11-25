@@ -28,7 +28,7 @@ import {writeImportCheckpoint} from '../app/loc/import/checkpoint.mjs';
 import {readImportCheckpoint} from '../app/loc/import/checkpoint.mjs';
 
 {
-const url='https://loc.lo3rwang.cc/api/las-native';
+const url='https://loc.lo3rwang.cc/api/las-native/';
 const ext='chrome-extension://hiaeafonocnjaclcfgjmdopbcgnafnna';
 const a={message_id:'turn-a',role:'user',source_order:0,parent_id:null,text:'開始'};
 const b={message_id:'turn-b',role:'assistant',source_order:1,parent_id:'turn-a',text:'回覆'};

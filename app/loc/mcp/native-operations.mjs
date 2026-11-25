@@ -196,6 +196,9 @@ export async function handleNativeLocOperation(request,env={},{
   if(request.method!=='POST')return reply({error:{message:'Method not allowed'}},405);
   const requestHost=new URL(request.url).hostname;
   const requestPath=new URL(request.url).pathname;
+  // Next trailingSlash=true serves POST route handlers on canonical slash URLs.
+  // Keep exact API ownership checks while accepting both fixed spellings.
+  const fixedPath=requestPath.endsWith('/')?requestPath.slice(0,-1):requestPath;
   // Only the dedicated LAS bridge may set this server-side option.
   // The dedicated LAS Next.js route maps its trusted request to the MCP
   // audience without changing the extension OAuth claims.
@@ -204,9 +207,9 @@ export async function handleNativeLocOperation(request,env={},{
   // is only the temporarily enabled import path; it cannot alias the LAS
   // bridge by changing Host or dispatching another operation kind.
   if((entrypoint==='loc-native'&&
-      (requestHost!==WEB_HOST||requestPath!=='/api/loc-native'))||
+      (requestHost!==WEB_HOST||fixedPath!=='/api/loc-native'))||
     (entrypoint==='las-native'&&
-      (!trustedMcpBridge||host!==MCP_HOST||requestPath!=='/api/las-native')))
+      (!trustedMcpBridge||host!==MCP_HOST||fixedPath!=='/api/las-native')))
     return reply({error:{message:'Not found'}},404);
   // In the default state, reject the LOC bulk endpoint before reading a body.
   // The route is not an active parser/SQL surface until an operator enables it.
