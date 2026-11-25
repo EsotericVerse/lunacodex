@@ -17,7 +17,15 @@ function genericRouteScope(pathname,search){
   const path=String(pathname||'/');
   if(!(path==='/scope-shell'||path.startsWith('/scope-shell/')))return '';
   const params=new URLSearchParams(String(search||'').replace(/^\?/,''));
-  return normalizeScopeId(params.get('scopeid'));
+  const values=params.getAll('scopeid');
+  if(values.length!==1)return '';
+  const id=normalizeScopeId(values[0]);
+  if(!id||id!==values[0]||isKnownScope(id))return '';
+  const registry=registryByScope.get(id),config=configByScope.get(id);
+  const route=SCOPE_ROUTE_INDEX.find(row=>row.scope_id===id&&row.active===true);
+  return registry?.active===true&&route&&config?.id===id&&
+    ['scope','group'].includes(registry.scope_kind)&&route.domain===registry.domain&&
+    route.directory===registry.directory?id:'';
 }
 
 export function useScopeRuntime(){
@@ -39,7 +47,7 @@ export function useScopeRuntime(){
   const genericId=useMemo(()=>genericRouteScope(pathname,location.search),
     [pathname,location.search]);
   const scopeId=genericId||(genericShell?'':resolveScope(location.host,pathname));
-  const dynamic=Boolean(genericShell&&(!genericId||!isKnownScope(genericId)));
+  const dynamic=genericShell;
 
 
   // The route's display data is selected synchronously from the published file.
