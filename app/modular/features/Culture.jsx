@@ -367,8 +367,7 @@ export default function Culture(){
   const classificationScope=scopeId;
   // Published Scope/table identity is synchronous. The protected editor can
   // begin its own authorized read without waiting for a second public river.
-  const scopeData=query.data?.scope||(isTimeEditingView&&!isAggregateScope
-    ?defaultScopeData(scopeId):null);
+  const scopeData=query.data?.scope||(!isAggregateScope?defaultScopeData(scopeId):null);
   // Use a stable periods array: date-navigation effects must not re-run just
   // because a different Culture panel or query refreshed the page.
   const primaryPeriods=useMemo(()=>isAggregateScope?[]:allPeriods.filter(item=>String(item?.scope_id||'')===scopeId),[isAggregateScope,allPeriods,scopeId]);
