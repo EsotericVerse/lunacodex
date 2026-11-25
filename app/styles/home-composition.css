@@ -22,7 +22,7 @@
   --home-heading-face:"Noto Serif TC","Songti TC",serif;
 }
 .loc-next-main[data-loc-view="home"]:is(
-  [data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]
+  [data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"],[data-loc-scope="lrunes"]
 )>.loc-home{
   display:grid;
   grid-template-columns:minmax(0,1fr);
@@ -36,7 +36,7 @@
 }
 /* The database-controlled LOC and Author home frames use consistent spacing
    and a typographic rule instead of repeating an embossed/glossy card. */
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])
   .loc-home>.loc-home-block:not(.loc-home-block--hero){
   padding:var(--home-layout-pad);
   background:var(--loc-panel);
@@ -44,7 +44,7 @@
   border-radius:var(--loc-material-radius,var(--loc-ui-radius-md));
   box-shadow:none;
 }
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])
   .loc-home>.loc-home-block--with-image:not(.loc-home-block--hero){
   padding-block:clamp(1.55rem,3vw,2.85rem);
   border-inline:0;
@@ -53,11 +53,11 @@
   border-radius:0;
   background:transparent;
 }
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])
   .loc-home-block:not(.loc-home-block--hero) .loc-home-block__header{
   margin-bottom:clamp(.8rem,1.5vw,1.4rem);
 }
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])
   .loc-home-block:not(.loc-home-block--hero) .loc-home-block__header>h2{
   font-family:var(--home-heading-face);
   font-size:clamp(1.4rem,2.25vw,2.05rem);
@@ -67,7 +67,7 @@
   border-bottom:2px solid var(--loc-accent);
   color:var(--loc-heading);
 }
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])
   .loc-home-block:not(.loc-home-block--hero):not(.loc-home-block--with-image)>.loc-home-block__body{
   max-width:78ch;
 }
@@ -262,7 +262,7 @@
 }
 @media(max-width:620px){
   .loc-next-main[data-loc-view="home"]:is(
-    [data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]
+    [data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"],[data-loc-scope="lrunes"]
   ){
     --home-layout-gap:clamp(1rem,4vw,1.5rem);
     --home-layout-pad:clamp(1rem,4.4vw,1.4rem);
@@ -292,7 +292,7 @@
    Minimum heights only; longer authored Hero copy still grows naturally. */
 @media(max-width:760px){
   .loc-next-main[data-loc-view="home"]:is(
-    [data-loc-scope="loc"],[data-loc-scope="lo3rwang"]
+    [data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]
   ) .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side){
     min-height:clamp(345px,47svh,445px);
     padding:clamp(1.1rem,4.2vw,1.5rem);

@@ -1,15 +1,15 @@
 /* LOC and Author homepages — one root section per DB row, without extra layout wrappers or
    nested component-specific CSS. All colors continue using the current Theme. */
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"]){
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]){
   width:min(1180px,calc(100% - 2rem));
   margin:0 auto;
   padding:clamp(1.2rem,4vw,3rem) 0 4rem;
 }
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"]) .loc-home{
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]) .loc-home{
   display:grid;
   gap:1.15rem;
 }
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"]) .loc-home>.loc-home-block{
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]) .loc-home>.loc-home-block{
   min-width:0;
   padding:1.15rem 1.25rem;
   border:1px solid var(--loc-line);
@@ -183,7 +183,7 @@
 }
 
 /* Hero keeps the already approved full-bleed background and reading contrast. */
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"]) .loc-home>.loc-home-block--hero{
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]) .loc-home>.loc-home-block--hero{
   position:relative;
   isolation:isolate;
   overflow:hidden;
@@ -201,7 +201,7 @@
 }
 @media(min-width:761px){
   /* Widescreen frame for every home Hero (LOC, Author); phones are content-height driven. */
-  .loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"]) .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side){
+  .loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]) .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side){
     aspect-ratio:16 / 9;
   }
 }
@@ -264,7 +264,7 @@
 .loc-home-block--hero>.loc-home-block__body strong{color:inherit}
 /* Only frame 1 can use background artwork. The side option makes the same
    image a contained bubble, never a second illustration or overlay. */
-.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"]) .loc-home>.loc-home-block--hero.loc-home-block--hero-side{
+.loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]) .loc-home>.loc-home-block--hero.loc-home-block--hero-side{
   display:grid;
   grid-template-columns:minmax(0,1.25fr) minmax(240px,.75fr);
   grid-template-areas:"header media" "body media" "children children";
@@ -315,7 +315,7 @@
   background:var(--loc-surface-soft);
 }
 @media(max-width:760px){
-  .loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"]) .loc-home>.loc-home-block--hero.loc-home-block--hero-side{
+  .loc-next-main[data-loc-view="home"]:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"]) .loc-home>.loc-home-block--hero.loc-home-block--hero-side{
     grid-template-columns:minmax(0,1fr);
     grid-template-areas:"header" "body" "media" "children";
   }
@@ -341,17 +341,17 @@
   .loc-home-block__children{grid-template-columns:minmax(0,1fr)}
 }
 
-.loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side){
+.loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side){
   display:grid;
   grid-template-columns:minmax(0,1fr);
   align-content:center;
   min-height:clamp(430px,50vw,620px);
   padding:clamp(1.6rem,4vw,3.75rem);
 }
-.loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media{
+.loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media{
   overflow:hidden;
 }
-.loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media img{
+.loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media img{
   filter:none;
   mask-image:none;
   object-fit:contain;
@@ -360,7 +360,7 @@
 }
 /* The former author's editorial gradient shades copy without blacking out
    or cropping the image with the landscape-only LOC brightness/mask effect. */
-.loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media::after{
+.loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media::after{
   content:"";
   position:absolute;
   inset:0;
@@ -370,15 +370,15 @@
     linear-gradient(180deg,rgba(3,6,13,.02) 0%,rgba(3,6,13,.04) 58%,rgba(3,6,13,.26) 100%);
 }
 @media(max-width:760px){
-  .loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side){
+  .loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side){
     align-content:end;
     min-height:clamp(460px,118vw,570px);
     padding:1.35rem;
   }
-  .loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media img{
+  .loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media img{
     object-position:center;
   }
-  .loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media::after{
+  .loc-next-main:is([data-loc-scope="loc"],[data-loc-scope="lo3rwang"],[data-loc-scope="lrunes"])[data-loc-view="home"] .loc-home>.loc-home-block--hero:not(.loc-home-block--hero-side)>.loc-home-block__media::after{
     background:
       linear-gradient(180deg,rgba(3,6,13,.08) 0%,rgba(3,6,13,.18) 44%,rgba(3,6,13,.64) 100%),
       linear-gradient(90deg,rgba(3,6,13,.30) 0%,rgba(3,6,13,.12) 72%,transparent 100%);

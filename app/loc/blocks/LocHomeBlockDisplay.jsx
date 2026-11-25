@@ -4,12 +4,13 @@ import {HomeBlock} from './home-block-model';
 
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 
-export function resolveHomeImage(slot){
+export function resolveHomeImage(slot,scopeId='loc'){
   const config=slot?.image&&typeof slot.image==='object'?slot.image:null;
   const embedded=BlockNoteContent.image.firstFrameImageUrl(slot);
   const customUrl=BlockNoteContent.image.normalizeImageSource(config?.url||embedded);
   const source=config?.source==='none'?'none':customUrl?'custom':'none';
-  const src=source==='custom'?customUrl:'';
+  const src=source==='custom'&&scopeId==='lrunes'&&/^https?:\/\/loc\.lo3rwang\.cc\/pics\/LunaRunes-hero\.jpg$/i.test(customUrl)
+    ?'/pics/LunaRunes-hero.jpg':source==='custom'?customUrl:'';
   const position=Number(slot?.order)===1?'right':
     ['left','right','top','bottom','only'].includes(config?.position)?config.position:'right';
   const width=Number.isFinite(Number(config?.width))&&Number(config?.width)>=160&&Number(config?.width)<=800
@@ -26,6 +27,7 @@ export function locHomeBlockClass(slot,scopeId='loc'){
     'loc-home-block',
     scopeId==='loc'&&order===3?'loc-home-block--architecture':'',
     order===1?'loc-home-block--hero':'',
+    order===1&&scopeId==='lrunes'&&image.src&&image.mode==='side'?'loc-home-block--hero-side':'',
     order!==1&&image.src?(image.position==='only'?'loc-home-block--image-only':'loc-home-block--with-image loc-home-block--image-'+image.position):'',
     order!==1&&image.src&&['left','right'].includes(image.position)&&
       Number.isFinite(Number(slot?.image?.width))&&Number(slot.image.width)>=160&&Number(slot.image.width)<=800
