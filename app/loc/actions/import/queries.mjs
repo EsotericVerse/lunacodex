@@ -1,5 +1,7 @@
 'use server';
 import {withAuthorizedLocRead} from '../read-context.mjs';
+import {computeClient,containerMode} from '../../compute/runtime.mjs';
+import {validIdentity,COMPUTE_IMPORT_BYTES,byteLength} from '../../compute/contract.mjs';
 import {readImportSitePresence,readImportSiteCandidates,
   readImportOccupiedTimes,readImportAnchorPage,readImportMediaCandidates}
   from '../../providers/kysely-management.mjs';
@@ -237,5 +239,24 @@ export async function queryImportAnchorArticlesPage(args={}){
     const rows=await query.execute();
     assertZModelSelectRows('silver.'+scope+'_galaxy',columns,rows);
     return {data:rows,count:rows.length};
+  });
+}
+
+export async function readImportComputeMode(scope){
+  return withImportScope({p_scope_id:scope},async db=>{
+    const mode=await containerMode(db);
+    return mode.enabled&&mode.available;
+  });
+}
+export async function runImportIdentityCompute(scope,kind,payload){
+  if(!['site','time'].includes(kind)||!payload||
+    Object.keys(payload).some(key=>!['incoming','candidates','excluded'].includes(key))||
+    !Array.isArray(payload.incoming)||!Array.isArray(payload.candidates)||
+    !payload.incoming.every(validIdentity)||!payload.candidates.every(validIdentity)||
+    !Array.isArray(payload.excluded)||!payload.excluded.every(uid=>/^[A-Za-z0-9]{8}$/.test(uid))||
+    byteLength(payload)>COMPUTE_IMPORT_BYTES)return null;
+  return withImportScope({p_scope_id:scope},async db=>{
+    const compute=await computeClient(db);
+    return compute?compute(kind,payload):null;
   });
 }

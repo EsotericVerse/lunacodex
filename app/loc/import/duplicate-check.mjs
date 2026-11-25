@@ -1,5 +1,7 @@
 import {importGeoKey} from './geocoordinates.mjs';
 import {importTimeMicroseconds} from './unique-createtime.mjs';
+import {identityProjection,validIdentity,COMPUTE_IMPORT_BYTES,COMPUTE_MIN_ROWS,byteLength}
+  from '../compute/contract.mjs';
 
 // A native source ID is definitive. For original dated posts, source site +
 // creation timestamp identifies a post. Fallback update times are not used
@@ -112,7 +114,66 @@ export function dedupeIncomingImport(records=[]){
   return {unique,aliases,duplicates};
 }
 
-export async function matchExistingImportBySiteId(records,{readSiteIds,onProgress}={}){
+// Partition only independent identity buckets. Never divide the same native
+// ID or timestamp millisecond across requests, and never send article bodies.
+async function remoteIdentity(kind,records,saved,excluded,compute){
+  if(!compute||records.length<COMPUTE_MIN_ROWS)return null;
+  const keyOf=kind==='site'?importSourceKey:importMillisKey;
+  const groups=new Map(),savedByUid=new Map();
+  for(const row of records){
+    const key=keyOf(row);
+    if(!key)continue;
+    const projected=identityProjection(row);
+    if(!validIdentity(projected))return null;
+    const group=groups.get(key)||{incoming:[],candidates:[]};
+    group.incoming.push(projected);groups.set(key,group);
+  }
+  for(const row of saved){
+    const group=groups.get(keyOf(row));
+    if(!group)continue;
+    const projected=identityProjection(row);
+    if(!validIdentity(projected))return null;
+    group.candidates.push(projected);savedByUid.set(projected.uid,row);
+  }
+  const result=new Map(),ambiguous=[];
+  let incoming=[],candidates=[],bytes=100;
+  const flush=async()=>{
+    if(!incoming.length)return true;
+    const omitted=candidates.filter(row=>excluded.has(row.uid)).map(row=>row.uid);
+    const payload={incoming,candidates,excluded:[...new Set(omitted)]};
+    if(byteLength(payload)>COMPUTE_IMPORT_BYTES)return false;
+    const response=await compute(kind,payload);
+    if(!response||!Array.isArray(response.pairs)||!Array.isArray(response.ambiguous))return false;
+    const inIds=new Set(incoming.map(row=>row.uid)),outIds=new Set(candidates.map(row=>row.uid));
+    const used=new Set();
+    for(const pair of response.pairs){
+      if(!Array.isArray(pair)||pair.length!==2||!inIds.has(pair[0])||
+        !outIds.has(pair[1])||result.has(pair[0])||used.has(pair[0])||
+        excluded.has(pair[1]))return false;
+      result.set(pair[0],savedByUid.get(pair[1]));used.add(pair[0]);
+    }
+    for(const row of response.ambiguous){
+      if(!row||!inIds.has(row.uid)||used.has(row.uid)||!Array.isArray(row.saved_uids)||
+        !row.saved_uids.every(uid=>outIds.has(uid)))return false;
+      ambiguous.push(row);used.add(row.uid);
+    }
+    incoming=[];candidates=[];bytes=100;return true;
+  };
+  try{
+    for(const group of groups.values()){
+      const size=byteLength(group)+group.candidates.length*12;
+      if(size>COMPUTE_IMPORT_BYTES)return null;
+      if(bytes+size>COMPUTE_IMPORT_BYTES&&!await flush())return null;
+      for(const row of group.incoming)incoming.push(row);
+      for(const row of group.candidates)candidates.push(row);
+      bytes+=size;
+    }
+    if(!await flush())return null;
+  }catch{return null;}
+  result.ambiguous=ambiguous;return result;
+}
+
+export async function matchExistingImportBySiteId(records,{readSiteIds,onProgress,compute}={}){
   if(typeof readSiteIds!=='function')throw Error('缺少 site_id 查詢');
   const requested=new Map(),groups=new Map();
   for(const record of records||[]){
@@ -145,6 +206,14 @@ export async function matchExistingImportBySiteId(records,{readSiteIds,onProgres
     if(Array.isArray(returned))consumePage(returned);
     else if(returned!==undefined&&returned!==null)
       throw Error('site_id 查詢沒有回傳有效文章');
+  }
+  if(compute){
+    const remote=await remoteIdentity('site',[...requested.values()],
+      [...candidates.values()].flatMap(rows=>[...rows.values()]),new Set(),compute);
+    if(remote){
+      onProgress?.({completed:total,total,matched:remote.size,ambiguous:remote.ambiguous.length});
+      return remote;
+    }
   }
   const ambiguous=[];
   for(const [key,record] of requested){
@@ -185,7 +254,7 @@ const taipeiDate=new Intl.DateTimeFormat('sv-SE',{
   timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'
 });
 export async function matchExistingImportByCreatedAt(records,{
-  readSourceRows,onProgress,excludeSavedUids=new Set()
+  readSourceRows,onProgress,excludeSavedUids=new Set(),compute
 }={}){
   if(typeof readSourceRows!=='function')
     throw new TypeError('Missing indexed source/date Galaxy reader');
@@ -229,6 +298,21 @@ export async function matchExistingImportByCreatedAt(records,{
         }
       }
     });
+    if(compute){
+      const incoming=[...group.wanted].flatMap(key=>requested.get(key)||[]);
+      // Preserve the existing case-sensitive source grouping. Case aliases
+      // use the local original rather than a changed match order.
+      if(incoming.every(row=>String(row.site||'').trim()===site)){
+        const remote=await remoteIdentity('time',incoming,
+          [...millis.values()].flatMap(rows=>[...rows.values()]),excludeSavedUids,compute);
+        if(remote){
+          for(const [uid,row] of remote)matches.set(uid,row);
+          ambiguous.push(...remote.ambiguous);
+          onProgress?.({completed:matches.size,total:records.length,ambiguous:ambiguous.length});
+          continue;
+        }
+      }
+    }
     const selected=new Set(excludeSavedUids);
     const pending=[];
     // Exact microsecond matches have priority over any fallback.

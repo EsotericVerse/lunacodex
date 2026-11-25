@@ -5,6 +5,7 @@ import {bindLocAuthorization} from '../../providers/loc-authorization.mjs';
 import {readLocHyperdriveMode,writeLocHyperdriveMode}
   from '../../db/hyperdrive-mode.mjs';
 import {withAuthorizedLocRead} from '../read-context.mjs';
+import {containerMode,writeLocContainerMode,containerBinding,probeContainer} from '../../compute/runtime.mjs';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -116,5 +117,20 @@ export async function readBackupReadiness(){
     }catch{
       return {online:true,schema:false};
     }
+  });
+}
+
+export async function readContainerMode(){
+  return withAuthorizedLocRead({global:true},db=>containerMode(db));
+}
+export async function setContainerMode(enabled){
+  if(typeof enabled!=='boolean')throw Error('Invalid Container mode');
+  return withAuthorizedLocRead({global:true},async db=>{
+    const binding=await containerBinding();
+    const available=Boolean(binding);
+    if(enabled&&!await probeContainer(binding))
+      throw Error('Container 尚未就緒，設定未變更。');
+    await writeLocContainerMode(db,enabled);
+    return {enabled,available};
   });
 }

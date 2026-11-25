@@ -221,7 +221,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
   maxRowsPerRun=null,minRowsPerRun=null,
   checkpointRows=KEYWORD_SCAN_CHECKPOINT_ROWS,
   paceRows=false,rateSleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
-  deferFinalization=false
+  deferFinalization=false,remoteAbsorb=null
 }={}){
   const a=createItemCountAccumulator(items,groups,resume,{minChars,patterns});
   const valid=resume?.scanMode==='item_count_v1'&&resume.fingerprint===a.fingerprint&&
@@ -322,7 +322,11 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
       }
       pageChars=ordered.reduce((sum,row)=>sum+
         String(row?.title??'').length+String(row?.content??'').length,0);
-      if(pace){
+      const remote=remoteAbsorb?await remoteAbsorb({
+        items,groups,patterns,minChars,state:a.state,rows:ordered
+      }):null;
+      if(remote)Object.assign(a.state,remote);
+      else if(pace){
         // The SQL page may contain 4096 rows, but CPU work starts at a
         // 1024 rows/sec budget and ramps gently up to 8192. A saved page
         // is not a new speed window; unused capacity carries straight on.
