@@ -82,7 +82,8 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     :(featureId==='admin'?groupHeroRows:
       (scopeId==='loc'&&!HomeBlock.shouldUseSingleFeatureHeroImage(featureId))
         ?groupHeroRows:scopeHeroRows).find(row=>Number(row.block_order)===1);
-  const heroImageOverride=heroImageUrlOf(heroImageRow);
+  const heroImageOverride=heroImageUrlOf(heroImageRow)||
+    (managementMode?HomeBlock.managementHeroDefaultImage(managementSlot):'');
   const heroStyle=heroImageOverride?{'--scope-feature-hero-image':`url("${heroImageOverride}")`}:undefined;
   const shared=managementMode?HomeBlock.managementHeroCopy(managementTextQuery.data,managementSlot)
     :sharedEnabled?HomeBlock.featureHeroFor(groupHeroRows):null;
