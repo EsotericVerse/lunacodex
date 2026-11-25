@@ -131,7 +131,7 @@ export const ANCHOR_TYPE_MODEL_NAMES=Object.freeze({
   date:'DateAnchor',period:'PeriodAnchor',era:'EraAnchor',
   point:'PointAnchor',path:'PathAnchor',trace:'TraceAnchor',
   image:'ImageAnchor',video:'VideoAnchor',rune:'RuneAnchor',suno:'SunoAnchor',
-  pattern:null,item:'ItemAnchor',group:'GroupAnchor',
+  pattern:'PatternAnchor',item:'ItemAnchor',group:'GroupAnchor',
   class:'ClassAnchor',category:'CategoryAnchor',
   from:'FromAnchor',domain:'DomainAnchor',galaxy:'GalaxyAnchor',universe:'UniverseAnchor'
 });
@@ -169,7 +169,8 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
   VideoAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
   RuneAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
   SunoAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
-  ItemAnchor:{keyword:{type:'String',array:true,optional:true},uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
+  PatternAnchor:{items:{type:'Json',optional:true},total:{type:'Int',optional:true}},
+  ItemAnchor:{uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
   GroupAnchor:{uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
   ClassAnchor:{uid:{type:'String',array:true,optional:true},
     exceptions:{type:'Json',optional:true}},
@@ -185,7 +186,7 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
     trace:{type:'TraceAnchor',optional:true}},
   MediaAnchor:{images:{type:'ImageAnchor',optional:true},video:{type:'VideoAnchor',optional:true},
     suno:{type:'SunoAnchor',optional:true},runes:{type:'RuneAnchor',optional:true}},
-  KeywordAnchor:{pattern:{type:'Json',optional:true},item:{type:'ItemAnchor',optional:true},
+  KeywordAnchor:{pattern:{type:'PatternAnchor',optional:true},item:{type:'ItemAnchor',optional:true},
     group:{type:'GroupAnchor',optional:true},class:{type:'ClassAnchor',optional:true},
     category:{type:'CategoryAnchor',optional:true}},
   SiteAnchor:{universe:{type:'UniverseAnchor',optional:true},galaxy:{type:'GalaxyAnchor',optional:true},

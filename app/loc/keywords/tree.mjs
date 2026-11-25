@@ -3,7 +3,7 @@ import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hier
 // Typed/composite models define node payloads; anchor-hierarchy.mjs validates
 // UID edges; this module adapts them for editor/catalog consumers.
 // Pattern is a terminal vocabulary node (attr={}, num=0).
-// Item.attr.uid links Pattern Anchor UIDs; Item.keyword carries word labels.
+// Item.attr.uid links Pattern Anchor UIDs; editor lists are read projections.
 // No full-text index or Pattern-to-Galaxy article UID postings are persisted.
 // Parent lists contain child UIDs, not names. No class_id, group_id, item_no.
 // Only the canonical eight-character Anchor UID exists in the current ZModel.
@@ -96,7 +96,7 @@ export function indexAnchorTree(rows=[],{normalize,rootType}){
     // Keep the real Item -> Pattern Anchor UID edges alongside word labels.
     // A catalog/editor snapshot can omit Pattern rows; missing edges remain
     // explicitly unresolved instead of being replaced by a legacy word tree.
-    attr:row.type==='item'?{...row.attr,keyword:row.lists}:{uid:row.lists}
+    attr:row.type==='item'?{...row.attr}:{uid:row.lists}
   }));
   const graph=indexZModelAnchorHierarchy(canonical,{
     family,strict:family==='source'

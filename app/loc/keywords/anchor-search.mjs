@@ -1,3 +1,4 @@
+import {readItemPatternRows,projectPatternWords} from './pattern-catalog.mjs';
 // Exact UID-selected Anchor navigation only; never autocomplete identifiers.
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
@@ -96,9 +97,11 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
     const itemToGroup=new Map();
     for(const group of groups)for(const itemUid of kids(group))
       if(visible.items.has(itemUid))itemToGroup.set(itemUid,group.uid);
+    const patternRows=await readItemPatternRows(db,anchorTable(scope),itemRows);
+    const byPattern=new Map(patternRows.map(row=>[row.uid,row]));
     const items=itemRows.filter(item=>itemToGroup.has(item.uid)).map(item=>({
       uid:item.uid,item_name:String(item.title||''),
-      keywords:Array.isArray(attrs(item).keyword)?attrs(item).keyword:[],
+      keywords:projectPatternWords(item,byPattern),patternBacked:true,
       group_uid:itemToGroup.get(item.uid)
     }));
     const selectedWord=String(anchor.title||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');

@@ -146,8 +146,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
           seen.add(row.uid);
           owned.push({...row,name:String(row.title||''),
             desc:String(row.description||''),
-            lists:Array.isArray(row.attr?.[row.type==='item'?'keyword':'uid'])
-              ?row.attr[row.type==='item'?'keyword':'uid']:[],uid_lists:[]});
+            lists:row.type==='item'?(Array.isArray(row.words)?row.words:[]):
+              (Array.isArray(row.attr?.uid)?row.attr.uid:[]),uid_lists:[]});
         }
         if(!page.nextCursor)break;
         if(page.nextCursor===cursor||!page.rows.length)

@@ -1,3 +1,4 @@
+import {readItemPatternRows,projectPatternWords} from '../keywords/pattern-catalog.mjs';
 import {canLocAccess} from './loc-authorization.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {publishedManagedScope} from './published-managed-scope.mjs';
@@ -143,10 +144,12 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,
     .where('type','=','item').where('uid','in',itemIds).execute():[];
   const byItem=new Map(items.map(row=>[row.uid,row]));
   if(itemIds.some(uid=>!byItem.has(uid)))reject('Broken Keyword Item relationship');
+  const patterns=await readItemPatternRows(trx,anchor,items);
+  const byPattern=new Map(patterns.map(row=>[row.uid,row]));
   const descriptions=ordered.flatMap(group=>children(group,'items').map(uid=>{
     const item=byItem.get(uid);
     return {uid,item_name:String(item.title||''),
-      group_uid:group.uid,keywords:Array.isArray(attr(item).keyword)?attr(item).keyword:[]};
+      group_uid:group.uid,keywords:projectPatternWords(item,byPattern)};
   }));
   let totals=new Map(),groupTotals=new Map();
   if(withTotals){
@@ -161,7 +164,7 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,
     uid:node.uid,type:node.type,name:node.title,
     desc:node.type==='item'?'':node.description,
     lists:node.type==='class'?groupIds:node.type==='group'?children(node,'items'):
-      node.type==='item'&&Array.isArray(attr(node).keyword)?attr(node).keyword:[],
+      node.type==='item'?descriptions.find(item=>item.uid===node.uid)?.keywords||[]:[],
     uid_lists:[],
     total:node.type==='group'?groupTotals.get(node.uid)||0:
       node.type==='item'?totals.get(node.uid)||0:0
@@ -179,7 +182,7 @@ export async function traceKeywordGroups(trx,scope,anchor,places,start,end,sourc
   const groups=(catalog.rows||[]).filter(row=>row.type==='group');
   const items=(catalog.rows||[]).filter(row=>row.type==='item')
     .flatMap(row=>groups.filter(g=>g.lists.includes(row.uid)).map(g=>({
-      uid:row.uid,group_uid:g.uid,item_name:row.name,keywords:row.lists
+      uid:row.uid,group_uid:g.uid,item_name:row.name,keywords:row.lists,patternBacked:true
     })));
   const res=await readItemKeywordProjection(trx,scope,{
     items,groups,places,start,end,source,owner:true,
@@ -200,7 +203,7 @@ export async function keywordSummary(trx,scope,anchor,start,end,source,requested
   const groups=(catalog.rows||[]).filter(row=>row.type==='group');
   const items=(catalog.rows||[]).filter(row=>row.type==='item')
     .flatMap(row=>groups.filter(g=>g.lists.includes(row.uid)).map(g=>({
-      uid:row.uid,group_uid:g.uid,item_name:row.name,keywords:row.lists
+      uid:row.uid,group_uid:g.uid,item_name:row.name,keywords:row.lists,patternBacked:true
     })));
   const res=await readItemKeywordProjection(trx,scope,{
     items,groups,start,end,source,owner:true,

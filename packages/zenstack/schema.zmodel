@@ -351,8 +351,11 @@ type SunoAnchor {
     url String?
     date String?
 }
+type PatternAnchor {
+    items Json?
+    total Int?
+}
 type ItemAnchor {
-    keyword String[]?
     uid String[]?
     total Int?
 }
@@ -425,7 +428,7 @@ type MediaAnchor {
 // Class is the subject; Group groups Items; Item links Pattern Anchor UIDs.
 // Pattern is a vocabulary-only Anchor; no full-text article postings.
 type KeywordAnchor {
-    pattern Json?
+    pattern PatternAnchor?
     item ItemAnchor?
     group GroupAnchor?
     class ClassAnchor?

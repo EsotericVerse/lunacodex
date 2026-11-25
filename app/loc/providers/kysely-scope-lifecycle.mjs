@@ -7,7 +7,6 @@
 import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';
 import {FIXED_MANAGE_ROWS,fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
-import {allocateAnchorUid} from '../model/uid.js';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -204,54 +203,6 @@ export async function manageScopeRegistryNative(trx,args){
     active,sort_order:sort});
 }
 
-function keywordSource(rows,uid){
-  const row=rows.find(value=>text(value.uid)===uid);
-  if(!row)reject('Default Keyword Class is incomplete',409);
-  return row;
-}
-async function copyDefaultKeywordClass(trx,target){
-  const source=await trx.selectFrom('silver.lo3rwang')
-    .select('current_keyword_class_uid').where('id','=','lo3rwang')
-    .executeTakeFirst();
-  const classUid=text(source?.current_keyword_class_uid);
-  if(!classUid)reject('Default Keyword Class is not configured',409);
-  const rows=await trx.selectFrom('silver.lo3rwang_anchor')
-    .select(['uid','type','title','description','attr'])
-    .where('type','in',['category','class','group','item']).execute();
-  const root=keywordSource(rows,classUid);
-  if(root.type!=='class')reject('Default Keyword Class type is invalid',409);
-  const category=rows.find(row=>row.type==='category'&&linked(row).includes(classUid));
-  if(!category)reject('Default Keyword Category is missing',409);
-  const assigned=new Set(),insertions=[];
-  const uid=()=>{const id=allocateAnchorUid(assigned);assigned.add(id);return id;};
-  const categoryId=uid(),newClassId=uid(),groups=[];
-  const add=(node,kind,id,attr)=>insertions.push({
-    uid:id,type:kind,title:node.title,description:node.description,
-    attr:jsonb(attr)
-  });
-  add(category,'category',categoryId,{uid:[newClassId]});
-  for(const oldGroupId of linked(root)){
-    const group=keywordSource(rows,oldGroupId);
-    if(group.type!=='group')reject('Default Keyword Group mismatch',409);
-    const groupId=uid(),items=[];
-    groups.push(groupId);
-    for(const oldItemId of linked(group)){
-      const item=keywordSource(rows,oldItemId);
-      if(item.type!=='item')reject('Default Keyword Item mismatch',409);
-      const words=Array.isArray(item.attr?.keyword)?item.attr.keyword:[];
-      if(words.some(word=>typeof word!=='string'))
-        reject('Default Keyword Item contains invalid terms',409);
-      const newItemId=uid();
-      add(item,'item',newItemId,{keyword:words,total:0});
-      items.push(newItemId);
-    }
-    add(group,'group',groupId,{uid:items,total:0});
-  }
-  add(root,'class',newClassId,{uid:groups});
-  await trx.insertInto('silver.'+target+'_anchor')
-    .values(insertions).execute();
-  return {classUid:newClassId,items:insertions.filter(row=>row.type==='item').length};
-}
 export async function provisionScopeNative(trx,args){
   requireGlobal(trx);
   const scope=scopeId(args.p_scope_id);
@@ -271,7 +222,6 @@ export async function provisionScopeNative(trx,args){
   const birthday=args.p_birthday;
   if(birthday!=null&&!/^\d{4}-\d{2}-\d{2}$/.test(String(birthday)))
     reject('Invalid birthday');
-  const copyKeywords=args.p_copy_keywords!==false;
   const rows=registryRows();
   if(registered(rows,scope))reject('Scope already exists',409);
   parentGroup(rows,parent);checkRouteUnique(rows,target);
@@ -293,12 +243,7 @@ export async function provisionScopeNative(trx,args){
   for(let i=0;i<models.length;i++)
     await sql`create table ${record(scope+models[i])}
       (like ${record(templates[i])} including all)`.execute(trx);
-  let classUid=null,keywordCount=0;
-  if(copyKeywords){
-    const copied=await copyDefaultKeywordClass(trx,scope);
-    classUid=copied.classUid;keywordCount=copied.items;
-    if(keywordCount<1)reject('Scope Keyword Item copy incomplete',409);
-  }
+  const classUid=null,keywordCount=0;
   await trx.insertInto('silver.'+scope).values({
     id:scope,display_name:name,theme,locale,
     search_intro:'',search_aliases:[scope,name],

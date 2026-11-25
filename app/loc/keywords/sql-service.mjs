@@ -569,10 +569,51 @@ async function invalidateKeywordTreeClass(trx,scope,classUid){
       updated_at:new Date().toISOString()}).where('id','=',scope).execute();
 }
 
-// The Item editor's single authorized transaction saves its word list,
-// maintains Group membership and reconciles all Pattern UID references.
-// Legacy Item.keyword remains as temporary input to old style readers;
-// Pattern vocabulary nodes hold no Galaxy article UID postings.
+// Serialize dictionary updates with Class analysis/reset on the Scope config row.
+async function lockKeywordVocabulary(trx,scope){
+  const cfg=await trx.selectFrom(configName(scope)).select('id').where('id','=',scope).forUpdate().executeTakeFirst();
+  if(!cfg)fail('Keyword Scope not configured',404);
+}
+async function reconcileItemPatterns(trx,scope,itemUid,name,words){
+  const table=anchorName(scope);
+  const rows=await trx.selectFrom(table).select(['uid','title','attr'])
+    .where('type','=','pattern').orderBy('uid','asc').execute();
+  const byWord=new Map(),oldLinks=new Map(),assigned=new Set([itemUid]);
+  for(const row of rows){
+    const key=keywordIdentity(row.title);
+    if(!key||byWord.has(key))fail('Duplicate Keyword Pattern literal',409);
+    byWord.set(key,row);assigned.add(row.uid);
+    const existing=attr(row).items?.[itemUid];
+    if(existing)oldLinks.set(key,existing);
+  }
+  const desired=name===null?new Map():planItemPatternLinks(name,words,oldLinks);
+  const links=[],insert=[],updates=[];
+  for(const [key,{title,link}] of desired){
+    const row=byWord.get(key);
+    if(row){
+      links.push(row.uid);
+      const previous=attr(row),items={...(previous.items||{}),[itemUid]:link};
+      if(JSON.stringify(previous.items?.[itemUid])!==JSON.stringify(link))
+        updates.push({uid:row.uid,attr:{...previous,items}});
+    }else{
+      const uid=allocateAnchorUid(assigned);assigned.add(uid);links.push(uid);
+      insert.push({uid,type:'pattern',title,attr:JSON.stringify({total:0,items:{[itemUid]:link}}),num:0});
+    }
+  }
+  for(const [key,row] of byWord)if(!desired.has(key)&&Object.hasOwn(attr(row).items||{},itemUid)){
+    const previous=attr(row),items={...previous.items};delete items[itemUid];
+    updates.push({uid:row.uid,attr:{...previous,items}});
+  }
+  if(insert.length)await trx.insertInto(table).values(insert).execute();
+  if(updates.length){
+    const result=await sql`update ${sql.ref(table)} as a set attr=incoming.attr
+      from jsonb_to_recordset(${JSON.stringify(updates)}::jsonb) as incoming(uid text,attr jsonb)
+      where a.uid=incoming.uid::char(8) and a.type='pattern'`.execute(trx);
+    if(Number(result.numAffectedRows)!==updates.length)fail('Keyword Pattern update incomplete',409);
+  }
+  return {links,created:insert.length,removed:oldLinks.size-[...oldLinks.keys()].filter(key=>desired.has(key)).length};
+}
+
 export async function saveKeywordItem(db,scope,values,{
   authorizeTransaction=()=>{}
 }={}){
@@ -588,9 +629,13 @@ export async function saveKeywordItem(db,scope,values,{
   if(!['create','update'].includes(mode))fail('Invalid Item write mode');
   return db.transaction().execute(async trx=>{
     await authorizeTransaction(trx);
+    await lockKeywordVocabulary(trx,scope);
     const table=anchorName(scope),old=await trx.selectFrom(table)
       .select(['uid','type','attr']).where('uid','=',values.uid).forUpdate().executeTakeFirst();
     let parent;
+    if(mode==='create'&&old)fail('Keyword UID is already in use',409);
+    if(mode==='update'&&old?.type!=='item')fail('Keyword Item not found',404);
+    const patterns=await reconcileItemPatterns(trx,scope,values.uid,asNodeText(values.name),words);
     if(mode==='create'){
       if(old)fail('Keyword UID is already in use',409);
       const groupId=String(values.parentUid||'');
@@ -600,7 +645,7 @@ export async function saveKeywordItem(db,scope,values,{
       if(!parent)fail('Unknown parent Group',404);
       await trx.insertInto(table).values({uid:values.uid,type:'item',
         title:asNodeText(values.name),description:values.desc,
-        attr:JSON.stringify({keyword:words})}).execute();
+        attr:JSON.stringify({uid:patterns.links,total:0}),num:patterns.links.length}).execute();
       await trx.updateTable(table).set({attr:JSON.stringify({
         ...removeLegacyKeywordHitCache(attr(parent)),uid:[...new Set([...children(parent),values.uid])]
       })}).where('uid','=',parent.uid).where('type','=','group').execute();
@@ -609,12 +654,12 @@ export async function saveKeywordItem(db,scope,values,{
       parent=await findContainingGroup(trx,scope,values.uid);
       await trx.updateTable(table).set({
         title:asNodeText(values.name),description:values.desc,
-        attr:JSON.stringify({...removeLegacyKeywordHitCache(attr(old)),keyword:words})
+        attr:JSON.stringify({uid:patterns.links,total:0}),num:patterns.links.length
       }).where('uid','=',values.uid).where('type','=','item').execute();
     }
     const classUid=await classContainingGroup(trx,scope,parent.uid);
     await invalidateKeywordTreeClass(trx,scope,classUid);
-    return {uid:values.uid,classUid,created:0,linked:0};
+    return {uid:values.uid,classUid,created:patterns.created,linked:patterns.links.length};
   });
 }
 
@@ -622,6 +667,7 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
   checkScope(scope);if(!UID.test(String(itemUid||'')))fail('Invalid Item UID');
   return db.transaction().execute(async trx=>{
     await authorizeTransaction(trx);
+    await lockKeywordVocabulary(trx,scope);
     const table=anchorName(scope);
     const item=await trx.selectFrom(table).select(['uid','type'])
       .where('uid','=',itemUid).forUpdate().executeTakeFirst();
@@ -631,9 +677,10 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
     await trx.updateTable(table).set({attr:JSON.stringify({
       ...removeLegacyKeywordHitCache(attr(parent)),uid:children(parent).filter(uid=>uid!==itemUid)
     })}).where('uid','=',parent.uid).execute();
+    const patterns=await reconcileItemPatterns(trx,scope,itemUid,null,[]);
     await trx.deleteFrom(table).where('uid','=',itemUid).where('type','=','item').execute();
     await invalidateKeywordTreeClass(trx,scope,classUid);
-    return {uid:itemUid,removed:0};
+    return {uid:itemUid,removed:patterns.removed};
   });
 }
 // Class sharing is one read-modify-write transaction, not a page SELECT
