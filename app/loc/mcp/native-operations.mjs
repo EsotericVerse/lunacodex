@@ -18,7 +18,7 @@ import {bindLocAuthorization,canLocAccess} from '../providers/loc-authorization.
 import {executeManagedKyselyWrite,executeManagedKyselyAction,
   prepareManagedKyselyWrite} from '../providers/kysely-management.mjs';
 import {executeCrossEngineManagedWrite} from '../providers/sql-engine-ports.mjs';
-import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from './native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../db/native-kysely.mjs';
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';

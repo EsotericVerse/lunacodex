@@ -9,7 +9,7 @@ description: "LOC 的 MCP 相鄰業務介面及可攜式資料服務；只檢查
 LOC 此 Skill 的用途只限 **LAS 使用 LOC 資料服務的業務契約**：
 - `functions/api/las-native.js`：LAS 專用的固定業務 API，不接受任意 SQL、DB URL、任意代理目的地或隱性權限授予。
 - `functions/api/loc-native.js`、`app/loc/mcp/native-operations.mjs`：LOC Scope／`api.manage`／Galaxy／Anchor、匯入、查詢及 SQL Portable 的實際業務授權與資料操作。沿用仍存在的歷史目錄，不依名稱判定責任。
-- `app/loc/mcp/native-kysely.mjs` 與 LOC dialect／Z-Model：屬 LOC 資料來源；LAS 不接管 DB，也不複製一份。
+- `app/loc/db/native-kysely.mjs` 與 LOC dialect／Z-Model：屬 LOC 資料來源；LAS 不接管 DB，也不複製一份。
 
 工作方式：先驗證 LAS 對 LOC 的固定 operation、OAuth issuer／audience、UserInfo 身份綁定、Scope 權限、出入參數、錯誤／回執及 SQL 方言；遇到真正的 MCP 傳輸、tools/list、Provider 或 Extension 變更，移至 LAS Repo 與其 `mcp-builder`／`mcp-gateway` Skill 處理。LOC 不重建 `functions/mcp.js`、`functions/index.js` 或 `/.well-known/oauth-protected-resource*`，不再開平行的 Worker。
 

@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {testLocAuthConnection} from '../app/loc/db/native-connectivity-check.mjs';
 import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
-import {closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from '../app/loc/mcp/native-kysely.mjs';
+import {closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from '../app/loc/db/native-kysely.mjs';
 
 const body=async response=>JSON.parse(await response.text());
 

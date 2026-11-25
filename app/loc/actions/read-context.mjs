@@ -1,6 +1,6 @@
 import {headers} from 'next/headers.js';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
-import {directMcpKysely,closeLocDatabase} from '../mcp/native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase} from '../db/native-kysely.mjs';
 import {bindLocAuthorization} from '../providers/loc-authorization.mjs';
 import {publishedLocAccess} from '../permissions/loc-business-grants.mjs';
 import {verifiedLocWebsiteSession} from '../auth/verified-session.mjs';

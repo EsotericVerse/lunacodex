@@ -3,7 +3,7 @@
 // review generated files, commit and deploy normally (no build-time SQL).
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {directMcpKysely,closeLocDatabase} from '../app/loc/mcp/native-kysely.mjs';
+import {directMcpKysely,closeLocDatabase} from '../app/loc/db/native-kysely.mjs';
 import {portableRelation} from '../app/loc/providers/sql-engine-ports.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';

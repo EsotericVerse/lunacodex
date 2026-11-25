@@ -6,7 +6,7 @@ import {normalizeSqlDriverAuthentication,sqlAuthNeedsUserPassword}
   from '../app/loc/providers/sql-driver-auth.mjs';
 import {getSqlType} from '../modules/loc/dialect/index.mjs';
 import {db_connection}
-  from '../app/loc/mcp/native-kysely.mjs';
+  from '../app/loc/db/native-kysely.mjs';
 
 const profile=(engine='postgres')=>({
   engine,host:'database.example.org',port:5433,database:'loc_docs',

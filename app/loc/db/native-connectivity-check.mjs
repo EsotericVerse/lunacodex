@@ -1,7 +1,7 @@
 // Read-only connectivity check for the native PostgreSQL driver.
 // Reuses LOC's Kysely/pg.Client transport and server LOC_DATABASE_URI.
 // No credentials, SQL input, target selection or arbitrary parameters exposed.
-import {db_connection,closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from '../mcp/native-kysely.mjs';
+import {db_connection,closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from './native-kysely.mjs';
 
 const json=(body,status=200)=>new Response(JSON.stringify(body),{
   status,headers:{'content-type':'application/json; charset=utf-8',
