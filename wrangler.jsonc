@@ -23,7 +23,8 @@
   },
   "compatibility_flags": [
     "nodejs_compat",
-    "global_fetch_strictly_public"
+    "global_fetch_strictly_public",
+    "global_navigator"
   ],
   "limits": {
     "cpu_ms": 300000
