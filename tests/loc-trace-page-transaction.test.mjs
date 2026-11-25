@@ -1,3 +1,4 @@
+import {planUidDependencyRepair} from '../app/loc/providers/uid-dependency-immer.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {saveTracePageInTransaction}
@@ -69,3 +70,16 @@ test('Trace page fails closed before writing malformed/duplicated UIDs',async()=
   assert.deepEqual(events,[]);
 });
 
+
+test('Trace segment repair keeps endpoint pairs and anchor count',()=>{
+  const plan=planUidDependencyRepair({deletedUid:'POIN0002',
+    deletedTable:'anchor',deletedType:'point',anchorRows:[{
+      uid:'TRAC0001',type:'trace',
+      attr:{point:['POIN0001','POIN0002','POIN0003','POIN0004'],path:[]}
+    }]});
+  assert.equal(plan.anchorUpdates.length,1);
+  assert.deepEqual(plan.anchorUpdates[0].values.attr.point,['POIN0003','POIN0004']);
+  assert.equal(plan.anchorUpdates[0].values.num,2n);
+  assert.deepEqual(plan.anchorUpdates[0].expected.attr.point,
+    ['POIN0001','POIN0002','POIN0003','POIN0004']);
+});

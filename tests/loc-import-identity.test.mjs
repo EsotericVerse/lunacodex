@@ -1,3 +1,4 @@
+import {remapImportUidRelations} from '../app/loc/import/uid-delta.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -217,4 +218,22 @@ test('occupied-time import lookup stays paged, Scope-authorized and exact-time m
   assert.match(panel,/new Date\(Math\.floor\(instant\/1000\)\*1000\)\.toISOString\(\)/);
   assert.match(matcher,/const key=importTimeKey\(row\),milli=importMillisKey\(row\)/);
   assert.match(matcher,/const candidates=\[\.\.\.\(stored\.get\(key\)\?\.values\(\)\|\|\[\]\)\]/);
+});
+
+test('UID alias remapping preserves article content, target order and saved IDs',()=>{
+  const aliases=new Map([['AAAA0001','BBBB0002'],['CCCC0003','BBBB0002']]);
+  const row={uid:'ROWX0001',content:'unchanged long article',
+    source_id:'AAAA0001',ref_id:null,
+    target_id:['AAAA0001','CCCC0003','DDDD0004']};
+  const out=remapImportUidRelations([row],{aliases});
+  assert.deepEqual(out.rows[0].target_id,['BBBB0002','DDDD0004']);
+  assert.equal(out.rows[0].source_id,'BBBB0002');
+  assert.equal(out.rows[0].content,row.content);
+  assert.deepEqual(out.changesByUid.get('ROWX0001').changes,{
+    source_id:'BBBB0002',target_id:['BBBB0002','DDDD0004']
+  });
+  assert.deepEqual(remapImportUidRelations([row]).rows,[row]);
+  assert.throws(()=>remapImportUidRelations([row],{
+    aliases:new Map([['AAAA0001','BBBB0002'],['BBBB0002','AAAA0001']])
+  }),/循環/);
 });

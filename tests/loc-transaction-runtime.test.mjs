@@ -1,11 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildUidScalarRepairQuery,buildUidCaseRepairQuery,buildUidNativeArrayRepairQuery,repairBeforeUidDelete} from '../app/loc/providers/uid-dependency-before-delete.mjs';
-import {planUidDependencyRepair}
-  from '../app/loc/providers/uid-dependency-immer.mjs';
 import {Kysely,PostgresDialect,sql} from 'kysely';
 import {planJsonRecordsetBatches} from '../app/loc/query/query-batch-size.mjs';
-import {remapImportUidRelations} from '../app/loc/import/uid-delta.mjs';
 import {planKyselyUpsertBatches}
   from '../app/loc/providers/kysely-runtime.mjs';
 import {prepareManagedKyselyWrite}
@@ -51,19 +48,6 @@ test('Kysely scalar UID UPDATE compiles bound PK and old-reference predicates',(
     ['AAAA0001','BBBB0002','DELE0001','DELE0001']);
   assert.equal(compiled.parameters.at(-1),'DELE0001');
 });
-test('Trace segment repair keeps endpoint pairs and anchor count',()=>{
-  const plan=planUidDependencyRepair({deletedUid:'POIN0002',
-    deletedTable:'anchor',deletedType:'point',anchorRows:[{
-      uid:'TRAC0001',type:'trace',
-      attr:{point:['POIN0001','POIN0002','POIN0003','POIN0004'],path:[]}
-    }]});
-  assert.equal(plan.anchorUpdates.length,1);
-  assert.deepEqual(plan.anchorUpdates[0].values.attr.point,['POIN0003','POIN0004']);
-  assert.equal(plan.anchorUpdates[0].values.num,2n);
-  assert.deepEqual(plan.anchorUpdates[0].expected.attr.point,
-    ['POIN0001','POIN0002','POIN0003','POIN0004']);
-});
-
 test('native target UID ARRAY update retains every old-value CAS predicate',()=>{
   const db=new Kysely({dialect:new PostgresDialect({pool:{
     connect:async()=>{throw Error('compile-only');}
@@ -111,23 +95,6 @@ test('row-specific Anchor JSON CASE preserves num and full original attr CAS',()
   assert.ok(compiled.parameters.includes(2n));
   assert.ok(compiled.parameters.includes(JSON.stringify(items[0].expected.attr)));
   assert.ok(compiled.parameters.includes(JSON.stringify(items[1].expected.attr)));
-});
-test('UID alias remapping preserves article content, target order and saved IDs',()=>{
-  const aliases=new Map([['AAAA0001','BBBB0002'],['CCCC0003','BBBB0002']]);
-  const row={uid:'ROWX0001',content:'unchanged long article',
-    source_id:'AAAA0001',ref_id:null,
-    target_id:['AAAA0001','CCCC0003','DDDD0004']};
-  const out=remapImportUidRelations([row],{aliases});
-  assert.deepEqual(out.rows[0].target_id,['BBBB0002','DDDD0004']);
-  assert.equal(out.rows[0].source_id,'BBBB0002');
-  assert.equal(out.rows[0].content,row.content);
-  assert.deepEqual(out.changesByUid.get('ROWX0001').changes,{
-    source_id:'BBBB0002',target_id:['BBBB0002','DDDD0004']
-  });
-  assert.deepEqual(remapImportUidRelations([row]).rows,[row]);
-  assert.throws(()=>remapImportUidRelations([row],{
-    aliases:new Map([['AAAA0001','BBBB0002'],['BBBB0002','AAAA0001']])
-  }),/循環/);
 });
 test('UID delete refuses an incomplete CAS batch with conflict status',async()=>{
   const update=()=>{

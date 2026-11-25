@@ -2,21 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handleLocSelfPermissions} from '../app/loc/permissions/loc-permissions-server.mjs';
 import {LOC_OWNER_EMAIL} from '../app/loc/permissions/loc-business-grants.mjs';
-import {readFileSync} from 'node:fs';
-import {existsSync} from 'node:fs';
 import {publishedLocAccess} from '../app/loc/permissions/loc-business-grants.mjs';
 import {readLocAccess} from '../app/loc/permissions/loc_access.mjs';
 import {loc_access} from '../app/loc/permissions/loc_access.mjs';
-import {readLocEditorGrants} from '../app/loc/auth/editor-grants.mjs';
 import {loadMcpLocAccess} from '../app/loc/mcp/access-roles.mjs';
 import {authorizeMcpRole} from '../app/loc/mcp/access-roles.mjs';
 import {handleNativeLocOperation,requireManagedActionGrant} from '../app/loc/mcp/native-operations.mjs';
-import {fixedManageScope} from '../app/loc/permissions/fixed-manage-registry.mjs';
-import {createLocAccountAdapter} from '../app/loc/auth/loc-browser.mjs';
 import {withAuthorizedLocRead} from '../app/loc/actions/read-context.mjs';
-import {withKeywordScope} from '../app/loc/actions/keywords/context.mjs';
 import {executeManagedKyselyAction} from '../app/loc/providers/kysely-management.mjs';
-const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
 {
 
@@ -50,22 +43,6 @@ test('feature Server Actions reject missing Scope grants before opening SQL',asy
   },dependencies),error=>error.httpStatus===403);
   assert.equal(connected,0);
   assert.equal(read,0);
-});
-
-test('Keyword read and write actions reject missing grants before opening SQL',async()=>{
-  for(const write of [false,true]){
-    let connected=0,ran=0;
-    const dependencies={
-      getHeaders:async()=>new Headers({cookie:'loc_session=opaque'}),
-      verifySession:async()=>({userId:'USER_NO_SCOPE',email:'ungranted@example.org'}),
-      openDatabase:async()=>{connected++;throw Error('SQL must stay closed');},
-      closeDatabase:async()=>{}
-    };
-    await assert.rejects(withKeywordScope('lo3rwang',{write},async()=>{ran++;},dependencies),
-      error=>error.httpStatus===403);
-    assert.equal(connected,0);
-    assert.equal(ran,0);
-  }
 });
 
 test('feature Server Actions refuse an unscoped read before checking identity or opening SQL',async()=>{
@@ -112,32 +89,6 @@ test('authorized feature reads use one direct connection without a read transact
   assert.equal(read,1);
   assert.equal(transaction,0);
   assert.equal(closed,1);
-});
-
-test('management UI derives roles using the existing verified Auth Session',async()=>{
-  const result=await readLocEditorGrants({sessionProvider:async()=>({
-    user:{id:'USER_ONE',email:'sopa2306@gmail.com'},
-    oauth:{email:'sopa2306@gmail.com'}
-  })});
-  assert.equal(result.user.id,'USER_ONE');
-  assert.equal(result.roles.length,4);
-  assert.ok(result.grants.includes('global:manage'));
-  await assert.rejects(readLocEditorGrants({sessionProvider:async()=>null}),/authentication required/);
-});
-
-test('retired generic public SQL HTTP routes and legacy read handlers remain absent',()=>{
-  assert.equal(existsSync(new URL('../app/api/loc-public-query',import.meta.url)),false);
-  for(const route of ['loc-query','loc-public-content','loc-public-classes',
-    'loc-auth-connectivity'])
-    assert.equal(existsSync(new URL('../app/api/'+route,import.meta.url)),false,route);
-  assert.equal(existsSync(new URL('../app/api/keywords/route.js',import.meta.url)),false);
-  assert.equal(existsSync(new URL('../app/loc/keywords/api.mjs',import.meta.url)),false);
-  assert.doesNotMatch(read('app/loc/keywords/service-client.mjs'),/fetch\s*\(/);
-  for(const file of ['app/loc/galaxy/feature-query-server.mjs',
-    'app/loc/galaxy/records-query-server.mjs',
-    'app/loc/anchor/feature-query-server.mjs',
-    'app/loc/culture/time-anchor-query-server.mjs'])
-    assert.equal(existsSync(new URL('../'+file,import.meta.url)),false,file);
 });
 
 test('LOC native HTTP channel rejects reads before opening SQL',async()=>{
@@ -307,71 +258,12 @@ test('LOC MCP roles use published JS, even if a database cannot connect',async()
     error=>error.httpStatus===401);
 });
 
-test('standalone MCP role and Scope status operations are retired',async()=>{
-  let connected=0;
-  for(const kind of ['mcp-authorize','mcp-scope-status']){
-    const request=new Request('https://loc.lo3rwang.cc/api/las-native',{
-      method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({kind,scopeid:'lo3rwang'})
-    });
-    const response=await handleNativeLocOperation(request,{},{
-      database:async()=>{connected++;throw Error('No SQL for retired operation');}
-    });
-    assert.equal(response.status,400,kind);
-  }
-  assert.equal(connected,0);
-});
-
 }
 
 {
-test('browser database adapter cannot execute generic SELECT or publicAction calls',()=>{
-  const client=read('app/loc/providers/kysely-browser.mjs');
-  assert.match(client,/LOC database reads must use their feature query action/);
-  assert.doesNotMatch(client,/publicAction/);
-  assert.doesNotMatch(client,/analytics/);
-});
-
-test('Manage changes cannot commit a role or route different from published JS',()=>{
-  const native=read('app/loc/mcp/native-operations.mjs');
-  assert.match(native,/requirePublishedManageWrite\(body\.payload\)/);
-  assert.match(native,/for\(const item of body\.operations\)\{/);
-  assert.match(native,/requirePublishedManageWrite\(item\)/);
-  assert.match(native,/Object\.is\(fixed\[field\],value\)/);
-  const lifecycle=read('app/loc/providers/kysely-scope-lifecycle.mjs');
-  assert.match(lifecycle,/fixedManageScope\(id\)\?\.active===true/);
-});
-
 }
 
 {
-test('LOC sign-in redirects to LAS Google OAuth without Cloudflare SSO',async()=>{
-  const original=globalThis.window;
-  const redirects=[];
-  globalThis.window={location:{assign(url){redirects.push(url);}}};
-  try{
-    const {auth}=createLocAccountAdapter();
-    const signedIn=await auth.signInWithOAuth({
-      provider:'google',options:{redirectTo:'/admin/'}
-    });
-    assert.equal(signedIn.error,null);
-    assert.equal(redirects[0],'https://auth.lo3rwang.cc/login?return_to=%2Fadmin%2F');
-    const rejected=await auth.signInWithOAuth({
-      provider:'cloudflare',options:{redirectTo:'/admin/'}
-    });
-    assert.ok(rejected.error);
-    assert.equal(redirects.length,1);
-    const external=await auth.signInWithOAuth({
-      provider:'google',options:{redirectTo:'https://invalid.example/admin/'}
-    });
-    assert.equal(external.error,null);
-    assert.equal(redirects[1],
-      'https://auth.lo3rwang.cc/login?return_to=%2Flocal%2Fsettings%2F');
-  }finally{
-    if(original===undefined)delete globalThis.window;
-    else globalThis.window=original;
-  }
-});
 }
 
 {

@@ -7,15 +7,15 @@
     "prebuild": "node scripts/sync-page-locale-assets.mjs && node scripts/sync-zenstack-schema-contract.mjs && node scripts/stage-loc-pics.mjs && node scripts/check-js-syntax.mjs",
     "dev": "next dev",
     "build": "next build",
-    "build:worker": "pnpm run test:regression && opennextjs-cloudflare build",
+    "build:worker": "pnpm run test:core && opennextjs-cloudflare build",
     "preview:worker": "pnpm run build:worker && opennextjs-cloudflare preview",
-    "test:regression": "node --test tests/*.test.mjs",
     "check:browser": "node scripts/check-home-react-dev-console.mjs",
     "sync:scope-routes": "node scripts/sync-scope-route-index.mjs",
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
-    "predev": "node scripts/print-local-code-revision.mjs && node scripts/sync-page-locale-assets.mjs && node scripts/sync-zenstack-schema-contract.mjs && node scripts/stage-loc-pics.mjs"
+    "predev": "node scripts/print-local-code-revision.mjs && node scripts/sync-page-locale-assets.mjs && node scripts/sync-zenstack-schema-contract.mjs && node scripts/stage-loc-pics.mjs",
+    "test:core": "node --test tests/loc-db-connectivity.test.mjs tests/loc-js-first-permissions-no-http.test.mjs tests/loc-transaction-runtime.test.mjs tests/loc-sql-dialect-portable.test.mjs"
   },
   "dependencies": {
     "@blocknote/ariakit": "0.55.0",

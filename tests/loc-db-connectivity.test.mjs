@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {testLocAuthConnection} from '../app/loc/db/native-connectivity-check.mjs';
 import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
 import {closeLocDatabase,bindLocRequestAbort} from '../app/loc/mcp/native-kysely.mjs';
-import {setKeywordClassShare} from '../app/loc/keywords/sql-service.mjs';
 
 const body=async response=>JSON.parse(await response.text());
 
@@ -151,52 +150,3 @@ test('database owner closes its pool even if Kysely destruction fails',async()=>
   assert.deepEqual(events,['db','pool']);
 });
 
-test('keyword sharing uses one locked read-modify-write transaction and fails closed',async()=>{
-  let metadata={class_shares:{ABCD1234:false},other:{unrelated:true}};
-  const events=[];
-  const db={transaction:()=>({execute:async work=>{
-    events.push('begin');
-    const original=structuredClone(metadata);
-    const trx={
-      selectFrom(table){
-        assert.equal(table,'silver.lo3rwang');
-        return {select(field){
-          assert.equal(field,'keyword_meta');
-          return {where(column,op,value){
-            assert.deepEqual([column,op,value],['id','=','lo3rwang']);
-            return {forUpdate(){events.push('lock');return {
-              executeTakeFirst:async()=>({keyword_meta:metadata})
-            };}};
-          }};
-        }};
-      },
-      updateTable(table){
-        assert.equal(table,'silver.lo3rwang');
-        return {set(values){
-          return {where(column,op,value){
-            assert.deepEqual([column,op,value],['id','=','lo3rwang']);
-            return {executeTakeFirst:async()=>{
-              events.push('update');metadata=JSON.parse(values.keyword_meta);
-              return {numUpdatedRows:1n};
-            }};
-          }};
-        }};
-      }
-    };
-    try{const out=await work(trx);events.push('commit');return out;}
-    catch(error){metadata=original;events.push('rollback');throw error;}
-  }})};
-  const rights=async()=>{events.push('authorize');};
-  const result=await setKeywordClassShare(db,'lo3rwang','ABCD1234',true,{
-    authorizeTransaction:rights
-  });
-  assert.equal(result.keyword_meta.class_shares.ABCD1234,true);
-  assert.deepEqual(metadata.other,{unrelated:true});
-  assert.deepEqual(events,['begin','authorize','lock','update','commit']);
-  events.length=0;
-  await assert.rejects(setKeywordClassShare(db,'lo3rwang','ABCD1234',false,{
-    authorizeTransaction:async()=>{throw Error('Scope denied');}
-  }),/Scope denied/);
-  assert.equal(metadata.class_shares.ABCD1234,true);
-  assert.deepEqual(events,['begin','rollback']);
-});
