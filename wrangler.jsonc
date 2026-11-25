@@ -8,7 +8,7 @@
       {
         "binding": "LOC_HYPERDRIVE",
         "id": "4305ed11e9f841b7ac0d19e7daecaf9a",
-      "localConnectionString": "postgresql://loc_local:loc_local@127.0.0.1:1/loc_local"
+        "localConnectionString": "postgresql://loc_local:loc_local@127.0.0.1:1/loc_local"
       }
     ],
     "r2_buckets": [
@@ -45,6 +45,7 @@
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
+    "html_handling": "none",
     "run_worker_first": [
       "/pics/LOC-PicAll.webp",
       "/pics/LOC-PicAll_s.webp",
@@ -57,7 +58,7 @@
       "/pics/LOC-search.jpg"
     ]
   },
-  // OpenNext deploy initializes Wrangler\'s local platform proxy before upload.
+  // OpenNext deploy initializes Wrangler's local platform proxy before upload.
   // Loopback is intentionally unreachable; real local dev overrides it via
   // CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_LOC_HYPERDRIVE.
   // Deployed Workers use the Hyperdrive ID, never this local URL.
@@ -65,7 +66,7 @@
     {
       "binding": "LOC_HYPERDRIVE",
       "id": "4305ed11e9f841b7ac0d19e7daecaf9a",
-        "localConnectionString": "postgresql://loc_local:loc_local@127.0.0.1:1/loc_local"
+      "localConnectionString": "postgresql://loc_local:loc_local@127.0.0.1:1/loc_local"
     }
   ],
   "r2_buckets": [
