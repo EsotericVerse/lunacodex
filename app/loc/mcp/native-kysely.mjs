@@ -27,13 +27,19 @@ function mainUri(env){
   return value;
 }
 // OpenNext server actions pass process.env, which cannot carry object bindings.
-export async function locHyperdriveBinding(env={}){
-  const isCloudflareWorkers=Boolean(process.versions?.workerd)||
-    globalThis.navigator?.userAgent==='Cloudflare-Workers';
+export async function locHyperdriveBinding(env={},{
+  isCloudflareWorkers=Boolean(process.versions?.workerd)||
+    globalThis.navigator?.userAgent==='Cloudflare-Workers',
+  getContext=getCloudflareContext
+}={}){
   let binding=env?.LOC_HYPERDRIVE||null;
   if(!binding&&isCloudflareWorkers){
-    try{binding=(await getCloudflareContext({async:true})).env?.LOC_HYPERDRIVE||null;}
-    catch{/* Local Next.js and non-Worker callers use LOC_DATABASE_URI. */}
+    let context;
+    try{context=await getContext({async:true});}
+    catch{throw unavailable('LOC Hyperdrive request context unavailable');}
+    binding=context?.env?.LOC_HYPERDRIVE||null;
+    if(!binding)
+      throw unavailable('LOC_HYPERDRIVE binding unavailable in Cloudflare Worker');
   }
   if(!binding)return null;
   const uri=binding?.connectionString;
