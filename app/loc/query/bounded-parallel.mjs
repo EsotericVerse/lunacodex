@@ -1,9 +1,17 @@
-// Execute independent reads in a small fixed-width pool, preserving input order.
-// This caps a single JS runtime, not all browser tabs or Edge isolates.
-export const MAX_MULTIPARA=10;
+import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
+
+// Execute independent units in the same bounded lane budget used by SQL
+// chunk reads. The active database pool provides the wider process/runtime cap.
+export const MAX_MULTIPARA=SQL_WORKLOAD_POLICY.maxParallelChunks;
 // Stop scheduling new work after an error and settle the already started lanes.
-export async function mapBounded(items,limit,worker,{onCheckpoint=null,signal=null,slowMs=650}={}){
-  if(!Number.isSafeInteger(limit)||limit<1)throw new RangeError('Invalid concurrency limit');
+export async function mapBounded(items,limitOrWorker,workerOrOptions={},options={}){
+  const dynamic=typeof limitOrWorker==='function';
+  const worker=dynamic?limitOrWorker:workerOrOptions;
+  const settings=dynamic?workerOrOptions:options;
+  const requested=dynamic?MAX_MULTIPARA:limitOrWorker;
+  if(typeof worker!=='function'||!Number.isSafeInteger(requested)||requested<1)
+    throw new RangeError('Invalid bounded workload configuration');
+  const {onCheckpoint=null,signal=null,slowMs=650}=settings||{};
   const input=Array.from(items||[]),results=new Array(input.length);
   let next=0,failed=false,failure;
   // Only existing independent units count as progress. Fast or single-unit
@@ -28,7 +36,7 @@ export async function mapBounded(items,limit,worker,{onCheckpoint=null,signal=nu
       catch(error){failed=true;failure=error;return;}
     }
   };
-  try{await Promise.all(Array.from({length:Math.min(limit,MAX_MULTIPARA,input.length)},lane));}
+  try{await Promise.all(Array.from({length:Math.min(requested,MAX_MULTIPARA,input.length)},lane));}
   finally{finished=true;if(timer!==null)clearTimeout(timer);}
   if(failed)throw failure;
   return results;

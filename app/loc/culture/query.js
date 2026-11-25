@@ -323,7 +323,7 @@ export async function selectLocCultureDensity({
       (startDate||!intersectionWindows.length||intersectionWindows.some(shared=>
         day>=shared.startDate&&day<=shared.endDate));
   };
-  const aggregateRows=(await mapBounded(scopes,2,async scope=>{
+  const aggregateRows=(await mapBounded(scopes,async scope=>{
     const {text}=await selectScopeDailyCounts(scope,{
       startDate:start,endDate:end,requireAggregate:true
     });
@@ -655,7 +655,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     const oldCursors=cursor?.intervalCursors||[];
     // Preserve one cursor per disjoint window, but bound simultaneous COUNT
     // and page queries when a saved era contains many independent periods.
-    const pages=await mapBounded(windows,2,(window,i)=>
+    const pages=await mapBounded(windows,(window,i)=>
       selectScopePeriodWorkIndex(scope,{
         ...common,...window,cursor:oldCursors[i]||null,periodRanges:null
       }));

@@ -40,7 +40,7 @@ export default function LocMemberIntersection({
     queryKey:['loc-member-cross',startDate,endDate,chosenIds.join('|')],
     enabled:Boolean(loadGalaxyStatistics&&startDate&&endDate&&chosenIds.length),
     queryFn:async()=>{
-      const pairs=await mapBounded(chosenIds,3,async id=>{
+      const pairs=await mapBounded(chosenIds,async id=>{
         // Only the Scopes chosen in the lanes are read, and only now that the panel is open.
         const scope=scopes.find(item=>item.id===id);
         const rows=scope

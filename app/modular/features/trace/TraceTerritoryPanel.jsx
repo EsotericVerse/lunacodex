@@ -46,7 +46,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
     enabled:scopes.length>0&&(scopeId!=='loc'||scopeQuery.data!==undefined),
     queryFn:async({signal})=>{
       setTerritoryCheckpoint(null);
-      return (await mapBounded(scopes,2,async scope=>{
+      return (await mapBounded(scopes,async scope=>{
         const {queryTrace}=await import('../../../loc/actions/trace/queries.mjs');
         const {data}=await queryTrace({
           p_scope_id:scope,p_view:'trace_territory',
@@ -69,7 +69,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
     queryKey:['trace-territory-coordinates-v1',year,scopeId,
       ...pointGroups.map(group=>group.scope+':'+group.ids.join(','))],
     enabled:totalsQuery.data!==undefined&&pointGroups.length>0,
-    queryFn:async()=>(await mapBounded(pointGroups,2,group=>
+    queryFn:async()=>(await mapBounded(pointGroups,group=>
       readCurrentTraceAnchors(group.scope,group.ids))).flat(),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });

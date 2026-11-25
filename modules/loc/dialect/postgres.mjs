@@ -1,6 +1,7 @@
 // PostgreSQL SQL Type. Selected explicitly by a trusted engine='postgres'.
 // No detection, alternate-database probing or fallback to a different driver.
 import {PostgresDialect} from 'kysely';
+import {SQL_WORKLOAD_POLICY} from './sql-workload-policy.mjs';
 
 export const POSTGRES_SQL_TYPE=Object.freeze({
   id:'postgres',label:'PostgreSQL',dialect:'PostgresDialect',driver:'pg',
@@ -32,11 +33,7 @@ export function postgresMutationReturning(query,req){
 // requests, these pile up faster than they are reclaimed and exhaust the
 // connection ceiling, surfacing as unrelated-looking 503s elsewhere.
 // `waitUntil` (from the Cloudflare request context) tells the platform to
-// keep the isolate alive until the close actually finishes. The pool
-// object can be reused across requests when the connection is cached by
-// isolate (see db_connection()), so `setWaitUntil` lets each request
-// update which `waitUntil` `release()` uses, instead of a stale one
-// captured by whichever request first built this pool.
+// keep the isolate alive until this request's socket close actually finishes.
 // Any serverless/pooled Postgres provider (Neon, Aurora Serverless v2, etc)
 // can momentarily fail a brand-new connection: a suspended compute waking
 // up, a pooler briefly out of free slots, a transient network blip. None of
@@ -50,6 +47,40 @@ export function postgresMutationReturning(query,req){
 const NON_RETRYABLE_CONNECTION_CODES=new Set([
   '28P01','28000','3D000','3F000','42501','ENOTFOUND'
 ]);
+// Request pools are short-lived, but concurrent requests in the same Worker
+// isolate share this socket budget. A separate per-request cap prevents one
+// adaptive scan from taking every lane. The database-side pooler remains the
+// aggregate limit across distinct isolates.
+let runtimeActive=0;
+const connectionWaiters=[];
+function dispatchConnectionWaiters(){
+  while(runtimeActive<SQL_WORKLOAD_POLICY.workerRuntimeMaxConnections&&
+      connectionWaiters.length){
+    const index=connectionWaiters.findIndex(waiter=>
+      waiter.pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections);
+    if(index<0)return;
+    const [waiter]=connectionWaiters.splice(index,1);
+    if(waiter.pool.ended){
+      waiter.reject(new Error('LOC request database connection already closed'));
+      continue;
+    }
+    waiter.pool.active++;
+    runtimeActive++;
+    waiter.resolve();
+  }
+}
+function acquireRuntimeConnection(pool){
+  if(pool.ended)return Promise.reject(
+    new Error('LOC request database connection already closed'));
+  return new Promise((resolve,reject)=>{
+    connectionWaiters.push({pool,resolve,reject});
+    dispatchConnectionWaiters();
+  });
+}
+function releaseRuntimeConnection(pool){
+  if(pool.active>0){pool.active--;runtimeActive=Math.max(0,runtimeActive-1);}
+  dispatchConnectionWaiters();
+}
 export function requestScopedPostgresPool(options,ClientClass,{
   attempts=7,baseDelayMs=350,maxDelayMs=1400,
   maxElapsedMs=6000,attemptTimeoutMs=1500,
@@ -58,18 +89,24 @@ export function requestScopedPostgresPool(options,ClientClass,{
 }={}){
   let currentWaitUntil=null;
   let ended=false;
+  const poolState={active:0,ended:false};
   const acquired=new Set();
   const connecting=new Set();
   const closing=new Map();
   const closed=new WeakSet();
+  const leased=new WeakSet();
   function close(client){
     if(closing.has(client))return closing.get(client);
     if(closed.has(client))return Promise.resolve();
     closed.add(client);
+    const ownsLease=leased.delete(client);
     acquired.delete(client);
     connecting.delete(client);
     const task=Promise.resolve().then(()=>client.end?.()).catch(()=>{})
-      .finally(()=>closing.delete(client));
+      .finally(()=>{
+        closing.delete(client);
+        if(ownsLease)releaseRuntimeConnection(poolState);
+      });
     closing.set(client,task);
     return task;
   }
@@ -83,9 +120,11 @@ export function requestScopedPostgresPool(options,ClientClass,{
     setWaitUntil(fn){currentWaitUntil=typeof fn==='function'?fn:null;},
     async connect(){
       if(ended)throw new Error('LOC request database connection already closed');
+      await acquireRuntimeConnection(poolState);
+      let clientOwnsPermit=false;
       let lastError;
       const started=now();
-      for(let attempt=1;attempt<=attempts;attempt++){
+      try{for(let attempt=1;attempt<=attempts;attempt++){
         if(ended)throw new Error('LOC request database connection already closed');
         const remaining=maxElapsedMs-(now()-started);
         if(remaining<=0)break;
@@ -107,6 +146,8 @@ export function requestScopedPostgresPool(options,ClientClass,{
             throw new Error('LOC request database connection already closed');
           }
           acquired.add(client);
+          leased.add(client);
+          clientOwnsPermit=true;
           client.release=()=>release(client);
           return client;
         }catch(error){
@@ -128,9 +169,20 @@ export function requestScopedPostgresPool(options,ClientClass,{
         }
       }
       throw lastError||new Error('LOC database connection retry budget exhausted');
+      }finally{
+        // A successful client owns the permit until its request-scoped close.
+        if(!clientOwnsPermit)releaseRuntimeConnection(poolState);
+      }
     },
     async end(){
       ended=true;
+      poolState.ended=true;
+      for(let index=connectionWaiters.length-1;index>=0;index--){
+        if(connectionWaiters[index].pool===poolState){
+          const [waiter]=connectionWaiters.splice(index,1);
+          waiter.reject(new Error('LOC request database connection already closed'));
+        }
+      }
       await Promise.all([
         ...[...acquired,...connecting].map(close),
         ...closing.values()

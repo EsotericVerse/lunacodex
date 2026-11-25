@@ -1,4 +1,5 @@
 // Runtime I/O settings configure file sizes only. SQL reads and COUNTs do not have configurable row ceilings.
+import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
 const MiB=1048576;
 export const IO_LIMIT_CEILINGS=Object.freeze({
   archiveMiB:1024,jsonMiB:50,documentMiB:128,timelineMiB:200
@@ -10,11 +11,12 @@ export const IO_LIMIT_CEILINGS=Object.freeze({
 // bind-parameter ceilings remain in their respective dialect adapters.
 export const SQL_BATCH_POLICY=Object.freeze({
   returnRows:2048,
+  sqlChunkRows:SQL_WORKLOAD_POLICY.chunkRows,
   articleUidRows:100,
   heavyStartRows:256,
-  heavyMaxRows:10000,
-  timeAnchorMaxRows:20000,
-  keywordDiscoveryMaxRows:20000,
+  heavyMaxRows:SQL_WORKLOAD_POLICY.chunkRows,
+  timeAnchorMaxRows:SQL_WORKLOAD_POLICY.chunkRows,
+  keywordDiscoveryMaxRows:SQL_WORKLOAD_POLICY.chunkRows,
   keywordDiscoveryTargetBytes:2*1024*1024,
   textTargetChars:1024*1024,
   keywordWorkerTargetChars:128*1024,
@@ -26,7 +28,7 @@ export const SQL_BATCH_POLICY=Object.freeze({
 });
 export const MAX_ROWS=SQL_BATCH_POLICY.returnRows;
 export const NORMAL_QUERY_ROWS=SQL_BATCH_POLICY.returnRows;
-export const DB_QUERY_BATCH_SIZE=SQL_BATCH_POLICY.returnRows;
+export const DB_QUERY_BATCH_SIZE=SQL_BATCH_POLICY.sqlChunkRows;
 export const ARTICLE_UID_PAGE_ROWS=SQL_BATCH_POLICY.articleUidRows;
 export const HEAVY_INITIAL_ROWS=SQL_BATCH_POLICY.heavyStartRows;
 export const HEAVY_QUERY_ROWS=SQL_BATCH_POLICY.heavyMaxRows;

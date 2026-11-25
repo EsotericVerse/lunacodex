@@ -131,7 +131,7 @@ export async function readTraceData(scopeId,{includeHidden=false}={}){
 }
 export async function readTraceMapIndex(scopeId,{nativeOnly=false,includeHidden=false}={}){
   const id=idScope(scopeId);
-  if(id==='loc')return mapBounded(await groupTraceSources(),3,
+  if(id==='loc')return mapBounded(await groupTraceSources(),
     source=>readTraceMapIndex(source,{includeHidden})).then(groups=>groups.flat());
   return readPages(id,{columns:'uid,trace_type,title,description,anchor_list,route_list,invisible',types:['path','trace'],nativeOnly,includeHidden})
     .then(rows=>rows.filter(row=>row.trace_type==='path'||row.trace_type==='trace'));
@@ -146,7 +146,7 @@ export async function readCurrentTraceAnchors(scopeId,anchorUids=[],{includeHidd
   if(!ids.length)return [];
   if(ids.length>800)throw Error('地點數量超過上限');
   const pages=await mapBounded(Array.from({length:Math.ceil(ids.length/100)},
-    (_,index)=>ids.slice(index*100,index*100+100)),3,
+    (_,index)=>ids.slice(index*100,index*100+100)),
     async uids=>(await readAnchorFeature({
       scope:id,family:'space',types:['point'],uids,limit:100
     },{editor:includeHidden})).rows);
@@ -158,7 +158,7 @@ export async function readAllTraceAnchors(scopeId,{nativeOnly=false,includeHidde
   const id=idScope(scopeId);
   if(id==='loc'){
     // No LOC materialized Trace table: keep source Scope ownership and RLS intact.
-    const sources=await mapBounded(await groupTraceSources(),3,source=>
+    const sources=await mapBounded(await groupTraceSources(),source=>
       readPages(source,{filter:'space_anchor',includeHidden}));
     return sources.flat();
   }

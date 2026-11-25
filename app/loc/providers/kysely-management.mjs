@@ -1,4 +1,5 @@
 import {TIME_ANCHOR_MAX_PAGE_ROWS,planJsonRecordsetBatches} from '../query/query-batch-size.mjs';
+import {readAdaptiveSqlPages} from '../query/adaptive-sql-read.mjs';
 // CURRENT management pipeline: verified LOC Web grant -> pure ZModel/row
 // preflight -> Kysely transaction -> Scope authorization and atomic SQL.
 // Historical RPC/legacy payload helpers are not independent authorities;
@@ -1315,22 +1316,59 @@ async function importSharedKeywordClass(trx,args){
 
 export async function findGalaxyDuplicates(trx,args){
   const scope=await scopedWrite(trx,args.p_scope_id);
-  const galaxy=sql.ref('silver.'+scope+'_galaxy');
-  const result=await sql`select site,createtime,count(*)::integer as dup_count,
-      array_agg(uid::text order by "UpdateTime" desc nulls last) as uids,
-      array_agg(title::text order by "UpdateTime" desc nulls last) as titles,
-      array_agg("UpdateTime" order by "UpdateTime" desc nulls last) as update_times,
-      array_agg((content ~ E'[\\r\\n]' or content ~ E'\\\\[nrt]')
-        order by "UpdateTime" desc nulls last) as newline_flags
-    from ${galaxy}
-    where createtime is not null and content is not null and content<>''
-    group by site,createtime,
-      regexp_replace(content,E'[\\s\\\\]|\\\\[nrt]','','g')
-    having count(*)>1 order by createtime`.execute(trx);
-  return result.rows.map(group=>({
-    site:group.site,createtime:group.createtime,
-    dup_count:Number(group.dup_count),uids:group.uids,
-    titles:group.titles,update_times:group.update_times,
-    newline_flags:group.newline_flags
-  }));
+  const table='silver.'+scope+'_galaxy';
+  const build=()=>trx.selectFrom(table).where('createtime','is not',null)
+    .where('content','is not',null).where('content','!=','');
+  const groups=new Map();
+  await readAdaptiveSqlPages({
+    countRows:async()=>Number((await build()
+      .select(eb=>eb.fn.countAll().as('row_count')).executeTakeFirst())?.row_count||0),
+    fetchPage:({offset,limit})=>build()
+      .select(['site','createtime','uid','title','UpdateTime','content'])
+      .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
+    consumePage:async rows=>{
+      if(!globalThis.crypto?.subtle)throw Error('Web Crypto SHA-256 is unavailable');
+      const fingerprints=await mapBounded(rows,async row=>{
+        const normalized=String(row.content||'').replace(/[\s\\]|\\[nrt]/g,'');
+        const digest=await globalThis.crypto.subtle.digest('SHA-256',
+          new TextEncoder().encode(normalized));
+        const fingerprint=Array.from(new Uint8Array(digest),value=>
+          value.toString(16).padStart(2,'0')).join('');
+        return {row:{
+          site:row.site,createtime:row.createtime,uid:row.uid,title:row.title,
+          UpdateTime:row.UpdateTime,
+          newline_flag:/[\r\n]|\\[nrt]/.test(String(row.content||''))
+        },fingerprint};
+      });
+      for(const {row,fingerprint} of fingerprints){
+        const key=JSON.stringify([row.site??null,
+          row.createtime instanceof Date?row.createtime.toISOString():String(row.createtime),
+          fingerprint]);
+        let group=groups.get(key);
+        if(!group){
+          group={site:row.site,createtime:row.createtime,rows:[]};
+          groups.set(key,group);
+        }
+        group.rows.push(row);
+      }
+    }
+  });
+  const updateTime=value=>value==null?null:
+    (value instanceof Date?value:new Date(value)).getTime();
+  const duplicates=[];
+  for(const group of groups.values()){
+    if(group.rows.length<2)continue;
+    group.rows.sort((a,b)=>{
+      const left=updateTime(a.UpdateTime),right=updateTime(b.UpdateTime);
+      if(left===null)return right===null?0:1;
+      if(right===null)return -1;
+      return right-left;
+    });
+    duplicates.push({site:group.site,createtime:group.createtime,
+      dup_count:group.rows.length,uids:group.rows.map(row=>String(row.uid)),
+      titles:group.rows.map(row=>row.title==null?null:String(row.title)),
+      update_times:group.rows.map(row=>row.UpdateTime),
+      newline_flags:group.rows.map(row=>row.newline_flag)});
+  }
+  return duplicates.sort((a,b)=>new Date(a.createtime)-new Date(b.createtime));
 }

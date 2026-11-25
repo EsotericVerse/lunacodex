@@ -212,7 +212,7 @@ async function relatedArticleTitlesFor(scope,row,{includeHidden=false,dbId=''}={
   if(!ids.length)return {};
   const batches=[];
   for(let i=0;i<ids.length;i+=50)batches.push(ids.slice(i,i+50));
-  const pages=await mapBounded(batches,3,async batch=>{
+  const pages=await mapBounded(batches,async batch=>{
     if(dbId)throw Error('Qualified external database reads need the authorized source');
     const {rows}=await readGalaxyRecords({scope:scope.id,view:'list',uids:batch},
       {editor:includeHidden});
@@ -514,7 +514,7 @@ export async function hydrateGalaxySearchRows(entries=[],scopes=[],hiddenScopeId
     batches.get(key).ids.add(uid);
   }
   const metadata=new Map();
-  await mapBounded([...batches.values()],3,async({scope,dbId,ids})=>{
+  await mapBounded([...batches.values()],async({scope,dbId,ids})=>{
     const keys=[...ids];
     if(keys.length>DEFAULT_LIST_BATCH_SIZE)throw new Error('Search page exceeds bounded UID limit');
     if(dbId)throw Error('External qualified record reads need an authorized database source');
@@ -571,7 +571,7 @@ async function scopeDensityRows(scope,{startDate='',endDate=''}={}){
 
 async function selectScopeDensityRowsRaw(scopes,{startDate='',endDate=''}={}){
   const range={startDate:dateOnly(startDate),endDate:dateOnly(endDate)};
-  return (await mapBounded(Array.isArray(scopes)?scopes:[],2,scope=>scopeDensityRows(scope,range)))
+  return (await mapBounded(Array.isArray(scopes)?scopes:[],scope=>scopeDensityRows(scope,range)))
     .flat()
     .sort((a,b)=>a.day.localeCompare(b.day)||a.scope_id.localeCompare(b.scope_id));
 }
@@ -623,7 +623,7 @@ export async function selectScopeSourceBreakdownRows(scope,{startDate='',endDate
 
 export async function selectSourceTrendRows(scopes,{startDate='',endDate=''}={}){
   const range={startDate:dateOnly(startDate),endDate:dateOnly(endDate)};
-  const rows=(await mapBounded(Array.isArray(scopes)?scopes:[],3,scope=>scopeSourceTrendRows(scope,range))).flat();
+  const rows=(await mapBounded(Array.isArray(scopes)?scopes:[],scope=>scopeSourceTrendRows(scope,range))).flat();
   const merged=new Map();
   for(const row of rows){
     const key=row.day+'|'+row.source;

@@ -4,6 +4,7 @@ import {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
 import {MAX_ROWS} from '../query/query-batch-size.mjs';
 import {coalescePendingPublicRead} from '../query/inflight-public-read.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
+import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
 import {transientReadSignal,transientReadGeneration} from '../../../packages/zenstack/transient-read-epoch.mjs';
 import {getOrLoadScopedRead} from '../../../packages/zenstack/scoped-read-cache.mjs';
 export {DB_QUERY_BATCH_SIZE,queryBatchSize} from './db-contract.mjs';
@@ -185,7 +186,8 @@ export function applyOrders(query,orders=[]){
   return query;
 }
 
-export async function selectCount(table,{idColumn,filters=[],orFilter='',source='auto'}={}){
+export async function selectCount(table,{idColumn,filters=[],orFilter='',source='auto',
+  authenticated=false,signal=null,expectedDbId=''}={}){
   if(!/^[a-z][a-z0-9_]*$/i.test(String(idColumn||'')))throw new Error('DB COUNT requires an explicit ID column');
   // HEAD returns a SQL count without loading rows, including tables without uid.
   const request=async()=>{
@@ -194,11 +196,11 @@ export async function selectCount(table,{idColumn,filters=[],orFilter='',source=
       query=applyFilters(query,filters);
       if(orFilter)query=query.or(orFilter);
       return query;
-    },{source});
+    },{source,authenticated,signal,expectedDbId});
     return Number(count)||0;
   };
   // Only anonymous requests without cancellation can share a pending result.
-  if(/^silver\.local(?:_[a-z0-9_]+)?$/.test(table))return request();
+  if(authenticated||signal||expectedDbId||/^silver\.local(?:_[a-z0-9_]+)?$/.test(table))return request();
   return coalescePendingPublicRead(JSON.stringify(['count',table,idColumn,filters,orFilter,source]),request);
 }
 
@@ -249,43 +251,13 @@ export async function selectAllRows(table,{
   onProgress=null,
   signal=null
 }={}){
-  const pageSignal=transientReadSignal(signal);
-  // Default public page scans retain per-epoch query deduplication. An
-  // explicitly supplied AbortSignal keeps independent cancellation behavior.
-  const requestSignal=signal?pageSignal:null;
-  const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
-  // A full-result reader must fetch every row, but it does not need to
-  // execute a separate exact COUNT before reading them. A short page proves
-  // completion; an exact page only requires one more bounded transport read.
-  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,signal:requestSignal});
-  const rows=[...first.rows];
-  const source=first.dataSource||'auto';
-  let offset=rows.length;
-  onProgress?.({completed:offset,total:null});
-  let pageLength=first.rows.length;
-  while(pageLength===size){
-    if(pageSignal.aborted)throw abortError();
-    const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,source,signal:requestSignal});
-    pageLength=page.rows.length;
-    if(!pageLength)break;
-    rows.push(...page.rows);
-    offset+=pageLength;
-    onProgress?.({completed:offset,total:null});
-  }
-  return {rows,count:rows.length,dataSource:source};
+  return selectAllRowsBounded(table,{columns,filters,orFilter,orders,pageSize,
+    signal,onProgress});
 }
 
-// Like selectAllRows, but once the table is bigger than a couple of pages,
-// the remaining pages are fetched concurrently (bounded) instead of queued
-// one after another. A small/medium table (the common case) is read exactly
-// the same sequential way as selectAllRows -- no added connections, no
-// behavior change. Only a genuinely large table (several thousand+ rows)
-// switches to parallel paging, which is what keeps a 20k+ row full scan from
-// accumulating enough sequential round-trips to time out. Supports
-// `authenticated` since this also serves authenticated full-table scans
-// (e.g. UID-allocation reads) that selectAllRows does not cover.
-const PARALLEL_SCAN_AFTER_PAGES=3;
-const PARALLEL_SCAN_CONCURRENCY=4;
+// Exact COUNT chooses the lane count once. Each full-scan page is the shared
+// 10,000-row SQL chunk; small scans use one data query, while larger scans
+// fan out only up to the common lane cap.
 export async function selectAllRowsBounded(table,{
   columns,
   filters=[],
@@ -293,8 +265,9 @@ export async function selectAllRowsBounded(table,{
   orders=[],
   pageSize=DB_QUERY_BATCH_SIZE,
   authenticated=false,
-  parallelAfterPages=PARALLEL_SCAN_AFTER_PAGES,
-  concurrency=PARALLEL_SCAN_CONCURRENCY,
+  source='auto',
+  expectedDbId='',
+  onProgress=null,
   signal=null
 }={}){
   const pageSignal=transientReadSignal(signal);
@@ -302,44 +275,27 @@ export async function selectAllRowsBounded(table,{
   // explicitly supplied AbortSignal keeps independent cancellation behavior.
   const requestSignal=signal?pageSignal:null;
   const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
-  const first=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset:0,count:'exact',authenticated,signal:requestSignal});
-  const rows=[...first.rows];
-  const total=first.count==null||!Number.isSafeInteger(Number(first.count))?null:Number(first.count);
-  if(total===null||rows.length<Math.min(total,size)){
-    // A missing COUNT or unexpectedly short transport page cannot truncate history.
-    let offset=rows.length;
-    while(total===null||offset<total){
-      if(pageSignal.aborted)throw abortError();
-      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,signal:requestSignal});
-      if(!page.rows.length)break;
-      rows.push(...page.rows);offset+=page.rows.length;
-    }
-    return {rows,count:total??rows.length,dataSource:first.dataSource};
-  }
-  if(rows.length>=total)return {rows,count:total,dataSource:first.dataSource};
-  const remainingOffsets=[];
-  for(let offset=rows.length;offset<total;offset+=size)remainingOffsets.push(offset);
-  if(remainingOffsets.length<=parallelAfterPages){
-    let source=first.dataSource||'auto';
-    for(const offset of remainingOffsets){
-      if(pageSignal.aborted)throw abortError();
-      const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,source,signal:requestSignal});
-      rows.push(...page.rows);
-    }
-    return {rows,count:total??rows.length,dataSource:source};
-  }
-  const pages=await mapBounded(remainingOffsets,concurrency,offset=>{
+  const total=await selectCount(table,{idColumn:'uid',filters,orFilter,source,
+    authenticated,signal:requestSignal,expectedDbId});
+  let completed=0;
+  onProgress?.({completed,total});
+  const offsets=[];
+  for(let offset=0;offset<total;offset+=size)offsets.push(offset);
+  const pages=await mapBounded(offsets,async offset=>{
     if(pageSignal.aborted)throw abortError();
-    return selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,authenticated,signal:requestSignal});
+    const page=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,
+      source,authenticated,signal:requestSignal,expectedDbId});
+    completed+=page?.rows?.length||0;
+    onProgress?.({completed,total});
+    return page;
   });
-  for(const page of pages)rows.push(...(page?.rows||[]));
-  return {rows,count:total,dataSource:first.dataSource};
+  return {rows:pages.flatMap(page=>page?.rows||[]),count:total,
+    dataSource:pages[0]?.dataSource||source};
 }
 
-// Streams a full table one offset/limit page at a time. Each page is handed to
-// onPage and then released; nothing accumulates across pages, so peak memory is
-// one page, not the whole table. A short pause between pages keeps the database
-// from being hit by one unbroken scan.
+// Streams a full table in bounded waves. Up to the shared lane cap can be read
+// concurrently, then pages are handed to onPage in offset order and released
+// before the next wave; peak transport memory remains bounded to that wave.
 export const STREAM_PAGE_PAUSE_MS=120;
 export async function forEachAllRowsPage(table,{
   columns,
@@ -352,14 +308,28 @@ export async function forEachAllRowsPage(table,{
 }={},onPage){
   signal=transientReadSignal(signal);
   const size=Math.max(1,Math.floor(Number(pageSize)||queryBatchSize(columns)));
-  let offset=0;
-  for(;;){
+  const total=await selectCount(table,{idColumn:'uid',filters,orFilter});
+  const offsets=[];
+  for(let offset=0;offset<total;offset+=size)offsets.push(offset);
+  let completed=0;
+  const concurrency=Math.min(SQL_WORKLOAD_POLICY.maxParallelChunks,offsets.length);
+  for(let start=0;start<offsets.length;start+=Math.max(1,concurrency)){
     if(signal.aborted)throw abortError();
-    const {rows}=await selectRows(table,{columns,filters,orFilter,orders,limit:size,offset,signal});
-    if(!rows.length)break;
-    await onPage(rows);
-    offset+=rows.length;
-    if(pausePageMs>0)await new Promise(resolve=>setTimeout(resolve,pausePageMs));
+    const wave=offsets.slice(start,start+concurrency);
+    const pages=await mapBounded(wave,offset=>{
+      if(signal.aborted)throw abortError();
+      return selectRows(table,{columns,filters,orFilter,orders,
+        limit:size,offset,signal});
+    },{signal});
+    for(const page of pages){
+      if(signal.aborted)throw abortError();
+      const rows=page?.rows||[];
+      if(!rows.length)continue;
+      await onPage(rows);
+      completed+=rows.length;
+      if(pausePageMs>0&&completed<total)
+        await new Promise(resolve=>setTimeout(resolve,pausePageMs));
+    }
   }
-  return offset;
+  return completed;
 }

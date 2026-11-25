@@ -1,4 +1,5 @@
 import {createTextAdaptiveRows} from '../query/query-batch-size.mjs';
+import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
 // Item-driven LOC keyword classification. No Pattern posting or persisted article UID list.
 import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
 import {keywordScanText} from './content-filter.mjs';
@@ -6,12 +7,12 @@ import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 const count=x=>Math.max(0,Number(x)||0);
 // Full-text Item scans already handle 4096 Galaxy rows per indexed SELECT.
-// The old 1024-row cap made every 4096/8192 checkpoint issue 4-8 SQL reads.
-// Keep the proven 4096-row floor; a compact page can grow to 8192, while the
+// The old 1024-row cap made each checkpoint issue several SQL reads. Keep the
+// 4096-row floor; a compact page can grow to the shared 10k, while the
 // per-request cursor and checkpoints still bound total work. The character
-// budget influences growth, never forces repeated 1024-row SQL requests.
+// budget influences growth, never forces repeated tiny SQL requests.
 export const KEYWORD_SCAN_START_ROWS=4096;
-export const KEYWORD_SCAN_MAX_ROWS=8192;
+export const KEYWORD_SCAN_MAX_ROWS=SQL_WORKLOAD_POLICY.chunkRows;
 export const KEYWORD_SCAN_START_RATE=1024;
 export const KEYWORD_SCAN_MAX_RATE=8192;
 export const KEYWORD_SCAN_RATE_STEP=1024;
@@ -241,8 +242,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
   // the per-second processing budget into artificial 296-row fragments.
   const sizer=createTextAdaptiveRows({
     ...KEYWORD_SCAN_PAGE_OPTIONS,
-    initial:pageSize,maximum:Math.min(KEYWORD_SCAN_START_ROWS,
-      KEYWORD_SCAN_PAGE_OPTIONS.maximum),
+    initial:pageSize,maximum:KEYWORD_SCAN_MAX_ROWS,
     minimum:Math.min(pageSize,KEYWORD_SCAN_START_ROWS)
   });
   const pace=paceRows?createKeywordScanRate({
@@ -395,7 +395,8 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
   return finish();
 }
 export async function readItemKeywordProjection(db,scope,{items,groups,start='',end='',
-  source='',places=null,owner=true,minChars=0,onRow=null}={}){
+  source='',places=null,owner=true,minChars=0,onRow=null,
+  galaxyTable='silver.'+scope+'_galaxy'}={}){
   const a=createItemCountAccumulator(items,groups,null,{minChars});
   let after='';
   const sizer=createTextAdaptiveRows({
@@ -404,7 +405,7 @@ export async function readItemKeywordProjection(db,scope,{items,groups,start='',
   });
   for(;;){
     const requested=sizer.size;
-    let q=db.selectFrom('silver.'+scope+'_galaxy')
+    let q=db.selectFrom(galaxyTable)
       .select(['uid','title','content','keyword','date','site','place_id','createtime'])
       .orderBy('uid','asc').limit(requested);
     if(after)q=q.where('uid','>',after);
