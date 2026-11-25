@@ -18,6 +18,7 @@ import {featureDataErrorMessage} from '../feature-data-state';
 import {useScopeRuntime} from '../use-scope-runtime';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {FeaturePage} from '../ui';
+import {visualColor} from '../visual-palette.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {groupedSourceOutline} from '../../loc/source/outline-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
@@ -634,14 +635,14 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             <h3>{t('uiExtra.statisticsView.dashboardDistributionTitle')}</h3>
           </header>
           {displaySummary.sources.length?<div className="statistics-dashboard__breakdown">
-            {[...displaySummary.sources].sort((a,b)=>b.item_count-a.item_count).slice(0,8).map(row=>{
+            {[...displaySummary.sources].sort((a,b)=>b.item_count-a.item_count).slice(0,8).map((row,index)=>{
               const ratio=sourceBreakdownTotal>0?(Number(row.item_count)||0)/sourceBreakdownTotal*100:0;
               return <div key={row.category||row.term} className="statistics-dashboard__breakdown-item">
                 <div className="statistics-dashboard__breakdown-label">
                   <span title={row.term}>{row.term}</span>
                   <strong>{Number(row.item_count||0).toLocaleString()}</strong>
                 </div>
-                <div className="statistics-dashboard__bar" aria-hidden="true"><span style={{width:ratio+'%'}}/></div>
+                <div className="statistics-dashboard__bar" aria-hidden="true"><span style={{width:ratio+'%',background:visualColor(index)}}/></div>
               </div>;
             })}
           </div>:<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>}

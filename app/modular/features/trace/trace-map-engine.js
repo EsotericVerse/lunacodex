@@ -1,4 +1,5 @@
 import {spaceCoordinates} from './space-graph.mjs';
+import {territoryColors} from '../../visual-palette.mjs';
 // First-party React Trace loads MapLibre from the project's pinned npm package.
 // Public sample anchors are isolated from Galaxy. Deliberate place-search terms
 // go only to the chosen geocoding service; map tiles do not receive article bodies
@@ -119,6 +120,21 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   const controller=new AbortController();
   let removed=false;
   let loaded=false;
+  let themeObserver=null;
+  const densityColors=()=>{
+    const css=getComputedStyle(container);
+    return territoryColors(css.getPropertyValue('--loc-accent'),css.getPropertyValue('--loc-gold'));
+  };
+  const territoryColorExpression=colors=>['interpolate',['linear'],['get','territoryTotal'],
+    0,colors[0],3,colors[1],10,colors[2],30,colors[3],100,colors[4]];
+  const applyDensityTheme=()=>{
+    if(!loaded||removed||!territoryMode)return;
+    const colors=densityColors();
+    if(map.getLayer('loc-trace-territory-halo'))
+      map.setPaintProperty('loc-trace-territory-halo','circle-color',territoryColorExpression(colors));
+    if(map.getLayer('loc-trace-saved-point-layer'))
+      map.setPaintProperty('loc-trace-saved-point-layer','circle-color',territoryColorExpression(colors));
+  };
   let routeActive=false;
   let routeLoading=false;
   // The three example coordinates never change during this map instance.
@@ -412,21 +428,26 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     map.addSource('loc-trace-saved-anchors',{type:'geojson',data:existingAnchorPoints(savedAnchors)});
     if(territoryMode)map.addLayer({id:'loc-trace-territory-halo',type:'circle',
       source:'loc-trace-saved-anchors',paint:{
-        'circle-radius':['step',['get','territoryTotal'],19,3,23,10,29,30,35,100,43],
-        'circle-color':'#ffc979','circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.04,3,.1,10,.18,30,.28,100,.42],
-        'circle-blur':.75,
-        'circle-stroke-width':0
+        'circle-radius':['step',['get','territoryTotal'],15,3,22,10,32,30,43,100,55],
+        'circle-color':territoryColorExpression(densityColors()),
+        'circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.16,3,.25,10,.34,30,.43,100,.52],
+        'circle-blur':.28,
+        'circle-stroke-width':1.5,'circle-stroke-color':'#263542','circle-stroke-opacity':.55,
+        'circle-pitch-alignment':'viewport','circle-pitch-scale':'viewport'
       }});
     map.addLayer({id:'loc-trace-saved-point-layer',type:'circle',source:'loc-trace-saved-anchors',
       paint:territoryMode?{
-        'circle-radius':['step',['get','territoryTotal'],7,3,10,10,14,30,18,100,23],
-        'circle-color':['interpolate',['linear'],['get','territoryTotal'],0,'#987747',3,'#b58e56',10,'#e6b96d',30,'#ffd78b',100,'#fff0bb'],
-        'circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.45,10,.75,100,1],
-        'circle-stroke-width':2,'circle-stroke-color':'#fff4cd'
+        'circle-radius':['step',['get','territoryTotal'],8,3,12,10,17,30,23,100,29],
+        'circle-color':territoryColorExpression(densityColors()),
+        'circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.82,10,.94,100,1],
+        'circle-stroke-width':2.5,'circle-stroke-color':'#263542',
+        'circle-pitch-alignment':'viewport','circle-pitch-scale':'viewport'
       }:{'circle-radius':6,'circle-color':'#6ce4ce','circle-opacity':0.95,
         'circle-stroke-width':1.5,'circle-stroke-color':'#153739'}});
     map.addLayer({id:'loc-trace-saved-point-labels',type:'symbol',source:'loc-trace-saved-anchors',
-      minzoom:12,layout:{'text-field':['get','title'],
+      minzoom:12,layout:{'text-field':territoryMode
+        ?['concat',['get','title'],' · ',['to-string',['get','territoryTotal']],' 篇']
+        :['get','title'],
         'text-size':12,'text-offset':[0,1.2],'text-anchor':'top',
         'text-allow-overlap':false},paint:{'text-color':'#ebfff8','text-halo-color':'#122d39','text-halo-width':1.5}});
     if(typeof onAnchorSelect==='function'){
@@ -518,6 +539,11 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       setSavedRoute(openingRoute);
       setSavedGraph(openingGraph);
     }
+    if(territoryMode&&typeof MutationObserver!=='undefined'){
+      themeObserver=new MutationObserver(applyDensityTheme);
+      themeObserver.observe(document.documentElement,{attributes:true,
+        attributeFilter:['data-theme-id','data-theme-signature','data-theme','style']});
+    }
     status('ready');
   });
   map.on('error',event=>{
@@ -569,6 +595,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(removed)return;
     removed=true;
     controller.abort();
+    themeObserver?.disconnect();themeObserver=null;
     exampleRoadData=null;
     markers.forEach(marker=>marker.remove());
     markers=[];

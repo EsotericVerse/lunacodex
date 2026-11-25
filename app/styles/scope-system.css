@@ -242,7 +242,23 @@
 .scope-period-timeline .vis-time-axis .vis-text,.scope-period-timeline .vis-labelset .vis-label,.scope-period-timeline .vis-group,.scope-period-timeline .vis-item{color:var(--loc-text)}
 .scope-period-timeline .vis-time-axis .vis-grid.vis-minor{border-color:var(--loc-line-soft)}
 .scope-period-timeline .vis-time-axis .vis-grid.vis-major{border-color:var(--loc-line)}
-.scope-period-timeline .vis-item:not(.scope-period-timeline-focus){background:var(--loc-panel-2);border-color:var(--loc-accent-border)}
+.scope-period-timeline .vis-item:not(.scope-period-timeline-focus):not(.vis-background):not(.scope-era-era):not(.scope-era-period){background:var(--loc-panel-2);border-color:var(--loc-accent-border)}
+/* Era colors are derived from the active Theme; only real ranges receive bands. */
+.scope-period-timeline .vis-item.vis-background.scope-era-background{
+  background:color-mix(in srgb,var(--culture-era-color) 15%,transparent);
+  border:0;border-inline-start:1px solid color-mix(in srgb,var(--culture-era-color) 48%,transparent);
+  pointer-events:none
+}
+.scope-period-timeline .vis-item.scope-era-era:not(.scope-period-timeline-focus){
+  background:color-mix(in srgb,var(--culture-era-color) 38%,var(--loc-panel));
+  border-color:var(--culture-era-color)
+}
+.scope-period-timeline .vis-item.scope-era-period:not(.scope-period-timeline-focus){
+  background:color-mix(in srgb,var(--culture-era-color) 24%,var(--loc-panel));
+  border-color:color-mix(in srgb,var(--culture-era-color) 70%,var(--loc-line))
+}
+.scope-period-timeline .vis-item.scope-era-era.vis-selected,
+.scope-period-timeline .vis-item.scope-era-period.vis-selected{outline:2px solid var(--loc-accent);outline-offset:1px}
 
 /* Source groups and paginated work details stay in their own bounded panel. */
 .scope-culture-source-groups{display:grid;margin:.75rem 0}

@@ -8,6 +8,8 @@ import {DataSet} from 'vis-data/esnext';
 import {Timeline} from 'vis-timeline/esnext';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import {CultureTimelineModel} from './culture-timeline-model';
+import {visualKeyColor} from '../../visual-palette.mjs';
+import {cultureEraVisuals,paintCultureRows} from './era-visuals.mjs';
 import {timelinePainted} from './timeline-paint-health.mjs';
 import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
 
@@ -70,8 +72,9 @@ function timelineRows(items,labelOf,focus,labels={}){
       focused?'scope-period-timeline-focus':'',
       density?'scope-period-density':''
     ].filter(Boolean).join(' ');
+    const laneColor=group?visualKeyColor(group):'var(--loc-accent)';
     const densityStyle=density
-      ?'--culture-density:'+Math.max(.08,Math.min(1,ratio||Math.min(1,Number(item?.item_count||0)/100)))+';height:'+(8+Math.round(Math.max(.08,Math.min(1,ratio||0))*20))+'px;background:color-mix(in srgb,var(--loc-accent) '+Math.round((.12+density.glow*.72)*100)+'%,var(--loc-panel));border-color:color-mix(in srgb,var(--loc-accent) '+Math.round((.36+density.glow*.56)*100)+'%,var(--loc-line));color:var(--loc-text);filter:brightness('+density.brightness+');box-shadow:0 0 '+density.blur+' color-mix(in srgb,var(--loc-accent) '+Math.round(density.glow*100)+'%,transparent);'
+      ?'--culture-lane-color:'+laneColor+';--culture-density:'+Math.max(.08,Math.min(1,ratio||Math.min(1,Number(item?.item_count||0)/100)))+';height:'+(8+Math.round(Math.max(.08,Math.min(1,ratio||0))*20))+'px;background:color-mix(in srgb,var(--culture-lane-color) '+Math.round((.12+density.glow*.72)*100)+'%,var(--loc-panel));border-color:color-mix(in srgb,var(--culture-lane-color) '+Math.round((.36+density.glow*.56)*100)+'%,var(--loc-line));color:var(--loc-text);filter:brightness('+density.brightness+');box-shadow:0 0 '+density.blur+' color-mix(in srgb,var(--culture-lane-color) '+Math.round(density.glow*100)+'%,transparent);'
       :'';
     return [{
       id:String(item?.id||item?.entry_id||item?.era_id||item?.period_id||item?.version||index),
@@ -236,6 +239,7 @@ function TimeAnchorRecovery({rows,groups,windowStart,windowEnd,onToggle,onSelect
 
 export default function CultureTimeline({
   items=EMPTY_ITEMS,
+  eraRanges=EMPTY_ITEMS,
   labelOf=defaultTimelineLabel,
   focus=EMPTY_FOCUS,
   mode='period',
@@ -326,6 +330,14 @@ export default function CultureTimeline({
       ?item?.display_label||item?.name||item?.title||item?.period||labels.item+' '+(index+1)
       :labelOf(item,index);
   },focus,labels),[visibleItems,labelOf,focus,labels,compactHierarchy]);
+  // Background items are paint-only; they never enter selection, group
+  // hierarchy, fallback records or editing. Use the same Era palette on both rivers.
+  const paintRows=useMemo(()=>{
+    if(editable||compactHierarchy)return rows;
+    const source=mode==='trace'?visibleItems:eraRanges;
+    if(!source.length)return rows;
+    return paintCultureRows(rows,cultureEraVisuals(source));
+  },[rows,visibleItems,eraRanges,mode,editable,compactHierarchy]);
   // The chart-error fallback list is not used during a healthy render.
   // Avoid cloning and sorting thousands of buckets on every period switch.
   const fallbackRows=useMemo(()=>chartError
@@ -402,7 +414,7 @@ export default function CultureTimeline({
     setReady(false);
     try{
       if(cancelled||!containerRef.current)return()=>{cancelled=true};
-      const dataRows=rows.map(row=>editable?{
+      const dataRows=paintRows.map(row=>editable?{
         ...row,
         editable:{
           updateTime:row.entryType==='anchor',
@@ -486,6 +498,7 @@ export default function CultureTimeline({
       timelineRef.current=instance;
       instance.on('select',({items:selectedItems=[]})=>{
         const row=rowById(selectedItems[0]);
+        if(row?.type==='background')return;
         setSelectedRowId(row?.id||'');
         onSelectRef.current?.(row);
       });
@@ -553,7 +566,7 @@ export default function CultureTimeline({
       }
       if(instance)instance.destroy();
     };
-  },[preserveTimelineInstance?null:rows,preserveTimelineInstance?null:extraGroups,
+  },[preserveTimelineInstance?null:paintRows,preserveTimelineInstance?null:extraGroups,
     hasTimeKinds,preserveTimelineInstance?null:timelineMinHeight,
     preserveTimelineInstance?null:timelineMaxHeight,
     Boolean(rows.length||editable||extraGroups.length),
@@ -566,7 +579,7 @@ export default function CultureTimeline({
     if(!preserveTimelineInstance||!ready)return;
     const timeline=timelineRef.current,data=timelineDataRef.current;
     if(!timeline||!data)return;
-    const nextRows=rows.map(row=>editable?{
+    const nextRows=paintRows.map(row=>editable?{
       ...row,editable:{updateTime:row.entryType==='anchor',updateGroup:false,remove:Boolean(row.recordId)}
     }:row);
     const nextGroups=makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGroupToggleRef,onGroupSelectRef);
@@ -620,7 +633,7 @@ export default function CultureTimeline({
       console.error('Culture river in-place group update failed',error);
       setChartError(true);
     }
-  },[rows,extraGroups,hasTimeKinds,editable,heightVariant,naturalSourceHeight,preserveTimelineInstance,ready,timelineMinHeight,timelineMaxHeight,labels]);
+  },[rows,paintRows,extraGroups,hasTimeKinds,editable,heightVariant,naturalSourceHeight,preserveTimelineInstance,ready,timelineMinHeight,timelineMaxHeight,labels]);
 
   // The root total bars arrive after the initial chart has mounted.
   // Repaint the existing chart on the first animation frame after its data update.
