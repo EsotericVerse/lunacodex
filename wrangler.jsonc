@@ -6,7 +6,7 @@
   "previews": {
     "hyperdrive": [
       {
-        "binding": "HYPERDRIVE",
+        "binding": "LOC_HYPERDRIVE",
         "id": "4305ed11e9f841b7ac0d19e7daecaf9a"
       }
     ],
@@ -41,7 +41,7 @@
   },
   "hyperdrive": [
     {
-      "binding": "HYPERDRIVE",
+      "binding": "LOC_HYPERDRIVE",
       "id": "4305ed11e9f841b7ac0d19e7daecaf9a"
     }
   ],
