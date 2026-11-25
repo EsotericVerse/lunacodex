@@ -1,6 +1,7 @@
 import {KEYWORD_SCAN_START_ROWS,KEYWORD_SCAN_CHECKPOINT_ROWS}
   from './item-count-analysis.mjs';
 import {sql} from 'kysely';
+import {computeClient,keywordComputeAbsorber} from '../compute/runtime.mjs';
 // LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
 // Anchor.num is UID-list cardinality; Item/Group/Pattern.attr.total stores
 // verified hit totals. Class completion remains in Scope keyword_meta.
@@ -420,8 +421,9 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       return q.execute();
     }
   });
+  const remoteAbsorb=keywordComputeAbsorber(await computeClient(db));
   const result=await analyzeItemKeywordCounts({
-    ...itemScope(tree),patterns:tree.patterns,expectedCount,readMetadataPage:reader,
+    ...itemScope(tree),patterns:tree.patterns,expectedCount,readMetadataPage:reader,remoteAbsorb,
     minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
     pageSize:KEYWORD_SCAN_START_ROWS,resume,
     maxRowsPerRun:KEYWORD_ROWS_PER_REQUEST,

@@ -75,6 +75,19 @@
       "bucket_name": "loc-hero-assets"
     }
   ],
+  "containers": [
+    {
+      "class_name": "LocCompute",
+      "image": "./container/loc-compute/Dockerfile",
+      "image_build_context": ".",
+      "instance_type": "standard-2",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{"name":"LOC_COMPUTE","class_name":"LocCompute"}]
+  },
+  "migrations": [{"tag":"loc-compute-v1","new_sqlite_classes":["LocCompute"]}],
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
