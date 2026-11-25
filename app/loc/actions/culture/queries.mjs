@@ -1,5 +1,5 @@
 'use server';
-import {withAuthorizedLocRead} from '../read-context.mjs';
+import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
@@ -70,7 +70,7 @@ export async function queryCultureContent(searchParams){
   if(kind==='culture_density'&&(!start||!end||start>end)||
     kind==='culture_anchors'&&(start||end))
     throw Error('Invalid Culture query range');
-  return withAuthorizedLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope},async(db,port)=>{
     if(kind==='culture_anchors'){
       const table=relation(scope,'anchor',port);
       const rows=await db.selectFrom(table).select(['uid','type','title','attr'])
