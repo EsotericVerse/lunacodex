@@ -60,7 +60,7 @@ class TestSqlClient{
   async connect(){this.connected=true;}
   async end(){this.closed++;}
 }
-test('request SQL pool closes released connections exactly once',async()=>{
+test('request SQL pool reuses released clients and closes them at request end',async()=>{
   TestSqlClient.all=[];
   const lifecycle=[];
   const pool=requestScopedPool({},TestSqlClient,{attempts:1});
@@ -68,11 +68,30 @@ test('request SQL pool closes released connections exactly once',async()=>{
   const client=await pool.connect();
   assert.equal(client.connected,true);
   client.release();
+  assert.equal(client.closed,0);
+  const reused=await pool.connect();
+  assert.equal(reused,client);
+  reused.release();
   await pool.end();
   await Promise.all(lifecycle);
   assert.equal(client.closed,1);
   await pool.end();
   assert.equal(client.closed,1);
+});
+test('request SQL pool caps parallel clients and reuses queued capacity',async()=>{
+  TestSqlClient.all=[];
+  const pool=requestScopedPool({},TestSqlClient,{attempts:1});
+  const active=await Promise.all(Array.from({length:4},()=>pool.connect()));
+  let queued=false;
+  const fifth=pool.connect().then(client=>{queued=true;return client;});
+  await Promise.resolve();
+  assert.equal(queued,false);
+  active[0].release();
+  const next=await fifth;
+  assert.equal(TestSqlClient.all.length,4);
+  for(const client of [...active.slice(1),next])client.release();
+  await pool.end();
+  assert.ok(TestSqlClient.all.every(client=>client.closed===1));
 });
 test('request cancellation closes active connection and refuses future acquisition',async()=>{
   TestSqlClient.all=[];

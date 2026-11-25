@@ -7,7 +7,8 @@ import {assertZModelAnchorFeatureRows,assertZModelSelectRows}
   from '../../../../packages/zenstack/import-validation.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS}
   from '../../query/query-batch-size.mjs';
-import {readAdaptiveSqlPages} from '../../query/adaptive-sql-read.mjs';
+import {readDateRangeAggregates}
+  from '../../query/date-range-aggregate.mjs';
 
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -42,7 +43,7 @@ export async function queryCulture(args={}){
   if(!start||!end||start>end||!site||site.length>120||
     !Number.isSafeInteger(offset)||offset<0||offset>100000)
     throw Error('Invalid Culture list selection');
-  return withAuthorizedLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope},async(db,port)=>{
     const rows=await db.selectFrom(relation(scope,'galaxy',port))
       .select(galaxyReadColumns('GalaxyList'))
       .where('date','>=',start).where('date','<=',end)
@@ -82,24 +83,21 @@ export async function queryCultureContent(searchParams){
         ?JSON.parse(row.attr||'{}'):row.attr||{}})),count:null};
     }
     const table=relation(scope,'galaxy',port);
-    const build=()=>db.selectFrom(table).where('culture','=',true)
-      .where('date','>=',start).where('date','<=',end)
-      .where('date','is not',null);
+    const build=(rangeStart,rangeEnd)=>db.selectFrom(table)
+      .where('culture','=',true).where('date','>=',rangeStart)
+      .where('date','<=',rangeEnd).where('date','is not',null);
     const grouped=new Map();
-    await readAdaptiveSqlPages({
-      countRows:async()=>{
-        const row=await build().select(eb=>eb.fn.countAll().as('row_count'))
-          .executeTakeFirst();
-        return Number(row?.row_count||0);
-      },
-      fetchPage:({offset,limit})=>build().select(['date','site','createtime'])
-        .orderBy('createtime','asc').limit(limit).offset(offset).execute(),
-      consumePage:rows=>{
+    await readDateRangeAggregates({start,end,
+      query:({start:rangeStart,end:rangeEnd})=>build(rangeStart,rangeEnd)
+        .select(['date','site'])
+        .select(eb=>eb.fn.countAll().as('item_count'))
+        .groupBy(['date','site']).execute(),
+      consume:rows=>{
         for(const row of rows){
           const day=row.date instanceof Date?row.date.toISOString().slice(0,10):
             String(row.date||'').slice(0,10);
           const site=String(row.site||''),key=JSON.stringify([day,site]);
-          grouped.set(key,(grouped.get(key)||0)+1);
+          grouped.set(key,(grouped.get(key)||0)+Number(row.item_count||0));
         }
       }
     });
@@ -118,8 +116,7 @@ export async function queryTimeAnchors({scope:scopeValue,mode='public',
     cursor&&!UID.test(cursor)||!Number.isSafeInteger(limit)||limit<1||
     limit>TIME_ANCHOR_MAX_PAGE_ROWS)
     throw Error('Invalid TimeAnchor page');
-  return withAuthorizedLocRead({scope,writeScopes:mode==='editor'?[scope]:[]},
-    async(db,port)=>{
+  const read=async(db,port)=>{
       let query=db.selectFrom(relation(scope,'anchor',port))
         .select(['uid','type','title','description','attr','invisible'])
         .where('type','in',ANCHOR_TYPE_GROUPS.time)
@@ -129,5 +126,7 @@ export async function queryTimeAnchors({scope:scopeValue,mode='public',
       const rows=await query.execute();
       const data=assertZModelAnchorFeatureRows(rows.slice(0,limit));
       return {data,nextCursor:rows.length>limit?String(data.at(-1).uid):null};
-    });
+    };
+  return mode==='public'?withPublicLocRead({scope},read):
+    withAuthorizedLocRead({scope,writeScopes:[scope]},read);
 }

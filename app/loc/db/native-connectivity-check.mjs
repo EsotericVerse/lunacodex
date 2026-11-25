@@ -36,13 +36,13 @@ function failureCode(error){
  return {code,reason,detail};
 }
 
-export async function testLocAuthConnection(env={},database=db_connection,{waitUntil,signal}={}){
+export async function testLocAuthConnection(env={},database=db_connection,{signal}={}){
  if(!String(env.LOC_DATABASE_URI||'').trim())
   return json({ok:false,stage:'configuration',code:'LOC_DATABASE_URI_MISSING'},503);
  let connection=null;
  let releaseAbort=()=>{};
  try{
-  connection=await database(env,'loc-main',{waitUntil});
+  connection=await database(env,'loc-main');
   releaseAbort=bindLocRequestAbort(connection,signal);
   if(connection.engine!=='postgres')return json({ok:false,stage:'driver',code:'NOT_POSTGRES'},503);
   // A literal SELECT without FROM verifies the native pg/TCP connection.

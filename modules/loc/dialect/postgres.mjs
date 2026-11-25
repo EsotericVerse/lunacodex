@@ -22,18 +22,10 @@ export function postgresMutationReturning(query,req){
   return req.returning?query.returning(req.columns):query;
 }
 
-// A pg.Client is acquired and released inside the same request. This also
-// avoids reusing a Cloudflare request-owned socket in a later request.
-// Kysely's own releaseConnection() never awaits what `client.release()`
-// returns (it calls it fire-and-forget), so closing the socket cannot ride
-// on that call. Cloudflare may freeze/reclaim the isolate the instant the
-// HTTP response is sent, before an un-awaited close actually reaches
-// PostgreSQL. Without a clean close, the server-side connection can sit
-// open until Neon's own idle timeout reclaims it — under concurrent
-// requests, these pile up faster than they are reclaimed and exhaust the
-// connection ceiling, surfacing as unrelated-looking 503s elsewhere.
-// `waitUntil` (from the Cloudflare request context) tells the platform to
-// keep the isolate alive until this request's socket close actually finishes.
+// PostgreSQL clients belong to one request-owned Kysely pool. Kysely releases
+// a client after each statement, so keep released clients idle and reusable
+// within that same request. Close every socket when the action's finally block
+// destroys the Kysely instance; never carry a socket into another Worker request.
 // Any serverless/pooled Postgres provider (Neon, Aurora Serverless v2, etc)
 // can momentarily fail a brand-new connection: a suspended compute waking
 // up, a pooler briefly out of free slots, a transient network blip. None of
@@ -50,29 +42,48 @@ const NON_RETRYABLE_CONNECTION_CODES=new Set([
 // Bound only one action's parallel SQL work. Do not share a semaphore between
 // Worker requests: an unrelated slow feature must not queue homepage reads.
 function dispatchRequestConnections(pool){
-  while(!pool.ended&&pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections&&
-      pool.waiters.length){
-    const waiter=pool.waiters.shift();
-    pool.active++;
-    waiter.resolve();
+  while(!pool.ended&&pool.waiters.length){
+    const waiter=pool.waiters[0];
+    let client=null;
+    while(pool.idle.length&&!client){
+      const candidate=pool.idle.pop();
+      if(pool.clients.has(candidate)&&!pool.closed.has(candidate))client=candidate;
+    }
+    if(client){
+      pool.waiters.shift();
+      pool.leased.add(client);
+      waiter.resolve(client);
+      continue;
+    }
+    if(pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections){
+      pool.waiters.shift();
+      pool.active++;
+      waiter.resolve(null);
+      continue;
+    }
+    break;
   }
 }
 function acquireRequestConnection(pool){
   if(pool.ended)return Promise.reject(
     new Error('LOC request database connection already closed'));
-  if(pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections&&
-      !pool.waiters.length){
+  if(!pool.waiters.length){
+    let client=null;
+    while(pool.idle.length&&!client){
+      const candidate=pool.idle.pop();
+      if(pool.clients.has(candidate)&&!pool.closed.has(candidate))client=candidate;
+    }
+    if(client){pool.leased.add(client);return Promise.resolve(client);}
+  }
+  if(!pool.waiters.length&&
+      pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections){
     pool.active++;
-    return Promise.resolve();
+    return Promise.resolve(null);
   }
   return new Promise((resolve,reject)=>{
     pool.waiters.push({resolve,reject});
     dispatchRequestConnections(pool);
   });
-}
-function releaseRequestConnection(pool){
-  if(pool.active>0)pool.active--;
-  dispatchRequestConnections(pool);
 }
 export function requestScopedPostgresPool(options,ClientClass,{
   attempts=7,baseDelayMs=350,maxDelayMs=1400,
@@ -80,40 +91,42 @@ export function requestScopedPostgresPool(options,ClientClass,{
   now=()=>Date.now(),
   sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
 }={}){
-  let currentWaitUntil=null;
   let ended=false;
-  const poolState={active:0,ended:false,waiters:[]};
-  const acquired=new Set();
+  const closed=new WeakSet();
+  const poolState={active:0,ended:false,waiters:[],idle:[],clients:new Set(),
+    leased:new Set(),closed};
+  const acquired=poolState.clients;
   const connecting=new Set();
   const closing=new Map();
-  const closed=new WeakSet();
-  const leased=new WeakSet();
   function close(client){
     if(closing.has(client))return closing.get(client);
     if(closed.has(client))return Promise.resolve();
     closed.add(client);
-    const ownsLease=leased.delete(client);
-    acquired.delete(client);
+    const wasAcquired=acquired.delete(client);
+    poolState.leased.delete(client);
+    poolState.idle=poolState.idle.filter(item=>item!==client);
     connecting.delete(client);
     const task=Promise.resolve().then(()=>client.end?.()).catch(()=>{})
       .finally(()=>{
         closing.delete(client);
-        if(ownsLease)releaseRequestConnection(poolState);
+        if(wasAcquired&&poolState.active>0)poolState.active--;
+        dispatchRequestConnections(poolState);
       });
     closing.set(client,task);
     return task;
   }
   function release(client){
-    const task=close(client);
-    // A response must not freeze a Cloudflare isolate while the PostgreSQL
-    // socket remains open. The owning request also explicitly awaits end().
-    if(currentWaitUntil)currentWaitUntil(task);
+    if(!poolState.leased.delete(client))return;
+    if(ended){void close(client);return;}
+    poolState.idle.push(client);
+    dispatchRequestConnections(poolState);
   }
   return {
-    setWaitUntil(fn){currentWaitUntil=typeof fn==='function'?fn:null;},
+    setWaitUntil(){},
     async connect(){
       if(ended)throw new Error('LOC request database connection already closed');
-      await acquireRequestConnection(poolState);
+      const reused=await acquireRequestConnection(poolState);
+      if(reused)return reused;
       let clientOwnsPermit=false;
       let lastError;
       const started=now();
@@ -129,7 +142,7 @@ export function requestScopedPostgresPool(options,ClientClass,{
         const client=new ClientClass({...options,
           connectionTimeoutMillis:Math.max(1,Math.floor(Math.min(perAttempt,remaining)))
         });
-        client.on?.('error',()=>{});
+        client.on?.('error',()=>{void close(client);});
         connecting.add(client);
         try{
           await client.connect();
@@ -139,7 +152,7 @@ export function requestScopedPostgresPool(options,ClientClass,{
             throw new Error('LOC request database connection already closed');
           }
           acquired.add(client);
-          leased.add(client);
+          poolState.leased.add(client);
           clientOwnsPermit=true;
           client.release=()=>release(client);
           return client;
@@ -163,8 +176,11 @@ export function requestScopedPostgresPool(options,ClientClass,{
       }
       throw lastError||new Error('LOC database connection retry budget exhausted');
       }finally{
-        // A successful client owns the permit until its request-scoped close.
-        if(!clientOwnsPermit)releaseRequestConnection(poolState);
+        // A successful client owns its pool slot until request cleanup.
+        if(!clientOwnsPermit){
+          if(poolState.active>0)poolState.active--;
+          dispatchRequestConnections(poolState);
+        }
       }
     },
     async end(){
@@ -176,7 +192,6 @@ export function requestScopedPostgresPool(options,ClientClass,{
         ...[...acquired,...connecting].map(close),
         ...closing.values()
       ]);
-      currentWaitUntil=null;
     },
     // A cancelled request must release its socket even when its page cannot
     // finish drawing or its SQL callback never reached a normal COMMIT.

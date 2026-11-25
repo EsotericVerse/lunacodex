@@ -10,7 +10,7 @@ import {createKyselyDialect,getSqlType,requestScopedPool} from '../../../modules
 import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
 
 // The trusted Kysely dialect and its request-owned pg.Client share the
-// current request lifetime. Never share its waitUntil closure across requests.
+// current request lifetime. No platform-specific background cleanup is needed.
 const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
 function unavailable(message){
   return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE',httpStatus:503});
@@ -39,7 +39,7 @@ function nodeProcessPool(uri){
 }
 
 export async function db_connection(env={},verifiedAlias='',{
-  probeTicket='',waitUntil,trustedTarget=null,trustedDialectConfig=null
+  probeTicket='',trustedTarget=null,trustedDialectConfig=null
 }={}){
   if(!env||typeof env!=='object')throw unavailable('LOC backend environment missing');
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
@@ -111,7 +111,6 @@ export async function db_connection(env={},verifiedAlias='',{
     attempts:2,attemptTimeoutMs:4000,maxElapsedMs:6500,
     baseDelayMs:200,maxDelayMs:500
   });
-  pool.setWaitUntil(waitUntil);
   // Use Kysely's upstream dialect factory. LOC's selected primary remains
   // PostgreSQL today, while the same trusted boundary can compile MySQL or
   // SQL Server targets when their caller-supplied pool is enabled.
