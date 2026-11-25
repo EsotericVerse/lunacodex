@@ -4,6 +4,12 @@
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-24",
   "previews": {
+    "hyperdrive": [
+      {
+        "binding": "HYPERDRIVE",
+        "id": "4305ed11e9f841b7ac0d19e7daecaf9a"
+      }
+    ],
     "observability": {
       "logs": {
         "enabled": true,
@@ -57,6 +63,7 @@
     },
     "traces": {
       "enabled": true,
+      "persist": true,
       "head_sampling_rate": 1,
       "persist": true
     },
