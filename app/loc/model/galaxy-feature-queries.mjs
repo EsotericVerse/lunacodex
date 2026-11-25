@@ -1,5 +1,6 @@
 import {ARTICLE_UID_PAGE_ROWS} from '../query/query-batch-size.mjs';
 import {withOptionalGalaxy} from '../runtime/optional-galaxy.mjs';
+import {publicFeatureAllowed} from '../permissions/public-feature-policy.mjs';
 // Four fixed Galaxy feature models. Query structure and physical relation are
 // selected only by this server module, never by a browser SQL expression.
 import {z} from 'zod';
@@ -158,7 +159,7 @@ export async function executeGalaxyFeatureQuery(db,model){
     // direct connection. Each Scope projection is an independent SELECT;
     // there is no read transaction. Scope identifiers come from published JS.
     const sums=new Map();
-    const results=await mapBounded([...published],scope=>
+    const results=await mapBounded([...published].filter(scope=>publicFeatureAllowed(scope,'statistics_able')),scope=>
       withOptionalGalaxy(db,scope,()=>executeGalaxyFeatureQuery(db,{...model,scope}),()=>({rows:[]})));
     for(const result of results){
       for(const row of result.rows){

@@ -1,5 +1,6 @@
 import {headers} from 'next/headers.js';
 import {withOptionalGalaxy} from '../runtime/optional-galaxy.mjs';
+import {publishedScopeAllowed} from '../permissions/public-feature-policy.mjs';
 import {isDataUnavailable,standaloneResult} from '../runtime/r2-runtime.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {directMcpKysely,closeLocDatabase} from '../db/native-kysely.mjs';
@@ -81,7 +82,7 @@ export async function withAuthorizedLocRead({scope,scopes=[],global=false,
 export async function withPublicLocRead({scope,scopes=[],targetId=null,onUnavailable=null,onMissingGalaxy=null},read,
   dependencies={}){
   const requested=[...new Set([scope,...scopes].filter(Boolean).map(String))];
-  if(!requested.length||requested.some(id=>!activeScopes.has(id)||id==='admin'))
+  if(!requested.length||requested.some(id=>!publishedScopeAllowed(id)))
     throw Object.assign(new Error('LOC public read requires a published Scope'),
       {httpStatus:400});
   // Bindings for public Server Action reads must resolve against the incoming

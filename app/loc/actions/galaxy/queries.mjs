@@ -5,13 +5,9 @@ import {parseGalaxyFeatureQuery,executeGalaxyFeatureQuery}
   from '../../model/galaxy-feature-queries.mjs';
 import {parseGalaxyRecordQuery,executeGalaxyRecordQuery}
   from '../../model/galaxy-record-queries.mjs';
-import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
-import {scopeFeatureEnabled} from '../../scope/scope-config-fields.mjs';
-
-const publishedScopes=new Map(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false)
-  .map(row=>[row.scope_id,row.config]));
+import {requirePublicFeature} from '../../permissions/public-feature-policy.mjs';
 const featureFlag={culture:'culture_able',statics:'statistics_able',
-  search:'search',trace:'trace'};
+  search:'search',trace:'trace',keyword:'statistics_able'};
 
 const featureAuthorization=operation=>({scope:operation.scope,
   writeScopes:operation.mode==='editor'?[operation.scope]:[]});
@@ -26,9 +22,7 @@ async function withFeatureConnection(operation,work,{publicRead=false,onMissingG
 export async function queryGalaxyFeature(body){
   const operation=parseGalaxyFeatureQuery(body);
   const flag=featureFlag[operation.feature];
-  if(flag&&operation.scope!=='loc'&&
-    !scopeFeatureEnabled(publishedScopes.get(operation.scope),flag))
-    throw Object.assign(Error('Galaxy feature is not published'),{httpStatus:404});
+  if(flag&&operation.scope!=='loc')requirePublicFeature(operation.scope,flag);
   return withFeatureConnection(operation,async(db)=>({
     data:await executeGalaxyFeatureQuery(db,operation),
     query:{requestedBy:operation.feature,scope:operation.scope,result:operation.result}

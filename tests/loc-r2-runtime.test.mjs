@@ -70,3 +70,14 @@ test('only verified missing expected Galaxy can return zero',async()=>{
   }
   await assert.rejects(withOptionalGalaxy({},'lo3rwang',fail(missing),empty,{inspect:async()=>{throw Error('probe offline');}}),/probe offline/);
 });
+
+import {explicitFeatureEnabled,publicFeatureAllowed,requirePublicFeature,publishedScopeAllowed} from '../app/loc/permissions/public-feature-policy.mjs';
+test('public feature publication is explicit and rejects unknown or system scopes',()=>{
+  assert.equal(explicitFeatureEnabled({},'trace'),false);
+  assert.equal(explicitFeatureEnabled({trace:false,able:{trace:1}},'trace'),false);
+  assert.equal(explicitFeatureEnabled({able:{trace:1}},'trace'),true);
+  assert.equal(publicFeatureAllowed('lo3rwang','trace'),true);
+  assert.equal(publicFeatureAllowed('lrunes','culture_able'),true);
+  assert.equal(publishedScopeAllowed('admin'),false);
+  assert.throws(()=>requirePublicFeature('unpublished','search'),e=>e.httpStatus===404);
+});
