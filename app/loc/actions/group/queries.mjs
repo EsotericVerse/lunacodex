@@ -1,11 +1,15 @@
 'use server';
 import {withPublicLocRead} from '../read-context.mjs';
 import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../../../modular/published-site-bootstrap.js';
 
 export async function readGroupMembers(groupId){
   const group=String(groupId||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(group))throw Error('Invalid LOC Group');
-  return withPublicLocRead({scope:group},async db=>{
+  return withPublicLocRead({scope:group,onUnavailable:()=>({data:(PUBLISHED_SITE_BOOTSTRAP.registry||[])
+    .filter(row=>row.parent_scope_id===group&&row.scope_kind==='scope'&&row.active!==false)
+    .map(row=>({id:row.scope_id,display_name:row.display_name||row.scope_id,
+      parent_scope_id:row.parent_scope_id,active:true,sort_order:row.sort_order})),count:null})},async db=>{
     const members=FIXED_MANAGE_ROWS.filter(row=>row.parent_scope_id===group&&
       row.manage_role==='scope'&&row.active===true);
     if(!members.length)return {data:[],count:null};

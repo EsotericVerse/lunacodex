@@ -38,7 +38,7 @@ export async function queryStatics(args={}){
     !options||typeof options!=='object'||Array.isArray(options)||
     Object.keys(options).some(key=>!['classUid','source'].includes(key))||
     start&&end&&start>end)throw Error('Invalid Keyword query');
-  return withPublicLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope,onUnavailable:()=>({data:view==='keyword_catalog'?{}:[],count:null})},async(db,port)=>{
     const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
     const anchor=relation(scope,'anchor',port);
     const configTable=portableRelation(scope,port.engine,namespace);
@@ -198,13 +198,17 @@ export async function queryStaticsContent(searchParams){
   const config=active.get(scope)?.config;
   if(!scopeFeatureEnabled(config,'statistics_able'))
     throw Error('Statistics feature is not published');
-  if(kind==='loc')return withPublicLocRead({scope:'loc',scopes:
-    [...active.keys()].filter(id=>id!=='loc'&&id!=='admin'&&
-      scopeFeatureEnabled(active.get(id)?.config,'statistics_able'))
+  const scopes=[...active.keys()].filter(id=>id!=='loc'&&id!=='admin'&&
+    scopeFeatureEnabled(active.get(id)?.config,'statistics_able'));
+  if(kind==='loc')return withPublicLocRead({scope:'loc',scopes,
+    onUnavailable:()=>({data:{earliest:'',scopes:scopes.map(id=>({scope_id:id,
+      display_name:String(active.get(id)?.config?.display_name||id)})),rows:[]},count:null})
   },async(db,port)=>({
     data:await locStatistics(db,start,end,port),count:null
   }));
-  return withPublicLocRead({scope},async(db,port)=>({
+  return withPublicLocRead({scope,onUnavailable:()=>({data:kind==='earliest'?'':
+    kind==='overview'?{earliest:'',rows:[],categories:[],aliases:[]}:
+    kind==='daily_total'?{earliest:'',rows:[]}:[],count:null})},async(db,port)=>({
     data:await scopeStatistics(db,scope,kind,start,end,port),count:null
   }));
 }

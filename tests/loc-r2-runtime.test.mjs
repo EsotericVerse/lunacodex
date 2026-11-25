@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readRuntimeControl,patchRuntimeControl,readDefaultKeywordTemplate,
-  validateKeywordTemplate,isDataUnavailable,emptyGalaxyFeature,RUNTIME_CONTROL_KEY,RUNTIME_STRUCTURE_KEY}
+  validateKeywordTemplate,expandKeywordTemplate,isDataUnavailable,emptyGalaxyFeature,RUNTIME_CONTROL_KEY,RUNTIME_STRUCTURE_KEY}
   from '../app/loc/runtime/r2-runtime.mjs';
 const row=(uid,type,children=[],extra={})=>({uid,type,title:type,invisible:false,description:null,
   attr:type==='pattern'?{}:{uid:children,...extra}});
@@ -22,7 +22,10 @@ function fakeBucket(){
 }
 test('R2 optional and explicit switch, preserving separate Hyperdrive preference',async()=>{
   const bucket=fakeBucket(),env={LOC_RUNTIME:bucket};
-  await bucket.put(RUNTIME_STRUCTURE_KEY,JSON.stringify({version:1,scopes:{lo3rwang:sample}}));
+  const compact={classUid:sample.classUid,rows:sample.rows.filter(row=>row.type!=='pattern').map(({invisible,...row})=>row),patterns:[['Pattern1','word']]};
+  await bucket.put(RUNTIME_STRUCTURE_KEY,JSON.stringify({version:1,keywordTemplate:compact}));
+  assert.equal(expandKeywordTemplate(compact).rows.length,5);
+  assert.equal(expandKeywordTemplate({...compact,patterns:[]}),null);
   assert.equal((await readDefaultKeywordTemplate(env)).classUid,'Class001');
   assert.equal((await readDefaultKeywordTemplate(env)).rows[2].attr.total,0);
   await patchRuntimeControl({hyperdriveEnabled:false},{env});

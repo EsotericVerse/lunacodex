@@ -3,6 +3,7 @@ import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
 import {block_list,hero_block} from '../../providers/kysely-public.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
+import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
 import {publicScopeBlockPage} from '../../blocks/public-scope-pages.mjs';
 import {FEATURE_HERO_IDS,MANAGEMENT_HERO_SLOTS} from '../../blocks/home-block-model.js';
 
@@ -32,7 +33,7 @@ export async function queryBlocks(name,args={}){
     const scope=scopeId(args.p_scope_id);
     const page=publicScopeBlockPage(args.p_page_name);
     if(!page||scope==='loc'&&page!=='index')throw Error('Invalid Block page');
-    return withPublicLocRead({scope},async(db,port)=>({
+    return withPublicLocRead({scope,onUnavailable:()=>({data:[],count:null})},async(db,port)=>({
       data:await block_list(db,scope,{engine:port.engine,
         namespace:port.namespace,pageName:page}),count:null
     }));
@@ -47,7 +48,7 @@ export async function queryBlocks(name,args={}){
   });
   return types.some(type=>managementHeroPages.has(type))
     ?withAuthorizedLocRead({scope:'loc'},read)
-    :withPublicLocRead({scope:'loc'},read);
+    :withPublicLocRead({scope:'loc',onUnavailable:()=>({data:[],count:null})},read);
 }
 
 export async function queryBlockContent(searchParams){
@@ -68,14 +69,16 @@ export async function queryBlockContent(searchParams){
     });
     return types.some(type=>managementHeroPages.has(type))
       ?withAuthorizedLocRead({scope},read)
-      :withPublicLocRead({scope},read);
+      :withPublicLocRead({scope,onUnavailable:()=>({data:[],count:null})},read);
   }
   if(feature)throw Error('Unexpected Block feature');
-  if(kind==='block_list')return withPublicLocRead({scope},async(db,port)=>({
+  if(kind==='block_list')return withPublicLocRead({scope,onUnavailable:()=>({data:[],count:null})},async(db,port)=>({
     data:await block_list(db,scope,{engine:port.engine,
       namespace:port.namespace,pageName:'index'}),count:null
   }));
-  return withPublicLocRead({scope},async(db,port)=>{
+  return withPublicLocRead({scope,onUnavailable:()=>({
+    data:SCOPE_ROUTE_INDEX.find(row=>row.active!==false&&row.scope_id===scope)?.config||null,count:null
+  })},async(db,port)=>{
     const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
     const table=portableRelation(scope,port.engine,
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));

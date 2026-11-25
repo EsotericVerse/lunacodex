@@ -1,4 +1,5 @@
 import {getCloudflareContext} from '@opennextjs/cloudflare';
+import {PUBLISHED_SOURCE_ANCHORS} from '../../modular/published-source-taxonomy.js';
 export const RUNTIME_CONTROL_KEY='loc-runtime/v1/control.json';
 export const RUNTIME_STRUCTURE_KEY='loc-runtime/v1/structure.json';
 export const RUNTIME_DEFAULTS=Object.freeze({version:1,r2Enabled:true,hyperdriveEnabled:true});
@@ -78,6 +79,18 @@ export function validateKeywordTemplate(value){
       invisible:false,attr,num:row.type==='pattern'?0:attr.uid.length};
   })};
 }
+export function expandKeywordTemplate(value){
+  if(!value||!Array.isArray(value.rows)||!Array.isArray(value.patterns)||
+    value.rows.length+value.patterns.length>10000||
+    value.rows.some(row=>!row||row.type==='pattern'||row.invisible===true)||
+    value.patterns.some(pair=>!Array.isArray(pair)||pair.length!==2||
+      typeof pair[0]!=='string'||!UID.test(pair[0])||typeof pair[1]!=='string'))
+    return null;
+  return validateKeywordTemplate({classUid:value.classUid,rows:[
+    ...value.rows.map(row=>({...row,invisible:false})),
+    ...value.patterns.map(([uid,title])=>({uid,title,type:'pattern',invisible:false,attr:{}}))
+  ]});
+}
 export async function readRuntimeStructure(env={},getContext){
   const bucket=await runtimeBucket(env,getContext);
   if(!bucket)return null;
@@ -88,26 +101,27 @@ export async function readRuntimeStructure(env={},getContext){
     if(!object||object.size>4*1024*1024)return null;
     const data=await object.json();
     if(data?.version!==1)return null;
-    const scopes={};
-    for(const id of ['lo3rwang','lrunes']){
-      const template=validateKeywordTemplate(data.scopes?.[id]);
-      if(template)scopes[id]=template;
-    }
+    // One canonical seed, never duplicate scope-specific keyword rows.
+    // The provisioner allocates new UIDs; do not use these IDs for another scope.
+    const keywordTemplate=expandKeywordTemplate(data.keywordTemplate);
     const types=new Set(['universe','galaxy','domain','from']);
     const sourceRows=Array.isArray(data.sources)?data.sources:[];
     const sources=sourceRows.filter(row=>UID.test(row?.uid)&&types.has(row.type)&&
-      row.invisible===false&&typeof row.title==='string'&&Array.isArray(row.attr?.uid)&&
+      row.invisible!==true&&typeof row.title==='string'&&Array.isArray(row.attr?.uid)&&
       row.attr.uid.every(id=>UID.test(id))).map(row=>({
         uid:row.uid,type:row.type,title:row.title,description:row.description??null,
         invisible:false,attr:{uid:[...row.attr.uid]},num:row.attr.uid.length}));
-    return {scopes,sources};
+    const byUid=new Map(sources.map(row=>[row.uid,row]));
+    const validSources=sources.length===sourceRows.length&&byUid.size===sources.length&&
+      sources.every(row=>row.attr.uid.every(uid=>byUid.has(uid)));
+    return {keywordTemplate,sources:validSources?sources:[]};
   }catch{
     console.warn('LOC R2 structural snapshot unavailable');
     return null;
   }
 }
 export async function readDefaultKeywordTemplate(env={},getContext){
-  return (await readRuntimeStructure(env,getContext))?.scopes?.lo3rwang||null;
+  return (await readRuntimeStructure(env,getContext))?.keywordTemplate||null;
 }
 // Only a typed missing relation or backend connectivity failure is degradable.
 // Auth errors, invalid arguments and unknown programming failures stay errors.
@@ -131,4 +145,28 @@ export function emptyGalaxyFeature(operation){
   if(operation.result==='articles')return {rows:[],hasMore:false,nextCursor:null,
     totalCount:operation.includeTotal?0:null};
   return {rows:[]};
+}
+
+// Public source taxonomy is structural, with zero article counts. A missing
+// R2 binding/object must not make an existing published site disappear.
+export async function runtimeSourceAnchors(env={},getContext){
+  const snapshot=await readRuntimeStructure(env,getContext);
+  return (snapshot?.sources?.length?snapshot.sources:PUBLISHED_SOURCE_ANCHORS)
+    .map(row=>({uid:row.uid,type:row.type,title:row.title,description:row.description??null,
+      invisible:false,createtime:null,attr:{uid:[...(row.attr?.uid||[])]},
+      num:row.attr?.uid?.length||0}));
+}
+export async function emptyAnchorFeature(operation){
+  const input=operation.family==='source'?await runtimeSourceAnchors():[];
+  const rows=input.filter(row=>operation.types.includes(row.type)&&
+    (!operation.uids||operation.uids.includes(row.uid))&&
+    (!operation.cursor||row.uid>operation.cursor));
+  if(operation.result==='count')return {total:rows.length};
+  const direction=operation.sortDirection==='desc'?-1:1;
+  rows.sort((a,b)=>direction*String(a[operation.order]??'').localeCompare(String(b[operation.order]??''))||
+    a.uid.localeCompare(b.uid));
+  const offset=operation.offset||0,visible=rows.slice(offset,offset+operation.limit);
+  const hasMore=rows.length>offset+operation.limit;
+  return {rows:visible,hasMore,totalCount:operation.includeTotal?rows.length:null,
+    nextCursor:hasMore&&operation.order==='uid'&&direction===1?visible.at(-1)?.uid||null:null};
 }

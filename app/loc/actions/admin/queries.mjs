@@ -3,7 +3,9 @@ import {sql} from 'kysely';
 import {headers} from 'next/headers.js';
 import {verifiedLocWebsiteSession} from '../../auth/verified-session.mjs';
 import {publishedLocAccess} from '../../permissions/loc-business-grants.mjs';
-import {runtimeBucket,readRuntimeControl,patchRuntimeControl} from '../../runtime/r2-runtime.mjs';
+import {runtimeBucket,readRuntimeControl,patchRuntimeControl,runtimeSourceAnchors} from '../../runtime/r2-runtime.mjs';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../../../modular/published-site-bootstrap.js';
+import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
 import {directMcpKysely,closeLocDatabase} from '../../db/native-kysely.mjs';
 import {bindLocAuthorization} from '../../providers/loc-authorization.mjs';
 import {readLocHyperdriveMode,writeLocHyperdriveMode}
@@ -104,7 +106,9 @@ export async function setHyperdriveMode(enabled){
 }
 
 export async function readLocSourceHierarchy(){
-  return withAuthorizedLocRead({global:true},async db=>{
+  return withAuthorizedLocRead({global:true,onUnavailable:async()=>{
+    const rows=await runtimeSourceAnchors();return {data:rows,count:rows.length};
+  }},async db=>{
     const columns=['uid','type','title','description','invisible','attr',
       'createtime','num'];
     const rows=await db.selectFrom('silver.loc_anchor').select(columns)
@@ -114,7 +118,10 @@ export async function readLocSourceHierarchy(){
 }
 
 export async function readScopeRegistryAdmin(){
-  return withAuthorizedLocRead({global:true},async db=>{
+  return withAuthorizedLocRead({global:true,onUnavailable:()=>({data:FIXED_MANAGE_ROWS
+    .filter(row=>row.manage_role!=='reserve').map(row=>({...row,
+      display_name:PUBLISHED_SITE_BOOTSTRAP.registry?.find(entry=>entry.scope_id===row.id)?.display_name||row.id,
+      birthday:PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[row.id]||null,title_tw:null,desc_tw:null})),count:null})},async db=>{
     const registry=FIXED_MANAGE_ROWS.filter(row=>row.manage_role!=='reserve');
     const summaries=await db.selectFrom('silver.loc')
       .select(['id','display_name','birthday','title_tw','desc_tw'])
@@ -135,7 +142,8 @@ export async function readAdminScopeConfig(scopeId){
   const row=FIXED_MANAGE_ROWS.find(item=>item.id===scope&&
     item.manage_role==='scope'&&item.active===true);
   if(!row)throw Error('Invalid admin Scope configuration');
-  return withAuthorizedLocRead({global:true},async db=>{
+  return withAuthorizedLocRead({global:true,onUnavailable:()=>
+    SCOPE_ROUTE_INDEX.find(entry=>entry.scope_id===scope&&entry.active!==false)?.config||null},async db=>{
     const result=await db.selectFrom('silver.'+scope)
       .select(scopeConfigColumns(scope)).where('id','=',scope).executeTakeFirst();
     return result||null;
