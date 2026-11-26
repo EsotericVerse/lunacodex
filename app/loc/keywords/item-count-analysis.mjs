@@ -18,6 +18,7 @@ export const KEYWORD_SCAN_START_RATE=1024;
 export const KEYWORD_SCAN_MAX_RATE=8192;
 export const KEYWORD_SCAN_RATE_STEP=1024;
 export const KEYWORD_SCAN_CHECKPOINT_ROWS=4096;
+export const KEYWORD_CPU_SLICE_ROWS=256;
 
 // Processing throughput and persisted SQL progress are distinct controls.
 // The next one-second window grows by only 1024 if the previous target was
@@ -342,7 +343,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
           // WITHOUT reducing, resetting or discarding the rate budget.
           const end=index+size;
           while(index<end){
-            const next=Math.min(end,index+256);
+            const next=Math.min(end,index+KEYWORD_CPU_SLICE_ROWS);
             a.absorb(ordered.slice(index,next));
             pace.complete(next-index);
             index=next;
@@ -418,7 +419,6 @@ export async function readItemKeywordProjection(db,scope,{items,groups,patterns=
   // Only a small CPU slice is retained; the complete 4k–10k page is never
   // materialized as a JavaScript row array before keyword classification.
   const cpuBatch=[];
-  const CPU_BATCH_ROWS=256;
   for(;;){
     const requested=sizer.size;
     const filters=[];
@@ -452,7 +452,7 @@ export async function readItemKeywordProjection(db,scope,{items,groups,patterns=
         throw new Error('Keyword projection exceeded its adaptive page');
       pageChars+=String(row?.title??'').length+String(row?.content??'').length;
       cpuBatch.push(row);
-      if(cpuBatch.length>=CPU_BATCH_ROWS)absorbBatch();
+      if(cpuBatch.length>=KEYWORD_CPU_SLICE_ROWS)absorbBatch();
     }
     absorbBatch();
     if(!pageRows)break;
