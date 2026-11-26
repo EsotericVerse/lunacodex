@@ -201,7 +201,8 @@ export async function readKeywordClasses(db,scope,{owner=false}={}){
 }
 
 export async function readKeywordStatistics(db,scope,classUid,{
-  owner=false,start='',end='',source='',_returnTree=false
+  owner=false,start='',end='',source='',_returnTree=false,
+  engine='postgres',namespace='silver'
 }={}){
   checkScope(scope);checkClass(classUid);validateKeywordFilters({start,end,source});
   const cfg=await configuration(db,scope);
@@ -220,7 +221,8 @@ export async function readKeywordStatistics(db,scope,classUid,{
   }else if(start||end||source){
     const result=await readItemKeywordProjection(db,scope,{
       ...itemScope(tree),start,end,source,owner:true,
-      minChars:Math.max(0,Number(cfg.keyword_min_chars)||0)
+      minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
+      engine,namespace
     });
     counts=result.totals;daily=result.daily;
   }else{
@@ -272,7 +274,8 @@ export async function readKeywordCatalog(db,scope,classUid,{owner=false}={}){
 }
 
 export async function readKeywordDaily(db,scope,classUid,{
-  owner=false,start='',end='',source='',places=null
+  owner=false,start='',end='',source='',places=null,
+  engine='postgres',namespace='silver'
 }={}){
   checkScope(scope);checkClass(classUid);validateKeywordFilters({start,end,source});
   const cfg=await configuration(db,scope);
@@ -286,7 +289,8 @@ export async function readKeywordDaily(db,scope,classUid,{
   const tree=await classTree(db,scope,classUid);
   const result=await readItemKeywordProjection(db,scope,{
     ...itemScope(tree),start,end,source,places,owner:true,
-    minChars:Math.max(0,Number(cfg.keyword_min_chars)||0)
+    minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
+    engine,namespace
   });
   return result.daily;
 }
