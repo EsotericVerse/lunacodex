@@ -80,6 +80,10 @@ test('Group and Scope management Heroes remain separate and asymmetric',()=>{
   assert.deepEqual(scope.map(slot=>slot.page),['TimeAnchor','ScopeKeyword','SpaceAnchor','ScopeArticle']);
   assert.equal(group.some(slot=>/time|space|trace/i.test(slot.key+' '+slot.page)),false);
   assert.equal(managementHeroSlot('keywordManage','loc')?.page,'Groupkeyword');
+  assert.equal(managementHeroSlot('sourceManage','loc')?.page,'GalaxyManage');
+  assert.equal(managementHeroSlot('manage','loc')?.page,'SpaceAnchor');
+  assert.equal(managementHeroSlot('timeManage','loc')?.page,'TimeAnchor');
+  assert.equal(managementHeroSlot('keywordManage','loc')?.page,'Groupkeyword');
   assert.equal(managementHeroSlot('searchManage','loc')?.page,'GroupArticle');
   assert.equal(managementHeroSlot('keywords','lo3rwang')?.page,'ScopeKeyword');
   assert.equal(managementHeroSlot('manage','lo3rwang')?.page,'SpaceAnchor');
