@@ -4,7 +4,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import {motion,useReducedMotion} from 'motion/react';
 import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
-import {rotateActiveEditorTransactionSession} from '../loc/db/editor-transaction-lifecycle.mjs';
+import {useEditDock} from './edit-dock';
 
 /**
  * In-page management navigator.
@@ -65,6 +65,7 @@ export default function ManagementSectionNav({id,title,panelId,items,value,onCha
 // The History API only mirrors selection for deep links/back-forward support.
 export function useManagementSection(items,defaultValue='',aliases={}){
   const searchParams=useSearchParams();
+  const dock=useEditDock();
   const resolve=raw=>{
     const requested=aliases[raw]||raw;
     const fallback=items.some(item=>item.value===defaultValue)?defaultValue:items[0]?.value||'';
@@ -73,6 +74,8 @@ export function useManagementSection(items,defaultValue='',aliases={}){
   const resolveRef=useRef(resolve);
   resolveRef.current=resolve;
   const [value,setLocalValue]=useState(()=>resolve(searchParams?.get('section')||''));
+  const selectedRef=useRef(value);selectedRef.current=value;
+  const dockRef=useRef(dock);dockRef.current=dock;
   const availableSections=items.map(item=>item.value).join('|');
   // Native-only sections arrive after hydration. Restore deep links as soon
   // as the section exists, without navigating or scrolling the page.
@@ -85,26 +88,30 @@ export function useManagementSection(items,defaultValue='',aliases={}){
   },[availableSections]);
   useEffect(()=>{
     const sync=()=>{
-      rotateActiveEditorTransactionSession();
-      prepareTransientResourceAction('management');
-      setLocalValue(resolveRef.current(new URL(window.location.href).searchParams.get('section')||''));
+      const next=resolveRef.current(new URL(window.location.href).searchParams.get('section')||'');
+      if(next===selectedRef.current)return;
+      const commit=()=>{prepareTransientResourceAction('selection');setLocalValue(next);};
+      if(dockRef.current?.active)dockRef.current.switchSection(next,commit);
+      else commit();
     };
     window.addEventListener('popstate',sync);
     return ()=>window.removeEventListener('popstate',sync);
   },[]);
   const setValue=useCallback(next=>{
-    if(!items.some(item=>item.value===next))return;
-    // Before the next editor mounts, free the previous section's in-flight
-    // SQL reads and transient data. Auth and grants stay resident.
-    rotateActiveEditorTransactionSession();
-    prepareTransientResourceAction('management');
-    // Update the UI immediately; no router.push/replace, no scroll reset.
-    setLocalValue(next);
-    const url=new URL(window.location.href);
-    if(url.searchParams.get('section')!==next){
-      url.searchParams.set('section',next);
-      window.history.pushState(window.history.state,'',url.pathname+url.search+url.hash);
-    }
+    if(!items.some(item=>item.value===next)||next===selectedRef.current)return;
+    const commit=()=>{
+      // Outgoing readers abort on last unmount. Do not reset shared Hero,
+      // workspace queries or other still-mounted readers for a tab click.
+      prepareTransientResourceAction('selection');
+      setLocalValue(next);
+      const url=new URL(window.location.href);
+      if(url.searchParams.get('section')!==next){
+        url.searchParams.set('section',next);
+        window.history.pushState(window.history.state,'',url.pathname+url.search+url.hash);
+      }
+    };
+    if(dockRef.current?.active)dockRef.current.switchSection(next,commit);
+    else commit();
   },[items]);
   const hrefFor=useCallback(next=>{
     if(!items.some(item=>item.value===next))return '';
