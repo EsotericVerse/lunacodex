@@ -4,6 +4,8 @@ import {useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 
 const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
+const PANE_STAGGER_LIMIT=8;
+const PANE_MOTION_ITEM_LIMIT=48;
 
 function Pane({
   level,title,items=[],selected='',onSelect,createLabel,onCreate,createDisabled=false,
@@ -11,7 +13,10 @@ function Pane({
 }){
   const reduceMotion=useReducedMotion();
   const key=String(transitionKey||level);
-  const initial=reduceMotion?false:{opacity:0,y:8};
+  // Keep selection changes expressive for short panes without animating a
+  // potentially large keyword or anchor list all at once.
+  const animatePane=!reduceMotion&&items.length<=PANE_MOTION_ITEM_LIMIT;
+  const initial=animatePane?{opacity:0,y:8}:false;
   const animate={opacity:1,y:0};
   const transition={duration:reduceMotion?0:.26,ease:[.22,1,.36,1]};
   return <section className={'loc-anchor-management__pane loc-anchor-management__pane--'+level}
@@ -24,17 +29,16 @@ function Pane({
     <motion.div key={key} className="loc-anchor-management__items"
       initial={initial} animate={animate} transition={transition}
       role="group" aria-label={title}>
-      {items.map((item,index)=><motion.button key={String(item.id)} type="button"
-        className="loc-anchor-management__item"
-        aria-pressed={String(item.id)===String(selected)}
-        disabled={disabled||item.disabled===true}
-        initial={reduceMotion?false:{opacity:0,y:5}}
-        animate={{opacity:1,y:0}}
-        transition={{duration:reduceMotion?0:.2,delay:reduceMotion?0:Math.min(index*.022,.15),ease:'easeOut'}}
-        onClick={()=>onSelect?.(item.id)}>
-        <strong>{item.label}</strong>
-        {item.meta?<small>{item.meta}</small>:null}
-      </motion.button>)}
+      {items.map((item,index)=>{
+        const props={key:String(item.id),type:'button',className:'loc-anchor-management__item',
+          'aria-pressed':String(item.id)===String(selected),
+          disabled:disabled||item.disabled===true,onClick:()=>onSelect?.(item.id)};
+        const content=<><strong>{item.label}</strong>{item.meta?<small>{item.meta}</small>:null}</>;
+        return animatePane&&index<PANE_STAGGER_LIMIT
+          ?<motion.button {...props} initial={{opacity:0,y:5}} animate={{opacity:1,y:0}}
+            transition={{duration:.2,delay:index*.022,ease:'easeOut'}}>{content}</motion.button>
+          :<button {...props}>{content}</button>;
+      })}
       {!items.length?<p className="scope-status loc-anchor-management__empty">{emptyLabel}</p>:null}
     </motion.div>
     {children?<motion.div key={key+':detail'} className="loc-anchor-management__detail-content"
