@@ -92,6 +92,29 @@ test('heavy writer actually writes >1000 rows at once and still reaches 20k',asy
   assert.equal(saved.confirmed,20000);
 });
 
+test('import batch sizing starts at 256 rows and adapts using UTF-8 payload bytes',()=>{
+  const size=createImportBatchSizer();
+  assert.equal(size.size,256);
+  const unicode={uid:'ARTICLE1',content:'中'.repeat(1000)};
+  assert.ok(size.byteSize(unicode)>JSON.stringify(unicode).length);
+  size.observe(256,10,256*1000);
+  assert.equal(size.size,256);
+  size.observe(256,10,256*100);
+  assert.equal(size.size,512);
+  size.observe(512,10,512*1000);
+  assert.equal(size.size,256);
+});
+
+test('import stream rejects a single row above its byte budget before dispatch',async()=>{
+  const writes=[];
+  const row={uid:'ARTICLE1',content:'x'.repeat(IMPORT_PAYLOAD_TARGET_BYTES)};
+  await assert.rejects(writeImportStream([row],{
+    total:1,
+    writeBatch:async rows=>{writes.push(rows);return {count:rows.length};}
+  }),/單筆資料超出批次傳輸限制/);
+  assert.equal(writes.length,0);
+});
+
 test('adaptive writer flushes large texts by bytes rather than sending oversized request',async()=>{
   const articleContent='a'.repeat(64*1024);
   const rows=Array.from({length:24},(_,i)=>({
