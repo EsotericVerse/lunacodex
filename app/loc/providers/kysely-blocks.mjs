@@ -1,5 +1,6 @@
 import {sql} from 'kysely';
-import {buildKyselyUpsertQuery} from './kysely-runtime.mjs';
+import {buildKyselyUpsertQuery,executeMssqlUpsert,executeMysqlUpsert}
+  from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {modelFieldsForSql} from '../../../packages/zenstack/model-column-guard.mjs';
 import {modelWriteSchemaForSqlTable,locBlocksZModelSchema} from '../../../packages/zenstack/import-validation.mjs';
@@ -78,25 +79,18 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
       ?{...row,attr:sql`${JSON.stringify(row.attr)}::jsonb`}
       :{...row,block_entity:sql`${JSON.stringify(row.block_entity)}::jsonb`})
       :serializePortableJsonFields(mapped,engine);
-    if(engine==='mssql'){
-      // SQL Server's MERGE is not a safe drop-in for PostgreSQL ON CONFLICT.
-      // The caller already owns the authorized page-save transaction. Reuse
-      // its single existing-UID projection and apply bounded changes within
-      // that same transaction. A concurrent UID insertion causes a PK error
-      // and rolls back rather than silently overwriting another page.
-      const present=new Set(existing.map(row=>String(row.uid).trim()));
-      const added=payload.filter(row=>!present.has(row.uid));
-      const changed=payload.filter(row=>present.has(row.uid));
-      if(added.length)await db.insertInto(table).values(added).execute();
-      for(const row of changed){
-        const {uid,...values}=row;
-        const result=await db.updateTable(table).set(values)
-          .where('uid','=',uid).where(loc?'type':'page_name','=',type)
-          .executeTakeFirst();
-        if(Number(result?.numUpdatedRows??0)!==1)
-          throw Object.assign(new Error('Block changed during save'),
-            {httpStatus:409});
-      }
+    if(engine==='mssql'||engine==='mysql'){
+      // Both portable engines lock the modeled UID set once, then use a
+      // set-based CASE UPDATE and multi-row INSERT in this existing transaction.
+      // The locked projection also verifies that an existing UID still belongs
+      // to this page/Anchor type before any update is applied.
+      const req={schema:'silver',table:tableName,operation:'upsert',
+        values:payload,onConflict:['uid'],columns:['*'],returning:false};
+      const guardFilter={column:loc?'type':'page_name',value:type};
+      if(engine==='mssql')
+        await executeMssqlUpsert(db,req,{namespace,guardFilter});
+      else
+        await executeMysqlUpsert(db,req,{namespace,guardFilter});
     }else{
       const query=buildKyselyUpsertQuery(db,{
         schema:'silver',table:tableName,values:payload,
