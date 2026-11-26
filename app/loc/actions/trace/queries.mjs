@@ -239,7 +239,8 @@ export async function queryTrace(args={}){
       const configTable=portableRelation(scope,port.engine,namespace);
       data=await traceKeywordGroups(db,scope,anchor,
         [...new Set(ids.map(String))],start,end,source,options.classUid||null,
-        'public',{configTable,galaxyTable:table});
+        'public',{configTable,galaxyTable:table,
+          engine:port.engine,namespace:port.namespace});
     }
     return {data,count:null};
   });
