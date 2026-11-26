@@ -236,3 +236,19 @@ body{padding-bottom:var(--loc-dock-clearance);}
 html:has(.scope-feature-dock .scope-rainbow-preview-clock){
   --loc-dock-clearance:calc(9rem + env(safe-area-inset-bottom,0px));
 }
+
+/* A real six-key preview, not a second demonstration panel. The actual
+   button surface, selection, hit area and theme text remain unchanged. */
+.scope-feature-dock a>.scope-dock-rainbow-frame{
+  position:absolute;inset:0;z-index:1;
+  padding:2px;border-radius:inherit;pointer-events:none;
+  background:conic-gradient(from var(--loc-rainbow-angle,0deg),
+    #ef829d,#f1cb79,#8bd8ac,#79c8ef,#ae9deb,#ef829d);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+.scope-feature-dock a>.scope-dock-rainbow-frame~.scope-dock-motion-icon,
+.scope-feature-dock a>.scope-dock-rainbow-frame~span:last-child{z-index:2;}
+/* Preserve existing layout and avoid an extra containing block. */
+.loc-page-motion-boundary{display:contents;}
