@@ -283,6 +283,15 @@ function ScrollProgress(){
     style={{transform:'scaleX(0)'}} aria-hidden="true"/>;
 }
 
+function RainbowDockFrame({index}){
+  const reduced=useReducedMotion();
+  return <motion.span className="scope-dock-rainbow-frame" aria-hidden="true"
+    style={{'--loc-rainbow-angle':(index*60)+'deg'}}
+    initial={reduced?false:{opacity:0,scale:.88}}
+    animate={{opacity:1,scale:1}}
+    transition={{duration:reduced?0:.48,delay:reduced?0:index*.055,ease:'easeOut'}}/>;
+}
+
 function NavTarget({href,label,current=false,native=false}){
   return current?<span className="scope-nav-current" aria-current="page">{label}</span>:<ScopeLink href={href} native={native}>{label}</ScopeLink>;
 }
@@ -594,7 +603,7 @@ function AppShellInner({children,runtime}){
         </motion.button>;
       })
       :<LayoutGroup id={'loc-six-key-dock-'+(localNavigation?'local':scopeId)}>
-        {featureTabs.map(tab=>{
+        {featureTabs.map((tab,index)=>{
           const selected=tab.id==='settings'?isSettings:
             !isSettings&&(tab.id==='home'
               ?(localWorkspace?(isMyPhone||isScopeHomepage):isScopeHomepage)
@@ -607,6 +616,7 @@ function AppShellInner({children,runtime}){
              }}
             aria-current={selected?'page':undefined}>
             {selected?<DockActiveIndicator/>:null}
+            {showRainbowPreview&&!localCoreActive?<RainbowDockFrame index={index}/>:null}
             <DockMotionIcon name={tab.icon} active={selected}
               activation={dockActivation.id===tab.id?dockActivation.count:0}/>
             <span>{tab.label}</span>
