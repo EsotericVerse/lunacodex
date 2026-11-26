@@ -1,0 +1,30 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "loc": {
+      "root": ".",
+      "framework": "nextjs",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "loc-compute",
+          "format": "url",
+          "env": "LOC_COMPUTE_URL"
+        }
+      ]
+    },
+    "loc-compute": {
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "container/loc-compute/Dockerfile"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "loc"
+      }
+    }
+  ]
+}
