@@ -33,10 +33,10 @@ function isCloudflareWorkerRuntime(){
     Boolean(globalThis.Cloudflare);
 }
 // OpenNext Server Actions receive process.env, so read object bindings from the
-// current Cloudflare request context. Production must never silently reconnect
-// directly to Neon when the configured Hyperdrive binding cannot be resolved.
+// current Cloudflare request context. Only a Worker (or explicit Hyperdrive
+// probe) requires the binding; NODE_ENV=production is also normal on a VPS.
 export async function locHyperdriveBinding(env={},{
-  requireBinding=isCloudflareWorkerRuntime()||process.env.NODE_ENV==='production',
+  requireBinding=isCloudflareWorkerRuntime(),
   getContext=getCloudflareContext
 }={}){
   let binding=env?.LOC_HYPERDRIVE||null;
@@ -110,7 +110,14 @@ export async function db_connection(env={},verifiedAlias='',{
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
   const isCloudflareWorkers=isCloudflareWorkerRuntime();
-  const hyperdriveUri=forceDirect?null:await locHyperdriveBinding(env);
+  // An explicit host-level direct mode also works when moving the service to a
+  // host without a Cloudflare binding. It is a deployment choice, not failover.
+  const directOnly=env.LOC_HYPERDRIVE_MODE==='direct';
+  if(directOnly&&forceHyperdrive)
+    throw unavailable('LOC Hyperdrive disabled by deployment configuration');
+  const hyperdriveUri=forceDirect||directOnly?null:await locHyperdriveBinding(env,{
+    requireBinding:forceHyperdrive||isCloudflareWorkerRuntime()
+  });
   if(hyperdriveUri){
     // Hyperdrive owns the cross-request origin pool. Each Worker request still
     // owns its pg.Client and closes it at the normal/error/abort boundary.
