@@ -9,7 +9,7 @@ export const MYSQL_SQL_TYPE=Object.freeze({
   defaultNamespace:'',nativeConnection:false,returning:false,
   insertParameterLimit:32000,insertMaxRows:1000,
   upsertParameterLimit:32000,upsertMaxRows:1000,
-  maxBatchBytes:512*1024,streamChunkRows:256,streamStrategy:'mysql2-readable'
+  maxBatchBytes:512*1024,streamChunkRows:1,streamStrategy:'mysql2-readable-row'
 });
 export const mysqlDialectConstructor=MysqlDialect;
 
