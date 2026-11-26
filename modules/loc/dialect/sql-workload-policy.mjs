@@ -3,11 +3,7 @@
 export const SQL_WORKLOAD_POLICY=Object.freeze({
   chunkRows:10000,
   // Per-operation fan-out. There is no process-global query semaphore.
-  maxParallelChunks:4,
-  nodePoolMax:12,
-  // One request-owned SQL client; Hyperdrive manages the shared origin pool
-  // across requests, while separate Worker requests remain independent.
-  workerRequestMaxConnections:1
+  maxParallelChunks:4
 });
 
 export function planSqlChunks(totalRows,{
