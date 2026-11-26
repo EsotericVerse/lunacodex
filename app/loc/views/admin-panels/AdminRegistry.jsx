@@ -398,9 +398,10 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     setStatus('');
     return {
       operations:[...registryDraftWrites(),...mappingDraftWrites()],
-      afterCommit:()=>{
+      afterCommit:({homeCacheSync}={})=>{
         setNewMapping({...EMPTY_MAPPING});
-        setStatus(current.scope_id+' 已更新。');
+        setStatus(current.scope_id+' 已更新。'+(homeCacheSync===false
+          ?' R2 首頁副本未重建，頁面目前會回讀 SQL。':''));
         setEditDraft(null);
         refresh();
       },
@@ -414,10 +415,11 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     try{
       const operations=[...registryDraftWrites(),
         ...(includeMappings?mappingDraftWrites():[])];
-      if(operations.length)await transactionWrites(operations);
+      const receipt=operations.length?await transactionWrites(operations):null;
       committed=true;
       if(includeMappings)setNewMapping({...EMPTY_MAPPING});
-      setStatus(current.scope_id+' 已更新。');
+      setStatus(current.scope_id+' 已更新。'+(receipt?.home_cache_sync===false
+        ?' R2 首頁副本未重建，頁面目前會回讀 SQL。':''));
       setEditDraft(null);
       refresh();
       return true;

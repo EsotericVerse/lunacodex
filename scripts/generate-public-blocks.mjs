@@ -1,6 +1,6 @@
-// Explicit PUBLIC content publishing only. Never call from prebuild or on a visit.
-// Run npm run sync:public after authorized public content/config/theme/SiteAnchor edits,
-// review generated files, commit and deploy normally (no build-time SQL).
+// Explicit publication for routing/feature metadata, Themes and SiteAnchor JS.
+// Mutable page copy and authored Blocks are R2/SQL runtime data and do not
+// require a generated release file, deployment or build-time database access.
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {directMcpKysely,closeLocDatabase} from '../app/loc/db/native-kysely.mjs';
@@ -34,7 +34,12 @@ for(const row of routes){
     .select(scopeConfigColumns(id).split(',').filter(Boolean))
     .where('id','=',id).executeTakeFirst();
   if(!config)throw Error('Missing published Scope Config for '+id);
-  routeConfigs.push({scope_id:id,domain:row.domain||null,directory:row.directory||null,active:true,config});
+  // Mutable copy stays in SQL (and the private homepage R2 projection), not
+  // in the deployed route JS. Keep only route and runtime feature metadata.
+  const runtimeConfig=Object.fromEntries(Object.entries(config).filter(([key])=>
+    !['display_name','search_intro','search_aliases'].includes(key)));
+  routeConfigs.push({scope_id:id,domain:row.domain||null,
+    directory:row.directory||null,active:true,config:runtimeConfig});
 }
 const locThemes=await db.selectFrom(table('loc')).select('theme')
   .where('id','=','loc').executeTakeFirst();
@@ -64,11 +69,16 @@ const siteAnchors=await db.selectFrom(table('loc_anchor'))
   .orderBy('uid','asc')
   .execute();
 if(!siteAnchors.length)throw new Error('Cannot publish an empty SiteAnchor catalogue');
-const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,
-  page_copy:site.page_copy||[],scope_birthdays:site.scope_birthdays||{},
-  theme_list:themeMeta,site_anchors:siteAnchors,themes:[],blocks:[]};
+// Only routing/authority snapshots, Theme data and immutable SiteAnchor JS
+// belong in the release bundle. Mutable page copy and Home Blocks are served
+// through the private R2 binding with a fixed SQL fallback at runtime.
+const bootstrap={scope_id:'loc',page_name:'index',
+  registry:site.registry.map(row=>Object.fromEntries(Object.entries(row)
+    .filter(([key])=>key!=='display_name'))),
+  scope_birthdays:site.scope_birthdays||{},theme_list:themeMeta,
+  site_anchors:siteAnchors,themes:[]};
 const entries=[
-  ['app/modular/routing/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
+  ['app/modular/routing/scope-route-index.js','// PUBLIC Scope routing + non-copy Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
   ...themes.map(t=>['app/modular/themes/theme-'+t.theme_id+'.json',JSON.stringify(t,null,2)+'\n']),
   ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata; theme palettes are loaded by selected ID only.\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze('+encode(bootstrap)+');\n'],
   ['app/modular/published-theme-meta.js','// Published Theme metadata (palettes are CSS).\nexport const PUBLISHED_THEME_META='+encode(themes.map(t=>['theme-'+t.theme_id,t.theme_name,t.scheme,t.style_key]))+';\n'],

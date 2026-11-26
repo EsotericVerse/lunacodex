@@ -10,6 +10,7 @@ import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18
 import FieldText from './i18n/FieldText';
 import {FEATURES,SCOPES,featureIdForPath,getScope,normalizeScopeId} from './modular/routing/scope-registry';
 import {selectScopeConfig} from './loc/scope/scope-data';
+import {readPublicHomePageCopy} from './loc/actions/blocks/queries.mjs';
 import {activatePublishedTheme,THEME_SLOTS} from './modular/theme-registry';
 import {useScopeRuntime} from './modular/use-scope-runtime';
 import {faviconForScope} from './site-favicons';
@@ -210,15 +211,12 @@ function ThemeSelect({scopeId,scopeMeta=null,copy=UI_COPY,defaultThemeIdOverride
     </select>
   </label>;
 }
-function ScopePageCopy({scopeId,display_name,pageName='index'}){
-  const enabled=Boolean(scopeId)&&scopeId!=='loc'&&scopeId!=='admin';
-  const pageCopy=enabled
-    ?(PUBLISHED_SITE_BOOTSTRAP.page_copy||[]).find(row=>row.scope_id===scopeId)||null
-    :null;
+function ScopePageCopy({scopeId,display_name,pageCopy}){
+  const enabled=Boolean(scopeId)&&scopeId!=='local'&&scopeId!=='admin';
   useEffect(()=>{
-    const title=String(pageCopy?.Title_TW||display_name||'').trim();
+    const title=String(pageCopy?.title_tw||pageCopy?.display_name||display_name||'').trim();
     if(title&&document.title!==title)document.title=title;
-    const description=String(pageCopy?.Desc_TW||'').trim();
+    const description=String(pageCopy?.desc_tw||'').trim();
     if(description){
       let meta=document.head.querySelector('meta[name="description"]');
       if(!meta){
@@ -227,8 +225,11 @@ function ScopePageCopy({scopeId,display_name,pageName='index'}){
         document.head.appendChild(meta);
       }
       if(meta.getAttribute('content')!==description)meta.setAttribute('content',description);
+    }else if(enabled&&pageCopy){
+      document.head.querySelector('meta[name="description"]')?.remove();
     }
-  },[scopeId,display_name,pageCopy?.Title_TW,pageCopy?.Desc_TW]);
+  },[scopeId,display_name,pageCopy?.title_tw,pageCopy?.display_name,
+    pageCopy?.desc_tw,enabled]);
   return null;
 }
 function LanguageSelect({locale,onChange,copy=UI_COPY}){
@@ -309,6 +310,21 @@ export default function AppShell({children}){
 
 function AppShellInner({children,runtime}){
   const queryClient=useQueryClient();
+  const [publicPageCopy,setPublicPageCopy]=useState([]);
+  useEffect(()=>{
+    let active=true;
+    const refresh=()=>{
+      void readPublicHomePageCopy().then(result=>{
+        if(active&&Array.isArray(result?.data))setPublicPageCopy(result.data);
+      }).catch(()=>{});
+    };
+    refresh();
+    window.addEventListener('loc-public-scope-metadata-changed',refresh);
+    return()=>{
+      active=false;
+      window.removeEventListener('loc-public-scope-metadata-changed',refresh);
+    };
+  },[]);
   useEffect(()=>{
     // LOC Web Service Worker is temporarily disabled in ALL environments.
     // Retire only this site's former worker and its own static asset caches.
@@ -406,11 +422,13 @@ function AppShellInner({children,runtime}){
     document.addEventListener('visibilitychange',onVisible);check();
     return()=>{window.removeEventListener('focus',check);window.removeEventListener('pageshow',check);document.removeEventListener('visibilitychange',onVisible);};
   },[]);
-  // NAV, Footer and page names are immutable published metadata, not SQL.
+  // Routes and Scope membership are published metadata; labels and page copy
+  // are mutable SQL data mirrored in the private R2 bucket.
   const registryScopes=PUBLISHED_SITE_BOOTSTRAP.registry||[];
-  const navDisplayNames=Object.fromEntries((PUBLISHED_SITE_BOOTSTRAP.page_copy||[])
-    .map(row=>[String(row.scope_id||''),String(row.Title_TW||'').trim()])
-    .filter(([,label])=>label));
+  const pageCopyByScope=new Map(publicPageCopy.map(row=>[String(row.scope_id||''),row]));
+  const navDisplayNames=Object.fromEntries(publicPageCopy.map(row=>[
+    String(row.scope_id||''),String(row.title_tw||row.display_name||'').trim()
+  ]).filter(([,label])=>label));
   useEffect(()=>setNative(Capacitor.isNativePlatform()),[]);
   const currentScope=scope||getScope(scopeId);
   const [activeLocale,setActiveLocale]=useState('zh-Hant');
@@ -548,7 +566,7 @@ function AppShellInner({children,runtime}){
   return <UiLocaleProvider locale={activeLocale} pathname={pathname}>
     <ScopePageCopy scopeId={localNavigation?'local':scopeId}
       display_name={localNavigation?'本機銀河':configRow?.display_name||registryRow?.display_name}
-      pageName={pageName}/>
+      pageCopy={pageCopyByScope.get(localNavigation?'local':scopeId)||null}/>
     <ScrollProgress/>
     <header className="scope-global" data-native={native?'ios':'web'}>
       <nav className="scope-nav" aria-label={copy.nav.aria}>

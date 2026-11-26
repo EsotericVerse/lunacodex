@@ -22,6 +22,12 @@ import {directMcpKysely,closeLocDatabase,bindLocRequestAbort} from '../db/native
 import {readBoundedJson,BodyTooLargeError} from './stream-json.mjs';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
+import {block_list,hero_block} from '../providers/kysely-public.mjs';
+import {readPublicHomePageCopySql} from '../blocks/public-home-sql.mjs';
+import {PUBLIC_HOME_PAGE_COPY_KEY,PUBLIC_HOME_R2_PREFIX,
+  publicHomeBucket,publicHomeKeysForWrite,invalidatePublicHomeObjects,
+  writePublicHomeObject} from '../blocks/public-home-r2.mjs';
+import {publicScopeBlockPage} from '../blocks/public-scope-pages.mjs';
 import {fixedPolicyWriteModel} from '../../../packages/zenstack/policy-runtime.mjs';
 import {isManagedReadAction,isManagedWriteAction}
   from '../actions/managed-query-routes.mjs';
@@ -139,6 +145,39 @@ function refusal(message,httpStatus=400){
 function reply(payload,status=200){
   return new Response(JSON.stringify(payload),{status,headers});
 }
+async function rowsForPublicHomeKey(db,key,{engine,namespace}){
+  if(key===PUBLIC_HOME_PAGE_COPY_KEY)
+    return readPublicHomePageCopySql(db,{engine,namespace});
+  const locPrefix=PUBLIC_HOME_R2_PREFIX+'/loc-anchor-blocks/';
+  if(key===locPrefix+'home.json')
+    return block_list(db,'loc',{engine,namespace,pageName:'index'});
+  if(key.startsWith(locPrefix)){
+    const page=key.slice(locPrefix.length,-'.json'.length);
+    if(!/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(page))throw Error('Invalid LOC Hero page');
+    return hero_block(db,[page],{engine,namespace});
+  }
+  const scopePrefix=PUBLIC_HOME_R2_PREFIX+'/scope-blocks/';
+  if(key.startsWith(scopePrefix)){
+    const match=/^([a-z][a-z0-9]{0,14})\/([a-z0-9_-]+)\.json$/.exec(
+      key.slice(scopePrefix.length));
+    if(!match||match[1]==='admin'||!publicScopeBlockPage(match[2]))
+      throw Error('Invalid Scope Block page');
+    return block_list(db,match[1],{engine,namespace,pageName:match[2]});
+  }
+  throw Error('Unknown public-home R2 object');
+}
+async function refreshPublicHomeR2(bucket,keys,selected){
+  if(!bucket||!keys.length)return true;
+  let synced=true;
+  for(const key of keys){
+    try{
+      const rows=await rowsForPublicHomeKey(selected.db,key,{
+        engine:selected.engine,namespace:selected.namespace});
+      if(!await writePublicHomeObject(bucket,key,rows))synced=false;
+    }catch{synced=false;}
+  }
+  return synced;
+}
 // The Auth service only verifies identity/credentials. LOC business grants
 // are resolved from the published JavaScript registry before opening a DB
 // connection. No home-made JWT, PKCE, refresh, signing or session implementation.
@@ -224,6 +263,8 @@ export async function handleNativeLocOperation(request,env={},{
   let operationKind='',importPhase='request';
   let shortImportActor=null;
   let selected=null;
+  let publicHomeR2=null;
+  let publicHomeWriteKeys=[];
   let releaseAbort=()=>{};
   try{
     let body;
@@ -319,6 +360,13 @@ export async function handleNativeLocOperation(request,env={},{
       requireManagedRelationGrant(body.payload,claims);
     if(body.kind==='managed-transaction')
       for(const item of body.operations)requireManagedRelationGrant(item,claims);
+    publicHomeWriteKeys=publicHomeKeysForWrite(body);
+    if(publicHomeWriteKeys.length){
+      publicHomeR2=await publicHomeBucket(env);
+      if(publicHomeR2&&!await invalidatePublicHomeObjects(publicHomeR2,
+        publicHomeWriteKeys))
+        throw refusal('首頁 R2 副本無法先行清除，SQL 尚未寫入。',503);
+    }
     if(body.kind==='short-import'){
       // Check the exact signed Scope grant and the complete import envelope
       // before opening any database connection.
@@ -443,7 +491,17 @@ export async function handleNativeLocOperation(request,env={},{
         }
         return outcomes;
       });
-      return reply({data:{results,count:results.reduce((total,item)=>total+item.count,0)}});
+      const data={results,count:results.reduce((total,item)=>total+item.count,0)};
+      if(publicHomeR2&&publicHomeWriteKeys.length){
+        bindLocAuthorization(selected.db,{role:claims.role,claims,
+          engine:selected.engine});
+        data.home_cache_sync=await refreshPublicHomeR2(publicHomeR2,
+          publicHomeWriteKeys,selected);
+      }
+      const homeCacheSync=data.home_cache_sync;
+      delete data.home_cache_sync;
+      return reply({data,...(homeCacheSync===undefined?{}:
+        {home_cache_sync:homeCacheSync})});
     }
     if(body.kind==='managed-write'||body.kind==='managed-action'){
       if(selected.tableName)throw refusal('External mapped tables are read only',403);
@@ -493,7 +551,15 @@ export async function handleNativeLocOperation(request,env={},{
             role:claims.role,claims
           })).data;
       });
-      return reply({data:row});
+      let homeCacheSync;
+      if(publicHomeR2&&publicHomeWriteKeys.length){
+        bindLocAuthorization(selected.db,{role:claims.role,claims,
+          engine:selected.engine});
+        homeCacheSync=await refreshPublicHomeR2(publicHomeR2,
+          publicHomeWriteKeys,selected);
+      }
+      return reply({data:row,...(homeCacheSync===undefined?{}:
+        {home_cache_sync:homeCacheSync})});
     }
     const runMcp=db=>executePortableMcp(db,body,claims,{
       engine:selected.engine,namespace:selected.namespace});
