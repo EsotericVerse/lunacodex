@@ -19,10 +19,7 @@ const FEATURES=Object.freeze([
   {id:'search',label:'搜尋',managementKey:'advanced'},
   {id:'admin',label:'系統管理'}
 ].map(feature=>({...feature,singleSlot:HomeBlock.shouldUseSingleFeatureHeroImage(feature.id)})));
-const SCOPE_VARIANTS=Object.freeze([
-  {kind:'group',label:'群組圖：首頁圖連結'},
-  {kind:'scope',label:'個人圖：首頁圖連結'}
-]);
+const FEATURE_VARIANT=Object.freeze({kind:'group',label:'功能頁 Hero 圖片'});
 const SINGLE_VARIANT=Object.freeze([{kind:'scope',label:'首頁圖連結'}]);
 const MANAGEMENT_VARIANT=Object.freeze({kind:'scope',label:'首頁圖連結'});
 // Personal Settings remains a separate Hero record, edited within the Admin panel.
@@ -282,15 +279,15 @@ export default function FeatureHeroImages(){
         onDirtyChange={dirty=>trackDirty('blocks',dirty)}
         explicitEditButton allowDelete={false} allowEntities={false}
       />
-      {(feature.singleSlot?SINGLE_VARIANT:SCOPE_VARIANTS).map(variant=>
-        <ImageSlot feature={feature} variant={variant}
-          pageOverride={feature.id==='admin'?'group_admin':''}
-          onDirtyChange={trackDirty} key={feature.id+variant.kind}/>)}
+      <ImageSlot feature={feature}
+        variant={feature.singleSlot?SINGLE_VARIANT[0]:FEATURE_VARIANT}
+        pageOverride={feature.id==='admin'?'group_admin':''}
+        onDirtyChange={trackDirty} key={feature.id+':group-image'}/>
       {scopeSlot?<section className="loc-card scope-inline-card" aria-label={scopeSlot.label}>
         <h4>{scopeSlot.label}</h4>
         <ManagementHeroDetails slot={scopeSlot} onDirtyChange={trackDirty}/>
         <ImageSlot feature={feature} variant={MANAGEMENT_VARIANT}
-          pageOverride="scope_manage" defaultUrl={HomeBlock.MANAGEMENT_HERO_IMAGE_URL}
+          pageOverride={scopeSlot.page} defaultUrl={HomeBlock.MANAGEMENT_HERO_IMAGE_URL}
           onDirtyChange={trackDirty}/>
       </section>:null}
       {feature.id==='admin'?<details className="loc-card scope-inline-card" onToggle={event=>{

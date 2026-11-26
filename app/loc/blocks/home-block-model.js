@@ -157,9 +157,8 @@ export const FEATURE_HERO_ORDER=Object.freeze({
   setting:7
 });
 export const FEATURE_HERO_IDS=Object.freeze(Object.keys(FEATURE_HERO_ORDER));
-// Management titles and content live on independently named pages.
-// Scope and Admin management groups each have ONE editable shared image page.
-// Never use block_order to multiplex unrelated Hero documents into group_manage.
+// Each management destination owns one Hero row that stores its copy and
+// image together. Do not multiplex unrelated Hero documents by block_order.
 export const MANAGEMENT_HERO_IMAGE_URL='https://loc.lo3rwang.cc/pics/scope-gn.jpg';
 export const MANAGEMENT_HERO_SLOTS=Object.freeze([
   {key:'time',label:'時間定錨',audience:'scope',featureId:'culture',page:'TimeAnchor',englishTitle:'TimeAnchor'},
@@ -178,11 +177,19 @@ const LOC_MANAGEMENT_HERO_IMAGES=Object.freeze({
   trace:'https://loc.lo3rwang.cc/pics/LOC-gn.jpg',
   articles:'https://loc.lo3rwang.cc/pics/LOC-search.jpg'
 });
+const FEATURE_HERO_DEFAULT_IMAGES=Object.freeze({
+  culture:'LOC-culture.jpg',
+  statics:'LOC-statics.jpg',
+  trace:'LOC-gn.jpg',
+  search:'LOC-search.jpg'
+});
+export function featureHeroDefaultImage(featureId){
+  const file=FEATURE_HERO_DEFAULT_IMAGES[String(featureId||'')];
+  return file?'https://loc.lo3rwang.cc/pics/'+file:'';
+}
 export function managementHeroImagePage(slot){
-  // System Admin keeps scope_admin; individual LOC management entries own
-  // their own image field alongside their separately saved Hero text.
-  return slot?.audience==='loc'&&slot.key!=='system'?slot.page:
-    slot?.audience==='loc'?'scope_admin':'scope_manage';
+  // The Hero image and its copy are fields on the same LOC Anchor row.
+  return slot?.page||'scope_admin';
 }
 export function managementHeroDefaultImage(slot){
   return slot?.audience==='loc'
@@ -269,6 +276,7 @@ export const HomeBlock=Object.freeze({
   shouldUseSingleFeatureHeroImage,
   MANAGEMENT_HERO_SLOTS,
   MANAGEMENT_HERO_IMAGE_URL,
+  featureHeroDefaultImage,
   managementHeroSlot,
   managementHeroImagePage,
   managementHeroDefaultImage,

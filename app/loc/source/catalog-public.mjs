@@ -1,19 +1,20 @@
 // Public, typed SiteAnchor source reader for Culture/Statistics.
-// The protected Admin Source editor uses its own LOC-managed action;
-// both paths share the same canonical Source discriminator set.
-// Pagination uses LOC's existing Kysely read helper: it must not silently
-// truncate the tree at the first 200 unrelated Time/Media/Keyword anchors.
+// The public catalogue is resident in the release snapshot; only the
+// protected editor uses the live LOC Anchor reader.
 import {readAllAnchorFeature} from '../model/feature-query-client.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {sourceTaxonomyFromAnchors} from './classification.mjs';
-
-const SOURCE_COLUMNS='uid,type,title,invisible,attr';
-const EDITOR_COLUMNS='uid,type,title,description,invisible,attr,createtime,num';
+import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 
 export async function readPublicSourceAnchors({editor=false}={}){
-  // Culture/Statistics remain public. Protected source-editing reads
-  // use the source-management Server Action instead.
-  return readAllAnchorFeature({scope:'loc',family:'source',editor});
+  // The public SiteAnchor catalogue is shipped in the resident site bootstrap;
+  // only the protected editor reads the live database projection.
+  if(editor)return readAllAnchorFeature({scope:'loc',family:'source',editor:true});
+  const rows=PUBLISHED_SITE_BOOTSTRAP.site_anchors;
+  if(!Array.isArray(rows)||!rows.length)
+    throw new Error('SiteAnchor 常駐資料尚未發佈，請執行公開資料同步。');
+  const allowed=new Set(ANCHOR_TYPE_GROUPS.source);
+  return rows.filter(row=>allowed.has(row?.type)&&row?.invisible!==true);
 }
 
 export async function readPublicSourceTaxonomy(){

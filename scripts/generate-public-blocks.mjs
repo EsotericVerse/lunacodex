@@ -1,5 +1,5 @@
 // Explicit PUBLIC content publishing only. Never call from prebuild or on a visit.
-// Run npm run sync:public after authorized public content/config/theme edits,
+// Run npm run sync:public after authorized public content/config/theme/SiteAnchor edits,
 // review generated files, commit and deploy normally (no build-time SQL).
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -8,6 +8,7 @@ import {portableRelation} from '../app/loc/providers/sql-engine-ports.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
 import {scopeConfigColumns} from '../app/loc/scope/scope-config-fields.mjs';
+import {ANCHOR_TYPE_GROUPS} from '../packages/zenstack/anchor-hierarchy.mjs';
 import {publishPublicFiles} from './publish-public-files.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -53,9 +54,18 @@ const palettes=themes.map(theme=>{
   return {id,css:':root[data-theme-id="theme-'+id+'"][data-theme]{\n  color-scheme:'+(theme.scheme==='dark'?'dark':'light')+';\n'+declarations.join('\n')+'\n}'};
 });
 const themeMeta=themes.map(t=>({theme_id:t.theme_id,theme_name:t.theme_name,theme_order:t.theme_order}));
+// Public SiteAnchor is a small, typed LOC-wide catalogue. Publish it with
+// navigation metadata so page selectors never wait for a second SQL read.
+const siteAnchors=await db.selectFrom(table('loc_anchor'))
+  .select(['uid','type','title','attr','invisible'])
+  .where('type','in',ANCHOR_TYPE_GROUPS.source)
+  .where('invisible','=',false)
+  .orderBy('uid','asc')
+  .execute();
+if(!siteAnchors.length)throw new Error('Cannot publish an empty SiteAnchor catalogue');
 const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,
   page_copy:site.page_copy||[],scope_birthdays:site.scope_birthdays||{},
-  theme_list:themeMeta,themes:[],blocks:[]};
+  theme_list:themeMeta,site_anchors:siteAnchors,themes:[],blocks:[]};
 const entries=[
   ['app/modular/routing/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
   ...themes.map(t=>['app/modular/themes/theme-'+t.theme_id+'.json',JSON.stringify(t,null,2)+'\n']),
