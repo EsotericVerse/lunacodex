@@ -3,6 +3,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {searchRelationGroups,relationGraph} from './search-relation-model.mjs';
+import {mixVisualRgb,themedDataColor,visualColor} from './visual-palette.mjs';
 import {featureNavigationHref} from './routing/feature-navigation';
 import {PUBLISHED_SEARCH_PATTERNS} from './published-search-patterns.js';
 import {compileKeywordLiteralMatcher} from '../loc/keywords/literal-matcher.mjs';
@@ -10,7 +11,7 @@ import {keywordScanText} from '../loc/keywords/content-filter.mjs';
 
 const norm=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
-  const host=useRef(null),network=useRef(null),latest=useRef(null);
+  const host=useRef(null),network=useRef(null),latest=useRef(null),dataRef=useRef(null);
   const reduceMotion=useReducedMotion();
   const matcher=useMemo(()=>{
     const words=PUBLISHED_SEARCH_PATTERNS[scopeId]||[];
@@ -37,19 +38,28 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
     const text=css.getPropertyValue('--loc-text').trim()||'#eef2fa';
     const panel=css.getPropertyValue('--loc-panel').trim()||'#162536';
     const accent=css.getPropertyValue('--loc-accent').trim()||'#84aaff';
-    return {nodes:model.nodes.map(node=>({...node,margin:node.kind==='root'?14:8,
-      borderWidth:node.kind==='root'?3:1.5,color:{background:panel,border:node.colorKey||accent,
-        highlight:{background:panel,border:node.colorKey||accent}},font:{color:text,size:node.kind==='root'?16:12},
-      widthConstraint:{maximum:node.kind==='root'?190:150}})),
-      edges:model.edges.map(edge=>({...edge,color:{color:edge.colorKey,opacity:.8},
+    const branchColor=base=>base?mixVisualRgb(base,accent):accent;
+    return {nodes:model.nodes.map(node=>{
+      const border=branchColor(node.colorKey);
+      const background=node.colorKey?mixVisualRgb(node.colorKey,panel,.12):panel;
+      return {...node,margin:node.kind==='root'?14:8,
+        borderWidth:node.kind==='root'?3:1.5,color:{background,border,
+          hover:{background,border},highlight:{background,border}},font:{color:text,size:node.kind==='root'?16:12},
+        widthConstraint:{maximum:node.kind==='root'?190:150}};
+      }),
+      edges:model.edges.map(edge=>({...edge,color:{color:branchColor(edge.colorKey),opacity:.85},
         width:1.8,arrows:{to:{enabled:true,scaleFactor:.45}},smooth:{type:'cubicBezier',forceDirection:'horizontal',roundness:.35}}))};
   }
+  const hasGroups=groups.length>0;
   useEffect(()=>{
-    let disposed=false,instance;
+    let disposed=false,instance,observer;
     if(!host.current)return;
-    import('vis-network/esnext').then(({Network})=>{
+    Promise.all([import('vis-network/esnext'),import('vis-data/esnext')]).then(([{Network},{DataSet}])=>{
       if(disposed||!host.current)return;
-      instance=new Network(host.current,dataFor(latest.current.model),{
+      const initial=dataFor(latest.current.model);
+      const data={nodes:new DataSet(initial.nodes),edges:new DataSet(initial.edges)};
+      dataRef.current=data;
+      instance=new Network(host.current,data,{
         autoResize:true,physics:false,layout:{hierarchical:{enabled:true,
           direction:host.current.clientWidth<500?'UD':'LR',sortMethod:'directed',
           levelSeparation:175,nodeSpacing:82,treeSpacing:95}},
@@ -66,12 +76,25 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
         }
       });
       instance.fit({animation:false});
+      observer=new MutationObserver(()=>{
+        if(disposed||!host.current||dataRef.current!==data)return;
+        const next=dataFor(latest.current.model);
+        data.nodes.update(next.nodes.map(({id,color,font})=>({id,color,font})));
+        data.edges.update(next.edges.map(({id,color})=>({id,color})));
+      });
+      observer.observe(document.documentElement,{attributes:true,
+        attributeFilter:['data-theme-id','data-theme-signature','data-theme','style']});
     }).catch(()=>{if(!disposed)setFailed(true);});
-    return()=>{disposed=true;instance?.destroy();if(network.current===instance)network.current=null;};
-  },[]);
+    return()=>{disposed=true;observer?.disconnect();instance?.destroy();
+      if(network.current===instance){network.current=null;dataRef.current=null;}};
+  },[hasGroups]);
   useEffect(()=>{
-    if(!network.current||!host.current)return;
-    network.current.setData(dataFor(model));
+    if(!network.current||!host.current||!dataRef.current)return;
+    const next=dataFor(model),data=dataRef.current;
+    const nodeIds=new Set(next.nodes.map(n=>n.id)),edgeIds=new Set(next.edges.map(e=>e.id));
+    data.edges.remove(data.edges.getIds().filter(id=>!edgeIds.has(id)));
+    data.nodes.remove(data.nodes.getIds().filter(id=>!nodeIds.has(id)));
+    data.nodes.update(next.nodes);data.edges.update(next.edges);
     network.current.fit({animation:reduceMotion?false:{duration:230,easingFunction:'easeInOutQuad'}});
   },[model,reduceMotion]);
   if(!groups.length)return null;
@@ -79,7 +102,7 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
     <h3>關聯網絡</h3>
     <div className="loc-search-network__branches" role="group" aria-label="關聯分支">
       {groups.map(group=><button type="button" key={group.id} className="loc-button"
-        aria-pressed={expanded===group.id} style={{borderColor:group.color}}
+        aria-pressed={expanded===group.id} style={{borderColor:themedDataColor(group.color)}}
         onClick={()=>setExpanded(value=>value===group.id?'':group.id)}>{group.label} · {group.items.length}</button>)}
     </div>
     {!failed?<motion.div ref={host} className="loc-search-network__canvas"
@@ -90,8 +113,8 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
         onClick={()=>act(item)}>{item.label}</button>:<span key={item.id}>{item.label}</span>)}
       {active.id==='statistics'&&hits?<div className="loc-search-network__distribution">
         <p>本文公開詞彙命中 {hits.length} 種 · {hits.reduce((n,[,count])=>n+count,0)} 次</p>
-        {hits.slice(0,8).map(([word,count])=><div key={word} className="loc-search-network__count">
-          <span>{word}</span><span className="loc-search-network__bar"><i style={{width:(100*count/hits[0][1])+'%'}}/></span><strong>{count}</strong>
+        {hits.slice(0,8).map(([word,count],index)=><div key={word} className="loc-search-network__count">
+          <span>{word}</span><span className="loc-search-network__bar"><i style={{width:(100*count/hits[0][1])+'%',background:visualColor(index)}}/></span><strong>{count}</strong>
         </div>)}
       </div>:null}
     </div>:null}

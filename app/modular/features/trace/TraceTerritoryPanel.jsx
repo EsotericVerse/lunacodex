@@ -1,5 +1,6 @@
 'use client';
 import {useMemo,useRef,useState} from 'react';
+import {visualKeyColor} from '../../visual-palette.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
@@ -138,11 +139,11 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
           <span>首筆 <strong>{selected.firstDay}</strong></span>
         </div>
         {display==='sources'?<div className="loc-trace-territory-lanes" aria-label="據點文章來源比例">
-          {selected.sources.map((source,i)=><div className="loc-trace-territory-lane" key={source.name}>
+          {selected.sources.map(source=><div className="loc-trace-territory-lane" key={source.name}>
             <div><strong>{source.name}</strong><span>{source.count} 篇 · {source.percent.toFixed(1)}%</span></div>
             <div className="loc-trace-territory-track" role="img"
               aria-label={source.name+' 佔 '+source.percent.toFixed(1)+'%'} >
-              <span style={{width:source.percent+'%','--loc-lane-index':i%5}}/>
+              <span style={{width:source.percent+'%',background:visualKeyColor(source.name)}}/>
             </div>
           </div>)}
         </div>:<ol className="loc-trace-territory-events" aria-label="文章日期序列">
