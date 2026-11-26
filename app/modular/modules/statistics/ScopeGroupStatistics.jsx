@@ -13,6 +13,7 @@ import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,
 import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
+import {visualKeyColor} from '../../visual-palette.mjs';
 
 const StatisticsMultiChart=dynamic(()=>import('./StatisticsMultiChart'),{loading:()=>null});
 const StatisticsInsightsPanel=dynamic(()=>import('./StatisticsInsightsPanel'),{loading:()=>null});
@@ -180,7 +181,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
                 <strong>{row.total.toLocaleString()}</strong>
               </div>
               <div className="statistics-dashboard__bar" aria-hidden="true">
-                <span style={{width:row.ratio+'%'}}/>
+                <span style={{width:row.ratio+'%',background:visualKeyColor(row.scope_id)}}/>
               </div>
             </div>)}
         </div>}

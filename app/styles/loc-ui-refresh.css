@@ -290,12 +290,13 @@
 /* Trace map / annual article-presence HUD: 270° racing-gauge arc.
    The remaining 90° is intentionally open; all tones follow active Theme. */
 .loc-trace-annual-gauge{
-  width:58px;
-  height:58px;
+  width:64px;
+  height:64px;
   display:grid;
   place-items:center;
   pointer-events:none;
   isolation:isolate;
+  filter:drop-shadow(0 1px 2px #14223299);
 }
 .loc-trace-annual-gauge::before{
   content:'';
@@ -303,11 +304,11 @@
   inset:0;
   border-radius:50%;
   background:conic-gradient(from 225deg,
-    var(--loc-gold) 0deg var(--loc-gauge-progress),
-    var(--loc-line) var(--loc-gauge-progress) 270deg,
+    color-mix(in srgb,#dcaa48 65%,var(--loc-gold)) 0deg var(--loc-gauge-progress),
+    color-mix(in srgb,var(--loc-text) 45%,var(--loc-panel)) var(--loc-gauge-progress) 270deg,
     transparent 270deg 360deg);
-  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));
-  mask:radial-gradient(farthest-side,transparent calc(100% - 5px),#000 calc(100% - 4px));
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));
+  mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));
 }
 .loc-trace-annual-gauge__number{
   display:grid;

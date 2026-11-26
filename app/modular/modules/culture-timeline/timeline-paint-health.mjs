@@ -30,6 +30,6 @@ export function timelinePainted(root,getStyle=node=>getComputedStyle(node)){
   };
   return Array.from(root.querySelectorAll('.vis-panel.vis-left .vis-label'))
     .some(node=>painted(node,left))&&
-    Array.from(root.querySelectorAll('.vis-panel.vis-center .vis-item'))
+    Array.from(root.querySelectorAll('.vis-panel.vis-center .vis-item:not(.vis-background)'))
       .some(node=>painted(node,center));
 }

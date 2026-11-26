@@ -58,7 +58,7 @@ function dayDiff(a,b){
 // just a proportional day-based stretch so denser/longer place histories read
 // taller than sparse ones. Unit is whole days, per the author's own framing.
 function placeDayStems(rows,allowedTitles){
-  const byTitle=new Map();
+  const byTitle=new globalThis.Map();
   for(const row of Array.isArray(rows)?rows:[]){
     const title=String(row?.category||'').trim();
     const day=String(row?.day||'').slice(0,10);
