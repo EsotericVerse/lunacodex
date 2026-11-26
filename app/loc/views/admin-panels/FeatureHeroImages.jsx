@@ -62,7 +62,6 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
   const [value,setValue]=useState('');
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
-  const [revision,setRevision]=useState(0);
   const originalRow=rows?.find(row=>Number(row.block_order)===1);
   const original=imageUrlOf(originalRow);
   const dirty=rows!==null&&value.trim()!==(original||defaultUrl);
@@ -81,7 +80,7 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
       }catch(error){if(active)setStatus(error?.message||'讀取失敗。');}
     })();
     return()=>{active=false;};
-  },[page,defaultUrl,revision]);
+  },[page,defaultUrl]);
 
   async function save(){
     if(savingNow.current||busy||rows===null)return false;
@@ -103,14 +102,16 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
       if(!persisted||imageUrlOf(persisted)!==trimmed)
         throw new Error('儲存後資料庫讀回不一致，請檢查寫入權限。');
       setRows(verified);
-      await Promise.all([
-        queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['scope-public-hero',page.replace(/^(group|scope)_/,'')]})
-      ]);
+      // The readback is authoritative: update the mounted Hero directly.
+      queryClient.setQueryData(['scope-blocks','loc',page],verified);
+      queryClient.setQueryData(['scope-blocks-live','loc',page],verified);
+      if(/^(group|scope)_/.test(page)){
+        const key=['scope-public-hero',page.replace(/^(group|scope)_/,'')];
+        queryClient.setQueryData(key,previous=>Array.isArray(previous)
+          ?[...previous.filter(row=>row.page_name!==page),...verified]:undefined);
+      }
       setStatus('首頁圖連結已儲存並讀回確認。');
-      setRevision(n=>n+1);
+      setValue(imageUrlOf(persisted)||defaultUrl);
       return true;
     }catch(error){setStatus(error?.message||'儲存失敗。');return false;}
     finally{savingNow.current=false;setBusy(false);}
@@ -141,7 +142,6 @@ function ManagementHeroDetails({slot,onDirtyChange}){
   const [rows,setRows]=useState(null);
   const [draft,setDraft]=useState({eyebrow:'',title:'',subtitle:'',text:''});
   const initial=useRef('');
-  const [revision,setRevision]=useState(0);
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
   const page=slot.page;
@@ -166,7 +166,7 @@ function ManagementHeroDetails({slot,onDirtyChange}){
       }catch(error){if(live)setStatus(error?.message||'管理區塊讀取失敗。');}
     })();
     return()=>{live=false;};
-  },[slot,page,revision]);
+  },[slot,page]);
   async function save(){
     if(savingNow.current||busy||rows===null)return false;
     savingNow.current=true;setBusy(true);setStatus('');
@@ -189,14 +189,18 @@ function ManagementHeroDetails({slot,onDirtyChange}){
       if(!saved||Object.entries(fields).some(([key,value])=>String(saved[key]??'')!==value))
         throw new Error('儲存後資料庫讀回不一致，請檢查寫入權限。');
       setRows(verified);
-      await Promise.all([
-        queryClient.invalidateQueries({queryKey:['scope-blocks','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['scope-blocks-live','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['app-bootstrap','loc',page]}),
-        queryClient.invalidateQueries({queryKey:['scope-public-hero',page.replace(/^(group|scope)_/,'')]})
-      ]);
+      // The readback is authoritative: update the mounted Hero directly.
+      queryClient.setQueryData(['scope-blocks','loc',page],verified);
+      queryClient.setQueryData(['scope-blocks-live','loc',page],verified);
+      if(/^(group|scope)_/.test(page)){
+        const key=['scope-public-hero',page.replace(/^(group|scope)_/,'')];
+        queryClient.setQueryData(key,previous=>Array.isArray(previous)
+          ?[...previous.filter(row=>row.page_name!==page),...verified]:undefined);
+      }
       setStatus('管理區塊已儲存並讀回確認。');
-      setRevision(v=>v+1);
+      const confirmed={eyebrow:String(saved.block_eyebrow??''),title:String(saved.block_title??''),subtitle:String(saved.block_subtitle??''),text:String(saved.block_text??'')};
+      initial.current=JSON.stringify(confirmed);
+      setDraft(confirmed);
       return true;
     }catch(error){setStatus(error?.message||'儲存失敗。');return false;}
     finally{savingNow.current=false;setBusy(false);}
