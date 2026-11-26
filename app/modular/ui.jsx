@@ -1,7 +1,8 @@
 'use client';
 import UiText,{useUiText} from '../i18n/UiText';
 
-import {createContext,useContext,useEffect,useMemo,useRef,useState} from 'react';
+import {createContext,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
+import {animate,useReducedMotion} from 'motion/react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname} from 'next/navigation';
@@ -94,9 +95,26 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   };
 
   const publicFeature=!managementMode&&['culture','statics','search','trace'].includes(featureId)?featureId:'';
+  const heroRef=useRef(null);
+  const heroPlayed=useRef('');
+  const reduceMotion=useReducedMotion();
+  const heroIdentity=[scopeId,pathname,featureId,managementTextPage].join('|');
+  const heroReady=managementMode?managementTextQuery.isSuccess:
+    !hasFeatureHero||publicHeroQuery.isSuccess;
+  useLayoutEffect(()=>{
+    if(!heroReady||!heroRef.current||heroPlayed.current===heroIdentity)return;
+    heroPlayed.current=heroIdentity;
+    if(reduceMotion||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    const direction=featureId==='culture'?{x:[-9,0]}:
+      featureId==='trace'?{x:[9,0]}:featureId==='statics'?{y:[7,0]}:{y:[4,0]};
+    const elements=heroRef.current.querySelectorAll(':scope > .loc-eyebrow, :scope > .home-title-row, :scope > .scope-hero-description');
+    const controls=Array.from(elements).map((element,index)=>animate(element,
+      {opacity:[.65,1],...direction},{duration:.28,delay:index*.045,ease:'easeOut'}));
+    return ()=>controls.forEach(control=>control.stop());
+  },[heroReady,heroIdentity,featureId,reduceMotion]);
   return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
     <section className="scope-page">
-      <header className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
+      <header ref={heroRef} className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
         <FeatureHeroContent
           scopeId={scopeId}
           eyebrow={shared?.eyebrow||''}
