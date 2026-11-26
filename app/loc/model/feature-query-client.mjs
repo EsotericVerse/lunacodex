@@ -1,7 +1,6 @@
 'use client';
 
-import {getOrLoadScopedRead} from '../../../packages/zenstack/scoped-read-cache.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {readAnchorStructure} from './anchor-structure-runtime.mjs';
 import {queryGalaxyRecords} from '../actions/galaxy/queries.mjs';
 import {queryAnchorFeature} from '../actions/anchor/queries.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
@@ -43,35 +42,7 @@ async function readAnchorPages({scope,family,types,startDate,endDate,
   }
 }
 
-// Only shared public structure survives the feature that asked for it.
-// Date/Point/media rows and editor-authorized reads stay on the original path.
-const STRUCTURE_TYPES=Object.freeze({
-  source:ANCHOR_TYPE_GROUPS.source,time:['era','period'],space:['trace','path']
-});
-export async function readAllAnchorFeature(options={}){
-  const {scope,family,types,startDate,endDate,signal,editor}=options;
-  signal?.throwIfAborted?.();
-  const structural=STRUCTURE_TYPES[family];
-  const selection=types===undefined?ANCHOR_TYPE_GROUPS[family]:types;
-  const allowed=ANCHOR_TYPE_GROUPS[family];
-  if(typeof window==='undefined'||editor||startDate||endDate||!structural||
-    !Array.isArray(selection)||!selection.length||
-    selection.some(type=>!allowed.includes(type))||
-    !/^[a-z][a-z0-9]{0,14}$/.test(String(scope||''))||
-    (family==='source')!==(scope==='loc'))
-    return readAnchorPages(options);
-  const parents=[...new Set(selection.filter(type=>structural.includes(type)))].sort();
-  if(!parents.length)return readAnchorPages(options);
-  const leaves=[...new Set(selection.filter(type=>!structural.includes(type)))];
-  const shared=getOrLoadScopedRead('silver.'+scope+'_anchor',
-    ['public-anchor-structure',family,parents],()=>readAnchorPages({
-      scope,family,types:parents
-    }));
-  // Do not bind a shared request to a single consumer's cancellation signal.
-  // The outgoing page discards its result; another page may already need it.
-  const [base,detail]=await Promise.all([
-    shared,leaves.length?readAnchorPages({...options,types:leaves}):[]
-  ]);
-  signal?.throwIfAborted?.();
-  return [...base,...detail].sort((a,b)=>a.uid<b.uid?-1:a.uid>b.uid?1:0);
+
+export function readAllAnchorFeature(options={}){
+  return readAnchorStructure(options,readAnchorPages);
 }
