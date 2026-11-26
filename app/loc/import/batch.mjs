@@ -356,17 +356,17 @@ export function extractImportCreatedAt(value,depth=0){
 export const IMPORT_PAYLOAD_TARGET_BYTES=IMPORT_WRITE_TARGET_BYTES;
 // A checkpoint is a receipt for CONFIRMED batches, never a forced 8192-row
 // SQL request or permission to skip live UID comparison on retry.
+export const IMPORT_FIRST_BATCH_ROWS=256;
 export const IMPORT_FIRST_CHECKPOINT_ROWS=4096;
 export const IMPORT_MAX_CHECKPOINT_ROWS=8192;
 const importRowJson=row=>JSON.stringify(row);
 const importRowBytes=row=>new TextEncoder().encode(importRowJson(row)).byteLength;
-const importBatchCharacters=rows=>rows.reduce((sum,row)=>sum+importRowJson(row).length,0);
 
 // A bounded sample is already in memory after archive decoding. Choose the
 // first row window directly from actual UTF-8 density, without stepping
 // through 256/512/1024/2048 just to discover that short rows fit.
 export function recommendImportBatchRows(rows,{
-  maxBytes=IMPORT_PAYLOAD_TARGET_BYTES,maximum=IMPORT_FIRST_CHECKPOINT_ROWS,
+  maxBytes=IMPORT_PAYLOAD_TARGET_BYTES,maximum=IMPORT_FIRST_BATCH_ROWS,
   sampleSize=128
 }={}){
   if(!Array.isArray(rows)||!Number.isSafeInteger(maxBytes)||maxBytes<1||
@@ -413,26 +413,29 @@ export function createImportConfirmationWindow({
   };
 }
 export function createImportBatchSizer({
-  initial=IMPORT_FIRST_CHECKPOINT_ROWS,minimum=1,
+  initial=IMPORT_FIRST_BATCH_ROWS,minimum=1,
   maximum=IMPORT_MAX_CHECKPOINT_ROWS,
   maxPayloadBytes=IMPORT_PAYLOAD_TARGET_BYTES,sampleRows=null
 }={}){
   const guess=Array.isArray(sampleRows)&&sampleRows.length
     ?recommendImportBatchRows(sampleRows,{maxBytes:maxPayloadBytes,
       maximum:Math.min(initial,maximum)}):initial;
-  const adaptive=createTextAdaptiveRows({initial:guess,minimum,maximum});
+  const adaptive=createTextAdaptiveRows({initial:guess,minimum,maximum,
+    targetChars:maxPayloadBytes});
   return {
     get size(){return adaptive.size;},
     get maxBytes(){return maxPayloadBytes;},
-    byteSize:importRowBytes,
+    // Include one JSON-array separator byte per row in the transport budget.
+    byteSize:row=>importRowBytes(row)+1,
     // A larger logical window is safe only when EACH actual HTTP payload
     // stays below the existing byte target.
     shouldFlush(count,bytes,nextBytes=0){
       return count>0&&(count>=adaptive.size||
         bytes+nextBytes>maxPayloadBytes);
     },
-    observe(rows,elapsedMs,characters=rows){
-      return adaptive.observe(rows,characters);
+    observe(rows,elapsedMs,payloadBytes=rows){
+      // Adapt on actual UTF-8 bytes, not JavaScript UTF-16 character counts.
+      return adaptive.observe(rows,payloadBytes);
     }
   };
 }
@@ -495,6 +498,8 @@ export async function writeImportStream(records,{writeBatch,onProgress,total=nul
       const next=await readNext();
       if(next.done){finished=true;break;}
       const row=next.value,nextBytes=sizer.byteSize(row);
+      if(nextBytes>sizer.maxBytes)
+        throw new Error('單筆資料超出批次傳輸限制，無法安全寫入。');
       if(sizer.shouldFlush(batch.length,bytes,nextBytes)){
         lookahead=row;hasLookahead=true;break;
       }
@@ -502,7 +507,6 @@ export async function writeImportStream(records,{writeBatch,onProgress,total=nul
       if(sizer.shouldFlush(batch.length,bytes))break;
     }
     if(!batch.length)break;
-    if(!batch.length)throw new Error('匯入批次大小無效。');
     const started=Date.now();
     try{
       const result=await writeBatch(batch,{offset:completed,total});
@@ -515,7 +519,7 @@ export async function writeImportStream(records,{writeBatch,onProgress,total=nul
     }
     completed+=batch.length;batches++;
     const checkpoint=windows.reached(completed);
-    sizer.observe(batch.length,Date.now()-started,importBatchCharacters(batch));
+    sizer.observe(batch.length,Date.now()-started,bytes);
     onProgress?.({completed,total,percent:total===null?null:
       Math.round(completed/Math.max(1,total)*100),checkpoint,batch:batches,
       batches:total===null?null:Math.max(batches,Math.ceil(total/sizer.size))});
