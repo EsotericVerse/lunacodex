@@ -160,6 +160,40 @@ test('PostgreSQL SELECT streaming reads bounded cursor chunks and validates rows
   await db.destroy();
 });
 
+test('PostgreSQL cursor is closed when a feature consumer stops early',async()=>{
+  const source=Array.from({length:20},(_,index)=>({
+    uid:String(index+1).padStart(8,'0')
+  }));
+  let cursor;
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;
+      this.index=0;this.closed=false;cursor=this;}
+    async read(size){
+      const rows=source.slice(this.index,this.index+size);
+      this.index+=rows.length;
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:789,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Expected a native PostgreSQL cursor');},
+    release(){}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const result=await executeKyselyQuery(db,{
+    kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+    operation:'select',columns:['uid']
+  },{dialect:'postgres',stream:true,chunkSize:2});
+  const received=[];
+  for await(const row of result.data){received.push(row.uid);break;}
+  assert.deepEqual(received,['00000001']);
+  assert.equal(cursor.closed,true);
+  await db.destroy();
+});
+
 test('Keyword article projection consumes native cursor rows in bounded CPU slices',async()=>{
   const source=[
     {uid:'AAAA0001',title:'',content:'excluded one',keyword:false,
