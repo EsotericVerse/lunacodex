@@ -223,7 +223,7 @@ export function planKyselyUpsertBatches(rows,primary,{
     if(!row||typeof row!=='object'||Array.isArray(row)||
       keys.some(key=>row[key]===null||row[key]===undefined))
       throw new TypeError('UPSERT primary key is required');
-    const columns=Object.keys(row).sort(),nextShape=columns.join('\\0');
+    const columns=Object.keys(row).sort(),nextShape=columns.join('\0');
     // Non-PostgreSQL CASE updates bind each primary key in both its CASE
     // predicate and WHERE predicate. Budget that extra dialect-specific width.
     const parameterWidth=columns.length+(dialect==='postgres'?0:keys.length);
