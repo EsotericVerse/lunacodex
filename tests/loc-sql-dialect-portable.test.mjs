@@ -6,7 +6,7 @@ import {assertCrossEnginePublicRead,authorizeCrossEngineQuery,
 import {Kysely,PostgresDialect,MysqlDialect,MssqlDialect}
   from 'kysely';
 import {buildKyselyUpsertQuery,buildKyselySelectQuery,
-  planKyselyUpsertBatches,executeKyselySelectStream}
+  planKyselyUpsertBatches,executeKyselyQuery}
   from '../app/loc/providers/kysely-runtime.mjs';
 import {createKyselyDialect} from '../modules/loc/dialect/index.mjs';
 import {POSTGRES_SQL_TYPE,postgresCursorConstructor,postgresDialectConfig}
@@ -135,7 +135,9 @@ test('PostgreSQL SELECT streaming reads bounded cursor chunks and validates rows
   const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
   const input={kind:'query',schema:'silver',table:'lo3rwang_galaxy',
     operation:'select',columns:['uid']};
-  const result=await executeKyselySelectStream(db,input,{dialect:'postgres',chunkSize:2});
+  const result=await executeKyselyQuery(db,input,{
+    dialect:'postgres',stream:true,chunkSize:2
+  });
   const received=[];
   for await(const row of result.data)received.push(row.uid);
   assert.deepEqual(received,['AAAA0001','BBBB0002','CCCC0003']);
