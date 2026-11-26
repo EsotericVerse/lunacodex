@@ -14,6 +14,7 @@ import {POSTGRES_SQL_TYPE,postgresCursorConstructor,postgresDialectConfig}
 import {MYSQL_SQL_TYPE} from '../modules/loc/dialect/mysql.mjs';
 import {MSSQL_SQL_TYPE} from '../modules/loc/dialect/mssql.mjs';
 import {readItemKeywordProjection,KEYWORD_CPU_SLICE_ROWS} from '../app/loc/keywords/item-count-analysis.mjs';
+import {createAnchorArticlePageBuffer} from '../app/loc/keywords/anchor-search.mjs';
 
 const postgres=new Kysely({dialect:new PostgresDialect({pool:{
   connect:async()=>{throw Error('compile-only: no database connection');}
@@ -364,6 +365,22 @@ test('PostgreSQL cursor streams 50000 rows in bounded 256-row driver batches',as
   assert.equal(cursor.closed,true);
   assert.equal(released,1);
   await db.destroy();
+});
+
+test('Anchor article cursor keeps only the requested top page while scanning large matches',()=>{
+  const page=createAnchorArticlePageBuffer({offset:2,limit:2,sortDirection:'asc'});
+  for(let index=999;index>=0;index--){
+    page.add({
+      uid:String(index+1).padStart(8,'0'),
+      createtime:new Date(Date.UTC(2020,0,1)+index*1000).toISOString()
+    });
+  }
+  assert.equal(page.capacity,5);
+  assert.equal(page.retainedCount,5,
+    'A thousand matches must not become a thousand retained article identities');
+  const result=page.page();
+  assert.deepEqual(result.rows.map(row=>row.uid),['00000003','00000004']);
+  assert.equal(result.hasMore,true);
 });
 
 test('Keyword article projection streams 1000 rows through bounded cursor and CPU slices',async()=>{
