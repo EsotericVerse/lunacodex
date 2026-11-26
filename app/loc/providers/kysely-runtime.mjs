@@ -336,6 +336,10 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
       }else missing.push(row);
     }
     const updates=Object.keys(batch[0]).filter(column=>!primary.includes(column));
+    const returnedByKey=new Map();
+    const outputColumns=req.returning&&dialect==='mssql'
+      ?req.columns.includes('*')?['*']:[...new Set([...primary,...req.columns])]
+      :req.columns;
     if(existing.length&&!req.ignoreDuplicates&&updates.length){
       const assignments=Object.fromEntries(updates.map(column=>[
         column,sql`case ${sql.join(existing.map(row=>
@@ -348,25 +352,35 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
         ))));
       if(guardFilter)query=query.where(guardFilter.column,'=',guardFilter.value);
       if(dialect==='mssql'&&req.returning)
-        query=mssqlMutationReturning(query,{...req,operation:'update'});
+        query=mssqlMutationReturning(query,{...req,columns:outputColumns,operation:'update'});
       const outcome=await query.execute();
-      if(req.returning)data.push(...outcome);
-      count+=existing.length;
+      if(req.returning){
+        for(const row of outcome)returnedByKey.set(portableKeyIdentity(row,primary),row);
+      }else count+=existing.length;
     }
     if(missing.length){
       let query=trx.insertInto(table).values(missing);
       if(dialect==='mssql'&&req.returning)
-        query=mssqlMutationReturning(query,{...req,operation:'insert'});
+        query=mssqlMutationReturning(query,{...req,columns:outputColumns,operation:'insert'});
       const outcome=await query.execute();
       if(req.returning){
-        data.push(...outcome);
-        count+=outcome.length;
+        for(const row of outcome)returnedByKey.set(portableKeyIdentity(row,primary),row);
       }else{
         const affected=Number(outcome[0]?.numAffectedRows??
           outcome[0]?.numInsertedOrUpdatedRows??outcome[0]?.numUpdatedRows??0);
         if(affected!==missing.length)
           throw new Error('Portable UPSERT insert count mismatch');
         count+=missing.length;
+      }
+    }
+    if(req.returning){
+      for(const row of batch){
+        const returned=returnedByKey.get(portableKeyIdentity(row,primary));
+        if(returned){
+          data.push(req.columns.includes('*')?returned:Object.fromEntries(
+            req.columns.map(column=>[column,returned[column]])
+          ));
+        }
       }
     }
   }
