@@ -1,13 +1,13 @@
 'use client';
 
-import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState} from 'react';
+import {createContext,useCallback,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
 import {usePathname,useRouter} from 'next/navigation';
 import {Capacitor} from '@capacitor/core';
 import {dbAuthEvents,transactionWrites} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
 import {useQueryClient,releaseTransientPageResources} from '../../packages/zenstack/client-queries';
-import {openEditorTransactionSession,cancelEditorTransactionSession}
+import {openEditorTransactionSession,cancelEditorTransactionSession,rotateActiveEditorTransactionSession}
   from '../loc/db/editor-transaction-lifecycle.mjs';
 import {invalidateScopedReadCache} from '../../packages/zenstack/scoped-read-cache.mjs';
 import {invalidateCachedReadPrefix} from '../loc/db/semi-dynamic-cache.mjs';
@@ -68,8 +68,9 @@ export function EditDockProvider({children,scopeId}){
     if(operationTimer.current!==null)clearTimeout(operationTimer.current);
     operationTimer.current=setTimeout(()=>{
       if(operationEpoch.current!==epoch)return;
+      cancelEditorTransactionSession();
       releaseOperation();
-      setNotice('儲存操作超過 5 分鐘，操作鎖已解除。請確認資料是否成功寫入。');
+      setNotice('儲存操作已逾時並停止；已送出的交易結果須重新讀取確認。請退出後重新進入編輯。');
     },EDIT_OPERATION_TTL_MS);
     return epoch;
   },[releaseOperation]);
@@ -92,6 +93,7 @@ export function EditDockProvider({children,scopeId}){
     operationTimer.current=null;
     operationEpoch.current++;
     committing.current=false;
+    cancelEditorTransactionSession();
     markEditorActive(false);
     registeredEditors.current.clear();
     currentEditor.current=null;
@@ -133,10 +135,20 @@ export function EditDockProvider({children,scopeId}){
     setCanManageGlobal(false);
     setNotice('');
   },[clearEditor,releaseOperation]);
-  useEffect(()=>{
-    if(lastPathname.current!==null&&pathname!==lastPathname.current)releaseOperation();
+  useLayoutEffect(()=>{
+    if(lastPathname.current!==null&&pathname!==lastPathname.current){
+      cancelEditorTransactionSession();
+      releaseOperation();
+      if(editing)openEditorTransactionSession();
+    }
     lastPathname.current=pathname;
-  },[pathname,releaseOperation]);
+  },[pathname,editing,releaseOperation]);
+  useEffect(()=>{
+    if(!editing)return undefined;
+    const leave=()=>end();
+    window.addEventListener('pagehide',leave);
+    return ()=>window.removeEventListener('pagehide',leave);
+  },[editing,end]);
   useEffect(()=>{
     // Editing expiry must revoke only local editor UI. Never sign the user out
     // of LOC Auth because the independent edit-session clock elapsed.
@@ -177,6 +189,7 @@ export function EditDockProvider({children,scopeId}){
       isBusy:actions.isBusy,isDestructive:actions.isDestructive};
     registeredEditors.current.add(editor);
     const activate=()=>{
+      if(!registeredEditors.current.has(editor))return;
       currentEditor.current=editor;
       setHasSave(typeof editor.save==='function');
       setNotice('');
@@ -362,12 +375,14 @@ export function EditDockProvider({children,scopeId}){
     if(!target)return;
     switchHistory.current=history==='push'?'push':'replace';
     switchScroll.current=scroll!==false;
+    cancelEditorTransactionSession();
     releaseOperation();
     clearEditor();setNotice('');
     navigate(target,switchHistory.current,switchScroll.current);
   },[releaseOperation,clearEditor,navigate]);
   const switchSection=useCallback((next,commit)=>{
     if(typeof commit!=='function')return;
+    rotateActiveEditorTransactionSession();
     releaseOperation();
     clearEditor();setNotice('');
     // The section hook disposes the old query generation before it commits.
