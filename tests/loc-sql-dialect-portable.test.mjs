@@ -13,6 +13,7 @@ import {POSTGRES_SQL_TYPE,postgresCursorConstructor,postgresDialectConfig}
   from '../modules/loc/dialect/postgres.mjs';
 import {MYSQL_SQL_TYPE} from '../modules/loc/dialect/mysql.mjs';
 import {MSSQL_SQL_TYPE} from '../modules/loc/dialect/mssql.mjs';
+import {readItemKeywordProjection} from '../app/loc/keywords/item-count-analysis.mjs';
 
 const postgres=new Kysely({dialect:new PostgresDialect({pool:{
   connect:async()=>{throw Error('compile-only: no database connection');}
@@ -155,6 +156,46 @@ test('PostgreSQL SELECT streaming reads bounded cursor chunks and validates rows
   for await(const row of result.data)received.push(row.uid);
   assert.deepEqual(received,['AAAA0001','BBBB0002','CCCC0003']);
   assert.equal(opened.length,1);
+  assert.equal(opened[0].closed,true);
+  await db.destroy();
+});
+
+test('Keyword article projection consumes native cursor rows in bounded CPU slices',async()=>{
+  const source=[
+    {uid:'AAAA0001',title:'',content:'excluded one',keyword:false,
+      date:'2026-11-20',site:'vocus',place_id:null,createtime:null},
+    {uid:'BBBB0002',title:'',content:'excluded two',keyword:false,
+      date:'2026-11-21',site:'vocus',place_id:null,createtime:null},
+    {uid:'CCCC0003',title:'',content:'excluded three',keyword:false,
+      date:'2026-11-22',site:'vocus',place_id:null,createtime:null}
+  ];
+  const opened=[];
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;
+      this.index=0;this.closed=false;this.reads=[];opened.push(this);}
+    async read(size){
+      this.reads.push(size);
+      const rows=source.slice(this.index,this.index+size);
+      this.index+=rows.length;
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:456,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Keyword projection must use the native cursor');},
+    release(){}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const result=await readItemKeywordProjection(db,'lo3rwang',{
+    items:[],groups:[],patterns:[],engine:'postgres',namespace:'silver'
+  });
+  assert.equal(result.totals.scannedDocuments,3);
+  assert.equal(result.totals.parsedDocuments,0);
+  assert.equal(opened.length,1);
+  assert.deepEqual(opened[0].reads,[256,256]);
   assert.equal(opened[0].closed,true);
   await db.destroy();
 });
