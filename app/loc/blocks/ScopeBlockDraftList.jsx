@@ -336,7 +336,7 @@ export default function ScopeBlockDraftList({
     return ()=>onDirtyChange?.(false);
   },[drafts,onDirtyChange]);
 
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     // Admin can also be opened directly, without homepage Edit mode.
     // Mounted drafts still participate in the same unsaved-change guard.
     if(!editDock?.register)return undefined;
