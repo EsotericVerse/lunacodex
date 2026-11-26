@@ -1,3 +1,25 @@
+// Exact UID-selected Anchor navigation only; never autocomplete identifiers.
+// All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
+// imported schema copying, Article body scans or duplicate search tables.
+import {readItemKeywordProjection} from './item-count-analysis.mjs';
+import {keywordScanText} from './content-filter.mjs';
+import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
+const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
+const UID=/^[A-Za-z0-9]{8}$/;
+const TYPES=['date','point','item','pattern'];
+const anchorTable=s=>{
+  if(!SCOPE.test(String(s||'')))throw Error('Invalid Scope');
+  return 'silver.'+s+'_anchor';
+};
+const attrs=row=>{
+  const raw=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr;
+  return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
+};
+// Class/Group/Item attr.uid points to child Anchor UIDs, never Galaxy article UIDs.
+const kids=row=>Array.isArray(attrs(row).uid)?attrs(row).uid.filter(uid=>UID.test(String(uid))):[];
+const sourceTable=s=>'silver.'+s+'_galaxy';
+function err(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
+
 // Retain only the best offset+page+1 article identities while scanning.
  // The stream still evaluates every matching article, but never stores an
  // unbounded UID list just to sort it after the scan.
@@ -50,27 +72,6 @@ export function createAnchorArticlePageBuffer({offset=0,limit=20,sortDirection='
   };
 }
 
-// Exact UID-selected Anchor navigation only; never autocomplete identifiers.
-// All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
-// imported schema copying, Article body scans or duplicate search tables.
-import {readItemKeywordProjection} from './item-count-analysis.mjs';
-import {keywordScanText} from './content-filter.mjs';
-import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
-const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
-const UID=/^[A-Za-z0-9]{8}$/;
-const TYPES=['date','point','item','pattern'];
-const anchorTable=s=>{
-  if(!SCOPE.test(String(s||'')))throw Error('Invalid Scope');
-  return 'silver.'+s+'_anchor';
-};
-const attrs=row=>{
-  const raw=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr;
-  return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
-};
-// Class/Group/Item attr.uid points to child Anchor UIDs, never Galaxy article UIDs.
-const kids=row=>Array.isArray(attrs(row).uid)?attrs(row).uid.filter(uid=>UID.test(String(uid))):[];
-const sourceTable=s=>'silver.'+s+'_galaxy';
-function err(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 
 // Exact navigation retains keyword publication checks.
 export async function accessibleKeywordAnchors(db,scope,owner=false){
