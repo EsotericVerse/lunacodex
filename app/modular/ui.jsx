@@ -25,16 +25,20 @@ const ArticleTimeAnchorAction=dynamic(()=>import('./ArticleTimeAnchorAction'),{l
 export const ManagementHeroContext=createContext('');
 
 function FeatureHeroContent({eyebrow='',title,subtitle='',description='',rich=false,scopeId=''}){
-  return <>
-    {eyebrow?<p className="loc-eyebrow">{eyebrow}</p>:null}
+  const subtitleText=HomeBlock.plainBlockLine(subtitle);
+  const descriptionHtml=String(description||'').trim();
+  const hasDescription=Boolean(HomeBlock.plainBlockLine(descriptionHtml)||
+    /<(?:img|picture|video|audio|iframe|svg)\b/i.test(descriptionHtml));
+  return <div className="scope-feature-hero-copy">
+    {eyebrow?<p className="loc-eyebrow scope-feature-hero-copy__eyebrow">{eyebrow}</p>:null}
     <div className="home-title-row">
-      <h1>{title}</h1>
-      {subtitle?<p className="loc-subtitle scope-subtitle">{HomeBlock.plainBlockLine(subtitle)}</p>:null}
+      <h1 className="scope-feature-hero-copy__title">{title}</h1>
+      {subtitleText?<p className="loc-subtitle scope-subtitle scope-feature-hero-copy__subtitle">{subtitleText}</p>:null}
     </div>
-    {description?(rich
-      ?<div className="scope-hero-description scope-shared-hero-rich" dangerouslySetInnerHTML={{__html:description}}/>
-      :<div className="scope-hero-description">{description}</div>):null}
-  </>;
+    {hasDescription?(rich
+      ?<div className="scope-hero-description scope-shared-hero-rich scope-feature-hero-copy__description" dangerouslySetInnerHTML={{__html:descriptionHtml}}/>
+      :<div className="scope-hero-description scope-feature-hero-copy__description">{descriptionHtml}</div>):null}
+  </div>;
 }
 
 export function FeaturePage({featureId,children,titleOverride=null,subtitle=null,description=null}){
@@ -60,14 +64,12 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   // Static feature frame first; read the two fixed public Hero slots in
   // one existing Query. Editing retains its independent authoritative rows.
   const groupHeroPage=HomeBlock.featureHeroPageFor(featureId);
-  const scopeHeroPage='scope_'+featureId;
   const publicHeroQuery=useAsyncResource(['scope-public-hero',featureId],
-    ()=>hero_block([groupHeroPage,scopeHeroPage]),{
+    ()=>hero_block([groupHeroPage]),{
       enabled:hasFeatureHero&&!managementMode
     });
   const publicRows=publicHeroQuery.data||[];
   const groupHeroRows=publicRows.filter(row=>row.page_name===groupHeroPage);
-  const scopeHeroRows=publicRows.filter(row=>row.page_name===scopeHeroPage);
   const managementTextPage=managementSlot?.page||'';
   const managementImagePage=HomeBlock.managementHeroImagePage(managementSlot);
   // Management Hero and the editor use the same mounted query key when
@@ -79,11 +81,10 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     ()=>selectLiveScopeBlocks('loc',managementImagePage),{enabled:managementMode});
   const heroImageRow=managementMode
     ?managementImageQuery.data?.find(row=>Number(row.block_order)===1)
-    :(featureId==='admin'?groupHeroRows:
-      (scopeId==='loc'&&!HomeBlock.shouldUseSingleFeatureHeroImage(featureId))
-        ?groupHeroRows:scopeHeroRows).find(row=>Number(row.block_order)===1);
+    :groupHeroRows.find(row=>Number(row.block_order)===1);
   const heroImageOverride=heroImageUrlOf(heroImageRow)||
-    (managementMode?HomeBlock.managementHeroDefaultImage(managementSlot):'');
+    (managementMode?HomeBlock.managementHeroDefaultImage(managementSlot)
+      :hasFeatureHero?HomeBlock.featureHeroDefaultImage(featureId):'');
   const heroStyle=heroImageOverride?{'--scope-feature-hero-image':`url("${heroImageOverride}")`}:undefined;
   const shared=managementMode?HomeBlock.managementHeroCopy(managementTextQuery.data,managementSlot)
     :sharedEnabled?HomeBlock.featureHeroFor(groupHeroRows):null;
@@ -100,9 +101,9 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
         <FeatureHeroContent
           scopeId={scopeId}
           eyebrow={shared?.eyebrow||''}
-          title={managementMode?shared?.title||'':titleOverride||shared?.title||(hasFeatureHero?'':fallbackCopy.title)}
-          subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:hasFeatureHero?'':fallbackCopy.subtitle}
-          description={managementMode?shared?.description||'':shared?shared.description:hasFeatureHero?'':fallbackCopy.description}
+          title={managementMode?shared?.title||managementSlot.label:titleOverride||shared?.title||fallbackCopy.title}
+          subtitle={managementMode?shared?.subtitle||'':shared?shared.subtitle:fallbackCopy.subtitle}
+          description={managementMode?shared?.description||'':shared?shared.description:fallbackCopy.description}
           rich={Boolean(shared)&&(!managementMode||/<[a-z][^>]*>/i.test(shared?.description||''))}
         />
         {(managementMode?(managementTextQuery.isError||managementImageQuery.isError):publicHeroQuery.isError)

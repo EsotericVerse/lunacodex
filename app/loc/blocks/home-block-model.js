@@ -177,6 +177,16 @@ const LOC_MANAGEMENT_HERO_IMAGES=Object.freeze({
   trace:'https://loc.lo3rwang.cc/pics/LOC-gn.jpg',
   articles:'https://loc.lo3rwang.cc/pics/LOC-search.jpg'
 });
+const FEATURE_HERO_DEFAULT_IMAGES=Object.freeze({
+  culture:'LOC-culture.jpg',
+  statics:'LOC-statics.jpg',
+  trace:'LOC-gn.jpg',
+  search:'LOC-search.jpg'
+});
+export function featureHeroDefaultImage(featureId){
+  const file=FEATURE_HERO_DEFAULT_IMAGES[String(featureId||'')];
+  return file?'https://loc.lo3rwang.cc/pics/'+file:'';
+}
 export function managementHeroImagePage(slot){
   // The Hero image and its copy are fields on the same LOC Anchor row.
   return slot?.page||'scope_admin';
@@ -266,6 +276,7 @@ export const HomeBlock=Object.freeze({
   shouldUseSingleFeatureHeroImage,
   MANAGEMENT_HERO_SLOTS,
   MANAGEMENT_HERO_IMAGE_URL,
+  featureHeroDefaultImage,
   managementHeroSlot,
   managementHeroImagePage,
   managementHeroDefaultImage,
