@@ -196,12 +196,14 @@ export async function executeKyselySelectStream(trx,input,{
       signal?{signal}:undefined)).count):null;
   const data=(async function*(){
     if(!built.query)return;
-    const options=signal?{chunkSize:size,signal}:{chunkSize:size};
-    const source=built.query.stream(options)[Symbol.asyncIterator]();
+    // Kysely's stream AbortSignal stops the consumer before a pending
+    // pg-cursor read has completed. Keep cancellation at this feature-owned
+    // iterator boundary instead: request return immediately, wait for the
+    // current read to settle, then close the cursor and release its client.
+    const source=built.query.stream({chunkSize:size})[Symbol.asyncIterator]();
     let batch=[];
-    // Abort can happen while the consumer is paused between chunks. Request
-    // iterator.return immediately so pg-cursor's finally closes its portal;
-    // the awaited finally below owns the connection-release boundary.
+    const abortError=()=>signal?.reason instanceof Error?signal.reason:
+      Object.assign(new Error('PostgreSQL query aborted'),{name:'AbortError'});
     const abort=()=>{
       try{void Promise.resolve(source.return?.()).catch(()=>{});}
       catch{/* The query's original AbortError remains authoritative. */}
@@ -211,6 +213,7 @@ export async function executeKyselySelectStream(trx,input,{
     try{
       for(;;){
         const next=await source.next();
+        if(signal?.aborted)throw abortError();
         if(next.done)break;
         batch.push(next.value);
         if(batch.length>=size){
