@@ -13,7 +13,7 @@ import {POSTGRES_SQL_TYPE,postgresCursorConstructor,postgresDialectConfig}
   from '../modules/loc/dialect/postgres.mjs';
 import {MYSQL_SQL_TYPE} from '../modules/loc/dialect/mysql.mjs';
 import {MSSQL_SQL_TYPE} from '../modules/loc/dialect/mssql.mjs';
-import {readItemKeywordProjection} from '../app/loc/keywords/item-count-analysis.mjs';
+import {readItemKeywordProjection,KEYWORD_CPU_SLICE_ROWS} from '../app/loc/keywords/item-count-analysis.mjs';
 
 const postgres=new Kysely({dialect:new PostgresDialect({pool:{
   connect:async()=>{throw Error('compile-only: no database connection');}
@@ -282,10 +282,49 @@ test('PostgreSQL cursor stream keeps its transaction connection until commit',as
   await db.destroy();
 });
 
-test('Keyword article projection streams 5000 rows through bounded cursor and CPU slices',async()=>{
-  const total=5000;
-  const opened=[];
+test('PostgreSQL cursor streams 50000 rows in bounded 256-row driver batches',async()=>{
+  const total=50000;
+  let index=0,released=0,maxRows=0,readCalls=0,cursor;
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;this.closed=false;cursor=this;}
+    async read(size){
+      readCalls++;
+      const count=Math.min(size,total-index);
+      const rows=Array.from({length:count},(_,offset)=>({
+        uid:String(index+offset+1).padStart(8,'0')
+      }));
+      index+=count;
+      maxRows=Math.max(maxRows,rows.length);
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:792,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Expected a native PostgreSQL cursor');},
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const result=await executeKyselyQuery(db,{
+    kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+    operation:'select',columns:['uid']
+  },{dialect:'postgres',stream:true,chunkSize:256});
+  let received=0;
+  for await(const row of result.data)received++;
+  assert.equal(received,total);
+  assert.ok(maxRows<=256);
+  assert.ok(readCalls>=196);
+  assert.equal(cursor.closed,true);
+  assert.equal(released,1);
+  await db.destroy();
+});
+
+test('Keyword article projection streams 1000 rows through bounded cursor and CPU slices',async()=>{
+  const total=1000;
   let released=0;
+  const opened=[];
   class FakeCursor{
     constructor(query,parameters){this.query=query;this.parameters=parameters;
       this.index=0;this.closed=false;this.reads=[];this.maxRows=0;opened.push(this);}
@@ -294,7 +333,7 @@ test('Keyword article projection streams 5000 rows through bounded cursor and CP
       const count=Math.min(size,total-this.index);
       const rows=Array.from({length:count},(_,offset)=>({
         uid:String(this.index+offset+1).padStart(8,'0'),
-        title:'',content:'中文內容'.repeat(8),keyword:true,
+        title:'',content:'月光月光',keyword:true,
         date:'2026-11-20',site:'vocus',place_id:null,createtime:null
       }));
       this.index+=count;
@@ -312,17 +351,27 @@ test('Keyword article projection streams 5000 rows through bounded cursor and CP
   const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
   const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
   const result=await readItemKeywordProjection(db,'lo3rwang',{
-    items:[],groups:[],patterns:[],engine:'postgres',namespace:'silver'
+    items:[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}],
+    groups:[{uid:'GROUP001',title:'一組'}],
+    patterns:[{uid:'PATT0001',title:'月光'}],
+    engine:'postgres',namespace:'silver'
   });
   assert.equal(result.totals.scannedDocuments,total);
   assert.equal(result.totals.parsedDocuments,total);
-  assert.ok(opened.length>=2,'A 4096-row SQL page must continue with a new cursor');
-  assert.ok(opened.every(cursor=>cursor.closed));
-  assert.ok(opened.every(cursor=>cursor.maxRows<=256));
-  assert.ok(opened.every(cursor=>cursor.reads.every(size=>size===256)));
-  assert.equal(released,opened.length,'Each completed cursor page must release its connection');
+  assert.equal(result.totals.itemCounts.ITEM0001,total*2);
+  assert.equal(result.totals.patternCounts.PATT0001,total*2);
+  assert.equal(opened.length,1);
+  assert.equal(opened[0].closed,true);
+  assert.equal(opened[0].maxRows<=256,true);
+  assert.ok(opened[0].reads.every(size=>size===256));
+  assert.equal(released,1);
   assert.equal(KEYWORD_CPU_SLICE_ROWS,256);
   await db.destroy();
+});
+
+{
+const read=(schema,table)=>({
+  kind:'query',operation:'select',schema,table,columns:['uid']
 });
 
 test('anonymous reads cannot expose the private api.manage authority registry',async()=>{
