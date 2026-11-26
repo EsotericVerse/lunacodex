@@ -1,0 +1,6 @@
+# EsotericVerse — LOC (Luna Codex)
+# Submit vulnerability reports privately through GitHub Security Advisories.
+Contact: https://github.com/EsotericVerse/lunacodex/security/advisories/new
+Canonical: https://loc.lo3rwang.cc/.well-known/security.txt
+Expires: 2027-11-25T00:00:00Z
+Preferred-Languages: zh-TW, en
