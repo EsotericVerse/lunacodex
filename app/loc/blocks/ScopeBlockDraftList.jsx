@@ -13,6 +13,7 @@ import {HomeBlock} from './home-block-model';
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
+import {scopeBlockStoragePage} from './scope-block-storage-page.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
 import {invalidateScopeBlockPage} from '../scope/scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
@@ -39,6 +40,7 @@ export default function ScopeBlockDraftList({
   const t=useUiText();
   const queryClient=useQueryClient();
   const editDock=useEditDock();
+  const storagePage=scopeBlockStoragePage(scopeId,pageName);
   const dockActions=useRef({save:null,discard:null});
   const inDock=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   function report(message){
@@ -231,7 +233,7 @@ export default function ScopeBlockDraftList({
         // Exactly one managed request. Authority is checked once by the server;
         // the entire page commits or rolls back in one transaction.
         const {error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
-          p_scope_id:scopeId,p_type:pageName,p_rows:committedRows
+          p_scope_id:scopeId,p_type:storagePage,p_rows:committedRows
         });
         if(error)throw new Error(error.message||'Blocks 批次儲存失敗');
         if(homeCacheSync===false)

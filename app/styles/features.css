@@ -1918,8 +1918,12 @@
 .loc-keyword-workspace-panel{
   display:grid;grid-template-columns:minmax(0,1fr);gap:.8rem;
 }
-.loc-keyword-workspace-panel>.scope-feature-card,
-.loc-keyword-workspace-panel>.loc-card{min-width:0;max-width:100%;margin:0}
+.loc-keyword-workspace-panel>.management-section-transition{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:inherit;
+  width:100%;max-width:100%;min-width:0;
+}
+.loc-keyword-workspace-panel>:is(.scope-feature-card,.loc-card),
+.loc-keyword-workspace-panel>.management-section-transition>:is(.scope-feature-card,.loc-card){min-width:0;max-width:100%;margin:0}
 .loc-keyword-analysis-compact{display:grid;grid-template-columns:minmax(0,1fr);gap:.65rem}
 .loc-keyword-analysis-compact>h2{margin:0;font-size:1.12rem}
 .loc-keyword-analysis-toolbar{

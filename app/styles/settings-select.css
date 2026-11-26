@@ -51,6 +51,10 @@
 .management-section-nav__label{font-size:.96rem;font-weight:700;line-height:1.35;}
 .management-section-nav__description{color:var(--loc-muted);font-size:.78rem;line-height:1.45;}
 .management-workspace-panel{display:grid;align-content:start;gap:1rem;}
+.management-workspace-panel>.management-section-transition{
+  display:grid;align-content:start;gap:inherit;
+  width:100%;min-width:0;max-width:100%;
+}
 /* Time editing keeps its river/editor spacing within the shared management card. */
 .scope-time-edit-workspace>.management-workspace-panel{gap:.75rem;}
 .scope-time-edit-workspace .scope-culture-timeline-tools{margin:0}
@@ -64,7 +68,8 @@
 }
 .scope-time-edit-workspace .scope-culture-quick-notes textarea{min-height:4.5rem}
 
-.management-workspace-panel>.loc-card{margin:0;}
+.management-workspace-panel>.loc-card,
+.management-workspace-panel>.management-section-transition>.loc-card{margin:0;}
 .management-workspace-panel .admin-source-category-grid,
 .management-workspace-panel .admin-source-alias-grid{
   display:grid;
@@ -131,7 +136,8 @@
 .management-workspace-panel .admin-page-copy-fields>label,
 .management-workspace-panel .admin-context-panel>label,
 .management-workspace-panel .scope-stat-controls>label,
-.management-workspace-panel>.loc-card>label{
+.management-workspace-panel>.loc-card>label,
+.management-workspace-panel>.management-section-transition>.loc-card>label{
   display:grid;
   align-content:start;
   gap:.42rem;
@@ -151,6 +157,7 @@
 .management-workspace-panel .admin-context-panel>label>span:first-child,
 .management-workspace-panel .scope-stat-controls>label>span:first-child,
 .management-workspace-panel>.loc-card>label>span:first-child,
+.management-workspace-panel>.management-section-transition>.loc-card>label>span:first-child,
 .management-workspace-panel .scope-publisher-panel label>span,
 .management-workspace-panel .scope-management-wide-field>span{
   color:var(--loc-heading);
@@ -166,6 +173,7 @@
 .management-workspace-panel .admin-context-panel>label :is(input:not([type="checkbox"]):not([type="radio"]),textarea,select),
 .management-workspace-panel .scope-stat-controls label :is(input:not([type="checkbox"]):not([type="radio"]),textarea,select),
 .management-workspace-panel>.loc-card>label :is(input:not([type="checkbox"]):not([type="radio"]),textarea,select),
+.management-workspace-panel>.management-section-transition>.loc-card>label :is(input:not([type="checkbox"]):not([type="radio"]),textarea,select),
 .management-workspace-panel .scope-publisher-panel input{
   width:100%;
   min-width:0;
@@ -498,7 +506,8 @@
   min-width:0;
   padding:.55rem .85rem;
 }
-.scope-management-layout--anchor .management-workspace>.management-workspace-panel>.scope-feature-card{
+.scope-management-layout--anchor .management-workspace>.management-workspace-panel>.scope-feature-card,
+.scope-management-layout--anchor .management-workspace>.management-workspace-panel>.management-section-transition>.scope-feature-card{
   margin:0;
   padding:0;
   border:0;
@@ -540,7 +549,9 @@
 }
 .scope-management-layout--anchor .management-workspace,
 .scope-management-layout--anchor .management-workspace-panel,
-.scope-management-layout--anchor .management-workspace-panel>.loc-card{
+.scope-management-layout--anchor .management-workspace-panel>.loc-card,
+.scope-management-layout--anchor .management-workspace-panel>.management-section-transition,
+.scope-management-layout--anchor .management-workspace-panel>.management-section-transition>.loc-card{
   min-width:0;
   max-width:100%;
   box-sizing:border-box;
@@ -580,7 +591,11 @@
 /* Spatial management uses the same first-level section tabs as other editors. */
 .loc-place-workspace{min-width:0;display:grid;gap:clamp(.75rem,1.25vw,1rem)}
 .loc-place-workspace__panel{min-width:0;display:grid;gap:1rem}
-.loc-place-workspace__panel>.loc-card{min-width:0;margin:0}
+.loc-place-workspace__panel>.management-section-transition{
+  display:grid;align-content:start;gap:inherit;min-width:0;max-width:100%;
+}
+.loc-place-workspace__panel>.loc-card,
+.loc-place-workspace__panel>.management-section-transition>.loc-card{min-width:0;margin:0}
 
 /* A single management tab contract for Group/Scope and personal settings.
    Never switch navigation to columns, equal-width buttons, or wrapped rows. */
@@ -752,7 +767,8 @@
   background:var(--loc-ui-panel,var(--loc-panel));
   color:var(--loc-text);
 }
-.management-workspace--unified>.management-workspace-panel> :is(.loc-card,.scope-card,.scope-feature-card){
+.management-workspace--unified>.management-workspace-panel> :is(.loc-card,.scope-card,.scope-feature-card),
+.management-workspace--unified>.management-workspace-panel>.management-section-transition> :is(.loc-card,.scope-card,.scope-feature-card){
   max-width:100%;
   min-width:0;
   margin:0;

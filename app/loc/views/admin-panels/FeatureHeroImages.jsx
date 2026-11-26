@@ -228,7 +228,7 @@ function ManagementHeroDetails({slot,onDirtyChange}){
     <div className="scope-management-wide-field">
       <span>下方正文</span>
       {rows===null?<p className="scope-status" role="status">正在載入 Hero 文字…</p>:
-        <BlockNoteEditor editorKey={'management-hero:'+page+':'+revision}
+        <BlockNoteEditor editorKey={'management-hero:'+page}
           content={draft.text||''} editable={!busy} canInsertImage={false}
           onHtmlChange={html=>setDraft(current=>({...current,text:html}))}/>}
     </div>

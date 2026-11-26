@@ -1,15 +1,13 @@
 'use client';
 
-import {useEffect} from 'react';
 import dynamic from 'next/dynamic';
-import {useSearchParams} from 'next/navigation';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
 import {useVerifiedManagementGrants} from '../management/ManagementAccess';
-import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
 const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks').catch(recoverChunkOnce),{loading:()=>null});
@@ -37,44 +35,18 @@ const LOC_OPTIONS=Object.freeze([
   {value:'import',label:'匯入',shortLabel:'匯入'}
 ]);
 const GROUP_OPTION={value:'groupAccess',label:'群組權限',shortLabel:'授權'};
-// LOC no longer has a separate management search. Keep old links functional.
-const OLD_LOC_SECTION_ALIASES=Object.freeze({search:'media'});
-const OLD_SCOPE_SECTION_ALIASES=Object.freeze({
-  search:'publish',media:'publish',suggestions:'blocks',trace:'blocks'
-});
 
 export default function SearchManagement(){
   const {scopeId}=useScopeRuntime();
   const editDock=useEditDock();
   const account=useVerifiedManagementGrants();
-  const searchParams=useSearchParams();
   const isLocAdmin=scopeId==='loc';
-  // Scope editing uses verified management grants, not a personal setting.
-  // Preserve old bookmarks without mounting the retired Scope classification editor.
-  useEffect(()=>{
-    if(isLocAdmin||searchParams?.get('section')!=='others')return;
-    window.location.replace('/local/settings/?section=features');
-  },[isLocAdmin,searchParams]);
-  // Old /search/manage/?section=search URLs must not point at a removed tab.
-  // Update only the bookmark state, without reloading the authenticated editor.
-  useEffect(()=>{
-    if(!isLocAdmin||searchParams?.get('section')!=='search')return;
-    const url=new URL(window.location.href);
-    url.searchParams.set('section','media');
-    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
-  },[isLocAdmin,searchParams]);
   const groupAuthorized=isLocAdmin||account.canLocAccessSync('group',scopeId);
   const authorPage=scopeId==='lo3rwang';
   const canShowGroupAccess=isLocAdmin||!authorPage;
   const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
     :canShowGroupAccess?[...ARTICLE_CONTROL_SECTIONS,GROUP_OPTION]:ARTICLE_CONTROL_SECTIONS;
-  const [activeSection,setSection]=useManagementSection(options,'publish',
-    isLocAdmin?OLD_LOC_SECTION_ALIASES:OLD_SCOPE_SECTION_ALIASES);
-  // Restore bookmarks only for a Group Access tab that still exists.
-  useEffect(()=>{
-    if(canShowGroupAccess&&searchParams?.get('section')==='groupAccess'&&activeSection!=='groupAccess')
-      setSection('groupAccess');
-  },[canShowGroupAccess,activeSection,searchParams,setSection]);
+  const [activeSection,setSection]=useManagementSection(options,'publish');
   const currentSection=options.find(option=>option.value===activeSection)||options[0];
 
   return <FeaturePage featureId="search">
@@ -88,6 +60,7 @@ export default function SearchManagement(){
         }}/>
       <div id="management-search-panel" className="management-workspace-panel" role="region"
         aria-labelledby={'management-search-sections-option-'+currentSection.value}>
+        <ManagementSectionTransition value={activeSection}>
         <ProtectedManagementSlot>
         {!isLocAdmin&&activeSection==='publish'?<div className="article-control-stacked">
           <section aria-labelledby="article-control-article-heading">
@@ -137,6 +110,7 @@ export default function SearchManagement(){
         {activeSection==='groupAccess'&&!groupAuthorized
           ?<p className="scope-status">目前沒有此群組的管理權限。</p>:null}
         </ProtectedManagementSlot>
+        </ManagementSectionTransition>
       </div>
     </ManagementWorkspaceFrame>
   </FeaturePage>;

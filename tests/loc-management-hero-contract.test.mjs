@@ -18,6 +18,7 @@ import {SITE_ANCHOR_READ_MODE,readPublicSourceAnchors,readPublicSourceTaxonomy} 
 import {queryAnchorFeature} from '../app/loc/actions/anchor/queries.mjs';
 import {readLocSourceHierarchy} from '../app/loc/actions/admin/queries.mjs';
 import {traceSourceOptions} from '../app/modular/features/trace/trace-panel-filters.mjs';
+import {scopeBlockStoragePage} from '../app/loc/blocks/scope-block-storage-page.mjs';
 
 test('every management Hero keeps its image on its own copy row',()=>{
   for(const slot of MANAGEMENT_HERO_SLOTS)
@@ -37,14 +38,25 @@ test('management route table preserves the Group and Scope destinations',()=>{
     system:'/admin/',
     keywords:'statics/manage',
     members:'manage',
-    articles:'search/manage?section=publish&edit=1',
+    articles:'search/manage?edit=1',
   });
   assert.deepEqual(LOC_MANAGEMENT_ROUTE_TABLE.scope,{
     time:'culture/manage',
     keywords:'statics/manage',
-    spatial:'trace/manage?section=anchor',
-    articles:'search/manage?section=publish',
+    spatial:'trace/manage',
+    articles:'search/manage',
   });
+  assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.group),[
+    'system','keywords','members','articles'
+  ]);
+  assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.scope),[
+    'time','keywords','spatial','articles'
+  ]);
+  assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.user),[
+    'culture','statics','trace','search'
+  ]);
+  assert.ok(Object.values(LOC_MANAGEMENT_ROUTE_TABLE).flatMap(Object.values)
+    .every(route=>!route.includes('?section=')));
 });
 
 test('Scope management route uses the active Scope context',()=>{
@@ -56,7 +68,14 @@ test('Scope management route uses the active Scope context',()=>{
     },
   });
   assert.deepEqual(calls,[{scope:'lo3rwang',path:'trace/manage'}]);
-  assert.equal(href,'/lo3rwang/trace/manage?section=anchor');
+  assert.equal(href,'/lo3rwang/trace/manage');
+});
+
+test('LOC governance copy is stored as governance while other Scope pages keep their own names',()=>{
+  assert.equal(scopeBlockStoragePage('loc','trace'),'governance');
+  assert.equal(scopeBlockStoragePage('LOC','Trace'),'governance');
+  assert.equal(scopeBlockStoragePage('lo3rwang','trace'),'trace');
+  assert.equal(scopeBlockStoragePage('loc','search'),'search');
 });
 
 test('public SiteAnchor is available from resident publication without a SQL read',async()=>{

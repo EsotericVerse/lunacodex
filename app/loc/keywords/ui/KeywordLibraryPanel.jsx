@@ -7,7 +7,7 @@ import {useEditDock} from '../../../modular/edit-dock';
 import {dbAuthRelation,dbAuthClient,resetKeywordClassification,updateRows,transactionWrites,prepareKeywordLibraryWrite,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db/db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
 import {allocateAnchorUid} from '../../model/uid.js';
-import ManagementSectionNav from '../../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition} from '../../../modular/ManagementSectionNav';
 import AnchorManagementNavigator from '../../../modular/AnchorManagementNavigator';
 import ActivityMotion from '../../../modular/ActivityMotion';
 import FlowProgress from '../../../modular/FlowProgress';
@@ -676,6 +676,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     {error?<p className="scope-status scope-error" role="alert"><ActivityMotion state="error"/> {error}</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
     {loading?<div className="loc-progressive-river-frame" aria-busy="true"><div className="loc-progressive-river-axis" aria-hidden="true"/></div>:null}
+    <ManagementSectionTransition value={workspace}>
     {!loading&&workspace==='manual'?<section className="loc-card scope-feature-card loc-keyword-manual-workspace">
       <h2>關鍵字分類與判斷詞編輯</h2>
       <AnchorManagementNavigator
@@ -933,6 +934,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
         </aside>
       </div>:<p className="scope-status">請先在群組對應調整建立關鍵字群組科目。</p>}
     </section>:null}
+    </ManagementSectionTransition>
     </div>
   </div>;
 }

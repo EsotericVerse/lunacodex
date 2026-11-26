@@ -4,6 +4,7 @@ import {useState} from 'react';
 import dynamic from 'next/dynamic';
 import PanelLoading from '../ui/PanelLoading';
 import {useEditDock} from '../../modular/edit-dock';
+import {ManagementSectionTransition} from '../../modular/ManagementSectionNav';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {TRACE_SCOPES,readTraceData,traceKey} from '../../modular/features/trace/trace-data';
 import TimelinePlaceManager from './TimelinePlaceManager';
@@ -35,6 +36,7 @@ export default function PlaceManagement({scopeId,section='organize',initialOpera
   };
   return <section className="loc-place-workspace" aria-label="空間定錨管理">
     <div className="loc-place-workspace__panel">
+      <ManagementSectionTransition value={section==='organize'?operation:section}>
       {section==='organize'?<>
         <div className="scope-culture-record-browser-row" role="group" aria-label="地點整理功能">
           <button type="button" className="loc-button" aria-pressed={operation==='names'}
@@ -51,6 +53,7 @@ export default function PlaceManagement({scopeId,section='organize',initialOpera
           anchors={spatial.anchors}/>:null}
       </>:null}
       {section==='timeline'?<TimelinePlaceManager scopeId={scopeId}/>:null}
+      </ManagementSectionTransition>
     </div>
   </section>;
 }
