@@ -1,6 +1,6 @@
 import {sql} from 'kysely';
 import {postgresNativeUpsert,postgresMutationReturning,postgresContainsPredicate} from '../../../modules/loc/dialect/postgres.mjs';
-import {mysqlNativeUpsert,mysqlMutationReturning,mysqlLockPrimaryKeys} from '../../../modules/loc/dialect/mysql.mjs';
+import {mysqlMutationReturning,mysqlLockPrimaryKeys} from '../../../modules/loc/dialect/mysql.mjs';
 import {mssqlMutationReturning,mssqlCheckPagination,mssqlLockPrimaryKeys} from '../../../modules/loc/dialect/mssql.mjs';
 import {serializePortableJsonFields,portableRelation,getSqlEnginePort} from './sql-engine-ports.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
@@ -251,16 +251,8 @@ export function buildKyselyUpsertQuery(trx,req,dialect='postgres',namespace){
   const table=databaseTable(req,dialect,namespace);
   const updateColumns=Object.keys(rows[0]||{}).filter(col=>!req.onConflict.includes(col));
   const insert=trx.insertInto(table).values(req.values);
-  if(dialect==='mysql'){
-    // MySQL has ON DUPLICATE KEY UPDATE, not PostgreSQL ON CONFLICT.
-    // It matches ANY unique index: restrict this path to the modeled PK,
-    // otherwise an unrelated unique conflict could update the wrong row.
-    const pk=modeledPrimaryKeyColumns(req.schema,req.table);
-    if(!pk||pk.length!==req.onConflict.length||
-       pk.some((key,i)=>key!==req.onConflict[i]))
-      throw new Error('MySQL UPSERT requires the exact modeled primary key');
-    return mysqlNativeUpsert(insert,req,updateColumns);
-  }
+  if(dialect==='mysql')
+    throw new Error('MySQL UPSERT requires executeMysqlUpsert inside an active transaction');
   if(dialect==='postgres')return postgresNativeUpsert(insert,req,updateColumns);
   throw new Error('UPSERT is not implemented for this LOC SQL dialect');
 }
@@ -282,7 +274,7 @@ function portableKeyPredicate(row,primary){
   return sql`(${sql.join(primary.map(column=>
     sql`${sql.ref(column)} = ${row[column]}`),sql` and `)})`;
 }
-async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName=''}={}){
+async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='',guardFilter=null}={}){
   if(trx?.isTransaction!==true)
     throw new Error('Portable UPSERT requires an active Kysely transaction');
   if(!['mssql','mysql'].includes(dialect))
@@ -298,7 +290,12 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
   if(!primary?.length||primary.length!==req.onConflict?.length||
     primary.some((column,index)=>column!==req.onConflict[index]))
     throw new Error('Portable UPSERT requires the exact modeled primary key');
+  if(guardFilter&&(!guardFilter||typeof guardFilter!=='object'||
+    typeof guardFilter.column!=='string'||!identifier.test(guardFilter.column)||
+    guardFilter.value===undefined||guardFilter.value===null))
+    throw new Error('Invalid portable UPSERT guard filter');
   const type=getSqlEnginePort(dialect);
+  const guardColumns=guardFilter?[guardFilter.column]:[];
   const batches=planKyselyUpsertBatches(rows,primary,{
     dialect,maxParameters:type.upsertParameterLimit,
     maxRows:type.upsertMaxRows,maxBytes:type.maxBatchBytes
@@ -309,8 +306,8 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
     const table=databaseTable(req,dialect,namespace,modelName);
     const requested=new Set(batch.map(row=>portableKeyIdentity(row,primary)));
     const found=dialect==='mssql'
-      ?await mssqlLockPrimaryKeys(trx,table,primary,batch)
-      :await mysqlLockPrimaryKeys(trx,table,primary,batch);
+      ?await mssqlLockPrimaryKeys(trx,table,primary,batch,guardColumns)
+      :await mysqlLockPrimaryKeys(trx,table,primary,batch,guardColumns);
     const foundByKey=new Map();
     for(const row of found){
       const identity=portableKeyIdentity(row,primary);
@@ -327,6 +324,9 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
       if(match){
         if(primary.some(column=>match[column]!==row[column]))
           throw new Error('Portable UID collation does not preserve exact identity');
+        if(guardFilter&&match[guardFilter.column]!==guardFilter.value)
+          throw Object.assign(new Error('Portable UPSERT row changed its page or Scope identity'),
+            {httpStatus:409});
         existing.push(row);
       }else missing.push(row);
     }
@@ -341,6 +341,7 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
         .where(eb=>eb.or(existing.map(row=>eb.and(
           primary.map(column=>eb(column,'=',row[column]))
         ))));
+      if(guardFilter)query=query.where(guardFilter.column,'=',guardFilter.value);
       if(dialect==='mssql'&&req.returning)
         query=mssqlMutationReturning(query,{...req,operation:'update'});
       const outcome=await query.execute();
