@@ -34,6 +34,8 @@ test('PostgreSQL UPSERT continues to use row-specific EXCLUDED values',()=>{
   assert.match(compiled.sql,/on conflict/i);
   assert.match(compiled.sql,/excluded.*title/i);
   assert.equal(compiled.parameters.length,4);
+  assert.throws(()=>buildKyselyUpsertQuery(mysql,req,'mysql'),
+    /executeMysqlUpsert inside an active transaction/);
 });
 
 test('SQL Types expose independent parameter, row, byte and stream budgets',()=>{
@@ -65,6 +67,8 @@ test('PostgreSQL uses native ILIKE and NULLS LAST while MySQL and MSSQL keep the
   assert.match(pg,/"date" desc nulls last/i);
   assert.match(my,/lower\(`title`\) like/i);
   assert.match(my,/case when `date` is null/i);
+  assert.match(my,/from `lo3rwang_galaxy`/i);
+  assert.doesNotMatch(my,/from `silver`/i);
   assert.match(ms,/lower\(\[title\]\) like/i);
   assert.match(ms,/case when \[date\] is null/i);
 });
