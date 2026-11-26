@@ -295,6 +295,8 @@ async function executePortableKeyedUpsert(trx,req,{dialect,namespace,modelName='
     typeof guardFilter.column!=='string'||!identifier.test(guardFilter.column)||
     guardFilter.value===undefined||guardFilter.value===null))
     throw new Error('Invalid portable UPSERT guard filter');
+  if(guardFilter&&rows.some(row=>row[guardFilter.column]!==guardFilter.value))
+    throw new Error('Portable UPSERT rows do not match their page or Scope guard');
   const type=getSqlEnginePort(dialect);
   const guardColumns=guardFilter?[guardFilter.column]:[];
   const batches=planKyselyUpsertBatches(rows,primary,{
