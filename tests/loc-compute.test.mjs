@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {COMPUTE_PROTOCOL} from '../app/loc/compute/contract.mjs';
+import {createComputeBinding} from '../app/loc/compute/runtime.mjs';
 import {runComputeJob} from '../app/loc/compute/operations.mjs';
 import {createItemCountAccumulator} from '../app/loc/keywords/item-count-analysis.mjs';
 import {matchExistingImportBySiteId,matchExistingImportByCreatedAt} from '../app/loc/import/duplicate-check.mjs';
@@ -49,4 +50,41 @@ test('timestamp comparison preserves microsecond ambiguity and exclusion',async(
 test('unsupported jobs and version mismatches reject',async()=>{
   await assert.rejects(execute('sql',{}));
   await assert.rejects(runComputeJob({protocol:'old',kind:'keyword'}));
+});
+
+test('Vercel private service binding uses its injected URL without a public route',async()=>{
+  const calls=[];
+  const binding=createComputeBinding({
+    serviceUrl:'https://private-compute.example/internal/',
+    fetcher:async(url,init)=>{
+      calls.push({url:String(url),init});
+      return new Response(COMPUTE_PROTOCOL,{status:200});
+    }
+  });
+  assert.equal(binding.provider,'service');
+  const response=await binding.fetch('/health',{method:'GET'});
+  assert.equal(await response.text(),COMPUTE_PROTOCOL);
+  assert.equal(calls[0].url,'https://private-compute.example/internal/health');
+  assert.equal(calls[0].init.method,'GET');
+});
+test('Cloudflare Durable Object binding remains the existing compute transport',async()=>{
+  const calls=[];
+  const cloudflareBinding={
+    getByName(name){
+      assert.equal(name,'loc-compute');
+      return {fetch:async(url,init)=>{
+        calls.push({url,init});
+        return new Response(COMPUTE_PROTOCOL,{status:200});
+      }};
+    }
+  };
+  const binding=createComputeBinding({cloudflareBinding});
+  assert.equal(binding.provider,'cloudflare');
+  const response=await binding.fetch('/health',{method:'GET'});
+  assert.equal(await response.text(),COMPUTE_PROTOCOL);
+  assert.equal(calls[0].url,'http://loc-compute/health');
+});
+test('invalid Vercel service URLs do not become compute transports',()=>{
+  assert.equal(createComputeBinding({serviceUrl:'file:///tmp/compute'}),null);
+  assert.equal(createComputeBinding({serviceUrl:'https://user:pass@example.com'}),null);
 });
