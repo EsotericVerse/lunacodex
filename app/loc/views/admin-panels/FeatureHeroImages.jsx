@@ -50,7 +50,7 @@ async function saveLocHeroPage(page,fresh,changes){
 const managementSlotFor=featureId=>HomeBlock.MANAGEMENT_HERO_SLOTS.find(slot=>slot.featureId===featureId);
 const locSlots=HomeBlock.MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='loc'&&slot.key!=='system');
 
-// Scope management shares scope_manage/order 1, Admin management shares scope_admin/order 1.
+// Each management Hero's image and copy are stored on the same page row.
 // Ordinary feature images remain independently editable.
 function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}) {
   const page=pageOverride||pageFor(variant.kind,feature);
@@ -290,7 +290,7 @@ export default function FeatureHeroImages(){
         <h4>{scopeSlot.label}</h4>
         <ManagementHeroDetails slot={scopeSlot} onDirtyChange={trackDirty}/>
         <ImageSlot feature={feature} variant={MANAGEMENT_VARIANT}
-          pageOverride="scope_manage" defaultUrl={HomeBlock.MANAGEMENT_HERO_IMAGE_URL}
+          pageOverride={scopeSlot.page} defaultUrl={HomeBlock.MANAGEMENT_HERO_IMAGE_URL}
           onDirtyChange={trackDirty}/>
       </section>:null}
       {feature.id==='admin'?<details className="loc-card scope-inline-card" onToggle={event=>{
