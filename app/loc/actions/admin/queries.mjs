@@ -9,7 +9,7 @@ import {containerMode,writeLocContainerMode,containerBinding,probeContainer} fro
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
 import {readPublicSourceAnchors} from '../../source/catalog-public.mjs';
-import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
+import {scopeConfigColumnList} from '../../scope/scope-config-fields.mjs';
 
 export async function readHyperdriveMode(){
   return withAuthorizedLocRead({global:true},async(db,port)=>{
@@ -83,7 +83,7 @@ export async function readAdminScopeConfig(scopeId){
   if(!row)throw Error('Invalid admin Scope configuration');
   return withAuthorizedLocRead({global:true},async db=>{
     const result=await db.selectFrom('silver.'+scope)
-      .select(scopeConfigColumns(scope)).where('id','=',scope).executeTakeFirst();
+      .select(scopeConfigColumnList(scope)).where('id','=',scope).executeTakeFirst();
     return result||null;
   });
 }

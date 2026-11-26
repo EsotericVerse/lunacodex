@@ -8,6 +8,9 @@ export const scopeFeatureName=key=>authorFeatureNames[key]||'';
 export const isJsonbScope=()=>false;
 export const scopeFeatureColumns=id=>id==='loc'?'':'search,statics,culture,trace';
 export const scopeConfigColumns=id=>id==='loc'?'id,display_name,locale':'id,display_name,search_intro,search_aliases,theme,locale'+(scopeFeatureColumns(id)?','+scopeFeatureColumns(id):'');
+// Kysely takes a list of references. Passing the CSV above as one string is
+// parsed as a single column name and produces React's downstream #441 failure.
+export const scopeConfigColumnList=id=>scopeConfigColumns(id).split(',').filter(Boolean);
 export function scopeFeatureEnabled(config,key){
   const name=scopeFeatureName(key);
   if(!name)return false;

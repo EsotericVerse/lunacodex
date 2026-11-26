@@ -1,5 +1,5 @@
 'use client';
-import {parseBlockImage} from './hero-image.mjs';
+import {normalizeHeroImageForPage} from './hero-image.mjs';
 import UiText from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 
@@ -20,23 +20,26 @@ const ScopeBlockDraftList=dynamic(()=>import('./ScopeBlockDraftList'),{loading:(
 import {isInteractiveContentTarget} from '../content/content-policy.js';
 
 import {HomeBlock} from './home-block-model';
+import {scopeBlockPageName} from './scope-block-storage-page.mjs';
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 
-function pageNameOf(value='index'){
-  const page=String(value||'index').trim().toLowerCase();
-  return page==='home'?'index':page;
+function pageNameOf(value='index',scopeId=''){
+  return scopeBlockPageName(scopeId,value);
 }
 
-function normalizeRow(row,order,pageName='index'){
+function normalizeRow(row,order,pageName='index',scopeId=''){
+  const defaults=scopeId==='loc'?HomeBlock.defaultHeroCopyForPage(pageName):null;
   return {
     uid:String(row?.uid||''),
     stored:Boolean(row?.uid),
     order:Number(row?.block_order||order||1),
-    eyebrow:String(row?.block_eyebrow||''),
-    title:String(row?.block_title||''),
+    eyebrow:HomeBlock.normalizeHeroCopyValue(pageName,'eyebrow',
+      row?.block_eyebrow||defaults?.eyebrow||''),
+    title:HomeBlock.normalizeHeroCopyValue(pageName,'title',
+      row?.block_title||defaults?.title||''),
     subtitle:String(row?.block_subtitle||''),
     text:HomeBlock.removeDuplicatedLegacySubtitle(row?.block_text,row?.block_subtitle),
-    image:parseBlockImage(row?.block_image),
+    image:normalizeHeroImageForPage(scopeId,pageName,row?.block_image),
     bubbleColumns:HomeBlock.bubbleColumns(row?.block_entity,pageName),
     entities:HomeBlock.normalizeEntities(row?.block_entity)
   };
@@ -78,7 +81,7 @@ export default function ScopeEditableBlocks({
 }){
   useUiSection('uiExtra.editBlocks');
   const reduceMotion=useReducedMotion();
-  const pageName=pageNameOf(page);
+  const pageName=pageNameOf(page,scopeId);
   const isScopeHomepageBlock=pageName==='index'||(scopeId==='lrunes'&&pageName==='hero');
   // Public blocks must not preflight silver.loc; protected parent workspaces
   // already share the verified account cache when edit controls render.
@@ -176,28 +179,28 @@ export default function ScopeEditableBlocks({
     const rows=Array.isArray(blocks)?blocks:[];
     if(normalizedOrders.length){
       const byOrder=new Map(rows.map(row=>[Number(row.block_order),row]));
-      return normalizedOrders.map(order=>normalizeRow(byOrder.get(order),order,pageName));
+      return normalizedOrders.map(order=>normalizeRow(byOrder.get(order),order,pageName,scopeId));
     }
     if(Number.isInteger(maxBlocks)&&maxBlocks>0){
-      const displayed=HomeBlock.rows(rows,pageName,maxBlocks).map(row=>normalizeRow(row,row.block_order,pageName));
+      const displayed=HomeBlock.rows(rows,pageName,maxBlocks).map(row=>normalizeRow(row,row.block_order,pageName,scopeId));
       if(editingSlot&&!editingSlot.stored&&!displayed.some(slot=>slot.order===editingSlot.order)&&editingSlot.order<=maxBlocks){
         displayed.push({...editingSlot});
       }
       if(Number.isInteger(placeholderFirstOrder)&&placeholderFirstOrder>0&&placeholderFirstOrder<=maxBlocks
           &&!displayed.some(slot=>slot.order===placeholderFirstOrder)){
-        displayed.push(normalizeRow(null,placeholderFirstOrder,pageName));
+        displayed.push(normalizeRow(null,placeholderFirstOrder,pageName,scopeId));
       }
       displayed.sort((a,b)=>a.order-b.order);
       return displayed;
     }
-    const displayed=rows.map(row=>normalizeRow(row,row.block_order,pageName));
+    const displayed=rows.map(row=>normalizeRow(row,row.block_order,pageName,scopeId));
     // Unbounded pages must render the unsaved editingSlot, or the Add Block button appears inert.
     if(editingSlot&&!editingSlot.stored&&!displayed.some(slot=>slot.order===editingSlot.order)){
       displayed.push({...editingSlot});
       displayed.sort((a,b)=>a.order-b.order);
     }
     return displayed;
-  },[blocks,normalizedOrders,maxBlocks,pageName,editingSlot,placeholderFirstOrder]);
+  },[blocks,normalizedOrders,maxBlocks,pageName,scopeId,editingSlot,placeholderFirstOrder]);
   const nextOrder=useMemo(()=>{
     const rows=Array.isArray(blocks)?blocks:[];
     return Math.max(0,...rows.map(row=>Number(row.block_order)||0))+1;

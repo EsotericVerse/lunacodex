@@ -15,7 +15,7 @@
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
     "predev": "node scripts/print-local-code-revision.mjs && node scripts/sync-page-locale-assets.mjs && node scripts/sync-zenstack-schema-contract.mjs && node scripts/stage-loc-pics.mjs",
-    "test:core": "node --test tests/loc-db-connectivity.test.mjs tests/loc-access-boundaries.test.mjs tests/loc-transaction-runtime.test.mjs tests/loc-sql-dialect-portable.test.mjs tests/loc-hero-assets.test.mjs tests/loc-compute.test.mjs tests/loc-visual-theme.test.mjs tests/loc-management-hero-contract.test.mjs tests/loc-public-home-r2.test.mjs tests/loc-ordered-extension-import.test.mjs"
+    "test:core": "node --test tests/loc-db-connectivity.test.mjs tests/loc-access-boundaries.test.mjs tests/loc-transaction-runtime.test.mjs tests/loc-sql-dialect-portable.test.mjs tests/loc-hero-assets.test.mjs tests/loc-keyword-server-analysis-boundary.test.mjs tests/loc-compute.test.mjs tests/loc-visual-theme.test.mjs tests/loc-management-hero-contract.test.mjs tests/loc-public-home-r2.test.mjs tests/loc-ordered-extension-import.test.mjs"
   },
   "dependencies": {
     "@blocknote/ariakit": "0.55.0",

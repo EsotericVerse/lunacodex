@@ -1,269 +1,73 @@
 'use client';
-import {useCallback,useEffect,useRef,useState} from 'react';
-import {useQueryClient} from '../../../../packages/zenstack/client-queries';
+import {useCallback,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
-import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../../scope/scope-data';
 import {HomeBlock} from '../../blocks/home-block-model';
-import {heroImageUrl as imageUrlOf} from '../../blocks/hero-image.mjs';
-import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 
 const ScopeEditableBlocks=dynamic(()=>import('../../blocks/ScopeEditableBlocks'),{loading:()=>null});
-const BlockNoteEditor=dynamic(()=>import('../../editor/BlockNoteEditor'),{loading:()=>null});
 
-// Admin has six feature tabs. Management Heroes are editors INSIDE the
-// corresponding feature panel, not extra navigation items.
+// The feature section order mirrors the written routing and image contract:
+// management destinations first, their public feature page below them.
 const FEATURES=Object.freeze([
-  {id:'culture',label:'文化',managementKey:'time'},
-  {id:'statics',label:'統計',managementKey:'keywords'},
-  {id:'trace',label:'痕跡',managementKey:'spatial'},
-  {id:'search',label:'搜尋',managementKey:'advanced'},
-  {id:'admin',label:'系統管理'}
-].map(feature=>({...feature,singleSlot:HomeBlock.shouldUseSingleFeatureHeroImage(feature.id)})));
-const FEATURE_VARIANT=Object.freeze({kind:'group',label:'功能頁 Hero 圖片'});
-const SINGLE_VARIANT=Object.freeze([{kind:'scope',label:'首頁圖連結'}]);
-const MANAGEMENT_VARIANT=Object.freeze({kind:'scope',label:'首頁圖連結'});
-// Personal Settings remains a separate Hero record, edited within the Admin panel.
-const PERSONAL_SETTINGS_FEATURE=Object.freeze({
-  id:'setting',label:'個人設定',singleSlot:HomeBlock.shouldUseSingleFeatureHeroImage('setting')
+  {id:'culture',label:'文化',managementKeys:['time']},
+  {id:'statics',label:'統計',managementKeys:['locKeywords']},
+  {id:'trace',label:'痕跡',managementKeys:['spatial']},
+  {id:'search',label:'搜尋',managementKeys:['articles']},
+  {id:'admin',label:'系統管理',managementKeys:['system','members','setting']}
+]);
+const MANAGEMENT_BY_KEY=new Map(HomeBlock.MANAGEMENT_HERO_SLOTS.map(slot=>[slot.key,slot]));
+const USER_PAGE_LABELS=Object.freeze({
+  culture:'文化',statics:'統計',trace:'痕跡',search:'搜尋'
 });
-function pageFor(kind,feature){return kind+'_'+feature.id;}
-// LOC text frames are one Anchor-backed page snapshot. Save through the
-// existing authorized save_blocks transaction, not a retired Blocks table.
-async function saveLocHeroPage(page,fresh,changes){
-  const {dbAuthClient}=await import('../../db/db-client.mjs');
-  const original=fresh.find(row=>Number(row.block_order)===1);
-  const updated=original?{...original,...changes}:{
-    uid:HomeBlock.createUid(),page_name:page,block_order:1,
-    block_entity:[],block_eyebrow:'',block_title:'',block_subtitle:'',
-    block_text:'',block_image:null,...changes
-  };
-  const snapshot=[...fresh.filter(row=>row.uid!==updated.uid),updated];
-  const {data,error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
-    p_scope_id:'loc',p_type:page,p_rows:snapshot
-  });
-  if(error)throw new Error(error.message||'LOC 文字框儲存失敗');
-  return {...(data&&typeof data==='object'?data:{count:snapshot.length}),
-    homeCacheSync};
-}
-const managementSlotFor=featureId=>HomeBlock.MANAGEMENT_HERO_SLOTS.find(slot=>slot.featureId===featureId);
-const locSlots=HomeBlock.MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='loc'&&slot.key!=='system');
 
-// Scope management uses its own Time/Keyword/Space/Article page. Group admin
-// and personal settings keep their image on the same group_* Hero row as copy.
-function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}) {
-  const page=pageOverride||pageFor(variant.kind,feature);
-  const dock=useEditDock();
-  const inDock=Boolean(dock?.active&&dock.scopeId==='loc');
-  const savingNow=useRef(false);
-  const queryClient=useQueryClient();
-  const [rows,setRows]=useState(null);
-  const [value,setValue]=useState('');
-  const [busy,setBusy]=useState(false);
-  const [status,setStatus]=useState('');
-  const originalRow=rows?.find(row=>Number(row.block_order)===1);
-  const original=imageUrlOf(originalRow);
-  const dirty=rows!==null&&value.trim()!==(original||defaultUrl);
-  const needsSeed=rows!==null&&Boolean(defaultUrl)&&!original;
-  const canSave=dirty||needsSeed;
-
-  useEffect(()=>{
-    let active=true;
-    (async()=>{
-      try{
-        const data=await selectLiveScopeBlocks('loc',page);
-        if(!active)return;
-        const row=data.find(item=>Number(item.block_order)===1);
-        setRows(data);
-        setValue(imageUrlOf(row)||defaultUrl);
-      }catch(error){if(active)setStatus(error?.message||'讀取失敗。');}
-    })();
-    return()=>{active=false;};
-  },[page,defaultUrl]);
-
-  async function save(){
-    if(savingNow.current||busy||rows===null)return false;
-    savingNow.current=true;setBusy(true);setStatus('');
-    try{
-      const trimmed=value.trim();
-      if(trimmed){
-        const url=new URL(trimmed,window.location.origin);
-        if(!['https:','http:'].includes(url.protocol))throw new Error('首頁圖只接受 HTTP(S) 圖片網址。');
-      }
-      // Anchor attr.image preserves the Block image's TEXT/JSON payload.
-      const image=trimmed?JSON.stringify({source:'custom',url:trimmed}):null;
-      const fresh=await selectLiveScopeBlocks('loc',page);
-      const result=await saveLocHeroPage(page,fresh,{block_image:image});
-      if(result?.error)throw new Error(result.error.message||'儲存失敗。');
-      invalidateScopeBlockPage('loc',page);
-      const verified=await selectLiveScopeBlocks('loc',page);
-      const persisted=verified.find(item=>Number(item.block_order)===1);
-      if(!persisted||imageUrlOf(persisted)!==trimmed)
-        throw new Error('儲存後資料庫讀回不一致，請檢查寫入權限。');
-      setRows(verified);
-      // The readback is authoritative: update the mounted Hero directly.
-      queryClient.setQueryData(['scope-blocks','loc',page],verified);
-      queryClient.setQueryData(['scope-blocks-live','loc',page],verified);
-      if(/^(group|scope)_/.test(page)){
-        const key=['scope-public-hero',page.replace(/^(group|scope)_/,'')];
-        queryClient.setQueryData(key,previous=>Array.isArray(previous)
-          ?[...previous.filter(row=>row.page_name!==page),...verified]:undefined);
-      }
-      setStatus('首頁圖連結已儲存並讀回確認。'+(result.homeCacheSync===false
-        ?' R2 副本未重建，目前會回讀 SQL。':''));
-      setValue(imageUrlOf(persisted)||defaultUrl);
-      return true;
-    }catch(error){setStatus(error?.message||'儲存失敗。');return false;}
-    finally{savingNow.current=false;setBusy(false);}
-  }
-  useEffect(()=>{
-    onDirtyChange?.(page,dirty);
-    return()=>onDirtyChange?.(page,false);
-  },[page,dirty,onDirtyChange]);
-  useEditDockForm({save,isBusy:()=>busy,isDirty:()=>dirty});
-  return <div className="scope-management-fields">
-    <label className="scope-management-wide-field">
-      <span>{variant.label}</span>
-      <input type="url" className="scope-search-input" placeholder="https://loc.lo3rwang.cc/pics/..."
-        value={value} disabled={rows===null||busy} onChange={event=>setValue(event.target.value)}/>
-    </label>
-    {!inDock?<button type="button" className="loc-button" disabled={rows===null||busy||!canSave} onClick={save}>
-      {busy?'儲存中…':'儲存 Hero 圖片路徑'}
-    </button>:null}
-    {status?<p className="scope-status" role="status">{status}</p>:null}
-  </div>;
+function HeroEditor({page,dirtyKey,onDirtyChange}){
+  return <ScopeEditableBlocks
+    key={page}
+    scopeId="loc" page={page} orders={[1]} containerless
+    slotClassName="loc-card" editSlotClassName="loc-card"
+    placeholderFirstOrder={1} allowEditing
+    authorizedByParent startInEditMode keepEditorOpen
+    onDirtyChange={dirty=>onDirtyChange?.(dirtyKey,dirty)}
+    explicitEditButton allowDelete={false} allowEntities={false} allowImages
+  />;
 }
 
-function ManagementHeroDetails({slot,onDirtyChange}){
-  const queryClient=useQueryClient();
-  const dock=useEditDock();
-  const inDock=Boolean(dock?.active&&dock.scopeId==='loc');
-  const savingNow=useRef(false);
-  const [rows,setRows]=useState(null);
-  const [draft,setDraft]=useState({eyebrow:'',title:'',subtitle:'',text:''});
-  const initial=useRef('');
-  const [busy,setBusy]=useState(false);
-  const [status,setStatus]=useState('');
-  const page=slot.page;
-  const row=rows?.find(item=>Number(item.block_order)===1);
-  const dirty=rows!==null&&JSON.stringify(draft)!==initial.current;
-  const canSave=dirty||(rows!==null&&!row);
-  useEffect(()=>{
-    let live=true;
-    (async()=>{
-      try{
-        const data=await selectLiveScopeBlocks('loc',page);
-        if(!live)return;
-        const found=data.find(item=>Number(item.block_order)===1);
-        const fields={
-          eyebrow:String(found?.block_eyebrow||slot.englishTitle||''),
-          title:String(found?.block_title??slot.label),
-          subtitle:String(found?.block_subtitle??''),
-          text:String(found?.block_text??'')
-        };
-        setRows(data);setDraft(fields);
-        initial.current=JSON.stringify(fields);
-      }catch(error){if(live)setStatus(error?.message||'管理區塊讀取失敗。');}
-    })();
-    return()=>{live=false;};
-  },[slot,page]);
-  async function save(){
-    if(savingNow.current||busy||rows===null)return false;
-    savingNow.current=true;setBusy(true);setStatus('');
-    try{
-      const eyebrow=draft.eyebrow.trim();
-      const title=draft.title.trim();
-      const subtitle=draft.subtitle.trim();
-      if(!title||title.length>64||eyebrow.length>64||subtitle.length>128)
-        throw new Error('英文標題及中文大標題最多 64 字、標題說明最多 128 字，且中文大標題不可空白。');
-      const fields={
-        block_eyebrow:eyebrow,block_title:title,
-        block_subtitle:subtitle,block_text:draft.text
-      };
-      const fresh=await selectLiveScopeBlocks('loc',page);
-      const result=await saveLocHeroPage(page,fresh,fields);
-      if(result?.error)throw new Error(result.error.message||'儲存失敗。');
-      invalidateScopeBlockPage('loc',page);
-      const verified=await selectLiveScopeBlocks('loc',page);
-      const saved=verified.find(item=>Number(item.block_order)===1);
-      if(!saved||Object.entries(fields).some(([key,value])=>String(saved[key]??'')!==value))
-        throw new Error('儲存後資料庫讀回不一致，請檢查寫入權限。');
-      setRows(verified);
-      // The readback is authoritative: update the mounted Hero directly.
-      queryClient.setQueryData(['scope-blocks','loc',page],verified);
-      queryClient.setQueryData(['scope-blocks-live','loc',page],verified);
-      if(/^(group|scope)_/.test(page)){
-        const key=['scope-public-hero',page.replace(/^(group|scope)_/,'')];
-        queryClient.setQueryData(key,previous=>Array.isArray(previous)
-          ?[...previous.filter(row=>row.page_name!==page),...verified]:undefined);
-      }
-      setStatus('管理區塊已儲存並讀回確認。'+(result.homeCacheSync===false
-        ?' R2 副本未重建，目前會回讀 SQL。':''));
-      const confirmed={eyebrow:String(saved.block_eyebrow??''),title:String(saved.block_title??''),subtitle:String(saved.block_subtitle??''),text:String(saved.block_text??'')};
-      initial.current=JSON.stringify(confirmed);
-      setDraft(confirmed);
-      return true;
-    }catch(error){setStatus(error?.message||'儲存失敗。');return false;}
-    finally{savingNow.current=false;setBusy(false);}
-  }
-  useEffect(()=>{
-    onDirtyChange?.('management-'+page,dirty);
-    return()=>onDirtyChange?.('management-'+page,false);
-  },[dirty,page,onDirtyChange]);
-  useEditDockForm({save,isBusy:()=>busy,isDirty:()=>dirty});
-  // Preserve the existing UI/UX field order, two-column grid and labels.
-  // Only the body editor switches from a textarea to homepage BlockNote.
-  const field=(key,label,maxLength)=><label className="management-hero-copy-row" key={key}>
-    <span>{label}</span>
-    <input type="text" className="scope-search-input" maxLength={maxLength}
-      disabled={rows===null||busy} value={draft[key]}
-      onChange={event=>setDraft(current=>({...current,[key]:event.target.value}))}/>
-  </label>;
-  return <section className="management-hero-copy-editor">
-    <p className="scope-status">名稱：{slot.label}</p>
-    <div className="management-hero-copy-grid">
-      {field('eyebrow','英文標題',64)}
-      {field('title','中文大標題',64)}
-      {field('subtitle','標題說明',128)}
-    </div>
-    <div className="scope-management-wide-field">
-      <span>下方正文</span>
-      {rows===null?<p className="scope-status" role="status">正在載入 Hero 文字…</p>:
-        <BlockNoteEditor editorKey={'management-hero:'+page}
-          content={draft.text||''} editable={!busy} canInsertImage={false}
-          onHtmlChange={html=>setDraft(current=>({...current,text:html}))}/>}
-    </div>
-    {status?<p className="scope-status" role="status">{status}</p>:null}
-    {!inDock?<button className="loc-button primary" type="button" disabled={busy||rows===null||!canSave} onClick={save}>
-      {busy?'儲存中…':'儲存管理區塊'}
-    </button>:null}
-  </section>;
+function slotPage(slot){
+  return slot?.key==='setting'?HomeBlock.featureHeroPageFor('setting')
+    :HomeBlock.managementHeroImagePage(slot);
 }
 
 export default function FeatureHeroImages(){
-  const dock=useEditDock();
-  const inDock=Boolean(dock?.active&&dock.scopeId==='loc');
   const [featureId,setFeatureId]=useState(FEATURES[0].id);
-  const [locSlotKey,setLocSlotKey]=useState('members');
-  const [groupOpen,setGroupOpen]=useState(false);
-  const [editorRevision,setEditorRevision]=useState(0);
   const pendingEdits=useRef(new Set());
   const trackDirty=useCallback((key,dirty)=>{
     if(dirty)pendingEdits.current.add(key);
     else pendingEdits.current.delete(key);
   },[]);
+  const feature=FEATURES.find(item=>item.id===featureId)||FEATURES[0];
   const selectFeature=id=>{
     if(id===featureId)return;
     if(pendingEdits.current.size&&!window.confirm('目前有尚未儲存的修改，確定放棄並切換功能嗎？'))return;
     pendingEdits.current.clear();setFeatureId(id);
   };
-  const selectLocSlot=key=>{
-    if(key===locSlotKey)return;
-    if(pendingEdits.current.size&&!window.confirm('目前有尚未儲存的修改，確定放棄並切換管理項目嗎？'))return;
-    pendingEdits.current.clear();setLocSlotKey(key);
+  const renderSlot=(slot,index)=>{
+    const page=slotPage(slot);
+    const image=slot.key==='setting'?HomeBlock.featureHeroDefaultImage('setting')
+      :HomeBlock.managementHeroDefaultImage(slot);
+    const routeLabel=slot.audience==='loc'
+      ?({system:'/admin/',members:'/manage/',locKeywords:'/statics/manage/',articles:'/search/manage/',setting:'/local/settings/'}[slot.key])
+      :({time:'/culture/manage/',keywords:'/statics/manage/',spatial:'/trace/manage/',advanced:'/search/manage/'}[slot.key]);
+    return <section className="loc-card scope-inline-card" key={slot.key} aria-label={slot.label}>
+      <h4>{slot.label}</h4>
+      <p className="scope-status">管理路由：{routeLabel} · {image.split('/').pop()}</p>
+      <HeroEditor page={page} dirtyKey={'hero:'+page}
+        onDirtyChange={trackDirty}/>
+    </section>;
   };
-  const feature=FEATURES.find(item=>item.id===featureId)||FEATURES[0];
-  const scopeSlot=feature.managementKey?HomeBlock.MANAGEMENT_HERO_SLOTS.find(slot=>slot.key===feature.managementKey):null;
-  const locSlot=locSlots.find(slot=>slot.key===locSlotKey)||locSlots[0];
+  const userPage=feature.id==='admin'?'group_admin':HomeBlock.featureHeroPageFor(feature.id);
+  const userImage=HomeBlock.featureHeroDefaultImage(feature.id)||
+    HomeBlock.defaultHeroImageForPage('loc',userPage);
+  const userRoute=feature.id==='admin'?'/admin/':'/'+feature.id+'/';
+
   return <section className="loc-card admin-workspace">
     <h2>功能區塊設定</h2>
     <div className="scope-preview-links" role="group" aria-label="功能區塊">
@@ -274,69 +78,18 @@ export default function FeatureHeroImages(){
     </div>
     <section className="loc-card scope-inline-card" key={feature.id}>
       <h3>{feature.label}</h3>
-      <ScopeEditableBlocks
-        key={feature.id+':'+editorRevision}
-        scopeId="loc"
-        page={HomeBlock.featureHeroPageFor(feature.id)}
-        orders={[1]} containerless
-        slotClassName="loc-card" editSlotClassName="loc-card"
-        placeholderFirstOrder={1} allowEditing
-        authorizedByParent startInEditMode keepEditorOpen
-        onEditorExit={()=>setEditorRevision(value=>value+1)}
-        onDirtyChange={dirty=>trackDirty('blocks',dirty)}
-        explicitEditButton allowDelete={false} allowEntities={false}
-      />
-      <ImageSlot feature={feature}
-        variant={feature.singleSlot?SINGLE_VARIANT[0]:FEATURE_VARIANT}
-        pageOverride={HomeBlock.featureHeroImagePageFor(feature.id)}
-        onDirtyChange={trackDirty} key={feature.id+':group-image'}/>
-      {scopeSlot?<section className="loc-card scope-inline-card" aria-label={scopeSlot.label}>
-        <h4>{scopeSlot.label}</h4>
-        <ManagementHeroDetails slot={scopeSlot} onDirtyChange={trackDirty}/>
-        <ImageSlot feature={feature} variant={MANAGEMENT_VARIANT}
-          pageOverride={scopeSlot.page} defaultUrl={HomeBlock.MANAGEMENT_HERO_IMAGE_URL}
-          onDirtyChange={trackDirty}/>
-      </section>:null}
-      {feature.id==='admin'?<details className="loc-card scope-inline-card" onToggle={event=>{
-        const open=event.currentTarget.open;
-        if(!open&&pendingEdits.current.size&&!window.confirm('管理項目尚有未儲存的修改，確定放棄嗎？')){
-          event.currentTarget.open=true;return;
-        }
-        setGroupOpen(open);
-      }}>
-        <summary>系統管理入口設定</summary>
-        {groupOpen?<><label className="scope-management-wide-field">
-          <span>管理項目</span>
-          <select className="scope-search-input" value={locSlotKey}
-            onChange={event=>selectLocSlot(event.target.value)}>
-            {locSlots.map(slot=><option key={slot.key} value={slot.key}>{slot.label}</option>)}
-          </select>
-        </label>
-        <ManagementHeroDetails key={locSlot.key} slot={locSlot} onDirtyChange={trackDirty}/>
-        <ImageSlot key={locSlot.page} feature={feature} variant={MANAGEMENT_VARIANT}
-          pageOverride={HomeBlock.managementHeroImagePage(locSlot)}
-          defaultUrl={HomeBlock.managementHeroDefaultImage(locSlot)}
-          onDirtyChange={trackDirty}/>
-        </>:null}
-      </details>:null}
-      {feature.id==='admin'?<section className="loc-card scope-inline-card" aria-label="個人設定">
-        <h4>個人設定</h4>
-        <ScopeEditableBlocks
-          key={'setting:'+editorRevision}
-          scopeId="loc"
-          page={HomeBlock.featureHeroPageFor(PERSONAL_SETTINGS_FEATURE.id)}
-          orders={[1]} containerless
-          slotClassName="loc-card" editSlotClassName="loc-card"
-          placeholderFirstOrder={1} allowEditing
-          authorizedByParent startInEditMode keepEditorOpen
-          onEditorExit={()=>setEditorRevision(value=>value+1)}
-          onDirtyChange={dirty=>trackDirty('setting-blocks',dirty)}
-          explicitEditButton allowDelete={false} allowEntities={false}
-        />
-        <ImageSlot feature={PERSONAL_SETTINGS_FEATURE} variant={SINGLE_VARIANT[0]}
-          pageOverride={HomeBlock.featureHeroImagePageFor(PERSONAL_SETTINGS_FEATURE.id)}
-          onDirtyChange={trackDirty} key="setting:group"/>
-      </section>:null}
+      {feature.id==='admin'?<>
+        {['system','members'].map(key=>renderSlot(MANAGEMENT_BY_KEY.get(key),0))}
+        {renderSlot({key:'setting',label:'個人設定',audience:'loc',page:'group_setting'},2)}
+      </>:<>
+        {feature.managementKeys.map((key,index)=>renderSlot(MANAGEMENT_BY_KEY.get(key),index))}
+        <section className="loc-card scope-inline-card" aria-label={USER_PAGE_LABELS[feature.id]+' 使用者頁'}>
+          <h4>{USER_PAGE_LABELS[feature.id]}</h4>
+          <p className="scope-status">使用者路由：{userRoute} · {userImage.split('/').pop()}</p>
+          <HeroEditor page={userPage} dirtyKey={'hero:'+userPage}
+            onDirtyChange={trackDirty}/>
+        </section>
+      </>}
     </section>
   </section>;
 }

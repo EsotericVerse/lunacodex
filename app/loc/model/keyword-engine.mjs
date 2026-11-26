@@ -1,5 +1,6 @@
-'use client';
-
+// Pure keyword matching shared by browser discovery and server-side analysis.
+// Keep this module free of a client boundary: the SQL analysis transaction
+// calls the classifier directly inside a Server Action.
 import {parseRuneKeywordRuleSentence} from './rune-keyword-rules.mjs';
 import {compileKeywordLiteralMatcher} from '../keywords/literal-matcher.mjs';
 import {keywordScanText} from '../keywords/content-filter.mjs';

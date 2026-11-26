@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {heroAssetMode,heroAssetName,serveHeroAsset} from '../app/loc/blocks/hero-assets.mjs';
+import {HERO_R2_NAMES,heroAssetMode,heroAssetName,serveHeroAsset} from '../app/loc/blocks/hero-assets.mjs';
+import {MANAGEMENT_HERO_SLOTS,featureHeroDefaultImage,
+  managementHeroDefaultImage} from '../app/loc/blocks/home-block-model.js';
 const name='LOC-PicAll.webp';
 const sourceHashes={[name]:'original'};
 const request=(path='/pics/'+name,init)=>new Request('https://loc.lo3rwang.cc'+path,init);
@@ -29,7 +31,15 @@ test('unbound, disabled, failed, missing or stale R2 uses local images',async()=
 test('only exact existing public Hero image paths enter R2',async()=>{
   assert.equal(heroAssetMode('local'),'local');
   assert.equal(heroAssetName('/pics/'+name),name);
-  for(const path of ['/pics/LOC-admin.jpg','/pics/control.json','/other/'+name,'/pics/%2e%2e/'+name])
+  const required=new Set([
+    ...['culture','statics','trace','search','admin','manage','setting']
+      .map(id=>featureHeroDefaultImage(id).split('/').pop()),
+    ...MANAGEMENT_HERO_SLOTS.map(slot=>managementHeroDefaultImage(slot).split('/').pop())
+  ]);
+  for(const file of required){
+    assert.equal(heroAssetName('/pics/'+file),HERO_R2_NAMES.includes(file)?file:null);
+  }
+  for(const path of ['/pics/control.json','/other/'+name,'/pics/%2e%2e/'+name])
     assert.equal(await serveHeroAsset(request(path),{LOC_HERO_ASSETS:bucket},sourceHashes),null);
   assert.equal(await serveHeroAsset(request(undefined,{method:'POST'}),{LOC_HERO_ASSETS:bucket},sourceHashes),null);
 });
