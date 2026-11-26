@@ -50,7 +50,7 @@ function subscribe(entry,signal){
     released=true;
     entry.consumers=Math.max(0,entry.consumers-1);
     if(!entry.settled&&entry.consumers===0){
-      entries.delete(entry.key);
+      if(entries.get(entry.key)===entry)entries.delete(entry.key);
       entry.controller.abort();
     }
   };
