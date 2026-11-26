@@ -1,7 +1,7 @@
 // PostgreSQL's native pg.Client connection pool implementation.
 // This is Driver/transport code, not part of Kysely's SQL Dialect registry.
 import pg from 'pg';
-import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
+import {CONNECTION_POOL_POLICY} from './connection-pool-policy.mjs';
 
 const NON_RETRYABLE_CONNECTION_CODES=new Set([
   '28P01','28000','3D000','3F000','42501','ENOTFOUND'
@@ -31,7 +31,7 @@ function dispatchRequestConnections(pool){
       waiter.resolve(client);
       continue;
     }
-    if(pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections){
+    if(pool.active<CONNECTION_POOL_POLICY.workerRequestMaxConnections){
       pool.waiters.shift();
       pool.active++;
       waiter.resolve(null);
@@ -53,7 +53,7 @@ function acquireRequestConnection(pool){
     if(client){pool.leased.add(client);return Promise.resolve(client);}
   }
   if(!pool.waiters.length&&
-      pool.active<SQL_WORKLOAD_POLICY.workerRequestMaxConnections){
+      pool.active<CONNECTION_POOL_POLICY.workerRequestMaxConnections){
     pool.active++;
     return Promise.resolve(null);
   }
