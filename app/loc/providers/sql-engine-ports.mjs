@@ -187,7 +187,8 @@ export function planPortableInsertBatches(rows,engine,{maxBytes}={}){
     const nextWidth=columns.length;
     if(nextWidth>type.insertParameterLimit)
       invalidWrite('Portable INSERT row exceeds the SQL Type parameter budget');
-    const serialized=JSON.stringify(row);
+    const serialized=JSON.stringify(row,(_key,value)=>
+      typeof value==='bigint'?value.toString():value);
     if(typeof serialized!=='string')invalidWrite('Invalid portable INSERT row');
     const size=encoder.encode(serialized).byteLength;
     if(batch.length&&(shape!==nextShape||batch.length>=type.insertMaxRows||
