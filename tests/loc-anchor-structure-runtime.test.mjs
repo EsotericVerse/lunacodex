@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readAnchorStructure} from '../app/loc/model/anchor-structure-runtime.mjs';
-import {invalidateScopedReadCache} from '../packages/zenstack/scoped-read-cache.mjs';
+import {invalidateScopedReadCache,getOrLoadScopedRead} from '../packages/zenstack/scoped-read-cache.mjs';
 const browser={browser:true};
 const typesByFamily={source:['from','domain','galaxy','universe'],time:['era','period','date'],space:['trace','path','point']};
 function fixture(){
@@ -35,6 +35,7 @@ test('Time and Space parent structures are scope-separated; leaves remain live',
   const first=await read(time);
   const second=await read(time);
   assert.deepEqual(first,second);
+  assert.deepEqual(first.map(row=>row.type),['date','period','era']);
   assert.equal(calls.filter(c=>c.types.includes('era')).length,1);
   assert.equal(calls.filter(c=>c.types.includes('date')).length,2);
   await read({...time,scope:'lrunes'});
@@ -77,4 +78,44 @@ test('date filters, editor reads, media and invalid inputs do not enter the shar
   ];
   for(const options of values){await read(options);await read(options);}
   assert.equal(calls.length,values.length*2);
+});
+
+test('shared reads abort only after the final consumer leaves and never cache an abandoned result',async()=>{
+  invalidateScopedReadCache();
+  let calls=0,resolveFirst,transportSignal;
+  const load=({signal})=>{
+    calls++;
+    transportSignal=signal;
+    return new Promise(resolve=>{resolveFirst=resolve;});
+  };
+  const a=new AbortController(),b=new AbortController();
+  const first=getOrLoadScopedRead('silver.loc_anchor',['shared-cancel'],load,{signal:a.signal});
+  const second=getOrLoadScopedRead('silver.loc_anchor',['shared-cancel'],load,{signal:b.signal});
+  await Promise.resolve();
+  a.abort();
+  await assert.rejects(first,{name:'AbortError'});
+  assert.equal(transportSignal.aborted,false);
+  b.abort();
+  await assert.rejects(second,{name:'AbortError'});
+  assert.equal(transportSignal.aborted,true);
+  resolveFirst('abandoned');
+  await Promise.resolve();
+  await Promise.resolve();
+  const fresh=await getOrLoadScopedRead('silver.loc_anchor',['shared-cancel'],
+    async()=>{calls++;return 'fresh';});
+  assert.equal(fresh,'fresh');
+  assert.equal(calls,2);
+});
+test('resolved public structure is reused until relation invalidation',async()=>{
+  invalidateScopedReadCache();
+  let calls=0;
+  const load=async()=>({uid:'structure-'+(++calls)});
+  const first=await getOrLoadScopedRead('silver.lo3rwang_anchor',['public-tree'],load);
+  const second=await getOrLoadScopedRead('silver.lo3rwang_anchor',['public-tree'],load);
+  assert.deepEqual(second,first);
+  assert.equal(calls,1);
+  invalidateScopedReadCache('silver.lo3rwang_anchor');
+  const third=await getOrLoadScopedRead('silver.lo3rwang_anchor',['public-tree'],load);
+  assert.notDeepEqual(third,first);
+  assert.equal(calls,2);
 });
