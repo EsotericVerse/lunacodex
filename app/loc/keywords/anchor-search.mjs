@@ -54,7 +54,8 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
 }
 
 export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
-  offset=0,limit=20,sortDirection='desc',startDate='',endDate='',contentType='',sourceFilter=''
+  offset=0,limit=20,sortDirection='desc',startDate='',endDate='',contentType='',sourceFilter='',
+  engine='postgres',namespace='silver'
 }={}){
   if(!SCOPE.test(String(scopeId||''))||!UID.test(String(uid||''))||
     !TYPES.includes(type)||!Number.isSafeInteger(offset)||offset<0||offset>200000||
@@ -117,6 +118,7 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
       patterns:[...patternByUid.values()],
       start:startDate,end:endDate,owner,
       source:sourceFilter.startsWith('source:')?sourceFilter.slice(7):'',
+      galaxyTable:galaxy,engine,namespace,
       onRow:(doc,result)=>{
         if(type==='item'&&!result.hits.has(uid))return;
         if(type==='pattern'&&!keywordScanText(doc).normalize('NFKC')

@@ -182,7 +182,8 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,
     ...descriptions.map(item=>model(byItem.get(item.uid)))]};
 }
 export async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,requested,role,
-  {configTable='silver.'+scope,galaxyTable='silver.'+scope+'_galaxy'}={}){
+  {configTable='silver.'+scope,galaxyTable='silver.'+scope+'_galaxy',
+    engine='postgres',namespace='silver'}={}){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role,configTable);
   if(!info?.allowed||!info.ready)return [];
   const catalog=await keywordCatalog(trx,scope,anchor,requested,role,
@@ -195,7 +196,8 @@ export async function traceKeywordGroups(trx,scope,anchor,places,start,end,sourc
     })));
   const res=await readItemKeywordProjection(trx,scope,{
     items,groups,places,start,end,source,owner:true,
-    minChars:Math.max(0,Number(info.config?.keyword_min_chars)||0),galaxyTable
+    minChars:Math.max(0,Number(info.config?.keyword_min_chars)||0),
+    galaxyTable,engine,namespace
   });
   return groups.map(group=>({
     group_uid:group.uid,group_name:group.name,
@@ -203,7 +205,8 @@ export async function traceKeywordGroups(trx,scope,anchor,places,start,end,sourc
   }));
 }
 export async function keywordSummary(trx,scope,anchor,start,end,source,requested,role,
-  {configTable='silver.'+scope,galaxyTable='silver.'+scope+'_galaxy'}={}){
+  {configTable='silver.'+scope,galaxyTable='silver.'+scope+'_galaxy',
+    engine='postgres',namespace='silver'}={}){
   const info=await keywordClassInfo(trx,scope,anchor,requested,role,configTable);
   if(!info?.allowed||!info.ready)return [];
   const catalog=await keywordCatalog(trx,scope,anchor,requested,role,
@@ -216,7 +219,8 @@ export async function keywordSummary(trx,scope,anchor,start,end,source,requested
     })));
   const res=await readItemKeywordProjection(trx,scope,{
     items,groups,start,end,source,owner:true,
-    minChars:Math.max(0,Number(info.config?.keyword_min_chars)||0),galaxyTable
+    minChars:Math.max(0,Number(info.config?.keyword_min_chars)||0),
+    galaxyTable,engine,namespace
   });
   return res.daily;
 }
