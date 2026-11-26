@@ -11,10 +11,10 @@ export function sourceLabelMatchesSite(site,label){
 }
 // CURRENT Site Tree Model: typed From/Domain/Galaxy/Universe payloads compose
 // under SiteAnchor; anchor-hierarchy.mjs validates real attr.uid child edges.
-// Source taxonomy aliases and old ArticleTag/UI category lists are projections,
-// never a second canonical tree or permission to infer parenthood from titles.
-// The source taxonomy is the existing LocAnchor ZModel, not ArticleTag or a
-// second media/platform registry. Anchor attr.uid is the only hierarchy link.
+// Source taxonomy aliases and flat UI choices are projections of the one
+// canonical tree; never infer parenthood from titles or create another tree.
+// The source taxonomy is the existing LocAnchor ZModel, not a second
+// media/platform registry. Anchor attr.uid is the only hierarchy link.
 // SiteAnchor: from = one platform; domain = platform collection; galaxy = group; universe = all.
 // Example: Meta (domain) > Facebook/Threads/Instagram (from); CMS/Article/Stream (galaxy).
 // Example taxonomy (labels only; no automatic DB rewrite):

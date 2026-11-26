@@ -336,7 +336,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   });
   // One public model read of the existing 30 LocAnchor source nodes.
   // The native provider uses the fixed ZenStack LocAnchor model. Do not fall
-  // back to ArticleTag, a hardcoded category snapshot or a media taxonomy.
+  // back to a local source list, a hardcoded category snapshot or media tree.
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['loc-zmodel-source-taxonomy'],
     enabled:sourceChart,

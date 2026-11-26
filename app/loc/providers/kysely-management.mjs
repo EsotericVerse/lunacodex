@@ -328,14 +328,28 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
     return {data:{count:1}};
   }
   if(isAnchor&&operation==='update'){
-    if(Object.hasOwn(values,'attr')||Object.hasOwn(values,'type')){
+    if(Object.hasOwn(values,'attr')||Object.hasOwn(values,'type')||
+       Object.hasOwn(values,'title')){
       const targets=await withFilters(trx.selectFrom('silver.'+table)
-        .select(['uid','type','attr']),filters).execute();
-      const sizes=targets.map(row=>anchorUidListCount(values.type||row.type,
-        Object.hasOwn(values,'attr')?values.attr:row.attr));
-      if(new Set(sizes).size>1)
-        reject('Anchor update spans different UID-list sizes');
-      if(sizes.length)values.num=sizes[0];
+        .select(['uid','type','attr','num']),filters).execute();
+      const nextTypes=targets.map(row=>values.type||row.type);
+      if(Object.hasOwn(values,'title')&&targets.some(row=>row.type==='pattern')&&
+         !targets.every(row=>row.type==='pattern'))
+        reject('Anchor title update cannot mix Patterns and other types');
+      if(nextTypes.length&&nextTypes.every(type=>type==='pattern')){
+        // Pattern.num stores literal occurrences. Keep it for metadata edits,
+        // but clear it when the Pattern title or discriminator changes.
+        if(Object.hasOwn(values,'title')||targets.some(row=>row.type!=='pattern'))
+          values.num=0;
+        else delete values.num;
+      }else if(Object.hasOwn(values,'attr')||Object.hasOwn(values,'type')){
+        const sizes=targets.map((row,index)=>nextTypes[index]==='pattern'?0:
+          anchorUidListCount(nextTypes[index],
+            Object.hasOwn(values,'attr')?values.attr:row.attr));
+        if(new Set(sizes).size>1)
+          reject('Anchor update spans different UID-list sizes');
+        if(sizes.length)values.num=sizes[0];
+      }
     }
   }
   // The signed identity and current access grants were verified before this
@@ -793,11 +807,21 @@ export async function keywordPatternStatistics(trx,args){
     .where('type','=','item').where('uid','in',itemUids).execute():[];
   const byItem=new Map(itemRows.map(row=>[row.uid,row]));
   if(itemUids.some(uid=>!byItem.has(uid)))reject('Keyword Item link incomplete');
+  const patternUids=[...new Set(itemRows.flatMap(row=>links(row,'patterns')))].sort();
+  const patternRows=patternUids.length?await trx.selectFrom(table)
+    .select(['uid','type','title','num'])
+    .where('type','=','pattern').where('uid','in',patternUids).execute():[];
+  const byPattern=new Map(patternRows.map(row=>[row.uid,row]));
+  if(patternUids.some(uid=>!byPattern.has(uid)))reject('Keyword Pattern link incomplete');
+  const patterns=patternUids.map(uid=>({uid,title:String(byPattern.get(uid).title||''),
+    num:Math.max(0,Number(byPattern.get(uid).num)||0)}));
+  const patternByUid=new Map(patterns.map(row=>[row.uid,row]));
   const items=groupUids.flatMap(groupUid=>links(byGroup.get(groupUid),'items').map(uid=>{
     const row=byItem.get(uid);
+    const linkedPatterns=links(row,'patterns').map(patternUid=>patternByUid.get(patternUid));
     return {
       uid,item_name:String(row.title||''),group_uid:groupUid,
-      keywords:Array.isArray(attributes(row).keyword)?attributes(row).keyword:[]
+      keywords:linkedPatterns.map(pattern=>pattern.title),patterns:linkedPatterns
     };
   }));
   const start=String(args.p_start_date||''),end=String(args.p_end_date||'');
@@ -809,7 +833,7 @@ export async function keywordPatternStatistics(trx,args){
   let totals;
   if(start||end||source){
     const result=await readItemKeywordProjection(trx,scope,{
-      items,groups,start,end,source,owner:true,
+      items,groups,patterns,start,end,source,owner:true,
       minChars:Math.max(0,Number(config?.keyword_min_chars)||0)
     });
     totals=result.totals;
@@ -821,13 +845,14 @@ export async function keywordPatternStatistics(trx,args){
     const receipt=config?.keyword_meta?.by_class?.[classUid]||{};
     totals={...receipt,
       itemCounts:Object.fromEntries(items.map(item=>[item.uid,byUid.get(item.uid)||0])),
-      groupCounts:Object.fromEntries(groups.map(group=>[group.uid,byUid.get(group.uid)||0]))};
+      groupCounts:Object.fromEntries(groups.map(group=>[group.uid,byUid.get(group.uid)||0])),
+      patternCounts:Object.fromEntries(patterns.map(pattern=>[pattern.uid,pattern.num]))};
   }
   return {class_uid:classUid,class_name:String(root.title||''),
     ...itemKeywordStatistics(items,groups,totals)};
 }
 
-// Suggestions come from authored Item vocabulary, not Pattern postings.
+// Suggestions come from Pattern Anchor titles linked to authored Items.
 export async function suggestSearchPatterns(trx,args){
   const requested=args.p_scope_ids;
   const query=String(args.p_query??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -840,11 +865,21 @@ export async function suggestSearchPatterns(trx,args){
   if(!granted.length)reject('No authorized Keyword Scope',403);
   const found=new Map();
   for(const scope of granted){
-    const rows=await trx.selectFrom('silver.'+scope+'_anchor')
-      .select(['title','attr']).where('type','=','item').execute();
-    for(const row of itemKeywordSuggestions(rows.map(item=>({
-      item_name:item.title,keywords:Array.isArray(item.attr?.keyword)?item.attr.keyword:[]
-    })),query)){
+    const table='silver.'+scope+'_anchor';
+    const rows=await trx.selectFrom(table).select(['title','attr'])
+      .where('type','=','item').execute();
+    const patternIds=[...new Set(rows.flatMap(item=>{
+      const attr=typeof item.attr==='string'?JSON.parse(item.attr):item.attr||{};
+      return Array.isArray(attr.uid)?attr.uid.filter(uid=>UID.test(String(uid))):[];
+    }))];
+    const patterns=patternIds.length?await trx.selectFrom(table)
+      .select(['uid','title']).where('type','=','pattern')
+      .where('uid','in',patternIds).execute():[];
+    const titles=new Map(patterns.map(pattern=>[pattern.uid,String(pattern.title||'')]));
+    for(const row of itemKeywordSuggestions(rows.map(item=>{
+      const attr=typeof item.attr==='string'?JSON.parse(item.attr):item.attr||{};
+      return {keywords:Array.isArray(attr.uid)?attr.uid.map(uid=>titles.get(uid)||''):[]};
+    }),query)){
       const key=String(row.pattern).normalize('NFKC').toLocaleLowerCase('zh-Hant');
       if(!found.has(key))found.set(key,row);
     }
@@ -1272,13 +1307,13 @@ async function importSharedKeywordClass(trx,args){
   // Use the existing UID primary key to reject rare collisions as part of
   // INSERT itself; no per-key SELECT or full table comparison is needed.
   const assigned=new Set();
-  const insertCopy=async(type,node,attr)=>{
+  const insertCopy=async(type,node,attr,{num=0}={})=>{
     for(let attempt=0;attempt<32;attempt++){
       const uid=allocateAnchorUid(assigned);
       assigned.add(uid);
       const inserted=await trx.insertInto(target).values({
         uid,type,title:node.title,description:node.description,
-        invisible:node.invisible,attr
+        invisible:node.invisible,attr,...(type==='pattern'?{num}: {})
       }).onConflict(oc=>oc.column('uid').doNothing())
         .returning('uid').executeTakeFirst();
       if(inserted?.uid===uid)return uid;
@@ -1294,6 +1329,7 @@ async function importSharedKeywordClass(trx,args){
   };
   const links=node=>Array.isArray(node?.attr?.uid)?node.attr.uid:[];
   const groupIds=[];
+  const patternCopies=new Map();
   let items=0;
   for(const groupId of links(root)){
     if(!UID.test(String(groupId)))reject('Invalid source Group UID');
@@ -1302,8 +1338,18 @@ async function importSharedKeywordClass(trx,args){
     for(const itemId of links(group)){
       if(!UID.test(String(itemId)))reject('Invalid source Item UID');
       const item=await readChild(itemId,'item');
-      const terms=Array.isArray(item.attr?.keyword)?item.attr.keyword:[];
-      const uid=await insertCopy('item',item,{keyword:terms});
+      const patternIds=[];
+      for(const patternId of links(item)){
+        if(!UID.test(String(patternId)))reject('Invalid source Pattern UID');
+        let copied=patternCopies.get(patternId);
+        if(!copied){
+          const pattern=await readChild(patternId,'pattern');
+          copied=await insertCopy('pattern',pattern,{}, {num:0});
+          patternCopies.set(patternId,copied);
+        }
+        patternIds.push(copied);
+      }
+      const uid=await insertCopy('item',item,{uid:patternIds});
       mapped.push(uid);items++;
     }
     const uid=await insertCopy('group',group,{uid:mapped});

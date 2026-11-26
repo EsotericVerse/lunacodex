@@ -58,20 +58,5 @@
     "typescript": "5.9.3",
     "wrangler": "4.167.0"
   },
-  "packageManager": "pnpm@10.30.3",
-  "pnpm": {
-    "overrides": {
-      "source-map-js": "1.2.2",
-      "cuid": "npm:@paralleldrive/cuid2@2.3.1",
-      "uuid": "11.1.1",
-      "use-sync-external-store": "1.6.0"
-    },
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "@swc/core",
-      "esbuild",
-      "sharp",
-      "workerd"
-    ]
-  }
+  "packageManager": "pnpm@10.30.3"
 }

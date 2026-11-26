@@ -1,7 +1,7 @@
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 
-// A Keyword Item is a GROUP of literal words (including its own title).
-// Each word gets its OWN count/UID set from matched text, never Item.total.
+// Item is a label. Search words come only from linked Pattern titles.
+// Each Pattern gets its own count/UID set, never Item.total.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const normalize=value=>String(value??'').normalize('NFKC').trim();
@@ -15,7 +15,7 @@ export function buildKeywordSearchPatterns(scopeId,items=[],matchedUids=[]){
   // Expressions such as TO/AND/NAME/NOR are analysis instructions, not words.
   const words=new Map();
   for(const item of items){
-    const literals=[item.item_name,...(Array.isArray(item.keywords)?item.keywords:[])
+    const literals=[...(Array.isArray(item.keywords)?item.keywords:[])
       .filter(value=>typeof value==='string'&&
         !parseRuneKeywordRuleSentence(value).rules.length)];
     for(const value of literals){
@@ -65,7 +65,7 @@ export function keywordPatternItemMetrics(items=[],storedPatterns=[],{articleUid
   let totalHits=0;
   const summaries=items.map(item=>{
     const itemWords=new Map();
-    const candidates=[item.item_name,...(Array.isArray(item.keywords)?item.keywords:[])
+    const candidates=[...(Array.isArray(item.keywords)?item.keywords:[])
       .filter(value=>typeof value==='string'&&!parseRuneKeywordRuleSentence(value).rules.length)];
     for(const value of candidates){
       const word=normalize(value),key=identity(word);
@@ -132,7 +132,7 @@ export function keywordPatternDailySummary(items=[],storedPatterns=[],articleMet
   const daySet=(map,key)=>{if(!map.has(key))map.set(key,new Set());return map.get(key);};
   for(const item of items){
     const group=String(item.group_uid||''),uid=String(item.uid||'');
-    const words=[item.item_name,...(Array.isArray(item.keywords)?item.keywords:[])
+    const words=[...(Array.isArray(item.keywords)?item.keywords:[])
       .filter(word=>typeof word==='string'&&!parseRuneKeywordRuleSentence(word).rules.length)];
     const unique=[...new Set(words.map(identity).filter(Boolean))];
     const itemMembers=new Map();

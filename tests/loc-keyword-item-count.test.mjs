@@ -4,6 +4,8 @@ import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
 import {planKeywordTotalWrites} from '../app/loc/keywords/sql-service.mjs';
 import {createItemCountAccumulator,analyzeItemKeywordCounts} from '../app/loc/keywords/item-count-analysis.mjs';
 import {compileKeywordLiteralMatcher} from '../app/loc/keywords/literal-matcher.mjs';
+import {buildKeywordSearchPatterns,keywordPatternItemMetrics}
+  from '../app/loc/keywords/search-pattern.mjs';
 
 const items=[
   {uid:'ITEM0001',item_name:'日',group_uid:'GROUP001',keywords:['日光TO光']},
@@ -11,19 +13,23 @@ const items=[
   {uid:'ITEM0003',item_name:'封',group_uid:'GROUP001',keywords:['開封NAME','封閉']},
   {uid:'ITEM0004',item_name:'水',group_uid:'GROUP001',keywords:['水土AND地']},
   {uid:'ITEM0005',item_name:'地',group_uid:'GROUP001',keywords:['地表']},
-  {uid:'ITEM0006',item_name:'洞',group_uid:'GROUP001',keywords:['黑NOR洞']}
+  {uid:'ITEM0006',item_name:'洞',group_uid:'GROUP001',keywords:['黑NOR洞','洞']}
 ];
 const groups=[{uid:'GROUP001',title:'一組'}];
+const patterns=[...new Set(items.flatMap(item=>item.keywords))].map((title,index)=>({
+  uid:'PATT'+String(index+1).padStart(4,'0'),title
+}));
 const doc=(uid,content)=>({uid,keyword:true,title:'',content,date:'2026-11-22'});
 
-test('Item engine honors TO AND NAME NOR and stores counts rather than article IDs',()=>{
-  const acc=createItemCountAccumulator(items,groups);
+test('Pattern literals drive matching while Item labels resolve TO AND NAME NOR',()=>{
+  const acc=createItemCountAccumulator(items,groups,null,{patterns});
   const rows=[
     doc('GALAXY01','日光'),
     doc('GALAXY02','開封'),
     doc('GALAXY03','水土'),
     doc('GALAXY04','黑洞'),
-    doc('GALAXY05','洞穴')
+    doc('GALAXY05','洞穴'),
+    doc('GALAXY06','日')
   ];
   acc.state.scanned=rows.length;
   acc.absorb(rows);
@@ -33,6 +39,7 @@ test('Item engine honors TO AND NAME NOR and stores counts rather than article I
   assert.ok(result.itemCounts.ITEM0004>0,'AND adds original Item');
   assert.ok(result.itemCounts.ITEM0005>0,'AND adds target Item');
   assert.equal(result.itemCounts.ITEM0006,1,'NOR blocks 黑洞 but allows 洞穴');
+  assert.equal(result.itemCounts.ITEM0001,0,'Item label 日 is not a literal match');
   assert.equal(result.analyzedDocuments,rows.length);
   assert.equal(result.scannedDocuments,rows.length);
   assert.ok(result.matchedDocuments>=3);
@@ -131,6 +138,14 @@ test('Pattern Anchor UIDs count occurrences during the same article pass, shared
   assert.throws(()=>createItemCountAccumulator(catalog,groups,null,{
     patterns:[{uid:'PATT0001',title:'月光'},{uid:'PATT0001',title:'其他'}]
   }),/Conflicting Keyword Pattern/);
+});
+
+test('Item labels are not promoted to Patterns in keyword search metrics',()=>{
+  const items=[{uid:'ITEM0001',item_name:'標籤名稱',group_uid:'GROUP001',keywords:['明確 Pattern']}];
+  const patterns=buildKeywordSearchPatterns('scope1',items,[]);
+  assert.deepEqual(patterns.map(row=>row.pattern),['明確 Pattern']);
+  const metrics=keywordPatternItemMetrics(items,patterns);
+  assert.deepEqual(metrics.items[0].words.map(row=>row.pattern),['明確 Pattern']);
 });
 
 test('Sparse Pattern matching preserves overlap counts and Unicode fallback',()=>{

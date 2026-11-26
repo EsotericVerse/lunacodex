@@ -2,9 +2,9 @@ import {KEYWORD_SCAN_START_ROWS,KEYWORD_SCAN_CHECKPOINT_ROWS}
   from './item-count-analysis.mjs';
 import {sql} from 'kysely';
 import {computeClient,keywordComputeAbsorber} from '../compute/runtime.mjs';
-// LOC native Keywords: Item owns literal and TO/AND/NAME/NOR rules;
-// Anchor.num is UID-list cardinality; Item/Group/Pattern.attr.total stores
-// verified hit totals. Class completion remains in Scope keyword_meta.
+// LOC Keyword patterns are the only literal match source. Item.attr.uid links
+// Pattern Anchors; Pattern.num stores occurrences while Item/Group.attr.total
+// retains class-level aggregate totals. Class completion remains in keyword_meta.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {analyzeItemKeywordCounts,readItemKeywordProjection,
   itemKeywordStatistics,itemScope} from './item-count-analysis.mjs';
@@ -13,6 +13,7 @@ import {completeKeywordClass,invalidateKeywordClass,
   readKeywordScanProgress,writeKeywordScanProgress,
   keywordClassEpoch,bumpKeywordClassEpoch} from './class-state.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {allocateAnchorUid} from '../model/uid.js';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -37,9 +38,6 @@ const children=node=>{
   const raw=attr(node).uid;
   return Array.isArray(raw)?raw.filter(uid=>UID.test(String(uid))):[];
 };
-const terms=item=>[String(item.item_name||''),...(Array.isArray(item.keywords)?item.keywords:[])
-  .filter(term=>typeof term==='string'&&!parseRuneKeywordRuleSentence(term).rules.length)]
-  .map(norm).filter(Boolean);
 const anchorName=scope=>'silver.'+checkScope(scope)+'_anchor';
 const galaxyName=scope=>'silver.'+checkScope(scope)+'_galaxy';
 const configName=scope=>'silver.'+checkScope(scope);
@@ -75,6 +73,10 @@ const removeLegacyKeywordHitCache=value=>{
   // Keep Item.attr.uid: these are Pattern Anchor IDs, not article postings.
   return links;
 };
+const cleanItemAttr=(value,patternUids)=>{
+  const {keyword,total,uidlists,articles,hits,...rest}=attr({attr:value});
+  return {...rest,uid:[...patternUids]};
+};
 
 async function configuration(db,scope){
   return await db.selectFrom(configName(scope))
@@ -85,7 +87,7 @@ function shared(config,classUid){
   return attr({attr:config.keyword_meta}).class_shares?.[classUid]===true;
 }
 
-async function classTree(db,scope,classUid,{withPatterns=false}={}){
+async function classTree(db,scope,classUid){
   const anchor=anchorName(scope);
   const root=await db.selectFrom(anchor).select(['uid','type','title','description','attr'])
     .where('uid','=',checkClass(classUid)).where('type','=','class').executeTakeFirst();
@@ -103,25 +105,23 @@ async function classTree(db,scope,classUid,{withPatterns=false}={}){
     .where('uid','in',itemUids).execute():[];
   const byItem=new Map(items.map(item=>[item.uid,item]));
   if(itemUids.some(uid=>!byItem.has(uid)))fail('Keyword Item relationship incomplete');
+  const patternIds=[...new Set(items.flatMap(children))].sort();
+  const matches=patternIds.length?await db.selectFrom(anchor)
+    .select(['uid','title','num']).where('type','=','pattern')
+    .where('uid','in',patternIds).execute():[];
+  const byPattern=new Map(matches.map(row=>[row.uid,row]));
+  if(patternIds.some(uid=>!byPattern.has(uid)))
+    fail('Keyword Pattern relationship incomplete',409);
+  const patterns=patternIds.map(uid=>({uid,title:String(byPattern.get(uid).title||''),
+    num:Math.max(0,Number(byPattern.get(uid).num)||0)}));
+  const patternByUid=new Map(patterns.map(row=>[row.uid,row]));
   const words=ordered.flatMap(group=>children(group).map(uid=>{
-    const item=byItem.get(uid);
+    const item=byItem.get(uid),patternUids=children(item);
+    const linkedPatterns=patternUids.map(id=>patternByUid.get(id));
     return {uid,item_name:String(item.title||''),group_uid:group.uid,
-      keywords:Array.isArray(attr(item).keyword)?attr(item).keyword:[]};
+      patternUids,patterns:linkedPatterns,
+      keywords:linkedPatterns.map(pattern=>pattern.title)};
   }));
-  // Fetch Pattern labels only for the actual analysis, not every public
-  // statistics/catalog read. Item.attr.uid already stores the canonical
-  // terminal Pattern UIDs. One query covers every distinct linked Pattern.
-  let patterns=[];
-  if(withPatterns){
-    const patternIds=[...new Set(items.flatMap(children))].sort();
-    const matches=patternIds.length?await db.selectFrom(anchor)
-      .select(['uid','title']).where('type','=','pattern')
-      .where('uid','in',patternIds).execute():[];
-    const byPattern=new Map(matches.map(row=>[row.uid,row]));
-    if(patternIds.some(uid=>!byPattern.has(uid)))
-      fail('Keyword Pattern relationship incomplete',409);
-    patterns=patternIds.map(uid=>({uid,title:String(byPattern.get(uid).title||'')}));
-  }
   return {root,groups:ordered,items:words,itemRows:items,patterns};
 }
 
@@ -144,13 +144,41 @@ export async function readKeywordWorkspace(db,scope,{cursor='',limit=250}={}){
   if(cursor)q=q.where('uid','>',cursor);
   const rows=await q.orderBy('uid','asc').limit(limit+1).execute();
   const page=rows.slice(0,limit);
+  const patternIds=[...new Set(page.filter(row=>row.type==='item').flatMap(children))].sort();
+  const patternRows=patternIds.length?await db.selectFrom(anchorName(scope))
+    .select(['uid','title','num']).where('type','=','pattern')
+    .where('uid','in',patternIds).execute():[];
+  const patternByUid=new Map(patternRows.map(row=>[row.uid,{uid:row.uid,
+    title:String(row.title||''),num:Math.max(0,Number(row.num)||0)}]));
+  if(patternIds.some(uid=>!patternByUid.has(uid)))
+    fail('Keyword Pattern relationship incomplete',409);
+  const enriched=page.map(row=>{
+    if(row.type!=='item')return row;
+    const linked=children(row).map(uid=>patternByUid.get(uid));
+    const legacy=attr(row);
+    // Before the Pattern model, Item.title matched implicitly and
+    // attr.keyword held the Item's rule/phrase list. Project both as virtual
+    // Patterns until the owner runs the next reset-and-analysis transaction.
+    const titles=Object.hasOwn(legacy,'keyword')
+      ?[String(row.title||''),...(Array.isArray(legacy.keyword)?legacy.keyword:[]),
+        ...linked.map(pattern=>pattern.title)]
+      :linked.map(pattern=>pattern.title);
+    const seen=new Set(),patterns=[];
+    for(const title of titles){
+      const text=String(title||'').normalize('NFKC').trim(),key=norm(text);
+      if(!text||!key||seen.has(key))continue;
+      seen.add(key);
+      patterns.push(linked.find(pattern=>norm(pattern.title)===key)||{uid:'',title:text,num:0});
+    }
+    return {...row,patterns};
+  });
   const config=await db.selectFrom(configName(scope))
     .select(['current_keyword_class_uid','keyword_min_chars',
       'keyword_min_documents','keyword_class_share_enabled',
       'keyword_meta','staticstime'])
     .where('id','=',scope).executeTakeFirst();
   if(!config)fail('Keyword Scope not configured',404);
-  return {rows:page,config,nextCursor:rows.length>limit
+  return {rows:enriched,config,nextCursor:rows.length>limit
     ?String(page.at(-1).uid):null};
 }
 
@@ -205,7 +233,8 @@ export async function readKeywordStatistics(db,scope,classUid,{
     counts={
       ...receipt,
       itemCounts:Object.fromEntries(tree.items.map(item=>[item.uid,byUid.get(item.uid)||0])),
-      groupCounts:Object.fromEntries(tree.groups.map(row=>[row.uid,byUid.get(row.uid)||0]))
+      groupCounts:Object.fromEntries(tree.groups.map(row=>[row.uid,byUid.get(row.uid)||0])),
+      patternCounts:Object.fromEntries(tree.patterns.map(pattern=>[pattern.uid,pattern.num]))
     };
   }
   const stats=itemKeywordStatistics(tree.items,itemScope(tree).groups,counts);
@@ -230,7 +259,7 @@ export async function readKeywordCatalog(db,scope,classUid,{owner=false}={}){
     uid:node.uid,type:node.type,name:String(node.title||''),
     desc:node.type==='item'?'':String(node.description||''),
     lists:node.type==='class'?children(node):node.type==='group'?children(node):
-      Array.isArray(attr(node).keyword)?attr(node).keyword:[],
+      tree.items.find(item=>item.uid===node.uid)?.keywords||[],
     uid_lists:[],total:node.type==='item'?indexed.get(node.uid)?.hit_count||0:
       node.type==='group'?groups.get(node.uid)?.hit_count||0:0
   });
@@ -276,11 +305,17 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
     if(!ownerScopes.has(scope))continue;
     // A literal autocomplete lookup on Pattern.title. No language translation,
     // English/Chinese mapping, Galaxy content scan, or article UID index.
-    const rows=await db.selectFrom(anchorName(scope))
+    const anchor=anchorName(scope);
+    const itemRows=await db.selectFrom(anchor).select('attr')
+      .where('type','=','item').execute();
+    const linked=new Set(itemRows.flatMap(children));
+    if(!linked.size)continue;
+    const rows=await db.selectFrom(anchor)
       .select(['uid','title']).where('type','=','pattern').execute();
     for(const row of rows){
+      if(!linked.has(row.uid))continue;
       const literal=String(row.title||'').trim(),key=norm(literal);
-      if(!key.includes(prefix)||!literal)continue;
+      if(!key.includes(prefix)||!literal||parseRuneKeywordRuleSentence(literal).rules.length)continue;
       if(!found.has(key))found.set(key,{pattern:literal,count:0});
     }
   }
@@ -302,9 +337,8 @@ async function lockedKeywordMetadata(trx,scope,classUid,expectedEpoch){
   return meta;
 }
 
-// The native Keyword service runs on LOC's trusted PostgreSQL Kysely target.
-// One typed SQL statement updates only attr.total, preserving every other
-// Anchor attribute, hierarchy UID list and its independently derived num.
+// Item and Group retain their small class-level aggregate counters in attr.
+// Pattern occurrence counts live on the existing Pattern Anchor's num column.
 // This is not a second keyword index or a public SQL request surface.
 // Pure and testable: distinct physical Anchor PKs, not occurrences of the
 // same Item under several Keyword Groups, determine UPDATE row cardinality.
@@ -313,29 +347,50 @@ export function planKeywordTotalWrites(updates){
   const byUid=new Map();
   for(const row of updates){
     if(!UID.test(String(row?.uid||''))||
+       row?.type!==undefined&&!['item','group','pattern'].includes(row.type)||
        !Number.isSafeInteger(row.total)||row.total<0)
       fail('Invalid Keyword aggregate counts');
-    if(byUid.has(row.uid)&&byUid.get(row.uid)!==row.total)
+    const value={...(row.type?{type:row.type}:{}),total:row.total};
+    if(byUid.has(row.uid)&&(byUid.get(row.uid).type!==value.type||
+       byUid.get(row.uid).total!==value.total))
       fail('Conflicting Keyword counts for one Anchor UID',409);
-    byUid.set(row.uid,row.total);
+    byUid.set(row.uid,value);
   }
-  return [...byUid].map(([uid,total])=>({uid,total}));
+  return [...byUid].map(([uid,value])=>({uid,...value}));
 }
 async function writeKeywordTotals(trx,scope,updates){
+  if(updates.some(row=>!['item','group','pattern'].includes(row?.type)))
+    fail('Keyword aggregate target type is required');
   const physicalUpdates=planKeywordTotalWrites(updates);
   if(!physicalUpdates.length)return 0;
-  const payload=JSON.stringify(physicalUpdates);
   const table=sql.ref(anchorName(scope));
-  const result=await sql`
-    update ${table} as a
-    set attr=jsonb_set(coalesce(a.attr,'{}'::jsonb),
-      '{total}',to_jsonb(incoming.total),true)
-    from jsonb_to_recordset(${payload}::jsonb) as incoming(uid text,total bigint)
-    where a.uid=incoming.uid::char(8) and a.type in ('item','group','pattern')
-  `.execute(trx);
-  const affected=Number(result.numAffectedRows??0);
-  if(affected!==physicalUpdates.length)fail('Keyword aggregate targets changed',409);
-  return affected;
+  const itemGroupUpdates=physicalUpdates.filter(row=>row.type==='item'||row.type==='group');
+  if(itemGroupUpdates.length){
+    const payload=JSON.stringify(itemGroupUpdates);
+    const result=await sql`
+      update ${table} as a
+      set attr=jsonb_set(coalesce(a.attr,'{}'::jsonb),
+        '{total}',to_jsonb(incoming.total),true)
+      from jsonb_to_recordset(${payload}::jsonb) as incoming(uid text,total bigint)
+      where a.uid=incoming.uid::char(8) and a.type in ('item','group')
+    `.execute(trx);
+    if(Number(result.numAffectedRows??0)!==itemGroupUpdates.length)
+      fail('Keyword aggregate targets changed',409);
+  }
+  const patternUpdates=physicalUpdates.filter(row=>row.type==='pattern');
+  if(patternUpdates.length){
+    const payload=JSON.stringify(patternUpdates);
+    const result=await sql`
+      update ${table} as a
+      set num=incoming.total::bigint,
+        attr=coalesce(a.attr,'{}'::jsonb)-'total'
+      from jsonb_to_recordset(${payload}::jsonb) as incoming(uid text,total bigint)
+      where a.uid=incoming.uid::char(8) and a.type='pattern'
+    `.execute(trx);
+    if(Number(result.numAffectedRows??0)!==patternUpdates.length)
+      fail('Keyword Pattern counts changed',409);
+  }
+  return physicalUpdates.length;
 }
 
 async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',expectedCount=null,expectedEpoch=0){
@@ -346,22 +401,21 @@ async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',exp
     if(Number(latest?.n)!==expectedCount)
       fail('Galaxy changed during Item analysis; rerun',409);
   }
-  const current=await classTree(trx,scope,classUid,{withPatterns:true});
+  const current=await classTree(trx,scope,classUid);
   if(JSON.stringify(current.items)!==JSON.stringify(tree.items)||
       JSON.stringify(current.groups.map(x=>x.uid))!==
       JSON.stringify(tree.groups.map(x=>x.uid))||
       JSON.stringify(current.patterns)!==JSON.stringify(tree.patterns))
     fail('Item/Pattern rules changed during analysis; rerun',409);
   const updates=[
-    ...current.items.map(item=>({uid:item.uid,
+    ...current.items.map(item=>({uid:item.uid,type:'item',
       total:Math.max(0,Number(counts.itemCounts?.[item.uid])||0)})),
-    ...current.groups.map(group=>({uid:group.uid,
+    ...current.groups.map(group=>({uid:group.uid,type:'group',
       total:Math.max(0,Number(counts.groupCounts?.[group.uid])||0)})),
-    ...current.patterns.map(pattern=>({uid:pattern.uid,
+    ...current.patterns.map(pattern=>({uid:pattern.uid,type:'pattern',
       total:Math.max(0,Number(counts.patternCounts?.[pattern.uid])||0)}))
   ];
-  // The metadata row was locked before this statement. The typed UPDATE
-  // touches only Item/Group/Pattern attr.total; num and child UIDs stay intact.
+  // The lock makes aggregate writes and Pattern.num commits linearizable.
   await writeKeywordTotals(trx,scope,updates);
   const now=new Date().toISOString();
   const {pattern_index_version,pattern_scans,scan_progress,...rest}=old;
@@ -391,7 +445,7 @@ export async function analyzeKeywordScope(db,scope,classUid,{
   checkScope(scope);checkClass(classUid);
   if(!Number.isSafeInteger(analysisEpoch)||analysisEpoch<1)
     fail('Keyword analysis requires a confirmed reset generation',409);
-  const cfg=await configuration(db,scope),tree=await classTree(db,scope,classUid,{withPatterns:true});
+  const cfg=await configuration(db,scope),tree=await classTree(db,scope,classUid);
   const meta=attr({attr:cfg.keyword_meta});
   const expectedEpoch=keywordClassEpoch(meta,classUid);
   if(expectedEpoch!==analysisEpoch)
@@ -515,13 +569,22 @@ export async function resetKeywordScope(db,scope,classUid,{
     const cfg=await trx.selectFrom(configName(scope))
       .select('keyword_meta').where('id','=',scope).forUpdate().executeTakeFirst();
     if(!cfg)fail('Keyword Scope not configured',404);
-    const tree=await classTree(trx,scope,classUid,{withPatterns:true});
-    const ids=[...new Set([...tree.groups.map(x=>x.uid),
-      ...tree.items.map(x=>x.uid),...tree.patterns.map(x=>x.uid)])];
-    // Reset only analyzed counts: preserve every structural UID and num.
-    // Same row-locked metadata transaction as completion, but one SQL
-    // statement clears all cached counts without changing Anchor.num.
-    const changed=await writeKeywordTotals(trx,scope,ids.map(uid=>({uid,total:0})));
+    const before=await classTree(trx,scope,classUid);
+    const legacyItemsMaterialized=await materializeLegacyItemPatterns(
+      trx,scope,before);
+    const tree=legacyItemsMaterialized
+      ?await classTree(trx,scope,classUid):before;
+    const classItems=new Set(tree.items.map(item=>item.uid));
+    const otherItems=await trx.selectFrom(anchorName(scope)).select(['uid','attr'])
+      .where('type','=','item').execute();
+    const sharedPatterns=new Set(otherItems.filter(item=>!classItems.has(item.uid))
+      .flatMap(children));
+    const ids=[...tree.groups.map(row=>({uid:row.uid,type:'group'})),
+      ...tree.items.map(row=>({uid:row.uid,type:'item'})),
+      ...tree.patterns.filter(pattern=>!sharedPatterns.has(pattern.uid))
+        .map(row=>({uid:row.uid,type:'pattern'}))];
+    // Reset analyzed counts while preserving hierarchy UID lists.
+    const changed=await writeKeywordTotals(trx,scope,ids.map(row=>({...row,total:0})));
     const previous=attr({attr:cfg.keyword_meta});
     const meta=bumpKeywordClassEpoch(
       writeKeywordScanProgress(invalidateKeywordClass(previous,classUid),classUid,null),
@@ -536,7 +599,7 @@ export async function resetKeywordScope(db,scope,classUid,{
       keyword_meta:JSON.stringify(meta),staticstime:null,
       updated_at:new Date().toISOString()
     }).where('id','=',scope).execute();
-    return {count:changed,retainedShared:0,cleared:true,
+    return {count:changed,retainedShared:0,cleared:true,legacyItemsMaterialized,
       resetEpoch:keywordClassEpoch(meta,classUid),
       clearedPatterns:tree.patterns.length};
   });
@@ -568,6 +631,54 @@ async function classContainingGroup(trx,scope,groupUid){
   if(matched.length!==1)fail('Keyword Group parent Class is missing or ambiguous',409);
   return matched[0].uid;
 }
+// Upgrade only pre-Pattern Items, identified by the retired attr.keyword
+// property. Old Item.title semantics become an explicit Pattern once; new
+// Items have no such marker and never inherit their label as a match rule.
+async function materializeLegacyItemPatterns(trx,scope,tree){
+  const table=anchorName(scope),legacyItems=tree.itemRows.filter(row=>
+    Object.hasOwn(attr(row),'keyword'));
+  if(!legacyItems.length)return 0;
+  const rows=await trx.selectFrom(table).select(['uid','title'])
+    .where('type','=','pattern').orderBy('uid','asc').execute();
+  const byTitle=new Map();
+  for(const row of rows){
+    const key=norm(row.title);
+    if(key&&!byTitle.has(key))byTitle.set(key,row);
+  }
+  const assigned=new Set();
+  for(const item of legacyItems){
+    const old=attr(item),links=children(item),titles=[
+      String(item.title||''),...(Array.isArray(old.keyword)?old.keyword:[])
+    ];
+    const linkedPatterns=links.length?await trx.selectFrom(table)
+      .select(['uid','title']).where('type','=','pattern').where('uid','in',links).execute():[];
+    if(linkedPatterns.length!==links.length)
+      fail('Keyword Pattern relationship incomplete',409);
+    titles.push(...linkedPatterns.map(row=>row.title));
+    const patternUids=[];
+    for(const title of titles){
+      const word=asNodeText(title),key=norm(word);
+      if(!key)continue;
+      let pattern=byTitle.get(key);
+      if(!pattern){
+        let inserted=null;
+        for(let attempt=0;attempt<32&&!inserted;attempt++){
+          const uid=allocateAnchorUid(assigned);assigned.add(uid);
+          inserted=await trx.insertInto(table).values({uid,type:'pattern',
+            title:word,description:'',attr:'{}'}).onConflict(oc=>
+            oc.column('uid').doNothing()).returning(['uid','title']).executeTakeFirst();
+        }
+        if(!inserted)fail('Cannot allocate unique Pattern UID',409);
+        pattern=inserted;byTitle.set(key,pattern);
+      }
+      if(!patternUids.includes(pattern.uid))patternUids.push(pattern.uid);
+    }
+    await trx.updateTable(table).set({attr:JSON.stringify(
+      cleanItemAttr(item.attr,patternUids))})
+      .where('uid','=',item.uid).where('type','=','item').execute();
+  }
+  return legacyItems.length;
+}
 async function invalidateKeywordTreeClass(trx,scope,classUid){
   const cfg=await configuration(trx,scope);
   const metadata=invalidateKeywordClass(cfg.keyword_meta,classUid);
@@ -576,10 +687,8 @@ async function invalidateKeywordTreeClass(trx,scope,classUid){
       updated_at:new Date().toISOString()}).where('id','=',scope).execute();
 }
 
-// The Item editor's single authorized transaction saves its word list,
-// maintains Group membership and reconciles all Pattern UID references.
-// Legacy Item.keyword remains as temporary input to old style readers;
-// Pattern vocabulary nodes hold no Galaxy article UID postings.
+// The Item editor's single authorized transaction saves Pattern Anchor rows,
+// maintains Group membership and stores only Pattern UIDs on the Item.
 export async function saveKeywordItem(db,scope,values,{
   authorizeTransaction=()=>{}
 }={}){
@@ -595,8 +704,38 @@ export async function saveKeywordItem(db,scope,values,{
   if(!['create','update'].includes(mode))fail('Invalid Item write mode');
   return db.transaction().execute(async trx=>{
     await authorizeTransaction(trx);
+    const scopeLock=await trx.selectFrom(configName(scope)).select('id')
+      .where('id','=',scope).forUpdate().executeTakeFirst();
+    if(!scopeLock)fail('Keyword Scope not configured',404);
     const table=anchorName(scope),old=await trx.selectFrom(table)
       .select(['uid','type','attr']).where('uid','=',values.uid).forUpdate().executeTakeFirst();
+    const patternRows=await trx.selectFrom(table).select(['uid','title'])
+      .where('type','=','pattern').orderBy('uid','asc').execute();
+    const patternByTitle=new Map();
+    for(const pattern of patternRows){
+      const key=norm(pattern.title);
+      if(key&&!patternByTitle.has(key))patternByTitle.set(key,pattern);
+    }
+    const assigned=new Set();
+    const patternUids=[];
+    for(const word of words){
+      const key=norm(word);
+      let pattern=patternByTitle.get(key);
+      if(!pattern){
+        let inserted=null;
+        for(let attempt=0;attempt<32&&!inserted;attempt++){
+          const uid=allocateAnchorUid(assigned);
+          assigned.add(uid);
+          inserted=await trx.insertInto(table).values({uid,type:'pattern',title:word,
+            description:'',attr:'{}'}).onConflict(oc=>oc.column('uid').doNothing())
+            .returning('uid').executeTakeFirst();
+        }
+        if(!inserted)fail('Cannot allocate unique Pattern UID',409);
+        pattern={uid:inserted.uid,title:word};
+        patternByTitle.set(key,pattern);
+      }
+      patternUids.push(pattern.uid);
+    }
     let parent;
     if(mode==='create'){
       if(old)fail('Keyword UID is already in use',409);
@@ -607,7 +746,7 @@ export async function saveKeywordItem(db,scope,values,{
       if(!parent)fail('Unknown parent Group',404);
       await trx.insertInto(table).values({uid:values.uid,type:'item',
         title:asNodeText(values.name),description:values.desc,
-        attr:JSON.stringify({keyword:words})}).execute();
+        attr:JSON.stringify({uid:patternUids})}).execute();
       await trx.updateTable(table).set({attr:JSON.stringify({
         ...removeLegacyKeywordHitCache(attr(parent)),uid:[...new Set([...children(parent),values.uid])]
       })}).where('uid','=',parent.uid).where('type','=','group').execute();
@@ -616,7 +755,7 @@ export async function saveKeywordItem(db,scope,values,{
       parent=await findContainingGroup(trx,scope,values.uid);
       await trx.updateTable(table).set({
         title:asNodeText(values.name),description:values.desc,
-        attr:JSON.stringify({...removeLegacyKeywordHitCache(attr(old)),keyword:words})
+        attr:JSON.stringify(cleanItemAttr(old,patternUids))
       }).where('uid','=',values.uid).where('type','=','item').execute();
     }
     const classUid=await classContainingGroup(trx,scope,parent.uid);
@@ -629,8 +768,11 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
   checkScope(scope);if(!UID.test(String(itemUid||'')))fail('Invalid Item UID');
   return db.transaction().execute(async trx=>{
     await authorizeTransaction(trx);
+    const scopeLock=await trx.selectFrom(configName(scope)).select('id')
+      .where('id','=',scope).forUpdate().executeTakeFirst();
+    if(!scopeLock)fail('Keyword Scope not configured',404);
     const table=anchorName(scope);
-    const item=await trx.selectFrom(table).select(['uid','type'])
+    const item=await trx.selectFrom(table).select(['uid','type','attr'])
       .where('uid','=',itemUid).forUpdate().executeTakeFirst();
     if(item?.type!=='item')fail('Keyword Item missing',404);
     const parent=await findContainingGroup(trx,scope,itemUid);
@@ -639,6 +781,8 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
       ...removeLegacyKeywordHitCache(attr(parent)),uid:children(parent).filter(uid=>uid!==itemUid)
     })}).where('uid','=',parent.uid).execute();
     await trx.deleteFrom(table).where('uid','=',itemUid).where('type','=','item').execute();
+    // Pattern anchors have their own lifetime. They may be linked from many
+    // Items/classes and remain valid vocabulary even after one Item is removed.
     await invalidateKeywordTreeClass(trx,scope,classUid);
     return {uid:itemUid,removed:0};
   });

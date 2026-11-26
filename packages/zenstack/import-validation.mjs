@@ -46,9 +46,9 @@ const validators=new Map();
 const selectValidators=new Map();
 const scopedGalaxy=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
 const char8Uid=/^[A-Za-z0-9]{8}$/;
-// Anchor.attr validation derives from ZModel. Pattern remains a terminal
-// vocabulary node: title is the word, attr.total is the analyzed occurrence
-// count (optional), and num is always zero because it has no child UIDs.
+// Anchor.attr validation derives from ZModel. Pattern.num is authoritative for
+// analyzed occurrences; the validator tolerates legacy attr.total on input so
+// existing import documents can be handled while LOC writes only empty attr.
 const anchorTypeGroups=Object.fromEntries(Object.entries(ANCHOR_TYPE_GROUPS)
   .flatMap(([group,types])=>types.map(type=>[type,group])));
 const anchorPayloadValidators=new Map(PERSISTED_ANCHOR_TYPES.map(type=>{
@@ -63,13 +63,13 @@ function validateAnchorPayload(type,attr){
   const entry=anchorPayloadValidators.get(String(type||''));
   if(!entry||attr===undefined)return;
   if(type==='pattern'){
-    // Pattern.attr may hold ONLY a nonnegative hit count. Article UIDs and
-    // postings are forbidden; Anchor.num still counts child UIDs (= 0).
+    // Legacy attr.total is input compatibility only. Article UIDs/postings
+    // remain forbidden; new LOC writes store the count in Anchor.num.
     if(!attr||typeof attr!=='object'||Array.isArray(attr)||
         Object.keys(attr).some(key=>key!=='total')||
         Object.hasOwn(attr,'total')&&
           (!Number.isSafeInteger(attr.total)||attr.total<0))
-      throw new TypeError('Pattern.attr allows only a nonnegative total');
+      throw new TypeError('Pattern.attr allows only a legacy nonnegative total');
     return;
   }
   const parsed=entry.validator.safeParse({[entry.field]:attr});

@@ -92,19 +92,29 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
       .where('uid','in',[...visible.items]).execute();
     const groups=await db.selectFrom(anchorTable(scope))
       .select(['uid','title','attr']).where('type','=','group').execute();
+    const patternRows=visible.patterns.size?await db.selectFrom(anchorTable(scope))
+      .select(['uid','type','title','num']).where('type','=','pattern')
+      .where('uid','in',[...visible.patterns]).execute():[];
+    const patternByUid=new Map(patternRows.map(pattern=>[pattern.uid,{
+      uid:pattern.uid,title:String(pattern.title||''),num:Math.max(0,Number(pattern.num)||0)
+    }]));
+    if([...visible.patterns].some(patternUid=>!patternByUid.has(patternUid)))
+      err('Keyword Pattern relationship incomplete',409);
     const groupMap=new Map(groups.map(g=>[g.uid,g]));
     const itemToGroup=new Map();
     for(const group of groups)for(const itemUid of kids(group))
       if(visible.items.has(itemUid))itemToGroup.set(itemUid,group.uid);
     const items=itemRows.filter(item=>itemToGroup.has(item.uid)).map(item=>({
       uid:item.uid,item_name:String(item.title||''),
-      keywords:Array.isArray(attrs(item).keyword)?attrs(item).keyword:[],
+      patterns:kids(item).map(patternUid=>patternByUid.get(patternUid)),
+      keywords:kids(item).map(patternUid=>patternByUid.get(patternUid)?.title||''),
       group_uid:itemToGroup.get(item.uid)
     }));
     const selectedWord=String(anchor.title||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');
     const found=[];
     await readItemKeywordProjection(db,scope,{
       items,groups:groups.map(g=>({uid:g.uid,title:g.title})),
+      patterns:[...patternByUid.values()],
       start:startDate,end:endDate,owner,
       source:sourceFilter.startsWith('source:')?sourceFilter.slice(7):'',
       onRow:(doc,result)=>{

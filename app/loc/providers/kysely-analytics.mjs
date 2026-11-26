@@ -143,10 +143,22 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,
     .where('type','=','item').where('uid','in',itemIds).execute():[];
   const byItem=new Map(items.map(row=>[row.uid,row]));
   if(itemIds.some(uid=>!byItem.has(uid)))reject('Broken Keyword Item relationship');
+  const patternIds=[...new Set(items.flatMap(item=>children(item)))];
+  const patterns=patternIds.length?await trx.selectFrom(anchor)
+    .select(['uid','type','title']).where('type','=','pattern')
+    .where('uid','in',patternIds).execute():[];
+  const byPattern=new Map(patterns.map(row=>[row.uid,row]));
+  if(patternIds.some(uid=>!byPattern.has(uid)))reject('Broken Keyword Pattern relationship');
   const descriptions=ordered.flatMap(group=>children(group,'items').map(uid=>{
-    const item=byItem.get(uid);
+    const item=byItem.get(uid),itemAttr=attr(item),linked=children(item)
+      .map(patternUid=>String(byPattern.get(patternUid)?.title||''));
+    // Keep old Items readable until their next explicit reset converts the
+    // retired implicit title and attr.keyword values into Pattern Anchors.
+    const keywords=Object.hasOwn(itemAttr,'keyword')
+      ?[String(item.title||''),...(Array.isArray(itemAttr.keyword)?itemAttr.keyword:[]),
+        ...linked]:linked;
     return {uid,item_name:String(item.title||''),
-      group_uid:group.uid,keywords:Array.isArray(attr(item).keyword)?attr(item).keyword:[]};
+      group_uid:group.uid,keywords:[...new Set(keywords.map(word=>String(word||'').normalize('NFKC').trim()).filter(Boolean))]};
   }));
   let totals=new Map(),groupTotals=new Map();
   if(withTotals){
@@ -161,7 +173,7 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,
     uid:node.uid,type:node.type,name:node.title,
     desc:node.type==='item'?'':node.description,
     lists:node.type==='class'?groupIds:node.type==='group'?children(node,'items'):
-      node.type==='item'&&Array.isArray(attr(node).keyword)?attr(node).keyword:[],
+      node.type==='item'?descriptions.find(item=>item.uid===node.uid)?.keywords||[]:[],
     uid_lists:[],
     total:node.type==='group'?groupTotals.get(node.uid)||0:
       node.type==='item'?totals.get(node.uid)||0:0
