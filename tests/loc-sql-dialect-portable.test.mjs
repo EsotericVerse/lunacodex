@@ -240,6 +240,45 @@ test('PostgreSQL AbortSignal closes the cursor and releases its connection',asyn
   await db.destroy();
 });
 
+test('PostgreSQL AbortSignal closes an in-flight cursor read and releases its connection',async()=>{
+  let cursor,released=0,readCalls=0,resolveRead,markReadStarted;
+  const readStarted=new Promise(resolve=>{markReadStarted=resolve;});
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;
+      this.closed=false;cursor=this;}
+    read(){
+      readCalls++;
+      markReadStarted();
+      return new Promise(resolve=>{resolveRead=()=>resolve([{uid:'00000001'}]);});
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:794,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Expected a native PostgreSQL cursor');},
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const controller=new AbortController();
+  const result=await executeKyselyQuery(db,{
+    kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+    operation:'select',columns:['uid']
+  },{dialect:'postgres',stream:true,chunkSize:2,signal:controller.signal});
+  const iterator=result.data[Symbol.asyncIterator]();
+  const pending=iterator.next();
+  await readStarted;
+  controller.abort();
+  resolveRead();
+  await assert.rejects(pending,error=>
+    /abort/i.test(String(error?.name||error?.message||error)));
+  assert.equal(readCalls,1,'Abort must not schedule another cursor read');
+  assert.equal(cursor.closed,true);
+  assert.equal(released,1);
+  await db.destroy();
+});
+
 test('PostgreSQL cursor stream keeps its transaction connection until commit',async()=>{
   const source=[{uid:'AAAA0001'},{uid:'BBBB0002'},{uid:'CCCC0003'}];
   let cursor,released=0;
