@@ -265,3 +265,10 @@ html:has(.scope-feature-dock .scope-rainbow-preview-clock){
   .scope-status.scope-error[role="alert"]{animation:loc-status-reveal .18s ease-out both;}
   @keyframes loc-status-reveal{from{opacity:.75;}to{opacity:1;}}
 }
+
+/* A save is a local data handoff, not a second page entrance. Keep the
+   active management controls visible while their existing readers refresh. */
+@media(prefers-reduced-motion:no-preference){
+  .scope-block-draft:not(.loc-home-turn-in-edit){animation:loc-editor-reveal .18s ease-out;}
+  @keyframes loc-editor-reveal{from{opacity:.8;}to{opacity:1;}}
+}
