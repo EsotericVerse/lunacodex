@@ -53,3 +53,10 @@ export function cancelEditorTransactionSession(){
   }
   disposers.clear();
 }
+
+export function rotateActiveEditorTransactionSession(){
+  if(!controller||controller.signal.aborted)return false;
+  cancelEditorTransactionSession();
+  openEditorTransactionSession();
+  return true;
+}

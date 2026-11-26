@@ -113,3 +113,10 @@ a:focus-visible,button:focus-visible,#login-root :is(button,input,a):focus-visib
 }
 @media (max-width: 380px){.brand-copy small{display:none}.back-link{font-size:.8rem;padding:7px 10px}.auth-surface{padding:16px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* The standalone Auth document has no React shell; match its entry motion
+   without adding a runtime dependency or delaying the form. */
+@media(prefers-reduced-motion:no-preference){
+  .login-shell{animation:loc-login-enter .24s ease-out both;}
+  @keyframes loc-login-enter{from{opacity:.78;}to{opacity:1;}}
+}

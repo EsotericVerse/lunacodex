@@ -2,7 +2,8 @@
 
 // One autonomous editing session for every Scope home, feature hero and
 // search suggestion block. Mounted only after an authorized edit action.
-import {useRef,useState} from 'react';
+import {useLayoutEffect,useRef,useState} from 'react';
+import {editorTransactionLease,isEditorTransactionCancelled} from '../db/editor-transaction-lifecycle.mjs';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 import dynamic from 'next/dynamic';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
@@ -33,18 +34,25 @@ export default function ScopeBlockEditorSession({
   const [draft,setDraft]=useState(()=>({...initial,entities:HomeBlock.normalizeEntities(initial.entities)}));
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
+  const mounted=useRef(false);
+  useLayoutEffect(()=>{mounted.current=true;return ()=>{mounted.current=false;};},[]);
+  const isCurrent=lease=>mounted.current&&!isEditorTransactionCancelled(lease);
 
-  async function updateBlockCaches(rows){
+  async function updateBlockCaches(rows,lease){
+    if(!isCurrent(lease))return;
     invalidateScopeBlockPage(scopeId,pageName);
     await queryClient.setQueryData(['scope-blocks',scopeId,pageName],rows);
+    if(!isCurrent(lease))return;
     await queryClient.setQueryData(['scope-public-blocks',scopeId,pageName],rows);
+    if(!isCurrent(lease))return;
     if(scopeId==='loc'&&/^(group|scope)_/.test(pageName))
       await queryClient.invalidateQueries({queryKey:['scope-public-hero',pageName.replace(/^(group|scope)_/,'')]});
   }
-  async function refreshBlockQueries(){
+  async function refreshBlockQueries(lease){
+    if(!isCurrent(lease))return;
     // Reordering changes another row's order; read one committed page, not two.
     const rows=await selectLiveScopeBlocks(scopeId,pageName);
-    await updateBlockCaches(rows);
+    await updateBlockCaches(rows,lease);
   }
   const cancel=()=>onClose();
   const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
@@ -123,20 +131,27 @@ export default function ScopeBlockEditorSession({
   async function moveBlock(direction){
     if(!draft?.stored||busy||normalizedOrders.length||
       !HomeBlock.canSwapHomeBlockPositions(pageName,movableSlots,movableIndex,movableIndex+direction))return;
+    const lease=editorTransactionLease();
+    if(!isCurrent(lease))return false;
     setBusy(true);setMessage(t('uiExtra.editBlocks.moving'));
     try{
       const {moveScopeBlock}=await import('../db/db-client.mjs');
+      if(!isCurrent(lease))return;
       const result=await moveScopeBlock(scopeId,pageName,draft.uid,direction);
+      if(!isCurrent(lease))return;
       setDraft(current=>current?.uid===draft.uid?{...current,order:Number(result.block_order)||current.order}:current);
-      await refreshBlockQueries();
+      await refreshBlockQueries(lease);
+      if(!isCurrent(lease))return;
       setMessage(t('uiExtra.editBlocks.moved'));
     }catch(error){
-      setMessage(t('uiExtra.editBlocks.moveFailed',{error:String(error?.message||error)}));
-    }finally{setBusy(false);}
+      if(isCurrent(lease))setMessage(t('uiExtra.editBlocks.moveFailed',{error:String(error?.message||error)}));
+    }finally{if(mounted.current)setBusy(false);}
   }
 
   async function save(){
     if(!draft||busy)return false;
+    const lease=editorTransactionLease();
+    if(!isCurrent(lease))return false;
     setBusy(true);setMessage(t('uiExtra.editBlocks.saving'));
     try{
       if(!BlockNoteContent.text.hasBlockNoteFrameContent(draft))throw new Error(t('uiExtra.editBlocks.emptyContent'));
@@ -169,7 +184,9 @@ export default function ScopeBlockEditorSession({
       // Single-item editor uses the very same page-level save boundary.
       // Existing sibling Blocks stay in the snapshot instead of being removed.
       const {dbAuthClient}=await import('../db/db-client.mjs');
+      if(!isCurrent(lease))return false;
       const before=await selectLiveScopeBlocks(scopeId,pageName);
+      if(!isCurrent(lease))return false;
       const existingRows=before.filter(row=>row.uid!==draft.uid);
       const normalized={
         uid:draft.uid,...values,
@@ -183,22 +200,24 @@ export default function ScopeBlockEditorSession({
         p_scope_id:scopeId,p_type:pageName,p_rows:snapshot
       });
       if(error)throw new Error(error.message||'Blocks 儲存失敗');
+      if(!isCurrent(lease))return false;
       // The authoritative before-snapshot and the committed new row already
       // form the complete page; never issue a second SELECT after Save.
       let displayWarning='';
       try{
         const rows=[...snapshot].sort((a,b)=>
           (Number(a.block_order)||0)-(Number(b.block_order)||0));
-        await updateBlockCaches(rows);
+        await updateBlockCaches(rows,lease);
       }catch{displayWarning='（顯示資料尚未更新，重新載入頁面即可）';}
+      if(!isCurrent(lease))return false;
       initialSnapshot.current=JSON.stringify(draft);
       onDone(t('uiExtra.editBlocks.saved')+displayWarning);
       return true;
     }catch(error){
-      setMessage(t('uiExtra.editBlocks.saveFailedPrefix')+String(error?.message||error||t('uiExtra.editBlocks.unknown')));
+      if(isCurrent(lease))setMessage(t('uiExtra.editBlocks.saveFailedPrefix')+String(error?.message||error||t('uiExtra.editBlocks.unknown')));
       return false;
     }finally{
-      setBusy(false);
+      if(mounted.current)setBusy(false);
     }
   }
 
@@ -208,21 +227,27 @@ export default function ScopeBlockEditorSession({
       onClose();
       return;
     }
+    const lease=editorTransactionLease();
+    if(!isCurrent(lease))return false;
     setBusy(true);setMessage('');
     try{
       const {dbAuthClient}=await import('../db/db-client.mjs');
+      if(!isCurrent(lease))return false;
       const current=await selectLiveScopeBlocks(scopeId,pageName);
+      if(!isCurrent(lease))return false;
       const remaining=current.filter(row=>row.uid!==draft.uid);
       const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
         p_scope_id:scopeId,p_type:pageName,p_rows:remaining
       });
       if(error)throw new Error(error.message||'Blocks 刪除失敗');
-      await updateBlockCaches(remaining);
+      if(!isCurrent(lease))return false;
+      await updateBlockCaches(remaining,lease);
+      if(!isCurrent(lease))return false;
       onDone(t('uiExtra.editBlocks.deleted'));
     }catch(error){
-      setMessage(error?.message||t('uiExtra.editBlocks.deleteFailed'));
+      if(isCurrent(lease))setMessage(error?.message||t('uiExtra.editBlocks.deleteFailed'));
     }finally{
-      setBusy(false);
+      if(mounted.current)setBusy(false);
     }
   }
 

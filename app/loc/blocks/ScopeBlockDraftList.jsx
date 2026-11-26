@@ -3,6 +3,7 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {scrollHomeTop,turnHomeBlocks} from './home-page-turn.mjs';
 import {useEditDock} from '../../modular/edit-dock';
+import {editorTransactionLease,assertEditorTransactionLease,isEditorTransactionCancelled} from '../db/editor-transaction-lifecycle.mjs';
 import dynamic from 'next/dynamic';
 import {useQueryClient} from '../../../packages/zenstack/client-queries';
 import UiText,{useUiText} from '../../i18n/UiText';
@@ -58,10 +59,12 @@ export default function ScopeBlockDraftList({
   useLayoutEffect(()=>{
     if(!turning)return;
     scrollHomeTop();
-    return turnHomeBlocks(requestedPreview?'preview':'edit',()=>setPreview(requestedPreview));
-  },[turning,requestedPreview]);
+    return turnHomeBlocks(requestedPreview?'preview':'edit',()=>setPreview(requestedPreview),scopeId);
+  },[turning,requestedPreview,scopeId]);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
+  const mounted=useRef(false);
+  useLayoutEffect(()=>{mounted.current=true;return ()=>{mounted.current=false;};},[]);
 
   async function publishSavedBlocks(rows){
     // The rows were committed by SQL. Update the active viewer from those exact
@@ -162,6 +165,9 @@ export default function ScopeBlockDraftList({
 
   async function save({switching=false}={}){
     if(busy)return false;
+    const lease=editorTransactionLease();
+    const current=()=>mounted.current&&!isEditorTransactionCancelled(lease);
+    if(!current())return false;
     setBusy(true);setMessage('');
     if(inDock)editDock?.setNotice('');
     const plan=planHomeBlockWrites(drafts,JSON.parse(initialDrafts.current||'[]'),{preserveOrder});
@@ -191,6 +197,8 @@ export default function ScopeBlockDraftList({
     }
     try{
       const {dbAuthClient}=await import('../db/db-client.mjs');
+      if(!current())return false;
+      assertEditorTransactionLease(lease);
       const normalizeSavedHtml=value=>scopeId==='loc'&&pageName==='index'
         ?HomeBlock.stripLocHomeEditorPlaceholders(value):String(value??'');
       const savedDrafts=[];
@@ -225,6 +233,7 @@ export default function ScopeBlockDraftList({
           p_scope_id:scopeId,p_type:pageName,p_rows:committedRows
         });
         if(error)throw new Error(error.message||'Blocks 批次儲存失敗');
+        if(!current())return false;
       }
       // A successful SQL write is final, not a temporary save. Cache updates
       // are local only; failure to update SWR does not undo the database write.
@@ -233,15 +242,16 @@ export default function ScopeBlockDraftList({
         try{await publishSavedBlocks(committedRows);}
         catch{refreshWarning='資料已儲存，但畫面同步失敗，重新整理頁面即可。';}
       }
+      if(!current())return false;
       setDrafts(savedDrafts);
       initialDrafts.current=JSON.stringify(savedDrafts);
-      onDone(refreshWarning||t('uiExtra.editBlocks.saved'),{switching});
+      onDone(refreshWarning||t('uiExtra.editBlocks.saved'),{switching,committedRows:plan.hasWrites?committedRows:undefined});
       return true;
     }catch(error){
-      report(t('uiExtra.editBlocks.saveFailedPrefix')+String(error?.message||error||t('uiExtra.editBlocks.unknown')));
+      if(current())report(t('uiExtra.editBlocks.saveFailedPrefix')+String(error?.message||error||t('uiExtra.editBlocks.unknown')));
       return false;
     }finally{
-      setBusy(false);
+      if(mounted.current)setBusy(false);
     }
   }
 
@@ -275,8 +285,7 @@ export default function ScopeBlockDraftList({
     const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
     const image=isHomeFrame?resolveHomeImage(draft,scopeId):null;
     const pinnedHero=HomeBlock.isPinnedHomeHero(pageName,draft);
-    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'+(PreviewDisplay?' loc-home-turn-in-edit':'')} key={draft.uid}
-      style={showingPreview?{display:'none'}:undefined}>
+    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'+(PreviewDisplay?' loc-home-turn-in-edit':'')} key={draft.uid}>
       <div className="scope-inline-editbar">
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index-1)} onClick={()=>moveBlock(draft.uid,-1)}><UiText id="uiExtra.editBlocks.moveUp"/></button>:null}
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index+1)} onClick={()=>moveBlock(draft.uid,1)}><UiText id="uiExtra.editBlocks.moveDown"/></button>:null}
@@ -327,7 +336,7 @@ export default function ScopeBlockDraftList({
     return ()=>onDirtyChange?.(false);
   },[drafts,onDirtyChange]);
 
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     // Admin can also be opened directly, without homepage Edit mode.
     // Mounted drafts still participate in the same unsaved-change guard.
     if(!editDock?.register)return undefined;
@@ -358,8 +367,8 @@ export default function ScopeBlockDraftList({
         <button type="button" className="loc-button" disabled={busy} onClick={()=>{if(window.confirm(t('uiExtra.editBlocks.cancelConfirm')))onCancel();}}><UiText id="uiExtra.editBlocks.cancel"/></button>
       </div>:null}
     </div>
-    {/* Retain mounted BlockNote instances, including undo history, while previewing. */}
-    {visibleDrafts.map((draft,index)=>renderDraft(draft,index,visibleDrafts))}
+    {/* Preview owns only the draft values; no hidden BlockNote instances. */}
+    {!showingPreview?visibleDrafts.map((draft,index)=>renderDraft(draft,index,visibleDrafts)):null}
     {canAddBlock&&!showingPreview?<button type="button" className="loc-button scope-add-page-block" onClick={addBlock} disabled={busy}><UiText id="uiExtra.editBlocks.addBlock"/></button>:null}
     {showingPreview?previewRows.filter(slot=>BlockNoteContent.text.hasBlockNoteFrameContent(slot)).map(slot=>
       <section key={'preview:'+(slot.uid||'order:'+slot.order)}

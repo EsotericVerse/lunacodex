@@ -1445,7 +1445,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       aria-hidden="true" initial={reduceMotion?false:{opacity:0,scaleX:.25}}
       animate={reduceMotion?{opacity:0}:{opacity:[0,1,0],scaleX:[.25,1,1]}}
       transition={{duration:reduceMotion?0:.9,times:[0,.26,1],ease:'easeOut'}}/>:null}
-    {status&&(!managementMode||status!==UI_COPY.search.start)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'?<ActivityMotion kind="hourglass"/>:null} {status}</p>:null}
+    {status&&(!managementMode||status!==UI_COPY.search.start)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'||status===UI_COPY.search.loadingRelation?<ActivityMotion/>:
+      error||status===UI_COPY.search.failed||status===UI_COPY.search.relationFailed?<ActivityMotion state="error"/>:
+      status===UI_COPY.search.empty?<ActivityMotion state="empty"/>:
+      status===UI_COPY.search.start?null:results.length>0?<ActivityMotion state="success"/>:null} {status}</p>:null}
     {!managementMode&&results.length>0&&!browseResults&&matchedQueryRef.current?<section className="scope-search-next-step"
       aria-label={t('uiExtra.searchUI.followupSearch')}>
       <p className="scope-status">{t('uiExtra.searchUI.followupSearch')}</p>
