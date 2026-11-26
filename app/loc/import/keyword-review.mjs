@@ -6,8 +6,10 @@ const normalize=value=>String(value??'').normalize('NFKC').toLocaleLowerCase('zh
 export function createImportKeywordReview(rows=[],{minChars=0}={}){
   const terms=new Set();
   for(const row of rows){
-    if(row?.type!=='item'&&row?.type!=='pattern')continue;
-    for(const value of [row.title??row.name,...(Array.isArray(row.attr?.keyword)?row.attr.keyword:[])]){
+    const values=row?.type==='pattern'?[row.title??row.name]:
+      row?.type==='item'&&Array.isArray(row.patterns)
+        ?row.patterns.map(pattern=>pattern?.title??pattern?.name):[];
+    for(const value of values){
       if(typeof value!=='string'||parseRuneKeywordRuleSentence(value).rules.length)continue;
       const word=normalize(value);
       if(word)terms.add(word);
