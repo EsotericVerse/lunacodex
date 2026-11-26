@@ -189,12 +189,20 @@ export async function executeKyselySelectStream(trx,input,{
   const data=(async function*(){
     if(!built.query)return;
     const options=signal?{chunkSize:size,signal}:{chunkSize:size};
+    let batch=[];
     for await(const row of built.query.stream(options)){
-      const normalized=normalizeModeledSelectRows({
-        schema:req.schema,table:req.table,rows:[row]
-      });
-      const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,normalized);
-      yield checked[0];
+      batch.push(row);
+      if(batch.length>=size){
+        const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
+          normalizeModeledSelectRows({schema:req.schema,table:req.table,rows:batch}));
+        batch=[];
+        for(const item of checked)yield item;
+      }
+    }
+    if(batch.length){
+      const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
+        normalizeModeledSelectRows({schema:req.schema,table:req.table,rows:batch}));
+      for(const item of checked)yield item;
     }
   })();
   return {data,count};

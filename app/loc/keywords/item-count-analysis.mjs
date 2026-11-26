@@ -66,8 +66,7 @@ export function createKeywordScanRate({
   };
 }
 const KEYWORD_SCAN_PAGE_OPTIONS=Object.freeze({
-  // createTextAdaptiveRows uses this generic measure slot; the reader feeds UTF-8 bytes.
-  maximum:KEYWORD_SCAN_MAX_ROWS,targetChars:32*1024*1024
+  maximum:KEYWORD_SCAN_MAX_ROWS,targetBytes:32*1024*1024
 });
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
 const mapOf=(keys,values)=>Object.fromEntries(keys.map(k=>[k,count(object(values)[k])]));

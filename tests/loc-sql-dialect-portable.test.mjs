@@ -375,6 +375,55 @@ const read=(schema,table)=>({
   kind:'query',operation:'select',schema,table,columns:['uid']
 });
 
+test('Keyword cursor adaptive page budget measures UTF-8 bytes, not UTF-16 characters',async()=>{
+  const total=4097;
+  const text='中'.repeat(2800); // 8,400 UTF-8 bytes, 2,800 JS code units.
+  let globalIndex=0,released=0;
+  const opened=[],pageLimits=[];
+  class FakeCursor{
+    constructor(query,parameters){
+      this.query=query;this.parameters=parameters;this.index=globalIndex;
+      this.limit=Number(parameters.at(-1));
+      if(!Number.isSafeInteger(this.limit)||this.limit<1)
+        throw Error('Expected the keyset page limit as the last bound parameter');
+      pageLimits.push(this.limit);
+      this.end=Math.min(total,this.index+this.limit);
+      this.closed=false;this.reads=[];opened.push(this);
+    }
+    async read(size){
+      this.reads.push(size);
+      const count=Math.min(size,this.end-this.index);
+      const rows=Array.from({length:count},(_,offset)=>({
+        uid:String(this.index+offset+1).padStart(8,'0'),
+        title:'',content:text,keyword:true,date:'2026-11-20',
+        site:'vocus',place_id:null,createtime:null
+      }));
+      this.index+=count;globalIndex=this.index;
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:793,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Keyword projection must use the native cursor');},
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const result=await readItemKeywordProjection(db,'lo3rwang',{
+    items:[],groups:[],patterns:[],engine:'postgres',namespace:'silver'
+  });
+  assert.equal(result.totals.scannedDocuments,total);
+  assert.deepEqual(pageLimits,[4096,4096],
+    'A 32 MiB UTF-8 budget must not double a page containing 34.4 MB of CJK text');
+  assert.equal(opened.length,2);
+  assert.ok(opened.every(cursor=>cursor.closed));
+  assert.ok(opened.every(cursor=>cursor.reads.every(size=>size===256)));
+  assert.equal(released,2);
+  await db.destroy();
+});
+
 test('anonymous reads cannot expose the private api.manage authority registry',async()=>{
   assert.throws(()=>assertCrossEnginePublicRead(read('api','manage')),
     error=>error?.httpStatus===403);
