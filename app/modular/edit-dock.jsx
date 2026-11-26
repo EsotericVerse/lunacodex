@@ -7,7 +7,7 @@ import {dbAuthEvents,transactionWrites} from '../loc/db/db-client.mjs';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession,touchEditorSession,clearEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 import {isManagementHref} from './ScopeLink';
 import {useQueryClient,releaseTransientPageResources} from '../../packages/zenstack/client-queries';
-import {openEditorTransactionSession,cancelEditorTransactionSession,rotateActiveEditorTransactionSession}
+import {openEditorTransactionSession,cancelEditorTransactionSession}
   from '../loc/db/editor-transaction-lifecycle.mjs';
 import {invalidateScopedReadCache} from '../../packages/zenstack/scoped-read-cache.mjs';
 import {invalidateCachedReadPrefix} from '../loc/db/semi-dynamic-cache.mjs';
@@ -51,6 +51,7 @@ export function EditDockProvider({children,scopeId}){
   const [busy,setBusy]=useState(false);
   const [saveRevision,setSaveRevision]=useState(0);
   const committing=useRef(false);
+  const sectionSwitching=useRef(false);
   const ownsEditorSession=useRef(false);
   const operationEpoch=useRef(0);
   const operationTimer=useRef(null);
@@ -382,16 +383,28 @@ export function EditDockProvider({children,scopeId}){
     cancelEditorTransactionSession();
     releaseOperation();
     clearEditor();setNotice('');
+    setSaveRevision(0);
     navigate(target,switchHistory.current,switchScroll.current);
   },[releaseOperation,clearEditor,navigate]);
   const switchSection=useCallback((next,commit)=>{
     if(typeof commit!=='function')return;
-    rotateActiveEditorTransactionSession();
-    releaseOperation();
-    clearEditor();setNotice('');
-    // The section hook disposes the old query generation before it commits.
-    commit(next);
-  },[releaseOperation,clearEditor]);
+    // The section hook may be called by an outer workspace switch. Treat
+    // both as one transition, not two transaction generations.
+    if(sectionSwitching.current){commit(next);return;}
+    sectionSwitching.current=true;
+    try{
+      if(ownsEditorSession.current){
+        cancelEditorTransactionSession();
+        openEditorTransactionSession();
+      }
+      releaseOperation();
+      setNotice('');
+      setSaveRevision(0);
+      // Mounted forms own registration. Clearing the entire registry here
+      // loses shared forms that survive the section change.
+      commit(next);
+    }finally{sectionSwitching.current=false;}
+  },[releaseOperation]);
   const value=useMemo(()=>({
     active:editing,exiting,scopeId,canManageGlobal,hasSave,busy,saveRevision,notice,begin,end,
     register,save,discard,complete,switchTo,switchSection,setNotice
@@ -408,7 +421,7 @@ export function useEditDockForm(actions){
   const latest=useRef(actions);
   const activation=useRef(null);
   latest.current=actions;
-  useEffect(()=>{
+  useLayoutEffect(()=>{
     if(!dock?.register)return;
     const unregister=dock.register({
       save:options=>latest.current.save?.(options),
