@@ -4,6 +4,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import {motion,useReducedMotion} from 'motion/react';
 import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
+import {rotateActiveEditorTransactionSession} from '../loc/db/editor-transaction-lifecycle.mjs';
 
 /**
  * In-page management navigator.
@@ -84,6 +85,7 @@ export function useManagementSection(items,defaultValue='',aliases={}){
   },[availableSections]);
   useEffect(()=>{
     const sync=()=>{
+      rotateActiveEditorTransactionSession();
       prepareTransientResourceAction('management');
       setLocalValue(resolveRef.current(new URL(window.location.href).searchParams.get('section')||''));
     };
@@ -94,6 +96,7 @@ export function useManagementSection(items,defaultValue='',aliases={}){
     if(!items.some(item=>item.value===next))return;
     // Before the next editor mounts, free the previous section's in-flight
     // SQL reads and transient data. Auth and grants stay resident.
+    rotateActiveEditorTransactionSession();
     prepareTransientResourceAction('management');
     // Update the UI immediately; no router.push/replace, no scroll reset.
     setLocalValue(next);
