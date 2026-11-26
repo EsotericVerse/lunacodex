@@ -1,7 +1,13 @@
 // LOC connection providers are independent from SQL Types and Kysely Dialects.
 // A provider selects the network/hosting route only; the selected SQL Driver
 // validates and consumes its connection configuration separately.
-import {getCloudflareContext} from '@opennextjs/cloudflare';
+// Load the Cloudflare adapter only when a request actually needs its
+// binding context. A VPS Direct deployment does not require this package at
+// module initialization or as part of the connection-provider contract.
+async function defaultGetCloudflareContext(options){
+  const {getCloudflareContext}=await import('@opennextjs/cloudflare');
+  return getCloudflareContext(options);
+}
 
 function unavailable(message){
   return Object.assign(new Error(message),{
@@ -20,7 +26,7 @@ export function isCloudflareWorkerRuntime(){
 // never to the connection-provider selector.
 export async function locHyperdriveBinding(env={},{
   requireBinding=isCloudflareWorkerRuntime(),
-  getContext=getCloudflareContext
+  getContext=defaultGetCloudflareContext
 }={}){
   let binding=env?.LOC_HYPERDRIVE||null;
   if(!binding){
@@ -54,7 +60,7 @@ export async function resolveLocConnectionProvider(env={},{
   forceDirect=false,
   forceHyperdrive=false,
   requireBinding=isCloudflareWorkerRuntime(),
-  getContext=getCloudflareContext
+  getContext=defaultGetCloudflareContext
 }={}){
   if(typeof forceDirect!=='boolean'||typeof forceHyperdrive!=='boolean')
     throw unavailable('Invalid LOC connection provider selection');
