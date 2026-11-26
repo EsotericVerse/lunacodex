@@ -992,87 +992,10 @@
   background:var(--loc-panel-2);
   color:var(--loc-heading);
 }
-/* Owner-only cosmetic preview. Day remains pale, Night stays dark.
-   The existing site accent / panel / heading tokens control the frame. */
-.scope-rainbow-transform-preview{
-  position:relative;
-  isolation:isolate;
-  overflow:hidden;
-  display:grid;
-  place-items:center;
-  height:clamp(160px,22vw,205px);
-  min-width:0;
-  border:1px solid var(--loc-line);
-  border-radius:var(--loc-ui-radius-md,14px);
-  background:var(--loc-panel-2);
-  color:var(--loc-heading);
-}
-.scope-rainbow-transform-preview__ring{
-  position:absolute;
-  left:50%;
-  top:45%;
-  border-radius:50%;
-  pointer-events:none;
-}
-.scope-rainbow-transform-preview__ring--outer{
-  width:166px;
-  height:166px;
-  background:conic-gradient(from 100deg,#f4a7b5,#f0d28e,#8cddbb,#84bdef,#c3abef,#f4a7b5);
-  -webkit-mask:radial-gradient(circle,transparent 65%,#000 66%);
-  mask:radial-gradient(circle,transparent 65%,#000 66%);
-  animation:loc-rainbow-reveal 1.25s cubic-bezier(.18,.68,.22,1) both;
-}
-.scope-rainbow-transform-preview__ring--middle{
-  width:120px;
-  height:120px;
-  border:1px dashed var(--loc-accent);
-  animation:loc-rainbow-inner-reveal 1s cubic-bezier(.18,.68,.22,1) .08s both;
-}
-.scope-rainbow-transform-preview__ring--inner{
-  width:75px;
-  height:75px;
-  border:1px solid var(--loc-heading);
-  opacity:.55;
-  animation:loc-rainbow-inner-reveal .9s ease-out .16s both;
-}
-.scope-rainbow-transform-preview__center{
-  position:absolute;
-  top:45%;
-  left:50%;
-  transform:translate(-50%,-50%);
-  display:grid;
-  place-items:center;
-  width:48px;
-  height:48px;
-  border-radius:50%;
-  color:var(--loc-heading);
-  background:var(--loc-panel);
-  font-family:"Noto Serif TC","Songti TC",serif;
-  font-size:1.4rem;
-  font-weight:650;
-}
-.scope-rainbow-transform-preview__caption{
-  position:absolute;
-  bottom:.65rem;
-  color:var(--loc-muted);
-  font-size:.77rem;
-  letter-spacing:.08em;
-}
-:root[data-theme="light"] .scope-rainbow-transform-preview__ring--outer{opacity:.72;}
-:root[data-theme="dark"] .scope-rainbow-transform-preview__ring--outer{opacity:.9;}
-@keyframes loc-rainbow-reveal{
-  from{transform:translate(-50%,-50%) scale(.56) rotate(-30deg);opacity:0;}
-  to{transform:translate(-50%,-50%) scale(1) rotate(0deg);opacity:1;}
-}
-@keyframes loc-rainbow-inner-reveal{
-  from{transform:translate(-50%,-50%) scale(.75);opacity:0;}
-  to{transform:translate(-50%,-50%) scale(1);opacity:.8;}
-}
+
 @media(max-width:760px){
   .scope-settings-dashboard__account-actions>.loc-button{
     flex:1 1 auto;
   }
 }
-@media(prefers-reduced-motion:reduce){
-  .scope-rainbow-transform-preview__ring{animation:none!important;transform:translate(-50%,-50%);}
-}
+
