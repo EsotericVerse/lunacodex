@@ -71,8 +71,11 @@ test('PostgreSQL uses native ILIKE and NULLS LAST while MySQL and MSSQL keep the
   assert.match(my,/case when `date` is null/i);
   assert.match(my,/from `lo3rwang_galaxy`/i);
   assert.doesNotMatch(my,/from `silver`/i);
-  assert.match(ms,/lower\(\[title\]\) like/i);
-  assert.match(ms,/case when \[date\] is null/i);
+  // Kysely's native MSSQL compiler emits ANSI double-quoted identifiers
+  // and @N bind placeholders; these are valid T-SQL, not PostgreSQL syntax.
+  assert.match(ms,/lower\("title"\) like @\d+/i);
+  assert.match(ms,/case when "date" is null/i);
+  assert.match(ms,/from "silver"\."lo3rwang_galaxy"/i);
 });
 
 test('COUNT query remains an unpaged aggregate when the row query has a page limit',()=>{
