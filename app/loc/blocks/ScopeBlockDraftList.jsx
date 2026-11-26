@@ -58,8 +58,8 @@ export default function ScopeBlockDraftList({
   useLayoutEffect(()=>{
     if(!turning)return;
     scrollHomeTop();
-    return turnHomeBlocks(requestedPreview?'preview':'edit',()=>setPreview(requestedPreview));
-  },[turning,requestedPreview]);
+    return turnHomeBlocks(requestedPreview?'preview':'edit',()=>setPreview(requestedPreview),scopeId);
+  },[turning,requestedPreview,scopeId]);
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
 
@@ -235,7 +235,7 @@ export default function ScopeBlockDraftList({
       }
       setDrafts(savedDrafts);
       initialDrafts.current=JSON.stringify(savedDrafts);
-      onDone(refreshWarning||t('uiExtra.editBlocks.saved'),{switching});
+      onDone(refreshWarning||t('uiExtra.editBlocks.saved'),{switching,committedRows:plan.hasWrites?committedRows:undefined});
       return true;
     }catch(error){
       report(t('uiExtra.editBlocks.saveFailedPrefix')+String(error?.message||error||t('uiExtra.editBlocks.unknown')));
