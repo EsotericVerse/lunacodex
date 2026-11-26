@@ -13,7 +13,9 @@ import {
   managementRouteHref,
 } from '../app/modular/routing/management-route-table.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
-import {readPublicSourceAnchors,readPublicSourceTaxonomy} from '../app/loc/source/catalog-public.mjs';
+import {readPublicSourceAnchors,readPublicSourceTaxonomy,resolveSiteAnchorRead} from '../app/loc/source/catalog-public.mjs';
+import {queryAnchorFeature} from '../app/loc/actions/anchor/queries.mjs';
+import {readLocSourceHierarchy} from '../app/loc/actions/admin/queries.mjs';
 
 test('every management Hero keeps its image on its own copy row',()=>{
   for(const slot of MANAGEMENT_HERO_SLOTS)
@@ -61,6 +63,34 @@ test('public SiteAnchor is available from resident publication without a SQL rea
   const taxonomy=await readPublicSourceTaxonomy();
   assert.equal(taxonomy.tree.length,36);
   assert.equal(taxonomy.roots.length,3);
+  const admin=await readLocSourceHierarchy();
+  assert.deepEqual(admin.data,await readPublicSourceAnchors());
+  const result=await queryAnchorFeature({kind:'query',operation:'anchor-feature',
+    scope:'loc',family:'source',mode:'public',types:['from'],limit:5,
+    includeTotal:true});
+  assert.equal(result.query.mode,'published-asset');
+  assert.equal(result.data.rows.length,5);
+  assert.equal(result.data.hasMore,true);
+  assert.equal(result.data.totalCount,
+    (await readPublicSourceAnchors()).filter(row=>row.type==='from').length);
+});
+
+test('SiteAnchor Asset switch falls back only on disable or Asset failure',async()=>{
+  const calls=[];
+  const loadAsset=async()=>{calls.push('asset');return ['asset'];};
+  const loadFallback=async()=>{calls.push('sql');return ['sql'];};
+  assert.deepEqual(await resolveSiteAnchorRead({mode:'asset',loadAsset,loadFallback}),['asset']);
+  assert.deepEqual(calls,['asset']);
+  calls.length=0;
+  assert.deepEqual(await resolveSiteAnchorRead({mode:'asset',
+    loadAsset:async()=>{calls.push('asset');throw Error('missing');},loadFallback}),['sql']);
+  assert.deepEqual(calls,['asset','sql']);
+  calls.length=0;
+  assert.deepEqual(await resolveSiteAnchorRead({mode:'sql',loadAsset,loadFallback}),['sql']);
+  assert.deepEqual(calls,['sql']);
+  await assert.rejects(resolveSiteAnchorRead({mode:'asset',
+    loadAsset:async()=>{throw Error('missing');},
+    loadFallback:async()=>{throw Error('unavailable');}}),/Asset 無法讀取，固定 SQL 回退也失敗/);
 });
 
 test('Group admin is one group_admin Hero row for both display and editing',()=>{

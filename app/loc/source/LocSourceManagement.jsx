@@ -20,7 +20,7 @@ const OPTIONS=Object.freeze([
   {value:'members',label:'人員',shortLabel:'人員',description:'僅修改所屬人員的顯示名稱，不變更帳號或 Email。'}
 ]);
 const SYSTEM_PERSONNEL_OPTION=Object.freeze({value:'systemPersonnel',label:'人員架構',shortLabel:'人員架構',description:'以 vis-network 編輯人員階層、身分與所屬設定；僅系統管理員可寫入。'});
-const SOURCE_OPTION=Object.freeze({value:'sources',label:'文章來源',shortLabel:'文章來源',description:'LOC 來源 Universe／Galaxy／Domain／From 階層；僅系統管理員可編輯。'});
+const SOURCE_OPTION=Object.freeze({value:'sources',label:'文章來源',shortLabel:'文章來源',description:'LOC 固定的 Universe／Galaxy／Domain／From 來源階層。'});
 const ITEM=Object.freeze({value:'members',label:'人員作品管理'});
 
 export default function LocSourceManagement(){
