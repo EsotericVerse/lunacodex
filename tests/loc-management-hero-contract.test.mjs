@@ -76,6 +76,9 @@ test('LOC governance copy is stored as governance while other Scope pages keep t
   assert.equal(scopeBlockStoragePage('LOC','Trace'),'governance');
   assert.equal(scopeBlockStoragePage('lo3rwang','trace'),'trace');
   assert.equal(scopeBlockStoragePage('loc','search'),'search');
+  for(const page of ['group_admin','GalaxyManage','Groupkeyword','GroupArticle',
+    'TimeAnchor','ScopeKeyword','SpaceAnchor','ScopeArticle'])
+    assert.equal(scopeBlockStoragePage('loc',page),page);
 });
 
 test('public SiteAnchor is available from resident publication without a SQL read',async()=>{
