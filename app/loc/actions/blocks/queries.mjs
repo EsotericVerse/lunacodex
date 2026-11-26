@@ -1,5 +1,5 @@
 'use server';
-import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
+import {withPublicLocRead} from '../read-context.mjs';
 import {block_list,hero_block} from '../../providers/kysely-public.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
@@ -18,8 +18,6 @@ const heroPages=new Set([
 ]);
 const validHeroTypes=types=>types.length>0&&types.length<=2&&
   new Set(types).size===types.length&&types.every(type=>heroPages.has(type));
-const managementHeroPages=new Set(MANAGEMENT_HERO_SLOTS.map(slot=>slot.page));
-
 const scopeId=value=>{
   const scope=String(value||'').trim().toLowerCase();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||scope==='admin')
@@ -47,7 +45,7 @@ function sortHeroRows(rows,types){
     (Number(a.block_order)||0)-(Number(b.block_order)||0));
 }
 
-async function publicHeroBlocks(types,{authorized=false,scope='loc'}={}){
+async function publicHeroBlocks(types,{scope='loc'}={}){
   const bucket=await publicHomeBucket();
   const cachedByType=new Map();
   const readCache=async()=>{
@@ -71,12 +69,6 @@ async function publicHeroBlocks(types,{authorized=false,scope='loc'}={}){
     }
     return sortHeroRows(types.flatMap(type=>cachedByType.get(type)||[]),types);
   };
-  if(authorized)return withAuthorizedLocRead({scope},async(db,port)=>{
-    await readCache();
-    const missing=types.filter(type=>!cachedByType.has(type));
-    return missing.length?read(db,port,missing):
-      sortHeroRows(types.flatMap(type=>cachedByType.get(type)||[]),types);
-  });
   await readCache();
   const missing=types.filter(type=>!cachedByType.has(type));
   if(!missing.length)
@@ -100,8 +92,7 @@ export async function queryBlocks(name,args={}){
   const types=Array.isArray(args.p_type)?args.p_type:[args.p_type];
   if(!validHeroTypes(types))
     throw Error('Invalid Hero type');
-  return {data:await publicHeroBlocks(types,{scope:'loc',
-    authorized:types.some(type=>managementHeroPages.has(type))}),count:null};
+  return {data:await publicHeroBlocks(types,{scope:'loc'}),count:null};
 }
 
 // Mutable homepage copy is a private R2-backed server projection with a
@@ -133,8 +124,7 @@ export async function queryBlockContent(searchParams){
     const types=feature?feature.split(','):[];
     if(scope!=='loc'||!validHeroTypes(types))
       throw Error('Invalid Hero content request');
-    return {data:await publicHeroBlocks(types,{scope,
-      authorized:types.some(type=>managementHeroPages.has(type))}),count:null};
+    return {data:await publicHeroBlocks(types,{scope}),count:null};
   }
   if(feature)throw Error('Unexpected Block feature');
   if(kind==='block_list')return {data:await publicBlockList(scope,'index'),count:null};

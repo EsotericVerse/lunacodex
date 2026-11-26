@@ -136,6 +136,15 @@ test('Group and Scope management Heroes remain separate and asymmetric',()=>{
   assert.equal(managementHeroSlot('timeManage','lo3rwang')?.page,'TimeAnchor');
 });
 
+test('management Hero copy uses the fixed public display reader, not auth-gated SQL',async()=>{
+  const queries=await readFile(new URL('../app/loc/actions/blocks/queries.mjs',
+    import.meta.url),'utf8');
+  assert.match(queries,/async function publicHeroBlocks\(types,\{scope='loc'\}=\{\}\)/);
+  assert.match(queries,/return withPublicLocRead\(\{scope\},\(db,port\)=>read\(db,port,missing\)\)/);
+  assert.match(queries,/MANAGEMENT_HERO_SLOTS\.map\(slot=>slot\.page\)/);
+  assert.doesNotMatch(queries,/withAuthorizedLocRead/);
+});
+
 test('personal settings copy and image resolve to the same Group row',()=>{
   assert.equal(featureHeroPageFor('setting'),'group_setting');
   assert.equal(featureHeroImagePageFor('setting'),'group_setting');
