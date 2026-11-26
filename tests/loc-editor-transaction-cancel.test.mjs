@@ -107,3 +107,15 @@ test('section change revokes old lease and disposers without starting a public e
   assert.doesNotThrow(()=>assertEditorTransactionLease(editorTransactionLease()));
   cancelEditorTransactionSession();
 });
+
+test('parallel management switches keep editor mode and do not erase shared form registration',()=>{
+  const source=readFileSync(new URL('../app/modular/edit-dock.jsx',import.meta.url),'utf8');
+  const section=source.split('const switchSection=useCallback(')[1]?.split('const value=useMemo(')[0];
+  assert.ok(section);
+  assert.match(section,/cancelEditorTransactionSession\(\)/);
+  assert.match(section,/openEditorTransactionSession\(\)/);
+  assert.doesNotMatch(section,/clearEditor\(\)|\bend\(\)|\.save\(/);
+  const nav=readFileSync(new URL('../app/modular/ManagementSectionNav.jsx',import.meta.url),'utf8');
+  assert.doesNotMatch(nav,/prepareTransientResourceAction\('management'\)/);
+  assert.match(nav,/dockRef\.current\.switchSection\(next,commit\)/);
+});
