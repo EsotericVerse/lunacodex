@@ -114,8 +114,9 @@ const PUBLIC_ANCHOR_TYPES=[...ANCHOR_TYPE_GROUPS.time,...ANCHOR_TYPE_GROUPS.spac
 function databaseTable(req,dialect,namespace,modelName=''){
   // ZenStack PolicyPlugin maps a fixed logical model to the physical table.
   if(modelName)return modelName;
-  return namespace===undefined?req.schema+'.'+req.table:
-    portableRelation(req.table,dialect,namespace);
+  // MySQL selects its database at connection time; "silver" is a logical
+  // LOC schema, never a physical database qualifier in generated SQL.
+  return portableRelation(req.table,dialect,namespace===undefined?req.schema:namespace);
 }
 function publishedOnly(query,table,enabled,columns=['*']){
   if(!enabled)return query;
