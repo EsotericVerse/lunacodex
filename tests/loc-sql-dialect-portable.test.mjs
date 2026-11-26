@@ -241,9 +241,10 @@ test('PostgreSQL AbortSignal closes the cursor and releases its connection',asyn
 });
 
 test('PostgreSQL AbortSignal rejects promptly but releases only after the cursor read settles',async()=>{
-  let cursor,released=0,readCalls=0,resolveRead,markReadStarted,markClosed;
+  let cursor,released=0,readCalls=0,resolveRead,markReadStarted,markClosed,markReleased;
   const readStarted=new Promise(resolve=>{markReadStarted=resolve;});
   const closed=new Promise(resolve=>{markClosed=resolve;});
+  const releasedDone=new Promise(resolve=>{markReleased=resolve;});
   class FakeCursor{
     constructor(query,parameters){this.query=query;this.parameters=parameters;
       this.closed=false;cursor=this;}
@@ -258,7 +259,7 @@ test('PostgreSQL AbortSignal rejects promptly but releases only after the cursor
     processID:794,
     query(query){if(query instanceof FakeCursor)return query;
       throw Error('Expected a native PostgreSQL cursor');},
-    release(){released++;}
+    release(){released++;markReleased();}
   };
   const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
   const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
@@ -279,6 +280,7 @@ test('PostgreSQL AbortSignal rejects promptly but releases only after the cursor
   resolveRead();
   await closed;
   assert.equal(cursor.closed,true);
+  await releasedDone;
   assert.equal(released,1,'The connection is released after cursor.close completes');
   await db.destroy();
 });
