@@ -1,6 +1,6 @@
 'use client';
 
-import {useState} from 'react';
+import {useLayoutEffect,useRef,useState} from 'react';
 import UiText from '../../i18n/UiText';
 import {useUiSection} from '../../i18n/ui-locale';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
@@ -17,10 +17,23 @@ export default function ScopeHomeEditEntry(){
   const editDock=useEditDock();
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
+  const entryEpoch=useRef(0);
+  const entering=useRef(false);
+  useLayoutEffect(()=>{
+    const stop=()=>{entryEpoch.current++;entering.current=false;};
+    const resume=event=>{if(event.persisted)setBusy(false);};
+    window.addEventListener('pagehide',stop);
+    window.addEventListener('pageshow',resume);
+    return ()=>{stop();window.removeEventListener('pagehide',stop);window.removeEventListener('pageshow',resume);};
+  },[scopeId]);
 
 
   async function enter(){
-    if(busy)return;
+    if(busy||entering.current)return;
+    entering.current=true;
+    const epoch=++entryEpoch.current;
+    const href=window.location.href;
+    const current=()=>entryEpoch.current===epoch&&window.location.href===href;
     setBusy(true);
     setMessage('');
     try{
@@ -32,6 +45,7 @@ export default function ScopeHomeEditEntry(){
       // when that verified result is unavailable/expired; every write still
       // rechecks authorization on the trusted LOC database connection.
       const result=readVerifiedManagementEntry()||await account.refresh();
+      if(!current())return;
       if(!result?.user){
         setMessage({key:'uiExtra.editBlocks.signInToEnterEditMode',showLogin:true});
         return;
@@ -52,9 +66,9 @@ export default function ScopeHomeEditEntry(){
       if(!editDock?.begin(scopeId,{globalManage:Boolean(result.authorizer?.canLocAccessSync('global'))}))
         throw new Error('目前頁面的 Scope ID 不一致，無法啟動編輯。');
     }catch(error){
-      setMessage({error:String(error?.message||'編輯權限查詢失敗，請檢查登入或資料庫連線。')});
+      if(current())setMessage({error:String(error?.message||'編輯權限查詢失敗，請檢查登入或資料庫連線。')});
     }finally{
-      setBusy(false);
+      if(entryEpoch.current===epoch){entering.current=false;setBusy(false);}
     }
   }
 
