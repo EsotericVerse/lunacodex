@@ -252,3 +252,16 @@ html:has(.scope-feature-dock .scope-rainbow-preview-clock){
 .scope-feature-dock a>.scope-dock-rainbow-frame~span:last-child{z-index:2;}
 /* Preserve existing layout and avoid an extra containing block. */
 .loc-page-motion-boundary{display:contents;}
+
+/* Quiet, state-driven feedback. No inference from translated status text. */
+.loc-work-activity--state{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:1.2em;height:1.2em;font-weight:700;vertical-align:middle;
+  color:var(--loc-accent);
+}
+.loc-work-activity--state[data-motion-state="error"]{color:var(--loc-danger,var(--loc-text));}
+.loc-work-activity--state:is([data-motion-state="empty"],[data-motion-state="cancelled"],[data-motion-state="pending"]){color:var(--loc-muted);}
+@media(prefers-reduced-motion:no-preference){
+  .scope-status.scope-error[role="alert"]{animation:loc-status-reveal .18s ease-out both;}
+  @keyframes loc-status-reveal{from{opacity:.75;}to{opacity:1;}}
+}
