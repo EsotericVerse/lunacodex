@@ -1,8 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {testLocAuthConnection} from '../app/loc/db/native-connectivity-check.mjs';
-import {requestScopedPool} from '../modules/loc/dialect/index.mjs';
-import {db_connection,closeLocDatabase,bindLocRequestAbort,locHyperdriveBinding} from '../app/loc/db/native-kysely.mjs';
+import {requestScopedPool} from '../app/loc/db/postgres-pool.mjs';
+import {resolveLocConnectionProvider,locHyperdriveBinding}
+  from '../app/loc/db/connection-provider.mjs';
+import {db_connection,closeLocDatabase,bindLocRequestAbort}
+  from '../app/loc/db/native-kysely.mjs';
 import {SQL_WORKLOAD_POLICY} from '../modules/loc/dialect/sql-workload-policy.mjs';
 
 const body=async response=>JSON.parse(await response.text());
@@ -159,10 +162,41 @@ test('LOC Hyperdrive selection is dedicated, validated and optional outside Work
     LOC_HYPERDRIVE:{connectionString:uri},
     LOC_DATABASE_URI:'postgresql://direct/db'
   }),uri);
+  assert.equal(await locHyperdriveBinding({
+    LOC_HYPERDRIVE:{connectionString:'mysql://hyperdrive-user:secret@hyperdrive.invalid/db'},
+    LOC_DATABASE_URI:'postgresql://direct/db'
+  }),'mysql://hyperdrive-user:secret@hyperdrive.invalid/db');
   await assert.rejects(locHyperdriveBinding({
-    LOC_HYPERDRIVE:{connectionString:'mysql://wrong/db'},
+    LOC_HYPERDRIVE:{connectionString:'not-a-valid-url'},
     LOC_DATABASE_URI:'postgresql://direct/db'
   }),/LOC Hyperdrive binding invalid/);
+});
+
+test('connection provider selection does not require or infer a SQL Type',async()=>{
+  const route=await resolveLocConnectionProvider({
+    LOC_HYPERDRIVE:{
+      connectionString:'mysql://hyperdrive-user:secret@hyperdrive.invalid/db'
+    }
+  },{requireBinding:false});
+  assert.equal(route.provider,'hyperdrive');
+  assert.equal(route.connectionMode,'hyperdrive');
+  assert.equal(route.connectionString,
+    'mysql://hyperdrive-user:secret@hyperdrive.invalid/db');
+});
+
+test('explicit Direct provider bypasses Hyperdrive binding validation',async()=>{
+  const route=await resolveLocConnectionProvider({
+    LOC_HYPERDRIVE:{connectionString:'not-a-valid-url'}
+  },{forceDirect:true,requireBinding:true});
+  assert.equal(route.provider,'direct');
+  assert.equal(route.connectionMode,'direct');
+  assert.equal(Object.hasOwn(route,'connectionString'),false);
+});
+
+test('the PostgreSQL Driver rejects a non-PostgreSQL provider endpoint',()=>{
+  assert.throws(()=>requestScopedPool({
+    connectionString:'mysql://hyperdrive.invalid/db'
+  },TestSqlClient),/Expected a PostgreSQL connection URL/);
 });
 
 test('Cloudflare Worker reads configured Hyperdrive context before any direct connection',async()=>{
