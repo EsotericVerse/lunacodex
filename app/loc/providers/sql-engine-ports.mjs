@@ -30,8 +30,14 @@ export function getSqlRuntimeCapabilities(engine){
     session:port.session,
     schema:port.schema,
     nativeConnection:port.nativeConnection,
-    // SQL Server UPSERT uses a trusted, already-open Kysely Transaction
-    // with key-range locks; it is NOT an ordinary single-statement builder.
+    insertParameterLimit:port.insertParameterLimit,
+    insertMaxRows:port.insertMaxRows,
+    upsertParameterLimit:port.upsertParameterLimit,
+    upsertMaxRows:port.upsertMaxRows,
+    maxBatchBytes:port.maxBatchBytes,
+    streaming:Object.freeze({strategy:port.streamStrategy,chunkRows:port.streamChunkRows}),
+    // SQL Server/MySQL UPSERT use a trusted, already-open transaction with
+    // primary-key locks; neither is an unrestricted single-statement UPSERT.
     operations:Object.freeze(['select','insert','update','delete','upsert']),
     returning:port.returning,
     managedOperations:Object.freeze(port.id==='postgres'
@@ -162,15 +168,38 @@ function matchingPortableField(key,incoming,stored,engine){
   }
   return JSON.stringify(incoming)===JSON.stringify(stored);
 }
-function portableInsertBatchSize(engine,width){
-  // Kysely still emits standard multi-row VALUES across SQL dialects.
-  // PostgreSQL no longer performs 50-row INSERTs: compute the safe physical
-  // chunk from column width and the protocol's parameter budget instead.
-  // The caller's import request is independently bounded to 10k rows and
-  // by serialized payload bytes; this is only the internal SQL statement cap.
-  const type=getSqlEnginePort(engine),columns=Math.max(1,width);
-  return Math.max(1,Math.min(type.insertMaxRows,
-    Math.floor(type.insertParameterLimit/columns)));
+// Plan ordered multi-row INSERT statements using the selected SQL Type's
+// bind ceiling, row ceiling and UTF-8 payload budget. Shape boundaries preserve
+// omitted database defaults; no rows are reordered to manufacture larger batches.
+export function planPortableInsertBatches(rows,engine,{maxBytes}={}){
+  const type=getSqlEnginePort(engine);
+  const byteLimit=maxBytes??type.maxBatchBytes;
+  if(!Array.isArray(rows)||!Number.isSafeInteger(byteLimit)||byteLimit<1)
+    throw new TypeError('Invalid portable SQL INSERT batch budget');
+  const encoder=new TextEncoder(),batches=[];
+  let batch=[],shape='',bytes=2,width=0;
+  const flush=()=>{if(batch.length)batches.push(batch);batch=[];shape='';bytes=2;width=0;};
+  for(const row of rows){
+    if(!row||typeof row!=='object'||Array.isArray(row)||!Object.keys(row).length)
+      invalidWrite('Invalid portable INSERT row');
+    const columns=Object.keys(row).sort();
+    const nextShape=columns.join('\0');
+    const nextWidth=columns.length;
+    if(nextWidth>type.insertParameterLimit)
+      invalidWrite('Portable INSERT row exceeds the SQL Type parameter budget');
+    const serialized=JSON.stringify(row,(_key,value)=>
+      typeof value==='bigint'?value.toString():value);
+    if(typeof serialized!=='string')invalidWrite('Invalid portable INSERT row');
+    const size=encoder.encode(serialized).byteLength;
+    if(batch.length&&(shape!==nextShape||batch.length>=type.insertMaxRows||
+      (batch.length+1)*width>type.insertParameterLimit||
+      bytes+size+1>byteLimit))flush();
+    if(!batch.length){shape=nextShape;width=nextWidth;}
+    bytes+=size+(batch.length?1:0);
+    batch.push(row);
+  }
+  flush();
+  return batches;
 }
 /**
  * Portable counterpart to the PostgreSQL management write procedure.
@@ -207,24 +236,12 @@ export async function executeCrossEngineManagedWrite(db,body,context){
         invalidWrite('Invalid managed insert columns');
       verifyModeledSqlFields({schema:'silver',table,values:row});
     }
-    // Batch by column shape to preserve omitted database defaults.
-    // Preserve batched INSERTs rather than issuing one request per row.
-    const groups=new Map();
-    for(const row of rows){
-      const shape=Object.keys(row).sort().join('|');
-      const group=groups.get(shape)||[];
-      group.push(row);groups.set(shape,group);
-    }
-    const batches=[...groups.values()].map(group=>{
-      const size=portableInsertBatchSize(engine,Object.keys(group[0]||{}).length);
-      return {group,size};
-    });
-    for(const {group,size} of batches){
-      for(let i=0;i<group.length;i+=size){
-        const batch=group.slice(i,i+size);
-        const result=await db.insertInto(name).values(serializePortableJsonFields(batch,engine)).executeTakeFirst();
-        count+=managedAffected(result);
-      }
+    // Ordered, byte-bounded, dialect-specific multi-row INSERTs.
+    const batches=planPortableInsertBatches(rows,engine);
+    for(const batch of batches){
+      const result=await db.insertInto(name)
+        .values(serializePortableJsonFields(batch,engine)).executeTakeFirst();
+      count+=managedAffected(result);
     }
   }else if(operation==='upsert'){
     const rows=p.p_rows;
@@ -241,33 +258,20 @@ export async function executeCrossEngineManagedWrite(db,body,context){
         invalidWrite('Invalid portable managed UPSERT row');
       verifyModeledSqlFields({schema:'silver',table,values:row,onConflict:primary});
     }
-    // The caller owns ONE validated SQL transaction, including any conflict
-    // and rollback. Materially different incoming row shapes form separate
-    // parameter-safe statements; no extra connection or SQL gateway exists.
-    const {planKyselyUpsertBatches,executeMssqlUpsert,executeMysqlUpsert}
-      =await import('./kysely-runtime.mjs');
-    const batches=planKyselyUpsertBatches(
-      serializePortableJsonFields(rows,engine),key,{
-        maxParameters:getSqlEnginePort(engine).upsertParameterLimit,
-        maxRows:100,
-        maxBytes:512*1024
-      });
-    for(const batch of batches){
-      const req={schema:'silver',table,operation:'upsert',
-        onConflict:primary,values:batch,columns:['*'],returning:false};
-      if(engine==='mssql'){
-        const result=await executeMssqlUpsert(db,req,{namespace});
-        count+=Number(result.count||0);
-      }else if(engine==='mysql'){
-        // Use the same modeled-primary-key locking contract as SQL Server.
-        // MySQL ON DUPLICATE KEY UPDATE may match an unrelated unique index;
-        // that is not an acceptable source identity for LOC.
-        const result=await executeMysqlUpsert(db,req,{namespace});
-        count+=Number(result.count||0);
-      }else{
-        invalidWrite('Portable managed UPSERT engine unsupported');
-      }
-    }
+    // The dialect executor owns parameter/byte batching and performs a
+    // single ordered key-lock read plus set-based CASE UPDATE / multi-row INSERT
+    // inside this already-owned transaction.
+    const {executeMssqlUpsert,executeMysqlUpsert}=await import('./kysely-runtime.mjs');
+    const req={schema:'silver',table,operation:'upsert',
+      onConflict:primary,values:serializePortableJsonFields(rows,engine),
+      columns:['*'],returning:false};
+    const result=engine==='mssql'
+      ?await executeMssqlUpsert(db,req,{namespace})
+      :engine==='mysql'
+        ?await executeMysqlUpsert(db,req,{namespace})
+        :null;
+    if(!result)invalidWrite('Portable managed UPSERT engine unsupported');
+    count+=Number(result.count||0);
   }else if(operation==='update_batch'){
     if(!table.endsWith('_galaxy')||!Array.isArray(p.p_rows)||
        p.p_rows.length>10000)invalidWrite('Invalid Galaxy update batch');
@@ -286,8 +290,9 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     const fields=['title','content','place_id','url','media_link']
       .filter(field=>p.p_rows.some(row=>Object.hasOwn(row,field)));
     const existingRows=new Map();
-    for(let i=0;i<p.p_rows.length;i+=1000){
-      const uids=p.p_rows.slice(i,i+1000).map(row=>row.uid);
+    const selectBatchRows=Math.min(1000,getSqlEnginePort(engine).insertParameterLimit);
+    for(let i=0;i<p.p_rows.length;i+=selectBatchRows){
+      const uids=p.p_rows.slice(i,i+selectBatchRows).map(row=>row.uid);
       const found=await db.selectFrom(name)
         .select(['uid',...fields]).where('uid','in',uids).execute();
       for(const row of found)existingRows.set(String(row.uid),row);
@@ -312,10 +317,12 @@ export async function executeCrossEngineManagedWrite(db,body,context){
       groups.get(key).uids.push(row.uid);
     }
     for(const {patch,uids} of groups.values()){
-      for(let i=0;i<uids.length;i+=50){
-        const batch=uids.slice(i,i+50);
+      for(let i=0;i<uids.length;){
         const values=serializePortableJsonFields(
           {...patch,UpdateTime:new Date()},engine);
+        const batchSize=Math.max(1,Math.min(1000,
+          getSqlEnginePort(engine).insertParameterLimit-Object.keys(values).length));
+        const batch=uids.slice(i,i+batchSize);
         // A parallel import cannot overwrite an already-filled place_id.
         // Use Kysely's native CASE expression instead of relying on an
         // earlier SELECT snapshot for this fill-only field.
@@ -330,6 +337,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
           :update.set(values);
         const result=await query.where('uid','in',batch).executeTakeFirst();
         count+=managedAffected(result);
+        i+=batch.length;
       }
     }
   }else{
