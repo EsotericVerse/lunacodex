@@ -183,7 +183,7 @@ export function planPortableInsertBatches(rows,engine,{maxBytes}={}){
     if(!row||typeof row!=='object'||Array.isArray(row)||!Object.keys(row).length)
       invalidWrite('Invalid portable INSERT row');
     const columns=Object.keys(row).sort();
-    const nextShape=columns.join('\\0');
+    const nextShape=columns.join('\0');
     const nextWidth=columns.length;
     if(nextWidth>type.insertParameterLimit)
       invalidWrite('Portable INSERT row exceeds the SQL Type parameter budget');
