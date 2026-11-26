@@ -110,7 +110,7 @@ test('portable INSERT planner applies SQL Type limits, UTF-8 bytes and preserves
   assert.deepEqual(pg.flat(),rows);
   assert.deepEqual(mysqlBatches.flat(),rows);
   assert.deepEqual(mssqlBatches.flat(),rows);
-  const bounded=planPortableInsertBatches(rows,'mysql',{maxBytes:200});
+  const bounded=planPortableInsertBatches(rows,'mysql',{maxBytes:40});
   assert.ok(bounded.every(batch=>batch.length===1));
 });
 
