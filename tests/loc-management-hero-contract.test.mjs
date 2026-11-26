@@ -4,7 +4,9 @@ import {
   MANAGEMENT_HERO_SLOTS,
   featureHeroDefaultImage,
   featureHeroPageFor,
+  featureHeroImagePageFor,
   managementHeroImagePage,
+  managementHeroSlot,
 } from '../app/loc/blocks/home-block-model.js';
 import {
   LOC_MANAGEMENT_ROUTE_TABLE,
@@ -59,4 +61,37 @@ test('public SiteAnchor is available from resident publication without a SQL rea
   const taxonomy=await readPublicSourceTaxonomy();
   assert.equal(taxonomy.tree.length,36);
   assert.equal(taxonomy.roots.length,3);
+});
+
+test('Group admin is one group_admin Hero row for both display and editing',()=>{
+  const slot=managementHeroSlot('admin','loc');
+  assert.equal(slot?.page,'group_admin');
+  assert.equal(managementHeroImagePage(slot),'group_admin');
+  assert.equal(featureHeroPageFor('admin'),'group_admin');
+  assert.equal(featureHeroImagePageFor('admin'),'group_admin');
+});
+
+test('Group and Scope management Heroes remain separate and asymmetric',()=>{
+  const group=MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='loc');
+  const scope=MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='scope');
+  assert.deepEqual(group.map(slot=>slot.key),['system','members','locKeywords','articles']);
+  assert.deepEqual(group.map(slot=>slot.page),['group_admin','GalaxyManage','Groupkeyword','GroupArticle']);
+  assert.deepEqual(scope.map(slot=>slot.key),['time','keywords','spatial','advanced']);
+  assert.deepEqual(scope.map(slot=>slot.page),['TimeAnchor','ScopeKeyword','SpaceAnchor','ScopeArticle']);
+  assert.equal(group.some(slot=>/time|space|trace/i.test(slot.key+' '+slot.page)),false);
+  assert.equal(managementHeroSlot('keywordManage','loc')?.page,'Groupkeyword');
+  assert.equal(managementHeroSlot('sourceManage','loc')?.page,'GalaxyManage');
+  assert.equal(managementHeroSlot('manage','loc')?.page,'SpaceAnchor');
+  assert.equal(managementHeroSlot('timeManage','loc')?.page,'TimeAnchor');
+  assert.equal(managementHeroSlot('keywordManage','loc')?.page,'Groupkeyword');
+  assert.equal(managementHeroSlot('searchManage','loc')?.page,'GroupArticle');
+  assert.equal(managementHeroSlot('keywords','lo3rwang')?.page,'ScopeKeyword');
+  assert.equal(managementHeroSlot('manage','lo3rwang')?.page,'SpaceAnchor');
+  assert.equal(managementHeroSlot('searchManage','lo3rwang')?.page,'ScopeArticle');
+  assert.equal(managementHeroSlot('timeManage','lo3rwang')?.page,'TimeAnchor');
+});
+
+test('personal settings copy and image resolve to the same Group row',()=>{
+  assert.equal(featureHeroPageFor('setting'),'group_setting');
+  assert.equal(featureHeroImagePageFor('setting'),'group_setting');
 });

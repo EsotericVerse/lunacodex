@@ -47,8 +47,8 @@ async function saveLocHeroPage(page,fresh,changes){
 const managementSlotFor=featureId=>HomeBlock.MANAGEMENT_HERO_SLOTS.find(slot=>slot.featureId===featureId);
 const locSlots=HomeBlock.MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='loc'&&slot.key!=='system');
 
-// Scope management shares scope_manage/order 1, Admin management shares scope_admin/order 1.
-// Ordinary feature images remain independently editable.
+// Scope management uses its own Time/Keyword/Space/Article page. Group admin
+// and personal settings keep their image on the same group_* Hero row as copy.
 function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}) {
   const page=pageOverride||pageFor(variant.kind,feature);
   const dock=useEditDock();
@@ -281,7 +281,7 @@ export default function FeatureHeroImages(){
       />
       <ImageSlot feature={feature}
         variant={feature.singleSlot?SINGLE_VARIANT[0]:FEATURE_VARIANT}
-        pageOverride={feature.id==='admin'?'group_admin':''}
+        pageOverride={HomeBlock.featureHeroImagePageFor(feature.id)}
         onDirtyChange={trackDirty} key={feature.id+':group-image'}/>
       {scopeSlot?<section className="loc-card scope-inline-card" aria-label={scopeSlot.label}>
         <h4>{scopeSlot.label}</h4>
@@ -327,7 +327,8 @@ export default function FeatureHeroImages(){
           explicitEditButton allowDelete={false} allowEntities={false}
         />
         <ImageSlot feature={PERSONAL_SETTINGS_FEATURE} variant={SINGLE_VARIANT[0]}
-          onDirtyChange={trackDirty} key="setting:scope"/>
+          pageOverride={HomeBlock.featureHeroImagePageFor(PERSONAL_SETTINGS_FEATURE.id)}
+          onDirtyChange={trackDirty} key="setting:group"/>
       </section>:null}
     </section>
   </section>;
