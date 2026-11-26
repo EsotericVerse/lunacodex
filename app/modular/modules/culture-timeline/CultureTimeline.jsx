@@ -157,8 +157,26 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
           if(extra.collapsible){
             button.setAttribute('aria-expanded',String(Boolean(extra.expanded)));
             button.addEventListener('click',()=>onGroupToggleRef.current?.(id));
-          }else button.addEventListener('click',()=>onGroupSelectRef.current?.(id));
-          content=button;
+          }else{
+            const action=document.createElement('span');
+            action.className='scope-river-group-action';
+            const text=document.createElement('span');
+            text.className='scope-river-group-action__label';
+            text.textContent=label;
+            const open=document.createElement('button');
+            open.type='button';
+            open.className='scope-river-article-open';
+            open.textContent='⌄';
+            open.setAttribute('aria-label','開啟'+label+'文章列表');
+            open.title='開啟文章列表';
+            open.addEventListener('click',event=>{
+              event.stopPropagation();
+              onGroupSelectRef.current?.(id);
+            });
+            action.append(text,open);
+            content=action;
+          }
+          if(extra.collapsible)content=button;
         }else if(depth>0){
           const indented=document.createElement('span');
           indented.style.paddingInlineStart=depth*1.1+'rem';

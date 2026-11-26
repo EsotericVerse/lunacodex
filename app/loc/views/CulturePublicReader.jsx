@@ -6,7 +6,7 @@ import {FeaturePage} from '../../modular/ui';
 import {selectRows} from '../db/db-query.mjs';
 import {queryCultureContent} from '../actions/culture/queries.mjs';
 import {defaultScopeData} from '../scope/scope-data';
-import {selectCultureArticleListPage} from '../culture/query';
+import {selectCultureArticleListPage,CULTURE_ARTICLE_PAGE_SIZE} from '../culture/query';
 import {selectGalaxyIdentity} from '../galaxy/galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
 import {scopeHref} from '../../modular/routing/scope-registry';
@@ -233,6 +233,7 @@ export default function CulturePublicReader(){
   const [selectedCategoryKey,setSelectedCategoryKey]=useState('');
   const [articleRows,setArticleRows]=useState([]);
   const [articleOffset,setArticleOffset]=useState(0);
+  const [articlePageStart,setArticlePageStart]=useState(0);
   const [articleMore,setArticleMore]=useState(false);
   const [articlesOpen,setArticlesOpen]=useState(false);
   const [articlesLoading,setArticlesLoading]=useState(false);
@@ -409,11 +410,11 @@ export default function CulturePublicReader(){
   const resetArticles=(site='',categoryKey='',sites=[])=>{
     articleAbortRef.current?.abort();articleAbortRef.current=null;
     sequence.current+=1;setSelectedSite(site);setSelectedSites(sites);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
-    setArticleRows([]);setArticleOffset(0);
+    setArticleRows([]);setArticleOffset(0);setArticlePageStart(0);
     setArticleMore(false);setArticlesLoading(false);setArticleError('');fullSequence.current+=1;
     setFullUid('');setFullText('');setFullError('');
   };
-  const fetchArticles=async({append=false,offset=0,site=selectedSite,sites=selectedSites}={})=>{
+  const fetchArticles=async({offset=0,site=selectedSite,sites=selectedSites}={})=>{
     if(!scope||!site||densityMode!=='source'||!validRange)return;
     articleAbortRef.current?.abort();
     const controller=new AbortController();
@@ -424,13 +425,14 @@ export default function CulturePublicReader(){
     setArticleRows([]);setArticlesLoading(true);setArticleError('');
     try{
       const page=await selectCultureArticleListPage(scope,{
-        startDate:rangeStart,endDate:rangeEnd,site,sites,offset,sortDirection:'desc',
+        startDate:rangeStart,endDate:rangeEnd,site,sites,offset,limit:CULTURE_ARTICLE_PAGE_SIZE,sortDirection:'desc',
         signal:controller.signal
       });
       if(request!==sequence.current)return;
       // One 100-row window at a time. The server cursor retains position;
       // old article objects are no longer held by this page.
       setArticleRows(page.rows);
+      setArticlePageStart(offset);
       setArticleOffset(page.nextCursor?.offset||offset+page.rows.length);
       setArticleMore(page.hasMore);
     }catch(reason){
@@ -454,16 +456,18 @@ export default function CulturePublicReader(){
     // worker results and expanded Source rows from the previous period.
     articleAbortRef.current?.abort();articleAbortRef.current=null;
     sequence.current+=1;fullSequence.current+=1;
-    setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);
+    setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);setArticlePageStart(0);
     setArticleMore(false);setArticlesLoading(false);setArticleError('');
     setSelectedSite('');setSelectedSites(NO_ITEMS);setSelectedCategoryKey('');
     setFullUid('');setFullText('');setFullError('');
     setExpandedSources([]);
     setAnchorSuggestionsOpen(false);setFocusedSuggestionDate('');
   },[scopeId,rangeStart,rangeEnd,densityMode,keywordClass]);
-  const loadMore=()=>{
-    if(!articlesOpen||!selectedSite)return;
-    if(articleMore&&!articlesLoading)fetchArticles({append:true,offset:articleOffset,sites:selectedSites});
+  const changeArticlePage=nextOffset=>{
+    if(!articlesOpen||!selectedSite||articlesLoading)return;
+    const offset=Math.max(0,Math.floor(Number(nextOffset)||0));
+    fullSequence.current+=1;setFullUid('');setFullText('');setFullError('');
+    fetchArticles({offset,sites:selectedSites});
   };
   const toggleFull=async row=>{
     const request=++fullSequence.current;
@@ -626,39 +630,53 @@ export default function CulturePublicReader(){
       </section>
       {articlesOpen&&densityMode==='source'&&selectedSite?<section className='scope-card scope-culture-source-detail' data-selected-category={selectedCategoryKey}>
         <div className='scope-culture-source-detail-heading'>
-          <h3>{selectedSite}｜相關文章列表</h3>
+          <h3>{articlePageStart===0
+            ?'文章列表：前'+CULTURE_ARTICLE_PAGE_SIZE+'篇'
+            :'文章列表：'+(articlePageStart+1)+'–'+(articlePageStart+articleRows.length)+'篇'}</h3>
           <button type='button' className='loc-button' onClick={()=>resetArticles()}>
-            關閉並釋放文章列表
+            收合列表
           </button>
         </div>
         {articleError?<p role='alert' className='scope-status scope-error'>{articleError}</p>:null}
-        {articleRows.map((row,index)=>row.hidden
-          ?<p className='scope-status' key={row.key||index}>本文已隱藏</p>
-          :<div className='scope-work-list-row' key={row.key||index}>
-            <span>標題：{row.title}　日期：{row.date}　</span>
-            {row.extract===true?<button type='button' className='loc-button'
-              onClick={()=>toggleFull(row)}>全文展開</button>
-              :<span className='scope-status'>僅顯示列表，禁止閱讀全文</span>}
-            {fullUid===row.uid?<div>
-              {fullError?<p className='scope-status scope-error'>{fullError}</p>:null}
-              {fullText?<div>
-                <p className='scope-status'>{fullText}</p>
-                <ScopeLink className='loc-button' href={(()=>{
-                  const base=scopeHref(scopeId,'search/manage');
-                  return base+(base.includes('?')?'&':'?')+
-                    'identity='+encodeURIComponent(row.uid);
-                })()}>編輯</ScopeLink>
-              </div>:null}
-            </div>:null}
-          </div>)}
+        <div className='loc-public-article-list scope-culture-source-work-scroll' aria-live='polite'>
+          {articleRows.map((row,index)=>row.hidden
+            ?<div className='scope-work-list-row' key={row.key||index}><span>本文已隱藏</span><time>{row.date}</time></div>
+            :<div className='scope-work-list-row' key={row.key||index}>
+              <button type='button' className='scope-article-title-link'
+                disabled={row.extract!==true} onClick={()=>row.extract===true&&toggleFull(row)}>
+                {row.title||'未命名文章'}
+              </button>
+              <time>{row.date}</time>
+            </div>)}
+        </div>
         {articlesLoading?<p className='scope-status' role='status' aria-live='polite'>載入中請稍後</p>:null}
-        {!articlesLoading&&articleMore
-          ?<button type='button' className='loc-button' onClick={loadMore}>
-            點擊繼續顯示
-          </button>:null}
+        {!articlesLoading&&articleRows.length?<nav className='scope-article-page-nav' aria-label='文章列表分頁'>
+          <button type='button' className='loc-button' disabled={articlePageStart===0||articlesLoading}
+            onClick={()=>changeArticlePage(Math.max(0,articlePageStart-CULTURE_ARTICLE_PAGE_SIZE))}>上一頁</button>
+          <span>{articlePageStart+1}–{articlePageStart+articleRows.length}</span>
+          <button type='button' className='loc-button' disabled={!articleMore||articlesLoading}
+            onClick={()=>changeArticlePage(articleOffset)}>下一頁</button>
+        </nav>:null}
         {!articlesLoading&&!articleRows.length&&!articleError
           ?<p className='scope-status'>沒有相關文章。</p>:null}
       </section>:null}
+      {fullUid?<div className='loc-article-reader-backdrop' role='presentation' onMouseDown={event=>{
+        if(event.target===event.currentTarget){fullSequence.current+=1;setFullUid('');setFullText('');setFullError('');}
+      }}>
+        <section className='loc-article-reader' role='dialog' aria-modal='true' aria-label='文章內容'>
+          <header><strong>{articleRows.find(row=>row.uid===fullUid)?.title||'文章內容'}</strong>
+            <button type='button' className='loc-button' onClick={()=>{fullSequence.current+=1;setFullUid('');setFullText('');setFullError('');}}>關閉</button>
+          </header>
+          {fullError?<p className='scope-status scope-error'>{fullError}</p>:null}
+          {!fullText&&!fullError?<p className='scope-status' role='status'>正在載入文章…</p>:null}
+          {fullText?<div className='loc-article-reader__body'><p>{fullText}</p>
+            <ScopeLink className='loc-button' href={(()=>{
+              const base=scopeHref(scopeId,'search/manage');
+              return base+(base.includes('?')?'&':'?')+'identity='+encodeURIComponent(fullUid);
+            })()}>編輯文章</ScopeLink>
+          </div>:null}
+        </section>
+      </div>:null}
     </section>
   </FeaturePage>;
 }
