@@ -301,19 +301,41 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
   const prefix=norm(query);
   if(!prefix||UID.test(prefix))return [];
   const found=new Map();
+  // Suggestions are a read stream over the selected dialect's Kysely query
+  // interface. Keep each driver result bounded instead of materializing every
+  // Item and Pattern row for every Scope in one request.
+  const streamType=async function*(anchor,type,columns,pageSize){
+    let cursor='';
+    for(;;){
+      let pageQuery=db.selectFrom(anchor).select(columns).where('type','=',type);
+      if(cursor)pageQuery=pageQuery.where('uid','>',cursor);
+      const page=await pageQuery.orderBy('uid','asc').limit(pageSize).execute();
+      if(!Array.isArray(page)||page.length>pageSize)
+        fail('Keyword suggestion page is incomplete',503);
+      if(!page.length)return;
+      let previous=cursor;
+      for(const row of page){
+        const uid=String(row?.uid||'');
+        if(!UID.test(uid)||uid<=previous)
+          fail('Keyword suggestion cursor did not advance',503);
+        previous=uid;
+        yield row;
+      }
+      cursor=previous;
+    }
+  };
   for(const scope of new Set(scopeIds)){
     if(!ownerScopes.has(scope))continue;
-    // A literal autocomplete lookup on Pattern.title. No language translation,
-    // English/Chinese mapping, Galaxy content scan, or article UID index.
     const anchor=anchorName(scope);
-    const itemRows=await db.selectFrom(anchor).select('attr')
-      .where('type','=','item').execute();
-    const linked=new Set(itemRows.flatMap(children));
+    const linked=new Set();
+    for await(const item of streamType(anchor,'item',['uid','attr'],512))
+      for(const uid of children(item))linked.add(uid);
     if(!linked.size)continue;
-    const rows=await db.selectFrom(anchor)
-      .select(['uid','title']).where('type','=','pattern').execute();
-    for(const row of rows){
-      if(!linked.has(row.uid))continue;
+    // Pattern remains the searchable vocabulary owner; Item only links to
+    // Pattern UIDs. Scan Pattern pages in UID order and retain only literal
+    // matches linked from an Item. No Item.title matching or article scan.
+    for await(const row of streamType(anchor,'pattern',['uid','title'],1024)){
+      if(!linked.has(String(row.uid)))continue;
       const literal=String(row.title||'').trim(),key=norm(literal);
       if(!key.includes(prefix)||!literal||parseRuneKeywordRuleSentence(literal).rules.length)continue;
       if(!found.has(key))found.set(key,{pattern:literal,count:0});

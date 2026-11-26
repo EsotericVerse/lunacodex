@@ -462,24 +462,46 @@ export function estimateImportStageMinutes({completed=0,total=0,elapsedMs=0}={})
 
 export function validImportBatchSize(){return HEAVY_QUERY_ROWS;}
 
-export async function writeImportBatches(records,{writeBatch,onProgress}={}){
-  if(!Array.isArray(records))throw new Error('匯入批次資料必須是陣列。');
+export async function writeImportStream(records,{writeBatch,onProgress,total=null,
+  sampleRows=null,signal}={}){
+  const iterable=records&&(
+    typeof records[Symbol.asyncIterator]==='function'||
+    typeof records[Symbol.iterator]==='function');
+  if(!iterable)throw new Error('匯入資料必須是可逐筆讀取的資料流。');
   if(typeof writeBatch!=='function')throw new Error('匯入寫入函式不存在。');
-  const sizer=createImportBatchSizer({sampleRows:records});
+  if(total!==null&&(!Number.isSafeInteger(total)||total<0))
+    throw new Error('匯入資料流筆數無效。');
+  const sizer=createImportBatchSizer({sampleRows});
   const windows=createImportConfirmationWindow();
-  const total=records.length;
-  let completed=0,batches=0;
-  while(completed<total){
+  const iterator=records[Symbol.asyncIterator]?.()||records[Symbol.iterator]();
+  let completed=0,batches=0,lookahead,hasLookahead=false,finished=false;
+  const readNext=async()=>{
+    if(hasLookahead){const row=lookahead;lookahead=undefined;hasLookahead=false;
+      return {done:false,value:row};}
+    return await iterator.next();
+  };
+  try{for(;;){
+    if(total!==null&&completed===total){
+      const extra=await readNext();
+      if(!extra.done)throw new Error('匯入資料流超過宣告筆數 '+total+' 筆。');
+      finished=true;break;
+    }
     const batch=[];
     const allowedRows=Math.min(sizer.size,windows.remaining(completed));
     let bytes=0;
-    for(let index=completed;index<total;index++){
-      if(batch.length>=allowedRows)break;
-      const row=records[index],nextBytes=sizer.byteSize(row);
-      if(sizer.shouldFlush(batch.length,bytes,nextBytes))break;
+    while(batch.length<allowedRows&&!finished&&
+        (total===null||completed+batch.length<total)){
+      if(signal?.aborted)throw signal.reason||new DOMException('Aborted','AbortError');
+      const next=await readNext();
+      if(next.done){finished=true;break;}
+      const row=next.value,nextBytes=sizer.byteSize(row);
+      if(sizer.shouldFlush(batch.length,bytes,nextBytes)){
+        lookahead=row;hasLookahead=true;break;
+      }
       batch.push(row);bytes+=nextBytes;
       if(sizer.shouldFlush(batch.length,bytes))break;
     }
+    if(!batch.length)break;
     if(!batch.length)throw new Error('匯入批次大小無效。');
     const started=Date.now();
     try{
@@ -489,13 +511,24 @@ export async function writeImportBatches(records,{writeBatch,onProgress}={}){
     }catch(error){
       const detail=String(error?.message||error||'未知錯誤');
       throw new Error('第 '+(batches+1)+' 批失敗；已確認完成 '+completed+
-        '／'+total+' 筆。'+detail+'。重新執行前會再次比對已存在 UID。');
+        '／'+(total===null?'未知總數':total)+' 筆。'+detail+'。重新執行前會再次比對已存在 UID。');
     }
     completed+=batch.length;batches++;
     const checkpoint=windows.reached(completed);
     sizer.observe(batch.length,Date.now()-started,importBatchCharacters(batch));
-    onProgress?.({completed,total,percent:Math.round(completed/Math.max(1,total)*100),
-      checkpoint,batch:batches,batches:Math.max(batches,Math.ceil(total/sizer.size))});
+    onProgress?.({completed,total,percent:total===null?null:
+      Math.round(completed/Math.max(1,total)*100),checkpoint,batch:batches,
+      batches:total===null?null:Math.max(batches,Math.ceil(total/sizer.size))});
+  }}finally{
+    if(!finished)await iterator.return?.();
   }
-  return {completed,total,batches};
+  if(total!==null&&completed!==total)
+    throw new Error('匯入資料流筆數不符：預期 '+total+' 筆，實際 '+completed+' 筆。');
+  return {completed,total:total??completed,batches};
+}
+
+export async function writeImportBatches(records,options={}){
+  if(!Array.isArray(records))throw new Error('匯入批次資料必須是陣列。');
+  async function* rows(){for(const row of records)yield row;}
+  return writeImportStream(rows(),{...options,total:records.length,sampleRows:records});
 }
