@@ -20,7 +20,8 @@ export default function PageResourceBoundary({routeKey,children}){
     if(reduced||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
     // Animate committed content only. Opacity avoids moving maps, fixed
     // dialogs, editors, or creating a second Hero or loading tree.
-    const animations=Array.from(content.current?.children||[]).map(element=>{
+    const elements=content.current?.querySelectorAll('.scope-page > .scope-content')||[];
+    const animations=Array.from(elements).map(element=>{
       const original=element.style.opacity;
       const restore=()=>{element.style.opacity=original;};
       const control=animate(element,{opacity:[.78,1]},
