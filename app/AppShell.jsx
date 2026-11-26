@@ -577,7 +577,7 @@ function AppShellInner({children,runtime}){
       {editingDockVisible?editTabs.map(tab=>{
         const selected=Boolean(tab.href&&targetIsCurrent(tab.href,host,pathname));
         const isSave=tab.action==='save';
-        const disabled=tab.action?editDock.busy&&tab.action!=='cancel':!tab.href||editDock.busy;
+        const disabled=tab.action?editDock.busy&&tab.action!=='cancel':!tab.href;
         const effectName=tab.id==='manage'?'spatial':
           tab.id==='time'||tab.id==='members'?tab.id:tab.icon;
         return <motion.button type="button" key={tab.id}
