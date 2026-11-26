@@ -423,7 +423,8 @@ type MediaAnchor {
 }
 // Keyword hierarchy: category > class > group > item > pattern.
 // Class is the subject; Group groups Items; Item links Pattern Anchor UIDs.
-// Pattern is a vocabulary-only Anchor; no full-text article postings.
+// Pattern is a vocabulary-only Anchor; title stores its literal and physical
+// Anchor.num stores the analyzed occurrence count. No article UID postings.
 type KeywordAnchor {
     pattern Json?
     item ItemAnchor?

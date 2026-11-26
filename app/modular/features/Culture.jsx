@@ -1,1884 +1,7 @@
-'use client';
-import UiText from '../../i18n/UiText';
-import FieldText from '../../i18n/FieldText';
-
-import {translateUiField,UI_COPY} from '../../i18n/ui-copy';
-import {useUiCopy,useUiLocale,useUiSection} from '../../i18n/ui-locale';
-
-import {useEffect,useMemo,useRef,useState} from 'react';
-import dynamic from 'next/dynamic';
-import {usePathname,useSearchParams} from 'next/navigation';
-import {useAsyncResource,useAsyncInfiniteResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
-import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeatureNavigation} from '../routing/feature-navigation';
-import ScopeLink from '../ScopeLink';
-import {scopeHref} from '../routing/scope-registry';
-import {useEditDock} from '../edit-dock';
-import {featureDataErrorMessage} from '../feature-data-state';
-// Keep a visible, CSS-only waiting state even before the timeline chunk loads.
-function CultureTimeLoading({label='æ­£åœ¨è¼‰å…¥æ™‚é–“å®šéŒ¨â€¦'}){
-  return <div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
-    <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
-    <span>{label}</span>
-  </div>;
-}
-const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTimeline'),{
-  loading:()=> <CultureTimeLoading label='æ­£åœ¨æº–å‚™æ™‚é–“é•·æ²³â€¦'/>
-});
-import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
-import {visualKeyColor} from '../visual-palette.mjs';
-import {eraVisualGradient} from '../modules/culture-timeline/era-visuals.mjs';
-import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
-import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
-import {buildEraRiver,nextEditorEraExpansion} from '../../loc/culture/time-trace-river.mjs';
-import {cultureEraPeriodHierarchy} from '../../loc/culture/era-period-hierarchy.mjs';
-import {buildLocCultureScopePreview} from '../../loc/culture/loc-scope-preview.mjs';
-import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-anchor-ranges.mjs';
-
-import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy/galaxy-query';
-import {defaultScopeData,revalidateServerMetadata} from '../../loc/scope/scope-data';
-
-import {deleteRows,insertRows,updateRows} from '../../loc/db/db-client.mjs';
-import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
-import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
-import {sourceOutlineOptions,groupedSourceOutline} from '../../loc/source/outline-options.mjs';
-import {buildCultureRiverRootPayload,selectCultureRiverChildren} from '../../loc/culture/river-roots.mjs';
-import {buildCultureSourceTreeLanes,rollupCultureSourceDays} from '../../loc/culture/source-tree-lanes.mjs';
-import {useAccount} from '../../loc/auth/use-account';
-import {useScopeRuntime} from '../use-scope-runtime';
-import {ArticleSortSelect,FeaturePage,IncrementalList,WorkFullText} from '../ui';
-import ManagementWorkspaceFrame from '../../loc/management/ManagementWorkspaceFrame';
-// Article cards/editing are requested only when results actually render.
-const Article=dynamic(()=>import('../Article'),{loading:()=>null});
-const CultureTimelineEditor=dynamic(()=>import('./CultureTimelineEditor'),{
-  loading:()=> <CultureTimeLoading label='æ­£åœ¨æº–å‚™æ™‚é–“å®šéŒ¨ç·¨è¼¯å™¨â€¦'/>
-});
-const CulturePlaceRiver=dynamic(()=>import('./trace/CulturePlaceRiver'),{loading:()=>null});
-import {workDisplayHeading,workDisplayText} from '../work-display-model';
-import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
-import {publicContentFilters,requireGalaxyContent,resolveGalaxyTitle} from '../../loc/content/content-policy';
-import {readGalaxyRecords} from '../../loc/model/feature-query-client.mjs';
-const LocItemConfluence=dynamic(()=>import('./LocItemConfluence'),{loading:()=>null});
-
-function isInteractiveTarget(target){
-  return Boolean(target?.closest?.('a,button,input,select,textarea,summary,[role="button"],[contenteditable="true"]'));
-}
-
-// Preserve timeline instances while editor dialogs, suggested points and
-// density suggestions update around them.
-// Time has ONE management entry. Type selection belongs to the editor form.
-const EMPTY_RIVER_FOCUS=Object.freeze({});
-const EMPTY_CULTURE_GROUPS=Object.freeze([]);
-function emptyRiverLabel(){return '';}
-function classificationRiverLabel(item){
-  return item?.entry_type==='virtual_anchor'?(item.display_label||'â—‡'):'';
-}
-function labelOf(item,index,periodName=UI_COPY.format.period(index+1)){
-  return item?.display_label||item?.name||item?.title||item?.period||periodName;
-}
-function sortPeriods(rows=[]){
-  return [...rows].filter(item=>item?.start_date||item?.end_date).sort((a,b)=>
-    String(a.start_date||a.end_date||'').localeCompare(String(b.start_date||b.end_date||''))
-  );
-}
-function periodRange(rows=[],scope='',allTime=UI_COPY.culture.allTime){
-  const starts=rows.map(row=>row.start_date||row.end_date).filter(Boolean).sort();
-  const ends=rows.map(row=>row.end_date||row.start_date).filter(Boolean).sort();
-  const openEnded=rows.some(row=>Boolean(row?.open_end)||!row?.end_date);
-  return {
-    period:'all',title:allTime,display_label:allTime,
-    start_date:starts[0]||'',end_date:openEnded?null:(ends.at(-1)||null),scope_id:scope
-  };
-}
-function periodKey(item){
-  return String(item?.period||item?.era_id||item?.event_id||item?.uid||item?.id||'').trim();
-}
-function classLabel(value){
-  const text=String(value||'').trim();
-  return !text?'':text.endsWith('ç¾¤çµ„')?text:text+' ç¾¤çµ„';
-}
-// Display classified Groups and Item hits from the unified UID tree.
-function keywordDrillRiverItems(rows,{groupId='',meta={},groupItems=[]}={}){
-  const classes=meta.classes||{},className=String(meta.class_name||'').trim();
-  const known=new Map(groupItems.map(item=>[String(item.uid),item]));
-  const buckets=new Map(),maximum=new Map();
-  for(const row of rows||[]){
-    const day=String(row.day||row.date||'').slice(0,10);
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;
-    let key='',label='',count=0,order=0;
-    if(groupId){
-      if(row.kind!=='item_day')continue;
-      const item=known.get(String(row.item_key));
-      if(!item)continue;
-      key=String(row.item_key);
-      label=String(item.name||key);
-      count=Number(row.hit_count)||0;
-      order=Number(item.order_no)||0;
-    }else if(row.kind==='class_day'||(row.classification_group&&row.group_uid)){
-      key=String(row.group_uid??'');
-      const groupName=String(classes[key]||row.classification_group||'').trim();
-      if(!groupName)continue;
-      label=[className,groupName,'ç¾¤çµ„'].filter(Boolean).join(' ');
-      count=Number(row.hit_count??row.count)||0;
-      order=Object.keys(classes).indexOf(key)+1;
-    }else continue;
-    if(!key||!count)continue;
-    const id=key+'\u0000'+day;
-    const previous=buckets.get(id);
-    const accumulated=(previous?.count||0)+count;
-    buckets.set(id,{key,label,day,count:accumulated,order});
-    maximum.set(key,Math.max(maximum.get(key)||0,accumulated));
-  }
-  return [...buckets.values()].map(({key,label,day,count,order})=>({
-    id:'keyword-density:'+(groupId?'item':'class')+':'+key+':'+day,
-    entry_id:'keyword-density:'+(groupId?'item':'class')+':'+key+':'+day,
-    entry_type:'keyword_density',drill_key:key,
-    group_label:label,category:label,display_label:'',
-    title:day+' Â· '+label+' Â· '+count.toLocaleString()+(groupId?' æ¬¡':' ç¯‡'),
-    start_date:day,end_date:nextRiverDay(day),
-    item_count:count,group_order:order,density_ratio:count/Math.max(1,maximum.get(key)||1)
-  })).sort((a,b)=>a.start_date.localeCompare(b.start_date)
-    ||a.group_order-b.group_order||a.group_label.localeCompare(b.group_label));
-}
-function formatCultureUi(template,values={}){
-  return String(template||'').replace(/\{([a-zA-Z][\w]*)\}/gu,(match,key)=>
-    Object.prototype.hasOwnProperty.call(values,key)?String(values[key]??''):match);
-}
-function nextRiverDay(value){
-  const key=String(value||'').slice(0,10);
-  if(!key)return '';
-  const date=new Date(key+'T00:00:00Z');
-  if(Number.isNaN(date.getTime()))return '';
-  date.setUTCDate(date.getUTCDate()+1);
-  return date.toISOString().slice(0,10);
-}
-// Paint the collapsed source overview from the numeric totals already in memory.
-// vis-timeline is mounted only after a category is expanded, not for three
-// full-window total bars that do not require virtualized time-axis layout.
-function CultureSourceRootSummary({items,groups,eraRanges,windowStart,windowEnd,onGroupToggle,onGroupSelect}){
-  const backgroundImage=useMemo(()=>eraVisualGradient(eraRanges,windowStart,windowEnd),[eraRanges,windowStart,windowEnd]);
-  const totals=items.filter(item=>item.entry_type==='source_total');
-  const byGroup=new Map(totals.map(item=>[item.group_key,item]));
-  const largest=Math.max(1,...totals.map(item=>Number(item.item_count)||0));
-  return <div className='scope-period-timeline-wrap'>
-    <div className='scope-period-timeline' role='region' aria-label='ä½œå“åˆ†é¡ç¸½é‡æ™‚é–“é•·æ²³'
-      style={{minHeight:0,overflow:'visible',padding:'.65rem',background:'var(--loc-panel)'}}>
-      <div style={{display:'grid',gridTemplateColumns:'clamp(108px,23vw,248px) minmax(0,1fr)',gap:'.4rem .55rem',alignItems:'center'}}>
-        <span className='scope-status'>åˆ†é¡ç¸½é‡</span>
-        <div style={{display:'flex',justifyContent:'space-between',gap:'.5rem',fontSize:'.8rem',color:'var(--loc-muted)',backgroundImage,borderRadius:'.2rem',padding:'0 .25rem'}}>
-          <time>{windowStart}</time><time>{windowEnd}</time>
-        </div>
-        {groups.map(group=>{
-          const row=byGroup.get(group.id);
-          const candidate=group.id==='dual:source:candidates';
-          if(!row&&!candidate)return null;
-          const count=Number(row?.item_count)||0;
-          const action=group.collapsible?()=>onGroupToggle?.(group.id)
-            :group.selectable?()=>onGroupSelect?.(group.id):null;
-          return <div key={group.id} className={row?'scope-dual-river-root':'scope-candidate-lane'} style={{display:'contents'}}>
-            <div style={{minWidth:0}}>
-              {action?<button type='button' className='scope-river-group-button'
-                aria-expanded={group.collapsible?Boolean(group.expanded):undefined} onClick={action}>
-                {group.collapsible?'ï¼‹  ':''}{group.label}
-              </button>:<span>{group.label}</span>}
-            </div>
-            <div style={{minWidth:0,minHeight:candidate?32:40,display:'flex',alignItems:'center',padding:'.35rem .45rem',
-              border:'1px solid var(--loc-line)',borderRadius:'.5rem',backgroundColor:'var(--loc-panel-2)',backgroundImage}}
-              role={row?'img':undefined} aria-label={row?group.label+'ï¼Œ'+count+'ç­†':''}>
-              {row?<div style={{width:'100%',height:Math.max(11,Math.round(11+19*count/largest)),
-                borderRadius:'999px',background:visualKeyColor(group.id),
-                opacity:Math.max(.65,Math.min(1,count/largest)),boxShadow:'0 0 6px var(--loc-accent-border)'}}/>:null}
-            </div>
-          </div>;
-        })}
-      </div>
-    </div>
-  </div>;
-}
-function dayKeyFromTimelineValue(value){
-  const date=value instanceof Date?value:new Date(value);
-  if(Number.isNaN(date.getTime()))return '';
-  return date.toISOString().slice(0,10);
-}
-function periodPositionRatio(date,start,end){
-  const a=Date.parse(String(start||'').slice(0,10));
-  const b=Date.parse(String(end||'').slice(0,10));
-  const x=Date.parse(String(date||'').slice(0,10));
-  if(!Number.isFinite(a)||!Number.isFinite(b)||!Number.isFinite(x)||b<=a)return 0;
-  return Math.max(0,Math.min(1,(x-a)/(b-a)));
-}
-export default function Culture(){
-  useUiSection('culture');
-  useUiSection('uiExtra.cultureView');
-  useUiSection('uiExtra.dataErrors');
-  useUiSection('uiExtra.pagination');
-  const UI_COPY=useUiCopy();
-  const l=UI_COPY.uiExtra.cultureView;
-  const localizedLabelOf=useMemo(()=> (item,index)=>labelOf(item,index,UI_COPY.format.period(index+1)),[UI_COPY]);
-  const {locale}=useUiLocale();
-  const {scopeId,scope}=useScopeRuntime();
-  const [worksOpen,setWorksOpen]=useState(false);
-  const searchParams=useSearchParams();
-  const editDock=useEditDock();
-  const canUseScopeEditor=Boolean(editDock?.active&&editDock.scopeId===scopeId);
-  const pathname=usePathname()||'';
-  // A management URL must render its management workspace even after a full
-  // navigation or an Edit Dock remount. The verified account still controls
-  // access to the editor; a URL or dock state never confers permission.
-  const onTimeManageRoute=pathname.endsWith('/culture/manage')||
-    pathname.endsWith('/culture/manage/');
-  const isTimeEditingView=onTimeManageRoute||
-    (canUseScopeEditor&&searchParams?.get('edit')==='1');
-  // Only the explicit editing route/dock exposes editing; server permissions
-  // are still verified when the user opens an editor and when writing.
-  const adminListRequested=Boolean(isTimeEditingView||canUseScopeEditor);
-  // Public Culture does not load management grants; editing must verify them.
-  const account=useAccount({enabled:isTimeEditingView||canUseScopeEditor});
-  const [locCultureView,setLocCultureView]=useState('period');
-  // LOC displays the one-year source density river immediately; no first river.
-  const [locDensityOpen,setLocDensityOpen]=useState(true);
-  const [expandedLocScopes,setExpandedLocScopes]=useState([]);
-  const isLocItemView=scopeId==='loc'&&locCultureView==='item';
-  const resourceCache=useResourceCache();
-  const navigation=useMemo(()=>readFeatureNavigation(searchParams),[searchParams]);
-  const query=useAsyncResource({
-    queryKey:['culture-timeline',scopeId,isTimeEditingView?'management':'public'],
-    queryFn:async({signal})=>{
-      const {selectScopeCultureData,selectScopeCultureManagementData}=await import('../../loc/culture/query');
-      return isTimeEditingView
-        ?selectScopeCultureManagementData(scopeId,{signal})
-        :selectScopeCultureData(scopeId);
-    },
-    enabled:!isLocItemView,
-  });
-
-  const [selectedPeriodKey,setSelectedPeriodKey]=useState('year');
-  const [structureWindowKey,setStructureWindowKey]=useState('');
-  const [expandedEraIds,setExpandedEraIds]=useState([]);
-  const [expandedEditorEraIds,setExpandedEditorEraIds]=useState([]);
-  // Mount the historical river before the large management list/editor.
-  // Both consume one authorized TimeAnchor snapshot; no extra SQL fetch.
-  const [timeRiverFirstPaint,setTimeRiverFirstPaint]=useState(false);
-  const [timeEditorFrameReady,setTimeEditorFrameReady]=useState(false);
-  useEffect(()=>{setTimeRiverFirstPaint(false)},[scopeId,isTimeEditingView]);
-  // Never make TimeAnchor editing depend exclusively on a vis-timeline paint
-  // callback: a ready DataSet can have no visible bars or zero-size panels.
-  // Give the real first river two paint frames, then release the editor even
-  // if vis is still recovering; this cannot deadlock on missing callbacks.
-  useEffect(()=>{
-    if(!isTimeEditingView||query.isPending||query.error){
-      setTimeEditorFrameReady(false);
-      return undefined;
-    }
-    let first=0,second=0,cancelled=false;
-    first=window.requestAnimationFrame(()=>{
-      second=window.requestAnimationFrame(()=>{
-        if(!cancelled)setTimeEditorFrameReady(true);
-      });
-    });
-    return ()=>{
-      cancelled=true;
-      if(first)window.cancelAnimationFrame(first);
-      if(second)window.cancelAnimationFrame(second);
-    };
-  },[isTimeEditingView,scopeId,query.isPending,query.error]);
-  const periodSelectionScopeRef=useRef('');
-  const [selectedCategory,setSelectedCategory]=useState('');
-  const [articleSort,setArticleSort]=useState('desc');
-  // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
-  const [styleFilter,setStyleFilter]=useState('none');
-  // Media sites are already included in the unified SiteAnchor source river.
-  // Only geography and keywords use independent presentation dimensions.
-  const usesSourceRiver=styleFilter!=='trace';
-  const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
-  const [keywordDrillSource,setKeywordDrillSource]=useState('');
-  const [keywordDrillGroup,setKeywordDrillGroup]=useState('');
-  const [keywordPeriodKey,setKeywordPeriodKey]=useState('year');
-  const [keywordEraKey,setKeywordEraKey]=useState('year');
-  const [keywordCustomStart,setKeywordCustomStart]=useState('');
-  const [keywordCustomEnd,setKeywordCustomEnd]=useState('');
-  const [selectedVirtualAnchorDates,setSelectedVirtualAnchorDates]=useState([]);
-  const [focusedAnchorDate,setFocusedAnchorDate]=useState('');
-  const [openCultureRoots,setOpenCultureRoots]=useState([]);
-  // Anchor suggestions never compute just because a lane's daily data
-  // arrived -- that would auto-run the PELT worker as a side effect of
-  // expanding a source lane. They only compute once the user explicitly
-  // opens the "å»ºè­°å®šéŒ¨é»" panel itself; see anchorSuggestOpen below.
-  const [anchorSuggestOpen,setAnchorSuggestOpen]=useState(false);
-  const [selectedRiverGroup,setSelectedRiverGroup]=useState('');
-  const [creatingSuggestedAnchors,setCreatingSuggestedAnchors]=useState(false);
-  const workScrollRef=useRef(null);
-  const [fullTextKey,setFullTextKey]=useState('');
-  const [fullText,setFullText]=useState('');
-  const [fullDetail,setFullDetail]=useState(null);
-  const [fullTextLoading,setFullTextLoading]=useState(false);
-  const [fullTextError,setFullTextError]=useState('');
-  const [editingWorkKey,setEditingWorkKey]=useState('');
-  const [authorizedWorkKey,setAuthorizedWorkKey]=useState('');
-  const [selectedTimelineRecordId,setSelectedTimelineRecordId]=useState('');
-  const [selectedTimelineInfo,setSelectedTimelineInfo]=useState(null);
-  const [selectedTimelineDate,setSelectedTimelineDate]=useState('');
-  const [timelineEditorRevision,setTimelineEditorRevision]=useState(0);
-  // Opening the time editor is a UI action, not an authorization check.
-  // Verify the active user only when a write is actually requested.
-  const [suggestedRecordType,setSuggestedRecordType]=useState('anchor');
-  const [suggestedRequestNonce,setSuggestedRequestNonce]=useState(0);
-  const [editDraft,setEditDraft]=useState(null);
-  const [editBusy,setEditBusy]=useState(false);
-  const [editError,setEditError]=useState('');
-
-  useEffect(()=>{
-    setStyleFilter('none');
-    setLocDensityOpen(true);
-    setExpandedLocScopes([]);
-    setSelectedPeriodKey('year');
-    setKeywordPeriodKey('year');
-    setKeywordEraKey('year');
-    setKeywordCustomStart('');
-    setKeywordCustomEnd('');
-    setOpenCultureRoots([]);
-    setSelectedRiverGroup('');
-    setFocusedAnchorDate('');
-    setStructureWindowKey('');
-  },[scopeId]);
-  const isAggregateScope=Boolean(scope?.aggregateChildren);
-  // LOC's first Time River never queries per-day article/media density.
-  // On-demand second-river data uses the shared ZenStack query client.
-  const locRequestedStart=String(navigation.from||'').slice(0,10);
-  const locRequestedEnd=String(navigation.to||'').slice(0,10);
-  const locRequestedValid=/^\d{4}-\d{2}-\d{2}$/.test(locRequestedStart)&&
-    /^\d{4}-\d{2}-\d{2}$/.test(locRequestedEnd)&&locRequestedStart<=locRequestedEnd;
-  // The LOC landing river is always the latest year, not a period intersection.
-  const locSourceStart=DEFAULT_YEAR_WINDOW.startDate;
-  const locSourceEnd=DEFAULT_YEAR_WINDOW.endDate;
-  const [locDensityCheckpoint,setLocDensityCheckpoint]=useState(null);
-  const locDensityKey=JSON.stringify([scopeId,locSourceStart,locSourceEnd,(query.data?.scopes||[]).map(scope=>scope.id)]);
-  const locDensityQuery=useAsyncResource({
-    queryKey:['loc-culture-density','zmodel-source-year',scopeId,locSourceStart,locSourceEnd],
-    enabled:!isTimeEditingView&&isAggregateScope&&scopeId==='loc'&&!isLocItemView&&locDensityOpen
-      &&Boolean(query.data?.scopes?.length),
-    queryFn:async({signal})=>{
-      setLocDensityCheckpoint(null);
-      const {selectLocCultureDensity}=await import('../../loc/culture/query');
-      return selectLocCultureDensity({
-        scopes:query.data?.scopes||[],startDate:locSourceStart,endDate:locSourceEnd,signal,
-        onCheckpoint:data=>{if(!signal.aborted)setLocDensityCheckpoint({key:locDensityKey,data});}
-      });
-    },
-  });
-  // Time structure is authoritative without any remote ISR Period request.
-  const allPeriods=useMemo(()=>sortPeriods(query.data?.eras?.eras||[]),[query.data]);
-  const classificationScope=scopeId;
-  // Published Scope/table identity is synchronous. The protected editor can
-  // begin its own authorized read without waiting for a second public river.
-  const scopeData=query.data?.scope||(!isAggregateScope?defaultScopeData(scopeId):null);
-  // Use a stable periods array: date-navigation effects must not re-run just
-  // because a different Culture panel or query refreshed the page.
-  const primaryPeriods=useMemo(()=>isAggregateScope?[]:allPeriods.filter(item=>String(item?.scope_id||'')===scopeId),[isAggregateScope,allPeriods,scopeId]);
-  const structurePreference=useMemo(()=>structurePeriodPreference(primaryPeriods,
-    (query.data?.timelineItems||[]).filter(item=>item.scope_id===scopeId)),
-  [primaryPeriods,query.data?.timelineItems,scopeId]);
-  const closestPeriod=primaryPeriods.find(item=>periodKey(item)===structurePreference.preferredKey)||null;
-  const secondRiverHierarchy=useMemo(()=>cultureEraPeriodHierarchy(
-    primaryPeriods,query.data?.timelineItems||[],scopeId
-  ),[primaryPeriods,query.data?.timelineItems,scopeId]);
-  const activeSecondEra=secondRiverHierarchy.groups.find(group=>
-    periodKey(group.era)===keywordEraKey)||null;
-  const activeSecondPeriods=keywordEraKey==='__unassigned__'
-    ?secondRiverHierarchy.unassigned:(activeSecondEra?.periods||[]);
-
-  // Articles may exist even when no formal Period has been created. Use an
-  // ordinary bounded date window; never treat an empty Time table as invalid.
-  const defaultYearPeriod=useMemo(()=>({
-    period:'year',title:DEFAULT_YEAR_WINDOW.label,
-    display_label:DEFAULT_YEAR_WINDOW.label,
-    start_date:DEFAULT_YEAR_WINDOW.startDate,
-    end_date:DEFAULT_YEAR_WINDOW.endDate,
-    scope_id:classificationScope
-  }),[classificationScope]);
-  const allTimePeriod=useMemo(()=>{
-    if(primaryPeriods.length)return periodRange(primaryPeriods,classificationScope,UI_COPY.culture.allTime);
-    return defaultYearPeriod;
-  },[primaryPeriods,classificationScope,UI_COPY.culture.allTime,defaultYearPeriod]);
-  useEffect(()=>{
-    if(isAggregateScope||!query.data)return;
-    const preferred=structurePreference.preferredKey;
-    const scopeChanged=periodSelectionScopeRef.current!==scopeId;
-    periodSelectionScopeRef.current=scopeId;
-    setSelectedPeriodKey(current=>scopeChanged?'year':
-      (current==='year'||current==='all'||primaryPeriods.some(period=>periodKey(period)===current))?current:'year');
-  },[scopeId,isAggregateScope,query.data,structurePreference,primaryPeriods]);
-  const selectedWorkPeriod=selectedPeriodKey==='year'?defaultYearPeriod
-    :selectedPeriodKey==='all'?allTimePeriod
-    :(primaryPeriods.find(item=>periodKey(item)===selectedPeriodKey)||closestPeriod||defaultYearPeriod);
-  // Use the nearest saved trace until the selected period is settled.
-  const selectedWindowStart=String(selectedWorkPeriod?.start_date||'');
-  const selectedWindowEnd=String(selectedWorkPeriod?.end_date||new Date().toISOString().slice(0,10));
-  // The lower Culture panel shares one selected interval across the source
-  // classification river, keyword-density river, suggestions, and work list.
-  // The upper Time structure river keeps its own period navigation.
-  // Events are part of the selected Period window, never a selector mode.
-  const keywordPeriod=keywordPeriodKey==='year'?defaultYearPeriod:
-    keywordPeriodKey==='all'?allTimePeriod
-    :keywordPeriodKey==='latest'?(closestPeriod||selectedWorkPeriod||allTimePeriod)
-    :keywordPeriodKey==='current'?(selectedWorkPeriod||allTimePeriod)
-    :activeSecondPeriods.find(period=>periodKey(period)===keywordPeriodKey)
-      ||primaryPeriods.find(period=>periodKey(period)===keywordPeriodKey)||closestPeriod||selectedWorkPeriod;
-  const keywordWindowStart=keywordPeriodKey==='custom'
-    ?keywordCustomStart:String(keywordPeriod?.start_date||'').slice(0,10);
-  const keywordWindowEnd=keywordPeriodKey==='custom'
-    ?keywordCustomEnd:String(keywordPeriod?.end_date||new Date().toISOString().slice(0,10)).slice(0,10);
-  const keywordWindowValid=/^\d{4}-\d{2}-\d{2}$/.test(keywordWindowStart)
-    &&/^\d{4}-\d{2}-\d{2}$/.test(keywordWindowEnd)
-    &&keywordWindowStart<=keywordWindowEnd;
-  const classificationWindowStart=keywordWindowStart;
-  const classificationWindowEnd=keywordWindowEnd;
-  // SQL reads only the bounding envelope. The selected period's exact
-  // intervals must still exclude every day of an unlinked gap.
-  const classificationPeriodRanges=keywordPeriodKey==='custom'||keywordPeriodKey==='all'||keywordPeriodKey==='year'
-    ?null:(Array.isArray(keywordPeriod?.ranges)?keywordPeriod.ranges:null);
-  const periodRangeSignature=JSON.stringify((classificationPeriodRanges||[]).map(range=>
-    [range.start_date,range.end_date,range.open_end,range.invalid]));
-  const classificationWindowValid=keywordWindowValid;
-  // An unfilled custom range is normal until dates are supplied.
-  const optionalTimeRangeUnfilled=!keywordWindowStart||!keywordWindowEnd;
-  const classificationPeriodLabel=keywordPeriodKey==='year'?DEFAULT_YEAR_WINDOW.label:
-    keywordPeriodKey==='custom'?l.customPeriod:
-    keywordPeriod?localizedLabelOf(keywordPeriod,0):l.timeTrace;
-  const requestedWindowStart=String(navigation.from||'').slice(0,10);
-  const requestedWindowEnd=String(navigation.to||'').slice(0,10);
-  const requestedPeriodUid=String(navigation.period||'').trim();
-  const appliedDateNavigationRef=useRef('');
-  useEffect(()=>{
-    if(!requestedWindowStart){
-      appliedDateNavigationRef.current='';
-      return;
-    }
-    if(isAggregateScope||!primaryPeriods.length)return;
-    const navigationKey=[scopeId,requestedWindowStart,requestedWindowEnd,requestedPeriodUid].join('|');
-    if(appliedDateNavigationRef.current===navigationKey)return;
-    const exactPeriod=requestedPeriodUid?primaryPeriods.find(item=>
-      String(item.uid||'')===requestedPeriodUid||periodKey(item)===requestedPeriodUid):null;
-    const matched=exactPeriod||primaryPeriods.find(item=>{
-      const start=String(item?.start_date||'').slice(0,10);
-      const end=String(item?.end_date||'9999-12-31').slice(0,10);
-      // Never select a disconnected time trace merely because the clicked
-      // date is inside its broad first-to-last bounding envelope.
-      if(Array.isArray(item?.ranges))return timePeriodContainsDate(item,requestedWindowStart);
-      return (!start||requestedWindowStart>=start)&&requestedWindowStart<=end;
-    });
-    if(matched){
-      appliedDateNavigationRef.current=navigationKey;
-      setSelectedPeriodKey(periodKey(matched));
-      setStructureWindowKey(periodKey(matched));
-      setKeywordEraKey(periodKey(matched));
-      setKeywordPeriodKey(periodKey(matched));
-    }
-  },[scopeId,isAggregateScope,requestedWindowStart,requestedWindowEnd,requestedPeriodUid,primaryPeriods]);
-
-  // One public LocAnchor ZModel read, shared in meaning with Statistics.
-  // The persisted Source hierarchy (attr.uid) replaces ArticleTag snapshots.
-  const sourceTaxonomyQuery=useAsyncResource({
-    queryKey:['loc-zmodel-source-taxonomy'],
-    enabled:!isTimeEditingView&&!isAggregateScope&&!isLocItemView
-      &&scopeId!=='local'&&Boolean(scopeData)&&usesSourceRiver,
-    queryFn:async()=>{
-      const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
-      return readPublicSourceTaxonomy();
-    },
-    revalidateOnFocus:false,revalidateOnReconnect:false
-  });
-  const sourceTaxonomy=sourceTaxonomyQuery.data;
-  const sourceStyleOptions=useMemo(()=>sourceOutlineOptions(sourceTaxonomy),[sourceTaxonomy]);
-  const sourceStyleGroups=useMemo(()=>groupedSourceOutline(sourceTaxonomy),[sourceTaxonomy]);
-  const stagedSourceRiver=Boolean(sourceTaxonomy)&&!isAggregateScope&&scopeId!=='local';
-  // The expanded items are saved loc_anchor UIDs; root family codes here
-  // are only an internal daily-aggregate query filter, never a UI level.
-  const expandedSourceRoots=(sourceTaxonomy?.roots||[])
-    .filter(row=>openCultureRoots.includes(row.uid)).map(row=>row.root);
-  // Retrieve one bounded daily aggregate per selected period. Reuse it when
-  // expanding a group, so a UI interaction never starts a second SQL job.
-  const sourceRootQuery=useAsyncResource({
-    queryKey:['culture-period-roots','v5-zmodel-anchors',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
-    enabled:!isTimeEditingView&&stagedSourceRiver&&usesSourceRiver&&!isLocItemView
-      &&Boolean(scopeData)&&classificationWindowValid,
-    queryFn:async()=>{
-      const {text}=await selectScopeDailyCounts(scopeData,{
-        startDate:classificationWindowStart,endDate:classificationWindowEnd,
-        includeUndated:true,requireAggregate:true
-      });
-      const inside=row=>!classificationPeriodRanges||timePeriodContainsDate(
-        {ranges:classificationPeriodRanges},String(row.day||''));
-      return buildCultureRiverRootPayload({
-        text:text.filter(inside)
-      },sourceTaxonomy);
-    },
-    revalidateOnFocus:false,revalidateOnReconnect:false
-  });
-  const expandedSourceRootsKey=expandedSourceRoots.join(',');
-  const requestedChildren=useMemo(()=>{
-    if(!stagedSourceRiver||!sourceRootQuery.data?.numericRows||!expandedSourceRoots.length)return [];
-    return selectCultureRiverChildren(sourceRootQuery.data.numericRows,sourceTaxonomy,expandedSourceRoots);
-  },[stagedSourceRiver,sourceRootQuery.data,sourceTaxonomy,expandedSourceRootsKey]);
-  const expandedSourceReady=Boolean(sourceRootQuery.data)&&expandedSourceRoots.length>0;
-  // In a published scope expanding a lane only transforms cached numeric rows.
-  const sourceSnapshotQuery=useAsyncResource({
-    queryKey:['culture-period-source-snapshot','v9-zmodel-source-only',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature,stagedSourceRiver?expandedSourceRootsKey:'all'],
-    enabled:!isTimeEditingView&&usesSourceRiver&&!isLocItemView&&!isAggregateScope&&Boolean(scopeData)&&classificationWindowValid
-      &&Boolean(sourceTaxonomy)&&(!stagedSourceRiver||expandedSourceReady),
-    queryFn:async()=>{
-      const {selectScopePeriodSourceSnapshot}=await import('../../loc/culture/query');
-      const range={
-        startDate:classificationWindowStart,endDate:classificationWindowEnd,
-        periodRanges:classificationPeriodRanges
-      };
-      return selectScopePeriodSourceSnapshot(scopeData,stagedSourceRiver
-        ?{...range,numericRows:requestedChildren}:range);
-    }
-  });
-  const keywordClassQuery=useAsyncResource({
-    queryKey:['scope-active-keyword-class-name',scopeId],
-    // Opening/focusing the style selector is the first reason to look up
-    // the active Class. Ordinary Time River viewing performs no keyword SQL.
-    enabled:!isTimeEditingView&&styleFilter==='rune66'&&!isAggregateScope&&!isLocItemView,
-    queryFn:async()=>{
-      const {selectAvailableKeywordClasses}=await import('../../loc/keywords/analysis');
-      return selectAvailableKeywordClasses(scopeId);
-    },
-  });
-  const availableKeywordClasses=keywordClassQuery.data?.classes||[];
-  const selectedKeywordClass=availableKeywordClasses.find(item=>item.classUid===selectedKeywordClassUid)
-    ||availableKeywordClasses.find(item=>item.classUid===keywordClassQuery.data?.currentClassUid)
-    ||availableKeywordClasses[0];
-  const resolvedKeywordClassUid=String(selectedKeywordClass?.classUid||'');
-  const keywordClassLabel=selectedKeywordClass?'é—œéµè©çµ„ï¼š'+selectedKeywordClass.name
-    :keywordClassQuery.isPending?'é—œéµè©çµ„ï¼ˆè®€å–ä¸­ï¼‰':'é—œéµè©çµ„ï¼ˆå°šæœªè¨­å®šï¼‰';
-  const styleQuery=useAsyncResource({
-    queryKey:['culture-style-filter','rune66',classificationScope,resolvedKeywordClassUid,keywordWindowStart,keywordWindowEnd],
-    queryFn:async()=>{
-      const {selectKeywordAnalysisSummary}=await import('../../loc/keywords/analysis');
-      return selectKeywordAnalysisSummary({scopeId,classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,endDate:keywordWindowEnd});
-    },
-    enabled:!isTimeEditingView&&!isAggregateScope&&styleFilter==='rune66'&&Boolean(resolvedKeywordClassUid)&&keywordWindowValid,
-  });
-  // The original source-classification river must not wait for (or disappear
-  // when) a separate keyword-density query runs.
-  const riverRangeLoading=classificationWindowValid&&(stagedSourceRiver
-    ?sourceRootQuery.isPending||sourceRootQuery.isFetching
-    :sourceSnapshotQuery.isPending||sourceSnapshotQuery.isFetching);
-  // Existing SQL summary covers the overview. Drill-down fetches only the
-  // requested source and/or class, without eagerly reading all Galaxy attrs.
-  // Expanding a Rune group reads only its catalog, not all Galaxy attributes.
-  const keywordDetailRequested=Boolean(keywordDrillSource);
-  const keywordDensityQuery=useAsyncResource({
-    queryKey:['culture-keyword-attributes',scopeId,resolvedKeywordClassUid,keywordWindowStart,keywordWindowEnd,keywordDrillSource,keywordDrillGroup],
-    enabled:!isTimeEditingView&&styleFilter==='rune66'&&keywordDetailRequested&&!isAggregateScope&&!isLocItemView
-      &&Boolean(scopeData)&&keywordWindowValid&&Boolean(styleQuery.data?.statisticsEnabled),
-    queryFn:async()=>{
-      const {keywordService}=await import('../../loc/keywords/service-client.mjs');
-      return keywordService('summary',{scopeId,
-        classUid:resolvedKeywordClassUid,startDate:keywordWindowStart,
-        endDate:keywordWindowEnd,source:keywordDrillSource
-      });
-    },
-  });
-  const keywordRiverPending=keywordDetailRequested?keywordDensityQuery.isPending:styleQuery.isPending;
-  const keywordRiverError=keywordDetailRequested?keywordDensityQuery.error:null;
-  useEffect(()=>{
-    setKeywordDrillSource('');
-    setKeywordDrillGroup('');
-  },[scopeId]);
-  const keywordGroupOptions=useMemo(()=>Object.entries(styleQuery.data?.keywordMeta?.classes||{})
-    .map(([id,name])=>({id,label:String(name||'').trim()}))
-    .filter(item=>item.label),
-  [styleQuery.data?.keywordMeta?.classes]);
-  // Fetch Group names/membership only after the user opens a specific Class.
-  // The initial Class-density river never downloads the Group catalog.
-  const keywordGroupCatalogQuery=useAsyncResource({
-    queryKey:['culture-keyword-group-catalog',scopeId,styleQuery.data?.keywordMeta?.class_uid||'',keywordDrillGroup],
-    enabled:!isTimeEditingView&&styleFilter==='rune66'&&Boolean(keywordDrillGroup)
-      &&Boolean(styleQuery.data?.keywordMeta?.class_uid)&&Boolean(scopeData?.keywords),
-    queryFn:async()=>{
-      const {keywordService}=await import('../../loc/keywords/service-client.mjs');
-      const {keywordClassCatalog}=await import('../../loc/keywords/tree.mjs');
-      const result=await keywordService('catalog',{scopeId,classUid:resolvedKeywordClassUid});
-      if(!result.class_uid)return [];
-      const {catalog}=keywordClassCatalog(result.rows,result.class_uid);
-      // The canonical UID Tree already supplies Group membership; no legacy
-      // Group/Item article-hit lists are needed to label the Culture river.
-      return catalog.filter(item=>item.group_uid===keywordDrillGroup)
-        .map((item,index)=>({uid:item.uid,name:item.item_name,order_no:index}));
-    },
-    revalidateOnFocus:false,
-    revalidateOnReconnect:false,
-    revalidateIfStale:false
-  });
-  const keywordDrillItems=useMemo(()=>{
-    if(keywordDetailRequested&&!keywordDensityQuery.data)return [];
-    // Expanding a group preserves the Class density; no guessed per-day Rune bars.
-    return keywordDrillRiverItems(keywordDetailRequested
-      ?keywordDensityQuery.data:styleQuery.data?.classifications,{
-      source:keywordDrillSource,groupId:keywordDetailRequested?keywordDrillGroup:'',
-      meta:styleQuery.data?.keywordMeta,groupItems:keywordGroupCatalogQuery.data||[]
-    });
-  },[keywordDetailRequested,keywordDensityQuery.data,styleQuery.data?.classifications,keywordDrillSource,keywordDrillGroup,styleQuery.data?.keywordMeta,keywordGroupCatalogQuery.data]);
-
-  const categoryGroups=sourceRootQuery.data?.groups||sourceSnapshotQuery.data?.groups||EMPTY_CULTURE_GROUPS;
-  const groupedSources=useMemo(()=>{
-    const catalog=sourceTaxonomy||{categories:[],aliases:[]};
-    const byCode=new Map(catalog.categories.map(row=>[row.category_code,row]));
-    const index=new Map();
-    for(const source of categoryGroups){
-      const raw=String(source.site||'');
-      const code=assignedSource(raw,catalog.aliases,catalog.categories);
-      const node=byCode.get(code);
-      const root=node?.root||'custom';
-      const label=node?.display_name||l.other;
-      const key=root+':'+code;
-      if(!index.has(key))index.set(key,{key,root,label,site:label,
-        sites:[],item_count:0});
-      const group=index.get(key);
-      group.item_count+=Number(source.item_count)||0;
-      group.sites.push(...(source.sites||[]));
-    }
-    return [...index.values()].map(group=>({
-      ...group,sites:[...new Set(group.sites)]
-    }));
-  },[categoryGroups,sourceTaxonomy,l.other]);
-  // Selecting a Domain uses the existing From descendant UID list; it does
-  // not require querying each From or joining article text in the browser.
-  const selectedGroup=useMemo(()=>{
-    const exact=groupedSources.find(item=>item.key===selectedRiverGroup);
-    if(exact)return exact;
-    const option=sourceStyleOptions.find(item=>item.key===selectedRiverGroup);
-    if(option){
-      const descendants=new Set((sourceTaxonomy?.tree||[])
-        .filter(node=>node.path.includes(option.code)).map(node=>node.uid));
-      const members=groupedSources.filter(group=>
-        descendants.has(group.key.slice(group.key.indexOf(':')+1)));
-      if(members.length)return {key:option.key,root:option.root,label:option.label,
-        site:option.label,sites:[...new Set(members.flatMap(item=>item.sites))],
-        item_count:members.reduce((n,item)=>n+item.item_count,0)};
-    }
-    return categoryGroups.find(item=>item.category_key===
-      (keywordDrillSource?'source:'+keywordDrillSource:selectedCategory))||null;
-  },[groupedSources,selectedRiverGroup,sourceStyleOptions,sourceTaxonomy,categoryGroups,
-    keywordDrillSource,selectedCategory]);
-  const effectiveCategoryKey=selectedGroup?.category_key||selectedGroup?.key||'';
-  // Density and Site expansion never load Galaxy IDs. The explicit
-  // "é¡¯ç¤ºæ–‡ç« åˆ—è¡¨" click is the sole entry to this bounded reader.
-  const periodWorksQuery=useAsyncInfiniteResource({
-    queryKey:['culture-article-list',classificationScope,classificationWindowStart,
-      classificationWindowEnd,effectiveCategoryKey||'',articleSort],
-    initialPageParam:null,
-    getNextPageParam:lastPage=>lastPage.hasMore?lastPage.nextCursor:undefined,
-    enabled:!isTimeEditingView&&worksOpen&&styleFilter==='none'
-      &&!isAggregateScope&&Boolean(scopeData)&&Boolean(selectedGroup)
-      &&classificationWindowValid,
-    queryFn:async({pageParam,signal})=>{
-      const {selectCultureArticleListPage}=await import('../../loc/culture/query');
-      return selectCultureArticleListPage(scopeData,{
-        startDate:classificationWindowStart,endDate:classificationWindowEnd,
-        site:selectedGroup?.site||'',sites:selectedGroup?.sites||[],
-        sortDirection:articleSort,offset:pageParam?.offset||0,signal
-      });
-    }
-  });
-  const periodWorksPages=periodWorksQuery.data?.pages||[];
-  const visibleWorkRows=useMemo(()=>{
-    const map=new Map();
-    periodWorksPages.forEach((page,pageIndex)=>(page.rows||[]).forEach((row,index)=>{
-      const key=String(row?.key||row?.uid||row?.entry_id||'')||(pageIndex+':'+index);
-      // OFFSET windows can overlap if new content arrives between requests.
-      // Keep the first rendered article stable instead of overwriting it
-      // with a later duplicate. The next page only appends unseen UIDs.
-      if(!map.has(key))map.set(key,row);
-    }));
-    return [...map.values()];
-  },[periodWorksPages]);
-  const periodWorksPage={
-    rows:visibleWorkRows,
-    totalCount:undefined,
-    loading:periodWorksQuery.isLoading||periodWorksQuery.isFetchingNextPage,
-    error:periodWorksQuery.error,
-    hasMore:Boolean(periodWorksQuery.hasNextPage),
-    loadNext:periodWorksQuery.fetchNextPage,
-    reload:periodWorksQuery.refetch
-  };
-  const selectedCount=Number(periodWorksPage.totalCount??selectedGroup?.item_count)||0;
-
-  useEffect(()=>{
-    setSelectedCategory('');
-    setWorksOpen(false);
-  },[scopeId]);
-
-  useEffect(()=>{
-    setSelectedCategory('');
-    setWorksOpen(false);
-    setFullTextKey('');
-    setFullText('');
-    setFullTextError('');
-    if(workScrollRef.current)workScrollRef.current.scrollTop=0;
-  },[classificationWindowStart,classificationWindowEnd]);
-
-  useEffect(()=>{
-    setFullTextKey('');
-    setFullText('');
-    setFullTextError('');
-    if(workScrollRef.current)workScrollRef.current.scrollTop=0;
-  },[selectedCategory,selectedRiverGroup]);
-
-
-  const timelineItems=useMemo(()=>
-    (query.data?.timelineItems||[]).filter(item=>isAggregateScope||item.scope_id===scopeId)
-  ,[query.data,scopeId]);
-  // Keep the time traces in their saved chronological order. The first view
-  // shows every trace, not only the last-selected trace at the top.
-  const activeStructureKey=structureWindowKey==='all'||!structureWindowKey?'all'
-    :primaryPeriods.some(item=>periodKey(item)===structureWindowKey)
-      ?structureWindowKey:'all';
-  const eraRiver=useMemo(()=>{
-    const classified=buildEraRiver(timelineItems,expandedEraIds,{scopeId});
-    return classified;
-  },[timelineItems,expandedEraIds,scopeId]);
-  const editorEraRiver=useMemo(()=>
-    buildEraRiver(timelineItems,expandedEditorEraIds,{editorOnly:true,scopeId}),
-    [timelineItems,expandedEditorEraIds,scopeId]);
-  // Keep one active Era -> Period -> Date drill-down at a time.
-  // The initial display is always a chronological Era-only list.
-  const toggleEditorEra=groupId=>setExpandedEditorEraIds(current=>
-    nextEditorEraExpansion(current,groupId));
-  const toggleTimeTrace=groupId=>{
-    const open=!expandedEraIds.includes(groupId);
-    setExpandedEraIds(current=>
-      current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
-    if(open&&groupId.startsWith('trace:')){
-      const trace=primaryPeriods.find(period=>
-        'trace:'+String(period.scope_id||scopeId)+':'+periodKey(period)===groupId);
-      if(trace)setStructureWindowKey(periodKey(trace));
-    }
-  };
-  const currentStructurePeriod=primaryPeriods.find(item=>periodKey(item)===activeStructureKey)||null;
-  // The "all eras" camera includes actual saved history, not just the
-  // latest year, so valid older time ranges cannot render off-screen.
-  const structureDateBounds=useMemo(()=>{
-    const dates=timelineItems.flatMap(item=>[item?.start_date,item?.end_date])
-      .map(value=>String(value||'').slice(0,10))
-      .filter(value=>/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(value)).sort();
-    const start=dates[0]||DEFAULT_YEAR_WINDOW.startDate;
-    const last=dates.at(-1)||DEFAULT_YEAR_WINDOW.endDate;
-    return {start,end:last>start?last:nextRiverDay(start)};
-  },[timelineItems]);
-  // Management displays the same complete historical Time graph as Culture;
-  // the current calendar year is not a filter or the initial editor camera.
-  const editorRiverWindow=structureDateBounds;
-  const currentStructureStart=activeStructureKey==='all'?structureDateBounds.start
-    :String(currentStructurePeriod?.start_date||'').slice(0,10);
-  // A trace stops at its final real anchor; no virtual today endpoint.
-  const lastAnchorDate=String(structurePreference.lastAnchor?.start_date||'').slice(0,10);
-  const savedTraceEnd=String(currentStructurePeriod?.end_date||'').slice(0,10);
-  const currentStructureEnd=activeStructureKey==='all'?structureDateBounds.end
-    :structureWindowKey===''&&lastAnchorDate>savedTraceEnd?lastAnchorDate:savedTraceEnd;
-  // Keep the first river grouped by era UID. A selected trace changes
-  // only the camera viewport, never the saved anchor/event/trace graph.
-  const anchorRecords=useMemo(()=>timelineItems
-    .filter(item=>item.entry_type==='anchor'&&item.uid)
-    .sort((a,b)=>String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.display_label||'').localeCompare(String(b.display_label||''))),[timelineItems]);
-  const locScopeIntervalItems=useMemo(()=>query.data?.scopeTimeRanges||[],[query.data]);
-  // The LOC landing preview reads only per-Scope aggregates below.
-  // Do not also construct the retired combined-source display arrays.
-  const locSourceRiverItems=useMemo(()=>scopeId!=='loc'&&locDensityOpen?locDensityQuery.data?.sourceRiverItems||[]:[],[scopeId,locDensityQuery.data,locDensityOpen]);
-  const locSourceGroups=useMemo(()=>scopeId!=='loc'&&locDensityOpen?locDensityQuery.data?.sourceGroups||[]:[],[scopeId,locDensityQuery.data,locDensityOpen]);
-  const locCombinedSourceTotal=useMemo(()=>locSourceGroups.reduce((sum,item)=>sum+Number(item?.item_count||0),0),[locSourceGroups]);
-  const locSourceGroupLabel=useMemo(()=>{
-    const labels=new Map();
-    for(const group of locSourceGroups){
-      const count=Number(group?.item_count)||0;
-      const ratio=locCombinedSourceTotal>0?(count/locCombinedSourceTotal)*100:0;
-      labels.set(String(group?.site||group?.display_label||''),String(group?.display_label||group?.site||'')+' '+formatCultureUi(l.sourceGroupCount,{count:count.toLocaleString(locale),ratio:ratio.toFixed(1)}));
-    }
-    return labels;
-  },[locSourceGroups,locCombinedSourceTotal,l,locale]);
-  // LOC is a read-only annual preview. The first lane is always a Scope;
-  // its child source categories are revealed from the same numeric query.
-  const locMid=locDensityQuery.isPending&&!locDensityQuery.error&&locDensityCheckpoint?.key===locDensityKey
-    ?locDensityCheckpoint.data:null;
-  const locScopePreview=useMemo(()=>buildLocCultureScopePreview({
-    scopes:query.data?.scopes||[],
-    scopeRanges:locDensityQuery.data?.scopeRanges||locMid?.scopeRanges||[],
-    completedScopeIds:locDensityQuery.data?null:locMid?.completedScopeIds||[],
-    sourceScopeGroups:locDensityQuery.data?.sourceScopeGroups||[],
-    sourceScopeRiverItems:locDensityQuery.data?.sourceScopeRiverItems||[],
-    expandedScopeIds:expandedLocScopes
-  }),[query.data?.scopes,locDensityQuery.data,expandedLocScopes,locMid]);
-  const toggleLocScopeGroup=id=>{
-    const prefix='loc-preview:';
-    if(!String(id).startsWith(prefix))return;
-    const scope=String(id).slice(prefix.length);
-    if(!locScopePreview.scopeIds.includes(scope))return;
-    setExpandedLocScopes(current=>current.includes(scope)
-      ?current.filter(value=>value!==scope):[...current,scope]);
-  };
-  const locCombinedSourceRiverItems=useMemo(()=>locSourceRiverItems.map(item=>({
-    ...item,
-    end_date:nextRiverDay(item?.start_date),
-    group_label:locSourceGroupLabel.get(String(item?.category||item?.group_label||''))||String(item?.group_label||'')
-  })),[locSourceRiverItems,locSourceGroupLabel]);
-  const locScopeDistributionItems=useMemo(()=>scopeId!=='loc'&&locDensityOpen?locDensityQuery.data?.scopeRanges||[]:[],[scopeId,locDensityQuery.data,locDensityOpen]);
-  const locIntersectionScopeIds=useMemo(()=>query.data?.intersectionScopeIds||[],[query.data]);
-  const locIntersectionStart=String(query.data?.intersectionStart||'');
-  const locIntersectionEnd=String(query.data?.intersectionEnd||'');
-  const locDistributionStart=locScopeIntervalItems.map(item=>String(item?.start_date||''))
-    .filter(Boolean).sort()[0]||locIntersectionStart;
-  const locDistributionEnd=locScopeIntervalItems.map(item=>String(item?.end_date||item?.start_date||''))
-    .filter(Boolean).sort().at(-1)||locIntersectionEnd||new Date().toISOString().slice(0,10);
-  const locScopeRiverItems=useMemo(()=>{
-    const perScopeMax=new Map();
-    let globalMax=0;
-    for(const item of locScopeDistributionItems){
-      const scope=String(item?.scope_id||'').trim();
-      const count=Number(item?.item_count)||0;
-      if(!scope)continue;
-      perScopeMax.set(scope,Math.max(perScopeMax.get(scope)||0,count));
-      globalMax=Math.max(globalMax,count);
-    }
-    const rows=locScopeDistributionItems.map((item,index)=>{
-      const scope=String(item?.scope_id||'').trim();
-      const day=String(item?.start_date||'').slice(0,10);
-      const count=Number(item?.item_count)||0;
-      return {
-        ...item,
-        id:item?.id||('loc-scope:'+scope+':'+day+':'+index),
-        entry_id:item?.entry_id||('loc-scope:'+scope+':'+day+':'+index),
-        entry_type:'scope_density',
-        group_label:scope,
-        category:scope,
-        display_label:'',
-        title:formatCultureUi(l.scopeDensityTitle,{date:day,scope,count:count.toLocaleString(locale)}),
-        end_date:nextRiverDay(day),
-        density_ratio:count/Math.max(1,perScopeMax.get(scope)||1),
-        global_density_ratio:count/Math.max(1,globalMax)
-      };
-    }).filter(item=>item.group_label&&item.start_date);
-    const represented=new Set(rows.map(item=>String(item.group_label||'')));
-    for(const scopeId of locIntersectionScopeIds){
-      const scope=String(scopeId||'').trim();
-      if(!scope||represented.has(scope)||!locDistributionStart)continue;
-      rows.push({
-        id:'loc-scope-empty:'+scope,
-        entry_id:'loc-scope-empty:'+scope,
-        entry_type:'scope_density',
-        scope_id:scope,
-        group_label:scope,
-        category:scope,
-        display_label:'',
-        title:formatCultureUi(l.scopeDensityTitle,{date:locDistributionStart,scope,count:'0'}),
-        start_date:locDistributionStart,
-        end_date:nextRiverDay(locDistributionStart),
-        item_count:0,
-        density_ratio:0,
-        global_density_ratio:0
-      });
-    }
-    return rows;
-  },[locScopeDistributionItems,locIntersectionScopeIds,locDistributionStart,l,locale]);
-  // An empty Time/Galaxy/Media database is a legitimate new Scope. Keep the
-  // controls and empty-state river, not an absent Culture screen.
-  const hasTimelineSurface=isAggregateScope?Boolean(locScopeIntervalItems.length||locSourceRiverItems.length||query.data?.scopes?.length):Boolean(query.data);
-
-  function switchTimelineEditor(target,apply){
-    // Reuse the edit dock's Save / Discard / Cancel safeguard when the
-    // current inline form has unsaved changes. No navigation is involved.
-    if(editDock?.active&&editDock.scopeId===scopeId){
-      editDock.switchSection('time-record:'+target,apply);
-    }else apply();
-  }
-
-  function beginTimelineCreation(type,date){
-    switchTimelineEditor('new-'+type,()=>{
-      // Creation must work even for periods without an exact Gregorian start day.
-      const creationDate=/^\d{4}-\d{2}-\d{2}$/.test(String(date||''))?String(date):new Date().toISOString().slice(0,10);
-      setSelectedTimelineRecordId('');
-      setSelectedTimelineInfo(null);
-      setSuggestedRecordType(type);
-      setSelectedTimelineDate(type==='anchor'?creationDate:'');
-      setSuggestedRequestNonce(value=>value+1);
-      setTimelineEditorRevision(value=>value+1);
-    });
-  }
-
-  function beginTimelineRecordEdit(item,recordId){
-    const id=String(recordId||item?.recordId||'').trim();
-    if(!id)return;
-    switchTimelineEditor('edit-'+id,()=>{
-      const recordType=String(item?.entryType||item?.raw?.entry_type||'');
-      if(['anchor','period','era'].includes(recordType))setSuggestedRecordType(recordType);
-      setSelectedTimelineInfo(item||null);
-      setSelectedTimelineRecordId(id);
-      setSelectedTimelineDate('');
-      setSuggestedRequestNonce(0);
-      setTimelineEditorRevision(value=>value+1);
-    });
-  }
-
-  async function refreshCultureSourceSummary(){
-    await Promise.all([
-      // Active keys use v4-staged-numeric / v8-reused-numeric and include
-      // date windows. Invalidate by prefix, not retired exact versions.
-      resourceCache.invalidate({queryKey:['culture-period-roots']}),
-      resourceCache.invalidate({queryKey:['culture-period-source-snapshot']})
-    ]);
-  }
-  async function refreshTimelineData(){
-    // Time edits refresh direct database reads and shared client-query keys.
-    if(scopeId!=='local')await revalidateServerMetadata();
-    await Promise.all([
-      resourceCache.invalidate({queryKey:['culture-timeline',scopeId]}),
-      resourceCache.invalidate({queryKey:['culture-period-settings',scopeId]}),
-      resourceCache.invalidate({queryKey:['search-style-keyword']}),
-      refreshCultureSourceSummary()
-    ]);
-  }
-  async function moveTimelineRecord(item,row){
-    // Dates on Time periods/events are derived exclusively from existing
-    // anchor_ids. Only a real anchor point can be moved on the river.
-    if(row?.entryType!=='anchor'||!row.recordId||!scopeData?.time)return null;
-    try{
-      // Scope permissions are enforced by the database write RPC.
-      const date=dayKeyFromTimelineValue(item?.start);
-      if(!date)throw new Error(l.invalidAnchorDate);
-      await updateRows(scopeData.time,{address:date},{filters:[{column:'uid',operator:'eq',value:row.recordId}]});
-      await refreshTimelineData();
-      setEditError('');
-      return {...item,start:date};
-    }catch(error){
-      setEditError(error?.message||l.moveAnchorFailed);
-      return null;
-    }
-  }
-  async function removeTimelineRecord(item,row){
-    if(!row?.recordId||!scopeData?.time)return null;
-    try{
-      // Scope permissions are enforced by the database write RPC.
-      await deleteRows(scopeData.time,{filters:[{column:'uid',operator:'eq',value:row.recordId}]});
-      setSelectedTimelineRecordId('');
-      setSelectedTimelineDate('');
-      setEditError('');
-      await refreshTimelineData();
-      return item;
-    }catch(error){
-      setEditError(error?.message||l.deleteFailed);
-      return null;
-    }
-  }
-
-  // The source selector drives the SECOND river, whether or not a keyword
-  // style is active. LOC aggregate's own source river is separate.
-  const classificationBuckets=useMemo(()=>(
-    sourceSnapshotQuery.data?.buckets||[]
-  ).filter(item=>!keywordDrillSource||String(item.category||'')===keywordDrillSource),
-  [sourceSnapshotQuery.data,keywordDrillSource]);
-  const secondRiverBuckets=classificationBuckets; // Daily river; no stored personal unit.
-  // Anchor-suggestion density analysis only has data once a lane is expanded
-  // (secondRiverBuckets is empty until then): suggestions are never computed
-  // just from opening the Culture page.
-  const densityInputBuckets=classificationBuckets;
-  // Close the panel again whenever the underlying daily data changes (a
-  // different lane expanded, the period changed) so a stale, already-open
-  // panel doesn't silently keep showing suggestions for the old data.
-  useEffect(()=>{setAnchorSuggestOpen(false)},[densityInputBuckets]);
-
-  const existingAnchorDates=useMemo(()=>
-    timelineItems
-      .filter(item=>String(item?.entry_type||'')==='anchor')
-      .map(item=>String(item?.start_date||item?.date||'').slice(0,10))
-      .filter(Boolean)
-  ,[timelineItems]);
-  // Render the selected period immediately. Multi-year PELT executes in a
-  // worker, so change-point suggestions cannot freeze the Time River.
-  const riverAnalysis=useRiverDensityAnalysis(densityInputBuckets,existingAnchorDates,
-    anchorSuggestOpen&&!isAggregateScope&&!isLocItemView&&usesSourceRiver&&Boolean(densityInputBuckets.length));
-  const styleRiverAnalysis=useRiverDensityAnalysis(keywordDrillItems,existingAnchorDates,
-    anchorSuggestOpen&&styleFilter==='rune66'&&Boolean(keywordDrillItems.length));
-  // LOC's single source river has no automatic anchor suggestion/PELT worker.
-  const locRiverAnalysis=useRiverDensityAnalysis(locCombinedSourceRiverItems,EMPTY_CULTURE_GROUPS,false);
-  const virtualAnchorItems=useMemo(()=>{
-    const total=Math.max(1,Number(riverAnalysis.totalCount)||0);
-    return riverAnalysis.suggestions.map(item=>{
-      const selected=selectedVirtualAnchorDates.includes(item.date);
-      const beforeCount=Number(item.beforeCount||0);
-      const afterCount=Number(item.afterCount||0);
-      const strength=Math.min(1,Math.abs(Number(item.afterMean||0)-Number(item.beforeMean||0))/Math.max(1,Number(item.afterMean||0),Number(item.beforeMean||0)));
-      const position=periodPositionRatio(item.date,classificationWindowStart,classificationWindowEnd);
-      return {
-        id:'virtual-anchor:'+item.date,
-        entry_id:'virtual-anchor:'+item.date,
-        entry_type:'virtual_anchor',
-        start_date:item.date,
-        title:formatCultureUi(l.candidateTitle,{date:item.date,position:(position*100).toFixed(1),before:beforeCount.toLocaleString(locale),beforeRatio:((beforeCount/total)*100).toFixed(1),after:afterCount.toLocaleString(locale),afterRatio:((afterCount/total)*100).toFixed(1),analysis:(item.analysis||[]).join(' ')}),
-        display_label:'â—‡',
-        group_label:l.candidateAnchor,
-        item_count:0,
-        className:'scope-virtual-anchor'+(selected?' is-selected':''),
-        style:'--virtual-anchor-strength:'+strength+';',
-        virtual_anchor:{...item,position_ratio:position,before_ratio:beforeCount/total,after_ratio:afterCount/total,strength_ratio:strength}
-      };
-    });
-  },[riverAnalysis.suggestions,riverAnalysis.totalCount,selectedVirtualAnchorDates,classificationWindowStart,classificationWindowEnd,l,locale]);
-  // The source river renders the *actual* four-level loc_anchor UID tree.
-  // A single child still occupies its own row; no Universe/Galaxy/Domain/From
-  // level is silently flattened into a site name.
-  const showKeywordRiver=styleFilter==='rune66';
-  const cultureRiver=useMemo(()=>{
-    const hierarchy=buildCultureSourceTreeLanes(
-      sourceTaxonomy,groupedSources,openCultureRoots);
-    const {days,maximum}=rollupCultureSourceDays(
-      secondRiverBuckets,groupedSources,sourceTaxonomy);
-    const periodTotal=hierarchy.total||1;
-    const numberedLabel=(label,count)=>label+'ï¼ˆ'+count.toLocaleString(locale)+'ï¼‰';
-    const dayRow=(id,day,count,label,order,max,kind,sourceKey)=>({
-      id:'dual:'+id+':'+day,entry_id:'dual:'+id+':'+day,
-      entry_type:kind,group_key:'dual:'+id,group_label:label,group_order:order,
-      start_date:day,end_date:nextRiverDay(day),item_count:count,
-      density_ratio:count/Math.max(1,max),display_label:'',
-      source_group_code:sourceKey,
-      title:day+' Â· '+label+' Â· '+count.toLocaleString(locale)
-    });
-    const flatRow=(id,count,label,order,kind,sourceKey)=>({
-      id:'dual:'+id+':flat',entry_id:'dual:'+id+':flat',
-      entry_type:kind,group_key:'dual:'+id,group_label:label,group_order:order,
-      start_date:classificationWindowStart,end_date:nextRiverDay(classificationWindowEnd),
-      item_count:count,density_ratio:count/periodTotal,display_label:'',
-      source_group_code:sourceKey,
-      title:label+' Â· '+count.toLocaleString(locale)+' / '+periodTotal.toLocaleString(locale)
-    });
-    const items=[],groups=[];
-    const activeRoots=new Set(hierarchy.visible
-      .filter(node=>node.level===0&&node.item_count>0)
-      .map(node=>node.uid||'unassigned'));
-    for(const [index,node] of hierarchy.visible.entries()){
-      const id='source:'+(node.uid||'unassigned');
-      const order=index+1;
-      const label=numberedLabel(node.label,node.item_count);
-      const kind=node.level>0&&node.selectable?'source_group':'source_total';
-      groups.push({
-        id:'dual:'+id,label,order,depth:node.level,
-        className:node.level===0?'scope-dual-river-root':'scope-dual-river-child',
-        collapsible:node.collapsible,selectable:node.selectable,
-        sourceKey:node.sourceKey,expanded:node.expanded
-      });
-      // The primary row is a window-total (never an extra SQL query).
-      // After expanding a Universe, reuse its already-loaded daily buckets
-      // on individual source children, keeping parent UID rows intact.
-      let dayCount=0;
-      if(node.level>0&&sourceSnapshotQuery.data&&node.item_count>0){
-        for(const [key,count] of days){
-          const [uid,day]=key.split('\u0000');
-          if(uid!==node.uid||count<=0)continue;
-          dayCount++;
-          items.push(dayRow(id,day,count,node.label,order,
-            maximum.get(uid),kind,node.sourceKey));
-        }
-      }
-      if(dayCount===0)items.push(flatRow(id,node.item_count,node.label,
-        order,kind,node.sourceKey));
-    }
-    // "å»ºè­°å®šéŒ¨é»" is a permanent lane/track, exactly like the source-category
-    // lanes above -- it must stay on the chart whenever there is underlying
-    // daily data to potentially analyze, even before anyone has clicked it.
-    // Only its *content* (the computed candidate markers) is deferred: the
-    // lane itself is just collapsible like any other lane, and clicking it
-    // (via onGroupToggle) is what sets anchorSuggestOpen and starts the
-    // PELT worker -- never pushing/popping the lane's existence itself.
-    // Visible whenever the second river itself has any lanes at all --
-    // exactly the same condition the source-category lanes above use
-    // (activeRoots.size>0) -- never tied to a specific lane having been
-    // expanded. Expanding a category is what actually produces daily
-    // buckets to analyze; the lane's existence does not wait for that.
-    if(usesSourceRiver&&activeRoots.size>0){
-      // Opened but nothing computed yet -- show a "loading" label on the
-      // lane itself, except when there is nothing to analyze yet because no
-      // category has been expanded (no daily data exists at all), where we
-      // say so instead of implying a computation is silently running.
-      const anchorLaneWaitingForExpansion=anchorSuggestOpen&&!virtualAnchorItems.length&&!densityInputBuckets.length;
-      const anchorLaneLoading=anchorSuggestOpen&&!virtualAnchorItems.length&&densityInputBuckets.length>0;
-      groups.push({id:'dual:source:candidates',
-        label:anchorLaneLoading?l.candidateLaneLoading:anchorLaneWaitingForExpansion?l.candidateLaneNeedsExpansion:l.candidateLane,
-        order:900,className:'scope-candidate-lane',collapsible:true,expanded:anchorSuggestOpen});
-      if(virtualAnchorItems.length)
-        items.push(...virtualAnchorItems.map(item=>({...item,group_key:'dual:source:candidates',group_label:l.candidateLane,group_order:900})));
-    }
-    if(showKeywordRiver){
-      items.push(...keywordDrillItems.map((item,index)=>({
-        ...item,id:'dual:'+String(item.id),
-        group_key:'dual:keyword:'+String(item.drill_key||item.group_label||index),
-        group_label:String(item.group_label||''),group_order:1000+(Number(item.group_order)||index)
-      })));
-      const keywordCounts=new Map();
-      for(const item of keywordDrillItems){
-        const key=String(item.drill_key||'');
-        if(key)keywordCounts.set(key,(keywordCounts.get(key)||0)+(Number(item.item_count)||0));
-      }
-      for(const group of keywordGroupOptions){
-        const count=keywordCounts.get(String(group.id))||0;
-        if(count<=0)continue;
-        groups.push({
-          id:'dual:keyword:'+group.id,label:group.label+'ï¼ˆ'+count.toLocaleString(locale)+'ï¼‰',
-          order:1000+Number(group.id)*100,className:'scope-dual-river-root',
-          collapsible:true,expanded:keywordDrillGroup===group.id
-        });
-      }
-    }
-    return {items,groups,hasSourceData:activeRoots.size>0};
-  },[sourceTaxonomy,groupedSources,secondRiverBuckets,openCultureRoots,sourceSnapshotQuery.data,virtualAnchorItems,showKeywordRiver,keywordDrillItems,keywordGroupOptions,l,locale,classificationWindowStart,classificationWindowEnd,styleFilter,densityInputBuckets,anchorSuggestOpen]);
-  const focusedCandidate=riverAnalysis.suggestions.find(item=>item.date===focusedAnchorDate);
-  const anchorInsight=focusedCandidate?{
-    date:focusedCandidate.date,before:Number(focusedCandidate.beforeCount)||0,
-    after:Number(focusedCandidate.afterCount)||0,reason:(focusedCandidate.analysis||[]).join(' ')
-  }:null;
-  useEffect(()=>{
-    setSelectedVirtualAnchorDates(current=>current.filter(date=>riverAnalysis.suggestions.some(item=>item.date===date)));
-    setFocusedAnchorDate(current=>riverAnalysis.suggestions.some(item=>item.date===current)?current:'');
-  },[scopeId,classificationWindowStart,classificationWindowEnd,riverAnalysis.suggestions]);
-
-  const toggleCultureRiverGroup=id=>{
-    if(id==='dual:source:candidates'){
-      setAnchorSuggestOpen(current=>!current);
-      return;
-    }
-    if(id.startsWith('dual:keyword:')){
-      const groupId=id.slice('dual:keyword:'.length);
-      if(keywordGroupOptions.some(group=>group.id===groupId))
-        setKeywordDrillGroup(current=>current===groupId?'':groupId);
-      return;
-    }
-    if(!id.startsWith('dual:source:'))return;
-    const uid=id.slice('dual:source:'.length);
-    // Only a saved SiteAnchor UID with actual children can be expanded.
-    if(!(sourceTaxonomy?.tree||[]).some(node=>node.uid===uid))return;
-    setOpenCultureRoots(current=>current.includes(uid)
-      ?current.filter(value=>value!==uid):[...current,uid]);
-  };
-  const selectCultureRiverGroup=id=>{
-    const key=cultureRiver.groups.find(group=>group.id===id)?.sourceKey
-      ||id.replace('dual:child:','');
-    setSelectedRiverGroup(current=>current===key?'':key);
-    setSelectedCategory('');
-    setWorksOpen(true);
-  };
-  const toggleVirtualAnchor=date=>{
-    setSelectedVirtualAnchorDates(current=>current.includes(date)?current.filter(item=>item!==date):[...current,date].sort());
-  };
-
-  async function createSelectedSuggestedAnchors(){
-    if(!canUseScopeEditor||creatingSuggestedAnchors||!scopeData?.time)return;
-    const suggestedDates=new Set(riverAnalysis.suggestions.map(item=>item.date));
-    const existingDates=new Set(existingAnchorDates);
-    const dates=[...new Set(selectedVirtualAnchorDates)]
-      .filter(date=>/^\d{4}-\d{2}-\d{2}$/.test(date)&&suggestedDates.has(date)&&!existingDates.has(date));
-    if(!dates.length){setEditError('ç›®å‰æ²’æœ‰å¯æ–°å¢çš„å»ºè­°å®šéŒ¨é»ã€‚');return;}
-    setCreatingSuggestedAnchors(true);setEditError('');
-    try{
-      // Only this explicitly requested bulk write needs the extra foreground
-      // authorization check. The database RPC remains the final guard.
-      const verified=await account.refresh();
-      if(!verified?.authorizer?.canLocAccessSync('scope',scopeId))throw new Error('è«‹å…ˆç™»å…¥å…·å‚™æ­¤ Scope æ¬Šé™çš„å¸³è™Ÿã€‚');
-      const used=new Set((query.data?.timelineItems||[]).filter(row=>row?.entry_type==='anchor').map(row=>String(row.uid||'')));
-      const payload=dates.map(date=>{
-        const uid=allocateTimeUid([...used].map(uid=>({uid})));
-        used.add(uid);
-        return {uid,type:'anchor',title:'å»ºè­°å®šéŒ¨ '+date,description:null,address:date,anchor_ids:null};
-      });
-      await insertRows(scopeData.time,payload);
-      setSelectedVirtualAnchorDates([]);
-      await refreshTimelineData();
-    }catch(error){setEditError(String(error?.message||error));}
-    finally{setCreatingSuggestedAnchors(false);}
-  }
-
-  async function startEditingWork(work){
-    if(!adminListRequested)return;
-    const uid=String(work?.uid||'').trim();
-    if(!uid)return;
-    const key=String(work?.key||('galaxy:'+uid));
-    setEditingWorkKey(key);setEditDraft(null);setAuthorizedWorkKey('');setEditError('');
-    try{
-      // Editing is offered to every reader, but only an authorized Scope
-      // editor may load an editable draft after clicking the button.
-      const verified=await account.refresh();
-      if(!verified?.authorizer?.canLocAccessSync('scope',scopeId))throw new Error('è«‹å…ˆç™»å…¥å…·æœ‰æ­¤ Scope ç·¨è¼¯æ¬Šé™çš„å¸³è™Ÿã€‚');
-      setAuthorizedWorkKey(key);
-      if(!scopeData)throw new Error(l.sourceUnresolved);
-      // The editor uses the fixed GalaxyUidRead action, which verifies the
-      // Scope grant on the server and selects only this article UID.
-      const {rows=[]}=await readGalaxyRecords({
-        scope:scopeId,view:'detail',uids:[uid]
-      },{editor:true});
-      const row=rows[0];
-      if(!row)throw new Error(l.workNotFound);
-      const {plainTextToBlocks}=await import('../../loc/editor/blocknote-content.mjs');
-      setEditDraft({
-        title:String(row.title||work.title||''),
-        body:String(row.content||''),
-        bodyHtml:String(row.content||''),
-        bodyBlocks:plainTextToBlocks(String(row.content||'')),
-        editorKey:uid,
-        hidden:row.list===false,
-        originalHidden:row.list===false,
-        originalSearch:row.search!==false
-      });
-    }catch(exception){
-      setEditingWorkKey('');setAuthorizedWorkKey('');
-      const message=String(exception?.message||exception||l.editReadFailed);
-      setEditError(message);setFullTextError(message);
-    }
-  }
-
-  async function saveEditingWork(work){
-    const uid=String(work?.uid||'').trim();
-    if(!adminListRequested||authorizedWorkKey!==String(work?.key||('galaxy:'+uid)))return;
-    if(!uid||!editDraft)return;
-    setEditBusy(true);setEditError('');
-    try{
-      if(!scopeData)throw new Error(l.sourceUnresolved);
-      const {blocksToPlainText}=await import('../../loc/editor/blocknote-content.mjs');
-      const content=await requireGalaxyContent(editDraft.bodyHtml??blocksToPlainText(editDraft.bodyBlocks));
-      const plainBody=blocksToPlainText(editDraft.bodyHtml??editDraft.bodyBlocks);
-      await updateRows(scopeData.galaxy,{
-        title:resolveGalaxyTitle(editDraft.title,plainBody),
-        content,
-        ...(editDraft.hidden===editDraft.originalHidden?{}:{list:editDraft.hidden!==true,search:editDraft.hidden!==true}),
-        UpdateTime:new Date().toISOString()
-      },{filters:[{column:'uid',operator:'eq',value:uid}]});
-      const key=String(work?.key||('galaxy:'+uid));
-      if(fullTextKey===key)setFullText(content);
-      setEditingWorkKey('');setAuthorizedWorkKey('');setEditDraft(null);
-      await refreshCultureSourceSummary();
-      periodWorksPage.reload();
-    }catch(exception){
-      setEditError(String(exception?.message||exception||l.saveFailed));
-    }finally{
-      setEditBusy(false);
-    }
-  }
-
-  async function deleteEditingWork(work){
-    const uid=String(work?.uid||'').trim();
-    if(!adminListRequested||authorizedWorkKey!==String(work?.key||('galaxy:'+uid)))return;
-    if(!uid)return;
-    setEditBusy(true);setEditError('');
-    try{
-      if(!scopeData)throw new Error(l.sourceUnresolved);
-      await deleteRows(scopeData.galaxy,{filters:[{column:'uid',operator:'eq',value:uid}]});
-      const key=String(work?.key||('galaxy:'+uid));
-      if(fullTextKey===key){setFullTextKey('');setFullText('');}
-      setEditingWorkKey('');setAuthorizedWorkKey('');setEditDraft(null);
-      await refreshCultureSourceSummary();
-      periodWorksPage.reload();
-    }catch(exception){
-      setEditError(String(exception?.message||exception||l.deleteFailed));
-    }finally{setEditBusy(false)}
-  }
-
-  async function toggleWorkContent(work){
-    const uid=String(work?.uid||'').trim();
-    if(!uid)return;
-    const key=String(work?.key||('galaxy:'+uid));
-    if(fullTextKey===key){
-      setFullTextKey('');
-      setFullText('');
-      setFullTextError('');
-      return;
-    }
-    setFullTextKey(key);
-    setFullText('');
-    setFullTextError('');
-    setFullDetail(null);
-    setFullTextLoading(true);
-    try{
-      if(!scopeData)throw new Error(l.sourceUnresolved);
-      const row=await selectGalaxyIdentity(scopeData,uid);
-      if(!row)throw new Error(l.workNotFound);
-      setFullText(workDisplayText(row.content||''));
-      setFullDetail(row);
-    }catch(exception){
-      setFullTextError(String(exception?.message||exception||l.fullTextFailed));
-    }finally{
-      setFullTextLoading(false);
-    }
-  }
-
-  // The dedicated management entry is already in edit mode. Only its selected
-  // record kind appears on the right, with the same native zoom/pan controls.
-  if(isTimeEditingView){
-    const editorAvailable=Boolean(scopeId&&scopeId!=='loc');
-    const permissionPending=account.loading||account.permissionLoading;
-    const editorAuthorized=Boolean(account.user&&account.canLocAccessSync('scope',scopeId));
-    return <FeaturePage featureId="culture">
-      <ManagementWorkspaceFrame level="scope" title="æ™‚é–“å®šéŒ¨ç®¡ç†">
-        <section className="management-workspace-panel scope-time-edit-root">
-        {!editorAvailable?<p className='scope-status'>æ­¤å€æ²’æœ‰å€‹åˆ¥ Scope çš„æ™‚é–“ç·¨è¼¯è³‡æ–™ã€‚</p>:null}
-        {editorAvailable&&permissionPending?<CultureTimeLoading label='æ­£åœ¨ç¢ºèªæ­¤ Scope çš„ç·¨è¼¯æ¬Šé™â€¦'/>:null}
-        {editorAvailable&&!permissionPending&&!editorAuthorized?<p className='scope-status scope-error' role='alert'>
-          {account.error?String(account.error):account.user?'ç›®å‰ç™»å…¥å¸³è™Ÿæ²’æœ‰æ­¤ Scope çš„ç®¡ç†æ¬Šé™ã€‚':'è«‹å…ˆè‡³è¨­å®šé¦–é ç™»å…¥ï¼Œæ‰èƒ½ç·¨è¼¯æ™‚é–“å®šéŒ¨ã€‚'}
-        </p>:null}
-        {editorAvailable&&!permissionPending&&editorAuthorized?<div className='scope-time-edit-workspace scope-culture-structure-river'>
-          <div className='management-workspace-panel' id='time-editor-panel' role='region'
-            aria-label='æ™‚é–“ç·¨è¼¯'>
-            <div className='scope-culture-timeline-tools'>
-              <h3>æ™‚ä»£ï¼æœŸé–“ï¼æ™‚é–“å®šéŒ¨é»</h3>
-              <button type='button' className='loc-button' disabled={query.isPending}
-                onClick={()=>void refreshTimelineData().catch(error=>setEditError(error?.message||'æ™‚é–“é•·æ²³æ›´æ–°å¤±æ•—'))}>æ›´æ–°æ™‚é–“é•·æ²³</button>
-            </div>
-            {query.isPending?<CultureTimeLoading label='æ­£åœ¨è¼‰å…¥æ™‚é–“ç´€éŒ„â€¦'/>:null}
-            {query.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
-            {!query.isPending&&!query.error&&!timelineItems.length
-              ?<p className='scope-status'>ç›®å‰å°šæœªå»ºç«‹æ­¤é¡æ™‚é–“ç´€éŒ„ï¼Œå¯ç›´æ¥åœ¨ä¸‹æ–¹æ–°å¢ã€‚</p>:null}
-            {!query.isPending&&!query.error&&!editorEraRiver.groups.length
-              ?<p className='scope-status' role='status'>æ™‚é–“ç´€éŒ„å·²è®€å–ï¼Œä½†ç›®å‰æ²’æœ‰å¯é¡¯ç¤ºçš„æ™‚ä»£ï¼å®šéŒ¨é»ã€‚</p>:null}
-            {!query.isPending&&!query.error&&editorEraRiver.groups.length>0?<CultureTimeline
-              key={'time-editor-era-period'}
-              items={editorEraRiver.items}
-              extraGroups={editorEraRiver.groups}
-              labelOf={localizedLabelOf}
-              focus={EMPTY_RIVER_FOCUS}
-              mode='trace'
-              compactHierarchy
-              unfoldCurtain={false}
-              onFirstPaint={()=>setTimeRiverFirstPaint(true)}
-              onGroupToggle={toggleEditorEra}
-              windowStart={editorRiverWindow.start}
-              windowEnd={editorRiverWindow.end}
-              onSelect={item=>beginTimelineRecordEdit(item)}
-              editable={false}
-            />:null}
-            {selectedTimelineInfo?<div className='scope-card scope-culture-timeline-selection' role='status'>
-              <strong>{selectedTimelineInfo.content||selectedTimelineInfo.title||'æ™‚é–“ç´€éŒ„'}</strong>
-              <p className='scope-status'>{String(selectedTimelineInfo.start||'').slice(0,10)}{selectedTimelineInfo.end?' ï½ '+String(selectedTimelineInfo.end).slice(0,10):''}</p>
-            </div>:null}
-            <div className='scope-culture-time-input-area'>
-              {!query.isPending&&!query.error&&(timeRiverFirstPaint||timeEditorFrameReady||!editorEraRiver.groups.length)
-                ?<CultureTimelineEditor key={scopeId+':unified:'+timelineEditorRevision}
-                scopeId={scopeId}
-                timeTable={scopeData?.time||''}
-                timeRecords={query.data?.editorRows||null}
-                timeLoading={query.isPending}
-                timeError={query.error}
-                birthday={scopeData?.birthday||''}
-                selectedRecordId={selectedTimelineRecordId}
-                suggestedAnchorDate={selectedTimelineDate}
-                suggestedRecordType={suggestedRecordType}
-                defaultRecordType='anchor'
-                suggestedRequestNonce={suggestedRequestNonce}
-                onDataChanged={refreshTimelineData}
-                onClose={()=>{setSelectedTimelineRecordId('');setSelectedTimelineDate('');setSelectedTimelineInfo(null);setSuggestedRequestNonce(0)}}/>
-                :null}
-            </div>
-            {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
-          </div>
-        </div>:null}
-        </section>
-      </ManagementWorkspaceFrame>
-    </FeaturePage>;
-  }
-
-  // LOC Culture is a fixed one-year overview of member Scopes.
-  // All detailed TimeAnchor rivers and article browsing live inside each Scope.
-  if(scopeId==='loc'&&!isTimeEditingView)return <FeaturePage featureId="culture">
-    <section className='loc-card scope-feature-card scope-feature-card-wide'>
-      {query.isPending||Boolean(query.data?.scopes?.length)&&locDensityQuery.isPending
-        ?<p className='scope-status' role='status'>{locMid?`å·²å®Œæˆ ${locMid.completed}ï¼${locMid.total} å€‹ Scopeï¼Œæš«è¨ˆ ${locMid.scopeRanges.reduce((n,row)=>n+Number(row.item_count||0),0).toLocaleString()} ç¯‡ï¼›å…¶é¤˜ä»åœ¨è¨ˆç®—ã€‚`:UI_COPY.common.loading}</p>:null}
-      {query.isPending&&!locScopePreview.groups.length?<div className='loc-progressive-river-frame' aria-busy='true'><div className='loc-progressive-river-axis'/><small>{locSourceStart} ï½ {locSourceEnd}</small></div>:null}
-      {query.error?<p className='scope-status scope-error' role='alert'>
-        {featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
-      {locDensityQuery.error?<p className='scope-status scope-error' role='alert'>
-        {featureDataErrorMessage(locDensityQuery.error,UI_COPY)}</p>:null}
-      {!query.isPending&&!locDensityQuery.isPending&&!query.error&&!locDensityQuery.error
-        &&!locScopePreview.scopeIds.length
-        ?<p className='scope-status'>ç›®å‰æ²’æœ‰å¯é¡¯ç¤ºçš„ Scopeã€‚</p>:null}
-      {locScopePreview.groups.length?<CultureTimeline
-        items={locScopePreview.items}
-        extraGroups={locScopePreview.groups}
-        onGroupToggle={toggleLocScopeGroup}
-        labelOf={emptyRiverLabel}
-        focus={EMPTY_RIVER_FOCUS}
-        mode='source'
-        windowStart={locSourceStart}
-        windowEnd={locSourceEnd}
-        fixedMin={locSourceStart}
-        fixedMax={locSourceEnd}
-        naturalSourceHeight
-        readOnlyViewport
-      />:null}
-      {locScopePreview.scopeIds.length?<nav className='scope-result-links' aria-label='å„ Scope æ–‡åŒ–è©³æƒ…'>
-        {locScopePreview.scopeIds.map(id=><ScopeLink key={id} href={featureNavigationHref(id,'culture')}>
-          {id} Â· æŸ¥çœ‹å®Œæ•´æ–‡åŒ–
-        </ScopeLink>)}
-      </nav>:null}
-    </section>
-  </FeaturePage>;
-
-  return <FeaturePage featureId="culture">
-    <section className='loc-card scope-feature-card scope-feature-card-wide'>
-      {scopeId==='loc'?<div className='scope-stat-controls'><label><span>{UI_COPY.culture.viewMode}</span>
-        <select className='scope-select' aria-label={UI_COPY.culture.viewMode} value={locCultureView} onChange={event=>setLocCultureView(event.target.value)}>
-          <option value='period'><UiText id="uiExtra.cultureView.periodIntersectionWorks"/></option>
-          <option value='item'><UiText id="uiExtra.cultureView.itemIntersectionTwoRivers"/></option>
-        </select>
-      </label></div>:null}
-      {isLocItemView?<LocItemConfluence/>:<>
-      <p className='loc-eyebrow'>{UI_COPY.culture.distribution}</p>
-      <h2>{UI_COPY.culture.river}</h2>
-      {query.isPending?<div className="loc-progressive-river-frame" role="status" aria-busy="true">
-        <span>{UI_COPY.common.loading}</span><div className="loc-progressive-river-axis" aria-hidden="true"/>
-      </div>:null}
-      {query.error?<p className='scope-status scope-error'>{featureDataErrorMessage(query.error,UI_COPY)}</p>:null}
-      {!query.isPending&&!query.error&&!hasTimelineSurface?<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>:null}
-      {!query.isPending&&!query.error&&hasTimelineSurface?<>
-
-
-            {isAggregateScope?<>
-
-              <section className='scope-card scope-culture-classification-river scope-loc-time-river'>
-                <p className='loc-eyebrow'>{UI_COPY.culture.distribution}</p>
-                <h3>å„ Scope æ™‚é–“å€é–“</h3>
-                {locScopeIntervalItems.length?<CultureTimeline
-                  items={locScopeIntervalItems}
-                  labelOf={emptyRiverLabel}
-                  focus={EMPTY_RIVER_FOCUS}
-                  mode='source'
-                  windowStart={locSourceStart}
-                  windowEnd={locSourceEnd}
-                  fixedMin={locDistributionStart}
-                  fixedMax={locDistributionEnd}
-                />:null}
-                {!locIntersectionScopeIds.length&&query.data?.scopes?.length
-                  ?<p className='scope-status' role='status'>ç›®å‰å„ Scope çš„æ™‚ä»£ï¼æ™‚æœŸæ²’æœ‰å…±åŒæ™‚é–“å€é–“ï¼ˆå–®ä¸€å®šéŒ¨é»äº¦è¨ˆå…¥ï¼‰ã€‚</p>:null}
-                <div className='scope-result-links'>
-                  {[...new Set(locScopeIntervalItems.map(item=>item.scope_id))].map(id=><ScopeLink key={id} href={featureNavigationHref(id,'culture')}>{id}{l.personalTimelineSuffix}</ScopeLink>)}
-                </div>
-                {query.data?.scopes?.length?<details className='scope-stat-details scope-culture-density-details'
-                  onToggle={event=>setLocDensityOpen(event.currentTarget.open)}>
-                  <summary>{UI_COPY.culture.intersectionRiver} Â· {UI_COPY.culture.combinedRiver}</summary>
-                  {locDensityOpen?<>
-                    {locDensityQuery.isPending?<p className='scope-status' role='status'>{UI_COPY.common.loading}</p>:null}
-                    {locDensityQuery.error?<p className='scope-status scope-error'>{featureDataErrorMessage(locDensityQuery.error,UI_COPY)}</p>:null}
-                {locScopeRiverItems.length?<section className='scope-culture-interval-density'>
-                  <h4>{UI_COPY.culture.intersectionRiver}</h4>
-                  <CultureTimeline
-                    items={locScopeRiverItems}
-                    labelOf={emptyRiverLabel}
-                    focus={EMPTY_RIVER_FOCUS}
-                    mode='source'
-                    windowStart={locSourceStart}
-                    windowEnd={locSourceEnd}
-                    fixedMin={locIntersectionStart}
-                    fixedMax={locIntersectionEnd}
-                    hiddenDates={locRiverAnalysis.hiddenDates}
-                  />
-                </section>:null}
-                {locCombinedSourceRiverItems.length?<section className='scope-culture-combined-source-river'>
-                  <p className='loc-eyebrow'>{UI_COPY.culture.combinedSources}</p>
-                  <h4>{UI_COPY.culture.combinedRiver}</h4>
-                  <CultureTimeline
-                    items={locCombinedSourceRiverItems}
-                    labelOf={emptyRiverLabel}
-                    focus={EMPTY_RIVER_FOCUS}
-                    mode='source'
-                    windowStart={locSourceStart}
-                    windowEnd={locSourceEnd}
-                    fixedMin={locDistributionStart}
-                    fixedMax={locDistributionEnd}
-                    hiddenDates={locRiverAnalysis.hiddenDates}
-                  />
-                </section>:null}
-                  </>:null}
-                </details>:null}
-
-              </section>
-
-
-            </>:<>
-              <section className='scope-card scope-culture-structure-river'>
-                <div className='scope-culture-structure-toolbar'>
-                  <h3>{l.timeTrace}</h3>
-                  <label><span>{l.timeTrace}</span>
-                    <select className='scope-select' aria-label='ç¬¬ä¸€æ¢æ²³é“æ™‚ä»£é¸æ“‡'
-                      value={activeStructureKey} onChange={event=>{
-                         prepareTransientResourceAction('period',{queryKeys:[
-                           ['culture-article-list',classificationScope],
-                           ['culture-river-root',classificationScope]
-                         ]});
-                         setWorksOpen(false);setSelectedTimelineInfo(null);
-                         setStructureWindowKey(event.target.value);
-                         setSelectedPeriodKey(event.target.value);
-                       }}>
-                      <option value='all'>{l.allTimeTraces}</option>
-                      {primaryPeriods.map(item=><option key={periodKey(item)} value={periodKey(item)}>{localizedLabelOf(item,0)}</option>)}
-                        </select>
-                  </label>
-                </div>
-                {eraRiver.groups.length&&!eraRiver.items.length?<p className='scope-status' role='status'>
-                  æ™‚ä»£èˆ‡å®šéŒ¨ç´€éŒ„å·²è¼‰å…¥ï¼Œä½†æ²’æœ‰æœ‰æ•ˆæ—¥æœŸå¯ç¹ªè£½ï¼›è«‹æª¢æŸ¥æ™‚ä»£ã€æœŸé–“èˆ‡å®šéŒ¨é»çš„é€£çµã€‚
-                </p>:null}
-                {eraRiver.groups.length?<CultureTimeline
-                  items={eraRiver.items}
-                  extraGroups={eraRiver.groups}
-                  labelOf={localizedLabelOf}
-                  focus={navigation}
-                  mode='trace'
-                  onGroupToggle={toggleTimeTrace}
-                  windowStart={currentStructureStart}
-                  windowEnd={currentStructureEnd}
-                  onSelect={item=>setSelectedTimelineInfo(item||null)}
-                  editable={false}
-                />:<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>}
-                {selectedTimelineInfo?<div className='scope-card scope-culture-timeline-selection' role='status'>
-                  <strong>{selectedTimelineInfo.raw?.title||selectedTimelineInfo.content||selectedTimelineInfo.raw?.display_label||selectedTimelineInfo.title||translateUiField(locale,'æ™‚é–“é•·æ²³ç´€éŒ„')}</strong>
-                  <p className='scope-status'>{String(selectedTimelineInfo.start||'').slice(0,10)}{selectedTimelineInfo.end?' ï½ '+String(selectedTimelineInfo.end).slice(0,10):''}</p>
-                  {selectedTimelineInfo.title?<p>{selectedTimelineInfo.title}</p>:null}
-                </div>:null}
-              </section>
-
-              {(selectedWorkPeriod||!primaryPeriods.length)?<section className='scope-card scope-culture-classification-river'>
-                <div className='scope-culture-river-toolbar'>
-                  <h3>{UI_COPY.culture.classificationRiver}ï½œ{classificationPeriodLabel}</h3>
-                  <div className='scope-culture-river-selectors'>
-                    <div className='scope-culture-time-picker'>
-                      <label><span>æ™‚ä»£</span>
-                        <select className='scope-select' aria-label='ç¬¬äºŒæ¢æ²³é“æ™‚ä»£é¸æ“‡'
-                          value={keywordEraKey} onChange={event=>{
-                            const next=event.target.value;
-                            if(next==='custom'){
-                              if(!keywordCustomStart)setKeywordCustomStart(keywordWindowStart);
-                              if(!keywordCustomEnd)setKeywordCustomEnd(keywordWindowEnd);
-                            }
-                            prepareTransientResourceAction('period',{queryKeys:[
-                              ['culture-article-list',classificationScope],
-                              ['culture-river-root',classificationScope]
-                            ]});
-                            setWorksOpen(false);
-                            setKeywordEraKey(next);
-                            setKeywordPeriodKey(next==='__unassigned__'?'all':next);
-                          }}>
-                          <option value='year'>{DEFAULT_YEAR_WINDOW.label}</option>
-                          <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'æœªè¨­å®šæ™‚ä»£'}</option>
-                          <option value='all'>{primaryPeriods.length?l.allTimeTraces:'æœ¬å¹´åº¦ï¼ˆæœªè¨­å®šæ™‚ä»£ï¼‰'}</option>
-                          {secondRiverHierarchy.groups.map(group=><option
-                            key={periodKey(group.era)} value={periodKey(group.era)}>
-                            {localizedLabelOf(group.era,0)}
-                          </option>)}
-                          {secondRiverHierarchy.unassigned.length?<option value='__unassigned__'>æœªæ­¸å±¬æ™‚ä»£çš„æœŸé–“</option>:null}
-                          <option value='custom'>{l.customPeriod}</option>
-                        </select>
-                      </label>
-                      {activeSecondEra||keywordEraKey==='__unassigned__'?<label>
-                        <span>æœŸé–“</span>
-                        <select className='scope-select' aria-label='ç¬¬äºŒæ¢æ²³é“æœŸé–“é¸æ“‡'
-                          value={activeSecondPeriods.some(row=>periodKey(row)===keywordPeriodKey)
-                            ?keywordPeriodKey:'__era__'}
-                          onChange={event=>{
-                            prepareTransientResourceAction('period',{queryKeys:[
-                              ['culture-article-list',classificationScope],
-                              ['culture-river-root',classificationScope]
-                            ]});
-                            setWorksOpen(false);
-                            setKeywordPeriodKey(event.target.value==='__era__'
-                              ?(activeSecondEra?periodKey(activeSecondEra.era):'all')
-                              :event.target.value);
-                          }}>
-                          <option value='__era__'>{activeSecondEra?'æ•´å€‹æ™‚ä»£':'å…¨éƒ¨æœªæ­¸å±¬æœŸé–“'}</option>
-                          {activeSecondPeriods.map(period=><option key={periodKey(period)}
-                            value={periodKey(period)}>{localizedLabelOf(period,0)}</option>)}
-                        </select>
-                      </label>:null}
-                    </div>
-                    <label><span>æ–‡ç« é¸é …</span>
-                      <select className='scope-select' aria-label='æ–‡ç« é¸é …'
-                        value={styleFilter==='none'&&sourceStyleOptions.some(item=>item.key===selectedRiverGroup)
-                          ?'source:'+selectedRiverGroup:styleFilter}
-                        onChange={event=>{
-                          const next=event.target.value;
-                          const choice=next.startsWith('source:')
-                            ?sourceStyleOptions.find(item=>'source:'+item.key===next):null;
-                          if(choice){
-                            // Sources use the existing numeric Source River. Never
-                            // misinterpret an Anchor From as a Keyword Class UID.
-                            setStyleFilter('none');
-                            setSelectedRiverGroup(choice.key);
-                            setSelectedCategory('');
-                            setWorksOpen(false);
-                            const ancestorUids=(sourceTaxonomy?.tree||[])
-                              .find(node=>node.uid===choice.code)?.path?.slice(0,-1)||[];
-                            const hasChildren=(sourceTaxonomy?.tree||[])
-                              .some(node=>node.parentUid===choice.code);
-                            setOpenCultureRoots(current=>[...new Set([
-                              ...current,...ancestorUids,...(hasChildren?[choice.code]:[])
-                            ])]);
-                          }else if(!next.startsWith('source:')){
-                            setStyleFilter(next);
-                            if(next==='none')setSelectedRiverGroup('');
-                          }
-                          setKeywordDrillGroup('');
-                        }}>
-                        <option value='none'>ä¾†æº</option>
-                        <option value='trace'>åœ°é»</option>
-                        <optgroup label='é—œéµè©'>
-                          <option value='rune66'>{selectedKeywordClass?.name||l.keywordStyle}</option>
-                        </optgroup>
-                        {sourceStyleGroups.map(group=><optgroup
-                          key={group.key} label={group.label}>
-                          {group.items.map(item=><option key={item.key} value={'source:'+item.key}>
-                            {'\u00a0\u00a0\u00a0'.repeat(item.orphanType
-                              ?Math.max(0,item.level-['universe','galaxy','domain','from'].indexOf(item.orphanType))
-                              :item.level)}{item.label}
-                          </option>)}
-                        </optgroup>)}
-                      </select>
-                    </label>
-                    {keywordPeriodKey==='custom'?<>
-                      <label><span>{l.period}</span><input className='scope-select' aria-label={l.customPeriod} type='date'
-                        value={keywordCustomStart} max={keywordCustomEnd||undefined}
-                        onChange={event=>setKeywordCustomStart(event.target.value)}/></label>
-                      <label><span>ï½</span><input className='scope-select' aria-label={l.customPeriod} type='date'
-                        value={keywordCustomEnd} min={keywordCustomStart||undefined}
-                        onChange={event=>setKeywordCustomEnd(event.target.value)}/></label>
-                    </>:null}
-                  </div>
-                  {usesSourceRiver&&riverRangeLoading?<div className="loc-progressive-river-frame" role="status" aria-busy="true">
-                    <CultureTimeLoading label={UI_COPY.common.loading}/><div className="loc-progressive-river-axis" aria-hidden="true"/>
-                    <small>{classificationWindowStart} ï½ {classificationWindowEnd}</small>
-                  </div>:null}
-                  {riverAnalysis.error?<span className='scope-status scope-error' role='status'>{riverAnalysis.error}</span>:null}
-                </div>
-                {styleFilter==='rune66'?<section className='scope-culture-style-filter'>
-                  <p className='loc-eyebrow'>ä¸‹åŠæ²³é“ï½œé—œéµè©ï¼š{String(styleQuery.data?.keywordMeta?.class_name||selectedKeywordClass?.name||'å°šæœªè¨­å®š')}</p>
-                  {availableKeywordClasses.length>0?<label className='scope-culture-keyword-class-picker'>
-                    <span>é—œéµå­—ç¾¤çµ„</span>
-                    <select className='scope-select' aria-label='é—œéµå­—ç¾¤çµ„'
-                      value={resolvedKeywordClassUid} onChange={event=>{
-                        setSelectedKeywordClassUid(event.target.value);
-                        setKeywordDrillSource('');
-                        setKeywordDrillGroup('');
-                      }}>
-                      {availableKeywordClasses.map(item=><option key={item.classUid} value={item.classUid}>{[item.categoryName,item.name].filter(Boolean).join('ï¼')}</option>)}
-                    </select>
-                  </label>:null}
-                  <div className='scope-stat-controls'>
-                    {keywordDrillGroup?<button type='button' className='loc-button' onClick={()=>setKeywordDrillGroup('')}>â† è¿”å›ç¾¤çµ„ç¸½è¦½</button>
-                      :keywordDrillSource?<button type='button' className='loc-button' onClick={()=>setKeywordDrillSource('')}>â† è¿”å›å…¨éƒ¨ä¾†æº</button>:null}
-                    <span className='scope-status' aria-live='polite'>
-                      {classificationPeriodLabel} â†’ {keywordDrillSource||'å…¨éƒ¨ä¾†æº'} â†’ {keywordDrillGroup
-                        ?String(styleQuery.data?.keywordMeta?.classes?.[keywordDrillGroup]||'ç¾¤çµ„')+' Â· ç¬¦æ–‡åˆ—è¡¨'
-                        :'å…¨éƒ¨ç¾¤çµ„'}
-                    </span>
-                  </div>
-                  <h4>{keywordDrillGroup?'ç¬¦æ–‡åˆ—è¡¨ï½œ'+String(styleQuery.data?.keywordMeta?.classes?.[keywordDrillGroup]||'ç¾¤çµ„'):'ç¬¦æ–‡ç¾¤çµ„ï¼ˆé»é¸æ²³é“å·¦å´åç¨±å±•é–‹ï¼‰'}</h4>
-                  {!keywordWindowValid?<p className='scope-status scope-error' role='status'>è«‹é¸æ“‡æœ‰æ•ˆçš„æ™‚é–“å€é–“ã€‚</p>:null}
-                  {styleRiverAnalysis.suggestions.length>0?<details className='scope-culture-anchor-picker'>
-                    <summary>é¢¨æ ¼å¯†åº¦å»ºè­°å®šéŒ¨é»ï¼š{styleRiverAnalysis.suggestions.length} å€‹ï¼ˆé»é–‹æŸ¥çœ‹ï¼‰</summary>
-                    {styleRiverAnalysis.suggestions.length?<div className='scope-culture-anchor-choices'>
-                      {styleRiverAnalysis.suggestions.map(item=>{
-                        // Deep-link straight to the protected TimeAnchor
-                        // editor, not the public Culture view (?edit=1 alone
-                        // does not authorize or mount that editor).
-                        const href=scopeHref(scopeId,
-                          'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date));
-                        return <div key={item.date} className='scope-status'>
-                          <strong>{item.date}</strong>
-                          <span>ï½œå‰ 3 æ—¥ {Number(item.beforeCount||0).toLocaleString(locale)} æ¬¡ï¼å¾Œ 3 æ—¥ {Number(item.afterCount||0).toLocaleString(locale)} æ¬¡</span>
-                          {(item.analysis||[]).length?<span>ï½œ{item.analysis.join(' ')}</span>:null}
-                          {canUseScopeEditor?<span>ï½œ<ScopeLink href={href}>å‰å¾€æ™‚é–“ç·¨è¼¯ï¼Œç¢ºèªå®šéŒ¨é»</ScopeLink></span>:null}
-                        </div>;
-                      })}
-                    </div>:<p className='scope-status'>æ­¤æ™‚é–“å€é–“æš«ç„¡è¶³å¤ çš„é¢¨æ ¼å¯†åº¦è®ŠåŒ–ï¼Œæˆ–åˆ†æè³‡æ–™å°šåœ¨è¼‰å…¥ã€‚</p>}
-                  </details>:null}
-                  {styleQuery.error?<p className='scope-status scope-error'>{featureDataErrorMessage(styleQuery.error,UI_COPY)}</p>:null}
-                  {!styleQuery.isPending&&!styleQuery.error&&!styleQuery.data?.staticstime?<p className='scope-status'>é—œéµè©å°šæœªå®šéŒ¨ï¼›è«‹å…ˆæ–¼é—œéµè©è¨­å®šå®Œæˆåˆ†æã€‚</p>:null}
-                  {!styleQuery.isPending&&!styleQuery.error&&styleQuery.data?.staticstime&&!styleQuery.data?.statisticsEnabled?<p className='scope-status'>ç›®å‰é—œéµè©çµ±è¨ˆå°šæœªå•Ÿç”¨ã€‚</p>:null}
-                  {keywordDetailRequested&&keywordDensityQuery.isPending&&styleQuery.data?.statisticsEnabled
-                    ?<p className='scope-status' role='status'>æ­£åœ¨è®€å–æ‰€é¸ä¾†æºï¼ç¾¤çµ„çš„æ–‡ç« å±¬æ€§â€¦</p>:null}
-                  {keywordDrillGroup&&keywordGroupCatalogQuery.isPending?<p className='scope-status' role='status'>æ­£åœ¨è¼‰å…¥æ‰€é¸ç¾¤çµ„çš„ç¬¦æ–‡åˆ—è¡¨â€¦</p>:null}
-                  {keywordRiverError||keywordGroupCatalogQuery.error
-                    ?<p className='scope-status scope-error'>{featureDataErrorMessage(keywordRiverError||keywordGroupCatalogQuery.error,UI_COPY)}</p>:null}
-                  {!keywordRiverPending&&(!keywordDrillGroup||!keywordGroupCatalogQuery.isPending)
-                    &&!keywordRiverError&&!styleQuery.error&&!keywordGroupCatalogQuery.error&&!keywordDrillItems.length
-                    ?<p className='scope-status'>æ­¤ç¯„åœæ²’æœ‰å¯é¡¯ç¤ºçš„å‘½ä¸­è³‡æ–™ã€‚</p>:null}
-                </section>:null}
-                {styleFilter==='trace'&&classificationWindowValid?<CulturePlaceRiver
-                  scopeId={scopeId} startDate={classificationWindowStart} endDate={classificationWindowEnd}/>:null}
-                {!classificationWindowValid&&optionalTimeRangeUnfilled?<p className='scope-status' role='status'>å°šæœªé¸æ“‡æ™‚é–“ç¯„åœï¼›å¯ä½¿ç”¨æ™‚ä»£ã€æœŸé–“æˆ–è‡ªè¨‚æ—¥æœŸã€‚</p>:null}
-                {!classificationWindowValid&&!optionalTimeRangeUnfilled?<p className='scope-status scope-error' role='status'>è«‹é¸æ“‡æœ‰æ•ˆçš„æ™‚é–“å€é–“ï¼ˆèµ·å§‹æ—¥æœŸä¸å¾—æ™šæ–¼çµæŸæ—¥æœŸï¼‰ã€‚</p>:null}
-                {usesSourceRiver&&sourceRootQuery.error?<p className='scope-status scope-error'>{featureDataErrorMessage(sourceRootQuery.error,UI_COPY)}</p>:null}
-                {usesSourceRiver&&sourceSnapshotQuery.error
-                   ?<p className='scope-status scope-error' role='alert'>
-                     {featureDataErrorMessage(sourceSnapshotQuery.error,UI_COPY)}</p>:null}
-                 {usesSourceRiver&&stagedSourceRiver&&openCultureRoots.length>0
-                   &&sourceSnapshotQuery.isPending
-                   ?<p className='scope-status' role='status'>æ­£åœ¨å±•é–‹æ²³é“çš„ç´°éƒ¨åˆ†å¸ƒâ€¦</p>:null}
-                 {/* Anchor suggestions never compute on their own just because a lane's
-                     daily data arrived -- the PELT worker only runs once the user
-                     explicitly clicks open the "å»ºè­°å®šéŒ¨é»" lane itself on the chart
-                     above (see the dual:source:candidates group / onGroupToggle).
-                     This panel is just the detail view for an already-opened lane. */}
-                 {usesSourceRiver&&!riverRangeLoading&&anchorSuggestOpen?<div className='scope-culture-anchor-actions'>
-                  {riverAnalysis.suggestions.length>0?<>
-                    <span>{formatCultureUi(l.candidateSummary,{count:riverAnalysis.suggestions.length})}</span>
-                    {canUseScopeEditor?<button type='button' className='loc-button' disabled={creatingSuggestedAnchors||!selectedVirtualAnchorDates.length}
-                      onClick={createSelectedSuggestedAnchors}>
-                      {creatingSuggestedAnchors?'æ­£åœ¨æ–°å¢â€¦':'æ–°å¢é¸å–çš„å»ºè­°å®šéŒ¨é»ï¼ˆ'+selectedVirtualAnchorDates.length+'ï¼‰'}
-                    </button>:null}
-                    {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
-                    <details className='scope-culture-anchor-picker' open>
-                      <summary><span className='scope-culture-anchor-picker-mark' aria-hidden='true'/><UiText id="uiExtra.cultureView.expandToCompareWorkVolumeChanges"/></summary>
-                      <div className='scope-culture-anchor-choices'>
-                        {riverAnalysis.suggestions.map(item=>{
-                          const href=scopeHref(scopeId,
-                            'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date));
-                          return <div key={item.date} className='scope-status'>
-                            {canUseScopeEditor?<label><input type='checkbox' checked={selectedVirtualAnchorDates.includes(item.date)}
-                              onChange={()=>toggleVirtualAnchor(item.date)}/>
-                              {formatCultureUi(l.candidateComparison,{date:item.date,before:Number(item.beforeCount||0).toLocaleString(locale),after:Number(item.afterCount||0).toLocaleString(locale),analysis:(item.analysis||[]).join(' ')})}
-                            </label>:<span>{formatCultureUi(l.candidateComparison,{date:item.date,before:Number(item.beforeCount||0).toLocaleString(locale),after:Number(item.afterCount||0).toLocaleString(locale),analysis:(item.analysis||[]).join(' ')})}</span>}
-                            {canUseScopeEditor?<ScopeLink href={href}>å‰å¾€æ™‚é–“ç·¨è¼¯</ScopeLink>:null}
-                          </div>;
-                        })}
-                      </div>
-                    </details>
-                  </>:<p className='scope-status' role='status'>æ­£åœ¨åˆ†æå»ºè­°å®šéŒ¨é»â€¦</p>}
-                </div>:null}
-                {usesSourceRiver&&classificationWindowValid&&!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
-                  &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)
-                  &&!cultureRiver.hasSourceData
-                  ?<div className='scope-card scope-status scope-culture-no-data' role='status'>{l.noDataInPeriod}</div>:null}
-                {/* Never mount vis-timeline over an empty/pending source snapshot:
-                    on first entry it otherwise creates an unready chart and then
-                    replaces its DOM while groups and density analysis arrive. */}
-                {usesSourceRiver&&classificationWindowValid&&!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
-                  &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)&&cultureRiver.hasSourceData
-                  ?<div className='scope-culture-double-river'>
-                  {styleFilter==='none'&&openCultureRoots.length===0
-                    &&cultureRiver.items.every(item=>item.entry_type==='source_total')
-                    ?<CultureSourceRootSummary
-                      eraRanges={eraRiver.items}
-                      items={cultureRiver.items}
-                      groups={cultureRiver.groups}
-                      windowStart={classificationWindowStart}
-                      windowEnd={classificationWindowEnd}
-                      onGroupToggle={toggleCultureRiverGroup}
-                      onGroupSelect={selectCultureRiverGroup}
-                    />:<CultureTimeline
-                    items={cultureRiver.items}
-                    eraRanges={eraRiver.items}
-                    extraGroups={cultureRiver.groups}
-                    onGroupToggle={toggleCultureRiverGroup}
-                    onGroupSelect={selectCultureRiverGroup}
-                    anchorInsight={anchorInsight}
-                    anchorLabels={{date:l.candidateDate,before:l.candidateBefore,after:l.candidateAfter,reason:l.candidateReason,close:l.candidateClose}}
-                    onAnchorClose={()=>setFocusedAnchorDate('')}
-                    heightVariant='double'
-                    labelOf={classificationRiverLabel}
-                    focus={EMPTY_RIVER_FOCUS}
-                    mode='source'
-                    windowStart={classificationWindowStart}
-                    windowEnd={classificationWindowEnd}
-                    hiddenDates={riverAnalysis.hiddenDates}
-                    onSelect={item=>{
-                      if(item?.entryType==='virtual_anchor'){
-                        const date=String(item?.start||'').slice(0,10);
-                        setFocusedAnchorDate(date);
-                        toggleVirtualAnchor(date);
-                        return;
-                      }
-                      if(item?.entryType==='keyword_density'){
-                        const key=String(item?.raw?.drill_key||'').trim();
-                        if(key&&keywordGroupOptions.some(group=>group.id===key))
-                          setKeywordDrillGroup(current=>current===key?'':key);
-                        return;
-                      }
-                      if(item?.entryType==='source_group'){
-                        setSelectedRiverGroup(String(item.raw?.source_group_code||''));
-                        setSelectedCategory('');
-                        setWorksOpen(false);
-                        return;
-                      }
-                      if(item?.entryType!=='source')return;
-                      const term=String(item?.raw?.category||'').trim();
-                      const key='source:'+term;
-                      if(term&&categoryGroups.some(group=>group.category_key===key)){
-                        setSelectedRiverGroup('');
-                        setSelectedCategory(key);
-                      }
-                    }}
-                  />}
-                  {showKeywordRiver&&keywordDrillGroup?<section className='scope-culture-rune-list'
-                    role='region' aria-label={(styleQuery.data?.keywordMeta?.classes?.[keywordDrillGroup]||'ç¬¦æ–‡ç¾¤çµ„')+'ç¬¦æ–‡åˆ—è¡¨'}>
-                    <header>
-                      <strong>{styleQuery.data?.keywordMeta?.classes?.[keywordDrillGroup]||'ç¾¤çµ„'}ï½œç¬¦æ–‡åˆ—è¡¨</strong>
-                      <button className='loc-button' type='button' onClick={()=>setKeywordDrillGroup('')}>æ”¶åˆç¬¦æ–‡åˆ—è¡¨</button>
-                    </header>
-                    {keywordGroupCatalogQuery.isPending?<p className='scope-status' role='status'>æ­£åœ¨è¼‰å…¥æ­¤ç¾¤çµ„çš„ç¬¦æ–‡â€¦</p>:null}
-                    {keywordGroupCatalogQuery.error?<p className='scope-status scope-error' role='alert'>{featureDataErrorMessage(keywordGroupCatalogQuery.error,UI_COPY)}</p>:null}
-                    {keywordGroupCatalogQuery.data?.length?<ul>
-                      {keywordGroupCatalogQuery.data.map(rune=>{
-                        const matched=(styleQuery.data?.runeTotals||[]).find(item=>String(item.uid)===String(rune.uid));
-                        return <li key={rune.uid}>
-                          <strong>{rune.name}</strong>
-                          <span>{Number(matched?.count||0).toLocaleString(locale)} æ¬¡å‘½ä¸­</span>
-                        </li>;
-                      })}
-                    </ul>:null}
-                    {keywordGroupCatalogQuery.data&&!keywordGroupCatalogQuery.data.length
-                      ?<p className='scope-status'>æ­¤ç¾¤çµ„ç›®å‰æ²’æœ‰ç¬¦æ–‡é …ç›®ã€‚</p>:null}
-                  </section>:null}
-                </div>:null}
-                {styleFilter==='none'&&selectedGroup&&!worksOpen?<button
-                  type='button' className='loc-button scope-culture-show-articles'
-                  onClick={()=>setWorksOpen(true)}>
-                  {selectedGroup.label||selectedGroup.site||'ä¾†æº'}ï½œé¡¯ç¤ºç›¸é—œæ–‡ç« åˆ—è¡¨
-                </button>:null}
-                {styleFilter==='none'&&(!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
-                  &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)&&cultureRiver.hasSourceData)?<details className='scope-culture-source-detail' open={worksOpen} onToggle={event=>setWorksOpen(event.currentTarget.open)}>
-                  <summary>é¡¯ç¤ºç›¸é—œæ–‡ç« åˆ—è¡¨</summary>
-                  {worksOpen?<><header className="loc-public-list-header">
-                    {selectedGroup?<button type='button' className='scope-pagination-button' onClick={()=>setSelectedCategory('')}>{UI_COPY.culture.showAllWorks}</button>:<span/>}
-                    <ArticleSortSelect value={articleSort} onChange={setArticleSort} disabled={Boolean(editingWorkKey)}/>
-                  </header>
-                  {periodWorksPage.error?<p className='scope-status scope-error'>{featureDataErrorMessage(periodWorksPage.error,UI_COPY)} <button type='button' className='loc-button' onClick={periodWorksPage.reload}><UiText id="uiExtra.cultureView.reloadWorks"/></button></p>:null}
-                  {periodWorksPage.loading&&!visibleWorkRows.length?<p role='status' className='scope-status'>{l.loadingPeriodWorks}</p>:null}
-                  <IncrementalList
-                    items={visibleWorkRows}
-                    batchSize={DEFAULT_LIST_BATCH_SIZE}
-                    resetKey={classificationWindowStart+'|'+classificationWindowEnd+'|'+selectedCategory+'|'+selectedRiverGroup+'|source|'+articleSort}
-                    className='scope-culture-source-work-scroll loc-public-article-list'
-                    externalHasMore={periodWorksPage.hasMore}
-                    loading={periodWorksPage.loading}
-                    error={periodWorksPage.error}
-                    onLoadMore={periodWorksPage.loadNext}
-                    scrollRootRef={workScrollRef}
-                    renderItem={(work,index)=>{
-                      const workKey=String(work.key||('galaxy:'+work.uid));
-                      if(work.hidden)return <div key={workKey+'-'+index}
-                        className='scope-work-list-row scope-status'>æœ¬æ–‡å·²éš±è—</div>;
-                      return <div className='scope-work-list-row' key={workKey+'-'+index}>
-                        <span>æ¨™é¡Œï¼š{work.title}</span>
-                        <span> æ—¥æœŸï¼š{work.date}</span>
-                        {work.extract===true?<WorkFullText
-                          open={fullTextKey===workKey}
-                          loading={fullTextLoading&&fullTextKey===workKey}
-                          error={fullTextKey===workKey?fullTextError:''}
-                          content={fullTextKey===workKey?fullText:''}
-                          onToggle={()=>toggleWorkContent(work)}
-                        />:<span className='scope-status'>åƒ…é¡¯ç¤ºåˆ—è¡¨ï¼Œç¦æ­¢é–±è®€å…¨æ–‡</span>}
-                      </div>;
-                    }}
-                  />
-                  {!periodWorksPage.loading&&!periodWorksPage.error&&!visibleWorkRows.length?<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>:null}
-                  </>:null}
-                </details>:null}
-              </section>:null}
-            </>}
-      </>:null}
-      </>}
-    </section>
-  </FeaturePage>;
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíß¾|í:-jZ.¶›­–)Ş³RwW6R6Æ–VçBs°¦–×÷'BV•FW‡Bg&öÒrââòââö“†âõV•FW‡Bs°¦–×÷'Bf–VÆEFW‡Bg&öÒrââòââö“†âôf–VÆEFW‡Bs° ¦–×÷'B·G&ç6ÆFUV”f–VÆBÅT•ô4õ—Òg&öÒrââòââö“†â÷V’Ö6÷’s°¦–×÷'B·W6UV”6÷’ÇW6UV”Æö6ÆRÇW6UV•6V7F–öçÒg&öÒrââòââö“†â÷V’ÖÆö6ÆRs° ¦–×÷'B·W6TVffV7BÇW6TÖVÖòÇW6U&VbÇW6U7FFWÒg&öÒw&V7Bs°¦–×÷'BG–æÖ–2g&öÒvæW‡BöG–æÖ–2s°¦–×÷'B·W6UF†æÖRÇW6U6V&6…&×7Òg&öÒvæW‡Böæf–vF–öâs°¦–×÷'B·W6T7–æ5&W6÷W&6RÇW6T7–æ4–æf–æ—FU&W6÷W&6RÇW6U&W6÷W&6T66†RÇ&W&UG&ç6–VçE&W6÷W&6T7F–öçÒg&öÒrââòââòââ÷6¶vW2÷¦Vç7F6²ö6Æ–VçB×VW&–W2s°¦–×÷'B¶fVGW&Tæf–vF–öä‡&VbÆvÆ‡”–FVçF—G”‡&VbÆvÆ‡•&VÆF–öäÆ–æ·2Ç&VDfVGW&Tæf–vF–öçÒg&öÒrââ÷&÷WF–æröfVGW&RÖæf–vF–öâs°¦–×÷'B66÷TÆ–æ²g&öÒrââõ66÷TÆ–æ²s°¦–×÷'B·66÷T‡&VgÒg&öÒrââ÷&÷WF–ær÷66÷R×&Vv—7G'’s°¦–×÷'B·W6TVF—DFö6·Òg&öÒrââöVF—BÖFö6²s°¦–×÷'B¶fVGW&TFFW'&÷$ÖW76vWÒg&öÒrââöfVGW&RÖFF×7FFRs°¢òò¶VWf—6–&ÆRÂ552ÖöæÇ’v—F–ær7FFRWfVâ&Vf÷&RF†RF–ÖVÆ–æR6‡Væ²ÆöG2à¦gVæ7F–öâ7VÇGW&UF–ÖTÆöF–ær‡¶Æ&VÃÒ~jÚ>YÊ‹ÈXZ^i˜.™i>Zé®˜Ê(
+bwÒ—°¢&WGW&âÆF—b6Æ74æÖSÒw66÷RÖ7VÇGW&RÖFVç6—G’ÖÆöF–ærr&öÆSÒw7FGW2r&–ÖÆ—fSÒwöÆ—FRr&–Ö'W7“ÒwG'VRsà¢Ç7â6Æ74æÖSÒw66÷RÖ7VÇGW&RÖFVç6—G’ÖÆöF–æuõö&"r&–Ö†–FFVãÒwG'VRróà¢Ç7ãç¶Æ&VÇÓÂ÷7ãà¢ÂöF—cã°§Ğ¦6öç7B7VÇGW&UF–ÖVÆ–æSÖG–æÖ–2‚‚“Óæ–×÷'B‚rââöÖöGVÆW2ö7VÇGW&R×F–ÖVÆ–æRô7VÇGW&UF–ÖVÆ–æRr’Ç°¢ÆöF–æs¢‚“ÓâÄ7VÇGW&UF–ÖTÆöF–ærÆ&VÃÒ~jÚ>YÊk©nX)i˜.™i>™[~k+>(
+bróà§Ò“°¦–×÷'B´7VÇGW&UF–ÖVÆ–æTÖöFVÇÒg&öÒrââöÖöGVÆW2ö7VÇGW&R×F–ÖVÆ–æRö7VÇGW&R×F–ÖVÆ–æRÖÖöFVÂs°¦–×÷'B·f—7VÄ¶W”6öÆ÷'Òg&öÒrââ÷f—7VÂ×ÆWGFRæÖ§2s°¦–×÷'B¶W&f—7VÄw&F–VçGÒg&öÒrââöÖöGVÆW2ö7VÇGW&R×F–ÖVÆ–æRöW&×f—7VÇ2æÖ§2s°¦–×÷'B·W6U&—fW$FVç6—G”æÇ—6—7Òg&öÒrââöÖöGVÆW2ö7VÇGW&R×F–ÖVÆ–æR÷W6R×&—fW"ÖFVç6—G’ÖæÇ—6—2s°¦–×÷'B·7G'V7GW&UW&–öE&VfW&Væ6WÒg&öÒrââòââöÆö2ö7VÇGW&R÷W&–öBÖæf–vF–öâæÖ§2s°¦–×÷'B¶'V–ÆDW&&—fW"ÆæW‡DVF—F÷$W&W‡ç6–öçÒg&öÒrââòââöÆö2ö7VÇGW&R÷F–ÖR×G&6R×&—fW"æÖ§2s°¦–×÷'B¶7VÇGW&TW&W&–öD†–W&&6‡—Òg&öÒrââòââöÆö2ö7VÇGW&RöW&×W&–öBÖ†–W&&6‡’æÖ§2s°¦–×÷'B¶'V–ÆDÆö47VÇGW&U66÷U&Wf–WwÒg&öÒrââòââöÆö2ö7VÇGW&RöÆö2×66÷R×&Wf–WræÖ§2s°¦–×÷'B¶ÆÆö6FUF–ÖUV–BÇF–ÖUW&–öD6öçF–ç4FFRÇF–ÖUW&–öE6÷'DFFWÒg&öÒrââòââöÆö2ö7VÇGW&R÷F–ÖRÖæ6†÷"×&ævW2æÖ§2s° ¦–×÷'B·6VÆV7DvÆ‡”–FVçF—G’Ç6VÆV7E66÷TF–Ç”6÷VçG7Òg&öÒrââòââöÆö2övÆ‡’övÆ‡’×VW'’s°¦–×÷'B¶FVfVÇE66÷TFFÇ&WfÆ–FFU6W'fW$ÖWFFFÒg&öÒrââòââöÆö2÷66÷R÷66÷RÖFFs° ¦–×÷'B¶FVÆWFU&÷w2Æ–ç6W'E&÷w2ÇWFFU&÷w7Òg&öÒrââòââöÆö2öF"öF"Ö6Æ–VçBæÖ§2s°¦–×÷'B¶76–væVE6÷W&6WÒg&öÒrââòââöÆö2÷7FF—7F–72öÖVÖ&W"Ö–çFW'6V7F–öâÖÖöFVÂæÖ§2s°¦–×÷'B´DTdTÅEõ”T%õt”äDõwÒg&öÒrââòââöÆö2÷&VfW&Væ6W2öFVfVÇB×–V"×v–æF÷ræÖ§2s°¦–×÷'B·6÷W&6T÷WFÆ–æT÷F–öç2Æw&÷WVE6÷W&6T÷WFÆ–æWÒg&öÒrââòââöÆö2÷6÷W&6Rö÷WFÆ–æRÖ÷F–öç2æÖ§2s°¦–×÷'B¶'V–ÆD7VÇGW&U&—fW%&ö÷E–ÆöBÇ6VÆV7D7VÇGW&U&—fW$6†–ÆG&VçÒg&öÒrââòââöÆö2ö7VÇGW&R÷&—fW"×&ö÷G2æÖ§2s°¦–×÷'B¶'V–ÆD7VÇGW&U6÷W&6UG&VTÆæW2Ç&öÆÇW7VÇGW&U6÷W&6TF—7Òg&öÒrââòââöÆö2ö7VÇGW&R÷6÷W&6R×G&VRÖÆæW2æÖ§2s°¦–×÷'B·W6T66÷VçGÒg&öÒrââòââöÆö2öWF‚÷W6RÖ66÷VçBs°¦–×÷'B·W6U66÷U'VçF–ÖWÒg&öÒrââ÷W6R×66÷R×'VçF–ÖRs°¦–×÷'B´'F–6ÆU6÷'E6VÆV7BÄfVGW&UvRÄ–æ7&VÖVçFÄÆ—7BÅv÷&´gVÆÅFW‡GÒg&öÒrââ÷V’s°¦–×÷'BÖævVÖVçEv÷&·76Tg&ÖRg&öÒrââòââöÆö2öÖævVÖVçBôÖævVÖVçEv÷&·76Tg&ÖRs°¢òò'F–6ÆR6&G2öVF—F–ær&R&WVW7FVBöæÇ’v†Vâ&W7VÇG27GVÆÇ’&VæFW"à¦6öç7B'F–6ÆSÖG–æÖ–2‚‚“Óæ–×÷'B‚rââô'F–6ÆRr’Ç¶ÆöF–æs¢‚“ÓæçVÆÇÒ“°¦6öç7B7VÇGW&UF–ÖVÆ–æTVF—F÷#ÖG–æÖ–2‚‚“Óæ–×÷'B‚râô7VÇGW&UF–ÖVÆ–æTVF—F÷"r’Ç°¢ÆöF–æs¢‚“ÓâÄ7VÇGW&UF–ÖTÆöF–ærÆ&VÃÒ~jÚ>YÊk©nX)i˜.™i>Zé®˜Ê{z‹ÊşYš(
+bróà§Ò“°¦6öç7B7VÇGW&UÆ6U&—fW#ÖG–æÖ–2‚‚“Óæ–×÷'B‚râ÷G&6Rô7VÇGW&UÆ6U&—fW"r’Ç¶ÆöF–æs¢‚“ÓæçVÆÇÒ“°¦–×÷'B·v÷&´F—7Æ”†VF–ærÇv÷&´F—7Æ•FW‡GÒg&öÒrââ÷v÷&²ÖF—7Æ’ÖÖöFVÂs°¦–×÷'B´DTdTÅEôÄ•5Eô$D4…õ4•¤WÒg&öÒrââòââöÆö2öF"öF"Ö6öçG&7BæÖ§2s°¦–×÷'B·V&Æ–46öçFVçDf–ÇFW'2Ç&WV—&TvÆ‡”6öçFVçBÇ&W6öÇfTvÆ‡•F—FÆWÒg&öÒrââòââöÆö2ö6öçFVçBö6öçFVçB×öÆ–7’s°¦–×÷'B·&VDvÆ‡•&V6÷&G7Òg&öÒrââòââöÆö2öÖöFVÂöfVGW&R×VW'’Ö6Æ–VçBæÖ§2s°¦6öç7BÆö4—FVÔ6öæfÇVVæ6SÖG–æÖ–2‚‚“Óæ–×÷'B‚râôÆö4—FVÔ6öæfÇVVæ6Rr’Ç¶ÆöF–æs¢‚“ÓæçVÆÇÒ“° ¦gVæ7F–öâ—4–çFW&7F—fUF&vWB‡F&vWB—°¢&WGW&â&ööÆVâ‡F&vWCòæ6Æ÷6W7Còâ‚vÆ'WGFöâÆ–çWBÇ6VÆV7BÇFW‡F&VÇ7VÖÖ'’Å·&öÆSÒ&'WGFöâ%ÒÅ¶6öçFVçFVF—F&ÆSÒ'G'VR%Òr’“°§Ğ ¢òò&W6W'fRF–ÖVÆ–æR–ç7Fæ6W2v†–ÆRVF—F÷"F–Æöw2Â7VvvW7FVBö–çG2æ@¢òòFVç6—G’7VvvW7F–öç2WFFR&÷VæBF†VÒà¢òòF–ÖR†2ôäRÖævVÖVçBVçG'’âG—R6VÆV7F–öâ&VÆöæw2FòF†RVF—F÷"f÷&Òà¦6öç7BTÕE•õ$•dU%ôdô5U3Ôö&¦V7Bæg&VW¦R‡·Ò“°¦6öç7BTÕE•ô5TÅEU$Uôu$õU3Ôö&¦V7Bæg&VW¦R…µÒ“°¦gVæ7F–öâV×G•&—fW$Æ&VÂ‚—·&WGW&ârs·Ğ¦gVæ7F–öâ6Æ76–f–6F–öå&—fW$Æ&VÂ†—FVÒ—°¢&WGW&â—FVÓòæVçG'•÷G—SÓÓÒwf—'GVÅöæ6†÷"sò†—FVÒæF—7Æ•öÆ&VÇÇÂ~)xrr“¢rs°§Ğ¦gVæ7F–öâÆ&VÄöb†—FVÒÆ–æFW‚ÇW&–öDæÖSÕT•ô4õ’æf÷&ÖBçW&–öB†–æFW‚³’—°¢&WGW&â—FVÓòæF—7Æ•öÆ&VÇÇÆ—FVÓòææÖWÇÆ—FVÓòçF—FÆWÇÆ—FVÓòçW&–öGÇÇW&–öDæÖS°§Ğ¦gVæ7F–öâ6÷'EW&–öG2‡&÷w3ÕµÒ—°¢&WGW&â²ââç&÷w5Òæf–ÇFW"†—FVÓÓæ—FVÓòç7F'EöFFWÇÆ—FVÓòæVæEöFFR’ç6÷'B‚†Æ"“Óà¢7G&–ær†ç7F'EöFFWÇÆæVæEöFFWÇÂrr’æÆö6ÆT6ö×&R…7G&–ær†"ç7F'EöFFWÇÆ"æVæEöFFWÇÂrr’¢“°§Ğ¦gVæ7F–öâW&–öE&ævR‡&÷w3ÕµÒÇ66÷SÒrrÆÆÅF–ÖSÕT•ô4õ’æ7VÇGW&RæÆÅF–ÖR—°¢6öç7B7F'G3×&÷w2æÖ‡&÷sÓç&÷rç7F'EöFFWÇÇ&÷ræVæEöFFR’æf–ÇFW"„&ööÆVâ’ç6÷'B‚“°¢6öç7BVæG3×&÷w2æÖ‡&÷sÓç&÷ræVæEöFFWÇÇ&÷rç7F'EöFFR’æf–ÇFW"„&ööÆVâ’ç6÷'B‚“°¢6öç7B÷VäVæFVC×&÷w2ç6öÖR‡&÷sÓä&ööÆVâ‡&÷sòæ÷VåöVæB—ÇÂ&÷sòæVæEöFFR“°¢&WGW&â°¢W&–öC¢vÆÂrÇF—FÆS¦ÆÅF–ÖRÆF—7Æ•öÆ&VÃ¦ÆÅF–ÖRÀ¢7F'EöFFS§7F'G5³×ÇÂrrÆVæEöFFS¦÷VäVæFVCöçVÆÃ¢†VæG2æB‚Ó—ÇÆçVÆÂ’Ç66÷Uö–C§66÷P¢Ó°§Ğ¦gVæ7F–öâW&–öD¶W’†—FVÒ—°¢&WGW&â7G&–ær†—FVÓòçW&–öGÇÆ—FVÓòæW&ö–GÇÆ—FVÓòæWfVçEö–GÇÆ—FVÓòçV–GÇÆ—FVÓòæ–GÇÂrr’çG&–Ò‚“°§Ğ¦gVæ7F–öâ6Æ74Æ&VÂ‡fÇVR—°¢6öç7BFW‡CÕ7G&–ær‡fÇVWÇÂrr’çG&–Ò‚“°¢&WGW&âFW‡Còrs§FW‡BæVæG5v—F‚‚~{êN{XBr“÷FW‡C§FW‡B²r{êN{XBs°§Ğ¢òòF—7Æ’6Æ76–f–VBw&÷W2æB—FVÒ†—G2g&öÒF†RVæ–f–VBT”BG&VRà¦gVæ7F–öâ¶W—v÷&DG&–ÆÅ&—fW$—FV×2‡&÷w2Ç¶w&÷W–CÒrrÆÖWF×·ÒÆw&÷W—FV×3Õµ×Ó×·Ò—°¢6öç7B6Æ76W3ÖÖWFæ6Æ76W7ÇÇ·ÒÆ6Æ74æÖSÕ7G&–ær†ÖWFæ6Æ75öæÖWÇÂrr’çG&–Ò‚“°¢6öç7B¶æ÷vãÖæWrÖ†w&÷W—FV×2æÖ†—FVÓÓåµ7G&–ær†—FVÒçV–B’Æ—FVÕÒ’“°¢6öç7B'V6¶WG3ÖæWrÖ‚’ÆÖ†–×VÓÖæWrÖ‚“°¢f÷"†6öç7B&÷röb&÷w7ÇÅµÒ—°¢6öç7BF“Õ7G&–ær‡&÷ræF—ÇÇ&÷ræFFWÇÂrr’ç6Æ–6RƒÃ“°¢–b‚õåÆG³GÒÕÆG³'ÒÕÆG³'ÒBòçFW7B†F’’–6öçF–çVS°¢ÆWB¶W“ÒrrÆÆ&VÃÒrrÆ6÷VçCÓÆ÷&FW#Ó°¢–b†w&÷W–B—°¢–b‡&÷ræ¶–æBÓÒv—FVÕöF’r–6öçF–çVS°¢6öç7B—FVÓÖ¶æ÷vâævWB…7G&–ær‡&÷ræ—FVÕö¶W’’“°¢–b‚—FVÒ–6öçF–çVS°¢¶W“Õ7G&–ær‡&÷ræ—FVÕö¶W’“°¢Æ&VÃÕ7G&–ær†—FVÒææÖWÇÆ¶W’“°¢6÷VçCÔçVÖ&W"‡&÷ræ†—Eö6÷VçB—ÇÃ°¢÷&FW#ÔçVÖ&W"†—FVÒæ÷&FW%öæò—ÇÃ°¢ÖVÇ6R–b‡&÷ræ¶–æCÓÓÒv6Æ75öF’wÇÂ‡&÷ræ6Æ76–f–6F–öåöw&÷Wbg&÷ræw&÷W÷V–B’—°¢¶W“Õ7G&–ær‡&÷ræw&÷W÷V–Cóòrr“°¢6öç7Bw&÷WæÖSÕ7G&–ær†6Æ76W5¶¶W•×ÇÇ&÷ræ6Æ76–f–6F–öåöw&÷WÇÂrr’çG&–Ò‚“°¢–b‚w&÷WæÖR–6öçF–çVS°¢Æ&VÃÕ¶6Æ74æÖRÆw&÷WæÖRÂ~{êN{XBuÒæf–ÇFW"„&ööÆVâ’æ¦ö–â‚rr“°¢6÷VçCÔçVÖ&W"‡&÷ræ†—Eö6÷VçCó÷&÷ræ6÷VçB—ÇÃ°¢÷&FW#Ôö&¦V7Bæ¶W—2†6Æ76W2’æ–æFW„öb†¶W’’³°¢ÖVÇ6R6öçF–çVS°¢–b‚¶W—ÇÂ6÷VçB–6öçF–çVS°¢6öç7B–CÖ¶W’²uÇSr¶F“°¢6öç7B&Wf–÷W3Ö'V6¶WG2ævWB†–B“°¢6öç7B67V×VÆFVCÒ‡&Wf–÷W3òæ6÷VçGÇÃ’¶6÷VçC°¢'V6¶WG2ç6WB†–BÇ¶¶W’ÆÆ&VÂÆF’Æ6÷VçC¦67V×VÆFVBÆ÷&FW'Ò“°¢Ö†–×VÒç6WB†¶W’ÄÖF‚æÖ‚†Ö†–×VÒævWB†¶W’—ÇÃÆ67V×VÆFVB’“°¢Ğ¢&WGW&â²ââæ'V6¶WG2çfÇVW2‚•ÒæÖ‚‡¶¶W’ÆÆ&VÂÆF’Æ6÷VçBÆ÷&FW'Ò“Óâ‡°¢–C¢v¶W—v÷&BÖFVç6—G“¢r²†w&÷W–Còv—FVÒs¢v6Æ72r’²s¢r¶¶W’²s¢r¶F’À¢VçG'•ö–C¢v¶W—v÷&BÖFVç6—G“¢r²†w&÷W–Còv—FVÒs¢v6Æ72r’²s¢r¶¶W’²s¢r¶F’À¢VçG'•÷G—S¢v¶W—v÷&EöFVç6—G’rÆG&–ÆÅö¶W“¦¶W’À¢w&÷WöÆ&VÃ¦Æ&VÂÆ6FVv÷'“¦Æ&VÂÆF—7Æ•öÆ&VÃ¢rrÀ¢F—FÆS¦F’²r+rr¶Æ&VÂ²r+rr¶6÷VçBçFôÆö6ÆU7G&–ær‚’²†w&÷W–CòrjÊs¢rzørr’À¢7F'EöFFS¦F’ÆVæEöFFS¦æW‡E&—fW$F’†F’’À¢—FVÕö6÷VçC¦6÷VçBÆw&÷Wö÷&FW#¦÷&FW"ÆFVç6—G•÷&F–ó¦6÷VçBôÖF‚æÖ‚ƒÆÖ†–×VÒævWB†¶W’—ÇÃ¢Ò’’ç6÷'B‚†Æ"“Óæç7F'EöFFRæÆö6ÆT6ö×&R†"ç7F'EöFFR¢ÇÆæw&÷Wö÷&FW"Ö"æw&÷Wö÷&FW'ÇÆæw&÷WöÆ&VÂæÆö6ÆT6ö×&R†"æw&÷WöÆ&VÂ’“°§Ğ¦gVæ7F–öâf÷&ÖD7VÇGW&UV’‡FV×ÆFRÇfÇVW3×·Ò—°¢&WGW&â7G&–ær‡FV×ÆFWÇÂrr’ç&WÆ6R‚õÇ²…¶×¤Õ¥ÕµÇuÒ¢•ÇÒöwRÂ†ÖF6‚Æ¶W’“Óà¢ö&¦V7Bç&÷F÷G—Ræ†4÷vå&÷W'G’æ6ÆÂ‡fÇVW2Æ¶W’“õ7G&–ær‡fÇVW5¶¶W•Óóòrr“¦ÖF6‚“°§Ğ¦gVæ7F–öâæW‡E&—fW$F’‡fÇVR—°¢6öç7B¶W“Õ7G&–ær‡fÇVWÇÂrr’ç6Æ–6RƒÃ“°¢–b‚¶W’—&WGW&ârs°¢6öç7BFFSÖæWrFFR†¶W’²uC££¢r“°¢–b„çVÖ&W"æ—4æâ†FFRævWEF–ÖR‚’’—&WGW&ârs°¢FFRç6WEUD4FFR†FFRævWEUD4FFR‚’³“°¢&WGW&âFFRçFô•4õ7G&–ær‚’ç6Æ–6RƒÃ“°§Ğ¢òò–çBF†R6öÆÆ6VB6÷W&6R÷fW'f–Wrg&öÒF†RçVÖW&–2F÷FÇ2Ç&VG’–âÖVÖ÷'’à¢òòf—2×F–ÖVÆ–æR—2Ö÷VçFVBöæÇ’gFW"6FVv÷'’—2W‡æFVBÂæ÷Bf÷"F‡&VP¢òògVÆÂ×v–æF÷rF÷FÂ&'2F†BFòæ÷B&WV—&Rf—'GVÆ—¦VBF–ÖRÖ†—2Æ–÷WBà¦gVæ7F–öâ7VÇGW&U6÷W&6U&ö÷E7VÖÖ'’‡¶—FV×2Æw&÷W2ÆW&&ævW2Çv–æF÷u7F'BÇv–æF÷tVæBÆöäw&÷WFövvÆRÆöäw&÷W6VÆV7GÒ—°¢6öç7B&6¶w&÷VæD–ÖvS×W6TÖVÖò‚‚“ÓæW&f—7VÄw&F–VçB†W&&ævW2Çv–æF÷u7F'BÇv–æF÷tVæB’Å¶W&&ævW2Çv–æF÷u7F'BÇv–æF÷tVæEÒ“°¢6öç7BF÷FÇ3Ö—FV×2æf–ÇFW"†—FVÓÓæ—FVÒæVçG'•÷G—SÓÓÒw6÷W&6U÷F÷FÂr“°¢6öç7B'”w&÷WÖæWrÖ‡F÷FÇ2æÖ†—FVÓÓå¶—FVÒæw&÷Wö¶W’Æ—FVÕÒ’“°¢6öç7BÆ&vW7CÔÖF‚æÖ‚ƒÂââçF÷FÇ2æÖ†—FVÓÓäçVÖ&W"†—FVÒæ—FVÕö6÷VçB—ÇÃ’“°¢&WGW&âÆF—b6Æ74æÖSÒw66÷R×W&–öB×F–ÖVÆ–æR×w&sà¢ÆF—b6Æ74æÖSÒw66÷R×W&–öB×F–ÖVÆ–æRr&öÆSÒw&Vv–öâr&–ÖÆ&VÃÒ~KÙÎY8Xˆnšî{‹Ş˜xşi˜.™i>™[~k+2p¢7G–ÆS×·¶Ö–ä†V–v‡C£Æ÷fW&fÆ÷s¢wf—6–&ÆRrÇFF–æs¢rãcW&VÒrÆ&6¶w&÷VæC¢wf"‚ÒÖÆö2×æVÂ’w×Óà¢ÆF—b7G–ÆS×·¶F—7Æ“¢vw&–BrÆw&–EFV×ÆFT6öÇVÖç3¢v6Æ×ƒ‡‚Ã#7grÃ#C‡‚’Ö–æÖ‚ƒÃg"’rÆv¢rãG&VÒãSW&VÒrÆÆ–vä—FV×3¢v6VçFW"w×Óà¢Ç7â6Æ74æÖSÒw66÷R×7FGW2sîXˆnšî{‹Ş˜xóÂ÷7ãà¢ÆF—b7G–ÆS×·¶F—7Æ“¢vfÆW‚rÆ§W7F–g”6öçFVçC¢w76RÖ&WGvVVârÆv¢rãW&VÒrÆföçE6—¦S¢rã‡&VÒrÆ6öÆ÷#¢wf"‚ÒÖÆö2Ö×WFVB’rÆ&6¶w&÷VæD–ÖvRÆ&÷&FW%&F—W3¢rã'&VÒrÇFF–æs¢sã#W&VÒw×Óà¢ÇF–ÖSç·v–æF÷u7F'GÓÂ÷F–ÖSãÇF–ÖSç·v–æF÷tVæGÓÂ÷F–ÖSà¢ÂöF—cà¢¶w&÷W2æÖ†w&÷WÓç°¢6öç7B&÷sÖ'”w&÷WævWB†w&÷Wæ–B“°¢6öç7B6æF–FFSÖw&÷Wæ–CÓÓÒvGVÃ§6÷W&6S¦6æF–FFW2s°¢–b‚&÷rbb6æF–FFR—&WGW&âçVÆÃ°¢6öç7B6÷VçCÔçVÖ&W"‡&÷sòæ—FVÕö6÷VçB—ÇÃ°¢6öç7B7F–öãÖw&÷Wæ6öÆÆ6–&ÆSò‚“Óæöäw&÷WFövvÆSòâ†w&÷Wæ–B¢¦w&÷Wç6VÆV7F&ÆSò‚“Óæöäw&÷W6VÆV7Còâ†w&÷Wæ–B“¦çVÆÃ°¢&WGW&âÆF—b¶W“×¶w&÷Wæ–GÒ6Æ74æÖS×·&÷sòw66÷RÖGVÂ×&—fW"×&ö÷Bs¢w66÷RÖ6æF–FFRÖÆæRwÒ7G–ÆS×·¶F—7Æ“¢v6öçFVçG2w×Óà¢ÆF—b7G–ÆS×·¶Ö–åv–GFƒ£×Óà¢¶7F–öãóÆ'WGFöâG—SÒv'WGFöâr6Æ74æÖSÒw66÷R×&—fW"Öw&÷WÖ'WGFöâp¢&–ÖW‡æFVC×¶w&÷Wæ6öÆÆ6–&ÆSô&ööÆVâ†w&÷WæW‡æFVB“§VæFVf–æVGÒöä6Æ–6³×¶7F–öçÓà¢¶w&÷Wæ6öÆÆ6–&ÆSò~ûÈ²s¢rw×¶w&÷WæÆ&VÇĞ¢Âö'WGFöãã£Ç7ãç¶w&÷WæÆ&VÇÓÂ÷7ãçĞ¢ÂöF—cà¢ÆF—b7G–ÆS×·¶Ö–åv–GFƒ£ÆÖ–ä†V–v‡C¦6æF–FFSó3#£CÆF—7Æ“¢vfÆW‚rÆÆ–vä—FV×3¢v6VçFW"rÇFF–æs¢rã3W&VÒãCW&VÒrÀ¢&÷&FW#¢s‚6öÆ–Bf"‚ÒÖÆö2ÖÆ–æR’rÆ&÷&FW%&F—W3¢rãW&VÒrÆ&6¶w&÷VæD6öÆ÷#¢wf"‚ÒÖÆö2×æVÂÓ"’rÆ&6¶w&÷VæD–ÖvW×Ğ¢&öÆS×·&÷sòv–Örs§VæFVf–æVGÒ&–ÖÆ&VÃ×·&÷söw&÷WæÆ&VÂ²~ûÈÂr¶6÷VçB²~zØbs¢rwÓà¢·&÷sóÆF—b7G–ÆS×··v–GFƒ¢sRrÆ†V–v‡C¤ÖF‚æÖ‚ƒÄÖF‚ç&÷VæBƒ³’¦6÷VçBöÆ&vW7B’’À¢&÷&FW%&F—W3¢s““—‚rÆ&6¶w&÷VæC§f—7VÄ¶W”6öÆ÷"†w&÷Wæ–B’À¢÷6—G“¤ÖF‚æÖ‚‚ãcRÄÖF‚æÖ–âƒÆ6÷VçBöÆ&vW7B’’Æ&÷…6†F÷s¢sg‚f"‚ÒÖÆö2Ö66VçBÖ&÷&FW"’w×Òóã¦çVÆÇĞ¢ÂöF—cà¢ÂöF—cã°¢Ò—Ğ¢ÂöF—cà¢ÂöF—cà¢ÂöF—cã°§Ğ¦gVæ7F–öâF”¶W”g&öÕF–ÖVÆ–æUfÇVR‡fÇVR—°¢6öç7BFFS×fÇVR–ç7Fæ6VöbFFS÷fÇVS¦æWrFFR‡fÇVR“°¢–b„çVÖ&W"æ—4æâ†FFRævWEF–ÖR‚’’—&WGW&ârs°¢&WGW&âFFRçFô•4õ7G&–ær‚’ç6Æ–6RƒÃ“°§Ğ¦gVæ7F–öâW&–öE÷6—F–öå&F–ò†FFRÇ7F'BÆVæB—°¢6öç7BÔFFRç'6R…7G&–ær‡7F'GÇÂrr’ç6Æ–6RƒÃ’“°¢6öç7B#ÔFFRç'6R…7G&–ær†VæGÇÂrr’ç6Æ–6RƒÃ’“°¢6öç7BƒÔFFRç'6R…7G&–ær†FFWÇÂrr’ç6Æ–6RƒÃ’“°¢–b‚çVÖ&W"æ—4f–æ—FR†—ÇÂçVÖ&W"æ—4f–æ—FR†"—ÇÂçVÖ&W"æ—4f–æ—FR‡‚—ÇÆ#ÃÖ—&WGW&â°¢&WGW&âÖF‚æÖ‚ƒÄÖF‚æÖ–âƒÂ‡‚Ö’ò†"Ö’’“°§Ğ¦W‡÷'BFVfVÇBgVæ7F–öâ7VÇGW&R‚—°¢W6UV•6V7F–öâ‚v7VÇGW&Rr“°¢W6UV•6V7F–öâ‚wV”W‡G&æ7VÇGW&Uf–Wrr“°¢W6UV•6V7F–öâ‚wV”W‡G&æFFW'&÷'2r“°¢W6UV•6V7F–öâ‚wV”W‡G&çv–æF–öâr“°¢6öç7BT•ô4õ“×W6UV”6÷’‚“°¢6öç7BÃÕT•ô4õ’çV”W‡G&æ7VÇGW&Uf–Ws°¢6öç7BÆö6Æ—¦VDÆ&VÄöc×W6TÖVÖò‚‚“Óâ†—FVÒÆ–æFW‚“ÓæÆ&VÄöb†—FVÒÆ–æFW‚ÅT•ô4õ’æf÷&ÖBçW&–öB†–æFW‚³’’ÅµT•ô4õ•Ò“°¢6öç7B¶Æö6ÆWÓ×W6UV”Æö6ÆR‚“°¢6öç7B·66÷T–BÇ66÷WÓ×W6U66÷U'VçF–ÖR‚“°¢6öç7B·v÷&·4÷VâÇ6WEv÷&·4÷VåÓ×W6U7FFR†fÇ6R“°¢6öç7B6V&6…&×3×W6U6V&6…&×2‚“°¢6öç7BVF—DFö6³×W6TVF—DFö6²‚“°¢6öç7B6åW6U66÷TVF—F÷#Ô&ööÆVâ†VF—DFö6³òæ7F—fRbfVF—DFö6²ç66÷T–CÓÓ×66÷T–B“°¢6öç7BF†æÖS×W6UF†æÖR‚—ÇÂrs°¢òòÖævVÖVçBU$Â×W7B&VæFW"—G2ÖævVÖVçBv÷&·76RWfVâgFW"gVÆÀ¢òòæf–vF–öâ÷"âVF—BFö6²&VÖ÷VçBâF†RfW&–f–VB66÷VçB7F–ÆÂ6öçG&öÇ0¢òò66W72FòF†RVF—F÷#²U$Â÷"Fö6²7FFRæWfW"6öæfW'2W&Ö—76–öâà¢6öç7BöåF–ÖTÖævU&÷WFS×F†æÖRæVæG5v—F‚‚rö7VÇGW&RöÖævRr—ÇÀ¢F†æÖRæVæG5v—F‚‚rö7VÇGW&RöÖævRòr“°¢6öç7B—5F–ÖTVF—F–æuf–WsÖöåF–ÖTÖævU&÷WFWÇÀ¢†6åW6U66÷TVF—F÷"bg6V&6…&×3òævWB‚vVF—Br“ÓÓÒsr“°¢òòöæÇ’F†RW‡Æ–6—BVF—F–ær&÷WFRöFö6²W‡÷6W2VF—F–æs²6W'fW"W&Ö—76–öç0¢òò&R7F–ÆÂfW&–f–VBv†VâF†RW6W"÷Vç2âVF—F÷"æBv†Vâw&—F–ærà¢6öç7BFÖ–äÆ—7E&WVW7FVCÔ&ööÆVâ†—5F–ÖTVF—F–æuf–WwÇÆ6åW6U66÷TVF—F÷"“°¢òòV&Æ–27VÇGW&RFöW2æ÷BÆöBÖævVÖVçBw&çG3²VF—F–ær×W7BfW&–g’F†VÒà¢6öç7B66÷VçC×W6T66÷VçB‡¶Væ&ÆVC¦—5F–ÖTVF—F–æuf–WwÇÆ6åW6U66÷TVF—F÷'Ò“°¢6öç7B¶Æö47VÇGW&Uf–WrÇ6WDÆö47VÇGW&Uf–WuÓ×W6U7FFR‚wW&–öBr“°¢òòÄô2F—7Æ—2F†RöæR×–V"6÷W&6RFVç6—G’&—fW"–ÖÖVF–FVÇ“²æòf—'7B&—fW"à¢6öç7B¶Æö4FVç6—G”÷VâÇ6WDÆö4FVç6—G”÷VåÓ×W6U7FFR‡G'VR“°¢6öç7B¶W‡æFVDÆö566÷W2Ç6WDW‡æFVDÆö566÷W5Ó×W6U7FFR…µÒ“°¢6öç7B—4Æö4—FVÕf–Ws×66÷T–CÓÓÒvÆö2rbfÆö47VÇGW&Uf–WsÓÓÒv—FVÒs°¢6öç7B&W6÷W&6T66†S×W6U&W6÷W&6T66†R‚“°¢6öç7Bæf–vF–öã×W6TÖVÖò‚‚“Óç&VDfVGW&Tæf–vF–öâ‡6V&6…&×2’Å·6V&6…&×5Ò“°¢6öç7BVW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²v7VÇGW&R×F–ÖVÆ–æRrÇ66÷T–BÆ—5F–ÖTVF—F–æuf–WsòvÖævVÖVçBs¢wV&Æ–2uÒÀ¢VW'”fã¦7–æ2‡·6–væÇÒ“Óç°¢6öç7B·6VÆV7E66÷T7VÇGW&TFFÇ6VÆV7E66÷T7VÇGW&TÖævVÖVçDFFÓÖv—B–×÷'B‚rââòââöÆö2ö7VÇGW&R÷VW'’r“°¢&WGW&â—5F–ÖTVF—F–æuf–Wp¢÷6VÆV7E66÷T7VÇGW&TÖævVÖVçDFF‡66÷T–BÇ·6–væÇÒ¢§6VÆV7E66÷T7VÇGW&TFF‡66÷T–B“°¢ÒÀ¢Væ&ÆVC¢—4Æö4—FVÕf–WrÀ¢Ò“° ¢6öç7B·6VÆV7FVEW&–öD¶W’Ç6WE6VÆV7FVEW&–öD¶W•Ó×W6U7FFR‚w–V"r“°¢6öç7B·7G'V7GW&Uv–æF÷t¶W’Ç6WE7G'V7GW&Uv–æF÷t¶W•Ó×W6U7FFR‚rr“°¢6öç7B¶W‡æFVDW&–G2Ç6WDW‡æFVDW&–G5Ó×W6U7FFR…µÒ“°¢6öç7B¶W‡æFVDVF—F÷$W&–G2Ç6WDW‡æFVDVF—F÷$W&–G5Ó×W6U7FFR…µÒ“°¢òòÖ÷VçBF†R†—7F÷&–6Â&—fW"&Vf÷&RF†RÆ&vRÖævVÖVçBÆ—7BöVF—F÷"à¢òò&÷F‚6öç7VÖRöæRWF†÷&—¦VBF–ÖTæ6†÷"6æ6†÷C²æòW‡G&5ÂfWF6‚à¢6öç7B·F–ÖU&—fW$f—'7E–çBÇ6WEF–ÖU&—fW$f—'7E–çEÓ×W6U7FFR†fÇ6R“°¢6öç7B·F–ÖTVF—F÷$g&ÖU&VG’Ç6WEF–ÖTVF—F÷$g&ÖU&VG•Ó×W6U7FFR†fÇ6R“°¢W6TVffV7B‚‚“Óç·6WEF–ÖU&—fW$f—'7E–çB†fÇ6R—ÒÅ·66÷T–BÆ—5F–ÖTVF—F–æuf–WuÒ“°¢òòæWfW"Ö¶RF–ÖTæ6†÷"VF—F–ærFWVæBW†6ÇW6—fVÇ’öâf—2×F–ÖVÆ–æR–ç@¢òò6ÆÆ&6³¢&VG’FF6WB6â†fRæòf—6–&ÆR&'2÷"¦W&ò×6—¦RæVÇ2à¢òòv—fRF†R&VÂf—'7B&—fW"Gvò–çBg&ÖW2ÂF†Vâ&VÆV6RF†RVF—F÷"WfVà¢òò–bf—2—27F–ÆÂ&V6÷fW&–æs²F†—26ææ÷BFVFÆö6²öâÖ—76–ær6ÆÆ&6·2à¢W6TVffV7B‚‚“Óç°¢–b‚—5F–ÖTVF—F–æuf–WwÇÇVW'’æ—5VæF–æwÇÇVW'’æW'&÷"—°¢6WEF–ÖTVF—F÷$g&ÖU&VG’†fÇ6R“°¢&WGW&âVæFVf–æVC°¢Ğ¢ÆWBf—'7CÓÇ6V6öæCÓÆ6æ6VÆÆVCÖfÇ6S°¢f—'7C×v–æF÷rç&WVW7Dæ–ÖF–öäg&ÖR‚‚“Óç°¢6V6öæC×v–æF÷rç&WVW7Dæ–ÖF–öäg&ÖR‚‚“Óç°¢–b‚6æ6VÆÆVB—6WEF–ÖTVF—F÷$g&ÖU&VG’‡G'VR“°¢Ò“°¢Ò“°¢&WGW&â‚“Óç°¢6æ6VÆÆVC×G'VS°¢–b†f—'7B—v–æF÷ræ6æ6VÄæ–ÖF–öäg&ÖR†f—'7B“°¢–b‡6V6öæB—v–æF÷ræ6æ6VÄæ–ÖF–öäg&ÖR‡6V6öæB“°¢Ó°¢ÒÅ¶—5F–ÖTVF—F–æuf–WrÇ66÷T–BÇVW'’æ—5VæF–ærÇVW'’æW'&÷%Ò“°¢6öç7BW&–öE6VÆV7F–öå66÷U&Vc×W6U&Vb‚rr“°¢6öç7B·6VÆV7FVD6FVv÷'’Ç6WE6VÆV7FVD6FVv÷'•Ó×W6U7FFR‚rr“°¢6öç7B¶'F–6ÆU6÷'BÇ6WD'F–6ÆU6÷'EÓ×W6U7FFR‚vFW62r“°¢òò¶W—v÷&B6Æ72—2÷F–öæÃ²÷&F–æ'’F–ÖR&—fW"f–Ww2×W7Bæ÷B66âF†Rv†öÆR'F–6ÆR6÷'W2à¢6öç7B·7G–ÆTf–ÇFW"Ç6WE7G–ÆTf–ÇFW%Ó×W6U7FFR‚væöæRr“°¢òòÖVF–6—FW2&RÇ&VG’–æ6ÇVFVB–âF†RVæ–f–VB6—FTæ6†÷"6÷W&6R&—fW"à¢òòöæÇ’vVöw&‡’æB¶W—v÷&G2W6R–æFWVæFVçB&W6VçFF–öâF–ÖVç6–öç2à¢6öç7BW6W56÷W&6U&—fW#×7G–ÆTf–ÇFW"ÓÒwG&6Rs°¢6öç7B·6VÆV7FVD¶W—v÷&D6Æ75V–BÇ6WE6VÆV7FVD¶W—v÷&D6Æ75V–EÓ×W6U7FFR‚rr“°¢6öç7B¶¶W—v÷&DG&–ÆÅ6÷W&6RÇ6WD¶W—v÷&DG&–ÆÅ6÷W&6UÓ×W6U7FFR‚rr“°¢6öç7B¶¶W—v÷&DG&–ÆÄw&÷WÇ6WD¶W—v÷&DG&–ÆÄw&÷WÓ×W6U7FFR‚rr“°¢6öç7B¶¶W—v÷&EW&–öD¶W’Ç6WD¶W—v÷&EW&–öD¶W•Ó×W6U7FFR‚w–V"r“°¢6öç7B¶¶W—v÷&DW&¶W’Ç6WD¶W—v÷&DW&¶W•Ó×W6U7FFR‚w–V"r“°¢6öç7B¶¶W—v÷&D7W7FöÕ7F'BÇ6WD¶W—v÷&D7W7FöÕ7F'EÓ×W6U7FFR‚rr“°¢6öç7B¶¶W—v÷&D7W7FöÔVæBÇ6WD¶W—v÷&D7W7FöÔVæEÓ×W6U7FFR‚rr“°¢6öç7B·6VÆV7FVEf—'GVÄæ6†÷$FFW2Ç6WE6VÆV7FVEf—'GVÄæ6†÷$FFW5Ó×W6U7FFR…µÒ“°¢6öç7B¶fö7W6VDæ6†÷$FFRÇ6WDfö7W6VDæ6†÷$FFUÓ×W6U7FFR‚rr“°¢6öç7B¶÷Vä7VÇGW&U&ö÷G2Ç6WD÷Vä7VÇGW&U&ö÷G5Ó×W6U7FFR…µÒ“°¢òòæ6†÷"7VvvW7F–öç2æWfW"6ö×WFR§W7B&V6W6RÆæRw2F–Ç’FF¢òò'&—fVBÒÒF†Bv÷VÆBWFò×'VâF†RTÅBv÷&¶W"26–FRVffV7Bö`¢òòW‡æF–ær6÷W&6RÆæRâF†W’öæÇ’6ö×WFRöæ6RF†RW6W"W‡Æ–6—FÇ¢òò÷Vç2F†R.[»®ŠÛZé®˜Ê›¹â"æVÂ—G6VÆc²6VRæ6†÷%7VvvW7D÷Vâ&VÆ÷rà¢6öç7B¶æ6†÷%7VvvW7D÷VâÇ6WDæ6†÷%7VvvW7D÷VåÓ×W6U7FFR†fÇ6R“°¢6öç7B·6VÆV7FVE&—fW$w&÷WÇ6WE6VÆV7FVE&—fW$w&÷WÓ×W6U7FFR‚rr“°¢6öç7B¶7&VF–æu7VvvW7FVDæ6†÷'2Ç6WD7&VF–æu7VvvW7FVDæ6†÷'5Ó×W6U7FFR†fÇ6R“°¢6öç7Bv÷&µ67&öÆÅ&Vc×W6U&Vb†çVÆÂ“°¢6öç7B¶gVÆÅFW‡D¶W’Ç6WDgVÆÅFW‡D¶W•Ó×W6U7FFR‚rr“°¢6öç7B¶gVÆÅFW‡BÇ6WDgVÆÅFW‡EÓ×W6U7FFR‚rr“°¢6öç7B¶gVÆÄFWF–ÂÇ6WDgVÆÄFWF–ÅÓ×W6U7FFR†çVÆÂ“°¢6öç7B¶gVÆÅFW‡DÆöF–ærÇ6WDgVÆÅFW‡DÆöF–æuÓ×W6U7FFR†fÇ6R“°¢6öç7B¶gVÆÅFW‡DW'&÷"Ç6WDgVÆÅFW‡DW'&÷%Ó×W6U7FFR‚rr“°¢6öç7B¶VF—F–æuv÷&´¶W’Ç6WDVF—F–æuv÷&´¶W•Ó×W6U7FFR‚rr“°¢6öç7B¶WF†÷&—¦VEv÷&´¶W’Ç6WDWF†÷&—¦VEv÷&´¶W•Ó×W6U7FFR‚rr“°¢6öç7B·6VÆV7FVEF–ÖVÆ–æU&V6÷&D–BÇ6WE6VÆV7FVEF–ÖVÆ–æU&V6÷&D–EÓ×W6U7FFR‚rr“°¢6öç7B·6VÆV7FVEF–ÖVÆ–æT–æfòÇ6WE6VÆV7FVEF–ÖVÆ–æT–æfõÓ×W6U7FFR†çVÆÂ“°¢6öç7B·6VÆV7FVEF–ÖVÆ–æTFFRÇ6WE6VÆV7FVEF–ÖVÆ–æTFFUÓ×W6U7FFR‚rr“°¢6öç7B·F–ÖVÆ–æTVF—F÷%&Wf—6–öâÇ6WEF–ÖVÆ–æTVF—F÷%&Wf—6–öåÓ×W6U7FFRƒ“°¢òò÷Væ–ærF†RF–ÖRVF—F÷"—2T’7F–öâÂæ÷BâWF†÷&—¦F–öâ6†V6²à¢òòfW&–g’F†R7F—fRW6W"öæÇ’v†Vâw&—FR—27GVÆÇ’&WVW7FVBà¢6öç7B·7VvvW7FVE&V6÷&EG—RÇ6WE7VvvW7FVE&V6÷&EG—UÓ×W6U7FFR‚væ6†÷"r“°¢6öç7B·7VvvW7FVE&WVW7Dæöæ6RÇ6WE7VvvW7FVE&WVW7Dæöæ6UÓ×W6U7FFRƒ“°¢6öç7B¶VF—DG&gBÇ6WDVF—DG&gEÓ×W6U7FFR†çVÆÂ“°¢6öç7B¶VF—D'W7’Ç6WDVF—D'W7•Ó×W6U7FFR†fÇ6R“°¢6öç7B¶VF—DW'&÷"Ç6WDVF—DW'&÷%Ó×W6U7FFR‚rr“° ¢W6TVffV7B‚‚“Óç°¢6WE7G–ÆTf–ÇFW"‚væöæRr“°¢6WDÆö4FVç6—G”÷Vâ‡G'VR“°¢6WDW‡æFVDÆö566÷W2…µÒ“°¢6WE6VÆV7FVEW&–öD¶W’‚w–V"r“°¢6WD¶W—v÷&EW&–öD¶W’‚w–V"r“°¢6WD¶W—v÷&DW&¶W’‚w–V"r“°¢6WD¶W—v÷&D7W7FöÕ7F'B‚rr“°¢6WD¶W—v÷&D7W7FöÔVæB‚rr“°¢6WD÷Vä7VÇGW&U&ö÷G2…µÒ“°¢6WE6VÆV7FVE&—fW$w&÷W‚rr“°¢6WDfö7W6VDæ6†÷$FFR‚rr“°¢6WE7G'V7GW&Uv–æF÷t¶W’‚rr“°¢ÒÅ·66÷T–EÒ“°¢6öç7B—4vw&VvFU66÷SÔ&ööÆVâ‡66÷Sòævw&VvFT6†–ÆG&Vâ“°¢òòÄô2w2f—'7BF–ÖR&—fW"æWfW"VW&–W2W"ÖF’'F–6ÆRöÖVF–FVç6—G’à¢òòöâÖFVÖæB6V6öæB×&—fW"FFW6W2F†R6†&VB¦Vå7F6²VW'’6Æ–VçBà¢6öç7BÆö5&WVW7FVE7F'CÕ7G&–ær†æf–vF–öâæg&ö×ÇÂrr’ç6Æ–6RƒÃ“°¢6öç7BÆö5&WVW7FVDVæCÕ7G&–ær†æf–vF–öâçF÷ÇÂrr’ç6Æ–6RƒÃ“°¢6öç7BÆö5&WVW7FVEfÆ–CÒõåÆG³GÒÕÆG³'ÒÕÆG³'ÒBòçFW7B†Æö5&WVW7FVE7F'B’b`¢õåÆG³GÒÕÆG³'ÒÕÆG³'ÒBòçFW7B†Æö5&WVW7FVDVæB’bfÆö5&WVW7FVE7F'CÃÖÆö5&WVW7FVDVæC°¢òòF†RÄô2ÆæF–ær&—fW"—2Çv—2F†RÆFW7B–V"Âæ÷BW&–öB–çFW'6V7F–öâà¢6öç7BÆö56÷W&6U7F'CÔDTdTÅEõ”T%õt”äDõrç7F'DFFS°¢6öç7BÆö56÷W&6TVæCÔDTdTÅEõ”T%õt”äDõræVæDFFS°¢6öç7B¶Æö4FVç6—G”6†V6·ö–çBÇ6WDÆö4FVç6—G”6†V6·ö–çEÓ×W6U7FFR†çVÆÂ“°¢6öç7BÆö4FVç6—G”¶W“Ô¥4ôâç7G&–æv–g’…·66÷T–BÆÆö56÷W&6U7F'BÆÆö56÷W&6TVæBÂ‡VW'’æFFòç66÷W7ÇÅµÒ’æÖ‡66÷SÓç66÷Ræ–B•Ò“°¢6öç7BÆö4FVç6—G•VW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²vÆö2Ö7VÇGW&RÖFVç6—G’rÂw¦ÖöFVÂ×6÷W&6R×–V"rÇ66÷T–BÆÆö56÷W&6U7F'BÆÆö56÷W&6TVæEÒÀ¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–Wrbf—4vw&VvFU66÷Rbg66÷T–CÓÓÒvÆö2rbb—4Æö4—FVÕf–WrbfÆö4FVç6—G”÷Và¢bd&ööÆVâ‡VW'’æFFòç66÷W3òæÆVæwF‚’À¢VW'”fã¦7–æ2‡·6–væÇÒ“Óç°¢6WDÆö4FVç6—G”6†V6·ö–çB†çVÆÂ“°¢6öç7B·6VÆV7DÆö47VÇGW&TFVç6—G—ÓÖv—B–×÷'B‚rââòââöÆö2ö7VÇGW&R÷VW'’r“°¢&WGW&â6VÆV7DÆö47VÇGW&TFVç6—G’‡°¢66÷W3§VW'’æFFòç66÷W7ÇÅµÒÇ7F'DFFS¦Æö56÷W&6U7F'BÆVæDFFS¦Æö56÷W&6TVæBÇ6–væÂÀ¢öä6†V6·ö–çC¦FFÓç¶–b‚6–væÂæ&÷'FVB—6WDÆö4FVç6—G”6†V6·ö–çB‡¶¶W“¦Æö4FVç6—G”¶W’ÆFFÒ“·Ğ¢Ò“°¢ÒÀ¢Ò“°¢òòF–ÖR7G'V7GW&R—2WF†÷&—FF—fRv—F†÷WBç’&VÖ÷FR•5"W&–öB&WVW7Bà¢6öç7BÆÅW&–öG3×W6TÖVÖò‚‚“Óç6÷'EW&–öG2‡VW'’æFFòæW&3òæW&7ÇÅµÒ’Å·VW'’æFFÒ“°¢6öç7B6Æ76–f–6F–öå66÷S×66÷T–C°¢òòV&Æ—6†VB66÷R÷F&ÆR–FVçF—G’—27–æ6‡&öæ÷W2âF†R&÷FV7FVBVF—F÷"6à¢òò&Vv–â—G2÷vâWF†÷&—¦VB&VBv—F†÷WBv—F–ærf÷"6V6öæBV&Æ–2&—fW"à¢6öç7B66÷TFF×VW'’æFFòç66÷WÇÂ‚—4vw&VvFU66÷SöFVfVÇE66÷TFF‡66÷T–B“¦çVÆÂ“°¢òòW6R7F&ÆRW&–öG2'&“¢FFRÖæf–vF–öâVffV7G2×W7Bæ÷B&R×'Vâ§W7@¢òò&V6W6RF–ffW&VçB7VÇGW&RæVÂ÷"VW'’&Vg&W6†VBF†RvRà¢6öç7B&–Ö'•W&–öG3×W6TÖVÖò‚‚“Óæ—4vw&VvFU66÷SõµÓ¦ÆÅW&–öG2æf–ÇFW"†—FVÓÓå7G&–ær†—FVÓòç66÷Uö–GÇÂrr“ÓÓ×66÷T–B’Å¶—4vw&VvFU66÷RÆÆÅW&–öG2Ç66÷T–EÒ“°¢6öç7B7G'V7GW&U&VfW&Væ6S×W6TÖVÖò‚‚“Óç7G'V7GW&UW&–öE&VfW&Væ6R‡&–Ö'•W&–öG2À¢‡VW'’æFFòçF–ÖVÆ–æT—FV×7ÇÅµÒ’æf–ÇFW"†—FVÓÓæ—FVÒç66÷Uö–CÓÓ×66÷T–B’’À¢·&–Ö'•W&–öG2ÇVW'’æFFòçF–ÖVÆ–æT—FV×2Ç66÷T–EÒ“°¢6öç7B6Æ÷6W7EW&–öC×&–Ö'•W&–öG2æf–æB†—FVÓÓçW&–öD¶W’†—FVÒ“ÓÓ×7G'V7GW&U&VfW&Væ6Rç&VfW'&VD¶W’—ÇÆçVÆÃ°¢6öç7B6V6öæE&—fW$†–W&&6‡“×W6TÖVÖò‚‚“Óæ7VÇGW&TW&W&–öD†–W&&6‡’€¢&–Ö'•W&–öG2ÇVW'’æFFòçF–ÖVÆ–æT—FV×7ÇÅµÒÇ66÷T–@¢’Å·&–Ö'•W&–öG2ÇVW'’æFFòçF–ÖVÆ–æT—FV×2Ç66÷T–EÒ“°¢6öç7B7F—fU6V6öæDW&×6V6öæE&—fW$†–W&&6‡’æw&÷W2æf–æB†w&÷WÓà¢W&–öD¶W’†w&÷WæW&“ÓÓÖ¶W—v÷&DW&¶W’—ÇÆçVÆÃ°¢6öç7B7F—fU6V6öæEW&–öG3Ö¶W—v÷&DW&¶W“ÓÓÒuõ÷Væ76–væVEõòp¢÷6V6öæE&—fW$†–W&&6‡’çVæ76–væVC¢†7F—fU6V6öæDW&òçW&–öG7ÇÅµÒ“° ¢òò'F–6ÆW2Ö’W†—7BWfVâv†Vâæòf÷&ÖÂW&–öB†2&VVâ7&VFVBâW6Rà¢òò÷&F–æ'’&÷VæFVBFFRv–æF÷s²æWfW"G&VBâV×G’F–ÖRF&ÆR2–çfÆ–Bà¢6öç7BFVfVÇE–V%W&–öC×W6TÖVÖò‚‚“Óâ‡°¢W&–öC¢w–V"rÇF—FÆS¤DTdTÅEõ”T%õt”äDõræÆ&VÂÀ¢F—7Æ•öÆ&VÃ¤DTdTÅEõ”T%õt”äDõræÆ&VÂÀ¢7F'EöFFS¤DTdTÅEõ”T%õt”äDõrç7F'DFFRÀ¢VæEöFFS¤DTdTÅEõ”T%õt”äDõræVæDFFRÀ¢66÷Uö–C¦6Æ76–f–6F–öå66÷P¢Ò’Å¶6Æ76–f–6F–öå66÷UÒ“°¢6öç7BÆÅF–ÖUW&–öC×W6TÖVÖò‚‚“Óç°¢–b‡&–Ö'•W&–öG2æÆVæwF‚—&WGW&âW&–öE&ævR‡&–Ö'•W&–öG2Æ6Æ76–f–6F–öå66÷RÅT•ô4õ’æ7VÇGW&RæÆÅF–ÖR“°¢&WGW&âFVfVÇE–V%W&–öC°¢ÒÅ·&–Ö'•W&–öG2Æ6Æ76–f–6F–öå66÷RÅT•ô4õ’æ7VÇGW&RæÆÅF–ÖRÆFVfVÇE–V%W&–öEÒ“°¢W6TVffV7B‚‚“Óç°¢–b†—4vw&VvFU66÷WÇÂVW'’æFF—&WGW&ã°¢6öç7B&VfW'&VC×7G'V7GW&U&VfW&Væ6Rç&VfW'&VD¶W“°¢6öç7B66÷T6†ævVC×W&–öE6VÆV7F–öå66÷U&Vbæ7W'&VçBÓ×66÷T–C°¢W&–öE6VÆV7F–öå66÷U&Vbæ7W'&VçC×66÷T–C°¢6WE6VÆV7FVEW&–öD¶W’†7W'&VçCÓç66÷T6†ævVCòw–V"s ¢†7W'&VçCÓÓÒw–V"wÇÆ7W'&VçCÓÓÒvÆÂwÇÇ&–Ö'•W&–öG2ç6öÖR‡W&–öCÓçW&–öD¶W’‡W&–öB“ÓÓÖ7W'&VçB’“ö7W'&VçC¢w–V"r“°¢ÒÅ·66÷T–BÆ—4vw&VvFU66÷RÇVW'’æFFÇ7G'V7GW&U&VfW&Væ6RÇ&–Ö'•W&–öG5Ò“°¢6öç7B6VÆV7FVEv÷&µW&–öC×6VÆV7FVEW&–öD¶W“ÓÓÒw–V"söFVfVÇE–V%W&–ö@¢§6VÆV7FVEW&–öD¶W“ÓÓÒvÆÂsöÆÅF–ÖUW&–ö@¢¢‡&–Ö'•W&–öG2æf–æB†—FVÓÓçW&–öD¶W’†—FVÒ“ÓÓ×6VÆV7FVEW&–öD¶W’—ÇÆ6Æ÷6W7EW&–öGÇÆFVfVÇE–V%W&–öB“°¢òòW6RF†RæV&W7B6fVBG&6RVçF–ÂF†R6VÆV7FVBW&–öB—26WGFÆVBà¢6öç7B6VÆV7FVEv–æF÷u7F'CÕ7G&–ær‡6VÆV7FVEv÷&µW&–öCòç7F'EöFFWÇÂrr“°¢6öç7B6VÆV7FVEv–æF÷tVæCÕ7G&–ær‡6VÆV7FVEv÷&µW&–öCòæVæEöFFWÇÆæWrFFR‚’çFô•4õ7G&–ær‚’ç6Æ–6RƒÃ’“°¢òòF†RÆ÷vW"7VÇGW&RæVÂ6†&W2öæR6VÆV7FVB–çFW'fÂ7&÷72F†R6÷W&6P¢òò6Æ76–f–6F–öâ&—fW"Â¶W—v÷&BÖFVç6—G’&—fW"Â7VvvW7F–öç2ÂæBv÷&²Æ—7Bà¢òòF†RWW"F–ÖR7G'V7GW&R&—fW"¶VW2—G2÷vâW&–öBæf–vF–öâà¢òòWfVçG2&R'BöbF†R6VÆV7FVBW&–öBv–æF÷rÂæWfW"6VÆV7F÷"ÖöFRà¢6öç7B¶W—v÷&EW&–öCÖ¶W—v÷&EW&–öD¶W“ÓÓÒw–V"söFVfVÇE–V%W&–öC ¢¶W—v÷&EW&–öD¶W“ÓÓÒvÆÂsöÆÅF–ÖUW&–ö@¢¦¶W—v÷&EW&–öD¶W“ÓÓÒvÆFW7Bsò†6Æ÷6W7EW&–öGÇÇ6VÆV7FVEv÷&µW&–öGÇÆÆÅF–ÖUW&–öB¢¦¶W—v÷&EW&–öD¶W“ÓÓÒv7W'&VçBsò‡6VÆV7FVEv÷&µW&–öGÇÆÆÅF–ÖUW&–öB¢¦7F—fU6V6öæEW&–öG2æf–æB‡W&–öCÓçW&–öD¶W’‡W&–öB“ÓÓÖ¶W—v÷&EW&–öD¶W’¢ÇÇ&–Ö'•W&–öG2æf–æB‡W&–öCÓçW&–öD¶W’‡W&–öB“ÓÓÖ¶W—v÷&EW&–öD¶W’—ÇÆ6Æ÷6W7EW&–öGÇÇ6VÆV7FVEv÷&µW&–öC°¢6öç7B¶W—v÷&Ev–æF÷u7F'CÖ¶W—v÷&EW&–öD¶W“ÓÓÒv7W7FöÒp¢ö¶W—v÷&D7W7FöÕ7F'C¥7G&–ær†¶W—v÷&EW&–öCòç7F'EöFFWÇÂrr’ç6Æ–6RƒÃ“°¢6öç7B¶W—v÷&Ev–æF÷tVæCÖ¶W—v÷&EW&–öD¶W“ÓÓÒv7W7FöÒp¢ö¶W—v÷&D7W7FöÔVæC¥7G&–ær†¶W—v÷&EW&–öCòæVæEöFFWÇÆæWrFFR‚’çFô•4õ7G&–ær‚’ç6Æ–6RƒÃ’’ç6Æ–6RƒÃ“°¢6öç7B¶W—v÷&Ev–æF÷ufÆ–CÒõåÆG³GÒÕÆG³'ÒÕÆG³'ÒBòçFW7B†¶W—v÷&Ev–æF÷u7F'B¢bbõåÆG³GÒÕÆG³'ÒÕÆG³'ÒBòçFW7B†¶W—v÷&Ev–æF÷tVæB¢bf¶W—v÷&Ev–æF÷u7F'CÃÖ¶W—v÷&Ev–æF÷tVæC°¢6öç7B6Æ76–f–6F–öåv–æF÷u7F'CÖ¶W—v÷&Ev–æF÷u7F'C°¢6öç7B6Æ76–f–6F–öåv–æF÷tVæCÖ¶W—v÷&Ev–æF÷tVæC°¢òò5Â&VG2öæÇ’F†R&÷VæF–ærVçfVÆ÷RâF†R6VÆV7FVBW&–öBw2W†7@¢òò–çFW'fÇ2×W7B7F–ÆÂW†6ÇVFRWfW'’F’öbâVæÆ–æ¶VBvà¢6öç7B6Æ76–f–6F–öåW&–öE&ævW3Ö¶W—v÷&EW&–öD¶W“ÓÓÒv7W7FöÒwÇÆ¶W—v÷&EW&–öD¶W“ÓÓÒvÆÂwÇÆ¶W—v÷&EW&–öD¶W“ÓÓÒw–V"p¢öçVÆÃ¢„'&’æ—4'&’†¶W—v÷&EW&–öCòç&ævW2“ö¶W—v÷&EW&–öBç&ævW3¦çVÆÂ“°¢6öç7BW&–öE&ævU6–væGW&SÔ¥4ôâç7G&–æv–g’‚†6Æ76–f–6F–öåW&–öE&ævW7ÇÅµÒ’æÖ‡&ævSÓà¢·&ævRç7F'EöFFRÇ&ævRæVæEöFFRÇ&ævRæ÷VåöVæBÇ&ævRæ–çfÆ–EÒ’“°¢6öç7B6Æ76–f–6F–öåv–æF÷ufÆ–CÖ¶W—v÷&Ev–æF÷ufÆ–C°¢òòâVæf–ÆÆVB7W7FöÒ&ævR—2æ÷&ÖÂVçF–ÂFFW2&R7WÆ–VBà¢6öç7B÷F–öæÅF–ÖU&ævUVæf–ÆÆVCÒ¶W—v÷&Ev–æF÷u7F'GÇÂ¶W—v÷&Ev–æF÷tVæC°¢6öç7B6Æ76–f–6F–öåW&–öDÆ&VÃÖ¶W—v÷&EW&–öD¶W“ÓÓÒw–V"sôDTdTÅEõ”T%õt”äDõræÆ&VÃ ¢¶W—v÷&EW&–öD¶W“ÓÓÒv7W7FöÒsöÂæ7W7FöÕW&–öC ¢¶W—v÷&EW&–öCöÆö6Æ—¦VDÆ&VÄöb†¶W—v÷&EW&–öBÃ“¦ÂçF–ÖUG&6S°¢6öç7B&WVW7FVEv–æF÷u7F'CÕ7G&–ær†æf–vF–öâæg&ö×ÇÂrr’ç6Æ–6RƒÃ“°¢6öç7B&WVW7FVEv–æF÷tVæCÕ7G&–ær†æf–vF–öâçF÷ÇÂrr’ç6Æ–6RƒÃ“°¢6öç7B&WVW7FVEW&–öEV–CÕ7G&–ær†æf–vF–öâçW&–öGÇÂrr’çG&–Ò‚“°¢6öç7BÆ–VDFFTæf–vF–öå&Vc×W6U&Vb‚rr“°¢W6TVffV7B‚‚“Óç°¢–b‚&WVW7FVEv–æF÷u7F'B—°¢Æ–VDFFTæf–vF–öå&Vbæ7W'&VçCÒrs°¢&WGW&ã°¢Ğ¢–b†—4vw&VvFU66÷WÇÂ&–Ö'•W&–öG2æÆVæwF‚—&WGW&ã°¢6öç7Bæf–vF–öä¶W“Õ·66÷T–BÇ&WVW7FVEv–æF÷u7F'BÇ&WVW7FVEv–æF÷tVæBÇ&WVW7FVEW&–öEV–EÒæ¦ö–â‚wÂr“°¢–b†Æ–VDFFTæf–vF–öå&Vbæ7W'&VçCÓÓÖæf–vF–öä¶W’—&WGW&ã°¢6öç7BW†7EW&–öC×&WVW7FVEW&–öEV–C÷&–Ö'•W&–öG2æf–æB†—FVÓÓà¢7G&–ær†—FVÒçV–GÇÂrr“ÓÓ×&WVW7FVEW&–öEV–GÇÇW&–öD¶W’†—FVÒ“ÓÓ×&WVW7FVEW&–öEV–B“¦çVÆÃ°¢6öç7BÖF6†VCÖW†7EW&–öGÇÇ&–Ö'•W&–öG2æf–æB†—FVÓÓç°¢6öç7B7F'CÕ7G&–ær†—FVÓòç7F'EöFFWÇÂrr’ç6Æ–6RƒÃ“°¢6öç7BVæCÕ7G&–ær†—FVÓòæVæEöFFWÇÂs“““’Ó"Ó3r’ç6Æ–6RƒÃ“°¢òòæWfW"6VÆV7BF—66öææV7FVBF–ÖRG&6RÖW&VÇ’&V6W6RF†R6Æ–6¶V@¢òòFFR—2–ç6–FR—G2'&öBf—'7B×FòÖÆ7B&÷VæF–ærVçfVÆ÷Rà¢–b„'&’æ—4'&’†—FVÓòç&ævW2’—&WGW&âF–ÖUW&–öD6öçF–ç4FFR†—FVÒÇ&WVW7FVEv–æF÷u7F'B“°¢&WGW&â‚7F'GÇÇ&WVW7FVEv–æF÷u7F'Cã×7F'B’bg&WVW7FVEv–æF÷u7F'CÃÖVæC°¢Ò“°¢–b†ÖF6†VB—°¢Æ–VDFFTæf–vF–öå&Vbæ7W'&VçCÖæf–vF–öä¶W“°¢6WE6VÆV7FVEW&–öD¶W’‡W&–öD¶W’†ÖF6†VB’“°¢6WE7G'V7GW&Uv–æF÷t¶W’‡W&–öD¶W’†ÖF6†VB’“°¢6WD¶W—v÷&DW&¶W’‡W&–öD¶W’†ÖF6†VB’“°¢6WD¶W—v÷&EW&–öD¶W’‡W&–öD¶W’†ÖF6†VB’“°¢Ğ¢ÒÅ·66÷T–BÆ—4vw&VvFU66÷RÇ&WVW7FVEv–æF÷u7F'BÇ&WVW7FVEv–æF÷tVæBÇ&WVW7FVEW&–öEV–BÇ&–Ö'•W&–öG5Ò“° ¢òòöæRV&Æ–2Æö4æ6†÷"¤ÖöFVÂ&VBÂ6†&VB–âÖVæ–ærv—F‚7FF—7F–72à¢òòF†RW'6—7FVB6—FTæ6†÷"†–W&&6‡’†GG"çV–B’—2F†RöæÇ’6÷W&6RG&VRà¢6öç7B6÷W&6UF†öæö×•VW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²vÆö2×¦ÖöFVÂ×6÷W&6R×F†öæö×’uÒÀ¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–Wrbb—4vw&VvFU66÷Rbb—4Æö4—FVÕf–Wp¢bg66÷T–BÓÒvÆö6Ârbd&ööÆVâ‡66÷TFF’bgW6W56÷W&6U&—fW"À¢VW'”fã¦7–æ2‚“Óç°¢6öç7B·&VEV&Æ–56÷W&6UF†öæö×—ÓÖv—B–×÷'B‚rââòââöÆö2÷6÷W&6Rö6FÆör×V&Æ–2æÖ§2r“°¢&WGW&â&VEV&Æ–56÷W&6UF†öæö×’‚“°¢ÒÀ¢&WfÆ–FFTöäfö7W3¦fÇ6RÇ&WfÆ–FFTöå&V6öææV7C¦fÇ6P¢Ò“°¢6öç7B6÷W&6UF†öæö×“×6÷W&6UF†öæö×•VW'’æFF°¢6öç7B6÷W&6U7G–ÆT÷F–öç3×W6TÖVÖò‚‚“Óç6÷W&6T÷WFÆ–æT÷F–öç2‡6÷W&6UF†öæö×’’Å·6÷W&6UF†öæö×•Ò“°¢6öç7B6÷W&6U7G–ÆTw&÷W3×W6TÖVÖò‚‚“Óæw&÷WVE6÷W&6T÷WFÆ–æR‡6÷W&6UF†öæö×’’Å·6÷W&6UF†öæö×•Ò“°¢6öç7B7FvVE6÷W&6U&—fW#Ô&ööÆVâ‡6÷W&6UF†öæö×’’bb—4vw&VvFU66÷Rbg66÷T–BÓÒvÆö6Âs°¢òòF†RW‡æFVB—FV×2&R6fVBÆö5öæ6†÷"T”G3²&ö÷BfÖ–Ç’6öFW2†W&P¢òò&RöæÇ’â–çFW&æÂF–Ç’Övw&VvFRVW'’f–ÇFW"ÂæWfW"T’ÆWfVÂà¢6öç7BW‡æFVE6÷W&6U&ö÷G3Ò‡6÷W&6UF†öæö×“òç&ö÷G7ÇÅµÒ¢æf–ÇFW"‡&÷sÓæ÷Vä7VÇGW&U&ö÷G2æ–æ6ÇVFW2‡&÷rçV–B’’æÖ‡&÷sÓç&÷rç&ö÷B“°¢òò&WG&–WfRöæR&÷VæFVBF–Ç’vw&VvFRW"6VÆV7FVBW&–öBâ&WW6R—Bv†Và¢òòW‡æF–ærw&÷WÂ6òT’–çFW&7F–öâæWfW"7F'G26V6öæB5Â¦ö"à¢6öç7B6÷W&6U&ö÷EVW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²v7VÇGW&R×W&–öB×&ö÷G2rÂwcR×¦ÖöFVÂÖæ6†÷'2rÆ6Æ76–f–6F–öå66÷RÆ6Æ76–f–6F–öåv–æF÷u7F'BÆ6Æ76–f–6F–öåv–æF÷tVæBÇW&–öE&ævU6–væGW&UÒÀ¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–Wrbg7FvVE6÷W&6U&—fW"bgW6W56÷W&6U&—fW"bb—4Æö4—FVÕf–Wp¢bd&ööÆVâ‡66÷TFF’bf6Æ76–f–6F–öåv–æF÷ufÆ–BÀ¢VW'”fã¦7–æ2‚“Óç°¢6öç7B·FW‡GÓÖv—B6VÆV7E66÷TF–Ç”6÷VçG2‡66÷TFFÇ°¢7F'DFFS¦6Æ76–f–6F–öåv–æF÷u7F'BÆVæDFFS¦6Æ76–f–6F–öåv–æF÷tVæBÀ¢–æ6ÇVFUVæFFVC§G'VRÇ&WV—&Tvw&VvFS§G'VP¢Ò“°¢6öç7B–ç6–FS×&÷sÓâ6Æ76–f–6F–öåW&–öE&ævW7ÇÇF–ÖUW&–öD6öçF–ç4FFR€¢·&ævW3¦6Æ76–f–6F–öåW&–öE&ævW7ÒÅ7G&–ær‡&÷ræF—ÇÂrr’“°¢&WGW&â'V–ÆD7VÇGW&U&—fW%&ö÷E–ÆöB‡°¢FW‡C§FW‡Bæf–ÇFW"†–ç6–FR¢ÒÇ6÷W&6UF†öæö×’“°¢ÒÀ¢&WfÆ–FFTöäfö7W3¦fÇ6RÇ&WfÆ–FFTöå&V6öææV7C¦fÇ6P¢Ò“°¢6öç7BW‡æFVE6÷W&6U&ö÷G4¶W“ÖW‡æFVE6÷W&6U&ö÷G2æ¦ö–â‚rÂr“°¢6öç7B&WVW7FVD6†–ÆG&Vã×W6TÖVÖò‚‚“Óç°¢–b‚7FvVE6÷W&6U&—fW'ÇÂ6÷W&6U&ö÷EVW'’æFFòæçVÖW&–5&÷w7ÇÂW‡æFVE6÷W&6U&ö÷G2æÆVæwF‚—&WGW&âµÓ°¢&WGW&â6VÆV7D7VÇGW&U&—fW$6†–ÆG&Vâ‡6÷W&6U&ö÷EVW'’æFFæçVÖW&–5&÷w2Ç6÷W&6UF†öæö×’ÆW‡æFVE6÷W&6U&ö÷G2“°¢ÒÅ·7FvVE6÷W&6U&—fW"Ç6÷W&6U&ö÷EVW'’æFFÇ6÷W&6UF†öæö×’ÆW‡æFVE6÷W&6U&ö÷G4¶W•Ò“°¢6öç7BW‡æFVE6÷W&6U&VG“Ô&ööÆVâ‡6÷W&6U&ö÷EVW'’æFF’bfW‡æFVE6÷W&6U&ö÷G2æÆVæwFƒã°¢òò–âV&Æ—6†VB66÷RW‡æF–ærÆæRöæÇ’G&ç6f÷&×266†VBçVÖW&–2&÷w2à¢6öç7B6÷W&6U6æ6†÷EVW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²v7VÇGW&R×W&–öB×6÷W&6R×6æ6†÷BrÂwc’×¦ÖöFVÂ×6÷W&6RÖöæÇ’rÆ6Æ76–f–6F–öå66÷RÆ6Æ76–f–6F–öåv–æF÷u7F'BÆ6Æ76–f–6F–öåv–æF÷tVæBÇW&–öE&ævU6–væGW&RÇ7FvVE6÷W&6U&—fW#öW‡æFVE6÷W&6U&ö÷G4¶W“¢vÆÂuÒÀ¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–WrbgW6W56÷W&6U&—fW"bb—4Æö4—FVÕf–Wrbb—4vw&VvFU66÷Rbd&ööÆVâ‡66÷TFF’bf6Æ76–f–6F–öåv–æF÷ufÆ–@¢bd&ööÆVâ‡6÷W&6UF†öæö×’’bb‚7FvVE6÷W&6U&—fW'ÇÆW‡æFVE6÷W&6U&VG’’À¢VW'”fã¦7–æ2‚“Óç°¢6öç7B·6VÆV7E66÷UW&–öE6÷W&6U6æ6†÷GÓÖv—B–×÷'B‚rââòââöÆö2ö7VÇGW&R÷VW'’r“°¢6öç7B&ævS×°¢7F'DFFS¦6Æ76–f–6F–öåv–æF÷u7F'BÆVæDFFS¦6Æ76–f–6F–öåv–æF÷tVæBÀ¢W&–öE&ævW3¦6Æ76–f–6F–öåW&–öE&ævW0¢Ó°¢&WGW&â6VÆV7E66÷UW&–öE6÷W&6U6æ6†÷B‡66÷TFFÇ7FvVE6÷W&6U&—fW ¢÷²ââç&ævRÆçVÖW&–5&÷w3§&WVW7FVD6†–ÆG&VçÓ§&ævR“°¢Ğ¢Ò“°¢6öç7B¶W—v÷&D6Æ75VW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²w66÷RÖ7F—fRÖ¶W—v÷&BÖ6Æ72ÖæÖRrÇ66÷T–EÒÀ¢òò÷Væ–æröfö7W6–ærF†R7G–ÆR6VÆV7F÷"—2F†Rf—'7B&V6öâFòÆöö²W ¢òòF†R7F—fR6Æ72â÷&F–æ'’F–ÖR&—fW"f–Wv–ærW&f÷&×2æò¶W—v÷&B5Âà¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–Wrbg7G–ÆTf–ÇFW#ÓÓÒw'VæScbrbb—4vw&VvFU66÷Rbb—4Æö4—FVÕf–WrÀ¢VW'”fã¦7–æ2‚“Óç°¢6öç7B·6VÆV7Df–Æ&ÆT¶W—v÷&D6Æ76W7ÓÖv—B–×÷'B‚rââòââöÆö2ö¶W—v÷&G2öæÇ—6—2r“°¢&WGW&â6VÆV7Df–Æ&ÆT¶W—v÷&D6Æ76W2‡66÷T–B“°¢ÒÀ¢Ò“°¢6öç7Bf–Æ&ÆT¶W—v÷&D6Æ76W3Ö¶W—v÷&D6Æ75VW'’æFFòæ6Æ76W7ÇÅµÓ°¢6öç7B6VÆV7FVD¶W—v÷&D6Æ73Öf–Æ&ÆT¶W—v÷&D6Æ76W2æf–æB†—FVÓÓæ—FVÒæ6Æ75V–CÓÓ×6VÆV7FVD¶W—v÷&D6Æ75V–B¢ÇÆf–Æ&ÆT¶W—v÷&D6Æ76W2æf–æB†—FVÓÓæ—FVÒæ6Æ75V–CÓÓÖ¶W—v÷&D6Æ75VW'’æFFòæ7W'&VçD6Æ75V–B¢ÇÆf–Æ&ÆT¶W—v÷&D6Æ76W5³Ó°¢6öç7B&W6öÇfVD¶W—v÷&D6Æ75V–CÕ7G&–ær‡6VÆV7FVD¶W—v÷&D6Æ73òæ6Æ75V–GÇÂrr“°¢6öç7B¶W—v÷&D6Æ74Æ&VÃ×6VÆV7FVD¶W—v÷&D6Æ73ò~™yÎ˜Û^Š™î{XNûÉ¢r·6VÆV7FVD¶W—v÷&D6Æ72ææÖP¢¦¶W—v÷&D6Æ75VW'’æ—5VæF–æsò~™yÎ˜Û^Š™î{XNûÈŠèXùnKŠŞûÈ’s¢~™yÎ˜Û^Š™î{XNûÈ[	®iÊ®ŠŠŞZé®ûÈ’s°¢6öç7B7G–ÆUVW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²v7VÇGW&R×7G–ÆRÖf–ÇFW"rÂw'VæScbrÆ6Æ76–f–6F–öå66÷RÇ&W6öÇfVD¶W—v÷&D6Æ75V–BÆ¶W—v÷&Ev–æF÷u7F'BÆ¶W—v÷&Ev–æF÷tVæEÒÀ¢VW'”fã¦7–æ2‚“Óç°¢6öç7B·6VÆV7D¶W—v÷&DæÇ—6—57VÖÖ'—ÓÖv—B–×÷'B‚rââòââöÆö2ö¶W—v÷&G2öæÇ—6—2r“°¢&WGW&â6VÆV7D¶W—v÷&DæÇ—6—57VÖÖ'’‡·66÷T–BÆ6Æ75V–C§&W6öÇfVD¶W—v÷&D6Æ75V–BÇ7F'DFFS¦¶W—v÷&Ev–æF÷u7F'BÆVæDFFS¦¶W—v÷&Ev–æF÷tVæGÒ“°¢ÒÀ¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–Wrbb—4vw&VvFU66÷Rbg7G–ÆTf–ÇFW#ÓÓÒw'VæScbrbd&ööÆVâ‡&W6öÇfVD¶W—v÷&D6Æ75V–B’bf¶W—v÷&Ev–æF÷ufÆ–BÀ¢Ò“°¢òòF†R÷&–v–æÂ6÷W&6RÖ6Æ76–f–6F–öâ&—fW"×W7Bæ÷Bv—Bf÷"†÷"F—6V ¢òòv†Vâ’6W&FR¶W—v÷&BÖFVç6—G’VW'’'Vç2à¢6öç7B&—fW%&ævTÆöF–æsÖ6Æ76–f–6F–öåv–æF÷ufÆ–Bbb‡7FvVE6÷W&6U&—fW ¢÷6÷W&6U&ö÷EVW'’æ—5VæF–æwÇÇ6÷W&6U&ö÷EVW'’æ—4fWF6†–æp¢§6÷W&6U6æ6†÷EVW'’æ—5VæF–æwÇÇ6÷W&6U6æ6†÷EVW'’æ—4fWF6†–ær“°¢òòW†—7F–ær5Â7VÖÖ'’6÷fW'2F†R÷fW'f–WrâG&–ÆÂÖF÷vâfWF6†W2öæÇ’F†P¢òò&WVW7FVB6÷W&6RæBö÷"6Æ72Âv—F†÷WBVvW&Ç’&VF–ærÆÂvÆ‡’GG'2à¢òòW‡æF–ær'VæRw&÷W&VG2öæÇ’—G26FÆörÂæ÷BÆÂvÆ‡’GG&–'WFW2à¢6öç7B¶W—v÷&DFWF–Å&WVW7FVCÔ&ööÆVâ†¶W—v÷&DG&–ÆÅ6÷W&6R“°¢6öç7B¶W—v÷&DFVç6—G•VW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²v7VÇGW&RÖ¶W—v÷&BÖGG&–'WFW2rÇ66÷T–BÇ&W6öÇfVD¶W—v÷&D6Æ75V–BÆ¶W—v÷&Ev–æF÷u7F'BÆ¶W—v÷&Ev–æF÷tVæBÆ¶W—v÷&DG&–ÆÅ6÷W&6RÆ¶W—v÷&DG&–ÆÄw&÷WÒÀ¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–Wrbg7G–ÆTf–ÇFW#ÓÓÒw'VæScbrbf¶W—v÷&DFWF–Å&WVW7FVBbb—4vw&VvFU66÷Rbb—4Æö4—FVÕf–Wp¢bd&ööÆVâ‡66÷TFF’bf¶W—v÷&Ev–æF÷ufÆ–Bbd&ööÆVâ‡7G–ÆUVW'’æFFòç7FF—7F–74Væ&ÆVB’À¢VW'”fã¦7–æ2‚“Óç°¢6öç7B¶¶W—v÷&E6W'f–6WÓÖv—B–×÷'B‚rââòââöÆö2ö¶W—v÷&G2÷6W'f–6RÖ6Æ–VçBæÖ§2r“°¢&WGW&â¶W—v÷&E6W'f–6R‚w7VÖÖ'’rÇ·66÷T–BÀ¢6Æ75V–C§&W6öÇfVD¶W—v÷&D6Æ75V–BÇ7F'DFFS¦¶W—v÷&Ev–æF÷u7F'BÀ¢VæDFFS¦¶W—v÷&Ev–æF÷tVæBÇ6÷W&6S¦¶W—v÷&DG&–ÆÅ6÷W&6P¢Ò“°¢ÒÀ¢Ò“°¢6öç7B¶W—v÷&E&—fW%VæF–æsÖ¶W—v÷&DFWF–Å&WVW7FVCö¶W—v÷&DFVç6—G•VW'’æ—5VæF–æs§7G–ÆUVW'’æ—5VæF–æs°¢6öç7B¶W—v÷&E&—fW$W'&÷#Ö¶W—v÷&DFWF–Å&WVW7FVCö¶W—v÷&DFVç6—G•VW'’æW'&÷#¦çVÆÃ°¢W6TVffV7B‚‚“Óç°¢6WD¶W—v÷&DG&–ÆÅ6÷W&6R‚rr“°¢6WD¶W—v÷&DG&–ÆÄw&÷W‚rr“°¢ÒÅ·66÷T–EÒ“°¢6öç7B¶W—v÷&Dw&÷W÷F–öç3×W6TÖVÖò‚‚“Óäö&¦V7BæVçG&–W2‡7G–ÆUVW'’æFFòæ¶W—v÷&DÖWFòæ6Æ76W7ÇÇ·Ò¢æÖ‚…¶–BÆæÖUÒ“Óâ‡¶–BÆÆ&VÃ¥7G&–ær†æÖWÇÂrr’çG&–Ò‚—Ò’¢æf–ÇFW"†—FVÓÓæ—FVÒæÆ&VÂ’À¢·7G–ÆUVW'’æFFòæ¶W—v÷&DÖWFòæ6Æ76W5Ò“°¢òòfWF6‚w&÷WæÖW2öÖVÖ&W'6†—öæÇ’gFW"F†RW6W"÷Vç27V6–f–26Æ72à¢òòF†R–æ—F–Â6Æ72ÖFVç6—G’&—fW"æWfW"F÷væÆöG2F†Rw&÷W6FÆörà¢6öç7B¶W—v÷&Dw&÷W6FÆöuVW'“×W6T7–æ5&W6÷W&6R‡°¢VW'”¶W“¥²v7VÇGW&RÖ¶W—v÷&BÖw&÷WÖ6FÆörrÇ66÷T–BÇ7G–ÆUVW'’æFFòæ¶W—v÷&DÖWFòæ6Æ75÷V–GÇÂrrÆ¶W—v÷&DG&–ÆÄw&÷WÒÀ¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–Wrbg7G–ÆTf–ÇFW#ÓÓÒw'VæScbrbd&ööÆVâ†¶W—v÷&DG&–ÆÄw&÷W¢bd&ööÆVâ‡7G–ÆUVW'’æFFòæ¶W—v÷&DÖWFòæ6Æ75÷V–B’bd&ööÆVâ‡66÷TFFòæ¶W—v÷&G2’À¢VW'”fã¦7–æ2‚“Óç°¢6öç7B¶¶W—v÷&E6W'f–6WÓÖv—B–×÷'B‚rââòââöÆö2ö¶W—v÷&G2÷6W'f–6RÖ6Æ–VçBæÖ§2r“°¢6öç7B¶¶W—v÷&D6Æ746FÆöwÓÖv—B–×÷'B‚rââòââöÆö2ö¶W—v÷&G2÷G&VRæÖ§2r“°¢6öç7B&W7VÇCÖv—B¶W—v÷&E6W'f–6R‚v6FÆörrÇ·66÷T–BÆ6Æ75V–C§&W6öÇfVD¶W—v÷&D6Æ75V–GÒ“°¢–b‚&W7VÇBæ6Æ75÷V–B—&WGW&âµÓ°¢6öç7B¶6FÆöwÓÖ¶W—v÷&D6Æ746FÆör‡&W7VÇBç&÷w2Ç&W7VÇBæ6Æ75÷V–B“°¢òòF†R6æöæ–6ÂT”BG&VRÇ&VG’7WÆ–W2w&÷WÖVÖ&W'6†—²æòÆVv7¢òòw&÷Wô—FVÒ'F–6ÆRÖ†—BÆ—7G2&RæVVFVBFòÆ&VÂF†R7VÇGW&R&—fW"à¢&WGW&â6FÆöræf–ÇFW"†—FVÓÓæ—FVÒæw&÷W÷V–CÓÓÖ¶W—v÷&DG&–ÆÄw&÷W¢æÖ‚†—FVÒÆ–æFW‚“Óâ‡·V–C¦—FVÒçV–BÆæÖS¦—FVÒæ—FVÕöæÖRÆ÷&FW%öæó¦–æFW‡Ò’“°¢ÒÀ¢&WfÆ–FFTöäfö7W3¦fÇ6RÀ¢&WfÆ–FFTöå&V6öææV7C¦fÇ6RÀ¢&WfÆ–FFT–e7FÆS¦fÇ6P¢Ò“°¢6öç7B¶W—v÷&DG&–ÆÄ—FV×3×W6TÖVÖò‚‚“Óç°¢–b†¶W—v÷&DFWF–Å&WVW7FVBbb¶W—v÷&DFVç6—G•VW'’æFF—&WGW&âµÓ°¢òòW‡æF–ærw&÷W&W6W'fW2F†R6Æ72FVç6—G“²æòwVW76VBW"ÖF’'VæR&'2à¢&WGW&â¶W—v÷&DG&–ÆÅ&—fW$—FV×2†¶W—v÷&DFWF–Å&WVW7FV@¢ö¶W—v÷&DFVç6—G•VW'’æFF§7G–ÆUVW'’æFFòæ6Æ76–f–6F–öç2Ç°¢6÷W&6S¦¶W—v÷&DG&–ÆÅ6÷W&6RÆw&÷W–C¦¶W—v÷&DFWF–Å&WVW7FVCö¶W—v÷&DG&–ÆÄw&÷W¢rrÀ¢ÖWF§7G–ÆUVW'’æFFòæ¶W—v÷&DÖWFÆw&÷W—FV×3¦¶W—v÷&Dw&÷W6FÆöuVW'’æFFÇÅµĞ¢Ò“°¢ÒÅ¶¶W—v÷&DFWF–Å&WVW7FVBÆ¶W—v÷&DFVç6—G•VW'’æFFÇ7G–ÆUVW'’æFFòæ6Æ76–f–6F–öç2Æ¶W—v÷&DG&–ÆÅ6÷W&6RÆ¶W—v÷&DG&–ÆÄw&÷WÇ7G–ÆUVW'’æFFòæ¶W—v÷&DÖWFÆ¶W—v÷&Dw&÷W6FÆöuVW'’æFFÒ“° ¢6öç7B6FVv÷'”w&÷W3×6÷W&6U&ö÷EVW'’æFFòæw&÷W7ÇÇ6÷W&6U6æ6†÷EVW'’æFFòæw&÷W7ÇÄTÕE•ô5TÅEU$Uôu$õU3°¢6öç7Bw&÷WVE6÷W&6W3×W6TÖVÖò‚‚“Óç°¢6öç7B6FÆös×6÷W&6UF†öæö×—ÇÇ¶6FVv÷&–W3¥µÒÆÆ–6W3¥µ×Ó°¢6öç7B'”6öFSÖæWrÖ†6FÆöræ6FVv÷&–W2æÖ‡&÷sÓå·&÷ræ6FVv÷'•ö6öFRÇ&÷uÒ’“°¢6öç7B–æFWƒÖæWrÖ‚“°¢f÷"†6öç7B6÷W&6Röb6FVv÷'”w&÷W2—°¢6öç7B&sÕ7G&–ær‡6÷W&6Rç6—FWÇÂrr“°¢6öç7B6öFSÖ76–væVE6÷W&6R‡&rÆ6FÆöræÆ–6W2Æ6FÆöræ6FVv÷&–W2“°¢6öç7BæöFSÖ'”6öFRævWB†6öFR“°¢6öç7B&ö÷CÖæöFSòç&ö÷GÇÂv7W7FöÒs°¢6öç7BÆ&VÃÖæöFSòæF—7Æ•öæÖWÇÆÂæ÷F†W#°¢6öç7B¶W“×&ö÷B²s¢r¶6öFS°¢–b‚–æFW‚æ†2†¶W’’––æFW‚ç6WB†¶W’Ç¶¶W’Ç&ö÷BÆÆ&VÂÇ6—FS¦Æ&VÂÀ¢6—FW3¥µÒÆ—FVÕö6÷VçC£Ò“°¢6öç7Bw&÷WÖ–æFW‚ævWB†¶W’“°¢w&÷Wæ—FVÕö6÷VçB³ÔçVÖ&W"‡6÷W&6Ræ—FVÕö6÷VçB—ÇÃ°¢w&÷Wç6—FW2çW6‚‚âââ‡6÷W&6Rç6—FW7ÇÅµÒ’“°¢Ğ¢&WGW&â²ââæ–æFW‚çfÇVW2‚•ÒæÖ†w&÷WÓâ‡°¢ââæw&÷WÇ6—FW3¥²ââææWr6WB†w&÷Wç6—FW2•Ğ¢Ò’“°¢ÒÅ¶6FVv÷'”w&÷W2Ç6÷W&6UF†öæö×’ÆÂæ÷F†W%Ò“°¢òò6VÆV7F–ærFöÖ–âW6W2F†RW†—7F–ærg&öÒFW66VæFçBT”BÆ—7C²—BFöW0¢òòæ÷B&WV—&RVW'––ærV6‚g&öÒ÷"¦ö–æ–ær'F–6ÆRFW‡B–âF†R'&÷w6W"à¢6öç7B6VÆV7FVDw&÷W×W6TÖVÖò‚‚“Óç°¢6öç7BW†7CÖw&÷WVE6÷W&6W2æf–æB†—FVÓÓæ—FVÒæ¶W“ÓÓ×6VÆV7FVE&—fW$w&÷W“°¢–b†W†7B—&WGW&âW†7C°¢6öç7B÷F–öã×6÷W&6U7G–ÆT÷F–öç2æf–æB†—FVÓÓæ—FVÒæ¶W“ÓÓ×6VÆV7FVE&—fW$w&÷W“°¢–b†÷F–öâ—°¢6öç7BFW66VæFçG3ÖæWr6WB‚‡6÷W&6UF†öæö×“òçG&VWÇÅµÒ¢æf–ÇFW"†æöFSÓææöFRçF‚æ–æ6ÇVFW2†÷F–öâæ6öFR’’æÖ†æöFSÓææöFRçV–B’“°¢6öç7BÖVÖ&W'3Öw&÷WVE6÷W&6W2æf–ÇFW"†w&÷WÓà¢FW66VæFçG2æ†2†w&÷Wæ¶W’ç6Æ–6R†w&÷Wæ¶W’æ–æFW„öb‚s¢r’³’’“°¢–b†ÖVÖ&W'2æÆVæwF‚—&WGW&â¶¶W“¦÷F–öâæ¶W’Ç&ö÷C¦÷F–öâç&ö÷BÆÆ&VÃ¦÷F–öâæÆ&VÂÀ¢6—FS¦÷F–öâæÆ&VÂÇ6—FW3¥²ââææWr6WB†ÖVÖ&W'2æfÆDÖ†—FVÓÓæ—FVÒç6—FW2’•ÒÀ¢—FVÕö6÷VçC¦ÖVÖ&W'2ç&VGV6R‚†âÆ—FVÒ“Óæâ¶—FVÒæ—FVÕö6÷VçBÃ—Ó°¢Ğ¢&WGW&â6FVv÷'”w&÷W2æf–æB†—FVÓÓæ—FVÒæ6FVv÷'•ö¶W“ÓÓĞ¢†¶W—v÷&DG&–ÆÅ6÷W&6Sòw6÷W&6S¢r¶¶W—v÷&DG&–ÆÅ6÷W&6S§6VÆV7FVD6FVv÷'’’—ÇÆçVÆÃ°¢ÒÅ¶w&÷WVE6÷W&6W2Ç6VÆV7FVE&—fW$w&÷WÇ6÷W&6U7G–ÆT÷F–öç2Ç6÷W&6UF†öæö×’Æ6FVv÷'”w&÷W2À¢¶W—v÷&DG&–ÆÅ6÷W&6RÇ6VÆV7FVD6FVv÷'•Ò“°¢6öç7BVffV7F—fT6FVv÷'”¶W“×6VÆV7FVDw&÷Wòæ6FVv÷'•ö¶W—ÇÇ6VÆV7FVDw&÷Wòæ¶W—ÇÂrs°¢òòFVç6—G’æB6—FRW‡ç6–öâæWfW"ÆöBvÆ‡’”G2âF†RW‡Æ–6—@¢òò.šşzK®ih~zºX‰~Š‚"6Æ–6²—2F†R6öÆRVçG'’FòF†—2&÷VæFVB&VFW"à¢6öç7BW&–öEv÷&·5VW'“×W6T7–æ4–æf–æ—FU&W6÷W&6R‡°¢VW'”¶W“¥²v7VÇGW&RÖ'F–6ÆRÖÆ—7BrÆ6Æ76–f–6F–öå66÷RÆ6Æ76–f–6F–öåv–æF÷u7F'BÀ¢6Æ76–f–6F–öåv–æF÷tVæBÆVffV7F—fT6FVv÷'”¶W—ÇÂrrÆ'F–6ÆU6÷'EÒÀ¢–æ—F–ÅvU&Ó¦çVÆÂÀ¢vWDæW‡EvU&Ó¦Æ7EvSÓæÆ7EvRæ†4Ö÷&SöÆ7EvRææW‡D7W'6÷#§VæFVf–æVBÀ¢Væ&ÆVC¢—5F–ÖTVF—F–æuf–Wrbgv÷&·4÷Vâbg7G–ÆTf–ÇFW#ÓÓÒvæöæRp¢bb—4vw&VvFU66÷Rbd&ööÆVâ‡66÷TFF’bd&ööÆVâ‡6VÆV7FVDw&÷W¢bf6Æ76–f–6F–öåv–æF÷ufÆ–BÀ¢VW'”fã¦7–æ2‡·vU&ÒÇ6–væÇÒ“Óç°¢6öç7B·6VÆV7D7VÇGW&T'F–6ÆTÆ—7EvWÓÖv—B–×÷'B‚rââòââöÆö2ö7VÇGW&R÷VW'’r“°¢&WGW&â6VÆV7D7VÇGW&T'F–6ÆTÆ—7EvR‡66÷TFFÇ°¢7F'DFFS¦6Æ76–f–6F–öåv–æF÷u7F'BÆVæDFFS¦6Æ76–f–6F–öåv–æF÷tVæBÀ¢6—FS§6VÆV7FVDw&÷Wòç6—FWÇÂrrÇ6—FW3§6VÆV7FVDw&÷Wòç6—FW7ÇÅµÒÀ¢6÷'DF—&V7F–öã¦'F–6ÆU6÷'BÆöfg6WC§vU&Óòæöfg6WGÇÃÇ6–væÀ¢Ò“°¢Ğ¢Ò“°¢6öç7BW&–öEv÷&·5vW3×W&–öEv÷&·5VW'’æFFòçvW7ÇÅµÓ°¢6öç7Bf—6–&ÆUv÷&µ&÷w3×W6TÖVÖò‚‚“Óç°¢6öç7BÖÖæWrÖ‚“°¢W&–öEv÷&·5vW2æf÷$V6‚‚‡vRÇvT–æFW‚“Óâ‡vRç&÷w7ÇÅµÒ’æf÷$V6‚‚‡&÷rÆ–æFW‚“Óç°¢6öç7B¶W“Õ7G&–ær‡&÷sòæ¶W—ÇÇ&÷sòçV–GÇÇ&÷sòæVçG'•ö–GÇÂrr—ÇÂ‡vT–æFW‚²s¢r¶–æFW‚“°¢òòôde4UBv–æF÷w26â÷fW&Æ–bæWr6öçFVçB'&—fW2&WGvVVâ&WVW7G2à¢òò¶VWF†Rf—'7B&VæFW&VB'F–6ÆR7F&ÆR–ç7FVBöb÷fW'w&—F–ær—@¢òòv—F‚ÆFW"GWÆ–6FRâF†RæW‡BvRöæÇ’VæG2Vç6VVâT”G2à¢–b‚Öæ†2†¶W’’–Öç6WB†¶W’Ç&÷r“°¢Ò’“°¢&WGW&â²ââæÖçfÇVW2‚•Ó°¢ÒÅ·W&–öEv÷&·5vW5Ò“°¢6öç7BW&–öEv÷&·5vS×°¢&÷w3§f—6–&ÆUv÷&µ&÷w2À¢F÷FÄ6÷VçC§VæFVf–æVBÀ¢ÆöF–æs§W&–öEv÷&·5VW'’æ—4ÆöF–æwÇÇW&–öEv÷&·5VW'’æ—4fWF6†–ætæW‡EvRÀ¢W'&÷#§W&–öEv÷&·5VW'’æW'&÷"À¢†4Ö÷&S¤&ööÆVâ‡W&–öEv÷&·5VW'’æ†4æW‡EvR’À¢ÆöDæW‡C§W&–öEv÷&·5VW'’æfWF6„æW‡EvRÀ¢&VÆöC§W&–öEv÷&·5VW'’ç&VfWF6€¢Ó°¢6öç7B6VÆV7FVD6÷VçCÔçVÖ&W"‡W&–öEv÷&·5vRçF÷FÄ6÷VçCó÷6VÆV7FVDw&÷Wòæ—FVÕö6÷VçB—ÇÃ° ¢W6TVffV7B‚‚“Óç°¢6WE6VÆV7FVD6FVv÷'’‚rr“°¢6WEv÷&·4÷Vâ†fÇ6R“°¢ÒÅ·66÷T–EÒ“° ¢W6TVffV7B‚‚“Óç°¢6WE6VÆV7FVD6FVv÷'’‚rr“°¢6WEv÷&·4÷Vâ†fÇ6R“°¢6WDgVÆÅFW‡D¶W’‚rr“°¢6WDgVÆÅFW‡B‚rr“°¢6WDgVÆÅFW‡DW'&÷"‚rr“°¢–b‡v÷&µ67&öÆÅ&Vbæ7W'&VçB—v÷&µ67&öÆÅ&Vbæ7W'&VçBç67&öÆÅF÷Ó°¢ÒÅ¶6Æ76–f–6F–öåv–æF÷u7F'BÆ6Æ76–f–6F–öåv–æF÷tVæEÒ“° ¢W6TVffV7B‚‚“Óç°¢6WDgVÆÅFW‡D¶W’‚rr“°¢6WDgVÆÅFW‡B‚rr“°¢6WDgVÆÅFW‡DW'&÷"‚rr“°¢–b‡v÷&µ67&öÆÅ&Vbæ7W'&VçB—v÷&µ67&öÆÅ&Vbæ7W'&VçBç67&öÆÅF÷Ó°¢ÒÅ·6VÆV7FVD6FVv÷'’Ç6VÆV7FVE&—fW$w&÷WÒ“°  ¢6öç7BF–ÖVÆ–æT—FV×3×W6TÖVÖò‚‚“Óà¢‡VW'’æFFòçF–ÖVÆ–æT—FV×7ÇÅµÒ’æf–ÇFW"†—FVÓÓæ—4vw&VvFU66÷WÇÆ—FVÒç66÷Uö–CÓÓ×66÷T–B¢Å·VW'’æFFÇ66÷T–EÒ“°¢òò¶VWF†RF–ÖRG&6W2–âF†V—"6fVB6‡&öæöÆöv–6Â÷&FW"âF†Rf—'7Bf–Wp¢òò6†÷w2WfW'’G&6RÂæ÷BöæÇ’F†RÆ7B×6VÆV7FVBG&6RBF†RF÷à¢6öç7B7F—fU7G'V7GW&T¶W“×7G'V7GW&Uv–æF÷t¶W“ÓÓÒvÆÂwÇÂ7G'V7GW&Uv–æF÷t¶W“òvÆÂp¢§&–Ö'•W&–öG2ç6öÖR†—FVÓÓçW&–öD¶W’†—FVÒ“ÓÓ×7G'V7GW&Uv–æF÷t¶W’¢÷7G'V7GW&Uv–æF÷t¶W“¢vÆÂs°¢6öç7BW&&—fW#×W6TÖVÖò‚‚“Óç°¢6öç7B6Æ76–f–VCÖ'V–ÆDW&&—fW"‡F–ÖVÆ–æT—FV×2ÆW‡æFVDW&–G2Ç·66÷T–GÒ“°¢&WGW&â6Æ76–f–VC°¢ÒÅ·F–ÖVÆ–æT—FV×2ÆW‡æFVDW&–G2Ç66÷T–EÒ“°¢6öç7BVF—F÷$W&&—fW#×W6TÖVÖò‚‚“Óà¢'V–ÆDW&&—fW"‡F–ÖVÆ–æT—FV×2ÆW‡æFVDVF—F÷$W&–G2Ç¶VF—F÷$öæÇ“§G'VRÇ66÷T–GÒ’À¢·F–ÖVÆ–æT—FV×2ÆW‡æFVDVF—F÷$W&–G2Ç66÷T–EÒ“°¢òò¶VWöæR7F—fRW&ÓâW&–öBÓâFFRG&–ÆÂÖF÷vâBF–ÖRà¢òòF†R–æ—F–ÂF—7Æ’—2Çv—26‡&öæöÆöv–6ÂW&ÖöæÇ’Æ—7Bà¢6öç7BFövvÆTVF—F÷$W&Öw&÷W–CÓç6WDW‡æFVDVF—F÷$W&–G2†7W'&VçCÓà¢æW‡DVF—F÷$W&W‡ç6–öâ†7W'&VçBÆw&÷W–B’“°¢6öç7BFövvÆUF–ÖUG&6SÖw&÷W–CÓç°¢6öç7B÷VãÒW‡æFVDW&–G2æ–æ6ÇVFW2†w&÷W–B“°¢6WDW‡æFVDW&–G2†7W'&VçCÓà¢7W'&VçBæ–æ6ÇVFW2†w&÷W–B“ö7W'&VçBæf–ÇFW"†–CÓæ–BÓÖw&÷W–B“¥²ââæ7W'&VçBÆw&÷W–EÒ“°¢–b†÷Vâbfw&÷W–Bç7F'G5v—F‚‚wG&6S¢r’—°¢6öç7BG&6S×&–Ö'•W&–öG2æf–æB‡W&–öCÓà¢wG&6S¢rµ7G&–ær‡W&–öBç66÷Uö–GÇÇ66÷T–B’²s¢r·W&–öD¶W’‡W&–öB“ÓÓÖw&÷W–B“°¢–b‡G&6R—6WE7G'V7GW&Uv–æF÷t¶W’‡W&–öD¶W’‡G&6R’“°¢Ğ¢Ó°¢6öç7B7W'&VçE7G'V7GW&UW&–öC×&–Ö'•W&–öG2æf–æB†—FVÓÓçW&–öD¶W’†—FVÒ“ÓÓÖ7F—fU7G'V7GW&T¶W’—ÇÆçVÆÃ°¢òòF†R&ÆÂW&2"6ÖW&–æ6ÇVFW27GVÂ6fVB†—7F÷'’Âæ÷B§W7BF†P¢òòÆFW7B–V"Â6òfÆ–BöÆFW"F–ÖR&ævW26ææ÷B&VæFW"öfb×67&VVâà¢6öç7B7G'V7GW&TFFT&÷VæG3×W6TÖVÖò‚‚“Óç°¢6öç7BFFW3×F–ÖVÆ–æT—FV×2æfÆDÖ†—FVÓÓå¶—FVÓòç7F'EöFFRÆ—FVÓòæVæEöFFUÒ¢æÖ‡fÇVSÓå7G&–ær‡fÇVWÇÂrr’ç6Æ–6RƒÃ’¢æf–ÇFW"‡fÇVSÓâõå³Ó•×³GÒÕ³Ó•×³'ÒÕ³Ó•×³'ÒBòçFW7B‡fÇVR’’ç6÷'B‚“°¢6öç7B7F'CÖFFW5³×ÇÄDTdTÅEõ”T%õt”äDõrç7F'DFFS°¢6öç7BÆ7CÖFFW2æB‚Ó—ÇÄDTdTÅEõ”T%õt”äDõræVæDFFS°¢&WGW&â·7F'BÆVæC¦Æ7Cç7F'CöÆ7C¦æW‡E&—fW$F’‡7F'B—Ó°¢ÒÅ·F–ÖVÆ–æT—FV×5Ò“°¢òòÖævVÖVçBF—7Æ—2F†R6ÖR6ö×ÆWFR†—7F÷&–6ÂF–ÖRw&‚27VÇGW&S°¢òòF†R7W'&VçB6ÆVæF"–V"—2æ÷Bf–ÇFW"÷"F†R–æ—F–ÂVF—F÷"6ÖW&à¢6öç7BVF—F÷%&—fW%v–æF÷s×7G'V7GW&TFFT&÷VæG3°¢6öç7B7W'&VçE7G'V7GW&U7F'CÖ7F—fU7G'V7GW&T¶W“ÓÓÒvÆÂs÷7G'V7GW&TFFT&÷VæG2ç7F'@¢¥7G&–ær†7W'&VçE7G'V7GW&UW&–öCòç7F'EöFFWÇÂrr’ç6Æ–6RƒÃ“°¢òòG&6R7F÷2B—G2f–æÂ&VÂæ6†÷#²æòf—'GVÂFöF’VæGö–çBà¢6öç7BÆ7Dæ6†÷$FFSÕ7G&–ær‡7G'V7GW&U&VfW&Væ6RæÆ7Dæ6†÷#òç7F'EöFFWÇÂrr’ç6Æ–6RƒÃ“°¢6öç7B6fVEG&6TVæCÕ7G&–ær†7W'&VçE7G'V7GW&UW&–öCòæVæEöFFWÇÂrr’ç6Æ–6RƒÃ“°¢6öç7B7W'&VçE7G'V7GW&TVæCÖ7F—fU7G'V7GW&T¶W“ÓÓÒvÆÂs÷7G'V7GW&TFFT&÷VæG2æVæ@¢§7G'V7GW&Uv–æF÷t¶W“ÓÓÒrrbfÆ7Dæ6†÷$FFSç6fVEG&6TVæCöÆ7Dæ6†÷$FFS§6fVEG&6TVæC°¢òò¶VWF†Rf—'7B&—fW"w&÷WVB'’W&T”Bâ6VÆV7FVBG&6R6†ævW0¢òòöæÇ’F†R6ÖW&f–Ww÷'BÂæWfW"F†R6fVBæ6†÷"öWfVçB÷G&6Rw&‚à¢6öç7Bæ6†÷%&V6÷&G3×W6TÖVÖò‚‚“ÓçF–ÖVÆ–æT—FV×0¢æf–ÇFW"†—FVÓÓæ—FVÒæVçG'•÷G—SÓÓÒvæ6†÷"rbf—FVÒçV–B¢ç6÷'B‚†Æ"“Óå7G&–ær†ç7F'EöFFWÇÂrr’æÆö6ÆT6ö×&R…7G&–ær†"ç7F'EöFFWÇÂrr’—ÇÅ7G&–ær†æF—7Æ•öÆ&VÇÇÂrr’æÆö6ÆT6ö×&R…7G&–ær†"æF—7Æ•öÆ&VÇÇÂrr’’’Å·F–ÖVÆ–æT—FV×5Ò“°¢6öç7BÆö566÷T–çFW'fÄ—FV×3×W6TÖVÖò‚‚“ÓçVW'’æFFòç66÷UF–ÖU&ævW7ÇÅµÒÅ·VW'’æFFÒ“°¢òòF†RÄô2ÆæF–ær&Wf–Wr&VG2öæÇ’W"Õ66÷Rvw&VvFW2&VÆ÷rà¢òòFòæ÷BÇ6ò6öç7G'V7BF†R&WF—&VB6öÖ&–æVB×6÷W&6RF—7Æ’'&—2îùó»h‘éì¶»§q«^u±”‘É…™Ğ…™Ñ•È±¥­¥¹œÑ¡”‰ÕÑÑ½¸¸(€€€€€½¹ÍĞÙ•É¥™¥•õ…İ…¥Ğ…½Õ¹Ğ¹É•™É•Í  ¤ì(€€€€€¥˜ …Ù•É¥™¥•ü¹…ÕÑ¡½É¥é•Èü¹…¹1½•ÍÍMå¹Œ Í½Á”œ±Í½Á•%¤¥Ñ¡É½Ü¹•ÜÉÉ½È Ÿ¢®/–#fï–—–ßšr'š¶M½Á”ƒŞ£¢ò¿š²+¦fCj–âÏ¢fœ¤ì(€€€€€Í•ÑÕÑ¡½É¥é•‘]½É­-•ä¡­•ä¤ì(€€€€€¥˜ …Í½Á•…Ñ„¥Ñ¡É½Ü¹•ÜÉÉ½È¡°¹Í½ÕÉ•U¹É•Í½±Ù•¤ì(€€€€€€¼¼Q¡”•‘¥Ñ½ÈÕÍ•ÌÑ¡”™¥á•…±…áåU¥‘I•……Ñ¥½¸°İ¡¥ Ù•É¥™¥•ÌÑ¡”(€€€€€€¼¼M½Á”É…¹Ğ½¸Ñ¡”Í•ÉÙ•È…¹Í•±•ÑÌ½¹±äÑ¡¥Ì…ÉÑ¥±”U%¸(€€€€€½¹ÍĞíÉ½İÌõmuôõ…İ…¥ĞÉ•…‘…±…áåI•½É‘Ì¡ì(€€€€€€€Í½Á”éÍ½Á•%±Ù¥•Üè‘•Ñ…¥°œ±Õ¥‘ÌémÕ¥‘t(€€€€€ô±í•‘¥Ñ½ÈéÑÉÕ•ô¤ì(€€€€€½¹ÍĞÉ½ÜõÉ½İÍlÁtì(€€€€€¥˜ …É½Ü¥Ñ¡É½Ü¹•ÜÉÉ½È¡°¹İ½É­9½Ñ½Õ¹¤ì(€€€€€½¹ÍĞíÁ±…¥¹Q•áÑQ½	±½­Íôõ…İ…¥Ğ¥µÁ½ÉĞ œ¸¸¼¸¸½±½Œ½•‘¥Ñ½È½‰±½­¹½Ñ”µ½¹Ñ•¹Ğ¹µ©Ìœ¤ì(€€€€€Í•Ñ‘¥ÑÉ…™Ğ¡ì(€€€€€€€Ñ¥Ñ±”éMÑÉ¥¹œ¡É½Ü¹Ñ¥Ñ±•ññİ½É¬¹Ñ¥Ñ±•ñğœœ¤°(€€€€€€€‰½‘äéMÑÉ¥¹œ¡É½Ü¹½¹Ñ•¹Ññğœœ¤°(€€€€€€€‰½‘å!Ñµ°éMÑÉ¥¹œ¡É½Ü¹½¹Ñ•¹Ññğœœ¤°(€€€€€€€‰½‘å	±½­ÌéÁ±…¥¹Q•áÑQ½	±½­Ì¡MÑÉ¥¹œ¡É½Ü¹½¹Ñ•¹Ññğœœ¤¤°(€€€€€€€•‘¥Ñ½É-•äéÕ¥°(€€€€€€€¡¥‘‘•¸éÉ½Ü¹±¥ÍĞôôõ™…±Í”°(€€€€€€€½É¥¥¹…±!¥‘‘•¸éÉ½Ü¹±¥ÍĞôôõ™…±Í”°(€€€€€€€½É¥¥¹…±M•…É éÉ½Ü¹Í•…É „ôõ™…±Í”(€€€€€ô¤ì(€€€õ…Ñ ¡•á•ÁÑ¥½¸¥ì(€€€€€Í•Ñ‘¥Ñ¥¹]½É­-•ä œœ¤íÍ•ÑÕÑ¡½É¥é•‘]½É­-•ä œœ¤ì(€€€€€½¹ÍĞµ•ÍÍ…”õMÑÉ¥¹œ¡•á•ÁÑ¥½¸ü¹µ•ÍÍ…•ññ•á•ÁÑ¥½¹ññ°¹•‘¥ÑI•…‘…¥±•¤ì(€€€€€Í•Ñ‘¥ÑÉÉ½È¡µ•ÍÍ…”¤íÍ•ÑÕ±±Q•áÑÉÉ½È¡µ•ÍÍ…”¤ì(€€€ô(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸Í…Ù•‘¥Ñ¥¹]½É¬¡İ½É¬¥ì(€€€½¹ÍĞÕ¥õMÑÉ¥¹œ¡İ½É¬ü¹Õ¥‘ñğœœ¤¹ÑÉ¥´ ¤ì(€€€¥˜ ……‘µ¥¹1¥ÍÑI•ÅÕ•ÍÑ•‘ññ…ÕÑ¡½É¥é•‘]½É­-•ä„ôõMÑÉ¥¹œ¡İ½É¬ü¹­•åñğ …±…áäèœ­Õ¥¤¤¥É•ÑÕÉ¸ì(€€€¥˜ …Õ¥‘ñğ…•‘¥ÑÉ…™Ğ¥É•ÑÕÉ¸ì(€€€Í•Ñ‘¥Ñ	ÕÍä¡ÑÉÕ”¤íÍ•Ñ‘¥ÑÉÉ½È œœ¤ì(€€€ÑÉåì(€€€€€¥˜ …Í½Á•…Ñ„¥Ñ¡É½Ü¹•ÜÉÉ½È¡°¹Í½ÕÉ•U¹É•Í½±Ù•¤ì(€€€€€½¹ÍĞí‰±½­ÍQ½A±…¥¹Q•áÑôõ…İ…¥Ğ¥µÁ½ÉĞ œ¸¸¼¸¸½±½Œ½•‘¥Ñ½È½‰±½­¹½Ñ”µ½¹Ñ•¹Ğ¹µ©Ìœ¤ì(€€€€€½¹ÍĞ½¹Ñ•¹Ğõ…İ…¥ĞÉ•ÅÕ¥É•…±…áå½¹Ñ•¹Ğ¡•‘¥ÑÉ…™Ğ¹‰½‘å!Ñµ°üı‰±½­ÍQ½A±…¥¹Q•áĞ¡•‘¥ÑÉ…™Ğ¹‰½‘å	±½­Ì¤¤ì(€€€€€½¹ÍĞÁ±…¥¹	½‘äõ‰±½­ÍQ½A±…¥¹Q•áĞ¡•‘¥ÑÉ…™Ğ¹‰½‘å!Ñµ°üı•‘¥ÑÉ…™Ğ¹‰½‘å	±½­Ì¤ì(€€€€€…İ…¥ĞÕÁ‘…Ñ•I½İÌ¡Í½Á•…Ñ„¹…±…áä±ì(€€€€€€€Ñ¥Ñ±”éÉ•Í½±Ù•…±…áåQ¥Ñ±”¡•‘¥ÑÉ…™Ğ¹Ñ¥Ñ±”±Á±…¥¹	½‘ä¤°(€€€€€€€½¹Ñ•¹Ğ°(€€€€€€€€¸¸¸¡•‘¥ÑÉ…™Ğ¹¡¥‘‘•¸ôôõ•‘¥ÑÉ…™Ğ¹½É¥¥¹…±!¥‘‘•¸ıíôéí±¥ÍĞé•‘¥ÑÉ…™Ğ¹¡¥‘‘•¸„ôõÑÉÕ”±Í•…É é•‘¥ÑÉ…™Ğ¹¡¥‘‘•¸„ôõÑÉÕ•ô¤°(€€€€€€€UÁ‘…Ñ•Q¥µ”é¹•Ü…Ñ” ¤¹Ñ½%M=MÑÉ¥¹œ ¤(€€€€€ô±í™¥±Ñ•ÉÌémí½±Õµ¸èÕ¥œ±½Á•É…Ñ½Èè•Äœ±Ù…±Õ”éÕ¥‘õuô¤ì(€€€€€½¹ÍĞ­•äõMÑÉ¥¹œ¡İ½É¬ü¹­•åñğ …±…áäèœ­Õ¥¤¤ì(€€€€€¥˜¡™Õ±±Q•áÑ-•äôôõ­•ä¥Í•ÑÕ±±Q•áĞ¡½¹Ñ•¹Ğ¤ì(€€€€€Í•Ñ‘¥Ñ¥¹]½É­-•ä œœ¤íÍ•ÑÕÑ¡½É¥é•‘]½É­-•ä œœ¤íÍ•Ñ‘¥ÑÉ…™Ğ¡¹Õ±°¤ì(€€€€€…İ…¥ĞÉ•™É•Í¡Õ±ÑÕÉ•M½ÕÉ•MÕµµ…Éä ¤ì(€€€€€Á•É¥½‘]½É­ÍA…”¹É•±½… ¤ì(€€€õ…Ñ ¡•á•ÁÑ¥½¸¥ì(€€€€€Í•Ñ‘¥ÑÉÉ½È¡MÑÉ¥¹œ¡•á•ÁÑ¥½¸ü¹µ•ÍÍ…•ññ•á•ÁÑ¥½¹ññ°¹Í…Ù•…¥±•¤¤ì(€€€õ™¥¹…±±åì(€€€€€Í•Ñ‘¥Ñ	ÕÍä¡™…±Í”¤ì(€€€ô(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸‘•±•Ñ•‘¥Ñ¥¹]½É¬¡İ½É¬¥ì(€€€½¹ÍĞÕ¥õMÑÉ¥¹œ¡İ½É¬ü¹Õ¥‘ñğœœ¤¹ÑÉ¥´ ¤ì(€€€¥˜ ……‘µ¥¹1¥ÍÑI•ÅÕ•ÍÑ•‘ññ…ÕÑ¡½É¥é•‘]½É­-•ä„ôõMÑÉ¥¹œ¡İ½É¬ü¹­•åñğ …±…áäèœ­Õ¥¤¤¥É•ÑÕÉ¸ì(€€€¥˜ …Õ¥¥É•ÑÕÉ¸ì(€€€Í•Ñ‘¥Ñ	ÕÍä¡ÑÉÕ”¤íÍ•Ñ‘¥ÑÉÉ½È œœ¤ì(€€€ÑÉåì(€€€€€¥˜ …Í½Á•…Ñ„¥Ñ¡É½Ü¹•ÜÉÉ½È¡°¹Í½ÕÉ•U¹É•Í½±Ù•¤ì(€€€€€…İ…¥Ğ‘•±•Ñ•I½İÌ¡Í½Á•…Ñ„¹…±…áä±í™¥±Ñ•ÉÌémí½±Õµ¸èÕ¥œ±½Á•É…Ñ½Èè•Äœ±Ù…±Õ”éÕ¥‘õuô¤ì(€€€€€½¹ÍĞ­•äõMÑÉ¥¹œ¡İ½É¬ü¹­•åñğ …±…áäèœ­Õ¥¤¤ì(€€€€€¥˜¡™Õ±±Q•áÑ-•äôôõ­•ä¥íÍ•ÑÕ±±Q•áÑ-•ä œœ¤íÍ•ÑÕ±±Q•áĞ œœ¤íô(€€€€€Í•Ñ‘¥Ñ¥¹]½É­-•ä œœ¤íÍ•ÑÕÑ¡½É¥é•‘]½É­-•ä œœ¤íÍ•Ñ‘¥ÑÉ…™Ğ¡¹Õ±°¤ì(€€€€€…İ…¥ĞÉ•™É•Í¡Õ±ÑÕÉ•M½ÕÉ•MÕµµ…Éä ¤ì(€€€€€Á•É¥½‘]½É­ÍA…”¹É•±½… ¤ì(€€€õ…Ñ ¡•á•ÁÑ¥½¸¥ì(€€€€€Í•Ñ‘¥ÑÉÉ½È¡MÑÉ¥¹œ¡•á•ÁÑ¥½¸ü¹µ•ÍÍ…•ññ•á•ÁÑ¥½¹ññ°¹‘•±•Ñ•…¥±•¤¤ì(€€€õ™¥¹…±±åíÍ•Ñ‘¥Ñ	ÕÍä¡™…±Í”¥ô(€ô((€…Íå¹Œ™Õ¹Ñ¥½¸Ñ½±•]½É­½¹Ñ•¹Ğ¡İ½É¬¥ì(€€€½¹ÍĞÕ¥õMÑÉ¥¹œ¡İ½É¬ü¹Õ¥‘ñğœœ¤¹ÑÉ¥´ ¤ì(€€€¥˜ …Õ¥¥É•ÑÕÉ¸ì(€€€½¹ÍĞ­•äõMÑÉ¥¹œ¡İ½É¬ü¹­•åñğ …±…áäèœ­Õ¥¤¤ì(€€€¥˜¡™Õ±±Q•áÑ-•äôôõ­•ä¥ì(€€€€€Í•ÑÕ±±Q•áÑ-•ä œœ¤ì(€€€€€Í•ÑÕ±±Q•áĞ œœ¤ì(€€€€€Í•ÑÕ±±Q•áÑÉÉ½È œœ¤ì(€€€€€É•ÑÕÉ¸ì(€€€ô(€€€Í•ÑÕ±±Q•áÑ-•ä¡­•ä¤ì(€€€Í•ÑÕ±±Q•áĞ œœ¤ì(€€€Í•ÑÕ±±Q•áÑÉÉ½È œœ¤ì(€€€Í•ÑÕ±±•Ñ…¥°¡¹Õ±°¤ì(€€€Í•ÑÕ±±Q•áÑ1½…‘¥¹œ¡ÑÉÕ”¤ì(€€€ÑÉåì(€€€€€¥˜ …Í½Á•…Ñ„¥Ñ¡É½Ü¹•ÜÉÉ½È¡°¹Í½ÕÉ•U¹É•Í½±Ù•¤ì(€€€€€½¹ÍĞÉ½Üõ…İ…¥ĞÍ•±•Ñ…±…áå%‘•¹Ñ¥Ñä¡Í½Á•…Ñ„±Õ¥¤ì(€€€€€¥˜ …É½Ü¥Ñ¡É½Ü¹•ÜÉÉ½È¡°¹İ½É­9½Ñ½Õ¹¤ì(€€€€€Í•ÑÕ±±Q•áĞ¡İ½É­¥ÍÁ±…åQ•áĞ¡É½Ü¹½¹Ñ•¹Ññğœœ¤¤ì(€€€€€Í•ÑÕ±±•Ñ…¥°¡É½Ü¤ì(€€€õ…Ñ ¡•á•ÁÑ¥½¸¥ì(€€€€€Í•ÑÕ±±Q•áÑÉÉ½È¡MÑÉ¥¹œ¡•á•ÁÑ¥½¸ü¹µ•ÍÍ…•ññ•á•ÁÑ¥½¹ññ°¹™Õ±±Q•áÑ…¥±•¤¤ì(€€€õ™¥¹…±±åì(€€€€€Í•ÑÕ±±Q•áÑ1½…‘¥¹œ¡™…±Í”¤ì(€€€ô(€ô((€€¼¼Q¡”‘•‘¥…Ñ•µ…¹…•µ•¹Ğ•¹ÑÉä¥Ì…±É•…‘ä¥¸•‘¥Ğµ½‘”¸=¹±ä¥ÑÌÍ•±•Ñ•(€€¼¼É•½É­¥¹…ÁÁ•…ÉÌ½¸Ñ¡”É¥¡Ğ°İ¥Ñ Ñ¡”Í…µ”¹…Ñ¥Ù”é½½´½Á…¸½¹ÑÉ½±Ì¸(€¥˜¡¥ÍQ¥µ•‘¥Ñ¥¹Y¥•Ü¥ì(€€€½¹ÍĞ•‘¥Ñ½ÉÙ…¥±…‰±”õ	½½±•…¸¡Í½Á•%˜™Í½Á•%„ôô±½Œœ¤ì(€€€½¹ÍĞÁ•Éµ¥ÍÍ¥½¹A•¹‘¥¹œõ…½Õ¹Ğ¹±½…‘¥¹ññ…½Õ¹Ğ¹Á•Éµ¥ÍÍ¥½¹1½…‘¥¹œì(€€€½¹ÍĞ•‘¥Ñ½ÉÕÑ¡½É¥é•õ	½½±•…¸¡…½Õ¹Ğ¹ÕÍ•È˜™…½Õ¹Ğ¹…¹1½•ÍÍMå¹Œ Í½Á”œ±Í½Á•%¤¤ì(€€€É•ÑÕÉ¸€ñ•…ÑÕÉ•A…”™•…ÑÕÉ•%ô‰Õ±ÑÕÉ”ˆø(€€€€€€ñ5…¹…•µ•¹Ñ]½É­ÍÁ…•É…µ”±•Ù•°ô‰Í½Á”ˆÑ¥Ñ±”ô‹šf¦ZO–ºk¦2£º‡Bˆø(€€€€€€€€ñÍ•Ñ¥½¸±…ÍÍ9…µ”ô‰µ…¹…•µ•¹Ğµİ½É­ÍÁ…”µÁ…¹•°Í½Á”µÑ¥µ”µ•‘¥ĞµÉ½½Ğˆø(€€€€€€€ì…•‘¥Ñ½ÉÙ…¥±…‰±”üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœûš¶“–6šÊKšr'–/–"”M½Á”ƒjšf¦ZOŞ£¢ò¿¢ÎšZgğ½Àøé¹Õ±±ô(€€€€€€€í•‘¥Ñ½ÉÙ…¥±…‰±”˜™Á•Éµ¥ÍÍ¥½¹A•¹‘¥¹œüñÕ±ÑÕÉ•Q¥µ•1½…‘¥¹œ±…‰•°ôŸš¶–r£Šë¢ª7š¶M½Á”ƒjŞ£¢ò¿š²+¦fCŠ˜œ¼øé¹Õ±±ô(€€€€€€€í•‘¥Ñ½ÉÙ…¥±…‰±”˜˜…Á•Éµ¥ÍÍ¥½¹A•¹‘¥¹œ˜˜…•‘¥Ñ½ÉÕÑ¡½É¥é•üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ô…±•ÉĞœø(€€€€€€€€€í…½Õ¹Ğ¹•ÉÉ½ÈıMÑÉ¥¹œ¡…½Õ¹Ğ¹•ÉÉ½È¤é…½Õ¹Ğ¹ÕÍ•ÈüŸn»–&7fï–—–âÏ¢fšÊKšr'š¶M½Á”ƒjº‡Bš²+¦fCœèŸ¢®/–#¢Ï¢¢·–ºk¦š[¦‚fï–—¾ò3š&7¢÷Ş£¢ò¿šf¦ZO–ºk¦2£ô(€€€€€€€€ğ½Àøé¹Õ±±ô(€€€€€€€í•‘¥Ñ½ÉÙ…¥±…‰±”˜˜…Á•Éµ¥ÍÍ¥½¹A•¹‘¥¹œ˜™•‘¥Ñ½ÉÕÑ¡½É¥é•üñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÑ¥µ”µ•‘¥Ğµİ½É­ÍÁ…”Í½Á”µÕ±ÑÕÉ”µÍÑÉÕÑÕÉ”µÉ¥Ù•Èœø(€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôµ…¹…•µ•¹Ğµİ½É­ÍÁ…”µÁ…¹•°œ¥ôÑ¥µ”µ•‘¥Ñ½ÈµÁ…¹•°œÉ½±”ôÉ•¥½¸œ(€€€€€€€€€€€…É¥„µ±…‰•°ôŸšf¦ZOŞ£¢ò¼œø(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÑ¥µ•±¥¹”µÑ½½±Ìœø(€€€€€€€€€€€€€€ñ Ìûšf’î¾ò?šr¦ZO¾ò?šf¦ZO–ºk¦2£¦îxğ½ Ìø(€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸ÑåÁ”ô‰ÕÑÑ½¸œ±…ÍÍ9…µ”ô±½Œµ‰ÕÑÑ½¸œ‘¥Í…‰±•õíÅÕ•Éä¹¥ÍA•¹‘¥¹ô(€€€€€€€€€€€€€€€½¹±¥¬õì ¤ôùÙ½¥É•™É•Í¡Q¥µ•±¥¹•…Ñ„ ¤¹…Ñ ¡•ÉÉ½ÈôùÍ•Ñ‘¥ÑÉÉ½È¡•ÉÉ½Èü¹µ•ÍÍ…•ñğŸšf¦ZO¦VßšÊÏšnÓšZÃ–’ÇšV\œ¤¥ôûšnÓšZÃšf¦ZO¦VßšÊÌğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€íÅÕ•Éä¹¥ÍA•¹‘¥¹œüñÕ±ÑÕÉ•Q¥µ•1½…‘¥¹œ±…‰•°ôŸš¶–r£¢ò'–—šf¦ZOÒ¦2Š˜œ¼øé¹Õ±±ô(€€€€€€€€€€€íÅÕ•Éä¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ô…±•ÉĞœùí™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡ÅÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€ì…ÅÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÅÕ•Éä¹•ÉÉ½È˜˜…Ñ¥µ•±¥¹•%Ñ•µÌ¹±•¹Ñ (€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœûn»–&7–Âkšr«–îë®/š¶“¦†{šf¦ZOÒ¦2¾ò3–>¿nÓš:—–r£’â/šZçšZÃ–Š{ğ½Àøé¹Õ±±ô(€€€€€€€€€€€ì…ÅÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÅÕ•Éä¹•ÉÉ½È˜˜…•‘¥Ñ½ÉÉ…I¥Ù•È¹É½ÕÁÌ¹±•¹Ñ (€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœûšf¦ZOÒ¦2–ŞË¢º–>[¾ò3’ön»–&7šÊKšr'–>¿¦†¿’ëjšf’î¾ò?–ºk¦2£¦î{ğ½Àøé¹Õ±±ô(€€€€€€€€€€€ì…ÅÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÅÕ•Éä¹•ÉÉ½È˜™•‘¥Ñ½ÉÉ…I¥Ù•È¹É½ÕÁÌ¹±•¹Ñ øÀüñÕ±ÑÕÉ•Q¥µ•±¥¹”(€€€€€€€€€€€€€­•äõìÑ¥µ”µ•‘¥Ñ½Èµ•É„µÁ•É¥½ô(€€€€€€€€€€€€€¥Ñ•µÌõí•‘¥Ñ½ÉÉ…I¥Ù•È¹¥Ñ•µÍô(€€€€€€€€€€€€€•áÑÉ…É½ÕÁÌõí•‘¥Ñ½ÉÉ…I¥Ù•È¹É½ÕÁÍô(€€€€€€€€€€€€€±…‰•±=˜õí±½…±¥é•‘1…‰•±=™ô(€€€€€€€€€€€€€™½ÕÌõí5AQe}I%YI}=UMô(€€€€€€€€€€€€€µ½‘”ôÑÉ…”œ(€€€€€€€€€€€€€½µÁ…Ñ!¥•É…É¡ä(€€€€€€€€€€€€€Õ¹™½±‘ÕÉÑ…¥¸õí™…±Í•ô(€€€€€€€€€€€€€½¹¥ÉÍÑA…¥¹Ğõì ¤ôùÍ•ÑQ¥µ•I¥Ù•É¥ÉÍÑA…¥¹Ğ¡ÑÉÕ”¥ô(€€€€€€€€€€€€€½¹É½ÕÁQ½±”õíÑ½±•‘¥Ñ½ÉÉ…ô(€€€€€€€€€€€€€İ¥¹‘½İMÑ…ÉĞõí•‘¥Ñ½ÉI¥Ù•É]¥¹‘½Ü¹ÍÑ…ÉÑô(€€€€€€€€€€€€€İ¥¹‘½İ¹õí•‘¥Ñ½ÉI¥Ù•É]¥¹‘½Ü¹•¹‘ô(€€€€€€€€€€€€€½¹M•±•Ğõí¥Ñ•´ôù‰•¥¹Q¥µ•±¥¹•I•½É‘‘¥Ğ¡¥Ñ•´¥ô(€€€€€€€€€€€€€•‘¥Ñ…‰±”õí™…±Í•ô(€€€€€€€€€€€€¼øé¹Õ±±ô(€€€€€€€€€€€íÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼üñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µ…ÉÍ½Á”µÕ±ÑÕÉ”µÑ¥µ•±¥¹”µÍ•±•Ñ¥½¸œÉ½±”ôÍÑ…ÑÕÌœø(€€€€€€€€€€€€€€ñÍÑÉ½¹œùíÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹½¹Ñ•¹ÑññÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹Ñ¥Ñ±•ñğŸšf¦ZOÒ¦2ôğ½ÍÑÉ½¹œø(€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœùíMÑÉ¥¹œ¡Í•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹ÍÑ…ÉÑñğœœ¤¹Í±¥” À°ÄÀ¥õíÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹•¹üœƒ¾öx€œ­MÑÉ¥¹œ¡Í•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹•¹¤¹Í±¥” À°ÄÀ¤èœôğ½Àø(€€€€€€€€€€€€ğ½‘¥Øøé¹Õ±±ô(€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÑ¥µ”µ¥¹ÁÕĞµ…É•„œø(€€€€€€€€€€€€€ì…ÅÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÅÕ•Éä¹•ÉÉ½È˜˜¡Ñ¥µ•I¥Ù•É¥ÉÍÑA…¥¹ÑññÑ¥µ•‘¥Ñ½ÉÉ…µ•I•…‘åñğ…•‘¥Ñ½ÉÉ…I¥Ù•È¹É½ÕÁÌ¹±•¹Ñ ¤(€€€€€€€€€€€€€€€€üñÕ±ÑÕÉ•Q¥µ•±¥¹•‘¥Ñ½È­•äõíÍ½Á•%¬œéÕ¹¥™¥•èœ­Ñ¥µ•±¥¹•‘¥Ñ½ÉI•Ù¥Í¥½¹ô(€€€€€€€€€€€€€€€Í½Á•%õíÍ½Á•%‘ô(€€€€€€€€€€€€€€€Ñ¥µ•Q…‰±”õíÍ½Á•…Ñ„ü¹Ñ¥µ•ñğœô(€€€€€€€€€€€€€€€Ñ¥µ•I•½É‘ÌõíÅÕ•Éä¹‘…Ñ„ü¹•‘¥Ñ½ÉI½İÍññ¹Õ±±ô(€€€€€€€€€€€€€€€Ñ¥µ•1½…‘¥¹œõíÅÕ•Éä¹¥ÍA•¹‘¥¹ô(€€€€€€€€€€€€€€€Ñ¥µ•ÉÉ½ÈõíÅÕ•Éä¹•ÉÉ½Éô(€€€€€€€€€€€€€€€‰¥ÉÑ¡‘…äõíÍ½Á•…Ñ„ü¹‰¥ÉÑ¡‘…åñğœô(€€€€€€€€€€€€€€€Í•±•Ñ•‘I•½É‘%õíÍ•±•Ñ•‘Q¥µ•±¥¹•I•½É‘%‘ô(€€€€€€€€€€€€€€€ÍÕ•ÍÑ•‘¹¡½É…Ñ”õíÍ•±•Ñ•‘Q¥µ•±¥¹•…Ñ•ô(€€€€€€€€€€€€€€€ÍÕ•ÍÑ•‘I•½É‘QåÁ”õíÍÕ•ÍÑ•‘I•½É‘QåÁ•ô(€€€€€€€€€€€€€€€‘•™…Õ±ÑI•½É‘QåÁ”ô…¹¡½Èœ(€€€€€€€€€€€€€€€ÍÕ•ÍÑ•‘I•ÅÕ•ÍÑ9½¹”õíÍÕ•ÍÑ•‘I•ÅÕ•ÍÑ9½¹•ô(€€€€€€€€€€€€€€€½¹…Ñ…¡…¹•õíÉ•™É•Í¡Q¥µ•±¥¹•…Ñ…ô(€€€€€€€€€€€€€€€½¹±½Í”õì ¤ôùíÍ•ÑM•±•Ñ•‘Q¥µ•±¥¹•I•½É‘% œœ¤íÍ•ÑM•±•Ñ•‘Q¥µ•±¥¹•…Ñ” œœ¤íÍ•ÑM•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¡¹Õ±°¤íÍ•ÑMÕ•ÍÑ•‘I•ÅÕ•ÍÑ9½¹” À¥õô¼ø(€€€€€€€€€€€€€€€€é¹Õ±±ô(€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€í•‘¥ÑÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ô…±•ÉĞœùí•‘¥ÑÉÉ½Éôğ½Àøé¹Õ±±ô(€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€ğ½‘¥Øøé¹Õ±±ô(€€€€€€€€ğ½Í•Ñ¥½¸ø(€€€€€€ğ½5…¹…•µ•¹Ñ]½É­ÍÁ…•É…µ”ø(€€€€ğ½•…ÑÕÉ•A…”øì(€ô((€€¼¼1=Õ±ÑÕÉ”¥Ì„™¥á•½¹”µå•…È½Ù•ÉÙ¥•Ü½˜µ•µ‰•ÈM½Á•Ì¸(€€¼¼±°‘•Ñ…¥±•Q¥µ•¹¡½ÈÉ¥Ù•ÉÌ…¹…ÉÑ¥±”‰É½İÍ¥¹œ±¥Ù”¥¹Í¥‘”•… M½Á”¸(€¥˜¡Í½Á•%ôôô±½Œœ˜˜…¥ÍQ¥µ•‘¥Ñ¥¹Y¥•Ü¥É•ÑÕÉ¸€ñ•…ÑÕÉ•A…”™•…ÑÕÉ•%ô‰Õ±ÑÕÉ”ˆø(€€€€ñÍ•Ñ¥½¸±…ÍÍ9…µ”ô±½Œµ…ÉÍ½Á”µ™•…ÑÕÉ”µ…ÉÍ½Á”µ™•…ÑÕÉ”µ…Éµİ¥‘”œø(€€€€€íÅÕ•Éä¹¥ÍA•¹‘¥¹ññ	½½±•…¸¡ÅÕ•Éä¹‘…Ñ„ü¹Í½Á•Ìü¹±•¹Ñ ¤˜™±½•¹Í¥ÑåEÕ•Éä¹¥ÍA•¹‘¥¹œ(€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœùí±½5¥ıƒ–ŞË–º3š"@€‘í±½5¥¹½µÁ±•Ñ•‘÷¾ò<‘í±½5¥¹Ñ½Ñ…±ôƒ–,M½Á—¾ò3šj¯¢¢ €‘í±½5¥¹Í½Á•I…¹•Ì¹É•‘Õ” ¡¸±É½Ü¤ôù¸­9Õµ‰•È¡É½Ü¹¥Ñ•µ}½Õ¹ÑñğÀ¤°À¤¹Ñ½1½…±•MÑÉ¥¹œ ¥ôƒ¾¾òo–Û¦’c’î7–r£¢¢#º_	€éU%}=Ad¹½µµ½¸¹±½…‘¥¹ôğ½Àøé¹Õ±±ô(€€€€€íÅÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…±½M½Á•AÉ•Ù¥•Ü¹É½ÕÁÌ¹±•¹Ñ üñ‘¥Ø±…ÍÍ9…µ”ô±½ŒµÁÉ½É•ÍÍ¥Ù”µÉ¥Ù•Èµ™É…µ”œ…É¥„µ‰ÕÍäôÑÉÕ”œøñ‘¥Ø±…ÍÍ9…µ”ô±½ŒµÁÉ½É•ÍÍ¥Ù”µÉ¥Ù•Èµ…á¥Ìœ¼øñÍµ…±°ùí±½M½ÕÉ•MÑ…ÉÑôƒ¾öxí±½M½ÕÉ•¹‘ôğ½Íµ…±°øğ½‘¥Øøé¹Õ±±ô(€€€€€íÅÕ•Éä¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ô…±•ÉĞœø(€€€€€€€í™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡ÅÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€í±½•¹Í¥ÑåEÕ•Éä¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ô…±•ÉĞœø(€€€€€€€í™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡±½•¹Í¥ÑåEÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€ì…ÅÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…±½•¹Í¥ÑåEÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÅÕ•Éä¹•ÉÉ½È˜˜…±½•¹Í¥ÑåEÕ•Éä¹•ÉÉ½È(€€€€€€€€˜˜…±½M½Á•AÉ•Ù¥•Ü¹Í½Á•%‘Ì¹±•¹Ñ (€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœûn»–&7šÊKšr'–>¿¦†¿’ëjM½Á—ğ½Àøé¹Õ±±ô(€€€€€í±½M½Á•AÉ•Ù¥•Ü¹É½ÕÁÌ¹±•¹Ñ üñÕ±ÑÕÉ•Q¥µ•±¥¹”(€€€€€€€¥Ñ•µÌõí±½M½Á•AÉ•Ù¥•Ü¹¥Ñ•µÍô(€€€€€€€•áÑÉ…É½ÕÁÌõí±½M½Á•AÉ•Ù¥•Ü¹É½ÕÁÍô(€€€€€€€½¹É½ÕÁQ½±”õíÑ½±•1½M½Á•É½ÕÁô(€€€€€€€±…‰•±=˜õí•µÁÑåI¥Ù•É1…‰•±ô(€€€€€€€™½ÕÌõí5AQe}I%YI}=UMô(€€€€€€€µ½‘”ôÍ½ÕÉ”œ(€€€€€€€İ¥¹‘½İMÑ…ÉĞõí±½M½ÕÉ•MÑ…ÉÑô(€€€€€€€İ¥¹‘½İ¹õí±½M½ÕÉ•¹‘ô(€€€€€€€™¥á•‘5¥¸õí±½M½ÕÉ•MÑ…ÉÑô(€€€€€€€™¥á•‘5…àõí±½M½ÕÉ•¹‘ô(€€€€€€€¹…ÑÕÉ…±M½ÕÉ•!•¥¡Ğ(€€€€€€€É•…‘=¹±åY¥•İÁ½ÉĞ(€€€€€€¼øé¹Õ±±ô(€€€€€í±½M½Á•AÉ•Ù¥•Ü¹Í½Á•%‘Ì¹±•¹Ñ üñ¹…Ø±…ÍÍ9…µ”ôÍ½Á”µÉ•ÍÕ±Ğµ±¥¹­Ìœ…É¥„µ±…‰•°ôŸ–BM½Á”ƒšZ–2[¢¦Ïšœø(€€€€€€€í±½M½Á•AÉ•Ù¥•Ü¹Í½Á•%‘Ì¹µ…À¡¥ôøñM½Á•1¥¹¬­•äõí¥‘ô¡É•˜õí™•…ÑÕÉ•9…Ù¥…Ñ¥½¹!É•˜¡¥°Õ±ÑÕÉ”œ¥ôø(€€€€€€€€€í¥‘ôƒ
+Üƒš~—r/–º3šVÓšZ–2X(€€€€€€€€ğ½M½Á•1¥¹¬ø¥ô(€€€€€€ğ½¹…Øøé¹Õ±±ô(€€€€ğ½Í•Ñ¥½¸ø(€€ğ½•…ÑÕÉ•A…”øì((€É•ÑÕÉ¸€ñ•…ÑÕÉ•A…”™•…ÑÕÉ•%ô‰Õ±ÑÕÉ”ˆø(€€€€ñÍ•Ñ¥½¸±…ÍÍ9…µ”ô±½Œµ…ÉÍ½Á”µ™•…ÑÕÉ”µ…ÉÍ½Á”µ™•…ÑÕÉ”µ…Éµİ¥‘”œø(€€€€€íÍ½Á•%ôôô±½Œœüñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÍÑ…Ğµ½¹ÑÉ½±Ìœøñ±…‰•°øñÍÁ…¸ùíU%}=Ad¹Õ±ÑÕÉ”¹Ù¥•İ5½‘•ôğ½ÍÁ…¸ø(€€€€€€€€ñÍ•±•Ğ±…ÍÍ9…µ”ôÍ½Á”µÍ•±•Ğœ…É¥„µ±…‰•°õíU%}=Ad¹Õ±ÑÕÉ”¹Ù¥•İ5½‘•ôÙ…±Õ”õí±½Õ±ÑÕÉ•Y¥•İô½¹¡…¹”õí•Ù•¹ĞôùÍ•Ñ1½Õ±ÑÕÉ•Y¥•Ü¡•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”¥ôø(€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ôÁ•É¥½œøñU¥Q•áĞ¥ô‰Õ¥áÑÉ„¹Õ±ÑÕÉ•Y¥•Ü¹Á•É¥½‘%¹Ñ•ÉÍ•Ñ¥½¹]½É­Ìˆ¼øğ½½ÁÑ¥½¸ø(€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô¥Ñ•´œøñU¥Q•áĞ¥ô‰Õ¥áÑÉ„¹Õ±ÑÕÉ•Y¥•Ü¹¥Ñ•µ%¹Ñ•ÉÍ•Ñ¥½¹Qİ½I¥Ù•ÉÌˆ¼øğ½½ÁÑ¥½¸ø(€€€€€€€€ğ½Í•±•Ğø(€€€€€€ğ½±…‰•°øğ½‘¥Øøé¹Õ±±ô(€€€€€í¥Í1½%Ñ•µY¥•Üüñ1½%Ñ•µ½¹™±Õ•¹”¼øèğø(€€€€€€ñÀ±…ÍÍ9…µ”ô±½Œµ•å•‰É½ÜœùíU%}=Ad¹Õ±ÑÕÉ”¹‘¥ÍÑÉ¥‰ÕÑ¥½¹ôğ½Àø(€€€€€€ñ ÈùíU%}=Ad¹Õ±ÑÕÉ”¹É¥Ù•Éôğ½ Èø(€€€€€íÅÕ•Éä¹¥ÍA•¹‘¥¹œüñ‘¥Ø±…ÍÍ9…µ”ô‰±½ŒµÁÉ½É•ÍÍ¥Ù”µÉ¥Ù•Èµ™É…µ”ˆÉ½±”ô‰ÍÑ…ÑÕÌˆ…É¥„µ‰ÕÍäô‰ÑÉÕ”ˆø(€€€€€€€€ñÍÁ…¸ùíU%}=Ad¹½µµ½¸¹±½…‘¥¹ôğ½ÍÁ…¸øñ‘¥Ø±…ÍÍ9…µ”ô‰±½ŒµÁÉ½É•ÍÍ¥Ù”µÉ¥Ù•Èµ…á¥Ìˆ…É¥„µ¡¥‘‘•¸ô‰ÑÉÕ”ˆ¼ø(€€€€€€ğ½‘¥Øøé¹Õ±±ô(€€€€€íÅÕ•Éä¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½Èœùí™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡ÅÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€ì…ÅÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÅÕ•Éä¹•ÉÉ½È˜˜…¡…ÍQ¥µ•±¥¹•MÕÉ™…”üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœùíU%}=Ad¹Õ¥áÑÉ„¹‘…Ñ…ÉÉ½ÉÌ¹•µÁÑåôğ½Àøé¹Õ±±ô(€€€€€ì…ÅÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÅÕ•Éä¹•ÉÉ½È˜™¡…ÍQ¥µ•±¥¹•MÕÉ™…”üğø(((€€€€€€€€€€€í¥ÍÉ•…Ñ•M½Á”üğø((€€€€€€€€€€€€€€ñÍ•Ñ¥½¸±…ÍÍ9…µ”ôÍ½Á”µ…ÉÍ½Á”µÕ±ÑÕÉ”µ±…ÍÍ¥™¥…Ñ¥½¸µÉ¥Ù•ÈÍ½Á”µ±½ŒµÑ¥µ”µÉ¥Ù•Èœø(€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô±½Œµ•å•‰É½ÜœùíU%}=Ad¹Õ±ÑÕÉ”¹‘¥ÍÑÉ¥‰ÕÑ¥½¹ôğ½Àø(€€€€€€€€€€€€€€€€ñ Ìû–BM½Á”ƒšf¦ZO–6¦ZLğ½ Ìø(€€€€€€€€€€€€€€€í±½M½Á•%¹Ñ•ÉÙ…±%Ñ•µÌ¹±•¹Ñ üñÕ±ÑÕÉ•Q¥µ•±¥¹”(€€€€€€€€€€€€€€€€€¥Ñ•µÌõí±½M½Á•%¹Ñ•ÉÙ…±%Ñ•µÍô(€€€€€€€€€€€€€€€€€±…‰•±=˜õí•µÁÑåI¥Ù•É1…‰•±ô(€€€€€€€€€€€€€€€€€™½ÕÌõí5AQe}I%YI}=UMô(€€€€€€€€€€€€€€€€€µ½‘”ôÍ½ÕÉ”œ(€€€€€€€€€€€€€€€€€İ¥¹‘½İMÑ…ÉĞõí±½M½ÕÉ•MÑ…ÉÑô(€€€€€€€€€€€€€€€€€İ¥¹‘½İ¹õí±½M½ÕÉ•¹‘ô(€€€€€€€€€€€€€€€€€™¥á•‘5¥¸õí±½¥ÍÑÉ¥‰ÕÑ¥½¹MÑ…ÉÑô(€€€€€€€€€€€€€€€€€™¥á•‘5…àõí±½¥ÍÑÉ¥‰ÕÑ¥½¹¹‘ô(€€€€€€€€€€€€€€€€¼øé¹Õ±±ô(€€€€€€€€€€€€€€€ì…±½%¹Ñ•ÉÍ•Ñ¥½¹M½Á•%‘Ì¹±•¹Ñ ˜™ÅÕ•Éä¹‘…Ñ„ü¹Í½Á•Ìü¹±•¹Ñ (€€€€€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœûn»–&7–BM½Á”ƒjšf’î¾ò?šfšršÊKšr'–Ç–B3šf¦ZO–6¦ZO¾ò#–Z»’â–ºk¦2£¦î{’ê›¢¢#–—¾ò'ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÉ•ÍÕ±Ğµ±¥¹­Ìœø(€€€€€€€€€€€€€€€€€íl¸¸¹¹•ÜM•Ğ¡±½M½Á•%¹Ñ•ÉÙ…±%Ñ•µÌ¹µ…À¡¥Ñ•´ôù¥Ñ•´¹Í½Á•}¥¤¥t¹µ…À¡¥ôøñM½Á•1¥¹¬­•äõí¥‘ô¡É•˜õí™•…ÑÕÉ•9…Ù¥…Ñ¥½¹!É•˜¡¥°Õ±ÑÕÉ”œ¥ôùí¥‘õí°¹Á•ÉÍ½¹…±Q¥µ•±¥¹•MÕ™™¥áôğ½M½Á•1¥¹¬ø¥ô(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€íÅÕ•Éä¹‘…Ñ„ü¹Í½Á•Ìü¹±•¹Ñ üñ‘•Ñ…¥±Ì±…ÍÍ9…µ”ôÍ½Á”µÍÑ…Ğµ‘•Ñ…¥±ÌÍ½Á”µÕ±ÑÕÉ”µ‘•¹Í¥Ñäµ‘•Ñ…¥±Ìœ(€€€€€€€€€€€€€€€€€½¹Q½±”õí•Ù•¹ĞôùÍ•Ñ1½•¹Í¥Ñå=Á•¸¡•Ù•¹Ğ¹ÕÉÉ•¹ÑQ…É•Ğ¹½Á•¸¥ôø(€€€€€€€€€€€€€€€€€€ñÍÕµµ…ÉäùíU%}=Ad¹Õ±ÑÕÉ”¹¥¹Ñ•ÉÍ•Ñ¥½¹I¥Ù•Éôƒ
+ÜíU%}=Ad¹Õ±ÑÕÉ”¹½µ‰¥¹•‘I¥Ù•Éôğ½ÍÕµµ…Éäø(€€€€€€€€€€€€€€€€€í±½•¹Í¥Ñå=Á•¸üğø(€€€€€€€€€€€€€€€€€€€í±½•¹Í¥ÑåEÕ•Éä¹¥ÍA•¹‘¥¹œüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœùíU%}=Ad¹½µµ½¸¹±½…‘¥¹ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€í±½•¹Í¥ÑåEÕ•Éä¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½Èœùí™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡±½•¹Í¥ÑåEÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€í±½M½Á•I¥Ù•É%Ñ•µÌ¹±•¹Ñ üñÍ•Ñ¥½¸±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ¥¹Ñ•ÉÙ…°µ‘•¹Í¥Ñäœø(€€€€€€€€€€€€€€€€€€ñ ĞùíU%}=Ad¹Õ±ÑÕÉ”¹¥¹Ñ•ÉÍ•Ñ¥½¹I¥Ù•Éôğ½ Ğø(€€€€€€€€€€€€€€€€€€ñÕ±ÑÕÉ•Q¥µ•±¥¹”(€€€€€€€€€€€€€€€€€€€¥Ñ•µÌõí±½M½Á•I¥Ù•É%Ñ•µÍô(€€€€€€€€€€€€€€€€€€€±…‰•±=˜õí•µÁÑåI¥Ù•É1…‰•±ô(€€€€€€€€€€€€€€€€€€€™½ÕÌõí5AQe}I%YI}=UMô(€€€€€€€€€€€€€€€€€€€µ½‘”ôÍ½ÕÉ”œ(€€€€€€€€€€€€€€€€€€€İ¥¹‘½İMÑ…ÉĞõí±½M½ÕÉ•MÑ…ÉÑô(€€€€€€€€€€€€€€€€€€€İ¥¹‘½İ¹õí±½M½ÕÉ•¹‘ô(€€€€€€€€€€€€€€€€€€€™¥á•‘5¥¸õí±½%¹Ñ•ÉÍ•Ñ¥½¹MÑ…ÉÑô(€€€€€€€€€€€€€€€€€€€™¥á•‘5…àõí±½%¹Ñ•ÉÍ•Ñ¥½¹¹‘ô(€€€€€€€€€€€€€€€€€€€¡¥‘‘•¹…Ñ•Ìõí±½I¥Ù•É¹…±åÍ¥Ì¹¡¥‘‘•¹…Ñ•Íô(€€€€€€€€€€€€€€€€€€¼ø(€€€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸øé¹Õ±±ô(€€€€€€€€€€€€€€€í±½½µ‰¥¹•‘M½ÕÉ•I¥Ù•É%Ñ•µÌ¹±•¹Ñ üñÍ•Ñ¥½¸±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ½µ‰¥¹•µÍ½ÕÉ”µÉ¥Ù•Èœø(€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô±½Œµ•å•‰É½ÜœùíU%}=Ad¹Õ±ÑÕÉ”¹½µ‰¥¹•‘M½ÕÉ•Íôğ½Àø(€€€€€€€€€€€€€€€€€€ñ ĞùíU%}=Ad¹Õ±ÑÕÉ”¹½µ‰¥¹•‘I¥Ù•Éôğ½ Ğø(€€€€€€€€€€€€€€€€€€ñÕ±ÑÕÉ•Q¥µ•±¥¹”(€€€€€€€€€€€€€€€€€€€¥Ñ•µÌõí±½½µ‰¥¹•‘M½ÕÉ•I¥Ù•É%Ñ•µÍô(€€€€€€€€€€€€€€€€€€€±…‰•±=˜õí•µÁÑåI¥Ù•É1…‰•±ô(€€€€€€€€€€€€€€€€€€€™½ÕÌõí5AQe}I%YI}=UMô(€€€€€€€€€€€€€€€€€€€µ½‘”ôÍ½ÕÉ”œ(€€€€€€€€€€€€€€€€€€€İ¥¹‘½İMÑ…ÉĞõí±½M½ÕÉ•MÑ…ÉÑô(€€€€€€€€€€€€€€€€€€€İ¥¹‘½İ¹õí±½M½ÕÉ•¹‘ô(€€€€€€€€€€€€€€€€€€€™¥á•‘5¥¸õí±½¥ÍÑÉ¥‰ÕÑ¥½¹MÑ…ÉÑô(€€€€€€€€€€€€€€€€€€€™¥á•‘5…àõí±½¥ÍÑÉ¥‰ÕÑ¥½¹¹‘ô(€€€€€€€€€€€€€€€€€€€¡¥‘‘•¹…Ñ•Ìõí±½I¥Ù•É¹…±åÍ¥Ì¹¡¥‘‘•¹…Ñ•Íô(€€€€€€€€€€€€€€€€€€¼ø(€€€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€ğ¼øé¹Õ±±ô(€€€€€€€€€€€€€€€€ğ½‘•Ñ…¥±Ìøé¹Õ±±ô((€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸ø(((€€€€€€€€€€€€ğ¼øèğø(€€€€€€€€€€€€€€ñÍ•Ñ¥½¸±…ÍÍ9…µ”ôÍ½Á”µ…ÉÍ½Á”µÕ±ÑÕÉ”µÍÑÉÕÑÕÉ”µÉ¥Ù•Èœø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÍÑÉÕÑÕÉ”µÑ½½±‰…Èœø(€€€€€€€€€€€€€€€€€€ñ Ìùí°¹Ñ¥µ•QÉ…•ôğ½ Ìø(€€€€€€€€€€€€€€€€€€ñ±…‰•°øñÍÁ…¸ùí°¹Ñ¥µ•QÉ…•ôğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ñÍ•±•Ğ±…ÍÍ9…µ”ôÍ½Á”µÍ•±•Ğœ…É¥„µ±…‰•°ôŸ²³’âšŠwšÊÏ¦Ošf’î¦ãšNœ(€€€€€€€€€€€€€€€€€€€€€Ù…±Õ”õí…Ñ¥Ù•MÑÉÕÑÕÉ•-•åô½¹¡…¹”õí•Ù•¹Ğôùì(€€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…É•QÉ…¹Í¥•¹ÑI•Í½ÕÉ•Ñ¥½¸ Á•É¥½œ±íÅÕ•Éå-•åÌél(€€€€€€€€€€€€€€€€€€€€€€€€€€lÕ±ÑÕÉ”µ…ÉÑ¥±”µ±¥ÍĞœ±±…ÍÍ¥™¥…Ñ¥½¹M½Á•t°(€€€€€€€€€€€€€€€€€€€€€€€€€€lÕ±ÑÕÉ”µÉ¥Ù•ÈµÉ½½Ğœ±±…ÍÍ¥™¥…Ñ¥½¹M½Á•t(€€€€€€€€€€€€€€€€€€€€€€€€uô¤ì(€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ]½É­Í=Á•¸¡™…±Í”¤íÍ•ÑM•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¡¹Õ±°¤ì(€€€€€€€€€€€€€€€€€€€€€€€€Í•ÑMÑÉÕÑÕÉ•]¥¹‘½İ-•ä¡•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”¤ì(€€€€€€€€€€€€€€€€€€€€€€€€Í•ÑM•±•Ñ•‘A•É¥½‘-•ä¡•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”¤ì(€€€€€€€€€€€€€€€€€€€€€€õôø(€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô…±°œùí°¹…±±Q¥µ•QÉ…•Íôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€íÁÉ¥µ…ÉåA•É¥½‘Ì¹µ…À¡¥Ñ•´ôøñ½ÁÑ¥½¸­•äõíÁ•É¥½‘-•ä¡¥Ñ•´¥ôÙ…±Õ”õíÁ•É¥½‘-•ä¡¥Ñ•´¥ôùí±½…±¥é•‘1…‰•±=˜¡¥Ñ•´°À¥ôğ½½ÁÑ¥½¸ø¥ô(€€€€€€€€€€€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€í•É…I¥Ù•È¹É½ÕÁÌ¹±•¹Ñ ˜˜…•É…I¥Ù•È¹¥Ñ•µÌ¹±•¹Ñ üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœø(€€€€€€€€€€€€€€€€€ƒšf’î¢"–ºk¦2£Ò¦2–ŞË¢ò'–—¾ò3’öšÊKšr'šr'šV#š^—šr–>¿æ«¢÷¾òo¢®/šª‹š~—šf’îšr¦ZO¢"–ºk¦2£¦î{j¦ÖC(€€€€€€€€€€€€€€€€ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€í•É…I¥Ù•È¹É½ÕÁÌ¹±•¹Ñ üñÕ±ÑÕÉ•Q¥µ•±¥¹”(€€€€€€€€€€€€€€€€€¥Ñ•µÌõí•É…I¥Ù•È¹¥Ñ•µÍô(€€€€€€€€€€€€€€€€€•áÑÉ…É½ÕÁÌõí•É…I¥Ù•È¹É½ÕÁÍô(€€€€€€€€€€€€€€€€€±…‰•±=˜õí±½…±¥é•‘1…‰•±=™ô(€€€€€€€€€€€€€€€€€™½ÕÌõí¹…Ù¥…Ñ¥½¹ô(€€€€€€€€€€€€€€€€€µ½‘”ôÑÉ…”œ(€€€€€€€€€€€€€€€€€½¹É½ÕÁQ½±”õíÑ½±•Q¥µ•QÉ…•ô(€€€€€€€€€€€€€€€€€İ¥¹‘½İMÑ…ÉĞõíÕÉÉ•¹ÑMÑÉÕÑÕÉ•MÑ…ÉÑô(€€€€€€€€€€€€€€€€€İ¥¹‘½İ¹õíÕÉÉ•¹ÑMÑÉÕÑÕÉ•¹‘ô(€€€€€€€€€€€€€€€€€½¹M•±•Ğõí¥Ñ•´ôùÍ•ÑM•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¡¥Ñ•µññ¹Õ±°¥ô(€€€€€€€€€€€€€€€€€•‘¥Ñ…‰±”õí™…±Í•ô(€€€€€€€€€€€€€€€€¼øèñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœùíU%}=Ad¹Õ¥áÑÉ„¹‘…Ñ…ÉÉ½ÉÌ¹•µÁÑåôğ½Àùô(€€€€€€€€€€€€€€€íÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼üñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µ…ÉÍ½Á”µÕ±ÑÕÉ”µÑ¥µ•±¥¹”µÍ•±•Ñ¥½¸œÉ½±”ôÍÑ…ÑÕÌœø(€€€€€€€€€€€€€€€€€€ñÍÑÉ½¹œùíÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹É…Üü¹Ñ¥Ñ±•ññÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹½¹Ñ•¹ÑññÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹É…Üü¹‘¥ÍÁ±…å}±…‰•±ññÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹Ñ¥Ñ±•ññÑÉ…¹Í±…Ñ•U¥¥•±¡±½…±”°Ÿšf¦ZO¦VßšÊÏÒ¦2œ¥ôğ½ÍÑÉ½¹œø(€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœùíMÑÉ¥¹œ¡Í•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹ÍÑ…ÉÑñğœœ¤¹Í±¥” À°ÄÀ¥õíÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹•¹üœƒ¾öx€œ­MÑÉ¥¹œ¡Í•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹•¹¤¹Í±¥” À°ÄÀ¤èœôğ½Àø(€€€€€€€€€€€€€€€€€íÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹Ñ¥Ñ±”üñÀùíÍ•±•Ñ•‘Q¥µ•±¥¹•%¹™¼¹Ñ¥Ñ±•ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€ğ½‘¥Øøé¹Õ±±ô(€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸ø((€€€€€€€€€€€€€ì¡Í•±•Ñ•‘]½É­A•É¥½‘ñğ…ÁÉ¥µ…ÉåA•É¥½‘Ì¹±•¹Ñ ¤üñÍ•Ñ¥½¸±…ÍÍ9…µ”ôÍ½Á”µ…ÉÍ½Á”µÕ±ÑÕÉ”µ±…ÍÍ¥™¥…Ñ¥½¸µÉ¥Ù•Èœø(€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÉ¥Ù•ÈµÑ½½±‰…Èœø(€€€€€€€€€€€€€€€€€€ñ ÌùíU%}=Ad¹Õ±ÑÕÉ”¹±…ÍÍ¥™¥…Ñ¥½¹I¥Ù•É÷¾öqí±…ÍÍ¥™¥…Ñ¥½¹A•É¥½‘1…‰•±ôğ½ Ìø(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÉ¥Ù•ÈµÍ•±•Ñ½ÉÌœø(€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÑ¥µ”µÁ¥­•Èœø(€€€€€€€€€€€€€€€€€€€€€€ñ±…‰•°øñÍÁ…¸ûšf’îŒğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ñÍ•±•Ğ±…ÍÍ9…µ”ôÍ½Á”µÍ•±•Ğœ…É¥„µ±…‰•°ôŸ²³’ê3šŠwšÊÏ¦Ošf’î¦ãšNœ(€€€€€€€€€€€€€€€€€€€€€€€€€Ù…±Õ”õí­•åİ½É‘É…-•åô½¹¡…¹”õí•Ù•¹Ğôùì(€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ¹•áĞõ•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€¥˜¡¹•áĞôôôÕÍÑ½´œ¥ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥˜ …­•åİ½É‘ÕÍÑ½µMÑ…ÉĞ¥Í•Ñ-•åİ½É‘ÕÍÑ½µMÑ…ÉĞ¡­•åİ½É‘]¥¹‘½İMÑ…ÉĞ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥˜ …­•åİ½É‘ÕÍÑ½µ¹¥Í•Ñ-•åİ½É‘ÕÍÑ½µ¹¡­•åİ½É‘]¥¹‘½İ¹¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…É•QÉ…¹Í¥•¹ÑI•Í½ÕÉ•Ñ¥½¸ Á•É¥½œ±íÅÕ•Éå-•åÌél(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€lÕ±ÑÕÉ”µ…ÉÑ¥±”µ±¥ÍĞœ±±…ÍÍ¥™¥…Ñ¥½¹M½Á•t°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€lÕ±ÑÕÉ”µÉ¥Ù•ÈµÉ½½Ğœ±±…ÍÍ¥™¥…Ñ¥½¹M½Á•t(€€€€€€€€€€€€€€€€€€€€€€€€€€€uô¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ]½É­Í=Á•¸¡™…±Í”¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ-•åİ½É‘É…-•ä¡¹•áĞ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ-•åİ½É‘A•É¥½‘-•ä¡¹•áĞôôô}}Õ¹…ÍÍ¥¹•‘}|œü…±°œé¹•áĞ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€õôø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ôå•…ÈœùíU1Q}eI}]%9=\¹±…‰•±ôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô±…Ñ•ÍĞœùíÁÉ¥µ…ÉåA•É¥½‘Ì¹±•¹Ñ ı°¹É••¹ÑQ¥µ•QÉ…”èŸšr«¢¢·–ºkšf’îŒôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô…±°œùíÁÉ¥µ…ÉåA•É¥½‘Ì¹±•¹Ñ ı°¹…±±Q¥µ•QÉ…•ÌèŸšr³–æÓ–ê›¾ò#šr«¢¢·–ºkšf’î¾ò$ôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€€íÍ•½¹‘I¥Ù•É!¥•É…É¡ä¹É½ÕÁÌ¹µ…À¡É½ÕÀôøñ½ÁÑ¥½¸(€€€€€€€€€€€€€€€€€€€€€€€€€€€­•äõíÁ•É¥½‘-•ä¡É½ÕÀ¹•É„¥ôÙ…±Õ”õíÁ•É¥½‘-•ä¡É½ÕÀ¹•É„¥ôø(€€€€€€€€€€€€€€€€€€€€€€€€€€€í±½…±¥é•‘1…‰•±=˜¡É½ÕÀ¹•É„°À¥ô(€€€€€€€€€€€€€€€€€€€€€€€€€€ğ½½ÁÑ¥½¸ø¥ô(€€€€€€€€€€€€€€€€€€€€€€€€€íÍ•½¹‘I¥Ù•É!¥•É…É¡ä¹Õ¹…ÍÍ¥¹•¹±•¹Ñ üñ½ÁÑ¥½¸Ù…±Õ”ô}}Õ¹…ÍÍ¥¹•‘}|œûšr«š¶ã–Æ³šf’îjšr¦ZLğ½½ÁÑ¥½¸øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ôÕÍÑ½´œùí°¹ÕÍÑ½µA•É¥½‘ôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€€€€í…Ñ¥Ù•M•½¹‘É…ññ­•åİ½É‘É…-•äôôô}}Õ¹…ÍÍ¥¹•‘}|œüñ±…‰•°ø(€€€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ûšr¦ZLğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ñÍ•±•Ğ±…ÍÍ9…µ”ôÍ½Á”µÍ•±•Ğœ…É¥„µ±…‰•°ôŸ²³’ê3šŠwšÊÏ¦Ošr¦ZO¦ãšNœ(€€€€€€€€€€€€€€€€€€€€€€€€€Ù…±Õ”õí…Ñ¥Ù•M•½¹‘A•É¥½‘Ì¹Í½µ”¡É½ÜôùÁ•É¥½‘-•ä¡É½Ü¤ôôõ­•åİ½É‘A•É¥½‘-•ä¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ı­•åİ½É‘A•É¥½‘-•äè}}•É…}|ô(€€€€€€€€€€€€€€€€€€€€€€€€€½¹¡…¹”õí•Ù•¹Ğôùì(€€€€€€€€€€€€€€€€€€€€€€€€€€€ÁÉ•Á…É•QÉ…¹Í¥•¹ÑI•Í½ÕÉ•Ñ¥½¸ Á•É¥½œ±íÅÕ•Éå-•åÌél(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€lÕ±ÑÕÉ”µ…ÉÑ¥±”µ±¥ÍĞœ±±…ÍÍ¥™¥…Ñ¥½¹M½Á•t°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€lÕ±ÑÕÉ”µÉ¥Ù•ÈµÉ½½Ğœ±±…ÍÍ¥™¥…Ñ¥½¹M½Á•t(€€€€€€€€€€€€€€€€€€€€€€€€€€€uô¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ]½É­Í=Á•¸¡™…±Í”¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ-•åİ½É‘A•É¥½‘-•ä¡•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”ôôô}}•É…}|œ(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ü¡…Ñ¥Ù•M•½¹‘É„ıÁ•É¥½‘-•ä¡…Ñ¥Ù•M•½¹‘É„¹•É„¤è…±°œ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€é•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€õôø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô}}•É…}|œùí…Ñ¥Ù•M•½¹‘É„üŸšVÓ–/šf’îŒœèŸ–£¦£šr«š¶ã–Æ³šr¦ZLôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€€í…Ñ¥Ù•M•½¹‘A•É¥½‘Ì¹µ…À¡Á•É¥½ôøñ½ÁÑ¥½¸­•äõíÁ•É¥½‘-•ä¡Á•É¥½¥ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù…±Õ”õíÁ•É¥½‘-•ä¡Á•É¥½¥ôùí±½…±¥é•‘1…‰•±=˜¡Á•É¥½°À¥ôğ½½ÁÑ¥½¸ø¥ô(€€€€€€€€€€€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€€€€€€€€€€€ğ½±…‰•°øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ñ±…‰•°øñÍÁ…¸ûšZ®ƒ¦ã¦‚ğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍ•±•Ğ±…ÍÍ9…µ”ôÍ½Á”µÍ•±•Ğœ…É¥„µ±…‰•°ôŸšZ®ƒ¦ã¦‚œ(€€€€€€€€€€€€€€€€€€€€€€€Ù…±Õ”õíÍÑå±•¥±Ñ•Èôôô¹½¹”œ˜™Í½ÕÉ•MÑå±•=ÁÑ¥½¹Ì¹Í½µ”¡¥Ñ•´ôù¥Ñ•´¹­•äôôõÍ•±•Ñ•‘I¥Ù•ÉÉ½ÕÀ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€üÍ½ÕÉ”èœ­Í•±•Ñ•‘I¥Ù•ÉÉ½ÕÀéÍÑå±•¥±Ñ•Éô(€€€€€€€€€€€€€€€€€€€€€€€½¹¡…¹”õí•Ù•¹Ğôùì(€€€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ¹•áĞõ•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”ì(€€€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ¡½¥”õ¹•áĞ¹ÍÑ…ÉÑÍ]¥Ñ  Í½ÕÉ”èœ¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ıÍ½ÕÉ•MÑå±•=ÁÑ¥½¹Ì¹™¥¹¡¥Ñ•´ôøÍ½ÕÉ”èœ­¥Ñ•´¹­•äôôõ¹•áĞ¤é¹Õ±°ì(€€€€€€€€€€€€€€€€€€€€€€€€€¥˜¡¡½¥”¥ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¼¼M½ÕÉ•ÌÕÍ”Ñ¡”•á¥ÍÑ¥¹œ¹Õµ•É¥ŒM½ÕÉ”I¥Ù•È¸9•Ù•È(€€€€€€€€€€€€€€€€€€€€€€€€€€€€¼¼µ¥Í¥¹Ñ•ÉÁÉ•Ğ…¸¹¡½ÈÉ½´…Ì„-•åİ½É±…ÍÌU%¸(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•ÑMÑå±•¥±Ñ•È ¹½¹”œ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•ÑM•±•Ñ•‘I¥Ù•ÉÉ½ÕÀ¡¡½¥”¹­•ä¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•ÑM•±•Ñ•‘…Ñ•½Éä œœ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ]½É­Í=Á•¸¡™…±Í”¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ…¹•ÍÑ½ÉU¥‘Ìô¡Í½ÕÉ•Q…á½¹½µäü¹ÑÉ••ññmt¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹™¥¹¡¹½‘”ôù¹½‘”¹Õ¥ôôõ¡½¥”¹½‘”¤ü¹Á…Ñ ü¹Í±¥” À°´Ä¥ññmtì(€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ¡…Í¡¥±‘É•¸ô¡Í½ÕÉ•Q…á½¹½µäü¹ÑÉ••ññmt¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¹Í½µ”¡¹½‘”ôù¹½‘”¹Á…É•¹ÑU¥ôôõ¡½¥”¹½‘”¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ=Á•¹Õ±ÑÕÉ•I½½ÑÌ¡ÕÉÉ•¹Ğôùl¸¸¹¹•ÜM•Ğ¡l(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¸¸¹ÕÉÉ•¹Ğ°¸¸¹…¹•ÍÑ½ÉU¥‘Ì°¸¸¸¡¡…Í¡¥±‘É•¸ım¡½¥”¹½‘•témt¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€t¥t¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€õ•±Í”¥˜ …¹•áĞ¹ÍÑ…ÉÑÍ]¥Ñ  Í½ÕÉ”èœ¤¥ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€Í•ÑMÑå±•¥±Ñ•È¡¹•áĞ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€€€¥˜¡¹•áĞôôô¹½¹”œ¥Í•ÑM•±•Ñ•‘I¥Ù•ÉÉ½ÕÀ œœ¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ-•åİ½É‘É¥±±É½ÕÀ œœ¤ì(€€€€€€€€€€€€€€€€€€€€€€€õôø(€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ô¹½¹”œû’úšê@ğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ôÑÉ…”œû–rÃ¦îxğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑÉ½ÕÀ±…‰•°ôŸ¦^s¦6×¢¦xœø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñ½ÁÑ¥½¸Ù…±Õ”ôÉÕ¹”ØØœùíÍ•±•Ñ•‘-•åİ½É‘±…ÍÌü¹¹…µ•ññ°¹­•åİ½É‘MÑå±•ôğ½½ÁÑ¥½¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ğ½½ÁÑÉ½ÕÀø(€€€€€€€€€€€€€€€€€€€€€€€íÍ½ÕÉ•MÑå±•É½ÕÁÌ¹µ…À¡É½ÕÀôøñ½ÁÑÉ½ÕÀ(€€€€€€€€€€€€€€€€€€€€€€€€€­•äõíÉ½ÕÀ¹­•åô±…‰•°õíÉ½ÕÀ¹±…‰•±ôø(€€€€€€€€€€€€€€€€€€€€€€€€€íÉ½ÕÀ¹¥Ñ•µÌ¹µ…À¡¥Ñ•´ôøñ½ÁÑ¥½¸­•äõí¥Ñ•´¹­•åôÙ…±Õ”õìÍ½ÕÉ”èœ­¥Ñ•´¹­•åôø(€€€€€€€€€€€€€€€€€€€€€€€€€€€ìqÔÀÁ„ÁqÔÀÁ„ÁqÔÀÁ„Àœ¹É•Á•…Ğ¡¥Ñ•´¹½ÉÁ¡…¹QåÁ”(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€ı5…Ñ ¹µ…à À±¥Ñ•´¹±•Ù•°µlÕ¹¥Ù•ÉÍ”œ°…±…áäœ°‘½µ…¥¸œ°™É½´t¹¥¹‘•á=˜¡¥Ñ•´¹½ÉÁ¡…¹QåÁ”¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€é¥Ñ•´¹±•Ù•°¥õí¥Ñ•´¹±…‰•±ô(€€€€€€€€€€€€€€€€€€€€€€€€€€ğ½½ÁÑ¥½¸ø¥ô(€€€€€€€€€€€€€€€€€€€€€€€€ğ½½ÁÑÉ½ÕÀø¥ô(€€€€€€€€€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€€€€€€€€€ğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€€í­•åİ½É‘A•É¥½‘-•äôôôÕÍÑ½´œüğø(€€€€€€€€€€€€€€€€€€€€€€ñ±…‰•°øñÍÁ…¸ùí°¹Á•É¥½‘ôğ½ÍÁ…¸øñ¥¹ÁÕĞ±…ÍÍ9…µ”ôÍ½Á”µÍ•±•Ğœ…É¥„µ±…‰•°õí°¹ÕÍÑ½µA•É¥½‘ôÑåÁ”ô‘…Ñ”œ(€€€€€€€€€€€€€€€€€€€€€€€Ù…±Õ”õí­•åİ½É‘ÕÍÑ½µMÑ…ÉÑôµ…àõí­•åİ½É‘ÕÍÑ½µ¹‘ññÕ¹‘•™¥¹•‘ô(€€€€€€€€€€€€€€€€€€€€€€€½¹¡…¹”õí•Ù•¹ĞôùÍ•Ñ-•åİ½É‘ÕÍÑ½µMÑ…ÉĞ¡•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”¥ô¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€€€€€ñ±…‰•°øñÍÁ…¸û¾öxğ½ÍÁ…¸øñ¥¹ÁÕĞ±…ÍÍ9…µ”ôÍ½Á”µÍ•±•Ğœ…É¥„µ±…‰•°õí°¹ÕÍÑ½µA•É¥½‘ôÑåÁ”ô‘…Ñ”œ(€€€€€€€€€€€€€€€€€€€€€€€Ù…±Õ”õí­•åİ½É‘ÕÍÑ½µ¹‘ôµ¥¸õí­•åİ½É‘ÕÍÑ½µMÑ…ÉÑññÕ¹‘•™¥¹•‘ô(€€€€€€€€€€€€€€€€€€€€€€€½¹¡…¹”õí•Ù•¹ĞôùÍ•Ñ-•åİ½É‘ÕÍÑ½µ¹¡•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”¥ô¼øğ½±…‰•°ø(€€€€€€€€€€€€€€€€€€€€ğ¼øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€íÕÍ•ÍM½ÕÉ•I¥Ù•È˜™É¥Ù•ÉI…¹•1½…‘¥¹œüñ‘¥Ø±…ÍÍ9…µ”ô‰±½ŒµÁÉ½É•ÍÍ¥Ù”µÉ¥Ù•Èµ™É…µ”ˆÉ½±”ô‰ÍÑ…ÑÕÌˆ…É¥„µ‰ÕÍäô‰ÑÉÕ”ˆø(€€€€€€€€€€€€€€€€€€€€ñÕ±ÑÕÉ•Q¥µ•1½…‘¥¹œ±…‰•°õíU%}=Ad¹½µµ½¸¹±½…‘¥¹ô¼øñ‘¥Ø±…ÍÍ9…µ”ô‰±½ŒµÁÉ½É•ÍÍ¥Ù”µÉ¥Ù•Èµ…á¥Ìˆ…É¥„µ¡¥‘‘•¸ô‰ÑÉÕ”ˆ¼ø(€€€€€€€€€€€€€€€€€€€€ñÍµ…±°ùí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İMÑ…ÉÑôƒ¾öxí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İ¹‘ôğ½Íµ…±°ø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øøé¹Õ±±ô(€€€€€€€€€€€€€€€€€íÉ¥Ù•É¹…±åÍ¥Ì¹•ÉÉ½ÈüñÍÁ…¸±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ôÍÑ…ÑÕÌœùíÉ¥Ù•É¹…±åÍ¥Ì¹•ÉÉ½Éôğ½ÍÁ…¸øé¹Õ±±ô(€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€íÍÑå±•¥±Ñ•ÈôôôÉÕ¹”ØØœüñÍ•Ñ¥½¸±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÍÑå±”µ™¥±Ñ•Èœø(€€€€€€€€€€€€€€€€€€ñÀ±…ÍÍ9…µ”ô±½Œµ•å•‰É½Üœû’â/–6+šÊÏ¦O¾ös¦^s¦6×¢¦{¾òiíMÑÉ¥¹œ¡ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹­•åİ½É‘5•Ñ„ü¹±…ÍÍ}¹…µ•ññÍ•±•Ñ•‘-•åİ½É‘±…ÍÌü¹¹…µ•ñğŸ–Âkšr«¢¢·–ºhœ¥ôğ½Àø(€€€€€€€€€€€€€€€€€í…Ù…¥±…‰±•-•åİ½É‘±…ÍÍ•Ì¹±•¹Ñ øÀüñ±…‰•°±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ­•åİ½Éµ±…ÍÌµÁ¥­•Èœø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸û¦^s¦6×–¶_ú“Öğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€ñÍ•±•Ğ±…ÍÍ9…µ”ôÍ½Á”µÍ•±•Ğœ…É¥„µ±…‰•°ôŸ¦^s¦6×–¶_ú“Öœ(€€€€€€€€€€€€€€€€€€€€€Ù…±Õ”õíÉ•Í½±Ù•‘-•åİ½É‘±…ÍÍU¥‘ô½¹¡…¹”õí•Ù•¹Ğôùì(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑM•±•Ñ•‘-•åİ½É‘±…ÍÍU¥¡•Ù•¹Ğ¹Ñ…É•Ğ¹Ù…±Õ”¤ì(€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ-•åİ½É‘É¥±±M½ÕÉ” œœ¤ì(€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ-•åİ½É‘É¥±±É½ÕÀ œœ¤ì(€€€€€€€€€€€€€€€€€€€€€õôø(€€€€€€€€€€€€€€€€€€€€€í…Ù…¥±…‰±•-•åİ½É‘±…ÍÍ•Ì¹µ…À¡¥Ñ•´ôøñ½ÁÑ¥½¸­•äõí¥Ñ•´¹±…ÍÍU¥‘ôÙ…±Õ”õí¥Ñ•´¹±…ÍÍU¥‘ôùím¥Ñ•´¹…Ñ•½Éå9…µ”±¥Ñ•´¹¹…µ•t¹™¥±Ñ•È¡	½½±•…¸¤¹©½¥¸ Ÿ¾ò<œ¥ôğ½½ÁÑ¥½¸ø¥ô(€€€€€€€€€€€€€€€€€€€€ğ½Í•±•Ğø(€€€€€€€€€€€€€€€€€€ğ½±…‰•°øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÍÑ…Ğµ½¹ÑÉ½±Ìœø(€€€€€€€€€€€€€€€€€€€í­•åİ½É‘É¥±±É½ÕÀüñ‰ÕÑÑ½¸ÑåÁ”ô‰ÕÑÑ½¸œ±…ÍÍ9…µ”ô±½Œµ‰ÕÑÑ½¸œ½¹±¥¬õì ¤ôùÍ•Ñ-•åİ½É‘É¥±±É½ÕÀ œœ¥ôûŠ@ƒ¢şS–n{ú“Öâ÷¢šôğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€€€€€é­•åİ½É‘É¥±±M½ÕÉ”üñ‰ÕÑÑ½¸ÑåÁ”ô‰ÕÑÑ½¸œ±…ÍÍ9…µ”ô±½Œµ‰ÕÑÑ½¸œ½¹±¥¬õì ¤ôùÍ•Ñ-•åİ½É‘É¥±±M½ÕÉ” œœ¥ôûŠ@ƒ¢şS–n{–£¦£’úšê@ğ½‰ÕÑÑ½¸øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœ…É¥„µ±¥Ù”ôÁ½±¥Ñ”œø(€€€€€€€€€€€€€€€€€€€€€í±…ÍÍ¥™¥…Ñ¥½¹A•É¥½‘1…‰•±ôƒŠHí­•åİ½É‘É¥±±M½ÕÉ•ñğŸ–£¦£’úšê@ôƒŠHí­•åİ½É‘É¥±±É½ÕÀ(€€€€€€€€€€€€€€€€€€€€€€€€ıMÑÉ¥¹œ¡ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹­•åİ½É‘5•Ñ„ü¹±…ÍÍ•Ìü¹m­•åİ½É‘É¥±±É½ÕÁuñğŸú“Öœ¤¬œƒ
+Üƒ²›šZ–"_¢† œ(€€€€€€€€€€€€€€€€€€€€€€€€èŸ–£¦£ú“Öô(€€€€€€€€€€€€€€€€€€€€ğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€ñ Ğùí­•åİ½É‘É¥±±É½ÕÀüŸ²›šZ–"_¢†£¾öpœ­MÑÉ¥¹œ¡ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹­•åİ½É‘5•Ñ„ü¹±…ÍÍ•Ìü¹m­•åİ½É‘É¥±±É½ÕÁuñğŸú“Öœ¤èŸ²›šZú“Ö¾ò#¦î{¦ãšÊÏ¦O–Ş›–Ó–B7¢Ç–ÆW¦Z/¾ò$ôğ½ Ğø(€€€€€€€€€€€€€€€€€ì…­•åİ½É‘]¥¹‘½İY…±¥üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ôÍÑ…ÑÕÌœû¢®/¦ãšNšr'šV#jšf¦ZO–6¦ZOğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€íÍÑå±•I¥Ù•É¹…±åÍ¥Ì¹ÍÕ•ÍÑ¥½¹Ì¹±•¹Ñ øÀüñ‘•Ñ…¥±Ì±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ…¹¡½ÈµÁ¥­•Èœø(€€€€€€€€€€€€€€€€€€€€ñÍÕµµ…Éäû¦Š£š‚ó–¾–ê›–îë¢¶Ã–ºk¦2£¦î{¾òiíÍÑå±•I¥Ù•É¹…±åÍ¥Ì¹ÍÕ•ÍÑ¥½¹Ì¹±•¹Ñ¡ôƒ–/¾ò#¦î{¦Z/š~—r/¾ò$ğ½ÍÕµµ…Éäø(€€€€€€€€€€€€€€€€€€€íÍÑå±•I¥Ù•É¹…±åÍ¥Ì¹ÍÕ•ÍÑ¥½¹Ì¹±•¹Ñ üñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ…¹¡½Èµ¡½¥•Ìœø(€€€€€€€€€€€€€€€€€€€€€íÍÑå±•I¥Ù•É¹…±åÍ¥Ì¹ÍÕ•ÍÑ¥½¹Ì¹µ…À¡¥Ñ•´ôùì(€€€€€€€€€€€€€€€€€€€€€€€€¼¼••Àµ±¥¹¬ÍÑÉ…¥¡ĞÑ¼Ñ¡”ÁÉ½Ñ•Ñ•Q¥µ•¹¡½È(€€€€€€€€€€€€€€€€€€€€€€€€¼¼•‘¥Ñ½È°¹½ĞÑ¡”ÁÕ‰±¥ŒÕ±ÑÕÉ”Ù¥•Ü€ ı•‘¥ĞôÄ…±½¹”(€€€€€€€€€€€€€€€€€€€€€€€€¼¼‘½•Ì¹½Ğ…ÕÑ¡½É¥é”½Èµ½Õ¹ĞÑ¡…Ğ•‘¥Ñ½È¤¸(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ¡É•˜õÍ½Á•!É•˜¡Í½Á•%°(€€€€€€€€€€€€€€€€€€€€€€€€€€Õ±ÑÕÉ”½µ…¹…”ı•‘¥ĞôÄ™…¹¡½É…Ñ”ôœ­•¹½‘•UI%½µÁ½¹•¹Ğ¡¥Ñ•´¹‘…Ñ”¤¤ì(€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸€ñ‘¥Ø­•äõí¥Ñ•´¹‘…Ñ•ô±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñÍÑÉ½¹œùí¥Ñ•´¹‘…Ñ•ôğ½ÍÑÉ½¹œø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸û¾ös–&4€Ìƒš^”í9Õµ‰•È¡¥Ñ•´¹‰•™½É•½Õ¹ÑñğÀ¤¹Ñ½1½…±•MÑÉ¥¹œ¡±½…±”¥ôƒš²‡¾ò?–ú0€Ìƒš^”í9Õµ‰•È¡¥Ñ•´¹…™Ñ•É½Õ¹ÑñğÀ¤¹Ñ½1½…±•MÑÉ¥¹œ¡±½…±”¥ôƒš²„ğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€€€€ì¡¥Ñ•´¹…¹…±åÍ¥Íññmt¤¹±•¹Ñ üñÍÁ…¸û¾öqí¥Ñ•´¹…¹…±åÍ¥Ì¹©½¥¸ œ€œ¥ôğ½ÍÁ…¸øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€€€€€€€í…¹UÍ•M½Á•‘¥Ñ½ÈüñÍÁ…¸û¾öpñM½Á•1¥¹¬¡É•˜õí¡É•™ôû–&7–úšf¦ZOŞ£¢ò¿¾ò3Šë¢ª7–ºk¦2£¦îxğ½M½Á•1¥¹¬øğ½ÍÁ…¸øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øøì(€€€€€€€€€€€€€€€€€€€€€ô¥ô(€€€€€€€€€€€€€€€€€€€€ğ½‘¥ØøèñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœûš¶“šf¦ZO–6¦ZOšj¯‡¢ÚÏ–’ƒj¦Š£š‚ó–¾–ê›¢º+–2[¾ò3š"[–"šzC¢ÎšZg–Âk–r£¢ò'–—ğ½Àùô(€€€€€€€€€€€€€€€€€€ğ½‘•Ñ…¥±Ìøé¹Õ±±ô(€€€€€€€€€€€€€€€€€íÍÑå±•EÕ•Éä¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½Èœùí™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡ÍÑå±•EÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€ì…ÍÑå±•EÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÍÑå±•EÕ•Éä¹•ÉÉ½È˜˜…ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹ÍÑ…Ñ¥ÍÑ¥µ”üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœû¦^s¦6×¢¦{–Âkšr«–ºk¦2£¾òo¢®/–#šZó¦^s¦6×¢¦{¢¢·–ºk–º3š"C–"šzCğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€ì…ÍÑå±•EÕ•Éä¹¥ÍA•¹‘¥¹œ˜˜…ÍÑå±•EÕ•Éä¹•ÉÉ½È˜™ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹ÍÑ…Ñ¥ÍÑ¥µ”˜˜…ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹ÍÑ…Ñ¥ÍÑ¥Í¹…‰±•üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœûn»–&7¦^s¦6×¢¦{ÖÇ¢¢#–Âkšr«–VR£ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€í­•åİ½É‘•Ñ…¥±I•ÅÕ•ÍÑ•˜™­•åİ½É‘•¹Í¥ÑåEÕ•Éä¹¥ÍA•¹‘¥¹œ˜™ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹ÍÑ…Ñ¥ÍÑ¥Í¹…‰±•(€€€€€€€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœûš¶–r£¢º–>[š&¦ã’úšêC¾ò?ú“ÖjšZ®ƒ–Æ³šŸŠ˜ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€í­•åİ½É‘É¥±±É½ÕÀ˜™­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹¥ÍA•¹‘¥¹œüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœûš¶–r£¢ò'–—š&¦ãú“Öj²›šZ–"_¢†£Š˜ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€í­•åİ½É‘I¥Ù•ÉÉÉ½Éññ­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹•ÉÉ½È(€€€€€€€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½Èœùí™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡­•åİ½É‘I¥Ù•ÉÉÉ½Éññ­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€ì…­•åİ½É‘I¥Ù•ÉA•¹‘¥¹œ˜˜ …­•åİ½É‘É¥±±É½ÕÁñğ…­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹¥ÍA•¹‘¥¹œ¤(€€€€€€€€€€€€€€€€€€€€˜˜…­•åİ½É‘I¥Ù•ÉÉÉ½È˜˜…ÍÑå±•EÕ•Éä¹•ÉÉ½È˜˜…­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹•ÉÉ½È˜˜…­•åİ½É‘É¥±±%Ñ•µÌ¹±•¹Ñ (€€€€€€€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœûš¶“¾–r7šÊKšr'–>¿¦†¿’ëj–F÷’â·¢ÎšZgğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸øé¹Õ±±ô(€€€€€€€€€€€€€€€íÍÑå±•¥±Ñ•ÈôôôÑÉ…”œ˜™±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İY…±¥üñÕ±ÑÕÉ•A±…•I¥Ù•È(€€€€€€€€€€€€€€€€€Í½Á•%õíÍ½Á•%‘ôÍÑ…ÉÑ…Ñ”õí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İMÑ…ÉÑô•¹‘…Ñ”õí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İ¹‘ô¼øé¹Õ±±ô(€€€€€€€€€€€€€€€ì…±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İY…±¥˜™½ÁÑ¥½¹…±Q¥µ•I…¹•U¹™¥±±•üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœû–Âkšr«¦ãšNšf¦ZO¾–r7¾òo–>¿’öÿR£šf’îšr¦ZOš"[¢«¢¢š^—šrğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€ì…±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İY…±¥˜˜…½ÁÑ¥½¹…±Q¥µ•I…¹•U¹™¥±±•üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ôÍÑ…ÑÕÌœû¢®/¦ãšNšr'šV#jšf¦ZO–6¦ZO¾ò#¢Öß–/š^—šr’â7–ú_šfkšZóÖCšvš^—šr¾ò'ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€íÕÍ•ÍM½ÕÉ•I¥Ù•È˜™Í½ÕÉ•I½½ÑEÕ•Éä¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½Èœùí™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡Í½ÕÉ•I½½ÑEÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€íÕÍ•ÍM½ÕÉ•I¥Ù•È˜™Í½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹•ÉÉ½È(€€€€€€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ô…±•ÉĞœø(€€€€€€€€€€€€€€€€€€€€í™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡Í½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€íÕÍ•ÍM½ÕÉ•I¥Ù•È˜™ÍÑ…•‘M½ÕÉ•I¥Ù•È˜™½Á•¹Õ±ÑÕÉ•I½½ÑÌ¹±•¹Ñ øÀ(€€€€€€€€€€€€€€€€€€€˜™Í½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹¥ÍA•¹‘¥¹œ(€€€€€€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœûš¶–r£–ÆW¦Z/šÊÏ¦OjÒÃ¦£–"–âŠ˜ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€ì¼¨¹¡½ÈÍÕ•ÍÑ¥½¹Ì¹•Ù•È½µÁÕÑ”½¸Ñ¡•¥È½İ¸©ÕÍĞ‰•…ÕÍ”„±…¹”Ì(€€€€€€€€€€€€€€€€€€€€‘…¥±ä‘…Ñ„…ÉÉ¥Ù•€´´Ñ¡”A1Pİ½É­•È½¹±äÉÕ¹Ì½¹”Ñ¡”ÕÍ•È(€€€€€€€€€€€€€€€€€€€€•áÁ±¥¥Ñ±ä±¥­Ì½Á•¸Ñ¡”€‹–îë¢¶Ã–ºk¦2£¦îxˆ±…¹”¥ÑÍ•±˜½¸Ñ¡”¡…ÉĞ(€€€€€€€€€€€€€€€€€€€€…‰½Ù”€¡Í•”Ñ¡”‘Õ…°éÍ½ÕÉ”é…¹‘¥‘…Ñ•ÌÉ½ÕÀ€¼½¹É½ÕÁQ½±”¤¸(€€€€€€€€€€€€€€€€€€€€Q¡¥ÌÁ…¹•°¥Ì©ÕÍĞÑ¡”‘•Ñ…¥°Ù¥•Ü™½È…¸…±É•…‘äµ½Á•¹•±…¹”¸€¨½ô(€€€€€€€€€€€€€€€€íÕÍ•ÍM½ÕÉ•I¥Ù•È˜˜…É¥Ù•ÉI…¹•1½…‘¥¹œ˜™…¹¡½ÉMÕ•ÍÑ=Á•¸üñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ…¹¡½Èµ…Ñ¥½¹Ìœø(€€€€€€€€€€€€€€€€€íÉ¥Ù•É¹…±åÍ¥Ì¹ÍÕ•ÍÑ¥½¹Ì¹±•¹Ñ øÀüğø(€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùí™½Éµ…ÑÕ±ÑÕÉ•U¤¡°¹…¹‘¥‘…Ñ•MÕµµ…Éä±í½Õ¹ĞéÉ¥Ù•É¹…±åÍ¥Ì¹ÍÕ•ÍÑ¥½¹Ì¹±•¹Ñ¡ô¥ôğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€í…¹UÍ•M½Á•‘¥Ñ½Èüñ‰ÕÑÑ½¸ÑåÁ”ô‰ÕÑÑ½¸œ±…ÍÍ9…µ”ô±½Œµ‰ÕÑÑ½¸œ‘¥Í…‰±•õíÉ•…Ñ¥¹MÕ•ÍÑ•‘¹¡½ÉÍñğ…Í•±•Ñ•‘Y¥ÉÑÕ…±¹¡½É…Ñ•Ì¹±•¹Ñ¡ô(€€€€€€€€€€€€€€€€€€€€€½¹±¥¬õíÉ•…Ñ•M•±•Ñ•‘MÕ•ÍÑ•‘¹¡½ÉÍôø(€€€€€€€€€€€€€€€€€€€€€íÉ•…Ñ¥¹MÕ•ÍÑ•‘¹¡½ÉÌüŸš¶–r£šZÃ–Š{Š˜œèŸšZÃ–Š{¦ã–>[j–îë¢¶Ã–ºk¦2£¦î{¾ò œ­Í•±•Ñ•‘Y¥ÉÑÕ…±¹¡½É…Ñ•Ì¹±•¹Ñ ¬Ÿ¾ò$ô(€€€€€€€€€€€€€€€€€€€€ğ½‰ÕÑÑ½¸øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€í•‘¥ÑÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ô…±•ÉĞœùí•‘¥ÑÉÉ½Éôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€€ñ‘•Ñ…¥±Ì±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ…¹¡½ÈµÁ¥­•Èœ½Á•¸ø(€€€€€€€€€€€€€€€€€€€€€€ñÍÕµµ…ÉäøñÍÁ…¸±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ…¹¡½ÈµÁ¥­•Èµµ…É¬œ…É¥„µ¡¥‘‘•¸ôÑÉÕ”œ¼øñU¥Q•áĞ¥ô‰Õ¥áÑÉ„¹Õ±ÑÕÉ•Y¥•Ü¹•áÁ…¹‘Q½½µÁ…É•]½É­Y½±Õµ•¡…¹•Ìˆ¼øğ½ÍÕµµ…Éäø(€€€€€€€€€€€€€€€€€€€€€€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ…¹¡½Èµ¡½¥•Ìœø(€€€€€€€€€€€€€€€€€€€€€€€íÉ¥Ù•É¹…±åÍ¥Ì¹ÍÕ•ÍÑ¥½¹Ì¹µ…À¡¥Ñ•´ôùì(€€€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ¡É•˜õÍ½Á•!É•˜¡Í½Á•%°(€€€€€€€€€€€€€€€€€€€€€€€€€€€€Õ±ÑÕÉ”½µ…¹…”ı•‘¥ĞôÄ™…¹¡½É…Ñ”ôœ­•¹½‘•UI%½µÁ½¹•¹Ğ¡¥Ñ•´¹‘…Ñ”¤¤ì(€€€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸€ñ‘¥Ø­•äõí¥Ñ•´¹‘…Ñ•ô±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœø(€€€€€€€€€€€€€€€€€€€€€€€€€€€í…¹UÍ•M½Á•‘¥Ñ½Èüñ±…‰•°øñ¥¹ÁÕĞÑåÁ”ô¡•­‰½àœ¡•­•õíÍ•±•Ñ•‘Y¥ÉÑÕ…±¹¡½É…Ñ•Ì¹¥¹±Õ‘•Ì¡¥Ñ•´¹‘…Ñ”¥ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€½¹¡…¹”õì ¤ôùÑ½±•Y¥ÉÑÕ…±¹¡½È¡¥Ñ•´¹‘…Ñ”¥ô¼ø(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€í™½Éµ…ÑÕ±ÑÕÉ•U¤¡°¹…¹‘¥‘…Ñ•½µÁ…É¥Í½¸±í‘…Ñ”é¥Ñ•´¹‘…Ñ”±‰•™½É”é9Õµ‰•È¡¥Ñ•´¹‰•™½É•½Õ¹ÑñğÀ¤¹Ñ½1½…±•MÑÉ¥¹œ¡±½…±”¤±…™Ñ•Èé9Õµ‰•È¡¥Ñ•´¹…™Ñ•É½Õ¹ÑñğÀ¤¹Ñ½1½…±•MÑÉ¥¹œ¡±½…±”¤±…¹…±åÍ¥Ìè¡¥Ñ•´¹…¹…±åÍ¥Íññmt¤¹©½¥¸ œ€œ¥ô¥ô(€€€€€€€€€€€€€€€€€€€€€€€€€€€€ğ½±…‰•°øèñÍÁ…¸ùí™½Éµ…ÑÕ±ÑÕÉ•U¤¡°¹…¹‘¥‘…Ñ•½µÁ…É¥Í½¸±í‘…Ñ”é¥Ñ•´¹‘…Ñ”±‰•™½É”é9Õµ‰•È¡¥Ñ•´¹‰•™½É•½Õ¹ÑñğÀ¤¹Ñ½1½…±•MÑÉ¥¹œ¡±½…±”¤±…™Ñ•Èé9Õµ‰•È¡¥Ñ•´¹…™Ñ•É½Õ¹ÑñğÀ¤¹Ñ½1½…±•MÑÉ¥¹œ¡±½…±”¤±…¹…±åÍ¥Ìè¡¥Ñ•´¹…¹…±åÍ¥Íññmt¤¹©½¥¸ œ€œ¥ô¥ôğ½ÍÁ…¸ùô(€€€€€€€€€€€€€€€€€€€€€€€€€€€í…¹UÍ•M½Á•‘¥Ñ½ÈüñM½Á•1¥¹¬¡É•˜õí¡É•™ôû–&7–úšf¦ZOŞ£¢ò¼ğ½M½Á•1¥¹¬øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øøì(€€€€€€€€€€€€€€€€€€€€€€€ô¥ô(€€€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øø(€€€€€€€€€€€€€€€€€€€€ğ½‘•Ñ…¥±Ìø(€€€€€€€€€€€€€€€€€€ğ¼øèñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœûš¶–r£–"šzC–îë¢¶Ã–ºk¦2£¦î{Š˜ğ½Àùô(€€€€€€€€€€€€€€€€ğ½‘¥Øøé¹Õ±±ô(€€€€€€€€€€€€€€€íÕÍ•ÍM½ÕÉ•I¥Ù•È˜™±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İY…±¥˜˜„¡ÍÑ…•‘M½ÕÉ•I¥Ù•ÈıÍ½ÕÉ•I½½ÑEÕ•Éä¹•ÉÉ½ÈéÍ½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹•ÉÉ½È¤(€€€€€€€€€€€€€€€€€€˜˜¡ÍÑ…•‘M½ÕÉ•I¥Ù•ÈıÍ½ÕÉ•I½½ÑEÕ•Éä¹‘…Ñ„éÍ½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹‘…Ñ„¤(€€€€€€€€€€€€€€€€€€˜˜…Õ±ÑÕÉ•I¥Ù•È¹¡…ÍM½ÕÉ•…Ñ„(€€€€€€€€€€€€€€€€€€üñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µ…ÉÍ½Á”µÍÑ…ÑÕÌÍ½Á”µÕ±ÑÕÉ”µ¹¼µ‘…Ñ„œÉ½±”ôÍÑ…ÑÕÌœùí°¹¹½…Ñ…%¹A•É¥½‘ôğ½‘¥Øøé¹Õ±±ô(€€€€€€€€€€€€€€€ì¼¨9•Ù•Èµ½Õ¹ĞÙ¥ÌµÑ¥µ•±¥¹”½Ù•È…¸•µÁÑä½Á•¹‘¥¹œÍ½ÕÉ”Í¹…ÁÍ¡½Ğè(€€€€€€€€€€€€€€€€€€€½¸™¥ÉÍĞ•¹ÑÉä¥Ğ½Ñ¡•Éİ¥Í”É•…Ñ•Ì…¸Õ¹É•…‘ä¡…ÉĞ…¹Ñ¡•¸(€€€€€€€€€€€€€€€€€€€É•Á±…•Ì¥ÑÌ=4İ¡¥±”É½ÕÁÌ…¹‘•¹Í¥Ñä…¹…±åÍ¥Ì…ÉÉ¥Ù”¸€¨½ô(€€€€€€€€€€€€€€€íÕÍ•ÍM½ÕÉ•I¥Ù•È˜™±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İY…±¥˜˜„¡ÍÑ…•‘M½ÕÉ•I¥Ù•ÈıÍ½ÕÉ•I½½ÑEÕ•Éä¹•ÉÉ½ÈéÍ½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹•ÉÉ½È¤(€€€€€€€€€€€€€€€€€€˜˜¡ÍÑ…•‘M½ÕÉ•I¥Ù•ÈıÍ½ÕÉ•I½½ÑEÕ•Éä¹‘…Ñ„éÍ½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹‘…Ñ„¤˜™Õ±ÑÕÉ•I¥Ù•È¹¡…ÍM½ÕÉ•…Ñ„(€€€€€€€€€€€€€€€€€€üñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µ‘½Õ‰±”µÉ¥Ù•Èœø(€€€€€€€€€€€€€€€€€íÍÑå±•¥±Ñ•Èôôô¹½¹”œ˜™½Á•¹Õ±ÑÕÉ•I½½ÑÌ¹±•¹Ñ ôôôÀ(€€€€€€€€€€€€€€€€€€€€˜™Õ±ÑÕÉ•I¥Ù•È¹¥Ñ•µÌ¹•Ù•Éä¡¥Ñ•´ôù¥Ñ•´¹•¹ÑÉå}ÑåÁ”ôôôÍ½ÕÉ•}Ñ½Ñ…°œ¤(€€€€€€€€€€€€€€€€€€€€üñÕ±ÑÕÉ•M½ÕÉ•I½½ÑMÕµµ…Éä(€€€€€€€€€€€€€€€€€€€€€•É…I…¹•Ìõí•É…I¥Ù•È¹¥Ñ•µÍô(€€€€€€€€€€€€€€€€€€€€€¥Ñ•µÌõíÕ±ÑÕÉ•I¥Ù•È¹¥Ñ•µÍô(€€€€€€€€€€€€€€€€€€€€€É½ÕÁÌõíÕ±ÑÕÉ•I¥Ù•È¹É½ÕÁÍô(€€€€€€€€€€€€€€€€€€€€€İ¥¹‘½İMÑ…ÉĞõí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İMÑ…ÉÑô(€€€€€€€€€€€€€€€€€€€€€İ¥¹‘½İ¹õí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İ¹‘ô(€€€€€€€€€€€€€€€€€€€€€½¹É½ÕÁQ½±”õíÑ½±•Õ±ÑÕÉ•I¥Ù•ÉÉ½ÕÁô(€€€€€€€€€€€€€€€€€€€€€½¹É½ÕÁM•±•ĞõíÍ•±•ÑÕ±ÑÕÉ•I¥Ù•ÉÉ½ÕÁô(€€€€€€€€€€€€€€€€€€€€¼øèñÕ±ÑÕÉ•Q¥µ•±¥¹”(€€€€€€€€€€€€€€€€€€€¥Ñ•µÌõíÕ±ÑÕÉ•I¥Ù•È¹¥Ñ•µÍô(€€€€€€€€€€€€€€€€€€€•É…I…¹•Ìõí•É…I¥Ù•È¹¥Ñ•µÍô(€€€€€€€€€€€€€€€€€€€•áÑÉ…É½ÕÁÌõíÕ±ÑÕÉ•I¥Ù•È¹É½ÕÁÍô(€€€€€€€€€€€€€€€€€€€½¹É½ÕÁQ½±”õíÑ½±•Õ±ÑÕÉ•I¥Ù•ÉÉ½ÕÁô(€€€€€€€€€€€€€€€€€€€½¹É½ÕÁM•±•ĞõíÍ•±•ÑÕ±ÑÕÉ•I¥Ù•ÉÉ½ÕÁô(€€€€€€€€€€€€€€€€€€€…¹¡½É%¹Í¥¡Ğõí…¹¡½É%¹Í¥¡Ñô(€€€€€€€€€€€€€€€€€€€…¹¡½É1…‰•±Ìõíí‘…Ñ”é°¹…¹‘¥‘…Ñ•…Ñ”±‰•™½É”é°¹…¹‘¥‘…Ñ•	•™½É”±…™Ñ•Èé°¹…¹‘¥‘…Ñ•™Ñ•È±É•…Í½¸é°¹…¹‘¥‘…Ñ•I•…Í½¸±±½Í”é°¹…¹‘¥‘…Ñ•±½Í•õô(€€€€€€€€€€€€€€€€€€€½¹¹¡½É±½Í”õì ¤ôùÍ•Ñ½ÕÍ•‘¹¡½É…Ñ” œœ¥ô(€€€€€€€€€€€€€€€€€€€¡•¥¡ÑY…É¥…¹Ğô‘½Õ‰±”œ(€€€€€€€€€€€€€€€€€€€±…‰•±=˜õí±…ÍÍ¥™¥…Ñ¥½¹I¥Ù•É1…‰•±ô(€€€€€€€€€€€€€€€€€€€™½ÕÌõí5AQe}I%YI}=UMô(€€€€€€€€€€€€€€€€€€€µ½‘”ôÍ½ÕÉ”œ(€€€€€€€€€€€€€€€€€€€İ¥¹‘½İMÑ…ÉĞõí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İMÑ…ÉÑô(€€€€€€€€€€€€€€€€€€€İ¥¹‘½İ¹õí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İ¹‘ô(€€€€€€€€€€€€€€€€€€€¡¥‘‘•¹…Ñ•ÌõíÉ¥Ù•É¹…±åÍ¥Ì¹¡¥‘‘•¹…Ñ•Íô(€€€€€€€€€€€€€€€€€€€½¹M•±•Ğõí¥Ñ•´ôùì(€€€€€€€€€€€€€€€€€€€€€¥˜¡¥Ñ•´ü¹•¹ÑÉåQåÁ”ôôôÙ¥ÉÑÕ…±}…¹¡½Èœ¥ì(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ‘…Ñ”õMÑÉ¥¹œ¡¥Ñ•´ü¹ÍÑ…ÉÑñğœœ¤¹Í±¥” À°ÄÀ¤ì(€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ½ÕÍ•‘¹¡½É…Ñ”¡‘…Ñ”¤ì(€€€€€€€€€€€€€€€€€€€€€€€Ñ½±•Y¥ÉÑÕ…±¹¡½È¡‘…Ñ”¤ì(€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€¥˜¡¥Ñ•´ü¹•¹ÑÉåQåÁ”ôôô­•åİ½É‘}‘•¹Í¥Ñäœ¥ì(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ­•äõMÑÉ¥¹œ¡¥Ñ•´ü¹É…Üü¹‘É¥±±}­•åñğœœ¤¹ÑÉ¥´ ¤ì(€€€€€€€€€€€€€€€€€€€€€€€¥˜¡­•ä˜™­•åİ½É‘É½ÕÁ=ÁÑ¥½¹Ì¹Í½µ”¡É½ÕÀôùÉ½ÕÀ¹¥ôôõ­•ä¤¤(€€€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ-•åİ½É‘É¥±±É½ÕÀ¡ÕÉÉ•¹ĞôùÕÉÉ•¹Ğôôõ­•äüœœé­•ä¤ì(€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€¥˜¡¥Ñ•´ü¹•¹ÑÉåQåÁ”ôôôÍ½ÕÉ•}É½ÕÀœ¥ì(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑM•±•Ñ•‘I¥Ù•ÉÉ½ÕÀ¡MÑÉ¥¹œ¡¥Ñ•´¹É…Üü¹Í½ÕÉ•}É½ÕÁ}½‘•ñğœœ¤¤ì(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑM•±•Ñ•‘…Ñ•½Éä œœ¤ì(€€€€€€€€€€€€€€€€€€€€€€€Í•Ñ]½É­Í=Á•¸¡™…±Í”¤ì(€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸ì(€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€€€¥˜¡¥Ñ•´ü¹•¹ÑÉåQåÁ”„ôôÍ½ÕÉ”œ¥É•ÑÕÉ¸ì(€€€€€€€€€€€€€€€€€€€€€½¹ÍĞÑ•É´õMÑÉ¥¹œ¡¥Ñ•´ü¹É…Üü¹…Ñ•½Éåñğœœ¤¹ÑÉ¥´ ¤ì(€€€€€€€€€€€€€€€€€€€€€½¹ÍĞ­•äôÍ½ÕÉ”èœ­Ñ•É´ì(€€€€€€€€€€€€€€€€€€€€€¥˜¡Ñ•É´˜™…Ñ•½ÉåÉ½ÕÁÌ¹Í½µ”¡É½ÕÀôùÉ½ÕÀ¹…Ñ•½Éå}­•äôôõ­•ä¤¥ì(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑM•±•Ñ•‘I¥Ù•ÉÉ½ÕÀ œœ¤ì(€€€€€€€€€€€€€€€€€€€€€€€Í•ÑM•±•Ñ•‘…Ñ•½Éä¡­•ä¤ì(€€€€€€€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€€€€€€€€õô(€€€€€€€€€€€€€€€€€€¼ùô(€€€€€€€€€€€€€€€€€íÍ¡½İ-•åİ½É‘I¥Ù•È˜™­•åİ½É‘É¥±±É½ÕÀüñÍ•Ñ¥½¸±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÉÕ¹”µ±¥ÍĞœ(€€€€€€€€€€€€€€€€€€€É½±”ôÉ•¥½¸œ…É¥„µ±…‰•°õì¡ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹­•åİ½É‘5•Ñ„ü¹±…ÍÍ•Ìü¹m­•åİ½É‘É¥±±É½ÕÁuñğŸ²›šZú“Öœ¤¬Ÿ²›šZ–"_¢† ôø(€€€€€€€€€€€€€€€€€€€€ñ¡•…‘•Èø(€€€€€€€€€€€€€€€€€€€€€€ñÍÑÉ½¹œùíÍÑå±•EÕ•Éä¹‘…Ñ„ü¹­•åİ½É‘5•Ñ„ü¹±…ÍÍ•Ìü¹m­•åİ½É‘É¥±±É½ÕÁuñğŸú“Ö÷¾ös²›šZ–"_¢† ğ½ÍÑÉ½¹œø(€€€€€€€€€€€€€€€€€€€€€€ñ‰ÕÑÑ½¸±…ÍÍ9…µ”ô±½Œµ‰ÕÑÑ½¸œÑåÁ”ô‰ÕÑÑ½¸œ½¹±¥¬õì ¤ôùÍ•Ñ-•åİ½É‘É¥±±É½ÕÀ œœ¥ôûšRÛ–B#²›šZ–"_¢† ğ½‰ÕÑÑ½¸ø(€€€€€€€€€€€€€€€€€€€€ğ½¡•…‘•Èø(€€€€€€€€€€€€€€€€€€€í­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹¥ÍA•¹‘¥¹œüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœÉ½±”ôÍÑ…ÑÕÌœûš¶–r£¢ò'–—š¶“ú“Öj²›šZŠ˜ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€í­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½ÈœÉ½±”ô…±•ÉĞœùí™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹•ÉÉ½È±U%}=Ad¥ôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€í­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹‘…Ñ„ü¹±•¹Ñ üñÕ°ø(€€€€€€€€€€€€€€€€€€€€€í­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹‘…Ñ„¹µ…À¡ÉÕ¹”ôùì(€€€€€€€€€€€€€€€€€€€€€€€½¹ÍĞµ…Ñ¡•ô¡ÍÑå±•EÕ•Éä¹‘…Ñ„ü¹ÉÕ¹•Q½Ñ…±Íññmt¤¹™¥¹¡¥Ñ•´ôùMÑÉ¥¹œ¡¥Ñ•´¹Õ¥¤ôôõMÑÉ¥¹œ¡ÉÕ¹”¹Õ¥¤¤ì(€€€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸€ñ±¤­•äõíÉÕ¹”¹Õ¥‘ôø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñÍÑÉ½¹œùíÉÕ¹”¹¹…µ•ôğ½ÍÑÉ½¹œø(€€€€€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ùí9Õµ‰•È¡µ…Ñ¡•ü¹½Õ¹ÑñğÀ¤¹Ñ½1½…±•MÑÉ¥¹œ¡±½…±”¥ôƒš²‡–F÷’â´ğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ğ½±¤øì(€€€€€€€€€€€€€€€€€€€€€ô¥ô(€€€€€€€€€€€€€€€€€€€€ğ½Õ°øé¹Õ±±ô(€€€€€€€€€€€€€€€€€€€í­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹‘…Ñ„˜˜…­•åİ½É‘É½ÕÁ…Ñ…±½EÕ•Éä¹‘…Ñ„¹±•¹Ñ (€€€€€€€€€€€€€€€€€€€€€€üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœûš¶“ú“Ön»–&7šÊKšr'²›šZ¦‚n»ğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸øé¹Õ±±ô(€€€€€€€€€€€€€€€€ğ½‘¥Øøé¹Õ±±ô(€€€€€€€€€€€€€€€íÍÑå±•¥±Ñ•Èôôô¹½¹”œ˜™Í•±•Ñ•‘É½ÕÀ˜˜…İ½É­Í=Á•¸üñ‰ÕÑÑ½¸(€€€€€€€€€€€€€€€€€ÑåÁ”ô‰ÕÑÑ½¸œ±…ÍÍ9…µ”ô±½Œµ‰ÕÑÑ½¸Í½Á”µÕ±ÑÕÉ”µÍ¡½Üµ…ÉÑ¥±•Ìœ(€€€€€€€€€€€€€€€€€½¹±¥¬õì ¤ôùÍ•Ñ]½É­Í=Á•¸¡ÑÉÕ”¥ôø(€€€€€€€€€€€€€€€€€íÍ•±•Ñ•‘É½ÕÀ¹±…‰•±ññÍ•±•Ñ•‘É½ÕÀ¹Í¥Ñ•ñğŸ’úšê@÷¾ös¦†¿’ënã¦^sšZ®ƒ–"_¢† (€€€€€€€€€€€€€€€€ğ½‰ÕÑÑ½¸øé¹Õ±±ô(€€€€€€€€€€€€€€€íÍÑå±•¥±Ñ•Èôôô¹½¹”œ˜˜ „¡ÍÑ…•‘M½ÕÉ•I¥Ù•ÈıÍ½ÕÉ•I½½ÑEÕ•Éä¹•ÉÉ½ÈéÍ½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹•ÉÉ½È¤(€€€€€€€€€€€€€€€€€€˜˜¡ÍÑ…•‘M½ÕÉ•I¥Ù•ÈıÍ½ÕÉ•I½½ÑEÕ•Éä¹‘…Ñ„éÍ½ÕÉ•M¹…ÁÍ¡½ÑEÕ•Éä¹‘…Ñ„¤˜™Õ±ÑÕÉ•I¥Ù•È¹¡…ÍM½ÕÉ•…Ñ„¤üñ‘•Ñ…¥±Ì±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÍ½ÕÉ”µ‘•Ñ…¥°œ½Á•¸õíİ½É­Í=Á•¹ô½¹Q½±”õí•Ù•¹ĞôùÍ•Ñ]½É­Í=Á•¸¡•Ù•¹Ğ¹ÕÉÉ•¹ÑQ…É•Ğ¹½Á•¸¥ôø(€€€€€€€€€€€€€€€€€€ñÍÕµµ…Éäû¦†¿’ënã¦^sšZ®ƒ–"_¢† ğ½ÍÕµµ…Éäø(€€€€€€€€€€€€€€€€€íİ½É­Í=Á•¸üğøñ¡•…‘•È±…ÍÍ9…µ”ô‰±½ŒµÁÕ‰±¥Œµ±¥ÍĞµ¡•…‘•Èˆø(€€€€€€€€€€€€€€€€€€€íÍ•±•Ñ•‘É½ÕÀüñ‰ÕÑÑ½¸ÑåÁ”ô‰ÕÑÑ½¸œ±…ÍÍ9…µ”ôÍ½Á”µÁ…¥¹…Ñ¥½¸µ‰ÕÑÑ½¸œ½¹±¥¬õì ¤ôùÍ•ÑM•±•Ñ•‘…Ñ•½Éä œœ¥ôùíU%}=Ad¹Õ±ÑÕÉ”¹Í¡½İ±±]½É­Íôğ½‰ÕÑÑ½¸øèñÍÁ…¸¼ùô(€€€€€€€€€€€€€€€€€€€€ñÉÑ¥±•M½ÉÑM•±•ĞÙ…±Õ”õí…ÉÑ¥±•M½ÉÑô½¹¡…¹”õíÍ•ÑÉÑ¥±•M½ÉÑô‘¥Í…‰±•õí	½½±•…¸¡•‘¥Ñ¥¹]½É­-•ä¥ô¼ø(€€€€€€€€€€€€€€€€€€ğ½¡•…‘•Èø(€€€€€€€€€€€€€€€€€íÁ•É¥½‘]½É­ÍA…”¹•ÉÉ½ÈüñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌÍ½Á”µ•ÉÉ½Èœùí™•…ÑÕÉ•…Ñ…ÉÉ½É5•ÍÍ…”¡Á•É¥½‘]½É­ÍA…”¹•ÉÉ½È±U%}=Ad¥ô€ñ‰ÕÑÑ½¸ÑåÁ”ô‰ÕÑÑ½¸œ±…ÍÍ9…µ”ô±½Œµ‰ÕÑÑ½¸œ½¹±¥¬õíÁ•É¥½‘]½É­ÍA…”¹É•±½…‘ôøñU¥Q•áĞ¥ô‰Õ¥áÑÉ„¹Õ±ÑÕÉ•Y¥•Ü¹É•±½…‘]½É­Ìˆ¼øğ½‰ÕÑÑ½¸øğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€íÁ•É¥½‘]½É­ÍA…”¹±½…‘¥¹œ˜˜…Ù¥Í¥‰±•]½É­I½İÌ¹±•¹Ñ üñÀÉ½±”ôÍÑ…ÑÕÌœ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœùí°¹±½…‘¥¹A•É¥½‘]½É­Íôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€€ñ%¹É•µ•¹Ñ…±1¥ÍĞ(€€€€€€€€€€€€€€€€€€€¥Ñ•µÌõíÙ¥Í¥‰±•]½É­I½İÍô(€€€€€€€€€€€€€€€€€€€‰…Ñ¡M¥é”õíU1Q}1%MQ}	Q!}M%iô(€€€€€€€€€€€€€€€€€€€É•Í•Ñ-•äõí±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İMÑ…ÉĞ¬ğœ­±…ÍÍ¥™¥…Ñ¥½¹]¥¹‘½İ¹¬ğœ­Í•±•Ñ•‘…Ñ•½Éä¬ğœ­Í•±•Ñ•‘I¥Ù•ÉÉ½ÕÀ¬ñÍ½ÕÉ•ğœ­…ÉÑ¥±•M½ÉÑô(€€€€€€€€€€€€€€€€€€€±…ÍÍ9…µ”ôÍ½Á”µÕ±ÑÕÉ”µÍ½ÕÉ”µİ½É¬µÍÉ½±°±½ŒµÁÕ‰±¥Œµ…ÉÑ¥±”µ±¥ÍĞœ(€€€€€€€€€€€€€€€€€€€•áÑ•É¹…±!…Í5½É”õíÁ•É¥½‘]½É­ÍA…”¹¡…Í5½É•ô(€€€€€€€€€€€€€€€€€€€±½…‘¥¹œõíÁ•É¥½‘]½É­ÍA…”¹±½…‘¥¹ô(€€€€€€€€€€€€€€€€€€€•ÉÉ½ÈõíÁ•É¥½‘]½É­ÍA…”¹•ÉÉ½Éô(€€€€€€€€€€€€€€€€€€€½¹1½…‘5½É”õíÁ•É¥½‘]½É­ÍA…”¹±½…‘9•áÑô(€€€€€€€€€€€€€€€€€€€ÍÉ½±±I½½ÑI•˜õíİ½É­MÉ½±±I•™ô(€€€€€€€€€€€€€€€€€€€É•¹‘•É%Ñ•´õì¡İ½É¬±¥¹‘•à¤ôùì(€€€€€€€€€€€€€€€€€€€€€½¹ÍĞİ½É­-•äõMÑÉ¥¹œ¡İ½É¬¹­•åñğ …±…áäèœ­İ½É¬¹Õ¥¤¤ì(€€€€€€€€€€€€€€€€€€€€€¥˜¡İ½É¬¹¡¥‘‘•¸¥É•ÑÕÉ¸€ñ‘¥Ø­•äõíİ½É­-•ä¬œ´œ­¥¹‘•áô(€€€€€€€€€€€€€€€€€€€€€€€±…ÍÍ9…µ”ôÍ½Á”µİ½É¬µ±¥ÍĞµÉ½ÜÍ½Á”µÍÑ…ÑÕÌœûšr³šZ–ŞË¦jÇ¢^<ğ½‘¥Øøì(€€€€€€€€€€€€€€€€€€€€€É•ÑÕÉ¸€ñ‘¥Ø±…ÍÍ9…µ”ôÍ½Á”µİ½É¬µ±¥ÍĞµÉ½Üœ­•äõíİ½É­-•ä¬œ´œ­¥¹‘•áôø(€€€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸ûš¢g¦†3¾òiíİ½É¬¹Ñ¥Ñ±•ôğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€€€ñÍÁ…¸øƒš^—šr¾òiíİ½É¬¹‘…Ñ•ôğ½ÍÁ…¸ø(€€€€€€€€€€€€€€€€€€€€€€€íİ½É¬¹•áÑÉ…ĞôôõÑÉÕ”üñ]½É­Õ±±Q•áĞ(€€€€€€€€€€€€€€€€€€€€€€€€€½Á•¸õí™Õ±±Q•áÑ-•äôôõİ½É­-•åô(€€€€€€€€€€€€€€€€€€€€€€€€€±½…‘¥¹œõí™Õ±±Q•áÑ1½…‘¥¹œ˜™™Õ±±Q•áÑ-•äôôõİ½É­-•åô(€€€€€€€€€€€€€€€€€€€€€€€€€•ÉÉ½Èõí™Õ±±Q•áÑ-•äôôõİ½É­-•äı™Õ±±Q•áÑÉÉ½Èèœô(€€€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ•¹Ğõí™Õ±±Q•áÑ-•äôôõİ½É­-•äı™Õ±±Q•áĞèœô(€€€€€€€€€€€€€€€€€€€€€€€€€½¹Q½±”õì ¤ôùÑ½±•]½É­½¹Ñ•¹Ğ¡İ½É¬¥ô(€€€€€€€€€€€€€€€€€€€€€€€€¼øèñÍÁ…¸±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœû–¦†¿’ë–"_¢†£¾ò3šš¶‹¦ZÇ¢º–£šZğ½ÍÁ…¸ùô(€€€€€€€€€€€€€€€€€€€€€€ğ½‘¥Øøì(€€€€€€€€€€€€€€€€€€€õô(€€€€€€€€€€€€€€€€€€¼ø(€€€€€€€€€€€€€€€€€ì…Á•É¥½‘]½É­ÍA…”¹±½…‘¥¹œ˜˜…Á•É¥½‘]½É­ÍA…”¹•ÉÉ½È˜˜…Ù¥Í¥‰±•]½É­I½İÌ¹±•¹Ñ üñÀ±…ÍÍ9…µ”ôÍ½Á”µÍÑ…ÑÕÌœùíU%}=Ad¹Õ¥áÑÉ„¹‘…Ñ…ÉÉ½ÉÌ¹•µÁÑåôğ½Àøé¹Õ±±ô(€€€€€€€€€€€€€€€€€€ğ¼øé¹Õ±±ô(€€€€€€€€€€€€€€€€ğ½‘•Ñ…¥±Ìøé¹Õ±±ô(€€€€€€€€€€€€€€ğ½Í•Ñ¥½¸øé¹Õ±±ô(€€€€€€€€€€€€ğ¼ùô(€€€€€€ğ¼øé¹Õ±±ô(€€€€€€ğ¼ùô(€€€€ğ½Í•Ñ¥½¸ø(€€ğ½•…ÑÕÉ•A…”øì)ô

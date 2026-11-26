@@ -217,7 +217,7 @@ async function copyDefaultKeywordClass(trx,target){
   if(!classUid)reject('Default Keyword Class is not configured',409);
   const rows=await trx.selectFrom('silver.lo3rwang_anchor')
     .select(['uid','type','title','description','attr'])
-    .where('type','in',['category','class','group','item']).execute();
+    .where('type','in',['category','class','group','item','pattern']).execute();
   const root=keywordSource(rows,classUid);
   if(root.type!=='class')reject('Default Keyword Class type is invalid',409);
   const category=rows.find(row=>row.type==='category'&&linked(row).includes(classUid));
@@ -225,11 +225,21 @@ async function copyDefaultKeywordClass(trx,target){
   const assigned=new Set(),insertions=[];
   const uid=()=>{const id=allocateAnchorUid(assigned);assigned.add(id);return id;};
   const categoryId=uid(),newClassId=uid(),groups=[];
-  const add=(node,kind,id,attr)=>insertions.push({
+  const add=(node,kind,id,attr,num=null)=>insertions.push({
     uid:id,type:kind,title:node.title,description:node.description,
-    attr:jsonb(attr)
+    attr:jsonb(attr),...(num===null?{}:{num})
   });
   add(category,'category',categoryId,{uid:[newClassId]});
+  const patternsByTitle=new Map();
+  const patternFor=word=>{
+    const title=String(word||'').trim(),key=title.normalize('NFKC').toLocaleLowerCase('zh-Hant');
+    if(!title||!key)return null;
+    if(patternsByTitle.has(key))return patternsByTitle.get(key);
+    const patternId=uid();
+    add({title,description:''},'pattern',patternId,{},0);
+    patternsByTitle.set(key,patternId);
+    return patternId;
+  };
   for(const oldGroupId of linked(root)){
     const group=keywordSource(rows,oldGroupId);
     if(group.type!=='group')reject('Default Keyword Group mismatch',409);
@@ -238,11 +248,19 @@ async function copyDefaultKeywordClass(trx,target){
     for(const oldItemId of linked(group)){
       const item=keywordSource(rows,oldItemId);
       if(item.type!=='item')reject('Default Keyword Item mismatch',409);
-      const words=Array.isArray(item.attr?.keyword)?item.attr.keyword:[];
+      const itemAttr=typeof item.attr==='string'?JSON.parse(item.attr):item.attr||{};
+      const sourcePatternIds=Array.isArray(itemAttr.uid)?itemAttr.uid:[];
+      const linkedPatterns=sourcePatternIds.map(patternId=>keywordSource(rows,patternId));
+      if(linkedPatterns.some(pattern=>pattern.type!=='pattern'))
+        reject('Default Keyword Pattern mismatch',409);
+      const words=linkedPatterns.length?linkedPatterns.map(pattern=>pattern.title):
+        Object.hasOwn(itemAttr,'keyword')
+          ?[String(item.title||''),...(Array.isArray(itemAttr.keyword)?itemAttr.keyword:[])]:[];
       if(words.some(word=>typeof word!=='string'))
         reject('Default Keyword Item contains invalid terms',409);
+      const patternIds=[...new Set(words.map(patternFor).filter(Boolean))];
       const newItemId=uid();
-      add(item,'item',newItemId,{keyword:words,total:0});
+      add(item,'item',newItemId,{uid:patternIds,total:0});
       items.push(newItemId);
     }
     add(group,'group',groupId,{uid:items,total:0});

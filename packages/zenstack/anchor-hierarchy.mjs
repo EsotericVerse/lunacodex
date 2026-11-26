@@ -103,9 +103,10 @@ export const PERSISTED_ANCHOR_TYPES=Object.freeze(Object.values(ANCHOR_TYPE_GROU
 // Anniversary is a derived editor suggestion. It is deliberately not a
 // persisted discriminator and therefore is not included above.
 export const VIRTUAL_ANCHOR_TYPES=Object.freeze(['anniversary','aniversary']);
-// All physical Anchor.num values count UID references from the typed payload.
-// The LOC Block uidlist may start with a numeric layout marker: that marker
-// is NOT a UID. Pattern is a terminal word node with no child UIDs.
+// Anchor.num generally counts UID references from the typed payload. Pattern
+// is the exception: its num stores analyzed literal occurrences, while it
+// remains terminal and contributes no child-UID count here. The LOC Block
+// uidlist may start with a numeric layout marker: that marker is NOT a UID.
 export function anchorUidListCount(type,storedAttr={}){
   const attr=typeof storedAttr==='string'?JSON.parse(storedAttr):storedAttr??{};
   if(!attr||typeof attr!=='object'||Array.isArray(attr))

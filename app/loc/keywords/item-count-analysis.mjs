@@ -68,10 +68,11 @@ const KEYWORD_SCAN_PAGE_OPTIONS=Object.freeze({
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
 const mapOf=(keys,values)=>Object.fromEntries(keys.map(k=>[k,count(object(values)[k])]));
 const dayOf=x=>x instanceof Date?x.toISOString().slice(0,10):String(x||'').slice(0,10);
-export const itemLiterals=item=>[item.item_name,...(Array.isArray(item.keywords)?item.keywords:[])
-  .filter(x=>typeof x==='string'&&!parseRuneKeywordRuleSentence(x).rules.length)]
+export const itemLiterals=item=>(Array.isArray(item.keywords)?item.keywords:[])
+  .filter(x=>typeof x==='string'&&!parseRuneKeywordRuleSentence(x).rules.length)
   .map(x=>String(x||'').trim()).filter(Boolean);
-export const itemScope=tree=>({items:tree.items,groups:tree.groups.map(x=>({uid:x.uid,title:x.title}))});
+export const itemScope=tree=>({items:tree.items,
+  groups:tree.groups.map(x=>({uid:x.uid,title:x.title})),patterns:tree.patterns||[]});
 export function itemKeywordSuggestions(items=[],query=''){
   const prefix=norm(query),map=new Map();
   for(const item of items)for(const label of itemLiterals(item)){
@@ -93,15 +94,16 @@ export function createItemCountAccumulator(items=[],groups=[],resume=null,{minCh
       throw new TypeError('Conflicting Keyword Pattern UID titles');
     patternByUid.set(uid,word);
   }
-  const patternTerms=[...new Set(patternByUid.values())];
   const uidsByTerm=new Map();
   for(const [uid,word] of patternByUid){
+    if(parseRuneKeywordRuleSentence(word).rules.length)continue;
     if(!uidsByTerm.has(word))uidsByTerm.set(word,[]);
     uidsByTerm.get(word).push(uid);
   }
+  const patternTerms=[...uidsByTerm.keys()];
   const catalog=items.map((item,i)=>({
     item_no:i+1,item_name:item.item_name,class_group:item.group_uid,
-    keywords:item.keywords,order_no:i+1,class_enable:true
+    keywords:item.keywords,include_name:false,order_no:i+1,class_enable:true
   }));
   const itemIds=items.map(x=>x.uid),groupIds=groups.map(x=>x.uid);
   const fingerprint=JSON.stringify({catalog,groupIds,minChars,
@@ -398,10 +400,10 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
     throw Error('Item scan ended before all Galaxy rows');
   return finish();
 }
-export async function readItemKeywordProjection(db,scope,{items,groups,start='',end='',
+export async function readItemKeywordProjection(db,scope,{items,groups,patterns=[],start='',end='',
   source='',places=null,owner=true,minChars=0,onRow=null,
   galaxyTable='silver.'+scope+'_galaxy'}={}){
-  const a=createItemCountAccumulator(items,groups,null,{minChars});
+  const a=createItemCountAccumulator(items,groups,null,{minChars,patterns});
   let after='';
   const sizer=createTextAdaptiveRows({
     initial:KEYWORD_SCAN_START_ROWS,minimum:KEYWORD_SCAN_START_ROWS,
@@ -433,10 +435,15 @@ export function itemKeywordStatistics(items,groups,totals){
   const hits=items.reduce((sum,i)=>sum+count(totals.itemCounts?.[i.uid]),0);
   const itemRows=items.map(item=>{
     const n=count(totals.itemCounts?.[item.uid]);
+    const patterns=Array.isArray(item.patterns)?item.patterns:[];
     return {uid:item.uid,group_uid:item.group_uid,name:item.item_name,
       hit_count:n,document_count:count(totals.itemDocuments?.[item.uid]),
-      ratio:hits?100*n/hits:0,words:itemLiterals(item).map(word=>({
-        pattern:word,count:0,indexed:false,ratio:0}))};
+      ratio:hits?100*n/hits:0,words:patterns.filter(pattern=>
+        !parseRuneKeywordRuleSentence(pattern.title).rules.length).map(pattern=>{
+          const wordCount=count(totals.patternCounts?.[pattern.uid]);
+          return {pattern:pattern.title,count:wordCount,indexed:true,
+            ratio:wordCount?100*wordCount/Math.max(1,n):0};
+        })};
   });
   const groupRows=groups.map(g=>{
     const n=itemRows.filter(i=>i.group_uid===g.uid).reduce((s,i)=>s+i.hit_count,0);

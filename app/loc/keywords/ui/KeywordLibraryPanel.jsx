@@ -144,10 +144,15 @@ export default function KeywordLibraryPanel({scopeId,account}){
         for(const row of page.rows){
           if(seen.has(row.uid))throw new Error('關鍵詞管理 UID 重複');
           seen.add(row.uid);
-          owned.push({...row,name:String(row.title||''),
+          const sourceAttr=row.attr&&typeof row.attr==='object'&&!Array.isArray(row.attr)
+            ?row.attr:{};
+          const {keyword:_legacyKeyword,total:_legacyTotal,...cleanAttr}=sourceAttr;
+          owned.push({...row,attr:cleanAttr,name:String(row.title||''),
             desc:String(row.description||''),
-            lists:Array.isArray(row.attr?.[row.type==='item'?'keyword':'uid'])
-              ?row.attr[row.type==='item'?'keyword':'uid']:[],uid_lists:[]});
+            lists:row.type==='item'
+              ?(Array.isArray(row.patterns)?row.patterns.map(pattern=>String(pattern?.title||'')):
+                [])
+              :(Array.isArray(cleanAttr.uid)?cleanAttr.uid:[]),uid_lists:[]});
         }
         if(!page.nextCursor)break;
         if(page.nextCursor===cursor||!page.rows.length)
@@ -177,7 +182,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   },[canEdit,table,configTable,scopeId]);
 
   useEffect(()=>{load();},[load]);
-  // The editor uses authored Item.keyword directly.
+  // The editor vocabulary is projected from the linked Pattern Anchor titles.
   useEffect(()=>{
     discoveryAbort.current?.abort();
     setDiscovery(null);
@@ -215,7 +220,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     if(by_class[cl.uid])by_class[cl.uid]={...by_class[cl.uid],stale:true};
     const scans={...(meta.pattern_scans||{})};
     for(const item of descendantsOfKeyword(rows,cl.uid,{type:'item'})){
-      for(const word of [item.name,...(item.lists||[])]){
+      for(const word of item.lists||[]){
         delete scans[String(word).normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')];
       }
     }
@@ -440,8 +445,12 @@ export default function KeywordLibraryPanel({scopeId,account}){
       await load(runClassUid);await invalidate();
       setNotice(reset
         ?'已清空 '+Number(cleared.count||0).toLocaleString()+
-          ' 個詞級及分類計數、舊進度與掃描游標；目前為 0 筆。'
-        :'已從第 0 筆完成新的關鍵詞解析；未繼承舊分析數字。');
+          ' 個詞級及分類計數、舊進度與掃描游標；目前為 0 筆。'+
+          (cleared.legacyItemsMaterialized
+            ?'並已將 '+cleared.legacyItemsMaterialized+' 個舊 Item 的名稱與規則轉成獨立 Pattern。':'')
+        :'已從第 0 筆完成新的關鍵詞解析；未繼承舊分析數字。'+
+          (cleared.legacyItemsMaterialized
+            ?'已將 '+cleared.legacyItemsMaterialized+' 個舊 Item 的名稱與規則轉成獨立 Pattern。':''));
     }catch(e){
       if(e?.name==='KeywordAnalysisUnconfirmedError'&&e?.attemptId)
         storeUnconfirmed({classUid:runClassUid,attemptId:e.attemptId,savedAt:Date.now()});

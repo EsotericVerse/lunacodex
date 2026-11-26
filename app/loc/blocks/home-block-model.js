@@ -195,17 +195,17 @@ export function managementHeroSlot(view='',scopeId=''){
   // still owns its dedicated TimeAnchor Hero slot.
   const group=scopeId==='loc'||scopeId==='admin';
   const key=view==='timeManage'?'time':group
-    ?({admin:'system',sourceManage:'members',keywordManage:'locKeywords',searchManage:'articles',manage:'trace'}[view])
+    ?({admin:'system',sourceManage:'members',keywordManage:'locKeywords',searchManage:'articles',manage:'members'}[view])
     :({keywords:'keywords',manage:'spatial',searchManage:'advanced'}[view]);
   return MANAGEMENT_HERO_SLOTS.find(item=>item.key===key)||null;
 }
 export function managementHeroCopy(rows,slot){
   if(!slot)return null;
   const row=(Array.isArray(rows)?rows:[]).find(item=>Number(item?.block_order)===1);
-  if(!row)return null;
+  if(!row)return {eyebrow:'',title:String(slot.label||slot.englishTitle||'').trim(),subtitle:'',description:''};
   return {
     eyebrow:String(row.block_eyebrow||'').trim(),
-    title:String(row.block_title||'').trim(),
+    title:String(row.block_title||'').trim()||String(slot.label||slot.englishTitle||'').trim(),
     subtitle:String(row?.block_subtitle||'').trim(),
     description:String(row?.block_text||'').trim()
   };

@@ -19,7 +19,7 @@ export function existingKeywordSet(rows=[]){
   const found=new Set();
   for(const row of rows){
     if(!['item','pattern'].includes(row?.type))continue;
-    const name=normalize(row.name);
+    const name=row.type==='pattern'?normalize(row.name):'';
     if(name)found.add(name);
     for(const term of row.type==='item'&&Array.isArray(row.lists)?row.lists:[]){
       const key=normalize(term);

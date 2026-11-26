@@ -2,8 +2,8 @@ import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hier
 // Current Keyword Tree Model: category > class > group > item > pattern.
 // Typed/composite models define node payloads; anchor-hierarchy.mjs validates
 // UID edges; this module adapts them for editor/catalog consumers.
-// Pattern is a terminal vocabulary node (attr={}, num=0).
-// Item.attr.uid links Pattern Anchor UIDs; Item.keyword carries word labels.
+// Pattern is a terminal vocabulary node (attr={}, num=occurrences).
+// Item.attr.uid links Pattern Anchor UIDs; Pattern.title carries each literal.
 // No full-text index or Pattern-to-Galaxy article UID postings are persisted.
 // Parent lists contain child UIDs, not names. No class_id, group_id, item_no.
 // Only the canonical eight-character Anchor UID exists in the current ZModel.
@@ -65,8 +65,8 @@ export function normalizeKeywordTreeRow(row){
   const compact=row?.uid_lists&&typeof row.uid_lists==='object'&&!Array.isArray(row.uid_lists)
     &&Array.isArray(row.uid_lists.uidlists);
   // Old compatibility summaries may supply computed totals, but not index data.
-  // Physical Anchor.num counts UID references; Item/Group hit totals are
-  // derived presentation values and must not be written as another hit cache.
+  // Item/Group hit totals are derived class values; Pattern occurrences live
+  // in Pattern.num, never in an Item/Group article UID cache.
   const projected=Number(row?.total);
   const total=Number.isSafeInteger(projected)&&projected>=0&&row?.total!=null
     ?projected:compact&&Number.isSafeInteger(Number(row.uid_lists.total))
@@ -93,10 +93,9 @@ export function indexAnchorTree(rows=[],{normalize,rootType}){
   if(!family)throw new Error('Unknown ZModel Anchor hierarchy');
   const canonical=[...index.values()].map(row=>({
     uid:row.uid,type:row.type,title:row.name,
-    // Keep the real Item -> Pattern Anchor UID edges alongside word labels.
-    // A catalog/editor snapshot can omit Pattern rows; missing edges remain
-    // explicitly unresolved instead of being replaced by a legacy word tree.
-    attr:row.type==='item'?{...row.attr,keyword:row.lists}:{uid:row.lists}
+    // Item.attr.uid is the only Item -> Pattern edge. Literal titles are
+    // projected separately for the editor and never copied into Item.attr.
+    attr:row.type==='item'?{...row.attr}:{uid:row.lists}
   }));
   const graph=indexZModelAnchorHierarchy(canonical,{
     family,strict:family==='source'

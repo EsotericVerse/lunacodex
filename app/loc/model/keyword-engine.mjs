@@ -44,6 +44,7 @@ function compileCatalog(catalogRows=[]){
     if(!label||!group)continue;
     const order=Number.isFinite(Number(row?.order_no))?Number(row.order_no):runeId;
     const classEnable=row?.class_enable!==false;
+    const includeName=row?.include_name!==false;
     nameToRune.set(label,runeId);
     if(!groupOrder.has(group))groupOrder.set(group,order);
     else groupOrder.set(group,Math.min(groupOrder.get(group),order));
@@ -69,7 +70,7 @@ function compileCatalog(catalogRows=[]){
       order,
       classEnable,
       principle:String(row?.principle||'').trim(),
-      keywords:[...new Set([label,...keywords].filter(Boolean))],
+      keywords:[...new Set([...(includeName?[label]:[]),...keywords].filter(Boolean))],
       rules:rules.filter((rule,index,all)=>all.findIndex(other=>
         other.operator===rule.operator&&other.source===rule.source&&other.target===rule.target
       )===index),

@@ -8,7 +8,6 @@ import {portableRelation} from '../app/loc/providers/sql-engine-ports.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
 import {scopeConfigColumns} from '../app/loc/scope/scope-config-fields.mjs';
-import {sourceTaxonomyFromAnchors} from '../app/loc/source/classification.mjs';
 import {publishPublicFiles} from './publish-public-files.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -25,17 +24,6 @@ if(!Array.isArray(site.registry))throw new Error('Invalid published Scope regist
 console.log('[public] Source: primary');
 const routes=site.registry.filter(x=>x.active!==false&&x.scope_kind!=='system');
 if(!routes.length||routes.some(x=>!validScope.test(x.scope_id)))throw Error('Invalid public Scope list');
-// Publish typed SiteAnchor nodes; neither LOC nor Scope ArticleTag is needed.
-const sourceRows=await db.selectFrom(table('loc_anchor'))
-  .select(['uid','type','title','invisible','attr'])
-  .where('type','in',['universe','galaxy','domain','from'])
-  .orderBy('uid','asc').limit(1000).execute();
-if(!sourceRows.length||sourceRows.length>=1000)
-  throw Error('Cannot publish LOC SiteAnchor source hierarchy');
-const sourceTaxonomy=sourceTaxonomyFromAnchors(sourceRows);
-if(!sourceTaxonomy.categories.length)
-  throw Error('LOC SiteAnchor source hierarchy has no typed categories');
-
 // Route configuration remains part of the existing publication contract.
 const routeConfigs=[];
 const tableForScope=id=>table(id);
@@ -70,9 +58,8 @@ const bootstrap={scope_id:'loc',page_name:'index',registry:site.registry,
   theme_list:themeMeta,themes:[],blocks:[]};
 const entries=[
   ['app/modular/routing/scope-route-index.js','// PUBLIC Scope routing + Config; explicit publication only.\nexport const SCOPE_ROUTE_INDEX=Object.freeze('+encode(routeConfigs)+');\n'],
-  ['app/modular/published-source-taxonomy.js', "// Public SiteAnchor source hierarchy, projected from persisted Anchor types.\nimport {sourceTaxonomyFromAnchors} from '../loc/source/classification.mjs';\nexport const PUBLISHED_SOURCE_ANCHORS=Object.freeze("+encode(sourceRows)+");\nconst taxonomy=Object.freeze(sourceTaxonomyFromAnchors(PUBLISHED_SOURCE_ANCHORS));\nexport const publishedSourceTaxonomy=()=>taxonomy;\nexport const publishedSourceCategoryCatalog=()=>({categories:taxonomy.categories,aliases:taxonomy.aliases});\n"],
   ...themes.map(t=>['app/modular/themes/theme-'+t.theme_id+'.json',JSON.stringify(t,null,2)+'\n']),
-  ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata; theme palettes are loaded by selected ID only.\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze({...'+encode(bootstrap)+',themes:[]});\n'],
+  ['app/modular/published-site-bootstrap.js','// PUBLIC navigation metadata; theme palettes are loaded by selected ID only.\nexport const PUBLISHED_SITE_BOOTSTRAP=Object.freeze('+encode(bootstrap)+');\n'],
   ['app/modular/published-theme-meta.js','// Published Theme metadata (palettes are CSS).\nexport const PUBLISHED_THEME_META='+encode(themes.map(t=>['theme-'+t.theme_id,t.theme_name,t.scheme,t.style_key]))+';\n'],
   ...palettes.map(({id,css})=>[
     'public/themes/theme-'+id+'.css',
