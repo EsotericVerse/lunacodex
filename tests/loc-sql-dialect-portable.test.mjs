@@ -40,7 +40,7 @@ test('PostgreSQL UPSERT continues to use row-specific EXCLUDED values',()=>{
 
 test('SQL Types expose independent parameter, row, byte and stream budgets',()=>{
   assert.equal(POSTGRES_SQL_TYPE.streamStrategy,'pg-cursor');
-  assert.equal(MYSQL_SQL_TYPE.streamStrategy,'mysql2-readable');
+  assert.equal(MYSQL_SQL_TYPE.streamStrategy,'mysql2-readable-row');
   assert.equal(MSSQL_SQL_TYPE.streamStrategy,'tedious-request');
   assert.equal(getSqlRuntimeCapabilities('postgres').streaming.chunkRows,256);
   assert.equal(getSqlRuntimeCapabilities('mysql').streaming.chunkRows,1);
@@ -118,6 +118,9 @@ test('portable INSERT planner applies SQL Type limits, UTF-8 bytes and preserves
   assert.deepEqual(mssqlBatches.flat(),rows);
   const bounded=planPortableInsertBatches(rows,'mysql',{maxBytes:40});
   assert.ok(bounded.every(batch=>batch.length===1));
+  assert.equal(planPortableInsertBatches([{uid:'BIGG0001',num:2n}],'mssql').length,1);
+  assert.equal(planKyselyUpsertBatches([{uid:'BIGG0001',num:2n}],'uid',
+    {dialect:'postgres'}).length,1);
 });
 
 test('PostgreSQL SELECT streaming reads bounded cursor chunks and validates rows',async()=>{
