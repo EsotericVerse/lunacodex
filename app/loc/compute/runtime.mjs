@@ -1,6 +1,42 @@
 import {sql} from 'kysely';
-import {getCloudflareContext} from '@opennextjs/cloudflare';
 import {COMPUTE_PROTOCOL,COMPUTE_MAX_BYTES,COMPUTE_KINDS,COMPUTE_MIN_ROWS,byteLength} from './contract.mjs';
+
+// Vercel injects an absolute private Service Binding URL. Keep the transport
+// adapter here so the compute engine and its payload contract remain shared
+// with Cloudflare's Durable Object Container.
+function normalizedServiceBase(value){
+  try{
+    const url=new URL(String(value||'').trim());
+    if(!['http:','https:'].includes(url.protocol)||!url.hostname||
+      url.username||url.password||url.search||url.hash)return null;
+    url.pathname=url.pathname.endsWith('/')?url.pathname:url.pathname+'/';
+    return url;
+  }catch{return null;}
+}
+export function createComputeBinding({serviceUrl='',cloudflareBinding=null,
+  fetcher=globalThis.fetch}={}){
+  const base=normalizedServiceBase(serviceUrl);
+  if(base&&typeof fetcher==='function'){
+    return Object.freeze({
+      provider:'service',
+      fetch(path,init){
+        const relative=String(path||'').replace(/^\\/+/, '');
+        return fetcher(new URL(relative,base),init);
+      }
+    });
+  }
+  if(cloudflareBinding&&typeof cloudflareBinding.getByName==='function'){
+    return Object.freeze({
+      provider:'cloudflare',
+      fetch(path,init){
+        const relative=String(path||'').replace(/^\\/+/, '');
+        return cloudflareBinding.getByName('loc-compute')
+          .fetch('http://loc-compute/'+relative,init);
+      }
+    });
+  }
+  return null;
+}
 
 // Same existing runtime JSON settings envelope as Hyperdrive.
 export async function readLocContainerMode(db){
@@ -20,10 +56,13 @@ export async function writeLocContainerMode(db,enabled){
   if(result.rows?.length!==1)throw Error('LOC Container mode unavailable');
   return enabled;
 }
-export async function containerBinding(){
+export async function containerBinding(env=process.env){
+  const service=createComputeBinding({serviceUrl:env?.LOC_COMPUTE_URL});
+  if(service)return service;
   try{
-    const env=(await getCloudflareContext({async:true}))?.env;
-    return env?.LOC_COMPUTE||null;
+    const {getCloudflareContext}=await import('@opennextjs/cloudflare');
+    const cloudflareEnv=(await getCloudflareContext({async:true}))?.env;
+    return createComputeBinding({cloudflareBinding:cloudflareEnv?.LOC_COMPUTE});
   }catch{return null;}
 }
 export async function containerMode(db){
@@ -32,7 +71,7 @@ export async function containerMode(db){
 export async function probeContainer(binding){
   if(!binding)return false;
   try{
-    const response=await binding.getByName('loc-compute').fetch('http://loc-compute/health',
+    const response=await binding.fetch('/health',
       {signal:AbortSignal.timeout(30000)});
     return response.ok&&(await response.text())===COMPUTE_PROTOCOL;
   }catch{return false;}
@@ -46,7 +85,7 @@ export async function computeClient(db){
     const body=JSON.stringify({protocol:COMPUTE_PROTOCOL,kind,payload});
     if(new TextEncoder().encode(body).byteLength>COMPUTE_MAX_BYTES)return null;
     try{
-      const response=await binding.getByName('loc-compute').fetch('http://loc-compute/compute',{
+      const response=await binding.fetch('/compute',{
         method:'POST',headers:{'content-type':'application/json'},body,
         signal:AbortSignal.timeout(45000)
       });
