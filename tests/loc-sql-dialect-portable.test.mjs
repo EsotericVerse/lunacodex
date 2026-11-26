@@ -43,7 +43,9 @@ test('SQL Types expose independent parameter, row, byte and stream budgets',()=>
   assert.equal(MYSQL_SQL_TYPE.streamStrategy,'mysql2-readable');
   assert.equal(MSSQL_SQL_TYPE.streamStrategy,'tedious-request');
   assert.equal(getSqlRuntimeCapabilities('postgres').streaming.chunkRows,256);
+  assert.equal(getSqlRuntimeCapabilities('mysql').streaming.chunkRows,1);
   assert.equal(getSqlRuntimeCapabilities('mysql').insertMaxRows,1000);
+  assert.equal(getSqlRuntimeCapabilities('mssql').streaming.chunkRows,256);
   assert.equal(getSqlRuntimeCapabilities('mssql').upsertParameterLimit,1900);
 });
 
