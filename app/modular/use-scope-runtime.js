@@ -5,9 +5,10 @@ import {usePathname} from 'next/navigation';
 import {getScope,isKnownScope,normalizeScopeId,resolveScope} from './routing/scope-registry';
 import {PUBLISHED_SITE_BOOTSTRAP} from './published-site-bootstrap.js';
 import {SCOPE_ROUTE_INDEX} from './routing/scope-route-index.js';
+import {selectScopeConfig} from '../loc/scope/scope-data';
 
-// Routing and the public Scope configuration are immutable release metadata.
-// They never require a page Bootstrap, SQL lookup, React fetch effect or TTL.
+// Routing and feature availability are release metadata. Editable copy and
+// Scope config fields are loaded from the live SQL projection.
 const registryByScope=new Map((PUBLISHED_SITE_BOOTSTRAP.registry||[])
   .filter(row=>row.active!==false).map(row=>[row.scope_id,row]));
 const configByScope=new Map(SCOPE_ROUTE_INDEX
@@ -58,12 +59,34 @@ export function useScopeRuntime(){
   const configEnabled=Boolean(scopeId&&scopeId!=='admin'&&
     !base.aggregateChildren&&(!dynamic||activeRegistryRow?.scope_kind==='scope'));
   const publishedConfig=configByScope.get(scopeId);
+  const [liveConfig,setLiveConfig]=useState({scopeId:'',row:null});
+  useEffect(()=>{
+    if(!configEnabled||publishedConfig?.id!==scopeId){
+      setLiveConfig({scopeId:'',row:null});
+      return undefined;
+    }
+    let active=true;
+    const load=()=>{
+      void selectScopeConfig(scopeId).then(row=>{
+        if(active)setLiveConfig({scopeId,row:row||null});
+      }).catch(()=>{
+        if(active)setLiveConfig({scopeId,row:null});
+      });
+    };
+    load();
+    window.addEventListener('loc-public-scope-metadata-changed',load);
+    return()=>{
+      active=false;
+      window.removeEventListener('loc-public-scope-metadata-changed',load);
+    };
+  },[scopeId,configEnabled,publishedConfig?.id]);
   const activeConfigRow=configEnabled&&publishedConfig?.id===scopeId
-    ?publishedConfig:null;
+    ?{...publishedConfig,...(liveConfig.scopeId===scopeId?liveConfig.row||{}:{})}
+    :null;
   const structural=activeRegistryRow?{
     ...base,
-    label:activeRegistryRow.display_name||scopeId,
-    searchTitle:activeRegistryRow.display_name||scopeId,
+    label:scopeId,
+    searchTitle:scopeId,
     aggregateChildren:activeRegistryRow.scope_kind==='group',
     registry:activeRegistryRow
   }:base;

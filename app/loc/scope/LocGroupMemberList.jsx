@@ -36,20 +36,24 @@ export default function LocGroupMemberList({groupId='loc'}){
     if(!allowed||busy||query.isPending||query.error)return false;
     if(!edited.length)return true;
     setBusy(true);setNotice('');
+    let homeCacheWarning=false;
     try{
       for(const row of edited){
         const name=String(draft[row.id]||'').trim();
         if(!name||name.length>120)throw new Error('人員名稱須為 1–120 字。');
-        const {data,error}=await dbAuthClient.schema('silver').managedAction('update_group_member_name',{
+        const {data,error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('update_group_member_name',{
           p_group_id:groupId,p_member_id:row.id,p_display_name:name
         });
         if(error||data!==true)throw new Error(error?.message||row.id+' 無法儲存。');
+        if(homeCacheSync===false)homeCacheWarning=true;
       }
       setDraft({});
       invalidateCachedRead(groupMemberCacheKey);
       invalidatePublicScopeMetadata();
       await query.refetch();
-      setNotice('群組人員資料已更新。');
+      setNotice(homeCacheWarning
+        ?'SQL 已儲存；R2 首頁副本未重建，目前會回讀 SQL。'
+        :'群組人員資料已更新。');
       return true;
     }catch(error){setNotice(String(error?.message||error));return false;}
     finally{setBusy(false);}

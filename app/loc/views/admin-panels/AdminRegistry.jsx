@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 11279)
+Total output lines: 806
+
 'use client';
 import {lazy,Suspense} from 'react';
 import UiText from '../../../i18n/UiText';
@@ -398,9 +401,10 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
     setStatus('');
     return {
       operations:[...registryDraftWrites(),...mappingDraftWrites()],
-      afterCommit:()=>{
+      afterCommit:({homeCacheSync}={})=>{
         setNewMapping({...EMPTY_MAPPING});
-        setStatus(current.scope_id+' 已更新。');
+        setStatus(current.scope_id+' 已更新。'+(homeCacheSync===false
+          ?' R2 首頁副本未重建，頁面目前會回讀 SQL。':''));
         setEditDraft(null);
         refresh();
       },
@@ -409,110 +413,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
   }
   async function commitRegistryDraft({includeMappings=false}={}){
     if(!selected||!current)return false;
-    setStatus('');
-    let committed=false;
-    try{
-      const operations=[...registryDraftWrites(),
-        ...(includeMappings?mappingDraftWrites():[])];
-      if(operations.length)await transactionWrites(operations);
-      committed=true;
-      if(includeMappings)setNewMapping({...EMPTY_MAPPING});
-      setStatus(current.scope_id+' 已更新。');
-      setEditDraft(null);
-      refresh();
-      return true;
-    }catch(error){
-      if(committed){
-        setStatus('資料已提交，但管理畫面刷新失敗；請重新讀取。');
-        return true;
-      }
-      setStatus(error?.message||'管理設定儲存失敗。');
-      return false;
-    }
-  }
-  async function saveRegistryAndConfig(){
-    if(!draftDirty)return true;
-    return commitRegistryDraft();
-  }
-
-  async function saveMapping(row){
-    setStatus('');
-    try{
-      const email=String(row.email||'').trim().toLowerCase();
-      if(!/^\S+@\S+\.\S+$/.test(email))throw new Error('Email 格式不正確。');
-      await updateRows('api.manage',{
-        email,
-        galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
-        anchor_table:String(row.anchor||'anchor').trim()||'anchor'
-      },{filters:[{column:'id',operator:'eq',value:row.id}]});
-      setStatus('Mapping 已更新。');refresh();return true;
-    }catch(error){setStatus(error?.message||'Mapping 更新失敗。');return false;}
-  }
-
-  async function removeMapping(row){
-    if(['admin','loc'].includes(row.id)){
-      setStatus('內建系統與群組身分不能移除；請修改 Email。');return;
-    }
-    if(!window.confirm('移除 '+row.email+'？'))return;
-    try{
-      await updateRows('api.manage',{
-        email:null,manage_role:null
-      },{filters:[{column:'id',operator:'eq',value:row.id}]});
-      setStatus('Mapping 已移除。');refresh();
-    }catch(error){setStatus(error?.message||'Mapping 刪除失敗。');}
-  }
-
-  async function addMapping(){
-    if(!selected||selected.scope_kind!=='scope')return false;
-    setStatus('');
-    try{
-      const email=String(newMapping.email||'').trim().toLowerCase();
-      if(!/^\S+@\S+\.\S+$/.test(email))throw new Error('Email 格式不正確。');
-      await updateRows('api.manage',{
-        email:email,manage_role:'scope',
-        galaxy_table:String(newMapping.galaxy||'galaxy').trim()||'galaxy',
-        anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor'
-      },{filters:[{column:'id',operator:'eq',value:selected.scope_id}]});
-      setNewMapping({...EMPTY_MAPPING});setStatus('Mapping 已新增。');refresh();return true;
-    }catch(error){setStatus(error?.message||'Mapping 新增失敗。');return false;}
-  }
-
-  const editedMappings=scopeMappings.filter(row=>JSON.stringify(row)!==
-    JSON.stringify(originalMappings.find(old=>old.id===row.id)));
-  const draftDirty=Boolean(currentDraft&&(
-    JSON.stringify(currentDraft.registry)!==JSON.stringify(selected)||
-    (currentDraft.config!==null&&JSON.stringify(currentDraft.config)!==JSON.stringify(config))
-  ));
-  const newMappingDirty=JSON.stringify(newMapping)!==JSON.stringify(EMPTY_MAPPING);
-  useEffect(()=>{
-    dirtyRef.current=()=>Boolean(draftDirty||editedMappings.length||newMappingDirty);
-    return ()=>{dirtyRef.current=()=>false;};
-  },[dirtyRef,draftDirty,editedMappings.length,newMappingDirty]);
-  useEditDockForm({
-    isDirty:()=>Boolean(draftDirty||editedMappings.length||newMappingDirty),
-    // A single six-key Save can touch all three physical management tables.
-    // No individual mapping or configuration request can partially commit.
-    save:()=>commitRegistryDraft({includeMappings:true}),
-    prepareTransaction:prepareRegistryTransaction
-  });
-
-  if(!selected)return <aside className="admin-context-panel"><p className="scope-status">請選擇人員或群組</p></aside>;
-
-  return <aside className="admin-context-panel is-editing">
-    <div className="admin-node-heading">
-      <h2>{currentConfig?.display_name||current?.display_name||selected.scope_id}</h2>
-      {draftDirty?<span className="scope-status">有尚未儲存的修改</span>:null}
-    </div>
-      {current.scope_kind==='group'?<label><span><UiText id="uiExtra.adminView.groupName"/></span><input value={current.display_name||''} onChange={e=>patchRegistry('display_name',e.target.value)}/></label>:null}
-      {current.scope_kind!=='system'?<section className="admin-page-copy-fields" aria-label="群組與 Scope 設定">
-        <label><span><UiText id="uiExtra.adminView.navigationTitle"/></span>
-          <input required value={current.title_tw||''} onChange={e=>patchRegistry('title_tw',e.target.value)}/></label>
-        <ObjectEditor mode="fields" fields={[
-          {key:'desc_tw',kind:'rich',label:<UiText id="uiExtra.adminView.pageDescription"/>,
-            editorKey:'admin-page-description:'+selectedId,content:current.desc_tw||'',
-            canInsertImage:false,onPlainTextChange:value=>patchRegistry('desc_tw',value)}
-        ]}/>
-        <label><span><UiText id="uiExtra.adminView.birthdayMapping"/></span>
+    setStatu…1279 tokens truncated…w.birthdayMapping"/></span>
           <input type="date" value={current.birthday||''} onChange={e=>patchRegistry('birthday',e.target.value)}/></label>
       </section>:null}
       {current.scope_kind==='scope'&&currentConfig?<>

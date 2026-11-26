@@ -124,7 +124,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       return item;
     });
     assertEditorTransactionLease(lease);
-    const {data,error}=await authClient.schema('silver').managedTransaction(normalized);
+    const {data,error,homeCacheSync}=await authClient.schema('silver').managedTransaction(normalized);
     assertEditorTransactionLease(lease);
     if(error)throw new Error(error.message||'LOC transaction failed');
     if(!Array.isArray(data?.results)||data.results.length!==normalized.length)
@@ -134,7 +134,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
       const scopeFilter=(item.p_filters||[]).find(filter=>filter?.column==='id');
       invalidateRelevantAuthorization(scopeFilter?.value,item.p_values?.email);
     }
-    return data;
+    return homeCacheSync===false?{...data,home_cache_sync:false}:data;
   }
 
   async function managementWriteUnchecked(payload,{normalizedGalaxy=false}={}){
@@ -533,11 +533,12 @@ export function createDatabaseClient({publicClient,authClient,auth}){
         if(!canAuthorizeLocAccess('group','loc'))throw new Error('LOC 群組首頁編輯權限不足。');
       }
     }else preflightWrite(scope==='loc'?'silver.loc_anchor':'silver.'+scope+'_blocks');
-    const {data,error}=await authClient.schema('silver').managedAction('move_scope_block',{
+    const {data,error,homeCacheSync}=await authClient.schema('silver').managedAction('move_scope_block',{
       p_scope_id:scope,p_page_name:normalizedPage,p_uid:blockUid,p_direction:direction
     });
     if(error)throw new Error(error.message||'區塊移動失敗');
-    return data||{};
+    return homeCacheSync===false&&data&&typeof data==='object'
+      ?{...data,home_cache_sync:false}:data||{};
   }
 
   async function deleteScopeUnchecked(scopeId){

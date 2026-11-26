@@ -5,6 +5,11 @@ import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
 import {publicScopeBlockPage} from '../../blocks/public-scope-pages.mjs';
 import {FEATURE_HERO_IDS,MANAGEMENT_HERO_SLOTS} from '../../blocks/home-block-model.js';
+import {readPublicHomePageCopySql} from '../../blocks/public-home-sql.mjs';
+import {PUBLIC_HOME_PAGE_COPY_KEY,publicHomeBucket,
+  publicScopeBlocksKey,readPublicHomeObject,validPublicHomeBlockRows,
+  validPublicHomePageCopy,writePublicHomeObject}
+  from '../../blocks/public-home-r2.mjs';
 
 const heroPages=new Set([
   'search',
@@ -22,6 +27,63 @@ const scopeId=value=>{
   return scope;
 };
 
+async function publicBlockList(scope,page){
+  const key=publicScopeBlocksKey(scope,page);
+  const bucket=await publicHomeBucket();
+  if(bucket&&key){
+    const allowedPages=scope==='loc'?new Set(['index','governance']):new Set([page]);
+    const cached=await readPublicHomeObject(bucket,key,value=>
+      validPublicHomeBlockRows(value)&&value.every(row=>allowedPages.has(row.page_name)));
+    if(cached.hit)return cached.value;
+  }
+  const result=await withPublicLocRead({scope},async(db,port)=>
+    block_list(db,scope,{engine:port.engine,namespace:port.namespace,pageName:page}));
+  if(bucket&&key)await writePublicHomeObject(bucket,key,result);
+  return result;
+}
+
+function sortHeroRows(rows,types){
+  return rows.sort((a,b)=>types.indexOf(a.page_name)-types.indexOf(b.page_name)||
+    (Number(a.block_order)||0)-(Number(b.block_order)||0));
+}
+
+async function publicHeroBlocks(types,{authorized=false,scope='loc'}={}){
+  const bucket=await publicHomeBucket();
+  const cachedByType=new Map();
+  const readCache=async()=>{
+    if(!bucket)return;
+    for(const type of types){
+      const key=publicScopeBlocksKey('loc',type);
+      if(!key)continue;
+      const cached=await readPublicHomeObject(bucket,key,value=>
+        validPublicHomeBlockRows(value)&&value.every(row=>row.page_name===type));
+      if(cached.hit)cachedByType.set(type,cached.value);
+    }
+  };
+  const read=async(db,port,missing)=>{
+    const rows=await hero_block(db,missing,{engine:port.engine,
+      namespace:port.namespace});
+    for(const type of missing){
+      const pageRows=rows.filter(row=>row.page_name===type);
+      cachedByType.set(type,pageRows);
+      const key=publicScopeBlocksKey('loc',type);
+      if(bucket&&key)await writePublicHomeObject(bucket,key,pageRows);
+    }
+    return sortHeroRows(types.flatMap(type=>cachedByType.get(type)||[]),types);
+  };
+  if(authorized)return withAuthorizedLocRead({scope},async(db,port)=>{
+    await readCache();
+    const missing=types.filter(type=>!cachedByType.has(type));
+    return missing.length?read(db,port,missing):
+      sortHeroRows(types.flatMap(type=>cachedByType.get(type)||[]),types);
+  });
+  await readCache();
+  const missing=types.filter(type=>!cachedByType.has(type));
+  if(!missing.length)
+    return sortHeroRows(types.flatMap(type=>cachedByType.get(type)||[]),types);
+  return withPublicLocRead({scope},(db,port)=>read(db,port,missing));
+}
+
 export async function queryBlocks(name,args={}){
   if(!['block_list','hero_block'].includes(name)||!args||
     typeof args!=='object'||Array.isArray(args))
@@ -32,22 +94,31 @@ export async function queryBlocks(name,args={}){
     const scope=scopeId(args.p_scope_id);
     const page=publicScopeBlockPage(args.p_page_name);
     if(!page||scope==='loc'&&page!=='index')throw Error('Invalid Block page');
-    return withPublicLocRead({scope},async(db,port)=>({
-      data:await block_list(db,scope,{engine:port.engine,
-        namespace:port.namespace,pageName:page}),count:null
-    }));
+    return {data:await publicBlockList(scope,page),count:null};
   }
   if(Object.keys(args).some(key=>key!=='p_type'))throw Error('Invalid Hero request');
   const types=Array.isArray(args.p_type)?args.p_type:[args.p_type];
   if(!validHeroTypes(types))
     throw Error('Invalid Hero type');
-  const read=async(db,port)=>({
-    data:await hero_block(db,types,{engine:port.engine,namespace:port.namespace}),
-    count:null
+  return {data:await publicHeroBlocks(types,{scope:'loc',
+    authorized:types.some(type=>managementHeroPages.has(type))}),count:null};
+}
+
+// Mutable homepage copy is a private R2-backed server projection with a
+// fixed, public SQL fallback. It is never embedded in deployed browser JS.
+export async function readPublicHomePageCopy(){
+  const bucket=await publicHomeBucket();
+  if(bucket){
+    const cached=await readPublicHomeObject(bucket,PUBLIC_HOME_PAGE_COPY_KEY,
+      validPublicHomePageCopy);
+    if(cached.hit)return {data:cached.value,count:null};
+  }
+  return withPublicLocRead({scope:'loc'},async(db,port)=>{
+    const rows=await readPublicHomePageCopySql(db,{engine:port.engine,
+      namespace:port.namespace});
+    if(bucket)await writePublicHomeObject(bucket,PUBLIC_HOME_PAGE_COPY_KEY,rows);
+    return {data:rows,count:null};
   });
-  return types.some(type=>managementHeroPages.has(type))
-    ?withAuthorizedLocRead({scope:'loc'},read)
-    :withPublicLocRead({scope:'loc'},read);
 }
 
 export async function queryBlockContent(searchParams){
@@ -62,19 +133,11 @@ export async function queryBlockContent(searchParams){
     const types=feature?feature.split(','):[];
     if(scope!=='loc'||!validHeroTypes(types))
       throw Error('Invalid Hero content request');
-    const read=async(db,port)=>({
-      data:await hero_block(db,types,{engine:port.engine,namespace:port.namespace}),
-      count:null
-    });
-    return types.some(type=>managementHeroPages.has(type))
-      ?withAuthorizedLocRead({scope},read)
-      :withPublicLocRead({scope},read);
+    return {data:await publicHeroBlocks(types,{scope,
+      authorized:types.some(type=>managementHeroPages.has(type))}),count:null};
   }
   if(feature)throw Error('Unexpected Block feature');
-  if(kind==='block_list')return withPublicLocRead({scope},async(db,port)=>({
-    data:await block_list(db,scope,{engine:port.engine,
-      namespace:port.namespace,pageName:'index'}),count:null
-  }));
+  if(kind==='block_list')return {data:await publicBlockList(scope,'index'),count:null};
   return withPublicLocRead({scope},async(db,port)=>{
     const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
     const table=portableRelation(scope,port.engine,

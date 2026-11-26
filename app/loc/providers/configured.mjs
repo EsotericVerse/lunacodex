@@ -129,7 +129,8 @@ export function createConfiguredAdapter({
         invalidateScopedReadCache('silver.'+scope+'_blocks');
       }
     }
-    return {data:result?.data??null,error:null};
+    return {data:result?.data??null,error:null,
+      homeCacheSync:result?.home_cache_sync};
   };
   const managedTransaction=async operations=>{
     let result;
@@ -142,7 +143,8 @@ export function createConfiguredAdapter({
     }
     // A verified response confirms COMMIT; a rejected batch is not replayed.
     for(const item of operations)invalidateScopedReadCache(item?.p_table);
-    return {data:result?.data,error:null};
+    return {data:result?.data,error:null,
+      homeCacheSync:result?.home_cache_sync};
   };
   const managedWrite=async payload=>{
     const result=await operation('managed-write','',{payload});
