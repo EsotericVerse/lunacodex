@@ -40,7 +40,9 @@ function touch(key,entry){
   }
 }
 function subscribe(entry,signal){
-  if(signal?.aborted)return Promise.reject(abortError(signal));
+  const sources=[signal,entry.controller.signal].filter(Boolean);
+  const stopped=sources.find(source=>source.aborted);
+  if(stopped)return Promise.reject(abortError(stopped));
   entry.consumers++;
   let released=false;
   const release=()=>{
@@ -52,15 +54,19 @@ function subscribe(entry,signal){
       entry.controller.abort();
     }
   };
-  if(!signal)return entry.promise.finally(release);
-  let onAbort;
+  if(!sources.length)return entry.promise.finally(release);
+  const handlers=new Map();
   const aborted=new Promise((_,reject)=>{
-    onAbort=()=>reject(abortError(signal));
-    signal.addEventListener('abort',onAbort,{once:true});
-    if(signal.aborted)onAbort();
+    for(const source of sources){
+      const handler=()=>reject(abortError(source));
+      handlers.set(source,handler);
+      source.addEventListener('abort',handler,{once:true});
+      if(source.aborted)handler();
+    }
   });
   return Promise.race([entry.promise,aborted]).finally(()=>{
-    signal.removeEventListener('abort',onAbort);
+    for(const [source,handler] of handlers)
+      source.removeEventListener('abort',handler);
     release();
   });
 }
