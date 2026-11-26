@@ -93,6 +93,11 @@ test('UPSERT planner respects the selected SQL Type bind ceiling and preserves d
   }));
   const pg=planKyselyUpsertBatches(wideRows,'uid',{dialect:'postgres'});
   const ms=planKyselyUpsertBatches(wideRows,'uid',{dialect:'mssql'});
+  const my=planKyselyUpsertBatches(wideRows,'uid',{dialect:'mysql'});
+  const mssqlCaseWidth=99*2+1;
+  const mysqlCaseWidth=99*2+1;
+  assert.ok(ms.every(batch=>batch.length*mssqlCaseWidth<=MSSQL_SQL_TYPE.upsertParameterLimit));
+  assert.ok(my.every(batch=>batch.length*mysqlCaseWidth<=MYSQL_SQL_TYPE.upsertParameterLimit));
   assert.ok(ms.length>pg.length);
   const duplicate=planKyselyUpsertBatches([
     {uid:'AAAA0001',title:'one'},
