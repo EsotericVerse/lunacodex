@@ -196,43 +196,25 @@ export async function executeKyselySelectStream(trx,input,{
       signal?{signal}:undefined)).count):null;
   const data=(async function*(){
     if(!built.query)return;
-    // Kysely's stream AbortSignal stops the consumer before a pending
-    // pg-cursor read has completed. Keep cancellation at this feature-owned
-    // iterator boundary instead: request return immediately, wait for the
-    // current read to settle, then close the cursor and release its client.
-    const source=built.query.stream({chunkSize:size})[Symbol.asyncIterator]();
+    // Kysely owns cancellation and connection release. Its stream signal
+    // rejects the consumer promptly, then waits for the in-flight cursor read
+    // to settle before closing the portal and releasing the connection.
+    const options=signal?{chunkSize:size,signal}:{chunkSize:size};
     let batch=[];
-    const abortError=()=>signal?.reason instanceof Error?signal.reason:
-      Object.assign(new Error('PostgreSQL query aborted'),{name:'AbortError'});
-    const abort=()=>{
-      try{void Promise.resolve(source.return?.()).catch(()=>{});}
-      catch{/* The query's original AbortError remains authoritative. */}
+    const flush=()=>{
+      if(!batch.length)return [];
+      const rows=batch;
+      batch=[];
+      return assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
+        normalizeModeledSelectRows({schema:req.schema,table:req.table,rows}));
     };
-    signal?.addEventListener('abort',abort,{once:true});
-    if(signal?.aborted)abort();
-    try{
-      for(;;){
-        const next=await source.next();
-        if(signal?.aborted)throw abortError();
-        if(next.done)break;
-        batch.push(next.value);
-        if(batch.length>=size){
-          const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
-            normalizeModeledSelectRows({schema:req.schema,table:req.table,rows:batch}));
-          batch=[];
-          for(const item of checked)yield item;
-        }
+    for await(const row of built.query.stream(options)){
+      batch.push(row);
+      if(batch.length>=size){
+        for(const item of flush())yield item;
       }
-      if(batch.length){
-        const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
-          normalizeModeledSelectRows({schema:req.schema,table:req.table,rows:batch}));
-        for(const item of checked)yield item;
-      }
-    }finally{
-      signal?.removeEventListener('abort',abort);
-      try{await source.return?.();}
-      catch(error){if(!signal?.aborted)throw error;}
     }
+    for(const item of flush())yield item;
   })();
   return {data,count};
 }
