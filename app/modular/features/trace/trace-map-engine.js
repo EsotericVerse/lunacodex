@@ -1,5 +1,5 @@
 import {spaceCoordinates} from './space-graph.mjs';
-import {territoryColors} from '../../visual-palette.mjs';
+import {territoryColorExpression} from '../../visual-palette.mjs';
 // First-party React Trace loads MapLibre from the project's pinned npm package.
 // Public sample anchors are isolated from Galaxy. Deliberate place-search terms
 // go only to the chosen geocoding service; map tiles do not receive article bodies
@@ -121,19 +121,17 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let removed=false;
   let loaded=false;
   let themeObserver=null;
-  const densityColors=()=>{
+  const densityColorExpression=()=>{
     const css=getComputedStyle(container);
-    return territoryColors(css.getPropertyValue('--loc-accent'),css.getPropertyValue('--loc-gold'));
+    return territoryColorExpression(css.getPropertyValue('--loc-accent'),css.getPropertyValue('--loc-gold'));
   };
-  const territoryColorExpression=colors=>['interpolate',['linear'],['get','territoryTotal'],
-    0,colors[0],3,colors[1],10,colors[2],30,colors[3],100,colors[4]];
   const applyDensityTheme=()=>{
     if(!loaded||removed||!territoryMode)return;
-    const colors=densityColors();
+    const colors=densityColorExpression();
     if(map.getLayer('loc-trace-territory-halo'))
-      map.setPaintProperty('loc-trace-territory-halo','circle-color',territoryColorExpression(colors));
+      map.setPaintProperty('loc-trace-territory-halo','circle-color',colors);
     if(map.getLayer('loc-trace-saved-point-layer'))
-      map.setPaintProperty('loc-trace-saved-point-layer','circle-color',territoryColorExpression(colors));
+      map.setPaintProperty('loc-trace-saved-point-layer','circle-color',colors);
   };
   let routeActive=false;
   let routeLoading=false;
@@ -429,7 +427,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(territoryMode)map.addLayer({id:'loc-trace-territory-halo',type:'circle',
       source:'loc-trace-saved-anchors',paint:{
         'circle-radius':['step',['get','territoryTotal'],15,3,22,10,32,30,43,100,55],
-        'circle-color':territoryColorExpression(densityColors()),
+        'circle-color':densityColorExpression(),
         'circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.16,3,.25,10,.34,30,.43,100,.52],
         'circle-blur':.28,
         'circle-stroke-width':1.5,'circle-stroke-color':'#263542','circle-stroke-opacity':.55,
@@ -438,7 +436,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     map.addLayer({id:'loc-trace-saved-point-layer',type:'circle',source:'loc-trace-saved-anchors',
       paint:territoryMode?{
         'circle-radius':['step',['get','territoryTotal'],8,3,12,10,17,30,23,100,29],
-        'circle-color':territoryColorExpression(densityColors()),
+        'circle-color':densityColorExpression(),
         'circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.82,10,.94,100,1],
         'circle-stroke-width':2.5,'circle-stroke-color':'#263542',
         'circle-pitch-alignment':'viewport','circle-pitch-scale':'viewport'

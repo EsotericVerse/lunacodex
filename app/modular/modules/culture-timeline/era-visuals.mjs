@@ -39,3 +39,18 @@ export function paintCultureRows(rows,visuals){
       style:(row.style||'')+';--culture-era-color:'+color+';'};
   }).concat(visuals.backgrounds);
 }
+
+// CSS-only collapsed overview: same real Era ranges, clipped to its window.
+export function eraVisualGradient(eraRows,start,end){
+  const from=Date.parse(day(start)),until=Date.parse(day(end));
+  if(!Number.isFinite(from)||!Number.isFinite(until)||until<=from)return undefined;
+  const percentage=ms=>((ms-from)/(until-from)*100).toFixed(5)+'%';
+  const layers=[];
+  for(const band of cultureEraVisuals(eraRows).backgrounds){
+    const left=Math.max(from,Date.parse(band.start)),right=Math.min(until,Date.parse(band.end));
+    if(right<=left)continue;
+    const tint='color-mix(in srgb, '+band.style.slice('--culture-era-color:'.length,-1)+' 22%, transparent)';
+    layers.push('linear-gradient(to right, transparent '+percentage(left)+', '+tint+' '+percentage(left)+', '+tint+' '+percentage(right)+', transparent '+percentage(right)+')');
+  }
+  return layers.length?layers.join(', '):undefined;
+}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {visualColor,visualKeyColor,territoryColors} from '../app/modular/visual-palette.mjs';
-import {cultureEraVisuals,paintCultureRows} from '../app/modular/modules/culture-timeline/era-visuals.mjs';
+import {visualColor,visualKeyColor,territoryColors,TERRITORY_STOPS,territoryLegendColor,territoryColorExpression} from '../app/modular/visual-palette.mjs';
+import {cultureEraVisuals,paintCultureRows,eraVisualGradient} from '../app/modular/modules/culture-timeline/era-visuals.mjs';
 
 test('theme-derived palette preserves distinct hues and stable lane identity',()=>{
   assert.equal(new Set(Array.from({length:8},(_,i)=>visualColor(i))).size,8);
@@ -30,4 +30,25 @@ test('Era backgrounds keep real segments, stable colors, gaps and read-only sema
   assert.match(painted[0].className,/scope-era-period/);
   assert.strictEqual(painted[1],anchor);
   assert.equal(painted.length,5);
+});
+
+test('collapsed Era gradient clips intervals and leaves gaps unpainted',()=>{
+  const a={uid:'era00001',scope_id:'scope',entry_type:'era',group_order:0};
+  const records=[{...a,start_date:'2025-01-01',end_date:'2025-01-11'},
+    {...a,start_date:'2025-01-21',end_date:'2025-02-01'}];
+  const css=eraVisualGradient(records,'2025-01-06','2025-01-26');
+  assert.equal((css.match(/linear-gradient/g)||[]).length,2);
+  assert.match(css,/transparent 0\.00000%/);
+  assert.match(css,/transparent 25\.00000%/);
+  assert.match(css,/transparent 75\.00000%/);
+  assert.match(css,/transparent 100\.00000%/);
+  assert.equal(eraVisualGradient(records,'2026-01-01','2026-02-01'),undefined);
+  assert.equal(eraVisualGradient(records,'2025-01-06','2025-01-06'),undefined);
+});
+test('territory legend and map use the same fixed article-count stops',()=>{
+  const stops=territoryColorExpression('#124987','#986c23');
+  assert.deepEqual(stops.slice(3).filter((_,i)=>i%2===0),TERRITORY_STOPS.map(([count])=>count));
+  assert.deepEqual(stops.slice(3).filter((_,i)=>i%2===1),territoryColors('#124987','#986c23'));
+  assert.match(territoryLegendColor(0),/var\(--loc-accent\)/);
+  assert.match(territoryLegendColor(4),/var\(--loc-gold\)/);
 });

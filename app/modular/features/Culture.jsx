@@ -26,6 +26,7 @@ const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTim
 });
 import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
 import {visualKeyColor} from '../visual-palette.mjs';
+import {eraVisualGradient} from '../modules/culture-timeline/era-visuals.mjs';
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
 import {buildEraRiver,nextEditorEraExpansion} from '../../loc/culture/time-trace-river.mjs';
@@ -153,7 +154,8 @@ function nextRiverDay(value){
 // Paint the collapsed source overview from the numeric totals already in memory.
 // vis-timeline is mounted only after a category is expanded, not for three
 // full-window total bars that do not require virtualized time-axis layout.
-function CultureSourceRootSummary({items,groups,windowStart,windowEnd,onGroupToggle,onGroupSelect}){
+function CultureSourceRootSummary({items,groups,eraRanges,windowStart,windowEnd,onGroupToggle,onGroupSelect}){
+  const backgroundImage=useMemo(()=>eraVisualGradient(eraRanges,windowStart,windowEnd),[eraRanges,windowStart,windowEnd]);
   const totals=items.filter(item=>item.entry_type==='source_total');
   const byGroup=new Map(totals.map(item=>[item.group_key,item]));
   const largest=Math.max(1,...totals.map(item=>Number(item.item_count)||0));
@@ -162,7 +164,7 @@ function CultureSourceRootSummary({items,groups,windowStart,windowEnd,onGroupTog
       style={{minHeight:0,overflow:'visible',padding:'.65rem',background:'var(--loc-panel)'}}>
       <div style={{display:'grid',gridTemplateColumns:'clamp(108px,23vw,248px) minmax(0,1fr)',gap:'.4rem .55rem',alignItems:'center'}}>
         <span className='scope-status'>分類總量</span>
-        <div style={{display:'flex',justifyContent:'space-between',gap:'.5rem',fontSize:'.8rem',color:'var(--loc-muted)'}}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:'.5rem',fontSize:'.8rem',color:'var(--loc-muted)',backgroundImage,borderRadius:'.2rem',padding:'0 .25rem'}}>
           <time>{windowStart}</time><time>{windowEnd}</time>
         </div>
         {groups.map(group=>{
@@ -180,7 +182,7 @@ function CultureSourceRootSummary({items,groups,windowStart,windowEnd,onGroupTog
               </button>:<span>{group.label}</span>}
             </div>
             <div style={{minWidth:0,minHeight:candidate?32:40,display:'flex',alignItems:'center',padding:'.35rem .45rem',
-              border:'1px solid var(--loc-line)',borderRadius:'.5rem',background:'var(--loc-panel-2)'}}
+              border:'1px solid var(--loc-line)',borderRadius:'.5rem',backgroundColor:'var(--loc-panel-2)',backgroundImage}}
               role={row?'img':undefined} aria-label={row?group.label+'，'+count+'筆':''}>
               {row?<div style={{width:'100%',height:Math.max(11,Math.round(11+19*count/largest)),
                 borderRadius:'999px',background:visualKeyColor(group.id),
@@ -1757,6 +1759,7 @@ export default function Culture(){
                   {styleFilter==='none'&&openCultureRoots.length===0
                     &&cultureRiver.items.every(item=>item.entry_type==='source_total')
                     ?<CultureSourceRootSummary
+                      eraRanges={eraRiver.items}
                       items={cultureRiver.items}
                       groups={cultureRiver.groups}
                       windowStart={classificationWindowStart}

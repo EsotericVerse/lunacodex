@@ -40,6 +40,7 @@ function timelineRows(items,labelOf,focus,labels={}){
     }
   }
   if(!Number.isFinite(domainStart))domainStart=today;
+  const laneColors=new Map();
   return source.flatMap((item,index)=>{
     const rawStart=item?.start_date||item?.active_from||item?.date;
     const rawEnd=item?.end_date||item?.active_until;
@@ -72,7 +73,8 @@ function timelineRows(items,labelOf,focus,labels={}){
       focused?'scope-period-timeline-focus':'',
       density?'scope-period-density':''
     ].filter(Boolean).join(' ');
-    const laneColor=group?visualKeyColor(group):'var(--loc-accent)';
+    if(density&&group&&!laneColors.has(group))laneColors.set(group,visualKeyColor(group));
+    const laneColor=laneColors.get(group)||'var(--loc-accent)';
     const densityStyle=density
       ?'--culture-lane-color:'+laneColor+';--culture-density:'+Math.max(.08,Math.min(1,ratio||Math.min(1,Number(item?.item_count||0)/100)))+';height:'+(8+Math.round(Math.max(.08,Math.min(1,ratio||0))*20))+'px;background:color-mix(in srgb,var(--culture-lane-color) '+Math.round((.12+density.glow*.72)*100)+'%,var(--loc-panel));border-color:color-mix(in srgb,var(--culture-lane-color) '+Math.round((.36+density.glow*.56)*100)+'%,var(--loc-line));color:var(--loc-text);filter:brightness('+density.brightness+');box-shadow:0 0 '+density.blur+' color-mix(in srgb,var(--culture-lane-color) '+Math.round(density.glow*100)+'%,transparent);'
       :'';

@@ -1,6 +1,6 @@
 'use client';
 import {useMemo,useRef,useState} from 'react';
-import {visualKeyColor} from '../../visual-palette.mjs';
+import {visualKeyColor,TERRITORY_STOPS,territoryLegendColor} from '../../visual-palette.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
@@ -165,6 +165,14 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
       </section>:null}
     </TraceMap>
       <section className="loc-trace-territory-overview" aria-label="年度版圖情報">
+        <div aria-label="年度文章數色階參考" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'.35rem .65rem',fontSize:'.8rem'}}>
+          <span className="scope-status">文章數色階</span>
+          {TERRITORY_STOPS.map(([count],i)=><span key={count} style={{display:'inline-flex',alignItems:'center',gap:'.25rem'}}>
+            <i aria-hidden="true" style={{width:10,height:10,borderRadius:'50%',border:'1px solid var(--loc-text)',background:territoryLegendColor(i)}}/>
+            {i===TERRITORY_STOPS.length-1?count+'+':count}
+          </span>)}
+          <span className="scope-status">篇</span>
+        </div>
         <div className="loc-trace-territory-stats">
           <strong>年度版圖</strong>
           <span>{ready||mid?`${active.length} / ${regions.length} 座據點`:'— 座據點'}</span>

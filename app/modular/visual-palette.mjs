@@ -30,8 +30,19 @@ export function mixVisualRgb(base,theme,weight=.68){
   const w=Math.max(0,Math.min(1,Number(weight)||0));
   return '#'+a.map((x,i)=>Math.round(x*w+b[i]*(1-w)).toString(16).padStart(2,'0')).join('');
 }
+export const TERRITORY_STOPS=Object.freeze([
+  [0,'#547faf','accent'],[3,'#349f91','accent'],[10,'#e4a44e','gold'],
+  [30,'#dc735b','gold'],[100,'#eab64d','gold']
+].map(Object.freeze));
 export function territoryColors(accent,gold){
-  return [mixVisualRgb('#547faf',accent),mixVisualRgb('#349f91',accent),
-    mixVisualRgb('#e4a44e',gold),mixVisualRgb('#dc735b',gold),
-    mixVisualRgb('#eab64d',gold)];
+  return TERRITORY_STOPS.map(([,base,token])=>mixVisualRgb(base,token==='gold'?gold:accent));
+}
+export function territoryLegendColor(index){
+  const [,base,token]=TERRITORY_STOPS[index];
+  return 'color-mix(in srgb, '+base+' 68%, var(--loc-'+token+'))';
+}
+export function territoryColorExpression(accent,gold){
+  const colors=territoryColors(accent,gold);
+  return ['interpolate',['linear'],['get','territoryTotal'],
+    ...TERRITORY_STOPS.flatMap(([count],i)=>[count,colors[i]])];
 }
