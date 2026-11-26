@@ -250,11 +250,13 @@ test('block editing reads authoritative SQL and reports denied write permissions
   ]);
   const liveReader=queries.slice(queries.indexOf('export async function queryLiveBlocks'),
     queries.indexOf('export async function readPublicHomePageCopy'));
+  const displayReader=scopeData.slice(scopeData.indexOf('export async function selectScopeBlocks'));
   assert.match(liveReader,/withPublicLocRead\([\s\S]*?block_list\(/);
   assert.doesNotMatch(liveReader,/publicBlockList|readPublicHomeObject/);
   assert.match(scopeData,/selectLiveScopeBlocks[\s\S]*?queryLiveBlocks/);
   assert.match(editor,/selectLiveScopeBlocks\(scopeId,pageName\)/);
   assert.match(editor,/blockWritePermissionKey\(error,scopeId,pageName\)/);
+  assert.match(displayReader,/queryBlocks\('block_list'/);
   assert.equal(blockWritePermissionKey({status:403},'loc','TimeAnchor'),'globalPermissionDenied');
   assert.equal(blockWritePermissionKey({status:403},'lo3rwang','culture'),'editPermissionDenied');
   assert.equal(blockWritePermissionKey({status:401},'loc','TimeAnchor'),'');

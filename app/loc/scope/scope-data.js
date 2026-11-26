@@ -1,7 +1,7 @@
 'use client';
 
 
-import {queryBlockContent,queryLiveBlocks,readPublicHomePageCopy}
+import {queryBlockContent,queryBlocks,queryLiveBlocks,readPublicHomePageCopy}
   from '../actions/blocks/queries.mjs';
 import {queryCultureContent} from '../actions/culture/queries.mjs';
 import {queryStaticsContent} from '../actions/statics/queries.mjs';
@@ -334,5 +334,12 @@ export async function selectScopeBlocks(scopeId,page='index'){
     const rows=await selectLiveScopeBlocks(id,'governance');
     return rows.map(row=>({...row,page_name:'trace'}));
   }
-  return selectLiveScopeBlocks(id,name);
+  if(id==='loc')return selectLiveScopeBlocks(id,name);
+  if(name==='index'){
+    const rows=await nativePublicContent('block_list',id);
+    return Array.isArray(rows)?rows:[];
+  }
+  const payload=await queryBlocks('block_list',{p_scope_id:id,p_page_name:name});
+  return payload.data.filter(row=>String(row.page_name||'')===name)
+    .sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
 }
