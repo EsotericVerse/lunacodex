@@ -12,7 +12,7 @@ import {useUiSection} from '../../i18n/ui-locale';
 const TEXT='uiExtra.traceUI.';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../loc/query/bounded-parallel.mjs';
-import {traceWindow} from './trace/trace-panel-filters.mjs';
+import {traceWindow,traceSourceOptions} from './trace/trace-panel-filters.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 import {annualGaugeGroups,annualGaugeValues} from './trace/trace-annual-gauges.mjs';
 import {publicTraceMapChoices,locReferencedPointGroups,clusterLocSharedPoints} from './trace/trace-map-choices.mjs';
@@ -74,8 +74,22 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const [customStart,setCustomStart]=useState('');
   const [customEnd,setCustomEnd]=useState('');
   const [sourceDraft,setSourceDraft]=useState('');
-  const [sourceName,setSourceName]=useState('');
+  const [sourceAnchorUid,setSourceAnchorUid]=useState('');
+  const [customSourceName,setCustomSourceName]=useState('');
   const [mediaType,setMediaType]=useState('');
+  const sourceTaxonomyQuery=useAsyncResource({
+    queryKey:['trace-site-anchor-source-taxonomy-v1'],
+    enabled:Boolean(reportTab)&&supported,
+    queryFn:async()=>{
+      const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
+      return readPublicSourceTaxonomy();
+    },
+    revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
+  });
+  const sourceOptions=useMemo(()=>traceSourceOptions(sourceTaxonomyQuery.data),
+    [sourceTaxonomyQuery.data]);
+  const selectedSourceOption=sourceOptions.find(row=>row.uid===sourceAnchorUid);
+  const sourceName=selectedSourceOption?.value||customSourceName;
   const dateRange=useMemo(()=>traceWindow(timeWindow,new Date(),
     {start:customStart,end:customEnd}),[timeWindow,customStart,customEnd]);
   const choosePlace=anchor=>{
@@ -359,14 +373,34 @@ function ScopeTrace({scopeId='lo3rwang'}){
           <label>{t("startDate")}<input type="date" value={customStart} onChange={event=>setCustomStart(event.target.value)}/></label>
           <label>{t("endDate")}<input type="date" value={customEnd} onChange={event=>setCustomEnd(event.target.value)}/></label>
         </>:null}
-        <form onSubmit={event=>{event.preventDefault();setSourceName(sourceDraft.trim());}}>
-          <label>{t("sourceCategory")}
+        <label>{t("sourceCategory")}
+          <select className="scope-select" value={sourceAnchorUid}
+            onChange={event=>{
+              setSourceAnchorUid(event.target.value);
+              setCustomSourceName('');
+              setSourceDraft('');
+            }}>
+            <option value="">全部來源</option>
+            {sourceOptions.map(row=><option key={row.uid} value={row.uid}>{row.label}</option>)}
+          </select>
+        </label>
+        {sourceTaxonomyQuery.isPending?
+          <p className="scope-status" role="status">正在讀取 SiteAnchor 來源定錨…</p>:null}
+        {sourceTaxonomyQuery.error?
+          <p className="scope-status" role="status">來源定錨暫時無法讀取，仍可使用自訂來源文字。</p>:null}
+        <form onSubmit={event=>{
+          event.preventDefault();
+          setSourceAnchorUid('');
+          setCustomSourceName(sourceDraft.trim());
+        }}>
+          <label>自訂來源文字
             <input type="search" value={sourceDraft} onChange={event=>setSourceDraft(event.target.value)}
               placeholder={t("sourcePlaceholder")}/>
           </label>
           <button type="submit" className="loc-button">{t("applySource")}</button>
           {sourceName?<button type="button" className="loc-button"
-            onClick={()=>{setSourceName('');setSourceDraft('');}}>{t("clearSource")}</button>:null}
+            onClick={()=>{setSourceAnchorUid('');setCustomSourceName('');setSourceDraft('');}}>
+            {t("clearSource")}</button>:null}
         </form>
         <label>{t("mediaType")}
           <select className="scope-select" value={mediaType}
