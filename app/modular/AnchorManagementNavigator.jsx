@@ -6,7 +6,7 @@ import {motion,useReducedMotion} from 'motion/react';
 const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
 
 function Pane({
-  level,title,items=[],selected='',onSelect,createLabel,onCreate,
+  level,title,items=[],selected='',onSelect,createLabel,onCreate,createDisabled=false,
   emptyLabel='目前沒有項目',disabled=false,transitionKey='',children=null
 }){
   const reduceMotion=useReducedMotion();
@@ -19,7 +19,7 @@ function Pane({
     <header className="loc-anchor-management__pane-heading">
       <div><h3>{title}</h3><span>{items.length.toLocaleString('zh-TW')}</span></div>
       {onCreate&&createLabel?<button type="button" className="loc-button loc-anchor-management__create"
-        disabled={disabled} onClick={onCreate}>{createLabel}</button>:null}
+        disabled={disabled||createDisabled} onClick={onCreate}>{createLabel}</button>:null}
     </header>
     <motion.div key={key} className="loc-anchor-management__items"
       initial={initial} animate={animate} transition={transition}
@@ -49,11 +49,11 @@ export default function AnchorManagementNavigator({
   label='定錨管理',className='',searchLabel='搜尋分類與定錨資料',
   searchPlaceholder='依名稱、日期或地址搜尋',
   primaryTitle='第一層',primaryItems=[],selectedPrimary='',onSelectPrimary,
-  primaryCreateLabel='',onCreatePrimary=null,
+  primaryCreateLabel='',onCreatePrimary=null,primaryCreateDisabled=false,
   secondaryTitle='第二層',secondaryItems=[],selectedSecondary='',onSelectSecondary,
-  secondaryCreateLabel='',onCreateSecondary=null,
+  secondaryCreateLabel='',onCreateSecondary=null,secondaryCreateDisabled=false,
   detailTitle='定錨資料與操作',detailItems=[],selectedDetail='',onSelectDetail,
-  detailCreateLabel='',onCreateDetail=null,
+  detailCreateLabel='',onCreateDetail=null,detailCreateDisabled=false,
   primaryEmpty='目前沒有第一層分類',secondaryEmpty='請先選擇第一層分類',
   detailEmpty='請先選擇第二層分類',disabled=false,children=null
 }){
@@ -75,16 +75,16 @@ export default function AnchorManagementNavigator({
     <div className="loc-anchor-management__grid">
       <Pane level="primary" title={primaryTitle} items={primary}
         selected={selectedPrimary} onSelect={onSelectPrimary}
-        createLabel={primaryCreateLabel} onCreate={onCreatePrimary}
+        createLabel={primaryCreateLabel} onCreate={onCreatePrimary} createDisabled={primaryCreateDisabled}
         emptyLabel={primaryEmpty} disabled={disabled} transitionKey={selectedPrimary}/>
       <div className="loc-anchor-management__right">
         <Pane level="secondary" title={secondaryTitle} items={secondary}
           selected={selectedSecondary} onSelect={onSelectSecondary}
-          createLabel={secondaryCreateLabel} onCreate={onCreateSecondary}
+          createLabel={secondaryCreateLabel} onCreate={onCreateSecondary} createDisabled={secondaryCreateDisabled}
           emptyLabel={secondaryEmpty} disabled={disabled} transitionKey={selectedPrimary}/>
         <Pane level="detail" title={detailTitle} items={detail}
           selected={selectedDetail} onSelect={onSelectDetail}
-          createLabel={detailCreateLabel} onCreate={onCreateDetail}
+          createLabel={detailCreateLabel} onCreate={onCreateDetail} createDisabled={detailCreateDisabled}
           emptyLabel={detailEmpty} disabled={disabled}
           transitionKey={selectedSecondary||selectedPrimary}>
           {children}
