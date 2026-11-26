@@ -362,9 +362,8 @@ export const IMPORT_MAX_CHECKPOINT_ROWS=8192;
 const importRowJson=row=>JSON.stringify(row);
 const importRowBytes=row=>new TextEncoder().encode(importRowJson(row)).byteLength;
 
-// A bounded sample is already in memory after archive decoding. Choose the
-// first row window directly from actual UTF-8 density, without stepping
-// through 256/512/1024/2048 just to discover that short rows fit.
+// Start with at most 256 rows. After each confirmed write, double or halve
+// the next window using actual UTF-8 bytes and the fixed transport budget.
 export function recommendImportBatchRows(rows,{
   maxBytes=IMPORT_PAYLOAD_TARGET_BYTES,maximum=IMPORT_FIRST_BATCH_ROWS,
   sampleSize=128
