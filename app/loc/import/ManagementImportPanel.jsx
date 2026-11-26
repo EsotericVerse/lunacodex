@@ -52,6 +52,7 @@ import {queryImportSitePresence,queryImportSiteIdCandidates,
   queryImportSourceTimePage,queryImportOccupiedDatePage,
   queryImportUndatedTimesPage,readImportComputeMode,runImportIdentityCompute}
   from '../actions/import/queries.mjs';
+import {importSourceCategories} from './source-categories.mjs';
 const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[],warnings:[]});
 // Imported Anchor keys are semantic matches, not UNIQUE constraints.
 // Report unresolved duplicate UIDs without choosing an arbitrary winner.
@@ -685,13 +686,10 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       aliases:[],groups:[],nodes};
   },{enabled:sourceCategoriesEnabled});
   const sourceCategories=useMemo(()=>{
-    if(!sourceCategoriesEnabled||!sourceAnchorResource.data)return undefined;
-    const system=[...new Set(sourceAnchorResource.data.categories)];
-    if(system.length)system.push('Others');
-    return {system,personal:[]};
+    return importSourceCategories(sourceCategoriesEnabled,sourceAnchorResource.data);
   },[sourceCategoriesEnabled,sourceAnchorResource.data]);
-  const sourceOptions=[...new Set([...(sourceCategories.data?.system||[]),...(sourceCategories.data?.personal||[]),...IMPORT_SOURCE_MODEL_LABELS])];
-  const canonicalSource=value=>canonicalImportSourceName(value,sourceCategories.data?.system||[],sourceCategories.data?.personal||[]);
+  const sourceOptions=[...new Set([...sourceCategories.system,...sourceCategories.personal,...IMPORT_SOURCE_MODEL_LABELS])];
+  const canonicalSource=value=>canonicalImportSourceName(value,sourceCategories.system,sourceCategories.personal);
   const [importLocale,setImportLocale]=useState('zh-Hant');
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
@@ -745,7 +743,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     analysisSnapshot.rows===rows&&analysisSnapshot.source===deferredSource&&
     analysisSnapshot.fields===format.fields&&analysisSnapshot.locale===locale&&
     analysisSnapshot.archive===archiveDetection&&
-    analysisSnapshot.categories===sourceCategories.data&&
+    analysisSnapshot.categories===sourceCategories&&
     analysisSnapshot.selection===sourceSelection);
   const rawAnalysis=analysisCurrent?analysisSnapshot.result:EMPTY_IMPORT_ANALYSIS;
   useEffect(()=>{
@@ -755,8 +753,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     setAnalysisProgress({completed:0,total:rows.length});
     if(!archiveDetection&&!sourceSelection)return;
     const selected=deferredSource.trim();
-    const system=sourceCategories.data?.system||[];
-    const personal=sourceCategories.data?.personal||[];
+    const system=sourceCategories.system;
+    const personal=sourceCategories.personal;
     const manual=Boolean(sourceSelection&&sourceSelection!=='__custom__'&&!archiveDetection);
     const process=()=>{
       if(cancelled)return;
@@ -791,14 +789,14 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         return;
       }
       setAnalysisSnapshot({rows,source:deferredSource,fields:format.fields,
-        locale,archive:archiveDetection,categories:sourceCategories.data,
+        locale,archive:archiveDetection,categories:sourceCategories,
         selection:sourceSelection,result:{valid,normalized,mediaOnly,invalid,warnings}});
       setAnalysisProgress({completed:index,total:rows.length});
     };
     task=setTimeout(process,0);
     return ()=>{cancelled=true;if(task!==null)clearTimeout(task);};
   },[rows,deferredSource,format.fields,locale,archiveDetection,
-    sourceCategories.data,sourceSelection]);
+    sourceCategories,sourceSelection]);
   const analyzed=useMemo(()=>filterImportAnalysisByTime(rawAnalysis,timeWindow),[rawAnalysis,timeWindow]);
   const eligibleArchiveEvidence=useMemo(()=>{
     if(!timeWindow)return archiveEvidence;
