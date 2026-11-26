@@ -240,10 +240,15 @@ button,a,.loc-control,.loc-button,
   min-width:0;
 }
 .scope-feature-hero-copy__eyebrow{order:1;margin:0 0 .45rem!important}
-.scope-feature-hero-copy>.home-title-row{order:2;width:100%;}
+/* FeatureHeroContent owns an extra copy wrapper; keep its title styles on that DOM path. */
+.scope-feature-hero-copy>.home-title-row{
+  order:2;
+  width:100%;
+  grid-template-columns:max-content minmax(0,1fr)!important;
+}
 .scope-feature-hero-copy__description{order:3;width:100%;}
 
-.scope-feature-hero>.home-title-row>h1,
+.scope-feature-hero .scope-feature-hero-copy>.home-title-row>h1,
 .loc-hero-feature h1{
   font-size:clamp(2.25rem,4.8vw,3.8rem)!important;
   line-height:1!important;
@@ -340,10 +345,13 @@ button,a,.loc-control,.loc-button,
   .scope-feature-hero--admin,
   .scope-feature-hero--manage,
   .scope-feature-hero--setting
-)>.home-title-row>h1{
+) .scope-feature-hero-copy>.home-title-row>h1{
   font-size:var(--loc-type-hero-feature-title)!important;
   font-weight:var(--loc-weight-page-title)!important;
   line-height:var(--loc-line-hero-title)!important;
+  max-width:none!important;
+  white-space:nowrap;
+  overflow-wrap:normal;
 }
 .scope-feature-hero:is(
   .scope-feature-hero--culture,
@@ -502,15 +510,15 @@ button,a,.loc-control,.loc-button,
   flex-direction:column;
   justify-content:center;
 }
-.scope-feature-hero--artwork.scope-hero>.home-title-row>h1{
-  color:#f7f8ff;
+.scope-feature-hero--artwork.scope-hero .scope-feature-hero-copy>.home-title-row>h1{
+  color:#fff!important;
   text-shadow:0 3px 24px rgba(0,0,0,.6);
 }
-.scope-feature-hero--artwork>.loc-eyebrow{color:#f5d795!important}
-.scope-feature-hero--artwork.scope-hero>.home-title-row>.scope-subtitle{color:#e8d6ac!important}
+.scope-feature-hero--artwork .scope-feature-hero-copy>.scope-feature-hero-copy__eyebrow{color:#f5d795!important}
+.scope-feature-hero--artwork .scope-feature-hero-copy>.home-title-row>.scope-subtitle{color:#edf1f9!important}
 .scope-feature-hero--artwork .scope-hero-description,
 .scope-feature-hero--artwork .scope-hero-description :where(p,li,strong){
-  color:#f5f7fc!important;
+  color:#edf1f9!important;
   text-shadow:0 2px 14px rgba(0,0,0,.55);
 }
 
@@ -523,7 +531,7 @@ button,a,.loc-control,.loc-button,
   justify-content:center;
   text-align:start;
 }
-.scope-feature-hero--artwork:is(.scope-feature-hero--admin,.scope-feature-hero--manage,.scope-feature-hero--setting)>.home-title-row{
+.scope-feature-hero--artwork:is(.scope-feature-hero--admin,.scope-feature-hero--manage,.scope-feature-hero--setting) .scope-feature-hero-copy>.home-title-row{
   align-self:flex-start;
   text-align:start;
 }
@@ -910,13 +918,15 @@ button,a,.loc-control,.loc-button,
     --loc-line-page-title:1.12;
   }
   .home-title-row,
-  .scope-hero>.home-title-row{
+  .scope-hero>.home-title-row,
+  .scope-feature-hero-copy>.home-title-row{
     grid-template-columns:minmax(0,1fr)!important;
     gap:.4rem!important;
     align-items:start!important;
   }
   .home-title-row>h1,
-  .scope-hero>.home-title-row>h1{
+  .scope-hero>.home-title-row>h1,
+  .scope-feature-hero-copy>.home-title-row>h1{
     grid-column:1!important;
     grid-row:auto!important;
     max-width:100%;
@@ -938,7 +948,7 @@ button,a,.loc-control,.loc-button,
     padding:0!important;
     margin:.2rem 0 0!important;
   }
-  .scope-feature-hero>.home-title-row>h1,
+  .scope-feature-hero .scope-feature-hero-copy>.home-title-row>h1,
   .loc-hero-feature h1{
     font-size:var(--loc-type-hero-feature-title)!important;
     line-height:1.12!important;

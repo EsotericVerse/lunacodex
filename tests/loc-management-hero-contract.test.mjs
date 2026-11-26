@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {
   MANAGEMENT_HERO_SLOTS,
   featureHeroDefaultImage,
@@ -119,4 +120,16 @@ test('Group and Scope management Heroes remain separate and asymmetric',()=>{
 test('personal settings copy and image resolve to the same Group row',()=>{
   assert.equal(featureHeroPageFor('setting'),'group_setting');
   assert.equal(featureHeroImagePageFor('setting'),'group_setting');
+});
+
+test('feature Hero CSS follows the copy wrapper and keeps the heading one line',async()=>{
+  const [component,styles]=await Promise.all([
+    readFile(new URL('../app/modular/ui.jsx',import.meta.url),'utf8'),
+    readFile(new URL('../app/styles/uiux.css',import.meta.url),'utf8')
+  ]);
+  assert.match(component,/className="scope-feature-hero-copy"/);
+  assert.match(styles,/\.scope-feature-hero-copy>\.home-title-row\{[\s\S]*?grid-template-columns:max-content minmax\(0,1fr\)!important;/);
+  assert.match(styles,/\) \.scope-feature-hero-copy>\.home-title-row>h1\{[\s\S]*?max-width:none!important;\s*white-space:nowrap;/);
+  assert.match(styles,/\.scope-feature-hero--artwork\.scope-hero \.scope-feature-hero-copy>\.home-title-row>h1\{\s*color:#fff!important;/);
+  assert.match(styles,/\.scope-feature-hero--artwork \.scope-feature-hero-copy>\.home-title-row>\.scope-subtitle\{color:#edf1f9!important\}/);
 });

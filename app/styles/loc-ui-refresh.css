@@ -188,7 +188,7 @@
   min-height:0;
   padding:clamp(.85rem,1.8vw,1.4rem);
 }
-.scope-feature-hero>.home-title-row>h1{
+.scope-feature-hero .scope-feature-hero-copy>.home-title-row>h1{
   font-size:clamp(1.6rem,2.8vw,2.4rem)!important;
   line-height:1.12!important;
   letter-spacing:-.025em;
@@ -221,7 +221,7 @@
     padding:.8rem .9rem;
     border-radius:var(--loc-ui-radius-md,16px);
   }
-  .scope-feature-hero>.home-title-row>h1{font-size:clamp(1.5rem,7vw,2rem)!important;}
+  .scope-feature-hero .scope-feature-hero-copy>.home-title-row>h1{font-size:clamp(1.5rem,7vw,2rem)!important;}
   .scope-feature-hero .scope-hero-description{margin-top:.35rem;}
   .scope-feature-hero .scope-hero-description :where(p,li){
     font-size:.9rem!important;
