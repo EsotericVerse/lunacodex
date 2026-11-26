@@ -408,8 +408,15 @@ export function buildKyselyMutationQuery(trx,input,{dialect='postgres',namespace
  * @param {any} input
  * @param {{dialect?:string, namespace?:string, publicOnly?:boolean, modelName?:string}} [options]
  */
-export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
-  const req=validateQuery(input);let data=null,count=null;
+export async function executeKyselyQuery(trx,input,{
+  dialect='postgres',namespace,publicOnly=false,modelName='',
+  stream=false,chunkSize,signal
+}={}){
+  const req=validateQuery(input);
+  if(stream)return executeKyselySelectStream(trx,input,{
+    dialect,namespace,publicOnly,modelName,chunkSize,signal
+  });
+  let data=null,count=null;
   if(req.operation==='select'){
     const built=buildKyselySelectQuery(trx,input,{dialect,namespace,publicOnly,modelName});
     if(built.countQuery){const row=await built.countQuery.executeTakeFirstOrThrow();count=Number(row.count)}
