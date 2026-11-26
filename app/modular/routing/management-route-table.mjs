@@ -6,7 +6,7 @@ export const LOC_MANAGEMENT_ROUTE_TABLE=Object.freeze({
     system:'/admin/',
     keywords:'statics/manage',
     members:'manage',
-    articles:'search/manage?edit=1'
+    articles:'search/manage'
   }),
   scope:Object.freeze({
     time:'culture/manage',
@@ -22,8 +22,7 @@ export const LOC_MANAGEMENT_ROUTE_TABLE=Object.freeze({
   })
 });
 
-// Optional query strings are appended only after converting the pathname to
-// the native /index.html route. Management panel selection stays in React.
+// Route selection is path-only. Management panel selection stays in React.
 export function managementRouteHref(level,key,scopeId,{native=false,navigate}={}){
   const route=LOC_MANAGEMENT_ROUTE_TABLE[level]?.[key];
   if(typeof route!=='string')return '';
@@ -33,9 +32,5 @@ export function managementRouteHref(level,key,scopeId,{native=false,navigate}={}
     throw new TypeError('LOC route navigation resolver is required');
   if(level==='group'&&key==='system')
     return native?navigate('loc','admin',true):route;
-  const split=route.indexOf('?');
-  const pathname=split<0?route:route.slice(0,split);
-  const query=split<0?'':route.slice(split+1);
-  const href=navigate(scopeId,pathname.replace(/^\/+/,''),native);
-  return query?href+(href.includes('?')?'&':'?')+query:href;
+  return navigate(scopeId,route.replace(/^\/+/,''),native);
 }

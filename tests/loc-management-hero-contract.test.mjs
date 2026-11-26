@@ -3,12 +3,19 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {
   MANAGEMENT_HERO_SLOTS,
+  defaultHeroImageForPage,
   featureHeroDefaultImage,
   featureHeroPageFor,
   featureHeroImagePageFor,
+  managementHeroDefaultImage,
   managementHeroImagePage,
   managementHeroSlot,
+  defaultHeroCopyForPage,
+  normalizeHeroCopyValue,
+  sharedFeatureHeroFor,
 } from '../app/loc/blocks/home-block-model.js';
+import {heroImageUrlForPage} from '../app/loc/blocks/hero-image.mjs';
+import {scopeConfigColumnList} from '../app/loc/scope/scope-config-fields.mjs';
 import {
   LOC_MANAGEMENT_ROUTE_TABLE,
   managementRouteHref,
@@ -33,12 +40,71 @@ test('every functional Hero uses the Group page and its unique immediate fallbac
   assert.ok(images.every(Boolean));
 });
 
+test('the routing table resolves to the exact LOC and Scope Hero artwork',async()=>{
+  const managementImages=Object.fromEntries(MANAGEMENT_HERO_SLOTS.map(slot=>
+    [slot.key,managementHeroDefaultImage(slot).split('/').pop()]));
+  assert.deepEqual(managementImages,{
+    time:'LOC-culture.jpg',keywords:'LOC-statics.jpg',spatial:'LOC-gn.jpg',
+    advanced:'LOC-search.jpg',system:'LOC-admin.jpg',members:'scope-manage.jpg',
+    locKeywords:'LOC-statics.jpg',articles:'LOC-search.jpg'
+  });
+  const userImages={
+    culture:'scope-culture.jpg',statics:'scope-statics.jpg',
+    trace:'scope-gn.jpg',search:'scope-search.jpg'
+  };
+  for(const [feature,file] of Object.entries(userImages)){
+    const page=featureHeroPageFor(feature);
+    assert.equal(defaultHeroImageForPage('loc',page).split('/').pop(),file,feature);
+    assert.equal(heroImageUrlForPage(null,'lo3rwang',page).split('/').pop(),file,feature);
+    await readFile(new URL('../assets/pics/'+file,import.meta.url));
+  }
+  for(const slot of MANAGEMENT_HERO_SLOTS)
+    await readFile(new URL('../assets/pics/'+managementImages[slot.key],import.meta.url));
+  assert.equal(defaultHeroImageForPage('loc','group_admin').split('/').pop(),'LOC-admin.jpg');
+  assert.equal(defaultHeroImageForPage('loc','GalaxyManage').split('/').pop(),'scope-manage.jpg');
+  assert.equal(defaultHeroImageForPage('loc','group_setting').split('/').pop(),'local-setting.jpg');
+});
+
+test('Hero copy follows the requested management and public route labels',()=>{
+  const titles={
+    TimeAnchor:'時間定錨',Groupkeyword:'關鍵詞',SpaceAnchor:'空間定錨',
+    GroupArticle:'文章管理',group_admin:'系統管理',GalaxyManage:'人員作品管理',
+    group_culture:'文化',group_statics:'統計',group_trace:'痕跡',
+    group_search:'搜尋',group_setting:'個人設定'
+  };
+  for(const [page,title] of Object.entries(titles))
+    assert.equal(defaultHeroCopyForPage(page).title,title,page);
+});
+
+test('known cross-assigned artwork and internal Hero identifiers resolve to their route labels',()=>{
+  assert.equal(heroImageUrlForPage({block_image:JSON.stringify({source:'custom',
+    url:'https://loc.lo3rwang.cc/pics/scope-culture.jpg'})},'loc','SpaceAnchor')
+    .split('/').pop(),'LOC-gn.jpg');
+  assert.equal(normalizeHeroCopyValue('Groupkeyword','title','ScopeKeyword'),'關鍵詞');
+  assert.equal(normalizeHeroCopyValue('group_admin','title','group_admin'),'系統管理');
+  assert.equal(normalizeHeroCopyValue('TimeAnchor','title','LOC-culture.jpg'),'時間定錨');
+  assert.equal(heroImageUrlForPage({block_image:JSON.stringify({source:'none',url:''})},
+    'loc','group_trace').split('/').pop(),'scope-gn.jpg');
+  const hero=sharedFeatureHeroFor([{block_order:1,block_eyebrow:'group_culture',
+    block_title:'group_culture'}],'group_culture');
+  assert.equal(hero.eyebrow,'Culture');
+  assert.equal(hero.title,'文化');
+});
+
+test('Kysely Scope config reads receive column references rather than one CSV identifier',()=>{
+  assert.deepEqual(scopeConfigColumnList('loc'),['id','display_name','locale']);
+  assert.deepEqual(scopeConfigColumnList('lo3rwang'),[
+    'id','display_name','search_intro','search_aliases','theme','locale',
+    'search','statics','culture','trace'
+  ]);
+});
+
 test('management route table preserves the Group and Scope destinations',()=>{
   assert.deepEqual(LOC_MANAGEMENT_ROUTE_TABLE.group,{
     system:'/admin/',
     keywords:'statics/manage',
     members:'manage',
-    articles:'search/manage?edit=1',
+    articles:'search/manage',
   });
   assert.deepEqual(LOC_MANAGEMENT_ROUTE_TABLE.scope,{
     time:'culture/manage',
@@ -119,13 +185,13 @@ test('Group admin is one group_admin Hero row for both display and editing',()=>
   assert.equal(featureHeroImagePageFor('admin'),'group_admin');
 });
 
-test('Group and Scope management Heroes remain separate and asymmetric',()=>{
+test('Group and Scope management routes share the mapped Hero rows',()=>{
   const group=MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='loc');
   const scope=MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='scope');
   assert.deepEqual(group.map(slot=>slot.key),['system','members','locKeywords','articles']);
   assert.deepEqual(group.map(slot=>slot.page),['group_admin','GalaxyManage','Groupkeyword','GroupArticle']);
   assert.deepEqual(scope.map(slot=>slot.key),['time','keywords','spatial','advanced']);
-  assert.deepEqual(scope.map(slot=>slot.page),['TimeAnchor','ScopeKeyword','SpaceAnchor','ScopeArticle']);
+  assert.deepEqual(scope.map(slot=>slot.page),['TimeAnchor','Groupkeyword','SpaceAnchor','GroupArticle']);
   assert.equal(group.some(slot=>/time|space|trace/i.test(slot.key+' '+slot.page)),false);
   assert.equal(managementHeroSlot('keywordManage','loc')?.page,'Groupkeyword');
   assert.equal(managementHeroSlot('sourceManage','loc')?.page,'GalaxyManage');
@@ -133,10 +199,21 @@ test('Group and Scope management Heroes remain separate and asymmetric',()=>{
   assert.equal(managementHeroSlot('timeManage','loc')?.page,'TimeAnchor');
   assert.equal(managementHeroSlot('keywordManage','loc')?.page,'Groupkeyword');
   assert.equal(managementHeroSlot('searchManage','loc')?.page,'GroupArticle');
-  assert.equal(managementHeroSlot('keywords','lo3rwang')?.page,'ScopeKeyword');
+  assert.equal(managementHeroSlot('keywords','lo3rwang')?.page,'Groupkeyword');
   assert.equal(managementHeroSlot('manage','lo3rwang')?.page,'SpaceAnchor');
-  assert.equal(managementHeroSlot('searchManage','lo3rwang')?.page,'ScopeArticle');
+  assert.equal(managementHeroSlot('searchManage','lo3rwang')?.page,'GroupArticle');
   assert.equal(managementHeroSlot('timeManage','lo3rwang')?.page,'TimeAnchor');
+});
+
+test('admin Hero editor shows one management row followed by its public feature Hero',async()=>{
+  const panel=await readFile(new URL('../app/loc/views/admin-panels/FeatureHeroImages.jsx',import.meta.url),'utf8');
+  assert.match(panel,/id:'culture',[^\n]*managementKeys:\['time'\]/);
+  assert.match(panel,/id:'statics',[^\n]*managementKeys:\['locKeywords'\]/);
+  assert.match(panel,/id:'trace',[^\n]*managementKeys:\['spatial'\]/);
+  assert.match(panel,/id:'search',[^\n]*managementKeys:\['articles'\]/);
+  assert.match(panel,/\['system','members'\]/);
+  assert.match(panel,/label:'個人設定'/);
+  assert.doesNotMatch(panel,/managementKeys:\['locKeywords','keywords'\]|managementKeys:\['articles','advanced'\]/);
 });
 
 test('management Hero copy uses the fixed public display reader, not auth-gated SQL',async()=>{

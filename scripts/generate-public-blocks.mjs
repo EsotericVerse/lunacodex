@@ -7,7 +7,7 @@ import {directMcpKysely,closeLocDatabase} from '../app/loc/db/native-kysely.mjs'
 import {portableRelation} from '../app/loc/providers/sql-engine-ports.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
-import {scopeConfigColumns} from '../app/loc/scope/scope-config-fields.mjs';
+import {scopeConfigColumnList} from '../app/loc/scope/scope-config-fields.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../packages/zenstack/anchor-hierarchy.mjs';
 import {publishPublicFiles} from './publish-public-files.mjs';
 
@@ -31,7 +31,7 @@ const tableForScope=id=>table(id);
 for(const row of routes){
   const id=row.scope_id;
   const config=await db.selectFrom(tableForScope(id))
-    .select(scopeConfigColumns(id).split(',').filter(Boolean))
+    .select(scopeConfigColumnList(id))
     .where('id','=',id).executeTakeFirst();
   if(!config)throw Error('Missing published Scope Config for '+id);
   // Mutable copy stays in SQL (and the private homepage R2 projection), not

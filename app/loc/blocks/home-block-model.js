@@ -152,42 +152,96 @@ export const FEATURE_HERO_ORDER=Object.freeze({
   setting:7
 });
 export const FEATURE_HERO_IDS=Object.freeze(Object.keys(FEATURE_HERO_ORDER));
-// Each management destination owns one Hero row that stores its copy and
-// image together. Do not multiplex unrelated Hero documents by block_order.
-export const MANAGEMENT_HERO_IMAGE_URL='https://loc.lo3rwang.cc/pics/scope-gn.jpg';
+// Each route owns one Hero row that stores its copy and image together. Keep
+// these page names aligned with LOC_MANAGEMENT_ROUTE_TABLE and the SQL rows.
 export const MANAGEMENT_HERO_SLOTS=Object.freeze([
-  {key:'time',label:'時間定錨',audience:'scope',featureId:'culture',page:'TimeAnchor',englishTitle:'TimeAnchor'},
-  {key:'keywords',label:'關鍵詞',audience:'scope',featureId:'statics',page:'ScopeKeyword',englishTitle:'ScopeKeyword'},
-  {key:'spatial',label:'空間定錨',audience:'scope',featureId:'trace',page:'SpaceAnchor',englishTitle:'SpaceAnchor'},
-  {key:'advanced',label:'文章管理',audience:'scope',featureId:'search',page:'ScopeArticle',englishTitle:'Article Management'},
+  {key:'time',label:'時間定錨',audience:'scope',featureId:'culture',page:'TimeAnchor',englishTitle:'Time Anchor'},
+  {key:'keywords',label:'關鍵詞',audience:'scope',featureId:'statics',page:'Groupkeyword',englishTitle:'Keywords'},
+  {key:'spatial',label:'空間定錨',audience:'scope',featureId:'trace',page:'SpaceAnchor',englishTitle:'Space Anchor'},
+  {key:'advanced',label:'文章管理',audience:'scope',featureId:'search',page:'GroupArticle',englishTitle:'Article Management'},
   {key:'system',label:'系統管理',audience:'loc',page:'group_admin',englishTitle:'Administration'},
-  {key:'members',label:'人員作品管理',audience:'loc',page:'GalaxyManage',englishTitle:'GalaxyManage'},
-  {key:'locKeywords',label:'關鍵詞',audience:'loc',page:'Groupkeyword',englishTitle:'Groupkeyword'},
-  {key:'articles',label:'文章管理',audience:'loc',page:'GroupArticle',englishTitle:'GroupArticle'}
+  {key:'members',label:'人員作品管理',audience:'loc',page:'GalaxyManage',englishTitle:'People & Works'},
+  {key:'locKeywords',label:'關鍵詞',audience:'loc',page:'Groupkeyword',englishTitle:'Keywords'},
+  {key:'articles',label:'文章管理',audience:'loc',page:'GroupArticle',englishTitle:'Article Management'}
 ]);
-const LOC_MANAGEMENT_HERO_IMAGES=Object.freeze({
-  members:'https://loc.lo3rwang.cc/pics/LOC-culture.jpg',
-  locKeywords:'https://loc.lo3rwang.cc/pics/LOC-statics.jpg',
-  articles:'https://loc.lo3rwang.cc/pics/LOC-search.jpg'
-});
+const heroImageUrl=file=>file?'https://loc.lo3rwang.cc/pics/'+file:'';
 const FEATURE_HERO_DEFAULT_IMAGES=Object.freeze({
-  culture:'LOC-culture.jpg',
-  statics:'LOC-statics.jpg',
-  trace:'LOC-gn.jpg',
-  search:'LOC-search.jpg'
+  culture:'scope-culture.jpg',
+  statics:'scope-statics.jpg',
+  trace:'scope-gn.jpg',
+  search:'scope-search.jpg',
+  admin:'LOC-admin.jpg',
+  manage:'scope-manage.jpg',
+  setting:'local-setting.jpg'
+});
+const MANAGEMENT_HERO_DEFAULT_IMAGES=Object.freeze({
+  time:'LOC-culture.jpg',
+  keywords:'LOC-statics.jpg',
+  spatial:'LOC-gn.jpg',
+  advanced:'LOC-search.jpg',
+  system:'LOC-admin.jpg',
+  members:'scope-manage.jpg',
+  locKeywords:'LOC-statics.jpg',
+  articles:'LOC-search.jpg'
+});
+const MANAGEMENT_HERO_COPY=Object.freeze({
+  TimeAnchor:{eyebrow:'Time Anchor',title:'時間定錨'},
+  ScopeKeyword:{eyebrow:'Keywords',title:'關鍵詞'},
+  SpaceAnchor:{eyebrow:'Space Anchor',title:'空間定錨'},
+  ScopeArticle:{eyebrow:'Article Management',title:'文章管理'},
+  group_admin:{eyebrow:'Administration',title:'系統管理'},
+  GalaxyManage:{eyebrow:'People & Works',title:'人員作品管理'},
+  Groupkeyword:{eyebrow:'Keywords',title:'關鍵詞'},
+  GroupArticle:{eyebrow:'Article Management',title:'文章管理'},
+  group_culture:{eyebrow:'Culture',title:'文化'},
+  group_statics:{eyebrow:'Statistics',title:'統計'},
+  group_trace:{eyebrow:'Trace',title:'痕跡'},
+  group_search:{eyebrow:'Search',title:'搜尋'},
+  group_setting:{eyebrow:'Personal Settings',title:'個人設定'}
 });
 export function featureHeroDefaultImage(featureId){
   const file=FEATURE_HERO_DEFAULT_IMAGES[String(featureId||'')];
-  return file?'https://loc.lo3rwang.cc/pics/'+file:'';
+  return heroImageUrl(file);
 }
 export function managementHeroImagePage(slot){
   // The Hero image and its copy are fields on the same LOC Anchor row.
   return slot?.page||'group_admin';
 }
 export function managementHeroDefaultImage(slot){
-  return slot?.audience==='loc'
-    ?LOC_MANAGEMENT_HERO_IMAGES[slot.key]||'https://loc.lo3rwang.cc/pics/LOC-admin.jpg'
-    :MANAGEMENT_HERO_IMAGE_URL;
+  return heroImageUrl(MANAGEMENT_HERO_DEFAULT_IMAGES[slot?.key]||'');
+}
+export function defaultHeroImageForPage(scopeId,pageName='index'){
+  const page=String(pageName||'index').trim();
+  const groupPage=/^group_(.+)$/.exec(page);
+  if(groupPage)return featureHeroDefaultImage(groupPage[1]);
+  const slot=MANAGEMENT_HERO_SLOTS.find(item=>item.page===page);
+  if(slot)return managementHeroDefaultImage(slot);
+  return '';
+}
+export function isLocHeroPage(pageName='index'){
+  const page=String(pageName||'index').trim();
+  return Boolean(MANAGEMENT_HERO_COPY[page]||
+    /^group_(?:culture|statics|trace|search|admin|manage|setting)$/.test(page));
+}
+export function defaultHeroCopyForPage(pageName='index'){
+  const page=String(pageName||'index').trim();
+  return MANAGEMENT_HERO_COPY[page]||{eyebrow:'',title:''};
+}
+const normalizeHeroToken=value=>String(value||'').toLowerCase().replace(/[\s_-]+/g,'');
+const internalHeroTokens=new Set([
+  ...Object.keys(MANAGEMENT_HERO_COPY),
+  'TimeAnchor','ScopeKeyword','SpaceAnchor','ScopeArticle','GalaxyManage',
+  'Groupkeyword','GroupArticle',
+  ...[...Object.values(FEATURE_HERO_DEFAULT_IMAGES),
+    ...Object.values(MANAGEMENT_HERO_DEFAULT_IMAGES)].flatMap(file=>[
+      file,file.replace(/\.[^.]+$/,'')
+    ])
+].map(normalizeHeroToken));
+export function normalizeHeroCopyValue(pageName,field,value){
+  const text=String(value??'').trim();
+  if(!text||!internalHeroTokens.has(normalizeHeroToken(text)))return text;
+  const defaults=defaultHeroCopyForPage(pageName);
+  return String(defaults[field]||'');
 }
 
 export function managementHeroSlot(view='',scopeId=''){
@@ -203,10 +257,11 @@ export function managementHeroSlot(view='',scopeId=''){
 export function managementHeroCopy(rows,slot){
   if(!slot)return null;
   const row=(Array.isArray(rows)?rows:[]).find(item=>Number(item?.block_order)===1);
-  if(!row)return {eyebrow:'',title:String(slot.label||slot.englishTitle||'').trim(),subtitle:'',description:''};
+  const defaults=defaultHeroCopyForPage(slot.page);
+  if(!row)return {eyebrow:defaults.eyebrow||'',title:defaults.title||String(slot.label||'').trim(),subtitle:'',description:''};
   return {
-    eyebrow:String(row.block_eyebrow||'').trim(),
-    title:String(row.block_title||'').trim()||String(slot.label||slot.englishTitle||'').trim(),
+    eyebrow:normalizeHeroCopyValue(slot.page,'eyebrow',row.block_eyebrow),
+    title:normalizeHeroCopyValue(slot.page,'title',row.block_title)||defaults.title||String(slot.label||'').trim(),
     subtitle:String(row?.block_subtitle||'').trim(),
     description:String(row?.block_text||'').trim()
   };
@@ -231,12 +286,12 @@ export function featureHeroImagePageFor(featureId){
   return shouldUseSingleFeatureHeroImage(id)?'scope_'+id:featureHeroPageFor(id);
 }
 
-export function sharedFeatureHeroFor(rows){
+export function sharedFeatureHeroFor(rows,pageName=''){
   const row=(Array.isArray(rows)?rows:[]).find(item=>Number(item?.block_order)===1);
   if(!row)return null;
   return {
-    eyebrow:String(row.block_eyebrow||'').trim(),
-    title:String(row.block_title||'').trim(),
+    eyebrow:normalizeHeroCopyValue(pageName,'eyebrow',row.block_eyebrow),
+    title:normalizeHeroCopyValue(pageName,'title',row.block_title),
     subtitle:String(row.block_subtitle||''),
     description:String(row.block_text||'')
   };
@@ -277,8 +332,11 @@ export const HomeBlock=Object.freeze({
   SINGLE_SLOT_FEATURE_HERO_IDS,
   shouldUseSingleFeatureHeroImage,
   MANAGEMENT_HERO_SLOTS,
-  MANAGEMENT_HERO_IMAGE_URL,
   featureHeroDefaultImage,
+  defaultHeroImageForPage,
+  defaultHeroCopyForPage,
+  normalizeHeroCopyValue,
+  isLocHeroPage,
   managementHeroSlot,
   managementHeroImagePage,
   managementHeroDefaultImage,

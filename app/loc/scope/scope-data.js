@@ -6,13 +6,13 @@ import {queryBlockContent,queryBlocks,readPublicHomePageCopy}
 import {queryCultureContent} from '../actions/culture/queries.mjs';
 import {queryStaticsContent} from '../actions/statics/queries.mjs';
 import {selectRows} from '../db/db-query.mjs';
-import {scopeConfigColumns,scopeFeatureEnabled} from './scope-config-fields.mjs';
+import {scopeFeatureEnabled} from './scope-config-fields.mjs';
 import {Capacitor} from '@capacitor/core';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
-import {scopeBlockStoragePage} from '../blocks/scope-block-storage-page.mjs';
+import {scopeBlockPageName,scopeBlockStoragePage} from '../blocks/scope-block-storage-page.mjs';
 
 // Public page copy and Scope labels use the fixed R2/SQL page-copy action.
 // Routing identity and membership remain in the published registry snapshot.
@@ -307,7 +307,7 @@ export async function hero_block(specificValue){
 // cache. Rendering uses selectScopeBlocks() below.
 export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  const name=String(page||'index').trim();
+  const name=scopeBlockPageName(id,page);
   const storagePage=scopeBlockStoragePage(id,name);
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[A-Za-z0-9_-]+$/.test(name))return [];
   if(id==='loc'){
@@ -331,13 +331,13 @@ export async function selectLiveScopeBlocks(scopeId,page='index'){
 }
 export async function selectScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
-  const name=String(page||'index').trim().toLowerCase().replace(/^home$/,'index');
-  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[a-z0-9_-]+$/.test(name))return [];
+  const name=scopeBlockPageName(id,page);
+  if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[A-Za-z0-9_-]+$/.test(name))return [];
   // Public presentation is authored data, not part of the deployed HTML.
   // Preserve the existing LOC governance -> Trace presentation projection.
   // The mounted query resource deduplicates requests; do not retain the result
   // indefinitely in the relation cache after navigation or direct DB edits.
-  if(id==='loc'&&name==='trace'){
+  if(id==='loc'&&name.toLowerCase()==='trace'){
     const rows=await selectLiveScopeBlocks(id,'governance');
     return rows.map(row=>({...row,page_name:'trace'}));
   }

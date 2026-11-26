@@ -2,7 +2,7 @@
 import {withPublicLocRead} from '../read-context.mjs';
 import {block_list,hero_block} from '../../providers/kysely-public.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
-import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
+import {scopeConfigColumnList} from '../../scope/scope-config-fields.mjs';
 import {publicScopeBlockPage} from '../../blocks/public-scope-pages.mjs';
 import {FEATURE_HERO_IDS,MANAGEMENT_HERO_SLOTS} from '../../blocks/home-block-model.js';
 import {readPublicHomePageCopySql} from '../../blocks/public-home-sql.mjs';
@@ -129,7 +129,7 @@ export async function queryBlockContent(searchParams){
   if(feature)throw Error('Unexpected Block feature');
   if(kind==='block_list')return {data:await publicBlockList(scope,'index'),count:null};
   return withPublicLocRead({scope},async(db,port)=>{
-    const columns=scopeConfigColumns(scope).split(',').filter(Boolean);
+    const columns=scopeConfigColumnList(scope);
     const table=portableRelation(scope,port.engine,
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));
     const row=await db.selectFrom(table).select(columns)

@@ -13,7 +13,7 @@ import {useUiCopy,useUiLocale} from '../i18n/ui-locale';
 import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contract.mjs';
 import {useScopeRuntime} from './use-scope-runtime';
 import {hero_block,selectLiveScopeBlocks} from '../loc/scope/scope-data';
-import {heroImageUrl as heroImageUrlOf} from '../loc/blocks/hero-image.mjs';
+import {heroImageUrlForPage} from '../loc/blocks/hero-image.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
 import ScopeLink from './ScopeLink';
@@ -83,12 +83,13 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const heroImageRow=managementMode
     ?managementImageQuery.data?.find(row=>Number(row.block_order)===1)
     :groupHeroRows.find(row=>Number(row.block_order)===1);
-  const heroImageOverride=heroImageUrlOf(heroImageRow)||
+  const heroImagePage=managementMode?managementImagePage:groupHeroPage;
+  const heroImageOverride=heroImageUrlForPage(heroImageRow,'loc',heroImagePage)||
     (managementMode?HomeBlock.managementHeroDefaultImage(managementSlot)
       :hasFeatureHero?HomeBlock.featureHeroDefaultImage(featureId):'');
   const heroStyle=heroImageOverride?{'--scope-feature-hero-image':`url("${heroImageOverride}")`}:undefined;
   const shared=managementMode?HomeBlock.managementHeroCopy(managementTextQuery.data,managementSlot)
-    :sharedEnabled?HomeBlock.featureHeroFor(groupHeroRows):null;
+    :sharedEnabled?HomeBlock.featureHeroFor(groupHeroRows,groupHeroPage):null;
   const fallbackCopy={
     title:profile.title,
     subtitle:finalSubtitle,
