@@ -8,6 +8,7 @@ import {dbAuthRelation,dbAuthClient,resetKeywordClassification,updateRows,transa
 import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
 import {allocateAnchorUid} from '../../model/uid.js';
 import ManagementSectionNav from '../../../modular/ManagementSectionNav';
+import AnchorManagementNavigator from '../../../modular/AnchorManagementNavigator';
 import ActivityMotion from '../../../modular/ActivityMotion';
 import FlowProgress from '../../../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from '../class-state.mjs';
@@ -100,9 +101,15 @@ export default function KeywordLibraryPanel({scopeId,account}){
     return indexKeywordTree(rows);
   },[rows]);
   const category=tree.index.get(chosen.category);
-  // Category identity is maintained by Scope Group, not editable here.
+  const categories=tree.roots.filter(row=>row.type==='category')
+    .sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+  // Category identity is maintained by Scope Group, not edited in this panel.
+  const categoryItems=categories.length?categories:[{uid:'__all__',name:'全部科目',lists:[]}];
+  const activeCategory=category||categories[0]||null;
   const classes=[...tree.index.values()].filter(row=>row.type==='class')
     .sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+  const linkedClasses=activeCategory?childrenOf(tree,activeCategory.uid).filter(row=>row.type==='class'):[];
+  const visibleClasses=linkedClasses.length?linkedClasses:classes;
   const activeClass=tree.index.get(chosen.class);
   const groups=childrenOf(tree,activeClass?.uid);
   const activeGroup=tree.index.get(chosen.group);
@@ -192,6 +199,10 @@ export default function KeywordLibraryPanel({scopeId,account}){
   useEffect(()=>()=>discoveryAbort.current?.abort(),[]);
   const choose=(type,uid)=>{
     const next={...chosen,[type]:uid};
+    if(type==='category'){
+      next.category=uid==='__all__'?'':uid;
+      next.class='';next.group='';next.item='';
+    }
     if(type==='class')next.category=tree.parent.get(uid)||'';
     if(type==='class'){next.group='';next.item='';}
     if(type==='group')next.item='';
@@ -665,72 +676,118 @@ export default function KeywordLibraryPanel({scopeId,account}){
     {error?<p className="scope-status scope-error" role="alert"><ActivityMotion state="error"/> {error}</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
     {loading?<div className="loc-progressive-river-frame" aria-busy="true"><div className="loc-progressive-river-axis" aria-hidden="true"/></div>:null}
-    {!loading&&workspace==='manual'?<section className="loc-card scope-feature-card">
+    {!loading&&workspace==='manual'?<section className="loc-card scope-feature-card loc-keyword-manual-workspace">
       <h2>關鍵字分類與判斷詞編輯</h2>
-      <div className="scope-management-fields">
-        {TYPES.map((type,index)=>{
-          const parent=index?tree.index.get(chosen[TYPES[index-1]]):null;
-          const options=index?childrenOf(tree,parent?.uid):classes;
-          return <label key={type}><span>{LABEL[type]}</span>
-            <select className="scope-select" value={chosen[type]} onChange={e=>choose(type,e.target.value)}
-              disabled={index>0&&!parent}>
-              <option value="">選擇 {LABEL[type]}</option>
-              {options.map(row=><option key={row.uid} value={row.uid}>{row.name}</option>)}
-            </select>
-            <button type="button" className="loc-button" disabled={busy||(index>0&&!parent)}
-              onClick={()=>create(type,parent?.uid||'')}>新增</button>
-          </label>;
-        })}
-      </div>
-       {selected?<div className="scope-preview-links">
-        <button className="loc-button" type="button" disabled={busy}
-          onClick={()=>edit(selected)}>編輯「{selected.name}」</button>
-        <span className="scope-status">{LABEL[selected.type]}：{selected.lists.length}{selected.type==='item'?' 個判斷詞':' 筆'}</span>
-      </div>:null}
-      {!classes.length?<p className="scope-status">尚無關鍵字群組科目，可先建立科目，再新增分類群組與判斷詞。</p>:null}
-      {draftEditor}
-      {activeClass?<div className="scope-stat-controls">
-        <label><span>「{activeClass.name}」公開設定</span>
-          <select className="scope-select" value={classShareEnabled(activeClass.uid)?'yes':'no'}
-            disabled={busy||sharingBusy}
-            onChange={e=>saveClassShare(activeClass.uid,e.target.value==='yes')}>
-            <option value="no">不公開</option><option value="yes">公開</option>
-          </select>
-        </label>
-        {classShareEnabled(activeClass.uid)
-          ?<span className="scope-status">公開群組科目代碼：<code>{activeClass.uid}</code></span>:null}
-        {classShareEnabled(activeClass.uid)?<p className="scope-status">
-          公開群組科目代碼：<code>{activeClass.uid}</code>（來源：{scopeId}）
-        </p>:null}
-      </div>:null}
-      <div className="scope-stat-controls">
-        <label><span>複製選定的關鍵字群組科目</span><input value={copyName} placeholder="新科目名稱"
-          onChange={e=>setCopyName(e.target.value)}/></label>
-        <button type="button" className="loc-button" disabled={!selectedClass||!copyName.trim()||busy} onClick={copyClass}>複製整套科目</button>
-      </div>
-      <details className="scope-import-maintenance">
-        <summary>關鍵字群組科目匯入</summary>
-        <div className="scope-import-maintenance-content">
-          <p className="scope-status">輸入資料來源代碼與公開群組科目代碼（8 碼）。只會匯入分類規則，不會複製文章。</p>
-          <div className="scope-management-fields">
-            <label><span>資料來源代碼（Scope ID）</span>
-              <input value={importScope} autoCapitalize="off" spellCheck={false}
-                placeholder="例如 lo3rwang" onChange={event=>{
-                  setImportScope(event.target.value.toLowerCase());setImportClass(null);
-                }}/></label>
-            <label><span>公開群組科目代碼（8 碼／舊版 4 碼）</span>
-              <input value={importUid} maxLength={8} autoCapitalize="off" spellCheck={false}
-                placeholder="例如 ZCBXGIGR" onChange={event=>{setImportUid(event.target.value);setImportClass(null);}}/></label>
+      <AnchorManagementNavigator
+        className="loc-keyword-anchor-tree"
+        label="關鍵詞階層管理"
+        searchLabel="搜尋目錄、科目、群組、Item 與 Pattern"
+        searchPlaceholder="輸入名稱或關鍵詞"
+        primaryTitle="目錄"
+        primaryItems={categoryItems.map(row=>({
+          id:row.uid,label:row.name,meta:(row.lists||[]).length+' 個科目',
+          searchText:[row.name,...childrenOf(tree,row.uid).map(child=>child.name)].join(' ')
+        }))}
+        selectedPrimary={category?.uid||(!categories.length?'__all__':activeCategory?.uid||'')}
+        onSelectPrimary={id=>choose('category',id)}
+        primaryEmpty="目前沒有關鍵字目錄"
+        secondaryTitle="群組科目"
+        secondaryItems={visibleClasses.map(row=>({
+          id:row.uid,label:row.name,meta:childrenOf(tree,row.uid).length+' 個分類群組',
+          searchText:[row.name,...childrenOf(tree,row.uid).map(child=>child.name)].join(' ')
+        }))}
+        selectedSecondary={activeClass?.uid||''}
+        onSelectSecondary={id=>choose('class',id)}
+        secondaryCreateLabel="＋ 新增科目"
+        onCreateSecondary={()=>create('class')}
+        secondaryEmpty="選擇目錄後顯示群組科目"
+        detailTitle="分類群組與操作"
+        detailItems={groups.map(row=>({
+          id:row.uid,label:row.name,meta:childrenOf(tree,row.uid).length+' 個 Item',
+          searchText:[row.name,...childrenOf(tree,row.uid).flatMap(item=>[
+            item.name,...(item.lists||[])
+          ])].join(' ')
+        }))}
+        selectedDetail={activeGroup?.uid||''}
+        onSelectDetail={id=>choose('group',id)}
+        detailCreateLabel="＋ 新增分類群組"
+        onCreateDetail={()=>create('group',activeClass?.uid||'')}
+        detailCreateDisabled={!activeClass}
+        detailEmpty="選擇科目後顯示分類群組"
+        disabled={busy||loading}>
+        <div className="loc-keyword-management__detail">
+          <section className="loc-keyword-item-browser" aria-label="Item 與 Pattern 管理">
+            <header className="loc-keyword-item-browser__heading">
+              <div><h4>關鍵詞 Item</h4><span>{items.length.toLocaleString('zh-TW')}</span></div>
+              <button type="button" className="loc-button loc-anchor-management__create"
+                disabled={busy||!activeGroup} onClick={()=>create('item',activeGroup?.uid||'')}>＋ 新增 Item</button>
+            </header>
+            <div className="loc-keyword-item-browser__list">
+              {items.map(item=><button key={item.uid} type="button"
+                className="loc-keyword-item-browser__item"
+                aria-pressed={chosen.item===item.uid}
+                onClick={()=>{choose('item',item.uid);edit(item);}}>
+                <strong>{item.name}</strong>
+                <small>{item.lists.length} 個 Pattern</small>
+              </button>)}
+              {!items.length?<p className="scope-status">選擇分類群組後顯示所屬 Item。</p>:null}
+            </div>
+          </section>
+          {selected?<div className="scope-preview-links">
+            <button className="loc-button" type="button" disabled={busy}
+              onClick={()=>edit(selected)}>編輯「{selected.name}」</button>
+            <span className="scope-status">{LABEL[selected.type]}：{selected.lists.length}{selected.type==='item'?' 個 Pattern':' 筆'}</span>
+          </div>:null}
+          {activeClass&&selected?.uid!==activeClass.uid?<div className="scope-preview-links">
+            <button className="loc-button" type="button" disabled={busy}
+              onClick={()=>edit(activeClass)}>編輯科目「{activeClass.name}」</button>
+          </div>:null}
+          {!classes.length?<p className="scope-status">尚無關鍵字群組科目，可先建立科目，再新增分類群組與判斷詞。</p>:null}
+          {draftEditor}
+          {activeClass?<div className="scope-stat-controls">
+            <label><span>「{activeClass.name}」公開設定</span>
+              <select className="scope-select" value={classShareEnabled(activeClass.uid)?'yes':'no'}
+                disabled={busy||sharingBusy}
+                onChange={e=>saveClassShare(activeClass.uid,e.target.value==='yes')}>
+                <option value="no">不公開</option><option value="yes">公開</option>
+              </select>
+            </label>
+            {classShareEnabled(activeClass.uid)
+              ?<span className="scope-status">公開群組科目代碼：<code>{activeClass.uid}</code></span>:null}
+            {classShareEnabled(activeClass.uid)?<p className="scope-status">
+              公開群組科目代碼：<code>{activeClass.uid}</code>（來源：{scopeId}）
+            </p>:null}
+          </div>:null}
+          <div className="scope-stat-controls">
+            <label><span>複製選定的關鍵字群組科目</span><input value={copyName} placeholder="新科目名稱"
+              onChange={e=>setCopyName(e.target.value)}/></label>
+            <button type="button" className="loc-button" disabled={!selectedClass||!copyName.trim()||busy} onClick={copyClass}>複製整套科目</button>
           </div>
-          <div className="scope-preview-links">
-            <button type="button" className="loc-button" disabled={busy||importBusy}
-              onClick={lookupPublicClass}>{importBusy?<ActivityMotion kind="import"/>:null}{importBusy?'核對中…':'查詢公開科目'}</button>
-            {importClass?<button type="button" className="loc-button primary" disabled={busy||importBusy}
-              onClick={importPublicClass}>匯入「{importClass.name}」</button>:null}
-          </div>
-          {importClass?<p className="scope-status">已核對：{importClass.scopeid}／{importClass.uid}（只匯入分類規則，不含文章或統計結果）</p>:null}
+          <details className="scope-import-maintenance">
+            <summary>關鍵字群組科目匯入</summary>
+            <div className="scope-import-maintenance-content">
+              <p className="scope-status">輸入資料來源代碼與公開群組科目代碼（8 碼）。只會匯入分類規則，不會複製文章。</p>
+              <div className="scope-management-fields">
+                <label><span>資料來源代碼（Scope ID）</span>
+                  <input value={importScope} autoCapitalize="off" spellCheck={false}
+                    placeholder="例如 lo3rwang" onChange={event=>{
+                      setImportScope(event.target.value.toLowerCase());setImportClass(null);
+                    }}/></label>
+                <label><span>公開群組科目代碼（8 碼／舊版 4 碼）</span>
+                  <input value={importUid} maxLength={8} autoCapitalize="off" spellCheck={false}
+                    placeholder="例如 ZCBXGIGR" onChange={event=>{setImportUid(event.target.value);setImportClass(null);}}/></label>
+              </div>
+              <div className="scope-preview-links">
+                <button type="button" className="loc-button" disabled={busy||importBusy}
+                  onClick={lookupPublicClass}>{importBusy?<ActivityMotion kind="import"/>:null}{importBusy?'核對中…':'查詢公開科目'}</button>
+                {importClass?<button type="button" className="loc-button primary" disabled={busy||importBusy}
+                  onClick={importPublicClass}>匯入「{importClass.name}」</button>:null}
+              </div>
+              {importClass?<p className="scope-status">已核對：{importClass.scopeid}／{importClass.uid}（只匯入分類規則，不含文章或統計結果）</p>:null}
+            </div>
+          </details>
         </div>
-      </details>
+      </AnchorManagementNavigator>
     </section>:null}
     {!loading&&workspace==='analysis'?<details className="loc-card scope-feature-card loc-work-disclosure">
       <summary>分析基本設定</summary>

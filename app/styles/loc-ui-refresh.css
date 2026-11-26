@@ -2,8 +2,8 @@
    No new palettes: every tone is derived from the active published Theme.
    Keep the time river, maps, article semantics and user interactions intact. */
 :root{
-  --loc-list-row-odd:color-mix(in srgb,var(--loc-panel) 94%,var(--loc-bg));
-  --loc-list-row-even:color-mix(in srgb,var(--loc-panel) 85%,var(--loc-panel-2));
+  --loc-list-row-odd:color-mix(in srgb,var(--loc-panel) 86%,var(--loc-accent) 14%);
+  --loc-list-row-even:color-mix(in srgb,var(--loc-panel) 86%,var(--loc-gold) 14%);
 }
 /* Zebra rows are subtle enough for all eight themes, including high-chroma themes. */
 [data-public-feature] .loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card){

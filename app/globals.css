@@ -27,6 +27,8 @@
 @import "./styles/local-scope.css";
 /* Three homepages share one final composition layer. */
 @import "./styles/home-composition.css";
+@import "./styles/loc-expressive-ui.css";
+@import "./styles/loc-theme-preview.css";
 
 html[data-theme-bootstrap="scheme-only"] body{
   visibility:hidden;

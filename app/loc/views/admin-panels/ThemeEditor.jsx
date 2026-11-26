@@ -155,15 +155,50 @@ export default function ThemeEditor(){
           <small><UiText id="uiExtra.adminView.themePrimaryHelp"/></small>
         </fieldset>
       </div>
-      <section className="scope-inline-card admin-theme-local-preview" aria-label="主題色彩預覽" style={{...draft.tokens,background:'var(--loc-bg)',color:'var(--loc-text)',borderColor:'var(--loc-line)'}}>
-        <strong style={{color:'var(--loc-heading)'}}>色彩預覽：{draft.label||themeId}</strong>
-        <p style={{color:'var(--loc-muted)'}}>預覽整套主題草稿；這裡的變更尚未套用到網站。</p>
-        <div className="admin-theme-preview-sample" style={{background:'var(--loc-panel)',border:'1px solid var(--loc-line)'}}>
-          <strong style={{color:'var(--loc-accent)'}}>強調色文字</strong>
-          <span style={{color:draft.identityColor||'var(--loc-accent)'}}>主色基準</span>
-          <span style={{color:'var(--loc-gold)'}}>輔助色文字</span>
-          <button type="button" style={{background:'linear-gradient(135deg,var(--loc-primary-start),var(--loc-primary-end))',color:'var(--loc-text)',borderColor:'var(--loc-accent-border)'}}>主要按鈕</button>
-          <span style={{color:'var(--loc-danger)'}}>錯誤提示色</span>
+      <section className="scope-inline-card admin-theme-local-preview" aria-label="主題色彩預覽"
+        style={{...draft.tokens,background:'var(--loc-bg)',color:'var(--loc-text)',borderColor:'var(--loc-line)'}}>
+        <header className="admin-theme-preview-heading">
+          <div><strong style={{color:'var(--loc-heading)'}}>色彩預覽：{draft.label||themeId}</strong>
+            <p style={{color:'var(--loc-muted)'}}>預覽整套主題草稿；這裡的變更尚未套用到網站。</p></div>
+          <span>三層背景 · 三層文字 · 多種框體</span>
+        </header>
+        <div className="admin-theme-preview-grid">
+          <article className="admin-theme-preview-layer admin-theme-preview-layer--base"
+            style={{background:'var(--loc-bg)',border:'1px solid var(--loc-line)'}}>
+            <small>01 / BASE</small><h3 style={{color:'var(--loc-heading)'}}>主背景</h3>
+            <p style={{color:'var(--loc-text)'}}>正文文字與主要閱讀內容</p>
+            <span style={{color:'var(--loc-muted)'}}>輔助說明與次要資訊</span>
+          </article>
+          <article className="admin-theme-preview-layer admin-theme-preview-layer--panel"
+            style={{background:'var(--loc-panel)',border:'1px solid var(--loc-line)'}}>
+            <small>02 / PANEL</small><h3 style={{color:'var(--loc-heading)'}}>卡片背景</h3>
+            <p style={{color:'var(--loc-text)'}}>一般面板、列表與閱讀區</p>
+            <strong style={{color:'var(--loc-accent)'}}>主色強調文字</strong>
+          </article>
+          <article className="admin-theme-preview-layer admin-theme-preview-layer--raised"
+            style={{background:'var(--loc-panel-2)',border:'1px solid var(--loc-gold-border-soft)'}}>
+            <small>03 / RAISED</small><h3 style={{color:'var(--loc-heading)'}}>次層背景</h3>
+            <p style={{color:'var(--loc-text)'}}>表單、浮層與分區內容</p>
+            <strong style={{color:'var(--loc-gold)'}}>輔助色文字</strong>
+          </article>
+          <article className="admin-theme-preview-layer admin-theme-preview-layer--accent"
+            style={{background:'var(--loc-accent-surface)',border:'1px solid var(--loc-accent-border)'}}>
+            <small>04 / ACCENT</small><h3 style={{color:'var(--loc-heading)'}}>主色區域</h3>
+            <p style={{color:'var(--loc-text)'}}>選取、重要操作與互動焦點</p>
+            <button type="button" style={{background:'linear-gradient(135deg,var(--loc-primary-start),var(--loc-primary-end))',color:'var(--loc-heading)',borderColor:'var(--loc-accent-border)'}}>主要按鈕</button>
+          </article>
+          <article className="admin-theme-preview-layer admin-theme-preview-layer--gold"
+            style={{background:'var(--loc-gold-surface)',border:'1px solid var(--loc-gold-border)'}}>
+            <small>05 / GOLD</small><h3 style={{color:'var(--loc-heading)'}}>輔助色區域</h3>
+            <p style={{color:'var(--loc-text)'}}>次要分類、提示與補充資訊</p>
+            <span style={{color:'var(--loc-gold)'}}>輔助色基準</span>
+          </article>
+        </div>
+        <div className="admin-theme-preview-frames" aria-label="框體樣式預覽">
+          <span className="admin-theme-preview-frame--fine">細緻框線</span>
+          <span className="admin-theme-preview-frame--accent">主色框線</span>
+          <span className="admin-theme-preview-frame--double">雙層框體</span>
+          <span className="admin-theme-preview-frame--danger" style={{color:'var(--loc-danger)',borderColor:'var(--loc-danger-border)'}}>警示框體</span>
         </div>
       </section>
       <details className="admin-theme-advanced-colors">

@@ -593,12 +593,14 @@ function mediaMetadataDescription(row){
 
 // Culture article lists are requested only after the visitor explicitly opens
 // "顯示文章列表". The time/density rivers never ask for Galaxy UIDs.
+export const CULTURE_ARTICLE_PAGE_SIZE=20;
+
 export async function selectCultureArticleListPage(scope,{
-  startDate='',endDate='',site='',sites=[],offset=0,sortDirection='desc',signal=null
+  startDate='',endDate='',site='',sites=[],offset=0,limit=CULTURE_ARTICLE_PAGE_SIZE,sortDirection='desc',signal=null
 }={}){
   const scopeId=scopeIdOf(scope?.id);
   if(!scopeId)throw new Error('scopeId is required');
-  const pageSize=ARTICLE_UID_PAGE_ROWS;
+  const pageSize=Math.max(1,Math.min(CULTURE_ARTICLE_PAGE_SIZE,Math.floor(Number(limit)||CULTURE_ARTICLE_PAGE_SIZE)));
   const start=String(startDate||'').slice(0,10);
   const end=String(endDate||'').slice(0,10);
   if(!start||!end||start>end)return {rows:[],hasMore:false,nextCursor:null};
@@ -611,8 +613,7 @@ export async function selectCultureArticleListPage(scope,{
   ];
   const pageOffset=Math.max(0,Math.floor(Number(offset)||0));
   // Fetch one lookahead row rather than a full COUNT(*) on every page.
-  // Only the current 100 articles are retained/rendered; the 101st row is
-  // merely a hasMore signal and is discarded before returning.
+  // Culture exposes a compact 20-article page; the lookahead row is discarded.
   const response=scopeId==='local'
     ?await selectRows(scope.galaxy,{
       columns:'uid,title,createtime,site,able',filters,

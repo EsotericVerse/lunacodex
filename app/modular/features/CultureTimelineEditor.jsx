@@ -433,22 +433,17 @@ export default function CultureTimelineEditor({
     prepareTransaction:()=>prepareTimeTransaction(),
     isDirty:()=>JSON.stringify(draft)!==JSON.stringify(original.current),
     isBusy:()=>busy};
-  return <section ref={editorRef} className="scope-culture-inline-editor" role="region" aria-label="時間定錨、期間與時代編輯">
+  return <TimeAnchorTree rows={rows} value={selectedId}
+    disabled={busy||query.isPending} onSelect={selectRow} onCreate={newRecord}>
+    <section ref={editorRef} className="scope-culture-inline-editor" role="region" aria-label="時間定錨、期間與時代編輯">
     <header className="scope-culture-inline-heading">
       <h4>{selectedId?'編輯':'新增'}{displayType[draft.type]}</h4>
     </header>
     {query.error?<p className="scope-status scope-error" role="alert">{query.error.message}</p>:null}
-    <div className="scope-culture-record-browser">
-      <TimeAnchorTree rows={rows} value={selectedId}
-        disabled={busy||query.isPending} onSelect={selectRow}/>
-      <div className="scope-culture-record-browser-row">
-        {TYPE_TABS.map(type=><button key={type} type="button" className="loc-button"
-          disabled={busy||query.isPending}
-          onClick={()=>newRecord(type)}>＋ 新增{displayType[type]}</button>)}
-        {browseType==='anchor'?<button type="button" className="loc-button" disabled={busy}
-          onClick={()=>setAnnualOpen(v=>!v)}>＋ 建議紀念日</button>:null}
-      </div>
-    </div>
+    {browseType==='anchor'?<div className="scope-culture-record-browser-row">
+      <button type="button" className="loc-button" disabled={busy}
+        onClick={()=>setAnnualOpen(v=>!v)}>＋ 建議紀念日</button>
+    </div>:null}
     {annualOpen&&browseType==='anchor'?<div className="scope-card" role="group" aria-label="建議紀念日批次建立">
       <h5>建議紀念日｜批次建立真實日期定錨</h5>
       <p className="scope-status">僅在按下建立後寫入 date。相同日期已存在就略過，不修改文章或期間。</p>
@@ -591,5 +586,6 @@ export default function CultureTimelineEditor({
         <button type="button" className="loc-button" onClick={remove} disabled={busy}>刪除</button>
       </div>:null}
     </form>
-  </section>;
+    </section>
+  </TimeAnchorTree>;
 }

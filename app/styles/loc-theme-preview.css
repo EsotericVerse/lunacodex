@@ -1,0 +1,138 @@
+/* Theme editor preview: demonstrate the palette as a usable interface,
+   not as a row of isolated color swatches. */
+.admin-theme-local-preview{
+  display:grid;
+  gap:clamp(.7rem,1.4vw,1rem);
+  min-width:0;
+  padding:clamp(.8rem,1.8vw,1.2rem);
+}
+.admin-theme-preview-heading{
+  display:flex;
+  align-items:start;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:.65rem;
+  min-width:0;
+  padding-bottom:.65rem;
+  border-bottom:1px solid var(--loc-line);
+}
+.admin-theme-preview-heading>div{display:grid;gap:.2rem;min-width:0;}
+.admin-theme-preview-heading>div>strong{
+  color:var(--loc-heading);
+  font-size:1.05rem;
+  font-weight:800;
+  text-decoration:underline;
+  text-decoration-color:var(--loc-accent);
+  text-underline-offset:4px;
+}
+.admin-theme-preview-heading p{margin:0;font-size:.82rem;}
+.admin-theme-preview-heading>span{
+  padding:.3rem .55rem;
+  border:1px solid var(--loc-gold-border-soft);
+  border-radius:999px;
+  background:var(--loc-gold-surface-soft);
+  color:var(--loc-gold);
+  font-size:.74rem;
+  font-weight:750;
+}
+.admin-theme-preview-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:.6rem;
+  min-width:0;
+}
+.admin-theme-preview-layer{
+  display:grid;
+  align-content:start;
+  gap:.35rem;
+  min-width:0;
+  min-height:150px;
+  padding:.75rem;
+  border-radius:var(--loc-ui-radius-md,16px);
+  box-shadow:inset 0 1px 0 color-mix(in srgb,var(--loc-text) 7%,transparent);
+}
+.admin-theme-preview-layer>small{
+  color:var(--loc-muted);
+  font-size:.65rem;
+  font-weight:800;
+  letter-spacing:.1em;
+}
+.admin-theme-preview-layer h3{
+  margin:.08rem 0;
+  font-size:.95rem;
+  font-weight:800;
+  text-decoration:underline;
+  text-decoration-color:var(--loc-gold-border-soft);
+  text-underline-offset:3px;
+}
+.admin-theme-preview-layer p{
+  margin:0;
+  color:var(--loc-text);
+  font-size:.78rem;
+  line-height:1.55;
+}
+.admin-theme-preview-layer>span,
+.admin-theme-preview-layer>strong{
+  font-size:.78rem;
+  font-weight:750;
+}
+.admin-theme-preview-layer button{
+  justify-self:start;
+  min-height:36px;
+  padding:.38rem .7rem;
+  border:1px solid var(--loc-accent-border);
+  border-radius:999px;
+  font:inherit;
+  font-size:.76rem;
+  font-weight:750;
+}
+.admin-theme-preview-frames{
+  display:flex;
+  flex-wrap:wrap;
+  gap:.5rem;
+  align-items:center;
+}
+.admin-theme-preview-frames>span{
+  display:inline-flex;
+  align-items:center;
+  min-height:36px;
+  padding:.4rem .7rem;
+  border-radius:var(--loc-ui-radius-sm,12px);
+  background:var(--loc-panel);
+  color:var(--loc-heading);
+  font-size:.76rem;
+  font-weight:720;
+}
+.admin-theme-preview-frame--fine{border:1px solid var(--loc-line);}
+.admin-theme-preview-frame--accent{border:1px solid var(--loc-accent);}
+.admin-theme-preview-frame--double{border:3px double var(--loc-gold-border);box-shadow:inset 0 0 0 2px var(--loc-gold-surface-soft);}
+.admin-theme-preview-frame--danger{border:1px solid var(--loc-danger-border);}
+.scope-edit-mode-toggle{
+  animation:loc-home-entry-arrive .55s var(--loc-motion-ease-soft) both;
+}
+.scope-edit-mode-toggle>.loc-button{
+  min-height:48px;
+  padding:.7rem 1.2rem;
+  border:1px solid var(--loc-accent-border);
+  border-bottom:3px solid var(--loc-gold);
+  border-radius:999px;
+  background:linear-gradient(115deg,var(--loc-primary-start),var(--loc-primary-end));
+  color:var(--loc-heading);
+  font-weight:780;
+  box-shadow:0 8px 24px color-mix(in srgb,var(--loc-accent) 14%,transparent);
+  transition:transform var(--loc-motion-fast) var(--loc-motion-ease),box-shadow var(--loc-motion-standard) var(--loc-motion-ease);
+}
+.scope-edit-mode-toggle>.loc-button:hover:not(:disabled){
+  transform:translateY(-2px);
+  box-shadow:0 12px 30px color-mix(in srgb,var(--loc-accent) 22%,transparent);
+}
+@media(max-width:900px){
+  .admin-theme-preview-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:560px){
+  .admin-theme-preview-grid{grid-template-columns:minmax(0,1fr);}
+  .admin-theme-preview-layer{min-height:0;}
+}
+@media(prefers-reduced-motion:reduce){
+  .scope-edit-mode-toggle,.scope-edit-mode-toggle>.loc-button{animation:none!important;transition:none!important;transform:none!important;}
+}

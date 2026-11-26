@@ -1,12 +1,9 @@
-/* Shared zebra rows: the active LOC theme supplies both colors.
-   Only record/list items participate; controls, group headings and load sentinels do not. */
+/* Theme-derived two-color list system. Keep list rows compact and bounded. */
 :root{
-  --loc-list-row-odd:var(--loc-panel);
-  --loc-list-row-even:var(--loc-panel-2);
+  --loc-list-row-odd:color-mix(in srgb,var(--loc-panel) 86%,var(--loc-accent) 14%);
+  --loc-list-row-even:color-mix(in srgb,var(--loc-panel) 86%,var(--loc-gold) 14%);
+  --loc-list-row-hover:color-mix(in srgb,var(--loc-panel) 78%,var(--loc-accent) 22%);
 }
-
-/* Article lists (search/management, culture, statistics), linked records,
-   media records, timelines and existing reusable lists. */
 :is(.scope-list,.scope-culture-source-work-scroll,.scope-media-meta-list,
     .scope-timeline,.loc-timeline,.scope-literature-chapters,
     .loc-context-list,.loc-link-list)
@@ -19,38 +16,31 @@
   > :is(article,li,.loc-context-item,.loc-link-card):nth-of-type(even){
   background:var(--loc-list-row-even);
 }
-
-/* Style-tag recommendations retain their accent while alternating. */
-:is(.scope-list,.scope-culture-source-work-scroll)
-  > .scope-article-style-tag-hit:nth-of-type(odd){
-  background:linear-gradient(110deg,
-    color-mix(in srgb,var(--loc-accent) 9%,var(--loc-list-row-odd)),
-    var(--loc-list-row-odd) 65%);
+:is(.scope-list,.loc-context-list,.loc-link-list,.scope-culture-source-work-scroll){
+  min-width:0;max-width:100%;max-height:min(56vh,34rem);overflow:auto;
+  overscroll-behavior:contain;scrollbar-gutter:stable;contain:layout paint;
 }
-:is(.scope-list,.scope-culture-source-work-scroll)
-  > .scope-article-style-tag-hit:nth-of-type(even){
-  background:linear-gradient(110deg,
-    color-mix(in srgb,var(--loc-accent) 9%,var(--loc-list-row-even)),
-    var(--loc-list-row-even) 65%);
+:is(.scope-list,.loc-context-list,.loc-link-list) > :is(li,article,.loc-context-item,.loc-link-card){
+  min-width:0;max-width:100%;padding:.48rem .7rem;border-radius:var(--loc-ui-radius-sm,10px);
+  overflow-wrap:anywhere;transition:background-color .18s ease,border-color .18s ease,transform .18s ease;
 }
-
-/* Article relationship rows: reference, previous/next, media, time,
-   space, statistics and keywords use the same two theme colors. */
-.scope-article-context-row{
-  padding:.45rem .7rem;
-  border-radius:var(--loc-ui-radius-sm);
+:is(.scope-list,.loc-context-list,.loc-link-list) > :is(li,article,.loc-context-item,.loc-link-card):is(:hover,:focus-within){
+  background:var(--loc-list-row-hover);
 }
+:is(.scope-list,.loc-context-list,.loc-link-list) :is(p,small,.scope-status){
+  margin-block:.15rem;line-height:1.45;
+}
+:is(.scope-list,.loc-context-list,.loc-link-list) :is(h2,h3,strong){
+  overflow-wrap:anywhere;text-wrap:pretty;
+}
+.scope-article-context-row{padding:.45rem .7rem;border-radius:var(--loc-ui-radius-sm)}
 .scope-article-context-row:nth-of-type(odd){background:var(--loc-list-row-odd)}
 .scope-article-context-row:nth-of-type(even){background:var(--loc-list-row-even)}
-.scope-article-context-down[open] > .scope-article-context-items > a{
-  display:block;
-  padding:.35rem .55rem;
-  border-radius:var(--loc-ui-radius-sm);
+.scope-article-context-down[open]>.scope-article-context-items>a{
+  display:block;padding:.35rem .55rem;border-radius:var(--loc-ui-radius-sm)
 }
-.scope-article-context-down[open] > .scope-article-context-items > a:nth-of-type(odd){background:var(--loc-list-row-odd)}
-.scope-article-context-down[open] > .scope-article-context-items > a:nth-of-type(even){background:var(--loc-list-row-even)}
-
-/* Source/result groups, ranked records and list-style metadata. */
+.scope-article-context-down[open]>.scope-article-context-items>a:nth-of-type(odd){background:var(--loc-list-row-odd)}
+.scope-article-context-down[open]>.scope-article-context-items>a:nth-of-type(even){background:var(--loc-list-row-even)}
 :is(.scope-ranking,.loc-ranking,.loc-history) > div:nth-of-type(odd),
 .scope-culture-source-groups > .scope-culture-source-button:nth-of-type(odd):not([aria-pressed="true"]),
 :is(.scope-article-rune-list,.scope-culture-rune-list ul,.loc-trace-selection-order) > li:nth-of-type(odd),
@@ -59,25 +49,75 @@
 .scope-culture-source-groups > .scope-culture-source-button:nth-of-type(even):not([aria-pressed="true"]),
 :is(.scope-article-rune-list,.scope-culture-rune-list ul,.loc-trace-selection-order) > li:nth-of-type(even),
 .loc-timeline-review-row:nth-of-type(even){background:var(--loc-list-row-even)}
-
-/* Tables use row backgrounds without changing column layout or sticky headers. */
-:is(.loc-table,.scope-stat-table) > tbody > tr:nth-child(odd){background:var(--loc-list-row-odd)}
-:is(.loc-table,.scope-stat-table) > tbody > tr:nth-child(even){background:var(--loc-list-row-even)}
-
-/* Preserve text contrast and keyboard focus from the existing theme styles. */
-
-/* Shared themed zebra surface for the four public article readers.
-   Culture renders div rows, while Search / Statistics / Trace render article cards.
-   Scope headings and infinite-scroll loaders are not record rows. */
-.loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):nth-child(odd){
-  background:var(--loc-list-row-odd);
-}
-.loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):nth-child(even){
-  background:var(--loc-list-row-even);
-}
+:is(.loc-table,.scope-stat-table)>tbody>tr:nth-child(odd){background:var(--loc-list-row-odd)}
+:is(.loc-table,.scope-stat-table)>tbody>tr:nth-child(even){background:var(--loc-list-row-even)}
+.loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):nth-child(odd){background:var(--loc-list-row-odd)}
+.loc-public-article-list > :is(.scope-work-list-row,.loc-shared-work-card):nth-child(even){background:var(--loc-list-row-even)}
 .loc-public-article-list > .scope-work-list-row{
-  border:1px solid var(--loc-line);
-  border-radius:var(--loc-ui-radius-sm);
-  padding:.65rem .8rem;
-  min-width:0;
+  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.55rem;
+  min-width:0;padding:.48rem .7rem;border:1px solid var(--loc-line);
+  border-radius:var(--loc-ui-radius-sm,10px);
+}
+.scope-article-title-link{
+  min-width:0;max-width:100%;padding:0;border:0;background:transparent;color:var(--loc-heading);
+  font:inherit;font-weight:620;text-align:start;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;cursor:pointer;
+}
+.scope-article-title-link:disabled{cursor:default;color:var(--loc-muted)}
+.loc-public-article-list time{white-space:nowrap;color:var(--loc-muted);font-size:.82rem;font-variant-numeric:tabular-nums}
+.scope-article-page-nav{display:flex;align-items:center;justify-content:center;gap:.65rem;flex-wrap:wrap;padding-top:.65rem}
+.scope-article-page-nav>span{font-size:.82rem;color:var(--loc-muted);font-variant-numeric:tabular-nums}
+.scope-culture-source-work-scroll{display:grid;gap:.28rem}
+.scope-river-group-action{display:flex;align-items:center;justify-content:space-between;gap:.4rem;min-width:0;width:100%}
+.scope-river-group-action__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scope-river-article-open{
+  display:inline-grid;place-items:center;flex:0 0 1.65rem;width:1.65rem;height:1.65rem;
+  border:1px solid var(--loc-accent-border-soft);border-radius:50%;
+  background:color-mix(in srgb,var(--loc-panel) 80%,var(--loc-accent) 20%);
+  color:var(--loc-heading);font:inherit;line-height:1;cursor:pointer;
+  transition:transform .2s ease,background-color .2s ease,border-color .2s ease;
+}
+.scope-river-article-open:hover{transform:translateY(2px);background:var(--loc-list-row-hover)}
+.scope-river-article-open:focus-visible{outline:2px solid var(--loc-accent);outline-offset:2px}
+.loc-time-tree-roots>li:nth-child(odd){background:var(--loc-list-row-odd)}
+.loc-time-tree-roots>li:nth-child(even){background:var(--loc-list-row-even)}
+.loc-time-tree-children>li:nth-child(odd){background:color-mix(in srgb,var(--loc-list-row-odd) 72%,transparent)}
+.loc-time-tree-children>li:nth-child(even){background:color-mix(in srgb,var(--loc-list-row-even) 72%,transparent)}
+.loc-time-tree-heading{border-radius:var(--loc-ui-radius-sm);transition:background-color .18s ease}
+.loc-time-tree-toggle,.loc-time-tree-date-choice{transition:background-color .18s ease,color .18s ease,transform .18s ease}
+.loc-time-tree-toggle:hover,.loc-time-tree-date-choice:hover{transform:translateX(2px)}
+.loc-time-tree-children{padding-block:.18rem}
+.scope-management-records{max-height:min(54vh,32rem);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.scope-management-records>*{min-width:0;max-width:100%;overflow-wrap:anywhere}
+.loc-history>div{min-width:0;overflow-wrap:anywhere}
+.loc-article-reader-backdrop{
+  position:fixed;inset:0;z-index:1200;display:grid;place-items:center;
+  padding:clamp(.75rem,3vw,2rem);background:rgba(0,0,0,.58);backdrop-filter:blur(5px);
+  animation:loc-reader-backdrop-in .18s ease both;
+}
+.loc-article-reader{
+  display:grid;grid-template-rows:auto minmax(0,1fr);gap:.7rem;
+  width:min(860px,100%);max-height:min(82dvh,850px);min-width:0;
+  padding:clamp(.8rem,2vw,1.3rem);border:1px solid var(--loc-accent-border-soft);
+  border-radius:var(--loc-ui-radius-lg,20px);background:var(--loc-panel);
+  box-shadow:var(--loc-shadow-card);animation:loc-reader-panel-in .22s cubic-bezier(.2,.75,.2,1) both;
+}
+.loc-article-reader>header{display:flex;align-items:center;justify-content:space-between;gap:.7rem;min-width:0}
+.loc-article-reader>header>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loc-article-reader__body{min-width:0;overflow:auto;overscroll-behavior:contain;line-height:1.8;overflow-wrap:anywhere}
+.loc-article-reader__body>p{white-space:pre-wrap}
+@keyframes loc-reader-backdrop-in{from{opacity:0}to{opacity:1}}
+@keyframes loc-reader-panel-in{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes loc-list-row-arrive{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+:is(.scope-list,.loc-time-tree-children,.loc-time-tree-roots,.scope-management-records,.scope-culture-source-work-scroll)>:is(li,article,div){
+  animation:loc-list-row-arrive .22s ease both;
+}
+@media(max-width:680px){
+  .loc-public-article-list>.scope-work-list-row{gap:.35rem;padding:.5rem .55rem}
+  .loc-public-article-list time{font-size:.75rem}
+  .loc-article-reader{max-height:88dvh;border-radius:var(--loc-ui-radius-md,16px)}
+}
+@media(prefers-reduced-motion:reduce){
+  .scope-river-article-open,.loc-time-tree-toggle,.loc-time-tree-date-choice{transition:none!important;transform:none!important}
+  .loc-article-reader-backdrop,.loc-article-reader,:is(.scope-list,.loc-time-tree-children,.loc-time-tree-roots,.scope-management-records,.scope-culture-source-work-scroll)>:is(li,article,div){animation:none!important}
 }
