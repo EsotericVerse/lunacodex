@@ -108,9 +108,14 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     const direction=featureId==='culture'?{x:[-9,0]}:
       featureId==='trace'?{x:[9,0]}:featureId==='statics'?{y:[7,0]}:{y:[4,0]};
     const elements=heroRef.current.querySelectorAll(':scope > .loc-eyebrow, :scope > .home-title-row, :scope > .scope-hero-description');
-    const controls=Array.from(elements).map((element,index)=>animate(element,
-      {opacity:[.65,1],...direction},{duration:.28,delay:index*.045,ease:'easeOut'}));
-    return ()=>controls.forEach(control=>control.stop());
+    const controls=Array.from(elements).map((element,index)=>{
+      const original={opacity:element.style.opacity,transform:element.style.transform};
+      const restore=()=>Object.assign(element.style,original);
+      const control=animate(element,{opacity:[.65,1],...direction},
+        {duration:.28,delay:index*.045,ease:'easeOut',onComplete:restore});
+      return ()=>{control.stop();restore();};
+    });
+    return ()=>controls.forEach(stop=>stop());
   },[heroReady,heroIdentity,featureId,reduceMotion]);
   return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
     <section className="scope-page">
