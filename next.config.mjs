@@ -1,6 +1,14 @@
 import {LOC_SERVICE_ORIGINS} from './app/modular/routing/service-route-index.mjs';
 
+// Vercel assigns a unique deployment ID at build time. Next.js requires
+// its deploymentId value not to start with "dpl_", so strip that provider
+// prefix while preserving uniqueness for every Vercel deployment. Cloudflare
+// continues to use its existing build UUID / commit SHA precedence.
+const vercelDeploymentId = process.env.VERCEL_DEPLOYMENT_ID
+  ?.replace(/^dpl_/, '');
+
 const deploymentId = process.env.NEXT_DEPLOYMENT_ID
+  || vercelDeploymentId
   || process.env.WORKERS_CI_BUILD_UUID
   || process.env.WORKERS_CI_COMMIT_SHA
   || process.env.GITHUB_SHA
