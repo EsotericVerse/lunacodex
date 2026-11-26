@@ -13,7 +13,7 @@ import {
   managementRouteHref,
 } from '../app/modular/routing/management-route-table.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
-import {readPublicSourceAnchors,readPublicSourceTaxonomy,resolveSiteAnchorRead} from '../app/loc/source/catalog-public.mjs';
+import {SITE_ANCHOR_READ_MODE,readPublicSourceAnchors,readPublicSourceTaxonomy} from '../app/loc/source/catalog-public.mjs';
 import {queryAnchorFeature} from '../app/loc/actions/anchor/queries.mjs';
 import {readLocSourceHierarchy} from '../app/loc/actions/admin/queries.mjs';
 import {traceSourceOptions} from '../app/modular/features/trace/trace-panel-filters.mjs';
@@ -59,6 +59,7 @@ test('Scope management route uses the active Scope context',()=>{
 });
 
 test('public SiteAnchor is available from resident publication without a SQL read',async()=>{
+  assert.equal(SITE_ANCHOR_READ_MODE,'published-js');
   assert.equal(PUBLISHED_SITE_BOOTSTRAP.site_anchors.length,36);
   assert.equal((await readPublicSourceAnchors()).length,36);
   const taxonomy=await readPublicSourceTaxonomy();
@@ -69,29 +70,11 @@ test('public SiteAnchor is available from resident publication without a SQL rea
   const result=await queryAnchorFeature({kind:'query',operation:'anchor-feature',
     scope:'loc',family:'source',mode:'public',types:['from'],limit:5,
     includeTotal:true});
-  assert.equal(result.query.mode,'published-asset');
+  assert.equal(result.query.mode,'published-js');
   assert.equal(result.data.rows.length,5);
   assert.equal(result.data.hasMore,true);
   assert.equal(result.data.totalCount,
     (await readPublicSourceAnchors()).filter(row=>row.type==='from').length);
-});
-
-test('SiteAnchor Asset switch falls back only on disable or Asset failure',async()=>{
-  const calls=[];
-  const loadAsset=async()=>{calls.push('asset');return ['asset'];};
-  const loadFallback=async()=>{calls.push('sql');return ['sql'];};
-  assert.deepEqual(await resolveSiteAnchorRead({mode:'asset',loadAsset,loadFallback}),['asset']);
-  assert.deepEqual(calls,['asset']);
-  calls.length=0;
-  assert.deepEqual(await resolveSiteAnchorRead({mode:'asset',
-    loadAsset:async()=>{calls.push('asset');throw Error('missing');},loadFallback}),['sql']);
-  assert.deepEqual(calls,['asset','sql']);
-  calls.length=0;
-  assert.deepEqual(await resolveSiteAnchorRead({mode:'sql',loadAsset,loadFallback}),['sql']);
-  assert.deepEqual(calls,['sql']);
-  await assert.rejects(resolveSiteAnchorRead({mode:'asset',
-    loadAsset:async()=>{throw Error('missing');},
-    loadFallback:async()=>{throw Error('unavailable');}}),/Asset 無法讀取，固定 SQL 回退也失敗/);
 });
 
 test('Trace source options use the published SiteAnchor tree and retain the Galaxy.site value',async()=>{
