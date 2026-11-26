@@ -412,7 +412,10 @@ test('Keyword cursor adaptive page budget measures UTF-8 bytes, not UTF-16 chara
   const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
   const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
   const result=await readItemKeywordProjection(db,'lo3rwang',{
-    items:[],groups:[],patterns:[],engine:'postgres',namespace:'silver'
+    items:[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}],
+    groups:[{uid:'GROUP001',title:'一組'}],
+    patterns:[{uid:'PATT0001',title:'月光'}],
+    engine:'postgres',namespace:'silver'
   });
   assert.equal(result.totals.scannedDocuments,total);
   assert.deepEqual(pageLimits,[4096,4096],
