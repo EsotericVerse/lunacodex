@@ -415,6 +415,19 @@ export async function executeKyselyQuery(trx,input,{dialect='postgres',namespace
       });
       data=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,data);
     }
+  }else if(req.operation==='upsert'&&dialect==='postgres'){
+    const rows=Array.isArray(req.values)?req.values:[req.values];
+    const batches=planKyselyUpsertBatches(rows,req.onConflict,{dialect});
+    if(req.returning)data=[];
+    else count=0;
+    for(const batch of batches){
+      const built=buildKyselyMutationQuery(trx,{...input,values:batch},
+        {dialect,namespace,modelName});
+      const result=await built.query.execute();
+      if(req.returning)data.push(...result);
+      else count+=Number(result[0]?.numAffectedRows??
+        result[0]?.numInsertedOrUpdatedRows??result[0]?.numUpdatedRows??0n);
+    }
   }else if(['mssql','mysql'].includes(dialect)&&req.operation==='upsert'){
     const prepared={...req,values:serializePortableJsonFields(req.values,dialect)};
     const executor=dialect==='mssql'?executeMssqlUpsert:executeMysqlUpsert;
