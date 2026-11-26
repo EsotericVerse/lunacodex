@@ -7,9 +7,11 @@ import {readLocHyperdriveMode} from './hyperdrive-mode.mjs';
 import pg from 'pg';
 import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {normalizeLiveTarget} from '../providers/live-database-target.mjs';
-import {createKyselyDialect,getSqlType,requestScopedPool} from '../../../modules/loc/dialect/index.mjs';
+import {createKyselyDialect,getSqlType} from '../../../modules/loc/dialect/index.mjs';
+import {requestScopedPool} from './postgres-pool.mjs';
+import {isCloudflareWorkerRuntime,locHyperdriveBinding,resolveLocConnectionProvider}
+  from './connection-provider.mjs';
 import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
-import {getCloudflareContext} from '@opennextjs/cloudflare';
 
 // The trusted Kysely dialect and its request-owned pg.Client share the
 // current request lifetime. No platform-specific background cleanup is needed.
@@ -27,42 +29,7 @@ function mainUri(env){
     throw unavailable('LOC primary PostgreSQL URI incomplete');
   return value;
 }
-function isCloudflareWorkerRuntime(){
-  return Boolean(process.versions?.workerd)||
-    globalThis.navigator?.userAgent==='Cloudflare-Workers'||
-    Boolean(globalThis.Cloudflare);
-}
-// OpenNext Server Actions receive process.env, so read object bindings from the
-// current Cloudflare request context. Only a Worker (or explicit Hyperdrive
-// probe) requires the binding; NODE_ENV=production is also normal on a VPS.
-export async function locHyperdriveBinding(env={},{
-  requireBinding=isCloudflareWorkerRuntime(),
-  getContext=getCloudflareContext
-}={}){
-  let binding=env?.LOC_HYPERDRIVE||null;
-  if(!binding){
-    let context;
-    try{context=await getContext({async:true});}
-    catch{
-      if(requireBinding)
-        throw unavailable('LOC Hyperdrive request context unavailable');
-      return null;
-    }
-    binding=context?.env?.LOC_HYPERDRIVE||null;
-  }
-  if(!binding){
-    if(requireBinding)
-      throw unavailable('LOC_HYPERDRIVE binding unavailable in Cloudflare Worker');
-    return null;
-  }
-  const uri=binding?.connectionString;
-  let url;
-  try{url=new URL(uri);}catch{throw unavailable('LOC Hyperdrive binding invalid');}
-  if(!['postgres:','postgresql:'].includes(url.protocol)||!url.hostname)
-    throw unavailable('LOC Hyperdrive binding invalid');
-  return uri;
-}
-export {requestScopedPool};
+export {locHyperdriveBinding,resolveLocConnectionProvider};
 const NODE_POOL_KEY=Symbol.for('loc.native-kysely.node-pool');
 function nodeProcessPool(uri){
   const current=globalThis[NODE_POOL_KEY];
@@ -81,8 +48,6 @@ export async function db_connection(env={},verifiedAlias='',{
 }={}){
   if(!env||typeof env!=='object')throw unavailable('LOC backend environment missing');
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
-  if(forceDirect&&forceHyperdrive)
-    throw unavailable('Conflicting LOC connection mode request');
   const external=Boolean(verifiedAlias&&verifiedAlias!==primary?.target_id&&
     verifiedAlias!==primary?.connection_alias);
   if(external){
@@ -110,15 +75,13 @@ export async function db_connection(env={},verifiedAlias='',{
      typeof primary.schema_name!=='string'||!primary.schema_name)
     throw unavailable('LOC primary SQL Type or schema is not explicitly configured');
   const isCloudflareWorkers=isCloudflareWorkerRuntime();
-  // An explicit host-level direct mode also works when moving the service to a
-  // host without a Cloudflare binding. It is a deployment choice, not failover.
-  const directOnly=env.LOC_HYPERDRIVE_MODE==='direct';
-  if(directOnly&&forceHyperdrive)
-    throw unavailable('LOC Hyperdrive disabled by deployment configuration');
-  const hyperdriveUri=forceDirect||directOnly?null:await locHyperdriveBinding(env,{
-    requireBinding:forceHyperdrive||isCloudflareWorkerRuntime()
+  // Provider selection is independent of the explicitly configured SQL Type.
+  const connectionRoute=await resolveLocConnectionProvider(env,{
+    forceDirect,forceHyperdrive,
+    requireBinding:forceHyperdrive||isCloudflareWorkers
   });
-  if(hyperdriveUri){
+  if(connectionRoute.provider==='hyperdrive'){
+    const hyperdriveUri=connectionRoute.connectionString;
     // Hyperdrive owns the cross-request origin pool. Each Worker request still
     // owns its pg.Client and closes it at the normal/error/abort boundary.
     const pool=requestScopedPool({
@@ -131,7 +94,8 @@ export async function db_connection(env={},verifiedAlias='',{
     const dialect=createKyselyDialect(primary.engine,{pool});
     const connection={db:new Kysely({dialect}),dialect,pool,
       engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{},
-      connectionMode:'hyperdrive'};
+      connectionProvider:connectionRoute.provider,
+      connectionMode:connectionRoute.connectionMode};
     if(!forceHyperdrive){
       let enabled;
       try{enabled=await modeReader(connection.db);}
@@ -155,7 +119,9 @@ export async function db_connection(env={},verifiedAlias='',{
     const dialect=createKyselyDialect(primary.engine,{pool});
     return {db:new Kysely({dialect}),dialect,
       engine:primary.engine,namespace:primary.schema_name,
-      tableName:'',fieldMap:{},pool,sharedPool:true,connectionMode:'direct'};
+      tableName:'',fieldMap:{},pool,sharedPool:true,
+      connectionProvider:connectionRoute.provider,
+      connectionMode:connectionRoute.connectionMode};
   }
   // Cloudflare Workers' Node TLS shim does not support the certificate
   // options node-postgres derives from sslmode/channel_binding URL options.
@@ -196,7 +162,8 @@ export async function db_connection(env={},verifiedAlias='',{
   const dialect=createKyselyDialect(primary.engine,{pool});
   const connection={db:new Kysely({dialect}),dialect,pool,
     engine:'postgres',namespace:primary.schema_name,tableName:'',fieldMap:{},
-    connectionMode:'direct'};
+    connectionProvider:connectionRoute.provider,
+    connectionMode:connectionRoute.connectionMode};
   return connection;
 }
 export {db_connection as directMcpKysely};
