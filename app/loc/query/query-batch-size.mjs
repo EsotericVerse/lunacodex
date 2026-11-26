@@ -80,25 +80,26 @@ export function planJsonRecordsetBatches(rows,{
 }
 export function createTextAdaptiveRows({
   initial=HEAVY_INITIAL_ROWS,maximum=HEAVY_QUERY_ROWS,
-  targetChars=TEXT_SCAN_TARGET_CHARS,minimum=1
+  targetChars=TEXT_SCAN_TARGET_CHARS,targetBytes,minimum=1
 }={}){
   const ceiling=Math.max(1,Math.floor(maximum));
   const floor=clampRows(Math.floor(minimum),1,ceiling);
+  const target=Number(targetBytes??targetChars);
   let size=clampRows(Math.floor(initial),floor,ceiling);
   const start=size;
   return {
     get size(){return size;},
     get initial(){return start;},
-    // Character count is the payload decision; if a page has long content,
-    // shrink by powers of two. Short text grows by at most 2x per page.
-    observe(rows,characters){
+    // The observed measure and target use the same unit: characters or UTF-8 bytes.
+    // Shrink by powers of two; short payloads grow by at most 2x per page.
+    observe(rows,measure){
       const count=Math.max(0,Number(rows)||0);
       if(!count)return size;
-      const avg=Math.max(1,Math.ceil(Math.max(0,Number(characters)||0)/count));
-      if(avg*size>targetChars){
-        while(size>floor&&avg*size>targetChars)
+      const avg=Math.max(1,Math.ceil(Math.max(0,Number(measure)||0)/count));
+      if(avg*size>target){
+        while(size>floor&&avg*size>target)
           size=Math.max(floor,Math.floor(size/2));
-      }else if(size<ceiling&&avg*Math.min(ceiling,size*2)<=targetChars){
+      }else if(size<ceiling&&avg*Math.min(ceiling,size*2)<=target){
         size=Math.min(ceiling,size*2);
       }
       return size;

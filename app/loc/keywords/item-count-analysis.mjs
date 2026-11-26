@@ -1,15 +1,17 @@
 import {createTextAdaptiveRows} from '../query/query-batch-size.mjs';
+import {executeKyselyQuery} from '../providers/kysely-runtime.mjs';
 import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
 // Item-driven LOC keyword classification. No Pattern posting or persisted article UID list.
 import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
+const UID=/^[A-Za-z0-9]{8}$/;
 const count=x=>Math.max(0,Number(x)||0);
 // Full-text Item scans already handle 4096 Galaxy rows per indexed SELECT.
 // The old 1024-row cap made each checkpoint issue several SQL reads. Keep the
 // 4096-row floor; a compact page can grow to the shared 10k, while the
-// per-request cursor and checkpoints still bound total work. The character
+// per-request cursor and checkpoints still bound total work. The UTF-8 byte
 // budget influences growth, never forces repeated tiny SQL requests.
 export const KEYWORD_SCAN_START_ROWS=4096;
 export const KEYWORD_SCAN_MAX_ROWS=SQL_WORKLOAD_POLICY.chunkRows;
@@ -17,6 +19,7 @@ export const KEYWORD_SCAN_START_RATE=1024;
 export const KEYWORD_SCAN_MAX_RATE=8192;
 export const KEYWORD_SCAN_RATE_STEP=1024;
 export const KEYWORD_SCAN_CHECKPOINT_ROWS=4096;
+export const KEYWORD_CPU_SLICE_ROWS=256;
 
 // Processing throughput and persisted SQL progress are distinct controls.
 // The next one-second window grows by only 1024 if the previous target was
@@ -63,7 +66,7 @@ export function createKeywordScanRate({
   };
 }
 const KEYWORD_SCAN_PAGE_OPTIONS=Object.freeze({
-  maximum:KEYWORD_SCAN_MAX_ROWS,targetChars:32*1024*1024
+  maximum:KEYWORD_SCAN_MAX_ROWS,targetBytes:32*1024*1024
 });
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
 const mapOf=(keys,values)=>Object.fromEntries(keys.map(k=>[k,count(object(values)[k])]));
@@ -341,7 +344,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
           // WITHOUT reducing, resetting or discarding the rate budget.
           const end=index+size;
           while(index<end){
-            const next=Math.min(end,index+256);
+            const next=Math.min(end,index+KEYWORD_CPU_SLICE_ROWS);
             a.absorb(ordered.slice(index,next));
             pace.complete(next-index);
             index=next;
@@ -402,32 +405,64 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
 }
 export async function readItemKeywordProjection(db,scope,{items,groups,patterns=[],start='',end='',
   source='',places=null,owner=true,minChars=0,onRow=null,
-  galaxyTable='silver.'+scope+'_galaxy'}={}){
+  galaxyTable='silver.'+scope+'_galaxy',engine='postgres',namespace='silver',
+  signal=null}={}){
   const a=createItemCountAccumulator(items,groups,null,{minChars,patterns});
+  const table=String(galaxyTable).split('.').at(-1);
+  if(!/^[a-z][a-z0-9_]*$/i.test(table))
+    throw new TypeError('Invalid Keyword Galaxy relation');
   let after='';
   const sizer=createTextAdaptiveRows({
     initial:KEYWORD_SCAN_START_ROWS,minimum:KEYWORD_SCAN_START_ROWS,
     ...KEYWORD_SCAN_PAGE_OPTIONS
   });
+  // Stream each adaptive keyset page from the selected native SQL driver.
+  // Only a small CPU slice is retained; the complete 4k–10k page is never
+  // materialized as a JavaScript row array before keyword classification.
+  const cpuBatch=[];
+  const utf8Encoder=new TextEncoder();
   for(;;){
     const requested=sizer.size;
-    let q=db.selectFrom(galaxyTable)
-      .select(['uid','title','content','keyword','date','site','place_id','createtime'])
-      .orderBy('uid','asc').limit(requested);
-    if(after)q=q.where('uid','>',after);
-    if(start)q=q.where('date','>=',start);
-    if(end)q=q.where('date','<=',end);
-    if(source)q=q.where('site','=',source);
-    if(Array.isArray(places)&&places.length)q=q.where('place_id','in',places);
-    if(!owner)q=q.where('search','=',true);
-    const rows=await q.execute();
-    if(!rows.length)break;
-    after=String(rows.at(-1).uid);
-    a.state.scanned+=rows.length;a.absorb(rows,onRow);
-    const chars=rows.reduce((sum,row)=>sum+
-      String(row?.title??'').length+String(row?.content??'').length,0);
-    sizer.observe(rows.length,chars);
-    if(rows.length<requested)break;
+    const filters=[];
+    if(after)filters.push({column:'uid',operator:'gt',value:after});
+    if(start)filters.push({column:'date',operator:'gte',value:start});
+    if(end)filters.push({column:'date',operator:'lte',value:end});
+    if(source)filters.push({column:'site',operator:'eq',value:source});
+    if(Array.isArray(places)&&places.length)
+      filters.push({column:'place_id',operator:'in',value:places});
+    if(!owner)filters.push({column:'search',operator:'eq',value:true});
+    const result=await executeKyselyQuery(db,{
+      kind:'query',schema:'silver',table,operation:'select',
+      columns:['uid','title','content','keyword','date','site','place_id','createtime'],
+      filters,orders:[{column:'uid'}],limit:requested
+    },{
+      dialect:engine,namespace,stream:true,...(signal?{signal}:{})
+    });
+    let pageRows=0,pageBytes=0,lastUid=after;
+    const absorbBatch=()=>{
+      if(!cpuBatch.length)return;
+      a.absorb(cpuBatch,onRow);
+      cpuBatch.length=0;
+    };
+    for await(const row of result.data){
+      const uid=String(row?.uid||'');
+      if(!UID.test(uid)||uid===lastUid)
+        throw new Error('Keyword projection UID cursor did not advance');
+      lastUid=uid;
+      pageRows++;
+      if(pageRows>requested)
+        throw new Error('Keyword projection exceeded its adaptive page');
+      pageBytes+=utf8Encoder.encode(String(row?.title??'')).byteLength+
+        utf8Encoder.encode(String(row?.content??'')).byteLength;
+      cpuBatch.push(row);
+      if(cpuBatch.length>=KEYWORD_CPU_SLICE_ROWS)absorbBatch();
+    }
+    absorbBatch();
+    if(!pageRows)break;
+    after=lastUid;
+    a.state.scanned+=pageRows;
+    sizer.observe(pageRows,pageBytes);
+    if(pageRows<requested)break;
   }
   return {totals:a.totals(),daily:a.daily()};
 }

@@ -182,20 +182,39 @@ export async function executeKyselySelectStream(trx,input,{
   const size=chunkSize===undefined?type.streamChunkRows:Number(chunkSize);
   if(!Number.isSafeInteger(size)||size<1||size>4096)
     throw new Error('Invalid SQL stream chunk size');
+  // Do not open a cursor or run even the optional aggregate after the
+  // owning Feature Transaction has already been cancelled.
+  if(signal?.aborted){
+    const reason=signal.reason;
+    throw reason instanceof Error?reason:Object.assign(
+      new Error('PostgreSQL query aborted'),{name:'AbortError'});
+  }
   // Preserve COUNT(*) semantics: count is a separate unbounded aggregate and
   // is completed before the row iterator is handed to its consumer.
   const count=built.countQuery
-    ?Number((await built.countQuery.executeTakeFirstOrThrow()).count):null;
+    ?Number((await built.countQuery.executeTakeFirstOrThrow(
+      signal?{signal}:undefined)).count):null;
   const data=(async function*(){
     if(!built.query)return;
+    // Kysely owns cancellation and connection release. Its stream signal
+    // rejects the consumer promptly, then waits for the in-flight cursor read
+    // to settle before closing the portal and releasing the connection.
     const options=signal?{chunkSize:size,signal}:{chunkSize:size};
+    let batch=[];
+    const flush=()=>{
+      if(!batch.length)return [];
+      const rows=batch;
+      batch=[];
+      return assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
+        normalizeModeledSelectRows({schema:req.schema,table:req.table,rows}));
+    };
     for await(const row of built.query.stream(options)){
-      const normalized=normalizeModeledSelectRows({
-        schema:req.schema,table:req.table,rows:[row]
-      });
-      const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,normalized);
-      yield checked[0];
+      batch.push(row);
+      if(batch.length>=size){
+        for(const item of flush())yield item;
+      }
     }
+    for(const item of flush())yield item;
   })();
   return {data,count};
 }

@@ -20,6 +20,59 @@ const kids=row=>Array.isArray(attrs(row).uid)?attrs(row).uid.filter(uid=>UID.tes
 const sourceTable=s=>'silver.'+s+'_galaxy';
 function err(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 
+// Retain only the best offset+page+1 article identities while scanning.
+ // The stream still evaluates every matching article, but never stores an
+ // unbounded UID list just to sort it after the scan.
+export function createAnchorArticlePageBuffer({offset=0,limit=20,sortDirection='desc'}={}){
+  if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||
+    !['asc','desc'].includes(sortDirection))
+    throw new TypeError('Invalid Anchor article page buffer');
+  const capacity=offset+limit+1;
+  const heap=[];
+  const compare=(a,b)=>{
+    const aa=String(a.createtime||''),bb=String(b.createtime||'');
+    return (sortDirection==='asc'?aa.localeCompare(bb):bb.localeCompare(aa))||
+      String(a.uid).localeCompare(String(b.uid));
+  };
+  const swap=(a,b)=>{const value=heap[a];heap[a]=heap[b];heap[b]=value;};
+  const siftUp=index=>{
+    while(index>0){
+      const parent=(index-1)>>1;
+      // Root is the worst retained row, allowing O(log k) replacement.
+      if(compare(heap[parent],heap[index])>=0)break;
+      swap(parent,index);index=parent;
+    }
+  };
+  const siftDown=index=>{
+    for(;;){
+      let worst=index;
+      const left=index*2+1,right=left+1;
+      if(left<heap.length&&compare(heap[left],heap[worst])>0)worst=left;
+      if(right<heap.length&&compare(heap[right],heap[worst])>0)worst=right;
+      if(worst===index)break;
+      swap(index,worst);index=worst;
+    }
+  };
+  return {
+    add(row){
+      const candidate={uid:String(row?.uid||''),createtime:row?.createtime??null};
+      if(heap.length<capacity){
+        heap.push(candidate);siftUp(heap.length-1);
+      }else if(compare(candidate,heap[0])<0){
+        heap[0]=candidate;siftDown(0);
+      }
+    },
+    page(){
+      const sorted=heap.slice().sort(compare);
+      return {rows:sorted.slice(offset,offset+limit),
+        hasMore:sorted.length>offset+limit};
+    },
+    get retainedCount(){return heap.length;},
+    get capacity(){return capacity;}
+  };
+}
+
+
 // Exact navigation retains keyword publication checks.
 export async function accessibleKeywordAnchors(db,scope,owner=false){
   let q=db.selectFrom(anchorTable(scope))
@@ -54,7 +107,8 @@ export async function accessibleKeywordAnchors(db,scope,owner=false){
 }
 
 export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
-  offset=0,limit=20,sortDirection='desc',startDate='',endDate='',contentType='',sourceFilter=''
+  offset=0,limit=20,sortDirection='desc',startDate='',endDate='',contentType='',sourceFilter='',
+  engine='postgres',namespace='silver'
 }={}){
   if(!SCOPE.test(String(scopeId||''))||!UID.test(String(uid||''))||
     !TYPES.includes(type)||!Number.isSafeInteger(offset)||offset<0||offset>200000||
@@ -111,27 +165,24 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
       group_uid:itemToGroup.get(item.uid)
     }));
     const selectedWord=String(anchor.title||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');
-    const found=[];
+    const pageBuffer=createAnchorArticlePageBuffer({offset,limit,sortDirection});
     await readItemKeywordProjection(db,scope,{
       items,groups:groups.map(g=>({uid:g.uid,title:g.title})),
       patterns:[...patternByUid.values()],
       start:startDate,end:endDate,owner,
       source:sourceFilter.startsWith('source:')?sourceFilter.slice(7):'',
+      galaxyTable:galaxy,engine,namespace,
       onRow:(doc,result)=>{
         if(type==='item'&&!result.hits.has(uid))return;
         if(type==='pattern'&&!keywordScanText(doc).normalize('NFKC')
           .toLocaleLowerCase('zh-Hant').includes(selectedWord))return;
         if(contentType==='lyrics_work'&&doc.site!=='suno')return;
         if(contentType==='text_work'&&doc.site==='suno')return;
-        found.push({uid:doc.uid,createtime:doc.createtime});
+        pageBuffer.add({uid:doc.uid,createtime:doc.createtime});
       }
     });
-    const sorted=found.sort((a,b)=>{
-      const aa=String(a.createtime||''),bb=String(b.createtime||'');
-      return (sortDirection==='asc'?aa.localeCompare(bb):bb.localeCompare(aa))||
-        a.uid.localeCompare(b.uid);
-    });
-    const selected=sorted.slice(offset,offset+limit).map(row=>row.uid);
+    const {rows:sorted,hasMore}=pageBuffer.page();
+    const selected=sorted.map(row=>row.uid);
     if(!selected.length)return {rows:[],hasMore:false,nextOffset:null};
     const cols=galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor')
       .filter((col,index,all)=>all.indexOf(col)===index);
@@ -139,7 +190,6 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
     if(!owner)q=q.where('search','=',true);
     const rows=await q.execute(),byId=new Map(rows.map(row=>[String(row.uid),row]));
     const articleRows=selected.map(id=>byId.get(id)).filter(Boolean);
-    const hasMore=sorted.length>offset+limit;
     return {rows:articleRows.map(row=>({row:{...row,scope_id:scope,__table:galaxy},
       source:String(row.site||scope)})),hasMore,
       nextOffset:hasMore?offset+limit:null};

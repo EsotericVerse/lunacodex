@@ -13,6 +13,8 @@ import {POSTGRES_SQL_TYPE,postgresCursorConstructor,postgresDialectConfig}
   from '../modules/loc/dialect/postgres.mjs';
 import {MYSQL_SQL_TYPE} from '../modules/loc/dialect/mysql.mjs';
 import {MSSQL_SQL_TYPE} from '../modules/loc/dialect/mssql.mjs';
+import {readItemKeywordProjection,KEYWORD_CPU_SLICE_ROWS} from '../app/loc/keywords/item-count-analysis.mjs';
+import {createAnchorArticlePageBuffer} from '../app/loc/keywords/anchor-search.mjs';
 
 const postgres=new Kysely({dialect:new PostgresDialect({pool:{
   connect:async()=>{throw Error('compile-only: no database connection');}
@@ -134,6 +136,7 @@ test('portable INSERT planner applies SQL Type limits, UTF-8 bytes and preserves
 test('PostgreSQL SELECT streaming reads bounded cursor chunks and validates rows',async()=>{
   const source=[{uid:'AAAA0001'},{uid:'BBBB0002'},{uid:'CCCC0003'}];
   const opened=[];
+  let released=0;
   class FakeCursor{
     constructor(query,parameters){this.query=query;this.parameters=parameters;this.index=0;this.closed=false;opened.push(this);}
     async read(size){const result=source.slice(this.index,this.index+size);this.index+=result.length;return result;}
@@ -142,7 +145,7 @@ test('PostgreSQL SELECT streaming reads bounded cursor chunks and validates rows
   const client={
     processID:123,
     query(query){if(query instanceof FakeCursor)return query;throw Error('Unexpected non-cursor query');},
-    release(){}
+    release(){released++;}
   };
   const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
   const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
@@ -156,12 +159,334 @@ test('PostgreSQL SELECT streaming reads bounded cursor chunks and validates rows
   assert.deepEqual(received,['AAAA0001','BBBB0002','CCCC0003']);
   assert.equal(opened.length,1);
   assert.equal(opened[0].closed,true);
+  assert.equal(released,1);
+  await db.destroy();
+});
+
+test('PostgreSQL cursor is closed when a feature consumer stops early',async()=>{
+  const source=Array.from({length:20},(_,index)=>({
+    uid:String(index+1).padStart(8,'0')
+  }));
+  let cursor,released=0;
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;
+      this.index=0;this.closed=false;cursor=this;}
+    async read(size){
+      const rows=source.slice(this.index,this.index+size);
+      this.index+=rows.length;
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:789,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Expected a native PostgreSQL cursor');},
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const result=await executeKyselyQuery(db,{
+    kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+    operation:'select',columns:['uid']
+  },{dialect:'postgres',stream:true,chunkSize:2});
+  const received=[];
+  for await(const row of result.data){received.push(row.uid);break;}
+  assert.deepEqual(received,['00000001']);
+  assert.equal(cursor.closed,true);
+  assert.equal(released,1);
+  await db.destroy();
+});
+
+test('PostgreSQL AbortSignal closes the cursor and releases its connection',async()=>{
+  const source=Array.from({length:20},(_,index)=>({
+    uid:String(index+1).padStart(8,'0')
+  }));
+  let cursor,released=0;
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;
+      this.index=0;this.closed=false;cursor=this;}
+    async read(size){
+      const rows=source.slice(this.index,this.index+size);
+      this.index+=rows.length;
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:790,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Expected a native PostgreSQL cursor');},
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const controller=new AbortController();
+  const result=await executeKyselyQuery(db,{
+    kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+    operation:'select',columns:['uid']
+  },{dialect:'postgres',stream:true,chunkSize:2,signal:controller.signal});
+  const iterator=result.data[Symbol.asyncIterator]();
+  const first=await iterator.next();
+  assert.equal(first.value.uid,'00000001');
+  controller.abort();
+  let abortError=null;
+  try{
+    for(;;){const next=await iterator.next();if(next.done)break;}
+  }catch(error){abortError=error;}
+  assert.ok(abortError,'Aborted cursor stream must reject instead of silently completing');
+  assert.match(String(abortError?.name||abortError?.message||abortError),/abort/i);
+  assert.equal(cursor.closed,true);
+  assert.equal(released,1);
+  await db.destroy();
+});
+
+test('PostgreSQL AbortSignal rejects promptly but releases only after the cursor read settles',async()=>{
+  let cursor,released=0,readCalls=0,resolveRead,markReadStarted,markClosed,markReleased;
+  const readStarted=new Promise(resolve=>{markReadStarted=resolve;});
+  const closed=new Promise(resolve=>{markClosed=resolve;});
+  const releasedDone=new Promise(resolve=>{markReleased=resolve;});
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;
+      this.closed=false;cursor=this;}
+    read(){
+      readCalls++;
+      markReadStarted();
+      return new Promise(resolve=>{resolveRead=()=>resolve([{uid:'00000001'}]);});
+    }
+    async close(){this.closed=true;markClosed();}
+  }
+  const client={
+    processID:794,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Expected a native PostgreSQL cursor');},
+    release(){released++;markReleased();}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const controller=new AbortController();
+  const result=await executeKyselyQuery(db,{
+    kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+    operation:'select',columns:['uid']
+  },{dialect:'postgres',stream:true,chunkSize:2,signal:controller.signal});
+  const iterator=result.data[Symbol.asyncIterator]();
+  const pending=iterator.next();
+  await readStarted;
+  controller.abort();
+  await assert.rejects(pending,error=>
+    /abort/i.test(String(error?.name||error?.message||error)));
+  assert.equal(readCalls,1,'Abort must not schedule another cursor read');
+  assert.equal(released,0,'The connection remains leased while cursor.read is in flight');
+  assert.equal(cursor.closed,false,'The portal cannot be closed before its read settles');
+  resolveRead();
+  await closed;
+  assert.equal(cursor.closed,true);
+  await releasedDone;
+  assert.equal(released,1,'The connection is released after cursor.close completes');
+  await db.destroy();
+});
+
+test('PostgreSQL cursor stream keeps its transaction connection until commit',async()=>{
+  const source=[{uid:'AAAA0001'},{uid:'BBBB0002'},{uid:'CCCC0003'}];
+  let cursor,released=0;
+  const statements=[];
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;
+      this.index=0;this.closed=false;cursor=this;}
+    async read(size){
+      const rows=source.slice(this.index,this.index+size);
+      this.index+=rows.length;
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:791,
+    query(query){
+      if(query instanceof FakeCursor)return query;
+      statements.push(String(query));
+      return Promise.resolve({rows:[]});
+    },
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  await db.transaction().execute(async trx=>{
+    const result=await executeKyselyQuery(trx,{
+      kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+      operation:'select',columns:['uid']
+    },{dialect:'postgres',stream:true,chunkSize:2});
+    const received=[];
+    for await(const row of result.data){received.push(row.uid);break;}
+    assert.deepEqual(received,['AAAA0001']);
+    assert.equal(cursor.closed,true);
+    assert.equal(released,0,'The transaction owns the connection until commit');
+  });
+  assert.ok(statements.some(sql=>/^begin/i.test(sql)));
+  assert.ok(statements.some(sql=>/^commit/i.test(sql)));
+  assert.equal(released,1);
+  await db.destroy();
+});
+
+test('PostgreSQL cursor streams 50000 rows in bounded 256-row driver batches',async()=>{
+  const total=50000;
+  let index=0,released=0,maxRows=0,readCalls=0,cursor;
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;this.closed=false;cursor=this;}
+    async read(size){
+      readCalls++;
+      const count=Math.min(size,total-index);
+      const rows=Array.from({length:count},(_,offset)=>({
+        uid:String(index+offset+1).padStart(8,'0')
+      }));
+      index+=count;
+      maxRows=Math.max(maxRows,rows.length);
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:792,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Expected a native PostgreSQL cursor');},
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const result=await executeKyselyQuery(db,{
+    kind:'query',schema:'silver',table:'lo3rwang_galaxy',
+    operation:'select',columns:['uid']
+  },{dialect:'postgres',stream:true,chunkSize:256});
+  let received=0;
+  for await(const row of result.data)received++;
+  assert.equal(received,total);
+  assert.ok(maxRows<=256);
+  assert.ok(readCalls>=196);
+  assert.equal(cursor.closed,true);
+  assert.equal(released,1);
+  await db.destroy();
+});
+
+test('Anchor article cursor keeps only the requested top page while scanning large matches',()=>{
+  const page=createAnchorArticlePageBuffer({offset:2,limit:2,sortDirection:'asc'});
+  for(let index=999;index>=0;index--){
+    page.add({
+      uid:String(index+1).padStart(8,'0'),
+      createtime:new Date(Date.UTC(2020,0,1)+index*1000).toISOString()
+    });
+  }
+  assert.equal(page.capacity,5);
+  assert.equal(page.retainedCount,5,
+    'A thousand matches must not become a thousand retained article identities');
+  const result=page.page();
+  assert.deepEqual(result.rows.map(row=>row.uid),['00000003','00000004']);
+  assert.equal(result.hasMore,true);
+});
+
+test('Keyword article projection streams 1000 rows through bounded cursor and CPU slices',async()=>{
+  const total=1000;
+  let released=0;
+  const opened=[];
+  class FakeCursor{
+    constructor(query,parameters){this.query=query;this.parameters=parameters;
+      this.index=0;this.closed=false;this.reads=[];this.maxRows=0;opened.push(this);}
+    async read(size){
+      this.reads.push(size);
+      const count=Math.min(size,total-this.index);
+      const rows=Array.from({length:count},(_,offset)=>({
+        uid:String(this.index+offset+1).padStart(8,'0'),
+        title:'',content:'月光月光',keyword:true,
+        date:'2026-11-20',site:'vocus',place_id:null,createtime:null
+      }));
+      this.index+=count;
+      this.maxRows=Math.max(this.maxRows,rows.length);
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:456,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Keyword projection must use the native cursor');},
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const result=await readItemKeywordProjection(db,'lo3rwang',{
+    items:[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}],
+    groups:[{uid:'GROUP001',title:'一組'}],
+    patterns:[{uid:'PATT0001',title:'月光'}],
+    engine:'postgres',namespace:'silver'
+  });
+  assert.equal(result.totals.scannedDocuments,total);
+  assert.equal(result.totals.parsedDocuments,total);
+  assert.equal(result.totals.itemCounts.ITEM0001,total);
+  assert.equal(result.totals.itemDocuments.ITEM0001,total);
+  assert.equal(result.totals.patternCounts.PATT0001,total*2);
+  assert.equal(opened.length,1);
+  assert.equal(opened[0].closed,true);
+  assert.equal(opened[0].maxRows<=256,true);
+  assert.ok(opened[0].reads.every(size=>size===256));
+  assert.equal(released,1);
+  assert.equal(KEYWORD_CPU_SLICE_ROWS,256);
   await db.destroy();
 });
 
 {
 const read=(schema,table)=>({
   kind:'query',operation:'select',schema,table,columns:['uid']
+});
+
+test('Keyword cursor adaptive page budget measures UTF-8 bytes, not UTF-16 characters',async()=>{
+  const total=4097;
+  const text='中'.repeat(2800); // 8,400 UTF-8 bytes, 2,800 JS code units.
+  let globalIndex=0,released=0;
+  const opened=[],pageLimits=[];
+  class FakeCursor{
+    constructor(query,parameters){
+      this.query=query;this.parameters=parameters;this.index=globalIndex;
+      this.limit=Number(parameters.at(-1));
+      if(!Number.isSafeInteger(this.limit)||this.limit<1)
+        throw Error('Expected the keyset page limit as the last bound parameter');
+      pageLimits.push(this.limit);
+      this.end=Math.min(total,this.index+this.limit);
+      this.closed=false;this.reads=[];opened.push(this);
+    }
+    async read(size){
+      this.reads.push(size);
+      const count=Math.min(size,this.end-this.index);
+      const rows=Array.from({length:count},(_,offset)=>({
+        uid:String(this.index+offset+1).padStart(8,'0'),
+        title:'',content:text,keyword:true,date:'2026-11-20',
+        site:'vocus',place_id:null,createtime:null
+      }));
+      this.index+=count;globalIndex=this.index;
+      return rows;
+    }
+    async close(){this.closed=true;}
+  }
+  const client={
+    processID:793,
+    query(query){if(query instanceof FakeCursor)return query;
+      throw Error('Keyword projection must use the native cursor');},
+    release(){released++;}
+  };
+  const pool={options:{},Client:class{},connect:async()=>client,end:async()=>{}};
+  const db=new Kysely({dialect:createKyselyDialect('postgres',{pool,cursor:FakeCursor})});
+  const result=await readItemKeywordProjection(db,'lo3rwang',{
+    items:[{uid:'ITEM0001',item_name:'月',group_uid:'GROUP001',keywords:['月光']}],
+    groups:[{uid:'GROUP001',title:'一組'}],
+    patterns:[{uid:'PATT0001',title:'月光'}],
+    engine:'postgres',namespace:'silver'
+  });
+  assert.equal(result.totals.scannedDocuments,total);
+  assert.deepEqual(pageLimits,[4096,4096],
+    'A 32 MiB UTF-8 budget must not double a page containing 34.4 MB of CJK text');
+  assert.equal(opened.length,2);
+  assert.ok(opened.every(cursor=>cursor.closed));
+  assert.ok(opened.every(cursor=>cursor.reads.every(size=>size===256)));
+  assert.equal(released,2);
+  await db.destroy();
 });
 
 test('anonymous reads cannot expose the private api.manage authority registry',async()=>{
