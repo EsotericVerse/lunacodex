@@ -224,9 +224,13 @@ export function planKyselyUpsertBatches(rows,primary,{
       keys.some(key=>row[key]===null||row[key]===undefined))
       throw new TypeError('UPSERT primary key is required');
     const columns=Object.keys(row).sort(),nextShape=columns.join('\0');
-    // Non-PostgreSQL CASE updates bind each primary key in both its CASE
-    // predicate and WHERE predicate. Budget that extra dialect-specific width.
-    const parameterWidth=columns.length+(dialect==='postgres'?0:keys.length);
+    // Non-PostgreSQL CASE updates repeat every PK predicate once per changed
+    // column, then bind each value and the final WHERE PK predicate. Budget
+    // the largest statement (CASE UPDATE or multi-row INSERT), not just row width.
+    const changedColumns=columns.length-keys.length;
+    const caseUpdateWidth=changedColumns*(keys.length+1)+keys.length;
+    const parameterWidth=dialect==='postgres'
+      ?columns.length:Math.max(columns.length,caseUpdateWidth);
     if(parameterWidth>parameterLimit)
       throw new RangeError('UPSERT row exceeds the selected SQL Type parameter budget');
     const limit=Math.min(rowLimit,Math.floor(parameterLimit/parameterWidth));
