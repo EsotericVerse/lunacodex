@@ -288,7 +288,8 @@ export default function ScopeBlockDraftList({
     const isHomeFrame=isHomeFrameFor(scopeId,pageName,draft.order);
     const image=isHomeFrame?resolveHomeImage(draft,scopeId):null;
     const pinnedHero=HomeBlock.isPinnedHomeHero(pageName,draft);
-    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'+(PreviewDisplay?' loc-home-turn-in-edit':'')} key={draft.uid}>
+    return <section className={(editSlotClassName||slotClassName)+' scope-editable-block scope-block-draft'+(PreviewDisplay?' loc-home-turn-in-edit':'')}
+      style={PreviewDisplay?{'--loc-home-order':index}:undefined} key={draft.uid}>
       <div className="scope-inline-editbar">
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index-1)} onClick={()=>moveBlock(draft.uid,-1)}><UiText id="uiExtra.editBlocks.moveUp"/></button>:null}
         {visibleDrafts.length>1&&!pinnedHero?<button type="button" className="loc-button" disabled={busy||!HomeBlock.canSwapHomeBlockPositions(pageName,visibleDrafts,index,index+1)} onClick={()=>moveBlock(draft.uid,1)}><UiText id="uiExtra.editBlocks.moveDown"/></button>:null}
@@ -373,10 +374,10 @@ export default function ScopeBlockDraftList({
     {/* Preview owns only the draft values; no hidden BlockNote instances. */}
     {!showingPreview?visibleDrafts.map((draft,index)=>renderDraft(draft,index,visibleDrafts)):null}
     {canAddBlock&&!showingPreview?<button type="button" className="loc-button scope-add-page-block" onClick={addBlock} disabled={busy}><UiText id="uiExtra.editBlocks.addBlock"/></button>:null}
-    {showingPreview?previewRows.filter(slot=>BlockNoteContent.text.hasBlockNoteFrameContent(slot)).map(slot=>
+    {showingPreview?previewRows.filter(slot=>BlockNoteContent.text.hasBlockNoteFrameContent(slot)).map((slot,index)=>
       <section key={'preview:'+(slot.uid||'order:'+slot.order)}
         className={(previewClassName?.(slot)||slotClassName)+' scope-editable-block loc-home-motion-block loc-home-turn-in-preview'}
-        style={previewStyle?.(slot)}
+        style={{...(previewStyle?.(slot)||{}),'--loc-home-order':index}}
         onClickCapture={event=>{if(event.target.closest?.('a'))event.preventDefault()}}>
         {slot.order===1?<span className="loc-home-motion-hero-line loc-home-preview-hero-line" aria-hidden="true"/>:null}
         <PreviewDisplay {...slot}/>
