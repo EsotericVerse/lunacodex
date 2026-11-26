@@ -5,8 +5,8 @@ import {invalidatePublicScopeMetadata,selectScopeRegistry,selectScopeBlocks} fro
 import {selectThemeRegistry,themeUiId} from '../preferences/theme-data';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 
-// Shared public site snapshot (Registry/Theme/page copy) is fetched once per
-// client runtime. Each Scope page fetches only its own config and page blocks.
+// Shared public site snapshot (Registry/Theme metadata) is fetched once per
+// client runtime. Mutable page copy and authored Blocks are read from R2/SQL.
 // Shared ZenStack client queries deduplicate consumers of the same (scopeId, pageName) key.
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 const PAGE_NAME=/^[a-z0-9_-]+$/;
@@ -28,7 +28,7 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
   // Blocks table. Do not issue even an attempted cloud metadata read.
   if(id==='local')return {
     scope_id:id,page_name:page,config:null,blocks:[],registry:[],
-    page_copy:[],theme_list:[],themes:[]
+    theme_list:[],themes:[]
   };
   const [registry,themeNames,config,blocks]=await Promise.all([
     id==='local'?Promise.resolve([]):selectScopeRegistry(),
@@ -42,18 +42,12 @@ export async function selectAppBootstrap(scopeId,pageName='index',{configHint=nu
       :Promise.resolve([])
   ]);
   return {
-    scope_id:id,page_name:page,config,blocks,registry,page_copy:[],
+    scope_id:id,page_name:page,config,blocks,registry,
     theme_list:themeNames.map(row=>({
       theme_id:themeUiId(row.theme_id),theme_name:row.theme_name,
       theme_order:row.theme_order
     })),themes:[]
   };
-}
-
-export function appBootstrapPageCopy(data,scopeId){
-  const id=String(scopeId||'').trim().toLowerCase();
-  const row=(data?.page_copy||[]).find(item=>String(item?.scope_id||'').trim().toLowerCase()===id);
-  return row?{scope_id:id,Title_TW:String(row.Title_TW||'').trim(),Desc_TW:String(row.Desc_TW||'').trim()}:null;
 }
 
 export function useAppBootstrap(scopeId,pageName='index',{enabled=true}={}){

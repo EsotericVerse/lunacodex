@@ -226,21 +226,24 @@ export default function ScopeBlockDraftList({
         savedDrafts.push({...draft,uid,stored:true,order:values.block_order,_deleted:false});
         committedRows.push({uid,...values});
       }
+      let refreshWarning='';
       if(plan.hasWrites){
         // Exactly one managed request. Authority is checked once by the server;
         // the entire page commits or rolls back in one transaction.
-        const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
+        const {error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
           p_scope_id:scopeId,p_type:pageName,p_rows:committedRows
         });
         if(error)throw new Error(error.message||'Blocks 批次儲存失敗');
+        if(homeCacheSync===false)
+          refreshWarning='SQL 已儲存；R2 首頁副本未重建，目前會回讀 SQL。';
         if(!current())return false;
       }
       // A successful SQL write is final, not a temporary save. Cache updates
       // are local only; failure to update SWR does not undo the database write.
-      let refreshWarning='';
       if(plan.hasWrites){
         try{await publishSavedBlocks(committedRows);}
-        catch{refreshWarning='資料已儲存，但畫面同步失敗，重新整理頁面即可。';}
+        catch{refreshWarning=[refreshWarning,'畫面同步失敗，重新整理頁面即可。']
+          .filter(Boolean).join('；');}
       }
       if(!current())return false;
       setDrafts(savedDrafts);

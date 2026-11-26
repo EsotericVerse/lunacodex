@@ -38,11 +38,12 @@ async function saveLocHeroPage(page,fresh,changes){
     block_text:'',block_image:null,...changes
   };
   const snapshot=[...fresh.filter(row=>row.uid!==updated.uid),updated];
-  const {data,error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
+  const {data,error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
     p_scope_id:'loc',p_type:page,p_rows:snapshot
   });
   if(error)throw new Error(error.message||'LOC 文字框儲存失敗');
-  return data||{count:snapshot.length};
+  return {...(data&&typeof data==='object'?data:{count:snapshot.length}),
+    homeCacheSync};
 }
 const managementSlotFor=featureId=>HomeBlock.MANAGEMENT_HERO_SLOTS.find(slot=>slot.featureId===featureId);
 const locSlots=HomeBlock.MANAGEMENT_HERO_SLOTS.filter(slot=>slot.audience==='loc'&&slot.key!=='system');
@@ -107,7 +108,8 @@ function ImageSlot({feature,variant,onDirtyChange,pageOverride='',defaultUrl=''}
         queryClient.setQueryData(key,previous=>Array.isArray(previous)
           ?[...previous.filter(row=>row.page_name!==page),...verified]:undefined);
       }
-      setStatus('首頁圖連結已儲存並讀回確認。');
+      setStatus('首頁圖連結已儲存並讀回確認。'+(result.homeCacheSync===false
+        ?' R2 副本未重建，目前會回讀 SQL。':''));
       setValue(imageUrlOf(persisted)||defaultUrl);
       return true;
     }catch(error){setStatus(error?.message||'儲存失敗。');return false;}
@@ -194,7 +196,8 @@ function ManagementHeroDetails({slot,onDirtyChange}){
         queryClient.setQueryData(key,previous=>Array.isArray(previous)
           ?[...previous.filter(row=>row.page_name!==page),...verified]:undefined);
       }
-      setStatus('管理區塊已儲存並讀回確認。');
+      setStatus('管理區塊已儲存並讀回確認。'+(result.homeCacheSync===false
+        ?' R2 副本未重建，目前會回讀 SQL。':''));
       const confirmed={eyebrow:String(saved.block_eyebrow??''),title:String(saved.block_title??''),subtitle:String(saved.block_subtitle??''),text:String(saved.block_text??'')};
       initial.current=JSON.stringify(confirmed);
       setDraft(confirmed);

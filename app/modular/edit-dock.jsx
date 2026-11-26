@@ -291,9 +291,14 @@ export function EditDockProvider({children,scopeId}){
           }
           throw error;
         }
+        let receipt=null;
         try{
           const operations=prepared.flatMap(plan=>plan.operations);
-          if(operations.length)await transactionWrites(operations);
+          if(operations.length){
+            receipt=await transactionWrites(operations);
+            if(receipt?.home_cache_sync===false)
+              setNotice('SQL 已儲存；R2 首頁副本未能重建，頁面會回讀 SQL，請稍後重新載入。');
+          }
         }catch(error){
           if(epoch!==operationEpoch.current)return;
           for(const plan of prepared){
@@ -310,7 +315,7 @@ export function EditDockProvider({children,scopeId}){
         // A UI refresh failure cannot be mistaken for a SQL ROLLBACK.
         for(const plan of prepared){
           if(epoch!==operationEpoch.current)return;
-          try{await plan.afterCommit?.();}
+          try{await plan.afterCommit?.({homeCacheSync:receipt?.home_cache_sync});}
           catch(error){
             if(epoch!==operationEpoch.current)return;
             setNotice('資料已提交，但畫面更新失敗，請重新讀取。');

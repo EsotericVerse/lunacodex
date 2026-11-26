@@ -142,7 +142,8 @@ export default function ScopeBlockEditorSession({
       setDraft(current=>current?.uid===draft.uid?{...current,order:Number(result.block_order)||current.order}:current);
       await refreshBlockQueries(lease);
       if(!isCurrent(lease))return;
-      setMessage(t('uiExtra.editBlocks.moved'));
+      setMessage(t('uiExtra.editBlocks.moved')+(result.home_cache_sync===false
+        ?'（R2 副本未重建，目前會回讀 SQL）':''));
     }catch(error){
       if(isCurrent(lease))setMessage(t('uiExtra.editBlocks.moveFailed',{error:String(error?.message||error)}));
     }finally{if(mounted.current)setBusy(false);}
@@ -196,7 +197,7 @@ export default function ScopeBlockEditorSession({
             ?values.block_image:JSON.stringify(values.block_image)
       };
       const snapshot=[...existingRows,normalized];
-      const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
+      const {error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
         p_scope_id:scopeId,p_type:pageName,p_rows:snapshot
       });
       if(error)throw new Error(error.message||'Blocks 儲存失敗');
@@ -204,6 +205,8 @@ export default function ScopeBlockEditorSession({
       // The authoritative before-snapshot and the committed new row already
       // form the complete page; never issue a second SELECT after Save.
       let displayWarning='';
+      if(homeCacheSync===false)
+        displayWarning='（SQL 已儲存；R2 副本未重建，目前會回讀 SQL）';
       try{
         const rows=[...snapshot].sort((a,b)=>
           (Number(a.block_order)||0)-(Number(b.block_order)||0));
@@ -236,14 +239,15 @@ export default function ScopeBlockEditorSession({
       const current=await selectLiveScopeBlocks(scopeId,pageName);
       if(!isCurrent(lease))return false;
       const remaining=current.filter(row=>row.uid!==draft.uid);
-      const {error}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
+      const {error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
         p_scope_id:scopeId,p_type:pageName,p_rows:remaining
       });
       if(error)throw new Error(error.message||'Blocks 刪除失敗');
       if(!isCurrent(lease))return false;
       await updateBlockCaches(remaining,lease);
       if(!isCurrent(lease))return false;
-      onDone(t('uiExtra.editBlocks.deleted'));
+      onDone(t('uiExtra.editBlocks.deleted')+(homeCacheSync===false
+        ?'（R2 副本未重建，目前會回讀 SQL）':''));
     }catch(error){
       if(isCurrent(lease))setMessage(error?.message||t('uiExtra.editBlocks.deleteFailed'));
     }finally{

@@ -1,7 +1,8 @@
 'use client';
 
 
-import {queryBlockContent,queryBlocks} from '../actions/blocks/queries.mjs';
+import {queryBlockContent,queryBlocks,readPublicHomePageCopy}
+  from '../actions/blocks/queries.mjs';
 import {queryCultureContent} from '../actions/culture/queries.mjs';
 import {queryStaticsContent} from '../actions/statics/queries.mjs';
 import {selectRows} from '../db/db-query.mjs';
@@ -12,11 +13,10 @@ import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.j
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
 
-// Public page copy (Title_TW/Desc_TW) now travels inside the shared
-// app-bootstrap request (see app/loc/runtime/app-bootstrap.js); there is no
-// standalone per-page RPC call for it any more.
+// Public page copy and Scope labels use the fixed R2/SQL page-copy action.
+// Routing identity and membership remain in the published registry snapshot.
 // Scope identity, membership, routing and grants come from the published
-// JavaScript snapshot. silver.loc supplies public display metadata.
+// JavaScript snapshot. The fixed SQL/R2 copy projection supplies live labels.
 // Public queries never fetch the private api.manage relation.
 
 const SCOPE_ID_PATTERN=/^[a-z][a-z0-9]{0,14}$/;
@@ -109,10 +109,11 @@ function normalizeRegistryRow(row){
   };
 }
 
-// silver.scope_registry is retired; public routing/config is release-published.
+// silver.scope_registry is retired; routing/feature metadata is release-published.
 // A public Blocks page uses its published snapshot when one exists.
 // One public site snapshot per client runtime (including concurrent mounts).
-// Registry, theme catalogue and page-copy are shared by all Scope pages.
+// Registry and Theme catalogue are shared by all Scope pages. Mutable copy
+// is intentionally excluded from this release-published object.
 let publicSiteBootstrapRequest=null;
 // Only explicit admin metadata refreshes invalidate the public client snapshot.
 // Guest navigation shares the same promise and never preflights authorization.
@@ -130,8 +131,8 @@ export function invalidatePublicScopeMetadata(){
 export async function revalidateServerMetadata(){return false;}
 export function selectPublicSiteBootstrap(){
   if(publicSiteBootstrapRequest)return publicSiteBootstrapRequest;
-  // Registry, visitor Scope config and ordinary presentation are static.
-  // Explicit editing reads are separately authorized and stay live.
+  // Routing, feature availability and ordinary registry membership are
+  // release metadata. Mutable presentation copy is loaded through R2/SQL.
   // Never call a retired
   // public-action endpoint here: the temporary public Data API cannot run it.
   publicSiteBootstrapRequest=Promise.resolve({...PUBLISHED_SITE_BOOTSTRAP,
@@ -146,10 +147,16 @@ async function fetchRegistryRows(){
 }
 
 export async function selectScopeRegistry({parentScopeId=null,scopeKind=null}={}){
-  const rows=await fetchRegistryRows();
+  const [rows,copyResult]=await Promise.all([
+    fetchRegistryRows(),readPublicHomePageCopy().catch(()=>({data:[]}))
+  ]);
+  const names=new Map((copyResult?.data||[]).map(row=>[
+    String(row.scope_id||''),String(row.display_name||row.title_tw||'').trim()
+  ]));
   return rows
     .filter(row=>row?.active!==false)
-    .map(normalizeRegistryRow)
+    .map(row=>({...normalizeRegistryRow(row),
+      display_name:names.get(String(row.scope_id||''))||String(row.scope_id||'')}))
     .filter(row=>!parentScopeId||row.parent_scope_id===String(parentScopeId).trim())
     .filter(row=>!scopeKind||row.scope_kind===String(scopeKind).trim())
     .sort((a,b)=>a.sort_order-b.sort_order||a.scope_id.localeCompare(b.scope_id));
@@ -161,8 +168,8 @@ export async function selectLocSearchScopes(){
   // LOC Group membership is owned by api.manage, not by front-end routes.
   const members=await selectScopeGroupMemberIds('loc','search');
   const registry=await selectScopeRegistry({scopeKind:'scope'});
-  // This is a public chooser, not an authoring read: flags and labels were
-  // already published with the site. Never fan out one SQL read per Scope.
+  // Feature flags remain route metadata. User-facing labels are hydrated from
+  // the single page-copy projection, without one SQL read per Scope.
   return registry
     .filter(row=>row.active&&members.has(row.scope_id))
     .map(row=>{
@@ -201,25 +208,25 @@ export function selectScopeGroupMemberIds(groupId='loc',type='culture'){
 export async function selectScopeRegistryEntry(scopeId){
   const id=String(scopeId||'').trim().toLowerCase();
   if(!SCOPE_ID_PATTERN.test(id))return null;
-  const rows=await fetchRegistryRows();
+  const rows=await selectScopeRegistry();
   const row=rows.find(item=>String(item?.scope_id||'').trim()===id&&item?.active!==false);
   return row?normalizeRegistryRow(row):null;
 }
 
 export async function selectScopeGroupChildren(scopeId='loc'){
   const rows=await selectScopeRegistry({parentScopeId:scopeId});
-  // Group presentation uses the same published snapshot as the public route.
-  // Private Scope edits still use selectScopeConfig() on explicit entry.
-  return rows.map(row=>{
+  // Mutable Scope config and labels come from their fixed live SQL views;
+  // membership itself remains the published routing snapshot.
+  return Promise.all(rows.map(async row=>{
     if(row.scope_kind!=='scope')return row;
-    const config=publishedConfig(row.scope_id);
+    const config=await selectScopeConfig(row.scope_id).catch(()=>null);
     return {
       ...row,
       display_name:String(config?.display_name||row.display_name||row.scope_id).trim(),
       search_intro:String(config?.search_intro||'').trim(),
       search_aliases:Array.isArray(config?.search_aliases)?config.search_aliases:[]
     };
-  });
+  }));
 }
 
 export async function selectManagedScope(scopeId){
