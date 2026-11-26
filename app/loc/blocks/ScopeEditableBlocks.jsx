@@ -89,7 +89,7 @@ export default function ScopeEditableBlocks({
   const [editingSlot,setEditingSlot]=useState(null);
   const [message,setMessage]=useState('');
   const [editMode,setEditMode]=useState(Boolean(startInEditMode));
-  const editingContent=Boolean(homeEditActive||editMode||authorizedByParent);
+  const editingContent=Boolean(homeEditActive||(!isScopeHomepageBlock&&editMode)||authorizedByParent);
   const homePageTurn=['loc','lo3rwang'].includes(scopeId)&&pageName==='index'&&explicitEditButton;
   const wantsHomeEditor=homePageTurn&&editingContent;
   const [homeTurned,setHomeTurned]=useState(false);
@@ -97,6 +97,11 @@ export default function ScopeEditableBlocks({
   const [homeDraftError,setHomeDraftError]=useState(false);
   const lastPublished=useRef(null);
   const [savedFace,setSavedFace]=useState(null);
+  useLayoutEffect(()=>{
+    if(isScopeHomepageBlock&&!homeEditActive&&!authorizedByParent){
+      setEditMode(false);setEditingSlot(null);
+    }
+  },[isScopeHomepageBlock,homeEditActive,authorizedByParent]);
   const faceKey=scopeId+'|'+pageName;
 
   // The shell is static; authored Blocks are always read from SQL on page
@@ -271,7 +276,7 @@ export default function ScopeEditableBlocks({
     const canAddBlock=!normalizedOrders.length&&(!maxBlocks||nextOrder<=maxBlocks);
     const editing=editMode||homeEditActive;
     const toggleButton=(canEdit&&!editing)||toggleExtra?<div className="scope-edit-mode-toggle" key="scope-edit-mode-toggle">
-      {canEdit&&!editing?<button type="button" className="loc-button" onClick={()=>setEditMode(true)}>
+      {canEdit&&!editing&&!isScopeHomepageBlock?<button type="button" className="loc-button" onClick={()=>setEditMode(true)}>
         <UiText id="uiExtra.editBlocks.enterEditMode"/>
       </button>:null}
       {toggleExtra}
