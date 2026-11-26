@@ -11,7 +11,7 @@ import {createKyselyDialect,getSqlType} from '../../../modules/loc/dialect/index
 import {requestScopedPool} from './postgres-pool.mjs';
 import {isCloudflareWorkerRuntime,locHyperdriveBinding,resolveLocConnectionProvider}
   from './connection-provider.mjs';
-import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
+import {CONNECTION_POOL_POLICY} from './connection-pool-policy.mjs';
 
 // The trusted Kysely dialect and its request-owned pg.Client share the
 // current request lifetime. No platform-specific background cleanup is needed.
@@ -19,7 +19,7 @@ const primary=DATABASE_ACCESS_LIST.find(row=>row.selected===true);
 function unavailable(message){
   return Object.assign(new Error(message),{code:'BACKEND_UNAVAILABLE',httpStatus:503});
 }
-function mainUri(env){
+function mainPostgresUri(env){
   const value=String(env?.LOC_DATABASE_URI||'').trim();
   if(!value)throw unavailable('LOC primary PostgreSQL connection missing');
   let url;
@@ -29,15 +29,16 @@ function mainUri(env){
     throw unavailable('LOC primary PostgreSQL URI incomplete');
   return value;
 }
-export {locHyperdriveBinding,resolveLocConnectionProvider};
+export {locHyperdriveBinding,resolveLocConnectionProvider,requestScopedPool};
 const NODE_POOL_KEY=Symbol.for('loc.native-kysely.node-pool');
-function nodeProcessPool(uri){
+function nodePostgresProcessPool(uri){
   const current=globalThis[NODE_POOL_KEY];
   if(current?.uri===uri&&!current.pool.ended)return current.pool;
   if(current?.pool)void current.pool.end().catch(()=>{});
   const pool=new pg.Pool({connectionString:uri,
-    max:SQL_WORKLOAD_POLICY.nodePoolMax,idleTimeoutMillis:30000,
-    connectionTimeoutMillis:6000});
+    max:CONNECTION_POOL_POLICY.nodePoolMax,
+    idleTimeoutMillis:CONNECTION_POOL_POLICY.nodeIdleTimeoutMillis,
+    connectionTimeoutMillis:CONNECTION_POOL_POLICY.connectionTimeoutMillis});
   globalThis[NODE_POOL_KEY]={uri,pool};
   return pool;
 }
@@ -48,6 +49,8 @@ export async function db_connection(env={},verifiedAlias='',{
 }={}){
   if(!env||typeof env!=='object')throw unavailable('LOC backend environment missing');
   if(probeTicket)throw unavailable('Manual probe is not a business SQL operation');
+  if(forceDirect&&forceHyperdrive)
+    throw unavailable('Conflicting LOC connection mode request');
   const external=Boolean(verifiedAlias&&verifiedAlias!==primary?.target_id&&
     verifiedAlias!==primary?.connection_alias);
   if(external){
@@ -113,9 +116,9 @@ export async function db_connection(env={},verifiedAlias='',{
     }
     return connection;
   }
-  const uri=mainUri(env);
+  const uri=mainPostgresUri(env);
   if(!isCloudflareWorkers){
-    const pool=nodeProcessPool(uri);
+    const pool=nodePostgresProcessPool(uri);
     const dialect=createKyselyDialect(primary.engine,{pool});
     return {db:new Kysely({dialect}),dialect,
       engine:primary.engine,namespace:primary.schema_name,
