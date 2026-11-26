@@ -182,27 +182,53 @@ export async function executeKyselySelectStream(trx,input,{
   const size=chunkSize===undefined?type.streamChunkRows:Number(chunkSize);
   if(!Number.isSafeInteger(size)||size<1||size>4096)
     throw new Error('Invalid SQL stream chunk size');
+  // Do not open a cursor or run even the optional aggregate after the
+  // owning Feature Transaction has already been cancelled.
+  if(signal?.aborted){
+    const reason=signal.reason;
+    throw reason instanceof Error?reason:Object.assign(
+      new Error('PostgreSQL query aborted'),{name:'AbortError'});
+  }
   // Preserve COUNT(*) semantics: count is a separate unbounded aggregate and
   // is completed before the row iterator is handed to its consumer.
   const count=built.countQuery
-    ?Number((await built.countQuery.executeTakeFirstOrThrow()).count):null;
+    ?Number((await built.countQuery.executeTakeFirstOrThrow(
+      signal?{signal}:undefined)).count):null;
   const data=(async function*(){
     if(!built.query)return;
     const options=signal?{chunkSize:size,signal}:{chunkSize:size};
+    const source=built.query.stream(options)[Symbol.asyncIterator]();
     let batch=[];
-    for await(const row of built.query.stream(options)){
-      batch.push(row);
-      if(batch.length>=size){
+    // Abort can happen while the consumer is paused between chunks. Request
+    // iterator.return immediately so pg-cursor's finally closes its portal;
+    // the awaited finally below owns the connection-release boundary.
+    const abort=()=>{
+      try{void Promise.resolve(source.return?.()).catch(()=>{});}
+      catch{/* The query's original AbortError remains authoritative. */}
+    };
+    signal?.addEventListener('abort',abort,{once:true});
+    if(signal?.aborted)abort();
+    try{
+      for(;;){
+        const next=await source.next();
+        if(next.done)break;
+        batch.push(next.value);
+        if(batch.length>=size){
+          const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
+            normalizeModeledSelectRows({schema:req.schema,table:req.table,rows:batch}));
+          batch=[];
+          for(const item of checked)yield item;
+        }
+      }
+      if(batch.length){
         const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
           normalizeModeledSelectRows({schema:req.schema,table:req.table,rows:batch}));
-        batch=[];
         for(const item of checked)yield item;
       }
-    }
-    if(batch.length){
-      const checked=assertZModelSelectRows(req.schema+'.'+req.table,req.columns,
-        normalizeModeledSelectRows({schema:req.schema,table:req.table,rows:batch}));
-      for(const item of checked)yield item;
+    }finally{
+      signal?.removeEventListener('abort',abort);
+      try{await source.return?.();}
+      catch(error){if(!signal?.aborted)throw error;}
     }
   })();
   return {data,count};
