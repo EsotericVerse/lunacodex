@@ -358,7 +358,8 @@ test('Keyword article projection streams 1000 rows through bounded cursor and CP
   });
   assert.equal(result.totals.scannedDocuments,total);
   assert.equal(result.totals.parsedDocuments,total);
-  assert.equal(result.totals.itemCounts.ITEM0001,total*2);
+  assert.equal(result.totals.itemCounts.ITEM0001,total);
+  assert.equal(result.totals.itemDocuments.ITEM0001,total);
   assert.equal(result.totals.patternCounts.PATT0001,total*2);
   assert.equal(opened.length,1);
   assert.equal(opened[0].closed,true);
