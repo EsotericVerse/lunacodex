@@ -445,7 +445,7 @@ export async function readItemKeywordProjection(db,scope,{items,groups,patterns=
     };
     for await(const row of result.data){
       const uid=String(row?.uid||'');
-      if(!UID.test(uid)||uid<=lastUid)
+      if(!UID.test(uid)||uid===lastUid)
         throw new Error('Keyword projection UID cursor did not advance');
       lastUid=uid;
       pageRows++;
