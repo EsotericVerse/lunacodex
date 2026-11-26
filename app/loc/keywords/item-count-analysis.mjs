@@ -11,7 +11,7 @@ const count=x=>Math.max(0,Number(x)||0);
 // Full-text Item scans already handle 4096 Galaxy rows per indexed SELECT.
 // The old 1024-row cap made each checkpoint issue several SQL reads. Keep the
 // 4096-row floor; a compact page can grow to the shared 10k, while the
-// per-request cursor and checkpoints still bound total work. The character
+// per-request cursor and checkpoints still bound total work. The UTF-8 byte
 // budget influences growth, never forces repeated tiny SQL requests.
 export const KEYWORD_SCAN_START_ROWS=4096;
 export const KEYWORD_SCAN_MAX_ROWS=SQL_WORKLOAD_POLICY.chunkRows;
@@ -66,6 +66,7 @@ export function createKeywordScanRate({
   };
 }
 const KEYWORD_SCAN_PAGE_OPTIONS=Object.freeze({
+  // createTextAdaptiveRows uses this generic measure slot; the reader feeds UTF-8 bytes.
   maximum:KEYWORD_SCAN_MAX_ROWS,targetChars:32*1024*1024
 });
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
@@ -420,6 +421,7 @@ export async function readItemKeywordProjection(db,scope,{items,groups,patterns=
   // Only a small CPU slice is retained; the complete 4k–10k page is never
   // materialized as a JavaScript row array before keyword classification.
   const cpuBatch=[];
+  const utf8Encoder=new TextEncoder();
   for(;;){
     const requested=sizer.size;
     const filters=[];
@@ -437,7 +439,7 @@ export async function readItemKeywordProjection(db,scope,{items,groups,patterns=
     },{
       dialect:engine,namespace,stream:true,...(signal?{signal}:{})
     });
-    let pageRows=0,pageChars=0,lastUid=after;
+    let pageRows=0,pageBytes=0,lastUid=after;
     const absorbBatch=()=>{
       if(!cpuBatch.length)return;
       a.absorb(cpuBatch,onRow);
@@ -451,7 +453,8 @@ export async function readItemKeywordProjection(db,scope,{items,groups,patterns=
       pageRows++;
       if(pageRows>requested)
         throw new Error('Keyword projection exceeded its adaptive page');
-      pageChars+=String(row?.title??'').length+String(row?.content??'').length;
+      pageBytes+=utf8Encoder.encode(String(row?.title??'')).byteLength+
+        utf8Encoder.encode(String(row?.content??'')).byteLength;
       cpuBatch.push(row);
       if(cpuBatch.length>=KEYWORD_CPU_SLICE_ROWS)absorbBatch();
     }
@@ -459,7 +462,7 @@ export async function readItemKeywordProjection(db,scope,{items,groups,patterns=
     if(!pageRows)break;
     after=lastUid;
     a.state.scanned+=pageRows;
-    sizer.observe(pageRows,pageChars);
+    sizer.observe(pageRows,pageBytes);
     if(pageRows<requested)break;
   }
   return {totals:a.totals(),daily:a.daily()};
