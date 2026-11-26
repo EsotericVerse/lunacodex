@@ -20,7 +20,7 @@ export function createComputeBinding({serviceUrl='',cloudflareBinding=null,
     return Object.freeze({
       provider:'service',
       fetch(path,init){
-        const relative=String(path||'').replace(/^\\/+/, '');
+        const relative=String(path||'').split('/').filter(Boolean).join('/');
         return fetcher(new URL(relative,base),init);
       }
     });
@@ -29,7 +29,7 @@ export function createComputeBinding({serviceUrl='',cloudflareBinding=null,
     return Object.freeze({
       provider:'cloudflare',
       fetch(path,init){
-        const relative=String(path||'').replace(/^\\/+/, '');
+        const relative=String(path||'').split('/').filter(Boolean).join('/');
         return cloudflareBinding.getByName('loc-compute')
           .fetch('http://loc-compute/'+relative,init);
       }
