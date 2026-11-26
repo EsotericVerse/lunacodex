@@ -5,6 +5,23 @@ import {calendarYearWindow} from '../../../loc/preferences/default-year-window.m
 const dateISO=date=>date.toISOString().slice(0,10);
 export const TRACE_PANEL_MODES=Object.freeze(['articles','timeline','statistics']);
 export const TRACE_TIME_WINDOWS=Object.freeze(['year','3m','12m','all','custom']);
+
+export function traceSourceOptions(taxonomy={}){
+  const tree=Array.isArray(taxonomy?.tree)?taxonomy.tree:[];
+  const categories=Array.isArray(taxonomy?.categories)?taxonomy.categories:[];
+  const byUid=new Map(tree.filter(row=>typeof row?.uid==='string'&&row.uid)
+    .map(row=>[row.uid,row]));
+  return categories.filter(row=>['domain','from'].includes(row?.type)&&
+      typeof row?.category_code==='string'&&row.category_code&&
+      typeof row?.display_name==='string'&&row.display_name.trim())
+    .map(row=>{
+      const uid=row.category_code,node=byUid.get(uid);
+      const path=Array.isArray(node?.path)?node.path:[uid];
+      const labels=path.map(key=>String(byUid.get(key)?.title||'').trim()).filter(Boolean);
+      return {uid,value:row.display_name,label:labels.join(' › ')||row.display_name,
+        type:row.type};
+    });
+}
 export function traceWindow(window='3m',now=new Date(),custom={}){
   const today=new Date(now);
   // Use Taiwan's civil date, not the browser's locale-dependent date.
