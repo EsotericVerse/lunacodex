@@ -23,4 +23,7 @@ const server=http.createServer(async(req,res)=>{
   }
 });
 server.requestTimeout=45000;
-server.listen(8080,'0.0.0.0');
+const port=Number(process.env.PORT||8080);
+if(!Number.isInteger(port)||port<1||port>65535)
+  throw new Error('Invalid LOC Compute port');
+server.listen(port,'0.0.0.0');
