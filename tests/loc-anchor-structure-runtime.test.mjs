@@ -119,3 +119,23 @@ test('resolved public structure is reused until relation invalidation',async()=>
   assert.notDeepEqual(third,first);
   assert.equal(calls,2);
 });
+
+test('relation invalidation immediately retires every active shared consumer',async()=>{
+  invalidateScopedReadCache();
+  let resolve,transportSignal;
+  const a=new AbortController(),b=new AbortController();
+  const load=({signal})=>{
+    transportSignal=signal;
+    return new Promise(done=>{resolve=done;});
+  };
+  const first=getOrLoadScopedRead('silver.loc_anchor',['invalidate-active'],load,{signal:a.signal});
+  const second=getOrLoadScopedRead('silver.loc_anchor',['invalidate-active'],load,{signal:b.signal});
+  await Promise.resolve();
+  invalidateScopedReadCache('silver.loc_anchor');
+  await assert.rejects(first,{name:'AbortError'});
+  await assert.rejects(second,{name:'AbortError'});
+  assert.equal(transportSignal.aborted,true);
+  resolve('obsolete');
+  await Promise.resolve();
+  await Promise.resolve();
+});
