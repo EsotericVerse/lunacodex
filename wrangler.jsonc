@@ -55,7 +55,13 @@
       "/pics/scope-gn.jpg",
       "/pics/LOC-statics.jpg",
       "/pics/LOC-gn.jpg",
-      "/pics/LOC-search.jpg"
+      "/pics/LOC-search.jpg",
+      "/pics/LOC-admin.jpg",
+      "/pics/scope-culture.jpg",
+      "/pics/scope-statics.jpg",
+      "/pics/scope-search.jpg",
+      "/pics/scope-manage.jpg",
+      "/pics/local-setting.jpg"
     ]
   },
   // OpenNext deploy initializes Wrangler's local platform proxy before upload.

@@ -2,7 +2,9 @@
 export const HERO_ASSET_MODE='r2';
 export const HERO_R2_NAMES=Object.freeze([
   'LOC-PicAll.webp','LOC-PicAll_s.webp','LunaRunes-hero.jpg','LOC-culture.jpg',
-  'aboutme.webp','scope-gn.jpg','LOC-statics.jpg','LOC-gn.jpg','LOC-search.jpg'
+  'aboutme.webp','scope-gn.jpg','LOC-statics.jpg','LOC-gn.jpg','LOC-search.jpg',
+  'LOC-admin.jpg','scope-culture.jpg','scope-statics.jpg','scope-search.jpg',
+  'scope-manage.jpg','local-setting.jpg'
 ]);
 const allowed=new Set(HERO_R2_NAMES);
 export function heroAssetMode(value){

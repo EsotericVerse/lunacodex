@@ -13,7 +13,7 @@ import {HomeBlock} from './home-block-model';
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
-import {scopeBlockStoragePage} from './scope-block-storage-page.mjs';
+import {blockWritePermissionKey,scopeBlockStoragePage} from './scope-block-storage-page.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
 import {invalidateScopeBlockPage} from '../scope/scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
@@ -253,7 +253,10 @@ export default function ScopeBlockDraftList({
       onDone(refreshWarning||t('uiExtra.editBlocks.saved'),{switching,committedRows:plan.hasWrites?committedRows:undefined});
       return true;
     }catch(error){
-      if(current())report(t('uiExtra.editBlocks.saveFailedPrefix')+String(error?.message||error||t('uiExtra.editBlocks.unknown')));
+      const permissionKey=blockWritePermissionKey(error,scopeId,pageName);
+      const reason=permissionKey?t('uiExtra.editBlocks.'+permissionKey)
+        :String(error?.message||error||t('uiExtra.editBlocks.unknown'));
+      if(current())report(t('uiExtra.editBlocks.saveFailedPrefix')+reason);
       return false;
     }finally{
       if(mounted.current)setBusy(false);

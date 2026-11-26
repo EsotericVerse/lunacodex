@@ -17,3 +17,11 @@ export function scopeBlockStoragePage(scopeId,pageName='index'){
   // on other Scopes retain their historical lowercase normalization.
   return scope==='loc'?page:lowerPage;
 }
+
+export function blockWritePermissionKey(error,scopeId,pageName='index'){
+  if(Number(error?.status)!==403)return '';
+  const scope=String(scopeId||'').trim().toLowerCase();
+  const page=scopeBlockStoragePage(scope,pageName);
+  return scope==='loc'&&page!=='index'
+    ?'globalPermissionDenied':'editPermissionDenied';
+}

@@ -146,6 +146,7 @@
       "checkingEditPermission": "編集権限を確認中…",
       "signInToEnterEditMode": "編集モードに入るにはログインしてください。",
       "editPermissionDenied": "このアカウントには編集権限がありません。",
+      "globalPermissionDenied": "この LOC 管理ブロックの保存には全体管理権限が必要です。変更は保存されていません。",
       "edit": "編集",
       "enterEditMode": "編集モードに入る",
       "cancelConfirm": "未保存の変更をすべて破棄しますか？",

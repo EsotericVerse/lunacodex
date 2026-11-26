@@ -1,7 +1,7 @@
 'use client';
 
 
-import {queryBlockContent,queryBlocks,readPublicHomePageCopy}
+import {queryBlockContent,queryLiveBlocks,readPublicHomePageCopy}
   from '../actions/blocks/queries.mjs';
 import {queryCultureContent} from '../actions/culture/queries.mjs';
 import {queryStaticsContent} from '../actions/statics/queries.mjs';
@@ -311,21 +311,14 @@ export async function selectLiveScopeBlocks(scopeId,page='index'){
   const storagePage=scopeBlockStoragePage(id,name);
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[A-Za-z0-9_-]+$/.test(name))return [];
   if(id==='loc'){
-    const rows=['index','governance'].includes(storagePage)
-      ?(await nativePublicContent('block_list',id)).filter(row=>row.page_name===storagePage)
-      :await hero_block(storagePage);
+    const payload=await queryLiveBlocks(id,storagePage);
+    const rows=payload.data;
     const mapped=storagePage===name?rows:rows.map(row=>({...row,page_name:name}));
     return [...mapped].sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
   }
-  if(name==='index'){
-    const rows=await nativePublicContent('block_list',id);
-    return Array.isArray(rows)?rows:[];
-  }
-  // The blocks action reads only approved public presentation data.
-  // Scope Block pages are presentation content: use the existing, fixed,
-  // page-exact block_list action. It reads only approved public Block pages,
-  // never requests Manage/Auth data and never performs a write.
-  const payload=await queryBlocks('block_list',{p_scope_id:id,p_page_name:name});
+  // Editor snapshots bypass R2/display caches and use a fixed page-exact
+  // public SQL read. No relation, SQL, filter, or write is supplied by client.
+  const payload=await queryLiveBlocks(id,name);
   return payload.data.filter(row=>String(row.page_name||'')===name)
     .sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
 }
