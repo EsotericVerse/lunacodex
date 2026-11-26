@@ -95,6 +95,29 @@ export async function queryBlocks(name,args={}){
   return {data:await publicHeroBlocks(types,{scope:'loc'}),count:null};
 }
 
+// Editors and post-save verification must read the authoritative SQL rows.
+// Public rendering continues to use queryBlocks() and its R2 projection, but
+// an edit snapshot must never be assembled from a stale or empty R2 object.
+export async function queryLiveBlocks(scopeValue,pageValue='index'){
+  const scope=scopeId(scopeValue);
+  const requested=String(pageValue??'index').trim();
+  if(!/^[A-Za-z0-9_-]{1,80}$/.test(requested))
+    throw Error('Invalid live Block page');
+  if(scope==='loc'&&!['index','governance'].includes(requested)){
+    if(!validHeroTypes([requested]))throw Error('Invalid live Hero page');
+    const rows=await withPublicLocRead({scope},async(db,port)=>
+      hero_block(db,[requested],{engine:port.engine,namespace:port.namespace}));
+    return {data:rows,count:null};
+  }
+  const page=publicScopeBlockPage(requested==='governance'?'index':requested);
+  if(!page||scope==='loc'&&page!=='index')
+    throw Error('Invalid live Scope Block page');
+  const rows=await withPublicLocRead({scope},async(db,port)=>
+    block_list(db,scope,{engine:port.engine,namespace:port.namespace,
+      pageName:page}));
+  return {data:rows.filter(row=>row.page_name===requested),count:null};
+}
+
 // Mutable homepage copy is a private R2-backed server projection with a
 // fixed, public SQL fallback. It is never embedded in deployed browser JS.
 export async function readPublicHomePageCopy(){

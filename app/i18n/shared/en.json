@@ -146,6 +146,7 @@
       "checkingEditPermission": "Checking edit permissions…",
       "signInToEnterEditMode": "Sign in to enter edit mode.",
       "editPermissionDenied": "This account does not have permission to edit.",
+      "globalPermissionDenied": "This LOC management block requires global management permission; nothing was saved.",
       "edit": "Edit",
       "enterEditMode": "Enter edit mode",
       "cancelConfirm": "Discard every unsaved change?",

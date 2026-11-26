@@ -28,7 +28,8 @@ let saved=0;
 const sharp=slim?(await import('sharp')).default:null;
 for(const name of HERO_R2_NAMES){
   const input=path.join(source,name);
-  if(!fs.existsSync(input))continue;
+  if(!fs.existsSync(input))
+    throw new Error('LOC Hero R2 source image missing: '+name);
   const original=fs.readFileSync(input);
   hashes[name]=createHash('md5').update(original).digest('hex');
   if(!slim)continue;

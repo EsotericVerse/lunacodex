@@ -25,7 +25,7 @@ import {SITE_ANCHOR_READ_MODE,readPublicSourceAnchors,readPublicSourceTaxonomy} 
 import {queryAnchorFeature} from '../app/loc/actions/anchor/queries.mjs';
 import {readLocSourceHierarchy} from '../app/loc/actions/admin/queries.mjs';
 import {traceSourceOptions} from '../app/modular/features/trace/trace-panel-filters.mjs';
-import {scopeBlockStoragePage} from '../app/loc/blocks/scope-block-storage-page.mjs';
+import {blockWritePermissionKey,scopeBlockStoragePage} from '../app/loc/blocks/scope-block-storage-page.mjs';
 
 test('every management Hero keeps its image on its own copy row',()=>{
   for(const slot of MANAGEMENT_HERO_SLOTS)
@@ -240,4 +240,24 @@ test('feature Hero CSS follows the copy wrapper and keeps the heading one line',
   assert.match(styles,/\) \.scope-feature-hero-copy>\.home-title-row>h1\{[\s\S]*?max-width:none!important;\s*white-space:nowrap;/);
   assert.match(styles,/\.scope-feature-hero--artwork\.scope-hero \.scope-feature-hero-copy>\.home-title-row>h1\{\s*color:#fff!important;/);
   assert.match(styles,/\.scope-feature-hero--artwork \.scope-feature-hero-copy>\.home-title-row>\.scope-subtitle\{color:#edf1f9!important\}/);
+});
+
+test('block editing reads authoritative SQL and reports denied write permissions',async()=>{
+  const [queries,scopeData,editor]=await Promise.all([
+    readFile(new URL('../app/loc/actions/blocks/queries.mjs',import.meta.url),'utf8'),
+    readFile(new URL('../app/loc/scope/scope-data.js',import.meta.url),'utf8'),
+    readFile(new URL('../app/loc/blocks/ScopeBlockEditorSession.jsx',import.meta.url),'utf8')
+  ]);
+  const liveReader=queries.slice(queries.indexOf('export async function queryLiveBlocks'),
+    queries.indexOf('export async function readPublicHomePageCopy'));
+  const displayReader=scopeData.slice(scopeData.indexOf('export async function selectScopeBlocks'));
+  assert.match(liveReader,/withPublicLocRead\([\s\S]*?block_list\(/);
+  assert.doesNotMatch(liveReader,/publicBlockList|readPublicHomeObject/);
+  assert.match(scopeData,/selectLiveScopeBlocks[\s\S]*?queryLiveBlocks/);
+  assert.match(editor,/selectLiveScopeBlocks\(scopeId,pageName\)/);
+  assert.match(editor,/blockWritePermissionKey\(error,scopeId,pageName\)/);
+  assert.match(displayReader,/queryBlocks\('block_list'/);
+  assert.equal(blockWritePermissionKey({status:403},'loc','TimeAnchor'),'globalPermissionDenied');
+  assert.equal(blockWritePermissionKey({status:403},'lo3rwang','culture'),'editPermissionDenied');
+  assert.equal(blockWritePermissionKey({status:401},'loc','TimeAnchor'),'');
 });

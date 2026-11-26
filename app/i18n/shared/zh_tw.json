@@ -146,6 +146,7 @@
       "checkingEditPermission": "正在確認權限…",
       "signInToEnterEditMode": "請先登入，才能進入編輯模式。",
       "editPermissionDenied": "目前帳號沒有編輯權限。",
+      "globalPermissionDenied": "此 LOC 管理區塊需要全域管理權限，變更未儲存。",
       "edit": "編輯",
       "enterEditMode": "進入編輯模式",
       "cancelConfirm": "確定要放棄所有未儲存的修改嗎？",

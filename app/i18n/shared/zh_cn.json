@@ -146,6 +146,7 @@
       "checkingEditPermission": "正在确认权限…",
       "signInToEnterEditMode": "请先登录，才能进入编辑模式。",
       "editPermissionDenied": "当前账号没有编辑权限。",
+      "globalPermissionDenied": "此 LOC 管理区块需要全局管理权限，更改未保存。",
       "edit": "编辑",
       "enterEditMode": "进入编辑模式",
       "cancelConfirm": "确定要放弃所有未保存的修改吗？",
