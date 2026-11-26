@@ -105,8 +105,9 @@ export async function queryKeywordStatistics(args={}){
     throw Error('Invalid Keyword statistics request');
   const {scopeId,classUid}=args,uid=validClassUid(classUid);
   const range=filters(args);
-  return withKeywordScope(scopeId,{},({db,scope,owner})=>
-    readKeywordStatistics(db,scope,uid,{owner,...range}));
+  return withKeywordScope(scopeId,{},({db,scope,owner,port})=>
+    readKeywordStatistics(db,scope,uid,{owner,...range,
+      engine:port.engine,namespace:port.namespace}));
 }
 
 export async function queryKeywordCatalog(args={}){
@@ -125,8 +126,9 @@ export async function queryKeywordDaily(args={}){
   if(places!==null&&(!Array.isArray(places)||places.length>100||
     places.some(value=>typeof value!=='string'||value.length>200)))
     throw Error('Invalid Keyword place filter');
-  return withKeywordScope(scopeId,{},({db,scope,owner})=>
-    readKeywordDaily(db,scope,uid,{owner,...range,places}));
+  return withKeywordScope(scopeId,{},({db,scope,owner,port})=>
+    readKeywordDaily(db,scope,uid,{owner,...range,places,
+      engine:port.engine,namespace:port.namespace}));
 }
 
 export async function queryKeywordWorkspace(args={}){
@@ -176,11 +178,11 @@ export async function queryKeywordAnchorArticles(args={}){
     startDate&&endDate&&startDate>endDate||sourceFilter.length>150||
     !['','galaxy','lyrics_work','text_work'].includes(contentType))
     throw Error('Invalid Anchor navigation request');
-  return withKeywordScope(args.scopeId,{},({db,scope,owner})=>
+  return withKeywordScope(args.scopeId,{},({db,scope,owner,port})=>
     queryAnchorArticles(db,{scopeId:scope,uid:String(args.uid||''),
       type:String(args.type||''),owner,offset,
       limit,sortDirection:String(args.sortDirection||'desc'),
       startDate,endDate,
       contentType,
-      sourceFilter}));
+      sourceFilter,engine:port.engine,namespace:port.namespace}));
 }
