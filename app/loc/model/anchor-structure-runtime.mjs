@@ -18,21 +18,39 @@ export async function readAnchorStructure(options,readAnchorPages,{browser=typeo
     !/^[a-z][a-z0-9]{0,14}$/.test(String(scope||''))||
     (family==='source')!==(scope==='loc'))
     return readAnchorPages(options);
-  const parents=[...new Set(selection.filter(type=>structural.includes(type)))].sort();
+  if(new Set(selection).size!==selection.length)
+    throw Error('Duplicate Anchor type selection');
+  const parents=selection.filter(type=>structural.includes(type));
   if(!parents.length)return readAnchorPages(options);
-  const leaves=[...new Set(selection.filter(type=>!structural.includes(type)))];
-  const shared=getOrLoadScopedRead('silver.'+scope+'_anchor',
-    ['public-anchor-structure',family,parents],()=>readAnchorPages({
-      scope,family,types:parents
-    }));
-  // Do not bind a shared request to a single consumer's cancellation signal.
-  // The outgoing page discards its result; another page may already need it.
-  const [base,detail]=await Promise.all([
-    shared,leaves.length?readAnchorPages({...options,types:leaves}):[]
-  ]);
-  signal?.throwIfAborted?.();
-  const rows=[...base,...detail];
-  if(new Set(rows.map(row=>String(row.uid))).size!==rows.length)
-    throw Error('Duplicate Anchor UID');
-  return rows.sort((a,b)=>a.uid<b.uid?-1:a.uid>b.uid?1:0);
+  const leaves=selection.filter(type=>!structural.includes(type));
+  const local=new AbortController();
+  const abort=()=>local.abort(signal?.reason);
+  if(signal?.aborted)abort();
+  else signal?.addEventListener('abort',abort,{once:true});
+  try{
+    const shared=getOrLoadScopedRead('silver.'+scope+'_anchor',
+      ['public-anchor-structure',family,parents],
+      ({signal:sharedSignal})=>readAnchorPages({
+        scope,family,types:parents,signal:sharedSignal
+      }),{signal:local.signal});
+    const [base,detail]=await Promise.all([
+      shared,leaves.length?readAnchorPages({...options,types:leaves,signal:local.signal}):[]
+    ]);
+    signal?.throwIfAborted?.();
+    const byType=new Map(selection.map(type=>[type,[]]));
+    for(const row of [...base,...detail]){
+      const group=byType.get(row.type);
+      if(!group)throw Error('Unexpected Anchor type in structural response');
+      group.push(row);
+    }
+    // Preserve the caller's semantic type order and the database order within
+    // each type. Never turn an Anchor structure into UID-sorted presentation.
+    const rows=selection.flatMap(type=>byType.get(type));
+    if(new Set(rows.map(row=>String(row.uid))).size!==rows.length)
+      throw Error('Duplicate Anchor UID');
+    return rows;
+  }finally{
+    signal?.removeEventListener('abort',abort);
+    local.abort();
+  }
 }
