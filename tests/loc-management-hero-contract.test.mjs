@@ -16,6 +16,7 @@ import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.
 import {readPublicSourceAnchors,readPublicSourceTaxonomy,resolveSiteAnchorRead} from '../app/loc/source/catalog-public.mjs';
 import {queryAnchorFeature} from '../app/loc/actions/anchor/queries.mjs';
 import {readLocSourceHierarchy} from '../app/loc/actions/admin/queries.mjs';
+import {traceSourceOptions} from '../app/modular/features/trace/trace-panel-filters.mjs';
 
 test('every management Hero keeps its image on its own copy row',()=>{
   for(const slot of MANAGEMENT_HERO_SLOTS)
@@ -91,6 +92,17 @@ test('SiteAnchor Asset switch falls back only on disable or Asset failure',async
   await assert.rejects(resolveSiteAnchorRead({mode:'asset',
     loadAsset:async()=>{throw Error('missing');},
     loadFallback:async()=>{throw Error('unavailable');}}),/Asset 無法讀取，固定 SQL 回退也失敗/);
+});
+
+test('Trace source options use the published SiteAnchor tree and retain the Galaxy.site value',async()=>{
+  const taxonomy=await readPublicSourceTaxonomy();
+  const options=traceSourceOptions(taxonomy);
+  const expected=taxonomy.categories.filter(row=>['domain','from'].includes(row.type));
+  assert.equal(options.length,expected.length);
+  assert.deepEqual(options.map(row=>row.uid),expected.map(row=>row.category_code));
+  assert.ok(options.every(row=>row.value&&row.label.includes(row.value)));
+  assert.ok(options.some(row=>row.type==='from'));
+  assert.ok(options.some(row=>row.type==='domain'));
 });
 
 test('Group admin is one group_admin Hero row for both display and editing',()=>{
