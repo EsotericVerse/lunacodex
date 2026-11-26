@@ -3,6 +3,7 @@
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import {useEffect,useRef,useState} from 'react';
 import {selectProgressResult} from './progress-result.mjs';
+import ActivityMotion from './ActivityMotion';
 
 // Shared, low-cost progress presentation for keyword scans and imports.
 // The river is decorative; all numeric progress comes from real worker/SQL
@@ -32,11 +33,11 @@ export default function FlowProgress({
   },[key,metricJson,count,all,known,resultComplete]);
   const visible=snapshot?.key===key?snapshot:null;
   return <div className={'loc-flow-progress loc-flow-progress--'+
-      (kind==='keywords'?'keywords':'import')}>
+      (kind==='keywords'?'keywords':'import')} data-motion-state={resultComplete?'success':'running'}>
     <div className="loc-flow-progress__header">
-      <span className="loc-flow-progress__beacon" aria-hidden="true">
+      {resultComplete?<ActivityMotion state="success"/>:<span className="loc-flow-progress__beacon" aria-hidden="true">
         <span/><span/><span/>
-      </span>
+      </span>}
       <div className="loc-flow-progress__heading">
         <span className="loc-flow-progress__eyebrow">
           {label||(kind==='keywords'?'語詞流動':'資料流動')}
@@ -63,7 +64,7 @@ export default function FlowProgress({
       aria-valuenow={known?Math.min(count,all):undefined}>
       <span className="loc-flow-progress__river-fill"
         style={known?{transform:'scaleX('+fraction+')'}:undefined}/>
-      <span className="loc-flow-progress__river-glint" aria-hidden="true"/>
+      {!resultComplete?<span className="loc-flow-progress__river-glint" aria-hidden="true"/>:null}
     </div>
     {visible?.values.length?<div className="loc-flow-progress__results" role="status" aria-live="polite">
       <small>{visible.complete?'本階段成果':'階段性成果（尚未完成）'}</small>
