@@ -10,7 +10,7 @@ export async function queryAnchorFeature(body){
   if(operation.family==='source'){
     const data=await queryPublishedSourceAnchors(operation);
     return {data,query:{requestedBy:'anchor',scope,model:'anchor-feature',
-      view:operation.family,mode:'published-asset'}};
+      view:operation.family,mode:'published-js'}};
   }
   const read=async(db,port)=>({
     data:await executeAnchorFeatureQuery(db,operation),

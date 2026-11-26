@@ -34,9 +34,9 @@ const sourceRoot=title=>{
     label==='pastby'?'custom':'system';
 };
 
-/** Pure projection of published silver.loc_anchor rows for Culture/Statistics.
- * The DB query is handled by the existing public ZModel reader; this creates
- * no foreign keys, persistent aliases, extra tables, or article-side changes.
+/** Pure projection of the published SiteAnchor JS snapshot for Culture/Statistics.
+ * Publication reads silver.loc_anchor explicitly; feature reads stay in JS.
+ * This creates no foreign keys, aliases, extra tables, or article-side changes.
  */
 export function sourceTaxonomyFromAnchors(rows=[],{includeHidden=false}={}){
   const allowed=new Set(SOURCE_LEVELS);

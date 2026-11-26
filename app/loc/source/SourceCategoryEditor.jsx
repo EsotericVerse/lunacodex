@@ -29,8 +29,8 @@ export function useSourceCategories(){
 }
 
 // The LOC SiteAnchor hierarchy is fixed public taxonomy. This panel shows the
-// same published Asset used by Culture, Statistics, Search and Import; it has
-// no live SQL read or write controls that could diverge from the release copy.
+// same published JavaScript snapshot used by Culture, Statistics, Search and
+// Import; it has no live SQL controls that could diverge from the release copy.
 export function AdminSourceCategories(){
   const [nodes,setNodes]=useState([]);
   const [selected,setSelected]=useState('');

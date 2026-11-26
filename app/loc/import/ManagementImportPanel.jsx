@@ -677,7 +677,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [timeRange,setTimeRange]=useState('all');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
-  // Import source choices come from the fixed resident SiteAnchor Asset;
+  // Import source choices come from the fixed resident SiteAnchor JS snapshot;
   // imported rows never trigger a live SQL taxonomy read.
   const sourceAnchorResource=useAsyncResource(['loc-source-anchor'],async()=>{
     const nodes=await readPublicSourceAnchors();

@@ -54,8 +54,9 @@ const palettes=themes.map(theme=>{
   return {id,css:':root[data-theme-id="theme-'+id+'"][data-theme]{\n  color-scheme:'+(theme.scheme==='dark'?'dark':'light')+';\n'+declarations.join('\n')+'\n}'};
 });
 const themeMeta=themes.map(t=>({theme_id:t.theme_id,theme_name:t.theme_name,theme_order:t.theme_order}));
-// Public SiteAnchor is a small, typed LOC-wide catalogue. Publish it with
-// navigation metadata so page selectors never wait for a second SQL read.
+// Publish every visible SiteAnchor UID (Universe/Galaxy/Domain/From) into the
+// resident JS snapshot. This SQL read runs only during explicit sync:public;
+// pages and feature requests consume the generated module without SQL.
 const siteAnchors=await db.selectFrom(table('loc_anchor'))
   .select(['uid','type','title','attr','invisible'])
   .where('type','in',ANCHOR_TYPE_GROUPS.source)

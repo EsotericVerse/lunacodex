@@ -1,41 +1,27 @@
 // Public, typed SiteAnchor source reader for Culture/Statistics and management.
-// SiteAnchor is fixed publication data; every read uses the resident release
-// Asset and never opens a SQL connection.
+// The fixed ZModel catalogue is published into the resident JavaScript bundle;
+// feature reads must never open a SQL connection or depend on Cloudflare ASSETS.
+import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {sourceTaxonomyFromAnchors} from './classification.mjs';
 
-// Change to 'sql' only for a deliberate compatibility fallback. Normal
-// Culture/Statistics/Search/Import reads stay on the resident published Asset.
-export const SITE_ANCHOR_READ_MODE='asset';
+// This is a versioned JS snapshot, not the Cloudflare Workers ASSETS binding
+// and not R2. Update it only through the explicit public publication flow.
+export const SITE_ANCHOR_READ_MODE='published-js';
 
-const readAsset=async()=>{
-  const {PUBLISHED_SITE_BOOTSTRAP}=await import('../../modular/published-site-bootstrap.js');
+const readPublished=()=>{
   const rows=PUBLISHED_SITE_BOOTSTRAP.site_anchors;
   if(!Array.isArray(rows)||!rows.length)
-    throw new Error('LOC 文章來源 Asset 尚未發佈。');
+    throw new Error('LOC SiteAnchor JS 發布資料缺失；請執行 sync:public 並檢查產生檔。');
   const allowed=new Set(ANCHOR_TYPE_GROUPS.source);
   const visible=rows.filter(row=>allowed.has(row?.type)&&row?.invisible!==true);
-  if(!visible.length)throw new Error('LOC 文章來源 Asset 尚未發佈。');
+  if(!visible.length)
+    throw new Error('LOC SiteAnchor JS 發布資料沒有可用的公開節點。');
   return visible;
 };
 
-const readSqlFallback=async()=>{
-  const {readPublicSourceAnchorsFromSql}=await import('../actions/anchor/source-fallback.mjs');
-  return readPublicSourceAnchorsFromSql();
-};
-
-export async function resolveSiteAnchorRead({mode=SITE_ANCHOR_READ_MODE,
-  loadAsset=readAsset,loadFallback=readSqlFallback}={}){
-  if(mode!=='asset')return loadFallback();
-  try{return await loadAsset();}
-  catch{
-    try{return await loadFallback();}
-    catch{throw new Error('LOC 文章來源 Asset 無法讀取，固定 SQL 回退也失敗。');}
-  }
-}
-
 export async function readPublicSourceAnchors(){
-  return resolveSiteAnchorRead();
+  return readPublished();
 }
 
 export async function readPublicSourceTaxonomy(){
