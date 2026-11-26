@@ -122,13 +122,7 @@ export default function GlobalSettings({initialSection='features'}={}){
         {rainbowPreview?'關閉彩虹預覽':'預覽彩虹變身'}
       </button>:null}
     </div>
-    {canPreviewRainbow&&rainbowPreview?<div className="scope-rainbow-transform-preview" role="img" aria-label="彩虹變身：三層輕量圓環與彩虹流光預覽">
-      <span className="scope-rainbow-transform-preview__ring scope-rainbow-transform-preview__ring--outer" aria-hidden="true"/>
-      <span className="scope-rainbow-transform-preview__ring scope-rainbow-transform-preview__ring--middle" aria-hidden="true"/>
-      <span className="scope-rainbow-transform-preview__ring scope-rainbow-transform-preview__ring--inner" aria-hidden="true"/>
-      <span className="scope-rainbow-transform-preview__center" aria-hidden="true">虹</span>
-      <span className="scope-rainbow-transform-preview__caption">彩虹變身 · 視覺預覽</span>
-    </div>:null}
+    {canPreviewRainbow&&rainbowPreview?<p className="scope-settings-note" role="status">彩虹變身已套用至下方六鍵（視覺預覽）。</p>:null}
     {account.error?<div className="scope-status scope-error" role="alert">
       <p>{account.error}</p>
       <button type="button" className="loc-button" disabled={busy||account.loading}

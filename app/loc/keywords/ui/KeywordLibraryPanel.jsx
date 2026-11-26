@@ -661,8 +661,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
         setWorkspace(next);setEditor(null);
       }}/>
     <div id="scope-keyword-workspace" className="loc-keyword-workspace-panel">
-    {loading?<p className="scope-status" role="status">讀取關鍵字資料中…</p>:null}
-    {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
+    {loading?<p className="scope-status" role="status"><ActivityMotion/> 讀取關鍵字資料中…</p>:null}
+    {error?<p className="scope-status scope-error" role="alert"><ActivityMotion state="error"/> {error}</p>:null}
     {notice?<p className="scope-status" role="status">{notice}</p>:null}
     {loading?<div className="loc-progressive-river-frame" aria-busy="true"><div className="loc-progressive-river-axis" aria-hidden="true"/></div>:null}
     {!loading&&workspace==='manual'?<section className="loc-card scope-feature-card">

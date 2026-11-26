@@ -4,6 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {useSearchParams} from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
+import ActivityMotion from '../ActivityMotion';
 import {FeaturePage} from '../ui';
 import LocTracePreview from './LocTracePreview';
 import UiText,{useUiText} from '../../i18n/UiText';
@@ -277,7 +278,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
         </div>
       </details>:null}
     </div>
-    {supported&&(traceIndex.isPending||(isLoc?locPointsQuery.isPending:anchorsQuery.isPending))?<p className="scope-status" role="status" aria-live="polite">找尋痕跡中請稍後</p>:null}
+    {supported&&(traceIndex.isPending||(isLoc?locPointsQuery.isPending:anchorsQuery.isPending))?<p className="scope-status" role="status" aria-live="polite"><ActivityMotion/> 找尋痕跡中請稍後</p>:null}
     {supported&&traceIndex.error?<p className="scope-status scope-error" role="alert">
       {t("mapsError")}{String(traceIndex.error.message||traceIndex.error)}
     </p>:null}

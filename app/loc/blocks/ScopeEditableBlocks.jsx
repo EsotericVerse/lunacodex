@@ -89,13 +89,20 @@ export default function ScopeEditableBlocks({
   const [editingSlot,setEditingSlot]=useState(null);
   const [message,setMessage]=useState('');
   const [editMode,setEditMode]=useState(Boolean(startInEditMode));
-  const editingContent=Boolean(homeEditActive||editMode||authorizedByParent);
-  const homePageTurn=scopeId==='loc'&&pageName==='index'&&explicitEditButton;
+  const editingContent=Boolean(homeEditActive||(!isScopeHomepageBlock&&editMode)||authorizedByParent);
+  const homePageTurn=['loc','lo3rwang'].includes(scopeId)&&pageName==='index'&&explicitEditButton;
   const wantsHomeEditor=homePageTurn&&editingContent;
   const [homeTurned,setHomeTurned]=useState(false);
   const [homeDraftComponent,setHomeDraftComponent]=useState(null);
   const [homeDraftError,setHomeDraftError]=useState(false);
   const lastPublished=useRef(null);
+  const [savedFace,setSavedFace]=useState(null);
+  useLayoutEffect(()=>{
+    if(isScopeHomepageBlock&&!homeEditActive&&!authorizedByParent){
+      setEditMode(false);setEditingSlot(null);
+    }
+  },[isScopeHomepageBlock,homeEditActive,authorizedByParent]);
+  const faceKey=scopeId+'|'+pageName;
 
   // The shell is static; authored Blocks are always read from SQL on page
   // entry. Public and editor reads are mutually exclusive. Entering the
@@ -117,8 +124,14 @@ export default function ScopeEditableBlocks({
     if(!wantsHomeEditor&&Array.isArray(publicBlocks))lastPublished.current=publicBlocks;
     if(homeTurned)lastPublished.current=null;
   },[homePageTurn,wantsHomeEditor,publicBlocks,homeTurned]);
+  // A confirmed write can become the public face immediately, even while
+  // the newly enabled public reader verifies its fresh result.
+  const savedBlocks=savedFace?.key===faceKey?savedFace.rows:undefined;
   const blocks=showEditor?editorRows.data
-    :(wantsHomeEditor?(publicBlocks??lastPublished.current):publicBlocks);
+    :(wantsHomeEditor?(publicBlocks??lastPublished.current):(publicRows.isSuccess?publicBlocks:savedBlocks??publicBlocks));
+  useEffect(()=>{
+    if(!editingContent&&publicRows.isSuccess&&savedFace)setSavedFace(null);
+  },[editingContent,publicRows.isSuccess,savedFace]);
   useLayoutEffect(()=>{
     if(!wantsHomeEditor){setHomeTurned(false);return;}
     scrollHomeTop();
@@ -133,8 +146,8 @@ export default function ScopeEditableBlocks({
   },[wantsHomeEditor]);
   useLayoutEffect(()=>{
     if(!wantsHomeEditor||!editingReady||!homeDraftComponent||homeTurned)return;
-    return turnHomeBlocks('edit',()=>setHomeTurned(true));
-  },[wantsHomeEditor,editingReady,homeDraftComponent,homeTurned]);
+    return turnHomeBlocks('edit',()=>setHomeTurned(true),scopeId);
+  },[wantsHomeEditor,editingReady,homeDraftComponent,homeTurned,scopeId]);
   // A document kept in the browser's back-forward cache is not unmounted.
   // Retire this homepage edit session even in that case; no draft persistence.
   useEffect(()=>{
@@ -263,7 +276,7 @@ export default function ScopeEditableBlocks({
     const canAddBlock=!normalizedOrders.length&&(!maxBlocks||nextOrder<=maxBlocks);
     const editing=editMode||homeEditActive;
     const toggleButton=(canEdit&&!editing)||toggleExtra?<div className="scope-edit-mode-toggle" key="scope-edit-mode-toggle">
-      {canEdit&&!editing?<button type="button" className="loc-button" onClick={()=>setEditMode(true)}>
+      {canEdit&&!editing&&!isScopeHomepageBlock?<button type="button" className="loc-button" onClick={()=>setEditMode(true)}>
         <UiText id="uiExtra.editBlocks.enterEditMode"/>
       </button>:null}
       {toggleExtra}
@@ -297,7 +310,7 @@ export default function ScopeEditableBlocks({
         slotClassName={slotClassName}
         editSlotClassName={editSlotClassName}
         preserveOrder={Boolean(normalizedOrders.length)}
-        previewDisplay={scopeId==='loc'&&pageName==='index'?DisplayComponent:null}
+        previewDisplay={homePageTurn?DisplayComponent:null}
         previewClassName={resolveSlotClassName}
         previewStyle={resolveSlotStyle}
         toolbar={toggleButton}
@@ -310,7 +323,7 @@ export default function ScopeEditableBlocks({
             editDock.complete(navigationHref(scopeId,destination,native));
           }else onEditorExit?.();
         }}
-        onDone={(notice,{switching=false}={})=>{
+        onDone={(notice,{switching=false,committedRows}={})=>{
           setMessage(notice);
           // Real Save never tears down an active Edit Dock on a management page,
           // and page switching/canceling remains the Dock's explicit responsibility.
@@ -318,6 +331,7 @@ export default function ScopeEditableBlocks({
           // the intent, so it leaves edit mode and returns through the Dock below.
           // Management pages keep their own editors mounted via keepEditorOpen.
           const finishesHomeEntrance=pageName==='index'&&!keepEditorOpen&&!switching;
+          if(finishesHomeEntrance&&Array.isArray(committedRows))setSavedFace({key:faceKey,rows:committedRows});
           if(editDock?.active&&editDock.scopeId===scopeId&&!finishesHomeEntrance){
             if(keepEditorOpen&&!switching)onEditorExit?.(notice);
             return;
@@ -326,9 +340,10 @@ export default function ScopeEditableBlocks({
           if(['search','trace'].includes(pageName)&&!switching)return;
           setEditMode(false);
           if(switching)return;
-          if(editDock?.active&&editDock.scopeId===scopeId)
-            editDock.complete(navigationHref(scopeId,'',native));
-          else onEditorExit?.(notice);
+          if(editDock?.active&&editDock.scopeId===scopeId){
+            if(finishesHomeEntrance)editDock.end();
+            else editDock.complete(navigationHref(scopeId,'',native));
+          }else onEditorExit?.(notice);
         }}
       />:slots.flatMap((slot,index)=>{
         const empty=!BlockNoteContent.text.hasBlockNoteFrameContent(slot);

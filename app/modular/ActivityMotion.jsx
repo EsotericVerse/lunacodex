@@ -5,8 +5,19 @@ import {motion,useReducedMotion} from 'motion/react';
 // Visual feedback only. Real status, counts and completion are owned by each
 // feature's existing request/worker state. No clock, polling or fake progress.
 const DIGITS=Object.freeze([0,1,2,3,4,5,6,7,8,9]);
-export default function ActivityMotion({kind='hourglass'}){
+export default function ActivityMotion({kind='hourglass',state='running'}){
   const reduceMotion=useReducedMotion();
+  // Terminal feedback is one-shot; only actual in-flight work loops.
+  if(state!=='running'){
+    const marks={pending:'…',success:'✓',error:'!',cancelled:'—',empty:'○'};
+    return <motion.span key={state} className="loc-work-activity loc-work-activity--state"
+      data-motion-state={state} aria-hidden="true"
+      initial={reduceMotion?false:{opacity:.5,scale:.85}}
+      animate={{opacity:1,scale:1}}
+      transition={{duration:reduceMotion?0:.18,ease:'easeOut'}}>
+      {marks[state]||marks.pending}
+    </motion.span>;
+  }
   if(kind==='numbers')return <span className="loc-work-activity loc-work-activity--numbers" aria-hidden="true">
     {DIGITS.slice(0,3).map((_,index)=><span key={index} className="loc-work-activity__digit-window">
       <motion.span className="loc-work-activity__digit-strip"

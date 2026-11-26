@@ -236,3 +236,39 @@ body{padding-bottom:var(--loc-dock-clearance);}
 html:has(.scope-feature-dock .scope-rainbow-preview-clock){
   --loc-dock-clearance:calc(9rem + env(safe-area-inset-bottom,0px));
 }
+
+/* A real six-key preview, not a second demonstration panel. The actual
+   button surface, selection, hit area and theme text remain unchanged. */
+.scope-feature-dock a>.scope-dock-rainbow-frame{
+  position:absolute;inset:0;z-index:1;
+  padding:2px;border-radius:inherit;pointer-events:none;
+  background:conic-gradient(from var(--loc-rainbow-angle,0deg),
+    #ef829d,#f1cb79,#8bd8ac,#79c8ef,#ae9deb,#ef829d);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+.scope-feature-dock a>.scope-dock-rainbow-frame~.scope-dock-motion-icon,
+.scope-feature-dock a>.scope-dock-rainbow-frame~span:last-child{z-index:2;}
+/* Preserve existing layout and avoid an extra containing block. */
+.loc-page-motion-boundary{display:contents;}
+
+/* Quiet, state-driven feedback. No inference from translated status text. */
+.loc-work-activity--state{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:1.2em;height:1.2em;font-weight:700;vertical-align:middle;
+  color:var(--loc-accent);
+}
+.loc-work-activity--state[data-motion-state="error"]{color:var(--loc-danger,var(--loc-text));}
+.loc-work-activity--state:is([data-motion-state="empty"],[data-motion-state="cancelled"],[data-motion-state="pending"]){color:var(--loc-muted);}
+@media(prefers-reduced-motion:no-preference){
+  .scope-status.scope-error[role="alert"]{animation:loc-status-reveal .18s ease-out both;}
+  @keyframes loc-status-reveal{from{opacity:.75;}to{opacity:1;}}
+}
+
+/* A save is a local data handoff, not a second page entrance. Keep the
+   active management controls visible while their existing readers refresh. */
+@media(prefers-reduced-motion:no-preference){
+  .scope-block-draft:not(.loc-home-turn-in-edit){animation:loc-editor-reveal .18s ease-out;}
+  @keyframes loc-editor-reveal{from{opacity:.8;}to{opacity:1;}}
+}

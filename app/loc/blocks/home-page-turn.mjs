@@ -4,9 +4,10 @@ export function scrollHomeTop(){
   window.scrollTo({top:0,left:0,behavior:'instant'});
 }
 
-export function turnHomeBlocks(direction,finish){
+export function turnHomeBlocks(direction,finish,scopeId='loc'){
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const selector='.loc-next-main[data-loc-scope="loc"][data-loc-view="home"] .loc-home > .scope-editable-block';
+  const scope=scopeId==='lo3rwang'?'lo3rwang':'loc';
+  const selector='.loc-next-main[data-loc-scope="'+scope+'"][data-loc-view="home"] .loc-home > .scope-editable-block';
   const animations=[];
   let active=true;
   if(!reduced){
