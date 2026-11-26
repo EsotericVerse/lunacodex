@@ -36,7 +36,7 @@ import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './g
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from '../archive/import-safety.mjs';
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
 import {publicVisualUrl,visualGalaxyCandidates} from './visual-galaxy.mjs';
-import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,createImportBatchSizer,createImportConfirmationWindow} from './batch.mjs';
+import {ARCHIVE_MAX_BYTES,IMPORT_FIELD_ALIASES,UNIVERSAL_IMPORT_ACCEPT,mappedImportValue,normalizeImportMedia,parseImportCreatedTime,extractImportCreatedAt,extractImportUpdatedAt,writeImportBatches,writeImportStream,createImportBatchSizer,createImportConfirmationWindow} from './batch.mjs';
 import {MAX_ROWS,urlSafeInBatches,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 import {hasIrrecoverableEncoding,isPureUrlContent,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText,resolveGalaxyTitle} from '../content/content-policy';
 import {galaxyAble} from '../model/galaxy-able.mjs';
@@ -1734,54 +1734,44 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         return {...proposed,place_id:proposed.place_id??null,
           media_link:proposed.media_link??null};
       };
-      const insertSizer=createImportBatchSizer({sampleRows:unique.filter(row=>
-        !existingBySiteId.has(row.uid)).slice(0,128).map(prepareArticleForWrite)});
-      const insertWindows=createImportConfirmationWindow();
-      let payload=[],payloadBytes=0,newArticleProcessed=0;
-      const flushNewArticles=async()=>{
-        if(!payload.length)return;
-        const count=payload.length,started=Date.now();
-        const characters=payload.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
-        const outcome=await insertImportBatches(payload,{
-          batchSize:insertSizer.size,
-          // The Gateway reports SQLSTATE 23505 without naming its constraint.
-          // Verify the UID really exists before treating it as an article collision.
-          verifyUidConflict:async uid=>(await readRowsByUid([uid]))
-            .some(row=>String(row.uid)===uid),
-          // The queue already carries the final physical Galaxy shape,
-          // so the measured UTF-8 bytes match what the backend receives.
-          writeBatch:batch=>insertImportRows(galaxy,batch,{
-            onValidationProgress:({completed,total})=>setProgress(previous=>
-              previous?{...previous,detail:'Galaxy ZModel／Zod 已驗證 '+completed+' / '+total}:previous)
-          })
-        });
-        result.inserted+=outcome.inserted;
-        result.conflicts+=outcome.conflicts;
-        confirmedMetrics=[{label:'已確認更新文章',value:updated},{label:'已確認新增文章',value:result.inserted},{label:'UID 衝突',value:result.conflicts}];
-        for(const uid of outcome.insertedUids)result.insertedUids.add(uid);
-        for(const uid of outcome.conflictedUids)result.conflictedUids.add(uid);
-        newArticleProcessed+=payload.length;
-        payload=[];payloadBytes=0;
-        insertSizer.observe(count,Date.now()-started,characters);
-        checkpointBatch('insert',newArticleProcessed,newArticleTotal,
-          result.inserted,result.conflicts);
-        showProgress('新增文章',newArticleProcessed,newArticleTotal);
-      };
-      for(const record of unique){
-        if(existingBySiteId.has(record.uid))continue;
-        const incoming=prepareArticleForWrite(record);
-        const bytes=insertSizer.byteSize(incoming);
-        if(insertSizer.shouldFlush(payload.length,payloadBytes,bytes))
-          await flushNewArticles();
-        payload.push(incoming);payloadBytes+=bytes;
-        if(insertSizer.shouldFlush(payload.length,payloadBytes))
-          await flushNewArticles();
-        // Stop exactly at each durable confirmation milestone; on long
-        // articles, physical transport batches will checkpoint sooner.
-        if(insertWindows.reached(newArticleProcessed+payload.length))
-          await flushNewArticles();
+      let newArticleProcessed=0;
+      async function* streamNewArticles(){
+        for(const record of unique){
+          if(!existingBySiteId.has(record.uid))yield prepareArticleForWrite(record);
+        }
       }
-      await flushNewArticles();
+      await writeImportStream(streamNewArticles(),{
+        total:newArticleTotal,
+        sampleRows:unique.filter(row=>!existingBySiteId.has(row.uid))
+          .slice(0,128).map(prepareArticleForWrite),
+        writeBatch:async batch=>{
+          // Each stream window is a byte-sized, independently confirmed SQL
+          // write. UID conflicts are bisected only inside this bounded batch.
+          const outcome=await insertImportBatches(batch,{
+            batchSize:batch.length,
+            verifyUidConflict:async uid=>(await readRowsByUid([uid]))
+              .some(row=>String(row.uid)===uid),
+            writeBatch:rows=>insertImportRows(galaxy,rows,{
+              onValidationProgress:({completed,total})=>setProgress(previous=>
+                previous?{...previous,detail:'Galaxy ZModel／Zod 已驗證 '+completed+' / '+total}:previous)
+            })
+          });
+          result.inserted+=outcome.inserted;
+          result.conflicts+=outcome.conflicts;
+          for(const uid of outcome.insertedUids)result.insertedUids.add(uid);
+          for(const uid of outcome.conflictedUids)result.conflictedUids.add(uid);
+          return {count:batch.length};
+        },
+        onProgress:progress=>{
+          newArticleProcessed=progress.completed;
+          confirmedMetrics=[{label:'已確認更新文章',value:updated},
+            {label:'已確認新增文章',value:result.inserted},
+            {label:'UID 衝突',value:result.conflicts}];
+          checkpointBatch('insert',newArticleProcessed,newArticleTotal,
+            result.inserted,result.conflicts);
+          showProgress('新增文章',newArticleProcessed,newArticleTotal);
+        }
+      });
       duplicateCount+=result.conflicts;
       for(const uid of result.insertedUids)knownArticleIds.set(uid,uid);
       for(const record of analyzed.valid){

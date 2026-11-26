@@ -10,6 +10,7 @@ import {validateShortImportBatch} from '../app/loc/import/short-append-service.m
 import {readFileSync} from 'node:fs';
 import {createImportBatchSizer} from '../app/loc/import/batch.mjs';
 import {writeImportBatches} from '../app/loc/import/batch.mjs';
+import {writeImportStream} from '../app/loc/import/batch.mjs';
 import {IMPORT_PAYLOAD_TARGET_BYTES} from '../app/loc/import/batch.mjs';
 import {writeImportCheckpoint} from '../app/loc/import/checkpoint.mjs';
 import {readImportCheckpoint} from '../app/loc/import/checkpoint.mjs';
@@ -106,6 +107,37 @@ test('adaptive writer flushes large texts by bytes rather than sending oversized
   }});
   assert.equal(result.completed,24);
   assert.ok(sent.length>1);
+});
+
+test('import writer consumes an async stream with bounded confirmed writes',async()=>{
+  async function* records(){
+    for(let i=0;i<5000;i++)yield {uid:String(i).padStart(8,'0'),content:'文章 '+i};
+  }
+  const batches=[],checkpoints=[];
+  const result=await writeImportStream(records(),{
+    total:5000,
+    sampleRows:[{uid:'00000000',content:'文章 0'}],
+    writeBatch:async rows=>{
+      batches.push(rows.length);
+      return {count:rows.length};
+    },
+    onProgress:progress=>{if(progress.checkpoint)checkpoints.push(progress.completed);}
+  });
+  assert.equal(result.completed,5000);
+  assert.equal(result.total,5000);
+  assert.equal(batches.reduce((sum,count)=>sum+count,0),5000);
+  assert.ok(batches.every(count=>count<=8192));
+  assert.deepEqual(checkpoints,[4096]);
+});
+
+test('import stream validates its declared length before writing extra rows',async()=>{
+  async function* records(){yield {uid:'ARTICLE1'};yield {uid:'ARTICLE2'};}
+  const writes=[];
+  await assert.rejects(writeImportStream(records(),{
+    total:1,sampleRows:[{uid:'ARTICLE1'}],
+    writeBatch:async rows=>{writes.push(rows.length);return {count:rows.length};}
+  }),/超過宣告筆數/);
+  assert.deepEqual(writes,[1]);
 });
 
 
