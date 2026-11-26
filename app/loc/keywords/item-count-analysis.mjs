@@ -6,6 +6,7 @@ import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
+const UID=/^[A-Za-z0-9]{8}$/;
 const count=x=>Math.max(0,Number(x)||0);
 // Full-text Item scans already handle 4096 Galaxy rows per indexed SELECT.
 // The old 1024-row cap made each checkpoint issue several SQL reads. Keep the
