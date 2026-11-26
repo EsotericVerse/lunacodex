@@ -138,15 +138,10 @@ export function removeDuplicatedLegacySubtitle(body='',subtitle=''){
 // only ever carries that Scope-view's image override, never text.
 // LunaRunes uses the same database-backed read-only feature headers as every
 // other public Scope; only LOC admins edit the shared group_<feature> copy.
-// admin / manage / setting (the /admin, each Scope's own /manage,
-// and the local Scope's /local/setting pages) join this same hero template,
-// but each is its own independent featureId -- they never share text or an
-// image with each other or with the four above. None of them ever renders
-// under scopeId==='loc' (loc's own management entry point is /admin itself,
-// never /manage; /admin and /local/setting are each pinned to
-// exactly one fixed Scope), so unlike the four above, none of them needs
-// the group_<feature>/scope_<feature> two-slot split -- one image each,
-// via shouldUseSingleFeatureHeroImage below.
+// admin is LOC Group administration and uses group_admin for both copy and
+// artwork. setting uses group_setting for both. Scope /trace/manage is the
+// spatial-anchor editor (view='manage') even when its root Scope ID is loc;
+// Group people/works management is the distinct view='sourceManage'.
 export const FEATURE_HERO_ORDER=Object.freeze({
   culture:1,
   statics:2,
@@ -196,12 +191,13 @@ export function managementHeroDefaultImage(slot){
 }
 
 export function managementHeroSlot(view='',scopeId=''){
-  // The LOC Scope shell shares the aggregate Scope ID, but time management
-  // still owns its dedicated TimeAnchor Hero slot.
+  // Root /culture/manage and /trace/manage are Scope-admin destinations even
+  // though their shell uses the aggregate LOC Scope ID. Group people/works
+  // remains the separate /manage route (view='sourceManage').
   const group=scopeId==='loc'||scopeId==='admin';
-  const key=view==='timeManage'?'time':group
-    ?({admin:'system',sourceManage:'members',keywordManage:'locKeywords',searchManage:'articles',manage:'members'}[view])
-    :({keywords:'keywords',manage:'spatial',searchManage:'advanced'}[view]);
+  const key=view==='timeManage'?'time':view==='manage'?'spatial':group
+    ?({admin:'system',sourceManage:'members',keywordManage:'locKeywords',searchManage:'articles'}[view])
+    :({keywords:'keywords',searchManage:'advanced'}[view]);
   return MANAGEMENT_HERO_SLOTS.find(item=>item.key===key)||null;
 }
 export function managementHeroCopy(rows,slot){
@@ -216,8 +212,9 @@ export function managementHeroCopy(rows,slot){
   };
 }
 
-// These features use the compact single-image editor. Their storage page is
-// resolved separately so Group admin and personal settings stay on group_*.
+// These features use the compact single-image editor. Storage-page selection
+// is separate: Group admin/settings use group_*; Scope management uses its
+// dedicated named page.
 export const SINGLE_SLOT_FEATURE_HERO_IDS=Object.freeze(['admin','manage','setting']);
 export function shouldUseSingleFeatureHeroImage(featureId){
   return SINGLE_SLOT_FEATURE_HERO_IDS.includes(String(featureId||''));
