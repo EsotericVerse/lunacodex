@@ -1,4 +1,5 @@
 import {createTextAdaptiveRows} from '../query/query-batch-size.mjs';
+import {executeKyselyQuery} from '../providers/kysely-runtime.mjs';
 import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-policy.mjs';
 // Item-driven LOC keyword classification. No Pattern posting or persisted article UID list.
 import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
@@ -402,32 +403,63 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
 }
 export async function readItemKeywordProjection(db,scope,{items,groups,patterns=[],start='',end='',
   source='',places=null,owner=true,minChars=0,onRow=null,
-  galaxyTable='silver.'+scope+'_galaxy'}={}){
+  galaxyTable='silver.'+scope+'_galaxy',engine='postgres',namespace='silver',
+  signal=null}={}){
   const a=createItemCountAccumulator(items,groups,null,{minChars,patterns});
+  const table=String(galaxyTable).split('.').at(-1);
+  if(!/^[a-z][a-z0-9_]*$/i.test(table))
+    throw new TypeError('Invalid Keyword Galaxy relation');
   let after='';
   const sizer=createTextAdaptiveRows({
     initial:KEYWORD_SCAN_START_ROWS,minimum:KEYWORD_SCAN_START_ROWS,
     ...KEYWORD_SCAN_PAGE_OPTIONS
   });
+  // Stream each adaptive keyset page from the selected native SQL driver.
+  // Only a small CPU slice is retained; the complete 4k–10k page is never
+  // materialized as a JavaScript row array before keyword classification.
+  const cpuBatch=[];
+  const CPU_BATCH_ROWS=256;
   for(;;){
     const requested=sizer.size;
-    let q=db.selectFrom(galaxyTable)
-      .select(['uid','title','content','keyword','date','site','place_id','createtime'])
-      .orderBy('uid','asc').limit(requested);
-    if(after)q=q.where('uid','>',after);
-    if(start)q=q.where('date','>=',start);
-    if(end)q=q.where('date','<=',end);
-    if(source)q=q.where('site','=',source);
-    if(Array.isArray(places)&&places.length)q=q.where('place_id','in',places);
-    if(!owner)q=q.where('search','=',true);
-    const rows=await q.execute();
-    if(!rows.length)break;
-    after=String(rows.at(-1).uid);
-    a.state.scanned+=rows.length;a.absorb(rows,onRow);
-    const chars=rows.reduce((sum,row)=>sum+
-      String(row?.title??'').length+String(row?.content??'').length,0);
-    sizer.observe(rows.length,chars);
-    if(rows.length<requested)break;
+    const filters=[];
+    if(after)filters.push({column:'uid',operator:'gt',value:after});
+    if(start)filters.push({column:'date',operator:'gte',value:start});
+    if(end)filters.push({column:'date',operator:'lte',value:end});
+    if(source)filters.push({column:'site',operator:'eq',value:source});
+    if(Array.isArray(places)&&places.length)
+      filters.push({column:'place_id',operator:'in',value:places});
+    if(!owner)filters.push({column:'search',operator:'eq',value:true});
+    const result=await executeKyselyQuery(db,{
+      kind:'query',schema:'silver',table,operation:'select',
+      columns:['uid','title','content','keyword','date','site','place_id','createtime'],
+      filters,orders:[{column:'uid'}],limit:requested
+    },{
+      dialect:engine,namespace,stream:true,...(signal?{signal}:{})
+    });
+    let pageRows=0,pageChars=0,lastUid=after;
+    const absorbBatch=()=>{
+      if(!cpuBatch.length)return;
+      a.absorb(cpuBatch,onRow);
+      cpuBatch.length=0;
+    };
+    for await(const row of result.data){
+      const uid=String(row?.uid||'');
+      if(!UID.test(uid)||uid<=lastUid)
+        throw new Error('Keyword projection UID cursor did not advance');
+      lastUid=uid;
+      pageRows++;
+      if(pageRows>requested)
+        throw new Error('Keyword projection exceeded its adaptive page');
+      pageChars+=String(row?.title??'').length+String(row?.content??'').length;
+      cpuBatch.push(row);
+      if(cpuBatch.length>=CPU_BATCH_ROWS)absorbBatch();
+    }
+    absorbBatch();
+    if(!pageRows)break;
+    after=lastUid;
+    a.state.scanned+=pageRows;
+    sizer.observe(pageRows,pageChars);
+    if(pageRows<requested)break;
   }
   return {totals:a.totals(),daily:a.daily()};
 }
