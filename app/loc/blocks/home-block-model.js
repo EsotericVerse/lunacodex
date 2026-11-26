@@ -165,16 +165,14 @@ export const MANAGEMENT_HERO_SLOTS=Object.freeze([
   {key:'keywords',label:'關鍵詞',audience:'scope',featureId:'statics',page:'ScopeKeyword',englishTitle:'ScopeKeyword'},
   {key:'spatial',label:'空間定錨',audience:'scope',featureId:'trace',page:'SpaceAnchor',englishTitle:'SpaceAnchor'},
   {key:'advanced',label:'文章管理',audience:'scope',featureId:'search',page:'ScopeArticle',englishTitle:'Article Management'},
-  {key:'system',label:'系統管理',audience:'loc',page:'scope_admin',englishTitle:'Administration'},
+  {key:'system',label:'系統管理',audience:'loc',page:'group_admin',englishTitle:'Administration'},
   {key:'members',label:'人員作品管理',audience:'loc',page:'GalaxyManage',englishTitle:'GalaxyManage'},
   {key:'locKeywords',label:'關鍵詞',audience:'loc',page:'Groupkeyword',englishTitle:'Groupkeyword'},
-  {key:'trace',label:'痕跡圖管理',audience:'loc',page:'GroupSpace',englishTitle:'GroupSpace'},
   {key:'articles',label:'文章管理',audience:'loc',page:'GroupArticle',englishTitle:'GroupArticle'}
 ]);
 const LOC_MANAGEMENT_HERO_IMAGES=Object.freeze({
   members:'https://loc.lo3rwang.cc/pics/LOC-culture.jpg',
   locKeywords:'https://loc.lo3rwang.cc/pics/LOC-statics.jpg',
-  trace:'https://loc.lo3rwang.cc/pics/LOC-gn.jpg',
   articles:'https://loc.lo3rwang.cc/pics/LOC-search.jpg'
 });
 const FEATURE_HERO_DEFAULT_IMAGES=Object.freeze({
@@ -189,7 +187,7 @@ export function featureHeroDefaultImage(featureId){
 }
 export function managementHeroImagePage(slot){
   // The Hero image and its copy are fields on the same LOC Anchor row.
-  return slot?.page||'scope_admin';
+  return slot?.page||'group_admin';
 }
 export function managementHeroDefaultImage(slot){
   return slot?.audience==='loc'
@@ -218,8 +216,8 @@ export function managementHeroCopy(rows,slot){
   };
 }
 
-// The three single-image features (see comment above): exactly one
-// silver.loc_blocks page_name="scope_<feature>" row, never a "group_" row.
+// These features use the compact single-image editor. Their storage page is
+// resolved separately so Group admin and personal settings stay on group_*.
 export const SINGLE_SLOT_FEATURE_HERO_IDS=Object.freeze(['admin','manage','setting']);
 export function shouldUseSingleFeatureHeroImage(featureId){
   return SINGLE_SLOT_FEATURE_HERO_IDS.includes(String(featureId||''));
@@ -228,6 +226,12 @@ export function shouldUseSingleFeatureHeroImage(featureId){
 export function featureHeroPageFor(featureId){
   const id=String(featureId||'');
   return 'group_'+id;
+}
+
+export function featureHeroImagePageFor(featureId){
+  const id=String(featureId||'');
+  if(id==='admin'||id==='setting')return featureHeroPageFor(id);
+  return shouldUseSingleFeatureHeroImage(id)?'scope_'+id:featureHeroPageFor(id);
 }
 
 export function sharedFeatureHeroFor(rows){
@@ -268,6 +272,7 @@ export const HomeBlock=Object.freeze({
   removeDuplicatedLegacySubtitle,
   plainBlockLine,
   featureHeroPageFor,
+  featureHeroImagePageFor,
   FEATURE_HERO_ORDER,
   FEATURE_HERO_IDS,
   featureHeroFor:sharedFeatureHeroFor,
