@@ -2,23 +2,13 @@
 import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {transactionWrites,dbAuthClient} from '../db/db-client.mjs';
-import {readLocSourceHierarchy} from '../actions/admin/queries.mjs';
 import {readPublicSourceAnchors} from './catalog-public.mjs';
-import {allocateAnchorUid} from '../model/uid.js';
-import {nextZModelAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {sourceEditorOutlineGroups} from './outline-options.mjs';
-import {useEditDockForm} from '../../modular/edit-dock';
 
-// The very same graph canvas used by the personal Keyword editor.
 const LazyKeywordNetworkEditor=lazy(()=>import('../keywords/ui/KeywordNetworkEditor'));
 function KeywordNetworkEditor(props){return <Suspense fallback={null}><LazyKeywordNetworkEditor {...props}/></Suspense>;}
-const LazyBlockNoteEditor=lazy(()=>import('../editor/BlockNoteEditor'));
-function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
-const TABLE='silver.loc_anchor';
 const EMPTY_COUNTS={lo3rwang:0,lrunes:0};
 const normalized=rows=>(rows||[]).map(row=>{
-  // PostgreSQL Json is an object; portable SQL clients may supply JSON text.
   const raw=typeof row.attr==='string'?(()=>{
     try{return JSON.parse(row.attr);}catch{return {};}
   })():row.attr;
@@ -28,15 +18,8 @@ const normalized=rows=>(rows||[]).map(row=>{
   return {...row,attr:{...attr,uid:Array.isArray(attr.uid)?attr.uid:[],
     counts:{...EMPTY_COUNTS,...counts}}};
 });
-async function fetchSources({editor=false}={}){
-  if(!editor)return normalized(await readPublicSourceAnchors());
-  // Protected management hierarchy must use the trusted LOC Web authorizer,
-  // not a browser SELECT on silver.loc_anchor (RLS is not a SQL GRANT).
-  const {data}=await readLocSourceHierarchy();
-  if(!Array.isArray(data))throw new Error('LOC 文章來源資料格式不正確。');
-  return normalized(data);
-}
-// Existing public catalogue hook, now backed by the shared LOC source Anchor.
+async function fetchSources(){return normalized(await readPublicSourceAnchors());}
+
 export function useSourceCategories(){
   return useAsyncResource(['loc-source-anchor'],async()=>{
     const nodes=await fetchSources();
@@ -45,178 +28,55 @@ export function useSourceCategories(){
   });
 }
 
+// The LOC SiteAnchor hierarchy is fixed public taxonomy. This panel shows the
+// same published Asset used by Culture, Statistics, Search and Import; it has
+// no live SQL read or write controls that could diverge from the release copy.
 export function AdminSourceCategories(){
   const [nodes,setNodes]=useState([]);
   const [selected,setSelected]=useState('');
-  const [draft,setDraft]=useState(null);
-  const [pendingParent,setPendingParent]=useState('');
-  const [busy,setBusy]=useState(false);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
-  const [notice,setNotice]=useState('');
   const byUid=useMemo(()=>new Map(nodes.map(row=>[row.uid,row])),[nodes]);
   const current=byUid.get(selected)||null;
-  const children=uid=>(byUid.get(uid)?.attr?.uid||[]).map(id=>byUid.get(id)).filter(Boolean);
-  const isDirty=()=>Boolean(draft&&(
-    !byUid.has(draft.uid)||
-    draft.title!==(byUid.get(draft.uid)?.title||'')||
-    draft.description!==(byUid.get(draft.uid)?.description||'')
-  ));
-  const canChangeNode=()=>!busy&&(!isDirty()||window.confirm('目前的來源修改尚未儲存，確定放棄變更？'));
+  const sourceGroups=useMemo(()=>sourceEditorOutlineGroups(nodes),[nodes]);
   const load=useCallback(async()=>{
     setLoading(true);setError('');
     try{
-      const found=await fetchSources({editor:true});setNodes(found);
+      const found=await fetchSources();setNodes(found);
       setSelected(uid=>found.some(row=>row.uid===uid)?uid:'');
     }catch(e){setError(String(e.message||e));}
     finally{setLoading(false);}
   },[]);
   useEffect(()=>{void load();},[load]);
-  const edit=row=>{
-    if(!row||row.uid===draft?.uid||!canChangeNode())return;
-    setSelected(row.uid);
-    setDraft({uid:row.uid,type:row.type,title:row.title||'',
-      description:row.description||''});
-    setPendingParent('');setError('');setNotice('');
-  };
-  const create=parent=>{
-    if(!canChangeNode())return;
-    const type=parent?nextZModelAnchorType('source',parent.type):'universe';
-    if(!type)return;
-    const uid=allocateAnchorUid(new Set(nodes.map(row=>row.uid)));
-    setSelected('');setPendingParent(parent?.uid||'');
-    setDraft({uid,type,title:'',description:''});
-    setError('');setNotice('');
-  };
-  const prepareSourceTransaction=()=>{
-    if(!draft||busy)throw Error('來源編輯器尚未就緒');
-    const title=draft.title.trim();
-    if(!title)throw Error('請填寫來源名稱');
-    const exists=byUid.has(draft.uid);
-    const uid=draft.uid,operations=[];
-    if(exists){
-      operations.push({p_table:TABLE,p_operation:'update',
-        p_values:{title,description:draft.description||null},
-        p_filters:[{column:'uid',operator:'eq',value:uid}]});
-    }else{
-      const parent=byUid.get(pendingParent);
-      if(draft.type!=='universe'&&(!parent||
-        nextZModelAnchorType('source',parent.type)!==draft.type))
-        throw Error('請先選擇正確的上一層來源節點');
-      operations.push({p_table:TABLE,p_operation:'insert',
-        p_rows:[{uid,type:draft.type,title,
-          description:draft.description||null,
-          attr:{uid:[],counts:{...EMPTY_COUNTS}},num:0}]});
-      if(parent)operations.push({p_table:TABLE,p_operation:'update',
-        p_values:{attr:{...parent.attr,uid:[...parent.attr.uid,uid]},
-          num:parent.attr.uid.length+1},
-        p_filters:[{column:'uid',operator:'eq',value:parent.uid}]});
-    }
-    setError('');setNotice('');
-    return {operations,
-      afterCommit:async()=>{
-        await load();setSelected(uid);setDraft(null);
-        setNotice(exists?'來源名稱已更新。':'已新增來源並建立 UID 關聯。');
-      },
-      onFailure:error=>setError(String(error?.message||error))};
-  };
-  const save=async()=>{
-    if(!draft||busy)return false;
-    setBusy(true);
-    try{
-      const plan=prepareSourceTransaction();
-      await transactionWrites(plan.operations);
-      try{await plan.afterCommit();}
-      catch{setError('資料已提交，但來源畫面重新讀取失敗；請重新整理。');}
-
-      return true;
-    }catch(error){setError(String(error?.message||error));return false;}
-    finally{setBusy(false);}
-  };
-  useEditDockForm({save,prepareTransaction:prepareSourceTransaction,isDirty,
-    isBusy:()=>busy,discard:()=>{setDraft(null);setError('');}});
-  const remove=async()=>{
-    if(!current||busy)return;
-    if(children(current.uid).length){setError('此節點仍有下層來源，請先處理子節點。');return;}
-    if(!window.confirm('確定刪除來源「'+current.title+'」？文章不會被刪除。'))return;
-    setBusy(true);setError('');setNotice('');
-    try{
-      const parent=nodes.find(row=>row.attr.uid.includes(current.uid));
-      const operations=[];
-      if(parent)operations.push({p_table:TABLE,p_operation:'update',
-        p_values:{attr:{...parent.attr,
-          uid:parent.attr.uid.filter(uid=>uid!==current.uid)},
-          num:parent.attr.uid.filter(uid=>uid!==current.uid).length},
-        p_filters:[{column:'uid',operator:'eq',value:parent.uid}]});
-      operations.push({p_table:TABLE,p_operation:'delete',
-        p_filters:[{column:'uid',operator:'eq',value:current.uid}]});
-      await transactionWrites(operations);
-      await load();setSelected(parent?.uid||'');setDraft(null);
-      setNotice('來源已刪除，原始文章未修改。');
-    }catch(e){setError(String(e.message||e));}
-    finally{setBusy(false);}
-  };
-  const sourceGroups=useMemo(()=>sourceEditorOutlineGroups(nodes),[nodes]);
   return <section className="loc-card scope-feature-card scope-keyword-management">
     <h2>文章來源</h2>
-    <p className="scope-status">選取圖上節點編輯來源；儲存使用下方六鍵。</p>
+    <p className="scope-status">LOC 固定來源階層；此處顯示已發布資料。</p>
     {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
-    {notice?<p className="scope-status" role="status">{notice}</p>:null}
     {loading?<p className="scope-status" role="status">讀取來源階層中…</p>:null}
-    {!loading?<div className="scope-keyword-network-layout">
+    {!loading&&!error?<div className="scope-keyword-network-layout">
       <KeywordNetworkEditor sourceNodes={nodes} selectedId={selected}
-        className="LOC 文章來源" classId="loc-sources"
-        onSelectNode={node=>edit(byUid.get(node.uid))}
-        onNewChild={node=>create(node?byUid.get(node.uid):null)}
-        onMessage={setNotice}/>
-      <aside className="scope-keyword-network-inspector" aria-label="LOC 來源節點編輯">
+        className="LOC 文章來源" classId="loc-sources" readOnly
+        onSelectNode={node=>setSelected(node.uid)}/>
+      <aside className="scope-keyword-network-inspector" aria-label="LOC 來源階層">
         <div className="scope-management-fields">
           <label><span>來源階層</span>
-            <select className="scope-select" value={selected} onChange={e=>{
-              const row=byUid.get(e.target.value);
-              if(row)edit(row);
-              else if(canChangeNode()){setSelected('');setDraft(null);}
-            }}>
+            <select className="scope-select" value={selected} onChange={event=>setSelected(event.target.value)}>
               <option value="">選擇來源</option>
               {sourceGroups.map(group=><optgroup key={group.key} label={group.label}>
                 {group.items.map(row=><option key={row.code} value={row.code}>
                   {'　'.repeat(row.orphanType?Math.max(0,row.level-
-                    ['universe','galaxy','domain','from'].indexOf(row.orphanType)):row.level)}
-                  {row.label}
+                    ['universe','galaxy','domain','from'].indexOf(row.orphanType)):row.level)}{row.label}
                 </option>)}
               </optgroup>)}
             </select>
           </label>
         </div>
-        {current?<details className="scope-source-meta">
+        {current?<details className="scope-source-meta" open>
           <summary>來源資料</summary>
           <p className="scope-status">UID：<code>{current.uid}</code> · {current.type}
             {' · '}lo3rwang：{Number(current.attr.counts.lo3rwang||0).toLocaleString()}
             {' · '}lrunes：{Number(current.attr.counts.lrunes||0).toLocaleString()}</p>
         </details>:null}
-        <div className="scope-preview-links">
-          <button type="button" className="loc-button" onClick={()=>create(null)} disabled={busy}>新增 Universe</button>
-          <button type="button" className="loc-button" onClick={()=>create(current)}
-            disabled={busy||!current||current.type==='from'}>新增下層</button>
-          {current?<button type="button" className="loc-button" onClick={()=>edit(current)} disabled={busy}>編輯</button>:null}
-        </div>
-        {draft?<div className="scope-management-fields">
-          <p className="scope-status">{byUid.has(draft.uid)?'編輯':'新增'} {draft.type} · UID：<code>{draft.uid}</code></p>
-          <label><span>名稱</span><input value={draft.title} onChange={e=>setDraft(v=>({...v,title:e.target.value}))}/></label>
-          <div className="scope-management-wide-field">
-            <span>說明</span>
-            <BlockNoteEditor editorKey={'source-description:'+draft.uid}
-              content={draft.description||''} editable={!busy} plainTextOnly canInsertImage={false}
-              ariaLabel="來源說明"
-              onPlainTextChange={value=>setDraft(current=>current?.uid===draft.uid
-                ?{...current,description:value}:current)}/>
-          </div>
-          <div className="scope-preview-links">
-            {current&&current.uid===draft.uid?<button type="button" className="loc-button scope-danger-button"
-              disabled={busy||children(current.uid).length>0} onClick={remove}>刪除</button>:null}
-            <button type="button" className="loc-button" onClick={()=>{if(canChangeNode())setDraft(null);}} disabled={busy}>取消</button>
-          </div>
-        </div>:<p className="scope-status">選取圖上的節點，或透過選單開始編輯。</p>}
       </aside>
     </div>:null}
   </section>;

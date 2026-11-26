@@ -8,7 +8,7 @@ import {withAuthorizedLocRead} from '../read-context.mjs';
 import {containerMode,writeLocContainerMode,containerBinding,probeContainer} from '../../compute/runtime.mjs';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
+import {readPublicSourceAnchors} from '../../source/catalog-public.mjs';
 import {scopeConfigColumns} from '../../scope/scope-config-fields.mjs';
 
 export async function readHyperdriveMode(){
@@ -55,13 +55,8 @@ export async function setHyperdriveMode(enabled){
 }
 
 export async function readLocSourceHierarchy(){
-  return withAuthorizedLocRead({global:true},async db=>{
-    const columns=['uid','type','title','description','invisible','attr',
-      'createtime','num'];
-    const rows=await db.selectFrom('silver.loc_anchor').select(columns)
-      .where('type','in',ANCHOR_TYPE_GROUPS.source).orderBy('uid','asc').execute();
-    return {data:rows,count:rows.length};
-  });
+  const rows=await readPublicSourceAnchors();
+  return {data:rows,count:rows.length};
 }
 
 export async function readScopeRegistryAdmin(){

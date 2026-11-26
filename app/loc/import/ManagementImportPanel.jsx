@@ -677,8 +677,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [timeRange,setTimeRange]=useState('all');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
-  // Import source choices are projections of the single live SiteAnchor tree
-  // in silver.loc_anchor. No generated per-Scope source list or JS snapshot.
+  // Import source choices come from the fixed resident SiteAnchor Asset;
+  // imported rows never trigger a live SQL taxonomy read.
   const sourceAnchorResource=useAsyncResource(['loc-source-anchor'],async()=>{
     const nodes=await readPublicSourceAnchors();
     return {categories:nodes.filter(row=>row.type==='from').map(row=>row.title),

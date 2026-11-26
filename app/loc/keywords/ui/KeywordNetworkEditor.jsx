@@ -95,7 +95,8 @@ export default function KeywordNetworkEditor({
   onDeleteItem=null,
   onDeleteKeyword=null,
   onDeleteGroup=null,
-  onMessage=null
+  onMessage=null,
+  readOnly=false
 }){
   const containerRef=useRef(null);
   const networkRef=useRef(null);
@@ -260,10 +261,10 @@ export default function KeywordNetworkEditor({
   return <section className="scope-keyword-network" aria-label={isSource?'來源階層圖':'關鍵詞階層圖'}>
     <div className="scope-keyword-network-help">
       <strong>{isSource?'Universe → Galaxy → Domain → From':'科目 → 群組 → 分類 → 判斷詞'}</strong>
-      <span>點選節點展開並在旁邊編輯；拖動空白處移動視野，雙指縮放。</span>
+      <span>{readOnly?'LOC 來源階層為固定資料；拖動空白處移動視野，雙指縮放。':'點選節點展開並在旁邊編輯；拖動空白處移動視野，雙指縮放。'}</span>
     </div>
     <div className="scope-stat-controls scope-keyword-network-controls" role="group" aria-label="關鍵詞圖譜觸控操作">
-      <button type="button" className="loc-button" onClick={addChild}>{isSource?'新增來源':'新增下層'}</button>
+      {!readOnly?<button type="button" className="loc-button" onClick={addChild}>{isSource?'新增來源':'新增下層'}</button>:null}
       <button type="button" className="loc-button" onClick={()=>zoom(1.3)} aria-label="放大關聯圖">放大</button>
       <button type="button" className="loc-button" onClick={()=>zoom(1/1.3)} aria-label="縮小關聯圖">縮小</button>
       <button type="button" className="loc-button" onClick={()=>networkRef.current?.fit({animation:false})}>全圖</button>
