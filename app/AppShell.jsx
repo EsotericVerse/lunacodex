@@ -312,6 +312,12 @@ function AppShellInner({children,runtime}){
   const queryClient=useQueryClient();
   const [publicPageCopy,setPublicPageCopy]=useState([]);
   useEffect(()=>{
+    const url=new URL(window.location.href);
+    if(!url.searchParams.has('section'))return;
+    url.searchParams.delete('section');
+    window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+  },[runtime.pathname]);
+  useEffect(()=>{
     let active=true;
     const refresh=()=>{
       void readPublicHomePageCopy().then(result=>{
@@ -500,16 +506,13 @@ function AppShellInner({children,runtime}){
   const showHomeEditEntry=isScopeHomepage&&scopeId!=='local'&&Boolean(scopeId)&&
     (scopeId==='loc'||(editScopeAvailable&&(!currentScope.nativeOnly||native)));
   // All Group/Scope/User destinations share the published routing table.
-  // The route builder preserves native index.html and dynamic scopeid before
-  // appending section/edit query parameters.
+  // The route builder preserves native index.html and dynamic scopeid paths.
   const managementHref=(level,key)=>managementRouteHref(
     level,key,navScopeId,{native,navigate:navigationHref}
   );
   const editingDockVisible=Boolean(editDock?.active&&editDock.scopeId===navScopeId);
   const locAdminEdit=navScopeId==='loc';
   const editSegments=String(pathname||'').split('/').filter(Boolean);
-  const editSection=typeof window!=='undefined'
-    ?new URLSearchParams(window.location.search).get('section'):'';
   const featureEditReturn=editSegments.includes('culture')?'culture'
     :editSegments.includes('statics')&&(editSegments.includes('keywords')||editSegments.includes('manage'))?'statics'
     :editSegments.includes('search')&&(editSegments.includes('manage')||editSegments.includes('admin'))?'search'
@@ -517,7 +520,7 @@ function AppShellInner({children,runtime}){
     :null;
   const isFeatureEditMode=Boolean(editingDockVisible&&featureEditReturn);
   // Four fixed destinations, followed by Save/Cancel. Group works lives
-  // at /manage; Scope space management lives at /trace/manage?section=anchor.
+  // at /manage; Scope space management lives at /trace/manage.
   // Only the Group article link requests edit=1 explicitly.
   const editDestinations=locAdminEdit?[
     ...(editDock?.canManageGlobal?[{id:'system',icon:'settings',label:translateUiField(activeLocale,'系統管理'),
@@ -556,7 +559,7 @@ function AppShellInner({children,runtime}){
           {native,navigate:navigationHref})};
     }),
     {id:'settings',icon:'settings',label:copy.common.settings||'設定',
-      href:native?'/local/settings/index.html?scopeid='+encodeURIComponent(navScopeId)+(localNavigation?'&section=local':'')
+      href:native?'/local/settings/index.html?scopeid='+encodeURIComponent(navScopeId)
         :'/settings/?scopeid='+encodeURIComponent(navScopeId)}
   ];
 

@@ -7,7 +7,7 @@ import {useEditDock} from '../../modular/edit-dock';
 import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
-import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
 // Group member display-name editing lives in the Group People/Works page.
 // Admin keeps only privileged registry provisioning and system configuration.
@@ -15,11 +15,13 @@ import PanelLoading from '../ui/PanelLoading';
 const ADMIN_OPTIONS=Object.freeze([
   {value:'featureHero',label:'頁面主視覺',shortLabel:'頁面',description:'功能頁圖片與文字'},
   {value:'themes',label:'主題配色',shortLabel:'配色',description:'主題色彩'},
-  {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'}
+  {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'},
+  {value:'registry',label:'人員架構',shortLabel:'人員',description:'管理人員與群組關係'}
 ]);
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
 const ThemeEditor=dynamic(()=>import('./admin-panels/ThemeEditor'),{loading:PanelLoading});
 const FeatureHeroImages=dynamic(()=>import('./admin-panels/FeatureHeroImages'),{loading:PanelLoading});
+const AdminRegistry=dynamic(()=>import('./admin-panels/AdminRegistry'),{loading:PanelLoading});
 
 export default function AdminHomeView({scopeGroup}){
   useUiSection('admin');
@@ -36,12 +38,7 @@ export default function AdminHomeView({scopeGroup}){
   const [signingIn,setSigningIn]=useState(false);
   const [signInError,setSignInError]=useState('');
   const canManage=Boolean(account.user&&!account.loading&&!account.permissionLoading&&account.canLocAccessSync('global'));
-  // Preserve deep links created before the Admin sections were consolidated.
-  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network',{
-    sources:'network',registry:'network',members:'network',
-    database:'network',enterpriseAuth:'network',auth:'network',system:'network',
-    traceAnchor:'network',traceMap:'network'
-  });
+  const [section,setSection]=useManagementSection(ADMIN_OPTIONS,'network');
   const switchSection=next=>{
     if(next===section)return;
     // No Next.js navigation: update the right-hand panel immediately in React.
@@ -112,11 +109,12 @@ export default function AdminHomeView({scopeGroup}){
             </button>
           </section>
           :!entryVerified?<p className="scope-status" role="status">正在開啟管理操作…</p>
-          :<>
+          :<ManagementSectionTransition value={section}>
             {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
             {section==='featureHero'?<FeatureHeroImages/>:null}
             {section==='themes'?<ThemeEditor/>:null}
-          </>}
+            {section==='registry'?<AdminRegistry/>:null}
+          </ManagementSectionTransition>}
 
       </div>
     </ManagementWorkspaceFrame>

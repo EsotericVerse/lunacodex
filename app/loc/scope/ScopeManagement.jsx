@@ -1,13 +1,12 @@
 'use client';
 
-import {useEffect} from 'react';
 import dynamic from 'next/dynamic';
 import {useSearchParams} from 'next/navigation';
 import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
-import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
 import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {PLACE_OPTIONS} from '../trace/PlaceManagement';
@@ -23,26 +22,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
   // Space uses one list for Point/Path/Trace, with the other two first-level
   // operations reserved for names/quick fill and Timeline matching.
   const options=isLoc?[]:PLACE_OPTIONS;
-  const requestedSection=searchParams?.get('section');
-
-  // Preserve bookmarks into the old second-level Settings / Group Access
-  // and the previously moved Import / Preferences panels.
-  useEffect(()=>{
-    if(!['settings','groupAccess','import','others'].includes(requestedSection))return;
-    if(isLoc&&requestedSection!=='groupAccess')return;
-    const url=new URL(window.location.href);
-    const replacement=isLoc
-      ?url.pathname.replace(/\/trace\/manage(?:\/index\.html|\/)?$/,'/search/manage/')
-      :url.pathname.replace(/\/(?:trace\/)?manage(?:\/index\.html|\/)?$/,'/search/manage/');
-    if(replacement===url.pathname)return;
-    url.pathname=replacement;
-    window.location.replace(url.href);
-  },[isLoc,requestedSection]);
-
-  const [section,setSection]=useManagementSection(options,'anchor',{
-    traceAnchor:'anchor',placeManage:'anchor',traceMap:'anchor',
-    path:'anchor',trace:'anchor',names:'organize',quickFill:'organize'
-  });
+  const [section,setSection]=useManagementSection(options,'anchor');
   const selectedOption=options.find(option=>option.value===section)||options[0];
   if(isLoc)return <FeaturePage featureId="trace"><p className="scope-status">LOC 不管理空間定錨；請進入各 Scope 的空間定錨管理頁。</p></FeaturePage>;
   return <FeaturePage featureId={isLoc||traceOnly?'trace':'manage'}>
@@ -58,14 +38,16 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
           }}/>
         <div className="management-workspace-panel" id="scope-management-panel" role="region"
           aria-labelledby={'scope-sections-option-'+selectedOption.value}>
+          <ManagementSectionTransition value={section}>
           <ProtectedManagementSlot>
             {section==='anchor'?<UnifiedSpatialManagement scopeId={routeScopeId}
-              initialType={requestedSection==='path'||requestedSection==='trace'?requestedSection:traceOnly?'trace':'point'}
+              initialType={traceOnly?'trace':'point'}
               initialRecordUid={searchParams?.get('frame')||''}/>:null}
             {section==='organize'||section==='timeline'?<PlaceManagement
               scopeId={routeScopeId} section={section}
-              initialOperation={requestedSection==='quickFill'?'quickFill':'names'}/>:null}
+              initialOperation="names"/>:null}
           </ProtectedManagementSlot>
+          </ManagementSectionTransition>
         </div>
       </ManagementWorkspaceFrame>
     </div>

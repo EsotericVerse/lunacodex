@@ -6,8 +6,6 @@ import {readBackupReadiness,readHyperdriveMode,setHyperdriveMode,
   readContainerMode,setContainerMode}
   from '../../actions/admin/queries.mjs';
 
-const FILE_URL='https://github.com/EsotericVerse/moon-runes-pwa/edit/main/app/loc/providers/access.js';
-const ACCESS_FILE='app/loc/providers/access.js';
 const routing=resolveDatabaseRouting();
 
 export default function DatabaseTarget(){
@@ -69,10 +67,7 @@ export default function DatabaseTarget(){
   };
   const ready=DATABASE_ACCESS_LIST;
   return <section className="loc-card admin-workspace">
-    <h2>資料庫連線與部署設定</h2>
-    <p className="scope-status">本頁僅顯示預設控制資料庫連線；每位使用者的資料庫選擇由 LOC Auth
-      即時管理，切換 PostgreSQL／MySQL／SQL Server 無需重新部署，亦不讀寫
-      <code>api.manage.database</code>。</p>
+    <h2>資料庫連線與運算</h2>
     <section className="scope-management-wide-field">
       <label>
         <input type="checkbox" role="switch" aria-label="開啟 HyperDrive 模式"
@@ -80,15 +75,12 @@ export default function DatabaseTarget(){
           onChange={event=>{void changeHyperdriveMode(event.currentTarget.checked);}} />
         {' '}開啟 HyperDrive 模式
       </label>
-      <p className="scope-status">開啟時，LOC 查詢、關鍵詞分析與建議、批次匯入沿用 Hyperdrive
-        連線池；Query Cache 維持關閉。關閉時，業務 SQL 改走現有 LOC_DATABASE_URI。</p>
+      <p className="scope-status">開啟後使用 HyperDrive；關閉後改用資料庫直連。查詢快取維持關閉。</p>
       <p className="scope-status">{modeMessage||(
         hyperdrive.state==='loading'?'正在讀取模式…':
         hyperdrive.state==='error'?'模式未確認。':
-        '目前設定：'+(hyperdrive.enabled?'Hyperdrive 開啟':'Hyperdrive 關閉')+
-          '；實際路徑：'+(hyperdrive.connectionMode==='hyperdrive'
-            ?'Hyperdrive':'LOC_DATABASE_URI 直連'))}</p>
-      <p className="scope-status">切換前會先以目標連線檢查連線與 silver.loc；檢查失敗時設定不變。</p>
+        '目前使用：'+(hyperdrive.connectionMode==='hyperdrive'?'HyperDrive':'資料庫直連'))}</p>
+      <p className="scope-status">切換前會先確認連線；失敗時設定不變。</p>
     </section>
     <section className="scope-management-wide-field">
       <label><input type="checkbox" role="switch" aria-label="啟用 Container 運算"
@@ -96,8 +88,7 @@ export default function DatabaseTarget(){
         disabled={!container?.available||containerBusy}
         onChange={event=>void changeContainer(event.currentTarget.checked)}/>
         {' '}啟用 Container 運算</label>
-      <p className="scope-status">僅處理大量關鍵詞全文解析與匯入識別比對。
-        關閉、未綁定或運算服務失敗時，自動沿用既有處理方式。</p>
+      <p className="scope-status">大量關鍵詞解析與匯入可使用 Container；無法使用時會由 LOC 處理。</p>
       <p className="scope-status" role="status">{containerMessage||
         (!container?'讀取設定中…':!container.available?'Container 未綁定':
           container.enabled?'已啟用（按需運算）':'已停用')}</p>
@@ -109,15 +100,8 @@ export default function DatabaseTarget(){
         <h3 className="admin-workspace-section-heading">{item.label} · {item.target_id}</h3>
         <p className="scope-status">類型：{item.engine} / {item.provider}
           ｜{item.target_id===routing.primaryId?'主要資料庫':item.backup_selected?'備援資料庫':'未啟用'}</p>
-        <p className="scope-status">連線 Alias：<code>{item.connection_alias}</code></p>
-        <p className="scope-status">連線位置與密碼僅在 LOC Auth 與受信任的應用後端管理，不傳送給瀏覽器。</p>
       </section>)}
     </div>
-    <p className="scope-status">連線密碼、Token 與資料庫 URL 由 LOC Auth 及受信任的應用後端保管。
-      預設連線 Alias 不提供資料庫存取權限。</p>
-    <p><a className="loc-button" href={FILE_URL} target="_blank" rel="noopener noreferrer">
-      在 GitHub 查看預設 access.js
-    </a></p>
     <p className="scope-status" role="status">備援：
       {backupHealth.state==='absent'?'未設定':
         backupHealth.state==='checking'?'檢查中…':

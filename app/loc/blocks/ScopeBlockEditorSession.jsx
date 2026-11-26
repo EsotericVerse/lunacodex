@@ -13,6 +13,7 @@ import {HomeBlock} from './home-block-model';
 import {BlockNoteContent} from '../editor/blocknote-content.mjs';
 import {resolveHomeImage} from './LocHomeBlockDisplay';
 import {isHomeFrameFor} from './hero-image.mjs';
+import {scopeBlockStoragePage} from './scope-block-storage-page.mjs';
 import {HeroImageFieldset} from './HeroImageFields';
 import {invalidateScopeBlockPage,selectLiveScopeBlocks} from '../scope/scope-data';
 
@@ -29,6 +30,7 @@ export default function ScopeBlockEditorSession({
   const t=useUiText();
   const queryClient=useQueryClient();
   const editDock=useEditDock();
+  const storagePage=scopeBlockStoragePage(scopeId,pageName);
   const inDock=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const initialSnapshot=useRef(JSON.stringify({...initial,entities:HomeBlock.normalizeEntities(initial.entities)}));
   const [draft,setDraft]=useState(()=>({...initial,entities:HomeBlock.normalizeEntities(initial.entities)}));
@@ -198,7 +200,7 @@ export default function ScopeBlockEditorSession({
       };
       const snapshot=[...existingRows,normalized];
       const {error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
-        p_scope_id:scopeId,p_type:pageName,p_rows:snapshot
+        p_scope_id:scopeId,p_type:storagePage,p_rows:snapshot
       });
       if(error)throw new Error(error.message||'Blocks 儲存失敗');
       if(!isCurrent(lease))return false;
@@ -240,7 +242,7 @@ export default function ScopeBlockEditorSession({
       if(!isCurrent(lease))return false;
       const remaining=current.filter(row=>row.uid!==draft.uid);
       const {error,homeCacheSync}=await dbAuthClient.schema('silver').managedAction('save_blocks',{
-        p_scope_id:scopeId,p_type:pageName,p_rows:remaining
+        p_scope_id:scopeId,p_type:storagePage,p_rows:remaining
       });
       if(error)throw new Error(error.message||'Blocks 刪除失敗');
       if(!isCurrent(lease))return false;

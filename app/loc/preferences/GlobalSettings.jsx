@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {useAccount} from '../auth/use-account';
 import {FeaturePage} from '../../modular/ui';
-import ManagementSectionNav,{useManagementSection} from '../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
 // The home/account Settings screens never download import or management editors.
 const PrivateLocalFiles=dynamic(()=>import('../local/PrivateFiles'),{loading:PanelLoading});
@@ -36,8 +36,7 @@ export default function GlobalSettings({initialSection='features'}={}){
       option('manage',uiT('uiExtra.globalSettings.manageMenu'),'',uiT('uiExtra.globalSettings.tabManage'))
     ]:[])
   ];
-  // Preserve old deep links without mounting a second settings homepage.
-  const [section,setSection]=useManagementSection(sections,initialSection,{home:'features',account:'features'});
+  const [section,setSection]=useManagementSection(sections,initialSection);
 
   const [busy,setBusy]=useState(false);
   const [status,setStatus]=useState('');
@@ -139,6 +138,7 @@ export default function GlobalSettings({initialSection='features'}={}){
         onChange={next=>{setSection(next);setStatus('');}}/>
       <div className="management-workspace-panel" id="settings-management-panel" role="region"
         aria-labelledby={'settings-sections-option-'+activeSection}>
+      <ManagementSectionTransition value={activeSection}>
       {activeSection==='features'?<FeatureSettingsPage embedded dashboard accountCard={accountCard}/>:null}
       {activeSection==='mcp'?<LocScopeConnections availableScopes={choices} verifiedAccount={verifiedLocAccount}/>:null}
       {native&&activeSection==='local'?<LocalScopeModeSettings/>:null}
@@ -148,6 +148,7 @@ export default function GlobalSettings({initialSection='features'}={}){
       {native&&activeSection==='manage'?<PrivateLocalFiles/>:null}
 
       {status?<p role="status" className="scope-status">{status}</p>:null}
+      </ManagementSectionTransition>
       </div>
     </div>
   </FeaturePage>;

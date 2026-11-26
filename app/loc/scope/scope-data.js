@@ -12,6 +12,7 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
+import {scopeBlockStoragePage} from '../blocks/scope-block-storage-page.mjs';
 
 // Public page copy and Scope labels use the fixed R2/SQL page-copy action.
 // Routing identity and membership remain in the published registry snapshot.
@@ -307,12 +308,14 @@ export async function hero_block(specificValue){
 export async function selectLiveScopeBlocks(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   const name=String(page||'index').trim();
+  const storagePage=scopeBlockStoragePage(id,name);
   if(id==='local'||!SCOPE_ID_PATTERN.test(id)||!/^[A-Za-z0-9_-]+$/.test(name))return [];
   if(id==='loc'){
-    const rows=['index','governance'].includes(name)
-      ?(await nativePublicContent('block_list',id)).filter(row=>row.page_name===name)
-      :await hero_block(name);
-    return [...rows].sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
+    const rows=['index','governance'].includes(storagePage)
+      ?(await nativePublicContent('block_list',id)).filter(row=>row.page_name===storagePage)
+      :await hero_block(storagePage);
+    const mapped=storagePage===name?rows:rows.map(row=>({...row,page_name:name}));
+    return [...mapped].sort((a,b)=>(Number(a.block_order)||0)-(Number(b.block_order)||0));
   }
   if(name==='index'){
     const rows=await nativePublicContent('block_list',id);

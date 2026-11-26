@@ -1,7 +1,6 @@
 'use client';
 
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {useSearchParams} from 'next/navigation';
 import {motion,useReducedMotion} from 'motion/react';
 import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
 import {useEditDock} from './edit-dock';
@@ -60,43 +59,45 @@ export default function ManagementSectionNav({id,title,panelId,items,value,onCha
   </section>;
 }
 
-// The component's React state is the source of truth, so section clicks do
-// not navigate or remount the page (and therefore do not jump to the Hero).
-// The History API only mirrors selection for deep links/back-forward support.
-export function useManagementSection(items,defaultValue='',aliases={}){
-  const searchParams=useSearchParams();
+// In-page tab changes replace the outgoing panel immediately so its requests,
+// editors, and transient work can clean up. Only the newly selected panel fades
+// in; route transitions remain owned by PageResourceBoundary.
+export function ManagementSectionTransition({value,children,className=''}){
+  const reduceMotion=useReducedMotion();
+  const previousValue=useRef(value);
+  const changed=previousValue.current!==value;
+  previousValue.current=value;
+  const classes=['management-section-transition',className].filter(Boolean).join(' ');
+  return <motion.div key={String(value)} className={classes}
+    initial={changed&&!reduceMotion?{opacity:0,y:4}:false}
+    animate={{opacity:1,y:0}}
+    transition={reduceMotion?{duration:0}:{duration:.18,ease:'easeOut'}}>
+    {children}
+  </motion.div>;
+}
+
+// A selected panel is React state only. Changing it never alters the route or
+// query string, and it does not remount the page or jump back to the Hero.
+export function useManagementSection(items,defaultValue=''){
   const dock=useEditDock();
   const resolve=raw=>{
-    const requested=aliases[raw]||raw;
     const fallback=items.some(item=>item.value===defaultValue)?defaultValue:items[0]?.value||'';
-    return items.some(item=>item.value===requested)?requested:fallback;
+    return items.some(item=>item.value===raw)?raw:fallback;
   };
   const resolveRef=useRef(resolve);
   resolveRef.current=resolve;
-  const [value,setLocalValue]=useState(()=>resolve(searchParams?.get('section')||''));
+  const [value,setLocalValue]=useState(()=>resolve(''));
   const selectedRef=useRef(value);selectedRef.current=value;
   const dockRef=useRef(dock);dockRef.current=dock;
   const availableSections=items.map(item=>item.value).join('|');
-  // Native-only sections arrive after hydration. Restore deep links as soon
-  // as the section exists, without navigating or scrolling the page.
+  // Panel selection belongs to this React page. If a native-only panel is
+  // removed after hydration, keep the state on the first available panel.
   useEffect(()=>{
-    const requested=new URL(window.location.href).searchParams.get('section')||'';
     setLocalValue(current=>{
-      const next=resolveRef.current(requested);
+      const next=resolveRef.current(current);
       return current===next?current:next;
     });
   },[availableSections]);
-  useEffect(()=>{
-    const sync=()=>{
-      const next=resolveRef.current(new URL(window.location.href).searchParams.get('section')||'');
-      if(next===selectedRef.current)return;
-      const commit=()=>{prepareTransientResourceAction('selection');setLocalValue(next);};
-      if(dockRef.current?.active)dockRef.current.switchSection(next,commit);
-      else commit();
-    };
-    window.addEventListener('popstate',sync);
-    return ()=>window.removeEventListener('popstate',sync);
-  },[]);
   const setValue=useCallback(next=>{
     if(!items.some(item=>item.value===next)||next===selectedRef.current)return;
     const commit=()=>{
@@ -104,20 +105,9 @@ export function useManagementSection(items,defaultValue='',aliases={}){
       // workspace queries or other still-mounted readers for a tab click.
       prepareTransientResourceAction('selection');
       setLocalValue(next);
-      const url=new URL(window.location.href);
-      if(url.searchParams.get('section')!==next){
-        url.searchParams.set('section',next);
-        window.history.pushState(window.history.state,'',url.pathname+url.search+url.hash);
-      }
     };
     if(dockRef.current?.active)dockRef.current.switchSection(next,commit);
     else commit();
   },[items]);
-  const hrefFor=useCallback(next=>{
-    if(!items.some(item=>item.value===next))return '';
-    const url=new URL(window.location.href);
-    url.searchParams.set('section',next);
-    return url.pathname+url.search+url.hash;
-  },[items]);
-  return [value,setValue,hrefFor];
+  return [value,setValue];
 }

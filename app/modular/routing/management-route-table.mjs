@@ -6,13 +6,13 @@ export const LOC_MANAGEMENT_ROUTE_TABLE=Object.freeze({
     system:'/admin/',
     keywords:'statics/manage',
     members:'manage',
-    articles:'search/manage?section=publish&edit=1'
+    articles:'search/manage?edit=1'
   }),
   scope:Object.freeze({
     time:'culture/manage',
     keywords:'statics/manage',
-    spatial:'trace/manage?section=anchor',
-    articles:'search/manage?section=publish'
+    spatial:'trace/manage',
+    articles:'search/manage'
   }),
   user:Object.freeze({
     culture:'culture',
@@ -22,9 +22,8 @@ export const LOC_MANAGEMENT_ROUTE_TABLE=Object.freeze({
   })
 });
 
-// Query strings must be appended AFTER converting the pathname to a native
-// /index.html route. Passing '?section=...' into navigationHref directly
-// would corrupt Capacitor paths as '/?section=.../index.html'.
+// Optional query strings are appended only after converting the pathname to
+// the native /index.html route. Management panel selection stays in React.
 export function managementRouteHref(level,key,scopeId,{native=false,navigate}={}){
   const route=LOC_MANAGEMENT_ROUTE_TABLE[level]?.[key];
   if(typeof route!=='string')return '';
