@@ -51,7 +51,7 @@ export async function queryStatics(args={}){
         'public',{configTable});
     else data=await keywordSummary(db,scope,anchor,start||null,end||null,
       options.source||null,options.classUid||null,'public',
-      {configTable,galaxyTable});
+      {configTable,galaxyTable,engine:port.engine,namespace:port.namespace});
     return {data,count:null};
   });
 }
