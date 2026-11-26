@@ -231,7 +231,9 @@ export function planKyselyUpsertBatches(rows,primary,{
       throw new RangeError('UPSERT row exceeds the selected SQL Type parameter budget');
     const limit=Math.min(rowLimit,Math.floor(parameterLimit/parameterWidth));
     const identity=JSON.stringify(keys.map(key=>String(row[key])));
-    const size=encoder.encode(JSON.stringify(row)).length;
+    const serialized=JSON.stringify(row,(_key,value)=>
+      typeof value==='bigint'?value.toString():value);
+    const size=encoder.encode(serialized).byteLength;
     if(group.length&&(shape!==nextShape||group.length>=limit||
       bytes+size>byteLimit||seen.has(identity)))flush();
     if(!group.length)shape=nextShape;
