@@ -254,3 +254,31 @@ test('Hyperdrive mode lookup failure fails closed and never silently uses the di
   }),error=>error?.code==='BACKEND_UNAVAILABLE'&&
     error?.message==='LOC Hyperdrive mode unavailable');
 });
+
+test('production Node deployment does not require Cloudflare',async()=>{
+  const previous=process.env.NODE_ENV;
+  process.env.NODE_ENV='production';
+  try{
+    assert.equal(await locHyperdriveBinding({},{
+      getContext:async()=>{throw Error('no Cloudflare runtime');}
+    }),null);
+  }finally{
+    if(previous===undefined)delete process.env.NODE_ENV;
+    else process.env.NODE_ENV=previous;
+  }
+});
+
+test('host-selected direct mode never accesses an invalid Hyperdrive binding',async()=>{
+  const env={
+    LOC_HYPERDRIVE_MODE:'direct',
+    LOC_DATABASE_URI:'postgresql://loc_user:loc_password@127.0.0.1:5432/loc',
+    LOC_HYPERDRIVE:{connectionString:'invalid'}
+  };
+  const port=await db_connection(env,'',{
+    modeReader:async()=>{throw Error('must not access Hyperdrive');}
+  });
+  try{assert.equal(port.connectionMode,'direct');}
+  finally{await port.pool.end();}
+  await assert.rejects(db_connection(env,'',{forceHyperdrive:true}),
+    /LOC Hyperdrive disabled by deployment configuration/);
+});
