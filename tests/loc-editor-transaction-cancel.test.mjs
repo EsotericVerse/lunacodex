@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createConfiguredAdapter} from '../app/loc/providers/configured.mjs';
-import {openEditorTransactionSession} from '../app/loc/db/editor-transaction-lifecycle.mjs';
+import {openEditorTransactionSession,rotateActiveEditorTransactionSession} from '../app/loc/db/editor-transaction-lifecycle.mjs';
 import {editorTransactionLease} from '../app/loc/db/editor-transaction-lifecycle.mjs';
 import {assertEditorTransactionLease} from '../app/loc/db/editor-transaction-lifecycle.mjs';
 import {registerEditorTransactionDisposer} from '../app/loc/db/editor-transaction-lifecycle.mjs';
@@ -92,3 +92,18 @@ test('Cancel remains a discard-only action; Save is the only write action',()=>{
   assert.match(save,/transactionWrites/);
 });
 }
+
+test('section change revokes old lease and disposers without starting a public editor',()=>{
+  cancelEditorTransactionSession();
+  assert.equal(rotateActiveEditorTransactionSession(),false);
+  openEditorTransactionSession();
+  const previous=editorTransactionLease();
+  let disposed=0;
+  registerEditorTransactionDisposer(()=>disposed++);
+  assert.equal(rotateActiveEditorTransactionSession(),true);
+  assert.equal(previous.signal.aborted,true);
+  assert.equal(disposed,1);
+  assert.throws(()=>assertEditorTransactionLease(previous),{code:'LOC_EDITOR_CANCELLED'});
+  assert.doesNotThrow(()=>assertEditorTransactionLease(editorTransactionLease()));
+  cancelEditorTransactionSession();
+});
