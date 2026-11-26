@@ -6,7 +6,7 @@ import {resolveLocConnectionProvider,locHyperdriveBinding}
   from '../app/loc/db/connection-provider.mjs';
 import {db_connection,closeLocDatabase,bindLocRequestAbort}
   from '../app/loc/db/native-kysely.mjs';
-import {SQL_WORKLOAD_POLICY} from '../modules/loc/dialect/sql-workload-policy.mjs';
+import {CONNECTION_POOL_POLICY} from '../app/loc/db/connection-pool-policy.mjs';
 
 const body=async response=>JSON.parse(await response.text());
 
@@ -274,7 +274,7 @@ test('explicit direct connection bypasses Hyperdrive and uses the existing URI',
 });
 
 test('Worker request owns one SQL client while Hyperdrive pools origin connections',()=>{
-  assert.equal(SQL_WORKLOAD_POLICY.workerRequestMaxConnections,1);
+  assert.equal(CONNECTION_POOL_POLICY.workerRequestMaxConnections,1);
 });
 
 
