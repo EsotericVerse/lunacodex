@@ -426,10 +426,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const summaryScopeIds=targetScopes.map(item=>item.id);
   const scopeLabel=id=>{
     const item=scopeById.get(id);
-    // A result may show its published source name, never an inventory of IDs.
-    // Management pages can identify only the Scopes their user can manage.
+    // A Scope search can only return its own Scope, so its name adds no context.
+    if(scopeId!=='loc'&&String(id||'')===scopeId)return '';
+    // LOC-wide Search can show a published display name without exposing IDs.
     if(locPublicSearch){
-      if(scopeId!=='loc'&&String(id||'')===scopeId)return '';
       const label=String(item?.display_name||'').trim();
       return label&&label!==id?label:'';
     }
