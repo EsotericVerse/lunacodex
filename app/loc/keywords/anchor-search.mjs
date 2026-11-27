@@ -3,13 +3,14 @@
 // imported schema copying, Article body scans or duplicate search tables.
 import {readItemKeywordProjection} from './item-count-analysis.mjs';
 import {keywordScanText} from './content-filter.mjs';
+import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','item','pattern'];
-const anchorTable=s=>{
+const anchorTable=(s,engine='postgres',namespace='silver')=>{
   if(!SCOPE.test(String(s||'')))throw Error('Invalid Scope');
-  return 'silver.'+s+'_anchor';
+  return portableRelation(s+'_anchor',engine,namespace);
 };
 const attrs=row=>{
   const raw=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr;
@@ -17,7 +18,7 @@ const attrs=row=>{
 };
 // Class/Group/Item attr.uid points to child Anchor UIDs, never Galaxy article UIDs.
 const kids=row=>Array.isArray(attrs(row).uid)?attrs(row).uid.filter(uid=>UID.test(String(uid))):[];
-const sourceTable=s=>'silver.'+s+'_galaxy';
+const sourceTable=(s,engine='postgres',namespace='silver')=>portableRelation(s+'_galaxy',engine,namespace);
 function err(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 
 // Retain only the best offset+page+1 article identities while scanning.
@@ -74,14 +75,14 @@ export function createAnchorArticlePageBuffer({offset=0,limit=20,sortDirection='
 
 
 // Exact navigation retains keyword publication checks.
-export async function accessibleKeywordAnchors(db,scope,owner=false){
-  let q=db.selectFrom(anchorTable(scope))
+export async function accessibleKeywordAnchors(db,scope,owner=false,{engine='postgres',namespace='silver'}={}){
+  let q=db.selectFrom(anchorTable(scope,engine,namespace))
     .select(['uid','type','attr']).where('type','in',['class','group','item']);
   if(!owner)q=q.where('invisible','=',false);
   const rows=await q.execute();
   const byUid=new Map(rows.map(row=>[row.uid,row]));
   const visible=new Set();
-  const settings=await db.selectFrom('silver.'+scope).select(['keyword_meta','search'])
+  const settings=await db.selectFrom(portableRelation(scope,engine,namespace)).select(['keyword_meta','search'])
     .where('id','=',scope).executeTakeFirst();
   const meta=typeof settings?.keyword_meta==='string'
     ?JSON.parse(settings.keyword_meta):settings?.keyword_meta||{};
@@ -118,35 +119,35 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
     (endDate&&!/^\d{4}-\d{2}-\d{2}$/.test(endDate))||
     !['','galaxy','lyrics_work','text_work'].includes(contentType)||
     String(sourceFilter).length>150)err('Invalid Anchor navigation request');
-  const scope=scopeId,anchor=await db.selectFrom(anchorTable(scope))
+  const scope=scopeId,anchor=await db.selectFrom(anchorTable(scope,engine,namespace))
     .select(['uid','type','title','attr','invisible'])
     .where('uid','=',uid).where('type','=',type).executeTakeFirst();
   if(!anchor||(!owner&&anchor.invisible))err('Anchor is unavailable',404);
   if(['item','pattern'].includes(type)){
-    const visible=await accessibleKeywordAnchors(db,scope,owner);
+    const visible=await accessibleKeywordAnchors(db,scope,owner,{engine,namespace});
     const allowed=type==='item'?visible.items:visible.patterns;
     if(!allowed.has(uid))err('Keyword Class is not published',403);
   }
   if(!owner){
     // The article's own search flag is not a substitute for its Scope's
     // publication setting. Never expose a disabled Scope via guessed UID.
-    const settings=await db.selectFrom('silver.'+scope).select('search')
+    const settings=await db.selectFrom(portableRelation(scope,engine,namespace)).select('search')
       .where('id','=',scope).executeTakeFirst();
     if(settings?.search!==true)err('This Scope does not publish Search',403);
   }
-  const current=attrs(anchor),galaxy=sourceTable(scope);
+  const current=attrs(anchor),galaxy=sourceTable(scope,engine,namespace);
   if(type==='date'&&!/^\d{4}-\d{2}-\d{2}$/.test(String(current.date||'')))
     return {rows:[],hasMore:false,nextOffset:null};
   // Item/Pattern navigation evaluates authored Item rules on demand.
   // The only article UIDs held here are transient page-local candidates.
   if(type==='item'||type==='pattern'){
-    const visible=await accessibleKeywordAnchors(db,scope,owner);
-    const itemRows=await db.selectFrom(anchorTable(scope))
+    const visible=await accessibleKeywordAnchors(db,scope,owner,{engine,namespace});
+    const itemRows=await db.selectFrom(anchorTable(scope,engine,namespace))
       .select(['uid','title','attr']).where('type','=','item')
       .where('uid','in',[...visible.items]).execute();
-    const groups=await db.selectFrom(anchorTable(scope))
+    const groups=await db.selectFrom(anchorTable(scope,engine,namespace))
       .select(['uid','title','attr']).where('type','=','group').execute();
-    const patternRows=visible.patterns.size?await db.selectFrom(anchorTable(scope))
+    const patternRows=visible.patterns.size?await db.selectFrom(anchorTable(scope,engine,namespace))
       .select(['uid','type','title','num']).where('type','=','pattern')
       .where('uid','in',[...visible.patterns]).execute():[];
     const patternByUid=new Map(patternRows.map(pattern=>[pattern.uid,{

@@ -115,7 +115,7 @@ function routeGeometry(coordinates){
   }]};
 }
 
-export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true,onGaugeVisibilityChange=()=>{},territoryMode=false}={}){
+export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true,onGaugeVisibilityChange=()=>{},territoryMode=false,reduceMotion=false}={}){
   if(!container)throw new Error('找不到地圖容器。');
   const controller=new AbortController();
   let removed=false;
@@ -265,13 +265,13 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(!loaded||!selectedSavedRoute||!changed)return;
     const valid=savedRoutePoints().filter(Boolean);
     if(valid.length===1){
-      map.flyTo({center:spaceCoordinates(valid[0]),
+      moveCamera({center:spaceCoordinates(valid[0]),
         zoom:12.5,pitch:45,bearing:0,essential:true});
     }else if(valid.length>1){
       const bounds=new LngLatBounds();
       valid.forEach(point=>bounds.extend(spaceCoordinates(point)));
       map.fitBounds(bounds,{padding:Math.max(32,Math.min(90,Math.round(map.getContainer().clientWidth*.07))),
-        pitch:0,bearing:0,maxZoom:13,duration:500});
+        pitch:0,bearing:0,maxZoom:13,duration:reduceMotion?0:500});
     }
   }
   function setSavedGraph(graph){
@@ -297,12 +297,12 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(lastGraphFocusKey===focusKey)return;
     lastGraphFocusKey=focusKey;
     if(coordinates.length===1){
-      map.flyTo({center:coordinates[0],zoom:12.5,pitch:0,bearing:0,essential:true});
+      moveCamera({center:coordinates[0],zoom:12.5,pitch:0,bearing:0,essential:true});
     }else{
       const bounds=new LngLatBounds();
       coordinates.forEach(point=>bounds.extend(point));
       map.fitBounds(bounds,{padding:Math.max(32,Math.min(90,Math.round(map.getContainer().clientWidth*.07))),
-        pitch:0,bearing:0,maxZoom:13,duration:500});
+        pitch:0,bearing:0,maxZoom:13,duration:reduceMotion?0:500});
     }
   }
   const canPickLocation=typeof onLocationPick==='function';
@@ -310,7 +310,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   // saved visit or residential address. A map click never resets to this.
   function goOrigin(){
     if(removed)return;
-    map.flyTo({center:[TRACE_ORIGIN.lng,TRACE_ORIGIN.lat],
+    moveCamera({center:[TRACE_ORIGIN.lng,TRACE_ORIGIN.lat],
       zoom:13,pitch:45,bearing:0,essential:true});
   }
   function centerIfFar(longitude,latitude){
@@ -323,7 +323,10 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     const far=projected&&width>0&&height>0
       ?Math.abs(projected.x-width/2)>width*.26||Math.abs(projected.y-height/2)>height*.26
       :true;
-    if(far)map.easeTo({center:[lng,lat],duration:350,essential:true});
+    if(far){
+      const options={center:[lng,lat],duration:reduceMotion?0:350,essential:true};
+      if(reduceMotion)map.jumpTo(options);else map.easeTo(options);
+    }
     return far;
   }
   // On touch devices one-finger swipes should scroll the *page*, not
@@ -337,6 +340,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     cooperativeGestures:touchDevice,
     antialias:true,attributionControl:true
   });
+  const moveCamera=options=>reduceMotion?map.jumpTo(options):map.flyTo(options);
   map.addControl(new NavigationControl({showCompass:true,showZoom:true}),'top-right');
   const status=message=>{if(!removed)onStatus(message);};
   // Spatial anchors are explicit user selections, never inferred from device
@@ -362,7 +366,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(removed)return;
     const place=EXAMPLE_ANCHORS.find(item=>item.id===id);
     if(!place)return;
-    map.flyTo({center:[place.lng,place.lat],zoom:15.1,pitch:65,bearing:-23,essential:true});
+    moveCamera({center:[place.lng,place.lat],zoom:15.1,pitch:65,bearing:-23,essential:true});
     onSelect(place.id);
     if(canPickLocation)pickLocation(place.lng,place.lat,place.name);
     new Popup({closeButton:true,offset:24})
@@ -374,7 +378,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     const lng=Number(longitude),lat=Number(latitude);
     if(removed||!Number.isFinite(lng)||!Number.isFinite(lat)||Math.abs(lng)>180||Math.abs(lat)>90)return;
     const zoom=14.5;
-    if(canPickLocation)map.flyTo({center:[lng,lat],zoom,pitch:59,bearing:-23,essential:true});
+    if(canPickLocation)moveCamera({center:[lng,lat],zoom,pitch:59,bearing:-23,essential:true});
     else centerIfFar(lng,lat);
     if(canPickLocation)pickLocation(lng,lat,name);
     else {pickedPosition={lng,lat};}
@@ -388,13 +392,13 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       .filter(isValidSavedAnchor)
       .map(anchor=>({lng:Number(anchor.longitude),lat:Number(anchor.latitude)}));
     if(visibleAnchors.length===1){
-      map.flyTo({center:[visibleAnchors[0].lng,visibleAnchors[0].lat],zoom:12.5,
+      moveCamera({center:[visibleAnchors[0].lng,visibleAnchors[0].lat],zoom:12.5,
         pitch:45,bearing:0,essential:true});
       return;
     }
     if(!visibleAnchors.length){
       if(!canPickLocation){
-        map.flyTo({center:[120.98,23.73],zoom:6.5,pitch:0,bearing:0,essential:true});
+        moveCamera({center:[120.98,23.73],zoom:6.5,pitch:0,bearing:0,essential:true});
         return;
       }
     }
@@ -404,7 +408,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     // Map padding scales with its actual dimensions, including after resizing.
     map.fitBounds(bounds,{padding:Math.max(30,Math.min(80,Math.round(map.getContainer().clientWidth*.045))),
       pitch:visibleAnchors.length?45:59,bearing:visibleAnchors.length?0:-23,
-      maxZoom:visibleAnchors.length?14:13.7,duration:500});
+      maxZoom:visibleAnchors.length?14:13.7,duration:reduceMotion?0:500});
   }
 
   map.once('load',()=>{

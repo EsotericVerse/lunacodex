@@ -2,7 +2,7 @@
 import UiText,{useUiText} from '../i18n/UiText';
 
 import {createContext,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import {animate,useReducedMotion} from 'motion/react';
+import {AnimatePresence,animate,motion,useReducedMotion} from 'motion/react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname} from 'next/navigation';
@@ -19,6 +19,7 @@ import {HomeBlock} from '../loc/blocks/home-block-model';
 import ScopeLink from './ScopeLink';
 import {featureNavigationHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
+import {useFeatureFocus} from './feature-focus';
 // Shared display stays light: mount the editor only on pages that need it.
 const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const ArticleTimeAnchorAction=dynamic(()=>import('./ArticleTimeAnchorAction'),{loading:()=>null});
@@ -54,6 +55,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const finalSubtitle=subtitle||resolvedSubtitle;
   const pathname=usePathname();
   const editDock=useEditDock();
+  const focusState=useFeatureFocus(scopeId);
   const editing=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const managementView=useContext(ManagementHeroContext);
   const managementSlot=HomeBlock.managementHeroSlot(managementView,scopeId);
@@ -135,6 +137,77 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
         {(managementMode?managementTextQuery.isSuccess&&!shared:hasFeatureHero&&publicHeroQuery.isSuccess&&sharedEnabled&&!shared)
           ?<p className="scope-status" role="status">尚無主視覺資料。</p>:null}
       </header>
+      <AnimatePresence initial={false}>
+        {!managementMode&&publicFeature&&focusState.focus?<motion.aside
+          key={focusState.focus.feature+':'+focusState.focus.kind+':'+focusState.focus.id}
+          className="scope-feature-focus" role="status" aria-live="polite"
+          initial={reduceMotion?false:{opacity:0,y:9,scale:.985}}
+          animate={{opacity:1,y:0,scale:1}}
+          exit={reduceMotion?{opacity:0}:{opacity:0,y:-5,scale:.99}}
+          transition={reduceMotion?{duration:0}:{duration:.24,ease:[.22,.8,.22,1]}}>
+          <div className="scope-feature-focus__identity">
+            <span className="scope-feature-focus__eyebrow">目前焦點</span>
+            <strong>{focusState.focus.label}</strong>
+            <span>{copy.features?.[focusState.focus.feature]?.title||focusState.focus.feature}</span>
+          </div>
+          {focusState.dateRange?<time className="scope-feature-focus__range"
+            dateTime={focusState.dateRange.startDate||focusState.dateRange.endDate}>
+            {focusState.dateRange.startDate||'起始日未設'} ～ {focusState.dateRange.endDate||'結束日未設'}
+          </time>:null}
+          <button type="button" className="loc-button scope-feature-focus__clear"
+            onClick={focusState.clearFocus}>清除焦點</button>
+          <div className={'scope-feature-focus__article'+(focusState.article?' has-article':' no-article')}>
+            {focusState.article?<div className="scope-feature-focus__article-copy">
+              <span>共同文章脈絡</span>
+              <strong title={focusState.article.title}>{focusState.article.title}</strong>
+              <small>{[
+                focusState.article.day,
+                focusState.article.placeTitle,
+                focusState.article.source
+              ].filter(Boolean).join(' · ')||'同一篇文章正在不同面向中展開'}</small>
+            </div>:null}
+            <nav className="scope-feature-focus__perspectives"
+              aria-label={focusState.article?'以同一篇文章切換展示面向':'以目前焦點切換展示面向'}>
+            {(()=>{
+              const article=focusState.article;
+              const focus=focusState.focus;
+              const range=focusState.dateRange||{};
+              const articleDay=String(article?.day||article?.date||'').slice(0,10);
+              const dated=range.startDate||range.endDate?{
+                ...(range.startDate?{from:range.startDate}:{}),
+                ...(range.endDate?{to:range.endDate}:{})
+              }:/^\d{4}-\d{2}-\d{2}$/.test(articleDay)
+                ?{from:articleDay,to:articleDay}:{};
+              const placeParts=focus?.feature==='trace'&&focus.kind==='place'
+                ?String(focus.id||'').split(':',2):[];
+              const placeScope=placeParts.length===2?placeParts[0]:'';
+              const placeUid=placeParts.length===2?placeParts[1]:'';
+              const contentScope=article?.scopeId||placeScope||scopeId;
+              const traceScope=placeScope||article?.placeScopeId||article?.scopeId||scopeId;
+              const tracePlace=placeUid||article?.placeUid;
+              const traceParams={
+                ...(tracePlace?{place:tracePlace}:{}),
+                ...(!tracePlace?dated:{})
+              };
+              const searchParams=article?{identity:article.uid}:dated;
+              const views=[
+                {id:'culture',scope:contentScope,params:dated},
+                {id:'trace',scope:traceScope,params:traceParams},
+                {id:'statics',scope:contentScope,params:dated},
+                {id:'search',scope:contentScope,params:searchParams}
+              ];
+              return views.map(view=><ScopeLink key={view.id}
+                className="scope-feature-focus__perspective"
+                href={featureNavigationHref(view.scope,view.id,view.params)}
+                aria-current={featureId===view.id?'page':undefined}
+                onClick={()=>focusState.carryFocus(view.scope,view.id)}>
+                {copy.features?.[view.id]?.title||view.id}
+              </ScopeLink>);
+            })()}
+            </nav>
+          </div>
+        </motion.aside>:null}
+      </AnimatePresence>
       <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
         {children}
       </div>
@@ -234,19 +307,34 @@ function ArticleRelationNavigation({
   const below=links.filter(link=>String(link.id||'').startsWith('target:'));
   const originals=externalLinks.filter(link=>!String(link.id||'').startsWith('media:'));
   const {scopeId:currentScopeId}=useScopeRuntime();
+  const {carryFocus,selectFocus,clearFocusRange,article:focusedArticle}=useFeatureFocus(currentScopeId);
   const scope=articleScopeId||currentScopeId;
   const day=String(articleDate||'').slice(0,10);
   const [addedAnchor,setAddedAnchor]=useState(null);
   const timeHref=(item,kind)=>featureNavigationHref(scope,'culture',{
     from:day,to:day,...(kind==='anchor'?{anchor:item.uid}:{period:item.uid})
   });
-  const traceLink=(item,kind)=>featureNavigationHref(scope,'trace',
+  const traceLink=(item,kind)=>featureNavigationHref(item?.source_scope||scope,'trace',
     kind==='place'?{place:item.uid}:{map:item.uid});
-  const articles=items=>items.map((item,index)=><a key={item.id||item.href||index}
-    className="scope-article-context-link" href={item.href}>{item.title||item.label||'閱讀文章'}</a>);
-  const named=(items,href)=>Array.isArray(items)?items.map((item,index)=><a
-    key={item.uid||index} href={href(item)} className="scope-article-context-link">
-    {item.title||item.uid}</a>):[];
+  const articles=items=>items.map((item,index)=>{
+    const id=String(item.id||'');
+    const uid=id.replace(/^(?:source|reference|target):/,'');
+    const title=String(item.title||item.label||'閱讀文章');
+    return <ScopeLink key={id||item.href||index} className="scope-article-context-link"
+      href={item.href} onClick={()=>{
+        if(uid&&!(focusedArticle?.uid===uid&&focusedArticle?.scopeId===scope)){
+          clearFocusRange();
+          selectFocus({feature:'search',kind:'article',id:uid,label:title,
+            article:{uid,scopeId:scope,title}});
+        }
+        carryFocus(scope,'search');
+      }}>{title}</ScopeLink>;
+  });
+  const named=(items,href,feature,targetScope=()=>scope)=>Array.isArray(items)?items.map((item,index)=>{
+    const target=typeof targetScope==='function'?targetScope(item):targetScope;
+    return <ScopeLink key={item.uid||index} href={href(item)} className="scope-article-context-link"
+      onClick={()=>carryFocus(target,feature)}>{item.title||item.uid}</ScopeLink>;
+  }):[];
   const row=(label,children)=><div className="scope-article-context-row" key={label}>
     <strong>{label}：</strong><div className="scope-article-context-items">{children}</div>
   </div>;
@@ -303,21 +391,22 @@ function ArticleRelationNavigation({
   const statsItems=statistics?[
     {name:'當週統計',data:statistics.week},
     {name:'當年統計',data:statistics.year}
-  ].filter(item=>item.data).map(item=><a key={item.name}
+  ].filter(item=>item.data).map(item=><ScopeLink key={item.name}
       href={featureNavigationHref(scope,'statics',{from:item.data.start,to:item.data.end,statTab:'charts'})}
-      className="scope-article-context-link">{item.name}</a>):[];
+      className="scope-article-context-link" onClick={()=>carryFocus(scope,'statics')}>{item.name}</ScopeLink>):[];
   const activeAnchors=Array.isArray(time.anchors)?[...time.anchors]:[];
   if(addedAnchor?.scope===scope&&addedAnchor?.day===day&&
     !activeAnchors.some(item=>item.uid===addedAnchor.anchor.uid))activeAnchors.push(addedAnchor.anchor);
-  const timeAnchors=named(activeAnchors,item=>timeHref(item,'anchor'));
+  const timeAnchors=named(activeAnchors,item=>timeHref(item,'anchor'),'culture');
   const anniversarySuggestions=activeAnchors.length?[]:
     (Array.isArray(time.anniversarySuggestions)?time.anniversarySuggestions:[]);
-  const periods=named(time.periods,item=>timeHref(item,'period'));
-  const eras=named(time.eras,item=>timeHref(item,'period'));
+  const periods=named(time.periods,item=>timeHref(item,'period'),'culture');
+  const eras=named(time.eras,item=>timeHref(item,'period'),'culture');
   const locations=space.place?[space.place]:tracePlace?[tracePlace]:[];
-  const places=named(locations,item=>traceLink(item,'place'));
-  const routes=named(space.routes,item=>traceLink(item,'map'));
-  const traces=named(space.traces,item=>traceLink(item,'map'));
+  const traceScope=item=>item?.source_scope||scope;
+  const places=named(locations,item=>traceLink(item,'place'),'trace',traceScope);
+  const routes=named(space.routes,item=>traceLink(item,'map'),'trace',traceScope);
+  const traces=named(space.traces,item=>traceLink(item,'map'),'trace',traceScope);
   return <section className="scope-article-context" aria-label="文章整合脈絡">
     {ordinaryMedia.length?row('相關媒體外部連結',ordinaryMedia):null}
     {mediaDetails.length?row('相關媒體資料',mediaDetails):null}
@@ -355,11 +444,13 @@ function ArticleRelationNavigation({
     <div className="scope-article-context-group">
       <h3>統計</h3>
       {row('時間統計',dateValid
-        ?statsItems.length?statsItems:<a className="scope-article-context-link"
-          href={featureNavigationHref(scope,'statics',{from:day,to:day})}>查看時間統計</a>
+        ?statsItems.length?statsItems:<ScopeLink className="scope-article-context-link"
+          href={featureNavigationHref(scope,'statics',{from:day,to:day})}
+          onClick={()=>carryFocus(scope,'statics')}>查看時間統計</ScopeLink>
         :'需要文章日期')}
-      {row('關鍵詞統計',dateValid?<a className="scope-article-context-link"
-        href={featureNavigationHref(scope,'statics',{statTab:'keywords',from:day,to:day})}>查看關鍵詞統計</a>
+      {row('關鍵詞統計',dateValid?<ScopeLink className="scope-article-context-link"
+        href={featureNavigationHref(scope,'statics',{statTab:'keywords',from:day,to:day})}
+        onClick={()=>carryFocus(scope,'statics')}>查看關鍵詞統計</ScopeLink>
         :'需要文章日期')}
       <ArticleStatisticsPreview scopeId={scope} statistics={statistics}/>
     </div>
@@ -429,12 +520,12 @@ export function WorkSummaryCard({
     {destinations?.length?<div className="scope-result-links">
       {destinations.map(destination=><ScopeLink key={destination.id||destination.href} href={destination.href}>{destination.label}</ScopeLink>)}
     </div>:null}
-    {children}
     {detailReading?<ArticleRelationNavigation links={safeRelations} externalLinks={showLinks?safeLinks:[]}
       relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace}
       relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate}
       articleCreateTime={articleCreateTime}
       tracePlace={tracePlace} traceHref={traceHref} locationName={locationName}/>:null}
+    {children}
   </article>;
 }
 

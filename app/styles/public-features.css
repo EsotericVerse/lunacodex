@@ -174,6 +174,14 @@
   border-block-start:3px solid var(--loc-feature-emphasis);
   background:var(--loc-feature-wash);
 }
+[data-public-feature="search"] .loc-search-autocomplete{position:relative;z-index:2}
+[data-public-feature="search"] .loc-search-pattern-popover{position:absolute;inset:calc(100% + .4rem) 0 auto;z-index:40;max-height:min(21rem,48vh);overflow:auto;overscroll-behavior:contain;padding:.35rem;border:1px solid var(--loc-feature-hairline);border-radius:var(--loc-ui-radius-md);background:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-feature-depth));box-shadow:var(--loc-shadow-card);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+[data-public-feature="search"] .loc-search-pattern-suggestions{display:grid;gap:.15rem;margin:0;padding:0;list-style:none}
+[data-public-feature="search"] .loc-search-pattern-suggestions [role="option"]{display:flex;align-items:center;min-height:44px;padding:.55rem .75rem;border-radius:calc(var(--loc-ui-radius-sm) * .8);color:var(--loc-text);cursor:pointer;overflow-wrap:anywhere}
+[data-public-feature="search"] .loc-search-pattern-suggestions [role="option"]:is(:hover,.is-active){background:color-mix(in srgb,var(--loc-feature-emphasis) 16%,var(--loc-panel));color:var(--loc-text)}
+[data-public-feature="search"] .loc-search-pattern-suggestion-status{display:flex;align-items:center;justify-content:space-between;gap:.65rem;margin:0;padding:.65rem .75rem;color:var(--loc-muted);font-size:.9rem}
+[data-public-feature="search"] .loc-search-result-choice.is-featured{border-color:var(--loc-feature-emphasis);border-inline-start:3px solid var(--loc-feature-emphasis);background:var(--loc-feature-wash)}
+[data-public-feature="search"] .loc-search-featured-badge{justify-self:start;padding:.2rem .5rem;border:1px solid var(--loc-feature-hairline);border-radius:999px;background:var(--loc-panel);color:var(--loc-text);font-size:.76rem;font-weight:750;letter-spacing:.02em}
 /* Search suggestions are a keyboard-and-touch action, not a double-click secret. */
 [data-public-feature="search"] .scope-search-popular-toggle{
   justify-self:start;min-height:44px;padding:.55rem 1rem;

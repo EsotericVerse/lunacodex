@@ -7,10 +7,10 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
-import {motion,useReducedMotion} from 'motion/react';
+import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
-import {publicPatternSuggestions} from '../../loc/search/public-pattern-suggestions.mjs';
-import {blockNoteSuggestionItems} from '../../loc/editor/blocknote-suggestions.mjs';
+import {searchPatternSuggestions,applyFeaturedSearchResults}
+  from '../../loc/search/search-pattern-index.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 
 import {dbAuthClient,dbPublicClient,deleteRows,transactionWrites} from '../../loc/db/db-client.mjs';
@@ -33,8 +33,11 @@ import {useEditDock} from '../edit-dock';
 import {scopeHref} from '../routing/scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../routing/feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
+import {useFeatureFocus} from '../feature-focus';
+import {featureArticleFromRow} from '../feature-focus-state.mjs';
 import {parseSearchQuery} from '../../loc/search/query.mjs';
-import {readGalaxyRecords,readAnchorFeature} from '../../loc/model/feature-query-client.mjs';
+import {readGalaxyRecords,readAnchorFeature,readPublicSearchPatternIndex}
+  from '../../loc/model/feature-query-client.mjs';
 import {queryGalaxyLocationBatchPreview} from '../../loc/actions/trace/management-queries.mjs';
 import {locGlobalUid} from '../../../packages/zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
@@ -58,6 +61,7 @@ function TraceBlocks(props){return <Suspense fallback={null}><LazyTraceBlocks {.
 
 
 const MEDIA_EDITOR_COLUMNS=MEDIA_ANCHOR_COLUMNS;
+const EMPTY_SEARCH_PATTERN_INDEX=Object.freeze({patterns:[],featuredArticles:[]});
 const MEDIA_ATTR_ORDER=['uid','type','url','description','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
@@ -256,6 +260,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const t=useUiText();
   const defaultTimeUnit=useDefaultTimeUnit();
   const {scopeId,scope}=useScopeRuntime();
+  const {selectFocus,dateRange:sharedFocusRange,article:focusedArticle}=useFeatureFocus(scopeId);
   // Explicit management route plus verified Scope grant controls editing.
   // The independent session-only switch never grants database access.
   const adminListRequested=Boolean(legacyManagementRoute);
@@ -279,6 +284,12 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const resourceCache=useResourceCache();
   const [publicView,setPublicView]=useState('search');
   const [query,setQuery]=useState('');
+  const [patternIndexState,setPatternIndexState]=useState({key:'',loading:false,patterns:[],featuredArticles:[],error:''});
+  const patternIndexRef=useRef({key:'',loading:false,patterns:[],featuredArticles:[],error:''});
+  const patternIndexRequestRef=useRef(null);
+  const activePatternScopeKeyRef=useRef('');
+  const [patternSuggestionsOpen,setPatternSuggestionsOpen]=useState(false);
+  const [activePatternSuggestion,setActivePatternSuggestion]=useState(-1);
   const [searchPopularOpen,setSearchPopularOpen]=useState(false);
   const [placeOnly,setPlaceOnly]=useState(false);
   const [selectedPlaceArticles,setSelectedPlaceArticles]=useState([]);
@@ -326,6 +337,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // An old detail request must never put a prior article back after selection.
   const detailEpoch=useRef(0);
   const searchId=useRef(0);
+  const carriedArticleRef=useRef('');
   const lastTextSearchAt=useRef(0);
   // Anchors the status/results block so a fresh search can scroll the
   // results into view instead of leaving the viewport on the search form.
@@ -333,6 +345,18 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const scrollPending=useRef(false);
   const [arrivalVersion,setArrivalVersion]=useState(0);
   const reduceMotion=useReducedMotion();
+  function focusArticle(row={}){
+    const uid=String(row.uid||row.resourceId||'').trim();
+    if(!uid)return;
+    carriedArticleRef.current=uid;
+    const title=String(row.title||row.name||uid).trim();
+    selectFocus({feature:'search',kind:'article',id:uid,label:title,
+      article:featureArticleFromRow(row,scopeId)});
+  }
+  useEffect(()=>{
+    if(activePatternSuggestion<0||!patternSuggestionsOpen)return;
+    document.getElementById('scope-search-query-pattern-option-'+activePatternSuggestion)?.scrollIntoView({block:'nearest'});
+  },[activePatternSuggestion,patternSuggestionsOpen]);
   // The results list is not rendered yet when a search resolves, so the page is
   // still too short to scroll; flag it and scroll once the new results are committed.
   function scrollToResults(){scrollPending.current=true;}
@@ -381,16 +405,42 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     :availableScopes,[scopeId,managementMode,scopeFilter,availableScopes]);
   // Public Search: Pattern-only suggestions; management text input: none.
   const patternScopeIds=useMemo(()=>targetScopes.map(item=>item.id),[targetScopes]);
-  const patternSuggestions=useMemo(()=>
-    managementMode?[]:blockNoteSuggestionItems('pattern',
-      publicPatternSuggestions(patternScopeIds,query),query,36).map(item=>item.title),
-    [managementMode,patternScopeIds,query]);
+  const patternScopeKey=patternScopeIds.join('|');
+  activePatternScopeKeyRef.current=patternScopeKey;
+  const currentPatternIndex=!managementMode&&patternIndexState.key===patternScopeKey
+    ?patternIndexState:EMPTY_SEARCH_PATTERN_INDEX;
+  const patternSuggestions=useMemo(()=>managementMode?[]:
+    searchPatternSuggestions(currentPatternIndex.patterns,query,36),
+    [managementMode,currentPatternIndex.patterns,query]);
+
+  function loadPublicPatternIndex(){
+    if(managementMode||!patternScopeIds.length)return Promise.resolve(EMPTY_SEARCH_PATTERN_INDEX);
+    const key=patternScopeKey,cached=patternIndexRef.current;
+    if(cached.key===key&&!cached.loading&&!cached.error)return Promise.resolve(cached);
+    if(patternIndexRequestRef.current?.key===key)return patternIndexRequestRef.current.promise;
+    const loading={key,loading:true,patterns:[],featuredArticles:[],error:''};
+    patternIndexRef.current=loading;setPatternIndexState(loading);
+    const promise=readPublicSearchPatternIndex(patternScopeIds).then(data=>({
+      key,loading:false,patterns:Array.isArray(data?.patterns)?data.patterns:[],
+      featuredArticles:Array.isArray(data?.featuredArticles)?data.featuredArticles:[],error:''
+    })).catch(()=>({key,loading:false,patterns:[],featuredArticles:[],error:'關鍵詞建議暫時無法載入。'})).then(result=>{
+      if(activePatternScopeKeyRef.current===key){
+        patternIndexRef.current=result;setPatternIndexState(result);
+      }
+      return result;
+    }).finally(()=>{
+      if(patternIndexRequestRef.current?.promise===promise)patternIndexRequestRef.current=null;
+    });
+    patternIndexRequestRef.current={key,promise};
+    return promise;
+  }
 
   const summaryScopeIds=targetScopes.map(item=>item.id);
   const scopeLabel=id=>{
     const item=scopeById.get(id);
-    // A result may show its published source name, never an inventory of IDs.
-    // Management pages can identify only the Scopes their user can manage.
+    // A Scope search can only return its own Scope, so its name adds no context.
+    if(scopeId!=='loc'&&String(id||'')===scopeId)return '';
+    // LOC-wide Search can show a published display name without exposing IDs.
     if(locPublicSearch){
       const label=String(item?.display_name||'').trim();
       return label&&label!==id?label:'';
@@ -402,6 +452,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const orderedResults=useMemo(()=>{
     const scopes=new Map(availableScopes.map((item,index)=>[item.id,index]));
     return results.map((row,index)=>({row,index})).sort((a,b)=>{
+      const featured=Number(Boolean(b.row.featured))-Number(Boolean(a.row.featured));
+      if(featured)return featured;
       const group=scopeId==='loc'
         ?(scopes.get(a.row.scopeId)??Infinity)-(scopes.get(b.row.scopeId)??Infinity):0;
       if(group)return group;
@@ -507,6 +559,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // Public Search never performs a preference write or a private read.
       // Signed management actions remain available only on management routes.
       if(id!==searchId.current)return;
+      const patternIndexPromise=!managementMode&&q&&!options.browse?loadPublicPatternIndex():Promise.resolve(EMPTY_SEARCH_PATTERN_INDEX);
       // The category is a semantic database filter, not a literal
       // site. Fetch the same cached taxonomy before searching.
       const sourceTaxonomy=String(options.sourceFilter||'').startsWith('category:')
@@ -531,6 +584,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         managementOnly:managementMode,sortDirection:options.sortDirection,signal
       });
       if(id!==searchId.current)return;
+      const patternIndex=await patternIndexPromise;
+      if(id!==searchId.current)return;
       const searchRows=search.rows||[];
       if(id!==searchId.current)return;
 
@@ -542,7 +597,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         if(!result||seen.has(result.key))continue;
         seen.add(result.key);converted.push(result);
       }
-      const pageResults=prioritizeStyleTagResults(mergeSummaryResults(converted,UI_COPY));
+      const withFeaturedResults=applyFeaturedSearchResults(converted,patternIndex.patterns,patternIndex.featuredArticles,q,
+        (row,source,rowScope)=>toResult(row,source,rowScope,UI_COPY));
+      const pageResults=prioritizeStyleTagResults(mergeSummaryResults(withFeaturedResults,UI_COPY))
+        .sort((left,right)=>Number(Boolean(right.featured))-Number(Boolean(left.featured)));
       // A new page replaces the previous 100 results; the cursor, not an
       // ever-growing browser array, carries the position through the search.
       setResults(pageResults.slice(0,pageSize));
@@ -625,6 +683,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       }
       if(id!==searchId.current)return;
       if(!detail)throw new Error(UI_COPY.search.notFound);
+      focusArticle({...detail,scopeId:detailScope});
       const result=toResult({...detail,resolved_links:detail.links||[]},detail.site||UI_COPY.search.displaySource,detailScope);
       setResults([result]);
       setReaderResult(result);
@@ -674,6 +733,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(fillPlace)setBulkPlace(fillPlace);
     const value=String(searchParams?.get('q')||'').trim();
     if(identity){setQuery('');executeIdentity(identity);return;}
+    const carriedIdentity=!value&&!place&&focusedArticle?.uid&&
+      carriedArticleRef.current!==String(focusedArticle.uid)&&
+      (scopeId==='loc'||focusedArticle.scopeId===scopeId)
+      ?String(focusedArticle.uid):'';
+    if(carriedIdentity){carriedArticleRef.current=carriedIdentity;setQuery('');executeIdentity(carriedIdentity);return;}
     const filters={
       contentType:managementMode?String(searchParams?.get('type')||''):'',
       sourceFilter:managementMode?String(searchParams?.get('source')||''):'',
@@ -687,7 +751,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const term=place||value;
     setPlaceOnly(Boolean(place));
     if(term){setQuery(term);void executeSearch(term,null,{overrideOptions:{...filters,placeOnly:managementMode&&Boolean(place),browse:false,sortDirection:articleSort}});}
-  },[searchParams,scopeId,scopesQuery.isSuccess,scopesQuery.data,managementMode,managementAuthorized]);
+  },[searchParams,scopeId,scopesQuery.isSuccess,scopesQuery.data,managementMode,managementAuthorized,focusedArticle?.uid,focusedArticle?.scopeId]);
+
+  useEffect(()=>{
+    if(managementMode)return;
+    if(searchParams?.get('from')||searchParams?.get('to'))return;
+    setStartDate(sharedFocusRange?.startDate||'');
+    setEndDate(sharedFocusRange?.endDate||'');
+  },[managementMode,searchParams,sharedFocusRange?.startDate,sharedFocusRange?.endDate]);
 
 
 
@@ -703,6 +774,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return;
     }
     if(result.resourceType!=='galaxy'||!result.editableTable)return;
+    focusArticle(result);
     setReaderResult(result);
     setFullTextKey(result.key);
     setFullText('');
@@ -713,6 +785,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       const fullRow=await loadGalaxyDetail(result);
       if(request!==detailEpoch.current)return;
       if(!fullRow)throw new Error(UI_COPY.search.fullTextNotFound);
+      focusArticle({...fullRow,scopeId:result.scopeId});
       setFullText(workDisplayText(fullRow.content||''));
       setFullTextRow(fullRow);
       setReaderResult({...toResult(fullRow,fullRow.site||result.source,result.scopeId),key:result.key});
@@ -973,9 +1046,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       // Query-only changes must not remount Search and its Scope/Auth loaders.
       // Native history updates stay local; the current query is read directly.
       // the existing URL-driven effect then runs the search exactly once.
-      if(new URL(url).pathname===window.location.pathname)
-        window.history.pushState(null,'',url);
-      else window.location.assign(url);
+      const target=new URL(url,window.location.href);
+      if(target.pathname===window.location.pathname)window.history.pushState(null,'',target.pathname+target.search+target.hash);
+      else window.location.assign(target.href);
       return;
     }
     // Next.js does not remount for an identical URL; repeated suggestions must still search.
@@ -1127,15 +1200,47 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   }
   const defaultTimeName=t('uiExtra.searchUI.defaultUnit'+(defaultTimeUnit==='auto'
     ?'Day':defaultTimeUnit[0].toUpperCase()+defaultTimeUnit.slice(1)));
-  const searchInput=(id,placeholder)=><>
-    <input id={id} type="search" autoComplete="off" value={query}
-      className="loc-search-input" placeholder={placeholder}
-      list={!managementMode?id+'-published-patterns':undefined}
-      onChange={event=>{setQuery(event.target.value);setSearchPopularOpen(false);}}/>
-    {!managementMode?<datalist id={id+'-published-patterns'}>
-      {patternSuggestions.map(word=><option key={word} value={word}/>)}
-    </datalist>:null}
-  </>;
+  const searchInput=(id,placeholder)=>{
+    const listId=id+'-pattern-suggestions';
+    const open=!managementMode&&patternSuggestionsOpen&&Boolean(query.trim())&&Boolean(patternSuggestions.length||currentPatternIndex.loading||currentPatternIndex.error);
+    const active=open&&activePatternSuggestion>=0&&activePatternSuggestion<patternSuggestions.length?id+'-pattern-option-'+activePatternSuggestion:undefined;
+    const choosePattern=word=>{setQuery(word);setPatternSuggestionsOpen(false);setActivePatternSuggestion(-1);};
+    const onPatternKeyDown=event=>{
+      if(event.key==='Escape'){setPatternSuggestionsOpen(false);setActivePatternSuggestion(-1);return;}
+      if(event.key==='ArrowDown'&&patternSuggestions.length){event.preventDefault();setPatternSuggestionsOpen(true);setActivePatternSuggestion(i=>Math.min(i+1,patternSuggestions.length-1));return;}
+      if(event.key==='ArrowUp'&&patternSuggestions.length){event.preventDefault();setPatternSuggestionsOpen(true);setActivePatternSuggestion(i=>i<0?patternSuggestions.length-1:Math.max(i-1,0));return;}
+      if(event.key==='Enter'&&patternSuggestionsOpen&&activePatternSuggestion>=0&&activePatternSuggestion<patternSuggestions.length){event.preventDefault();choosePattern(patternSuggestions[activePatternSuggestion]);}
+    };
+    return <div className="loc-search-autocomplete" onBlur={event=>{
+      if(!event.currentTarget.contains(event.relatedTarget)){setPatternSuggestionsOpen(false);setActivePatternSuggestion(-1);}
+    }}>
+      <input id={id} type="search" autoComplete="off" value={query} className="loc-search-input" placeholder={placeholder}
+        role={!managementMode?'combobox':undefined} aria-autocomplete={!managementMode?'list':undefined}
+        aria-expanded={!managementMode?open:undefined} aria-controls={!managementMode&&open?listId:undefined}
+        aria-activedescendant={!managementMode?active:undefined}
+        onFocus={()=>{if(!managementMode){setPatternSuggestionsOpen(Boolean(query.trim()));if(!currentPatternIndex.error)void loadPublicPatternIndex();}}}
+        onKeyDown={!managementMode?onPatternKeyDown:undefined}
+        onChange={event=>{const value=event.target.value;setQuery(value);setSearchPopularOpen(false);setActivePatternSuggestion(-1);
+          if(!managementMode){setPatternSuggestionsOpen(Boolean(value.trim()));if(value.trim()&&!currentPatternIndex.error)void loadPublicPatternIndex();}}}/>
+      {!managementMode?<AnimatePresence initial={false}>{open?<motion.div key={id+'-patterns'} className="loc-search-pattern-popover"
+        initial={reduceMotion?false:{opacity:0,y:-4}} animate={{opacity:1,y:0}}
+        exit={reduceMotion?{opacity:0}:{opacity:0,y:-3}}
+        transition={reduceMotion?{duration:0}:{duration:.16,ease:'easeOut'}}>
+        {currentPatternIndex.loading?<p className="loc-search-pattern-suggestion-status" role="status">載入關鍵詞建議…</p>:null}
+        {currentPatternIndex.error?<div className="loc-search-pattern-suggestion-status"><span role="status">{currentPatternIndex.error}</span>
+          <button type="button" className="loc-button" onClick={()=>void loadPublicPatternIndex()}>重試</button></div>:null}
+        <ul id={listId} className="loc-search-pattern-suggestions" role="listbox" aria-label="關鍵詞建議">
+          {patternSuggestions.map((word,index)=><motion.li layout key={word} id={id+'-pattern-option-'+index}
+            role="option" aria-selected={activePatternSuggestion===index}
+            className={activePatternSuggestion===index?'is-active':''}
+            transition={reduceMotion?{duration:0}:{duration:.14}}
+            onPointerDown={event=>event.preventDefault()} onClick={()=>choosePattern(word)}>{word}</motion.li>)}
+        </ul>
+        {!currentPatternIndex.loading&&!currentPatternIndex.error&&!patternSuggestions.length
+          ?<p className="loc-search-pattern-suggestion-status" role="status">沒有相符的關鍵詞。</p>:null}
+      </motion.div>:null}</AnimatePresence>:null}
+    </div>;
+  };
   function renderSearchArticle(row,index,exploration=false){
         const rowScopeData=account.scopeDataFor(row.scopeId)||defaultScopeData(row.scopeId);
         const editableTable=row.editableTable||(
@@ -1165,6 +1270,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         // Direct UID navigation already has the authorized Galaxy detail in
         // toResult.editRow; ordinary expanded reading uses fullTextRow.
         const readerRow=selectedDetail||(identityReader?row.editRow:null);
+        const readingDetail=Boolean(readerRow&&row.resourceType==='galaxy'&&
+          (identityReader||expandedReader));
         const tracePlace=readerRow?.trace_place||row.tracePlace;
         const locationName=String(readerRow?.location||row.locationName||'').trim();
         const readingLinks=readerRow?galaxyRelationLinks(row.scopeId,readerRow):row.relationLinks||[];
@@ -1188,23 +1295,23 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           articleHref={!exploration&&row.resourceType==='galaxy'&&(managementMode||row.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
-          detailReading={!exploration&&(identityReader||expandedReader)}
+          detailReading={readingDetail}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
           date={row.date}
           body={''}
           hidden={false}
-          relationLinks={!exploration&&(identityReader||expandedReader)?readingLinks:[]}
-          relatedMedia={!exploration&&(identityReader||expandedReader)?relatedMedia:[]}
-          relatedTime={!exploration&&(identityReader||expandedReader)?readerRow?.related_time||row.relatedTime:null}
-          relatedSpace={!exploration&&(identityReader||expandedReader)?readerRow?.related_space||row.relatedSpace:null}
-          relatedStatistics={!exploration&&(identityReader||expandedReader)?readerRow?.related_statistics||row.relatedStatistics:null}
+          relationLinks={readingDetail?readingLinks:[]}
+          relatedMedia={readingDetail?relatedMedia:[]}
+          relatedTime={readingDetail?readerRow?.related_time||row.relatedTime:null}
+          relatedSpace={readingDetail?readerRow?.related_space||row.relatedSpace:null}
+          relatedStatistics={readingDetail?readerRow?.related_statistics||row.relatedStatistics:null}
           articleScopeId={row.scopeId}
-          articleDate={identityReader||expandedReader?readerRow?.article_day||readerRow?.date||row.articleDay||row.date:''}
-          articleCreateTime={identityReader||expandedReader?readerRow?.createtime||row.createtime:row.createtime}
-          tracePlace={!exploration&&(identityReader||expandedReader)?tracePlace:null}
-          traceHref={tracePlace?featureNavigationHref(row.scopeId,'trace',{place:tracePlace.uid}):''}
-          locationName={identityReader||expandedReader?locationName:''}
-          links={!exploration&&(identityReader||expandedReader)?readerRow?.links||row.links||[]:[]}
+          articleDate={readingDetail?readerRow?.article_day||readerRow?.date||row.articleDay||row.date:''}
+          articleCreateTime={readingDetail?readerRow?.createtime||row.createtime:row.createtime}
+          tracePlace={readingDetail?tracePlace:null}
+          traceHref={readingDetail&&tracePlace?featureNavigationHref(row.scopeId,'trace',{place:tracePlace.uid}):''}
+          locationName={readingDetail?locationName:''}
+          links={readingDetail?readerRow?.links||row.links||[]:[]}
           destinations={row.destinations}
           editable={editable}
           editing={editingKey===row.key}
@@ -1222,9 +1329,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           mediaScopeId={editable&&row.resourceType==='galaxy'?row.scopeId:''}
           attributeTitle={row.resourceType==='media_anchor'?t('uiExtra.searchUI.mediaAttributes'):t('uiExtra.searchUI.attributeTitle')}
           showBodyEditor={row.resourceType==='galaxy'}
-          styleTag={row.styleTagMatch}
-          styleTagKicker={row.styleTagMatch?<UiText id="uiExtra.searchUI.styleRecommendations"/>:null}
-          styleIntroText={row.styleIntroText}
+          styleTag={row.styleTagMatch||row.featured}
+          styleTagKicker={row.featured?'特徵頁':row.styleTagMatch?<UiText id="uiExtra.searchUI.styleRecommendations"/>:null}
+          styleIntroText={row.featured?'因「'+row.featuredPatternTitle+'」優先顯示':row.styleIntroText}
         >
           {managementMode&&editable&&editingKey!==row.key?<div className="scope-work-fulltext-row">
             {searchParams?.get('identity')&&row.resourceType==='galaxy'?<WorkFullText
@@ -1494,10 +1601,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       error={error||loadMoreError}
       onLoadMore={loadNextSearch}
       renderItem={(row,index)=>managementMode||row.resourceType!=='galaxy'
-        ?renderSearchArticle(row,index):<button type="button" className="loc-search-result-choice"
+        ?renderSearchArticle(row,index):<button type="button" className={'loc-search-result-choice'+(row.featured?' is-featured':'')}
           disabled={row.list===false&&!privateResultMode}
           aria-pressed={fullTextKey===row.key}
           onClick={()=>void toggleFullText(row)}>
+          {row.featured?<span className="loc-search-featured-badge">特徵頁 · {row.featuredPatternTitle}</span>:null}
           <strong>{row.list===false&&!privateResultMode?'（使用者隱藏）':row.title}</strong>
           <small>{[scopeLabel(row.scopeId),String(row.date||'').slice(0,10)].filter(Boolean).join(' · ')}</small>
         </button>}

@@ -13,6 +13,8 @@ import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeature
 import ScopeLink from '../ScopeLink';
 import {scopeHref} from '../routing/scope-registry';
 import {useEditDock} from '../edit-dock';
+import {useFeatureFocus} from '../feature-focus';
+import {featureArticleFromRow,featureFocusRangeFromRow} from '../feature-focus-state.mjs';
 import {featureDataErrorMessage} from '../feature-data-state';
 // Keep a visible, CSS-only waiting state even before the timeline chunk loads.
 function CultureTimeLoading({label='正在載入時間定錨…'}){
@@ -216,6 +218,7 @@ export default function Culture(){
   const localizedLabelOf=useMemo(()=> (item,index)=>labelOf(item,index,UI_COPY.format.period(index+1)),[UI_COPY]);
   const {locale}=useUiLocale();
   const {scopeId,scope}=useScopeRuntime();
+  const {selectFocus,setFocusRange,dateRange:sharedFocusRange}=useFeatureFocus(scopeId);
   const [worksOpen,setWorksOpen]=useState(false);
   const searchParams=useSearchParams();
   const editDock=useEditDock();
@@ -239,7 +242,14 @@ export default function Culture(){
   const [expandedLocScopes,setExpandedLocScopes]=useState([]);
   const isLocItemView=scopeId==='loc'&&locCultureView==='item';
   const resourceCache=useResourceCache();
-  const navigation=useMemo(()=>readFeatureNavigation(searchParams),[searchParams]);
+  const navigation=useMemo(()=>{
+    const current=readFeatureNavigation(searchParams);
+    if(isTimeEditingView||!sharedFocusRange||current.from||current.to)return current;
+    const from=String(sharedFocusRange.startDate||'').slice(0,10);
+    const to=String(sharedFocusRange.endDate||'').slice(0,10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return current;
+    return {...current,from,to};
+  },[searchParams,isTimeEditingView,sharedFocusRange?.startDate,sharedFocusRange?.endDate]);
   const query=useAsyncResource({
     queryKey:['culture-timeline',scopeId,isTimeEditingView?'management':'public'],
     queryFn:async({signal})=>{
@@ -312,6 +322,8 @@ export default function Culture(){
   const [fullDetail,setFullDetail]=useState(null);
   const [fullTextLoading,setFullTextLoading]=useState(false);
   const [fullTextError,setFullTextError]=useState('');
+  const fullTextSequenceRef=useRef(0);
+  useEffect(()=>()=>{fullTextSequenceRef.current+=1;},[]);
   const [editingWorkKey,setEditingWorkKey]=useState('');
   const [authorizedWorkKey,setAuthorizedWorkKey]=useState('');
   const [selectedTimelineRecordId,setSelectedTimelineRecordId]=useState('');
@@ -714,15 +726,21 @@ export default function Culture(){
   useEffect(()=>{
     setSelectedCategory('');
     setWorksOpen(false);
+    fullTextSequenceRef.current+=1;
+    setFullTextLoading(false);
     setFullTextKey('');
     setFullText('');
+    setFullDetail(null);
     setFullTextError('');
     if(workScrollRef.current)workScrollRef.current.scrollTop=0;
   },[classificationWindowStart,classificationWindowEnd]);
 
   useEffect(()=>{
+    fullTextSequenceRef.current+=1;
+    setFullTextLoading(false);
     setFullTextKey('');
     setFullText('');
+    setFullDetail(null);
     setFullTextError('');
     if(workScrollRef.current)workScrollRef.current.scrollTop=0;
   },[selectedCategory,selectedRiverGroup]);
@@ -1283,12 +1301,18 @@ export default function Culture(){
     const uid=String(work?.uid||'').trim();
     if(!uid)return;
     const key=String(work?.key||('galaxy:'+uid));
+    const request=++fullTextSequenceRef.current;
     if(fullTextKey===key){
       setFullTextKey('');
       setFullText('');
+      setFullDetail(null);
       setFullTextError('');
+      setFullTextLoading(false);
       return;
     }
+    const focusArticle=row=>selectFocus({feature:'culture',kind:'article',id:uid,
+      label:String(row?.title||work.title||uid),article:featureArticleFromRow(row,scopeId)});
+    focusArticle(work);
     setFullTextKey(key);
     setFullText('');
     setFullTextError('');
@@ -1297,13 +1321,16 @@ export default function Culture(){
     try{
       if(!scopeData)throw new Error(l.sourceUnresolved);
       const row=await selectGalaxyIdentity(scopeData,uid);
+      if(request!==fullTextSequenceRef.current)return;
       if(!row)throw new Error(l.workNotFound);
+      focusArticle({...row,scopeId});
       setFullText(workDisplayText(row.content||''));
       setFullDetail(row);
     }catch(exception){
-      setFullTextError(String(exception?.message||exception||l.fullTextFailed));
+      if(request===fullTextSequenceRef.current)
+        setFullTextError(String(exception?.message||exception||l.fullTextFailed));
     }finally{
-      setFullTextLoading(false);
+      if(request===fullTextSequenceRef.current)setFullTextLoading(false);
     }
   }
 
@@ -1529,7 +1556,15 @@ export default function Culture(){
                   onGroupToggle={toggleTimeTrace}
                   windowStart={currentStructureStart}
                   windowEnd={currentStructureEnd}
-                  onSelect={item=>setSelectedTimelineInfo(item||null)}
+                  onSelect={item=>{
+                    setSelectedTimelineInfo(item||null);
+                    const range=featureFocusRangeFromRow(item?.raw||item);
+                    if(!item||!range)return;
+                    selectFocus({feature:'culture',kind:'time',
+                      id:String(item.id||item.raw?.uid||range.startDate),
+                      label:String(item.raw?.title||item.content||item.raw?.display_label||range.startDate)});
+                    setFocusRange(range);
+                  }}
                   editable={false}
                 />:<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>}
                 {selectedTimelineInfo?<div className='scope-card scope-culture-timeline-selection' role='status'>
@@ -1859,9 +1894,27 @@ export default function Culture(){
                       const workKey=String(work.key||('galaxy:'+work.uid));
                       if(work.hidden)return <div key={workKey+'-'+index}
                         className='scope-work-list-row scope-status'>本文已隱藏</div>;
-                      return <div className='scope-work-list-row' key={workKey+'-'+index}>
-                        <span>標題：{work.title}</span>
-                        <span> 日期：{work.date}</span>
+                      const detail=fullTextKey===workKey&&!fullTextLoading&&
+                        String(fullDetail?.uid||'')===String(work.uid)?fullDetail:null;
+                      return <Article key={workKey+'-'+index}
+                        uid={work.uid} title={work.title||'未命名文章'}
+                        articleHref={galaxyIdentityHref(scopeId,work.uid)}
+                        date={work.date} source={detail?.site||work.site||''}
+                        detailReading={Boolean(detail)}
+                        relationLinks={detail?galaxyRelationLinks(scopeId,detail):[]}
+                        relatedMedia={detail?.related_media||[]}
+                        relatedTime={detail?.related_time||null}
+                        relatedSpace={detail?.related_space||null}
+                        relatedStatistics={detail?.related_statistics||null}
+                        articleScopeId={scopeId}
+                        articleDate={detail?.article_day||detail?.date||work.date||''}
+                        articleCreateTime={detail?.createtime||work.createtime||''}
+                        tracePlace={detail?.trace_place||null}
+                        traceHref={detail?.trace_place
+                          ?featureNavigationHref(scopeId,'trace',{place:detail.trace_place.uid}):''}
+                        locationName={detail?.location||''}
+                        links={detail?.links||[]}
+                        editOnCardClick={false}>
                         {work.extract===true?<WorkFullText
                           open={fullTextKey===workKey}
                           loading={fullTextLoading&&fullTextKey===workKey}
@@ -1869,7 +1922,7 @@ export default function Culture(){
                           content={fullTextKey===workKey?fullText:''}
                           onToggle={()=>toggleWorkContent(work)}
                         />:<span className='scope-status'>僅顯示列表，禁止閱讀全文</span>}
-                      </div>;
+                      </Article>;
                     }}
                   />
                   {!periodWorksPage.loading&&!periodWorksPage.error&&!visibleWorkRows.length?<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>:null}

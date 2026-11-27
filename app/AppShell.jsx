@@ -22,6 +22,8 @@ import PageResourceBoundary from './modular/PageResourceBoundary';
 import {recoverChunkOnce} from './loc/ui/chunk-recovery.mjs';
 import {DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
+import {FeatureFocusProvider} from './modular/feature-focus';
+import {PRIMARY_NAV_ORDER} from './modular/routing/navigation-order.mjs';
 // Only individual Scope homepages download the opt-in management entry.
 const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{loading:()=>null});
 import ScrollableScopeNav from './modular/ScrollableScopeNav';
@@ -303,9 +305,11 @@ export default function AppShell({children}){
   const runtime=useScopeRuntime();
   const editorScopeId=runtime.pathname.startsWith('/my-phone')||runtime.scopeId==='local'
     ?'local':runtime.scope?.featureScope||runtime.scopeId;
-  return <EditDockProvider key={runtime.scopeId} scopeId={editorScopeId}>
-    <AppShellInner runtime={runtime}>{children}</AppShellInner>
-  </EditDockProvider>;
+  return <FeatureFocusProvider scopeId={runtime.scopeId}>
+    <EditDockProvider key={runtime.scopeId} scopeId={editorScopeId}>
+      <AppShellInner runtime={runtime}>{children}</AppShellInner>
+    </EditDockProvider>
+  </FeatureFocusProvider>;
 }
 
 function AppShellInner({children,runtime}){
@@ -548,20 +552,18 @@ function AppShellInner({children,runtime}){
     ...editDestinations,
     {id:'cancel',icon:'cancel',label:translateUiField(activeLocale,'取消'),action:'cancel'}
   ];
-  const featureTabs=[
-    {id:'home',icon:'home',label:translateUiField(activeLocale,'首頁'),
+  const featureTabs=PRIMARY_NAV_ORDER.map(id=>{
+    if(id==='home')return {id,icon:'home',label:translateUiField(activeLocale,'首頁'),
       href:localNavigation?navigationHref('local','',native):
-        navigationHref(navScopeId,'',native)},
-    ...['culture','statics','trace','search'].map(id=>{
-      const feature=FEATURES.find(item=>item.id===id);
-      return {id,icon:id,label:copy.features?.[id]?.title||feature.label,
-        href:managementRouteHref('user',id,localNavigation?'local':navScopeId,
-          {native,navigate:navigationHref})};
-    }),
-    {id:'settings',icon:'settings',label:copy.common.settings||'設定',
+        navigationHref(navScopeId,'',native)};
+    if(id==='settings')return {id,icon:'settings',label:copy.common.settings||'設定',
       href:native?'/local/settings/index.html?scopeid='+encodeURIComponent(navScopeId)
-        :'/settings/?scopeid='+encodeURIComponent(navScopeId)}
-  ];
+        :'/settings/?scopeid='+encodeURIComponent(navScopeId)};
+    const feature=FEATURES.find(item=>item.id===id);
+    return {id,icon:id,label:copy.features?.[id]?.title||feature.label,
+      href:managementRouteHref('user',id,localNavigation?'local':navScopeId,
+        {native,navigate:navigationHref})};
+  });
 
   // The fixed frame must never wait for a locale HTTP request or unrelated
   // Bootstrap state. Page copy still updates when its JSON becomes available.

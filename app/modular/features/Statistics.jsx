@@ -19,6 +19,9 @@ import {useScopeRuntime} from '../use-scope-runtime';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {FeaturePage} from '../ui';
 import {visualColor} from '../visual-palette.mjs';
+import {useFeatureFocus} from '../feature-focus';
+import {featureFocusRangeFromRow,rowsWithinFeatureFocusRange}
+  from '../feature-focus-state.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {groupedSourceOutline} from '../../loc/source/outline-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
@@ -117,7 +120,8 @@ function facetTrend(rows=[],window={},selectedCategories=[]){
   const buckets=new Map();
   for(let cursor=new Date(window.startDate+'T00:00:00Z'),end=new Date(window.endDate+'T00:00:00Z');cursor<=end;cursor.setUTCDate(cursor.getUTCDate()+1)){
     const bucket=trendBucket(cursor.toISOString().slice(0,10),window.bucket);
-    if(bucket&&!buckets.has(bucket.key))buckets.set(bucket.key,{period:bucket.label,_sort:bucket.key});
+    if(bucket&&!buckets.has(bucket.key))buckets.set(bucket.key,{period:bucket.label,_sort:bucket.key,
+      start_date:bucket.start,end_date:bucket.end});
   }
   for(const row of rows){
     const canonical=categories.get(String(row.category||'').normalize('NFKC').toLocaleLowerCase());
@@ -128,7 +132,7 @@ function facetTrend(rows=[],window={},selectedCategories=[]){
     if(output)output[canonical]=(Number(output[canonical])||0)+(Number(row.item_count)||0);
   }
   return [...buckets.values()].sort((a,b)=>a._sort.localeCompare(b._sort)).map(row=>{
-    const output={period:row.period};
+    const output={period:row.period,start_date:row.start_date,end_date:row.end_date};
     for(let index=0;index<selectedCategories.length;index++){
       const key='category_'+index;
       output[key]=Number(row[key])||0;
@@ -171,6 +175,7 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
 function ScopeStatisticsResults({scopeId,navigation,types}){
   const UI_COPY=useUiCopy();
   const t=useUiText();
+  const {focus:sharedFocus,dateRange:sharedRange,selectFocus,setFocusRange}=useFeatureFocus(scopeId);
   const requested=String(navigation.rankingType||'');
   const rankingType=types.includes(requested)?requested:
     (['media_type','media_platform','media_style','media'].includes(requested)||navigation.statTab==='media'
@@ -232,11 +237,19 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // An empty or non-period Scope must not request a nonexistent Period index.
   const requestedStart=dateKey(navigation.from),requestedEnd=dateKey(navigation.to);
   const hasRequestedWindow=Boolean(requestedStart&&requestedEnd&&requestedStart<=requestedEnd);
-  const periodNavigationReady=hasRequestedWindow||selectedPeriodKey==='year'||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
+  const sharedStart=dateKey(sharedRange?.startDate),sharedEnd=dateKey(sharedRange?.endDate);
+  const hasSharedFocusWindow=Boolean(sharedStart&&sharedEnd&&sharedStart<=sharedEnd);
+  const periodNavigationReady=hasRequestedWindow||hasSharedFocusWindow||selectedPeriodKey==='year'||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
   const queryRange=useMemo(()=>{
     if(hasRequestedWindow){
       const days=Math.round((Date.parse(requestedEnd+'T00:00:00Z')-Date.parse(requestedStart+'T00:00:00Z'))/86_400_000);
       return {...customQueryRange,startDate:requestedStart,endDate:requestedEnd,
+        bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
+        fullHistory:false,canZoomOut:false,canZoomIn:false};
+    }
+    if(hasSharedFocusWindow){
+      const days=Math.round((Date.parse(sharedEnd+'T00:00:00Z')-Date.parse(sharedStart+'T00:00:00Z'))/86_400_000);
+      return {...customQueryRange,startDate:sharedStart,endDate:sharedEnd,
         bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
         fullHistory:false,canZoomOut:false,canZoomIn:false};
     }
@@ -252,7 +265,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     return {...customQueryRange,startDate,endDate,
       bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
       fullHistory:false,canZoomOut:false,canZoomIn:false};
-  },[selectedPeriodKey,selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,requestedStart,requestedEnd,defaultTimeUnit]);
+  },[selectedPeriodKey,selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,
+    requestedStart,requestedEnd,hasSharedFocusWindow,sharedStart,sharedEnd,defaultTimeUnit]);
   // Both editors store flat names. Show one direct source choice, not a group tree.
   const activeSourceSelection=rankingType==='source'?sourceGroup:'';
   const totalChart=rankingType==='total'&&Boolean(targetScopes.length);
@@ -285,6 +299,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       const slot=trendBucket(cursor.toISOString().slice(0,10),queryRange.bucket);
       if(slot&&!buckets.has(slot.key))buckets.set(slot.key,{
         period:slot.label,total:0,
+        start_date:slot.start,end_date:slot.end,
         partial:slot.start<start||slot.end>limit||slot.end>=queryEndDate
       });
     }
@@ -386,6 +401,15 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     value:categoryCatalog.find(row=>row.term===term)?.item_count||0
   })),[displayedCategories,categoryCatalog,rankingType]);
   const basicTrend=totalChart?totalTrend:placeChart?categoryTrend:resolvedAdminSource.rows;
+  const chartTrend=useMemo(()=>rowsWithinFeatureFocusRange(basicTrend,sharedRange),
+    [basicTrend,sharedRange?.startDate,sharedRange?.endDate]);
+  const onFocusPeriod=row=>{
+    const range=featureFocusRangeFromRow(row);
+    if(!range)return;
+    selectFocus({feature:'statics',kind:'period',
+      id:range.startDate+':'+range.endDate,label:String(row.period||range.startDate)});
+    setFocusRange(range);
+  };
   const basicSeries=totalChart?[]:placeChart?categorySeries:resolvedAdminSource.series;
   const basicDistribution=totalChart?[]:placeChart?categoryDistribution:resolvedAdminSource.distribution;
   // One grouped source-name index for the active chart, not one full scan
@@ -560,11 +584,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       </>:null}
       </div>
       {showTotalOverview?<StatisticsDashboardKpis label="作品總數" items={[
-        {key:'records',label:'作品總數',value:basicTrend
+        {key:'records',label:'作品總數',value:chartTrend
           .reduce((sum,row)=>sum+Number(row.total||0),0).toLocaleString()},
-        {key:'active',label:'活躍時段',value:basicTrend
+        {key:'active',label:'活躍時段',value:chartTrend
           .filter(row=>Number(row.total)>0).length.toLocaleString()},
-        {key:'completed',label:'完整觀察時段',value:basicTrend
+        {key:'completed',label:'完整觀察時段',value:chartTrend
           .filter(row=>!row.partial).length.toLocaleString()}
       ]}/>:null}
     </div>
@@ -580,7 +604,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {featureDataErrorMessage(totalDaily.error,UI_COPY)}
     </p>:null}
     {showTotalOverview?<>
-      <StatisticsInsightsPanel rows={basicTrend} range={queryRange}
+      <StatisticsInsightsPanel rows={chartTrend} range={queryRange}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
         idPrefix="scope-stat" showMethodologyNote={scopeId!=='lo3rwang'}/>
       <StatisticsDetails summary="標準統計圖（折線、長條、面積與組合圖）">
@@ -594,8 +618,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           </label>
           <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel}
             range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart key={'total:'+effectiveChartType} type={effectiveChartType} rows={basicTrend}
-              series={[]} totalKey="total" height={420} foldBlank={foldBlank}/>
+            <StatisticsMultiChart key={'total:'+effectiveChartType} type={effectiveChartType} rows={chartTrend}
+              series={[]} totalKey="total" height={420} foldBlank={foldBlank}
+              onPeriodClick={onFocusPeriod}/>
           </StatisticsChartFrame>
         </section>}
       </StatisticsDetails>
@@ -613,7 +638,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
         {key:'records',label:t('uiExtra.statisticsView.dashboardRecords'),value:displaySummary.total.toLocaleString()},
         {key:'categories',label:t('uiExtra.statisticsView.dashboardCategoryCount'),value:(placeChart?categoryCatalog.length:displaySummary.sources.length).toLocaleString()},
         {key:'active',label:t('uiExtra.statisticsView.dashboardActiveBuckets'),
-          value:basicTrend.filter(row=>(placeChart
+          value:chartTrend.filter(row=>(placeChart
             ?basicSeries.reduce((sum,field)=>sum+(Number(row[field.key])||0),0)
             :Number(row.total))>0).length.toLocaleString()}
       ]}/>
@@ -624,10 +649,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             <p>{displaySummary.startDate&&displaySummary.endDate?displaySummary.startDate+' ～ '+displaySummary.endDate:''}</p>
           </header>
           <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart key={rankingType+':'+effectiveChartType} type={effectiveChartType} rows={basicTrend}
+            <StatisticsMultiChart key={rankingType+':'+effectiveChartType} type={effectiveChartType} rows={chartTrend}
               series={basicSeries} distribution={basicDistribution}
               totalKey={rankingType==='total'?'total':''}
-              foldBlank={foldBlank} height={420}/>
+              foldBlank={foldBlank} height={420} onPeriodClick={onFocusPeriod}/>
           </StatisticsChartFrame>
         </section>
         <aside className="statistics-dashboard__panel statistics-dashboard__panel--insights" aria-label={t('uiExtra.statisticsView.dashboardDistributionTitle')}>

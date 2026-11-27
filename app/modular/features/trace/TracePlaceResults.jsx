@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
+import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
 import {timeUnitBucket} from '../../../loc/preferences/default-time-unit.mjs';
 import dynamic from 'next/dynamic';
@@ -17,14 +18,17 @@ import {selectGalaxyIdentity} from '../../../loc/galaxy/galaxy-query';
 import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 import {galaxyReadColumnsFor} from '../../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
+import {useFeatureFocus} from '../../feature-focus';
+import {featureArticleFromRow} from '../../feature-focus-state.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
 const PAGE_SIZE=100;
 const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
-function TraceWork({row,scope,timeLabel=''}){
+function TraceWork({row,scope,place,timeLabel=''}){
   const [opened,setOpened]=useState(false);
+  const {selectFocus}=useFeatureFocus(scope?.id||'');
   const detail=useAsyncResource({
     queryKey:['trace-work-uid',scope?.id,row.uid],
     enabled:opened&&row.extract===true&&Boolean(scope?.galaxy&&row.uid),
@@ -55,18 +59,27 @@ function TraceWork({row,scope,timeLabel=''}){
       error={detail.error?String(detail.error.message||detail.error):''}
       content={String(article?.content||'')} showToggle={false}/>
     <button type="button" className="loc-button" aria-expanded={opened}
-      onClick={()=>setOpened(value=>!value)}>{opened?'收合文章':'閱讀文章'}</button>
+      onClick={()=>{
+        if(!opened)selectFocus({feature:'trace',kind:'article',id:String(row.uid),
+          label:String(row.title||'未命名文章'),
+          article:featureArticleFromRow({...row,trace_place:place},scope?.id||'')});
+        setOpened(value=>!value);
+      }}>{opened?'收合文章':'閱讀文章'}</button>
     </>:<span className='scope-status'>僅顯示列表，禁止閱讀全文</span>}
   </Article>;
 }
 
 export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId='',period=null,
-  tab='articles',sourceName='',mediaType='',dateRange=null,timeMode='none',defaultSort='desc',allPlacedArticles=false}){
+  tab='articles',sourceName='',mediaType='',dateRange=null,timeMode='none',defaultSort='desc',allPlacedArticles=false,
+  onDailyRows=null}){
+  const {focus,dateRange:sharedRange,setFocusRange,clearFocusRange}=useFeatureFocus(scopeId);
+  const reduceMotion=useReducedMotion();
   const [sort,setSort]=useState(defaultSort);
+  const [selectedVisitDay,setSelectedVisitDay]=useState('');
   useEffect(()=>setSort(defaultSort),[defaultSort]);
   const [chartType,setChartType]=useState('bar');
   const defaultTimeUnit=useDefaultTimeUnit();
-  const viewUnit=defaultTimeUnit==='auto'?'month':defaultTimeUnit;
+  const viewUnit=tab==='timeline'?'day':defaultTimeUnit==='auto'?'month':defaultTimeUnit;
   const name=String(place?.title||'').trim();
   const isMap=place?.trace_type==='path'||place?.trace_type==='trace';
   const targetScope=String(place?.source_scope||scopeId||'').trim();
@@ -75,10 +88,18 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const nearestPlaceIds=useMemo(()=>nearestTracePlaceIds(placeIds,anchors,place),[placeIds,anchors,place]);
   const placeLabels=useMemo(()=>traceArticleLabels(place,[...anchors,...maps]),[place,anchors,maps]);
   const placesKey=placeIds.join('|');
-  const startDate=validDate(dateRange?.startDate)?dateRange.startDate
-    :validDate(period?.start_date)?String(period.start_date).slice(0,10):'';
-  const endDate=validDate(dateRange?.endDate)?dateRange.endDate
-    :validDate(period?.end_date)?String(period.end_date).slice(0,10):'';
+  const activeRange=sharedRange||dateRange;
+  const startDate=selectedVisitDay||(
+    validDate(activeRange?.startDate)?activeRange.startDate:
+      validDate(period?.start_date)?String(period.start_date).slice(0,10):'');
+  const endDate=selectedVisitDay||(
+    validDate(activeRange?.endDate)?activeRange.endDate:
+      validDate(period?.end_date)?String(period.end_date).slice(0,10):'');
+  useEffect(()=>{
+    if(!selectedVisitDay)return;
+    if(sharedRange?.startDate!==selectedVisitDay||sharedRange?.endDate!==selectedVisitDay)
+      setSelectedVisitDay('');
+  },[selectedVisitDay,sharedRange?.startDate,sharedRange?.endDate]);
   const timeRecords=useAsyncResource({
     queryKey:['trace-saved-time-labels',targetScope,timeMode],
     enabled:timeMode!=='none'&&tab==='articles'&&Boolean(targetScope),
@@ -111,7 +132,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const list=useAsyncInfiniteResource({
     queryKey:['trace-articles-v5',allPlacedArticles,targetScope,place?.uid||'',placesKey,startDate,endDate,sourceFilter,sort,
       nearestPlaceIds.join('|')],
-    enabled:enabled&&tab==='articles'&&!selectedMediaType,
+    enabled:enabled&&(tab==='articles'||Boolean(selectedVisitDay))&&!selectedMediaType,
     initialPageParam:sort==='nearest'?{placeIndex:0,offset:0}:0,
     getNextPageParam:page=>page.hasMore?page.nextOffset:undefined,
     queryFn:async({pageParam,signal})=>{
@@ -269,6 +290,27 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     if(selectedMediaType)return mediaRows;
     return (list.data?.pages||[]).flatMap(p=>p.rows||[]);
   },[list.data,selectedMediaType,mediaRows]);
+  const visitDays=useMemo(()=>{
+    const byDay=new Map(),wanted=new Set(placeIds);
+    for(const row of summary.data?.rows||[]){
+      const day=String(row.day||'').slice(0,10);
+      if(!wanted.has(row.category)||!validDate(day))continue;
+      byDay.set(day,(byDay.get(day)||0)+(Number(row.item_count)||0));
+    }
+    return [...byDay].map(([day,count])=>({day,count}))
+      .sort((left,right)=>right.day.localeCompare(left.day));
+  },[summary.data,placesKey]);
+  const mapDayRows=useMemo(()=>{
+    const wanted=new Set(placeIds),byKey=new Map();
+    for(const row of summary.data?.rows||[]){
+      const day=String(row.day||'').slice(0,10),category=String(row.category||'');
+      if(!wanted.has(category)||!validDate(day))continue;
+      const title=placeLabels.get(category)||category,key=day+'|'+title;
+      byKey.set(key,{day,category:title,item_count:(byKey.get(key)?.item_count||0)+(Number(row.item_count)||0)});
+    }
+    return [...byKey.values()];
+  },[summary.data,placesKey,placeLabels]);
+  useEffect(()=>{onDailyRows?.(tab==='timeline'?mapDayRows:[]);},[onDailyRows,tab,mapDayRows]);
   const verified=useMemo(()=>{
     const wanted=new Set(placeIds),periods=new Map(),places=new Map();
     for(const row of summary.data?.rows||[]){
@@ -306,15 +348,29 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     name:placeName,value:count
   })),[verified.places]);
 
-  if(!name)return <section className="loc-card loc-trace-works" aria-label="地圖下方文章報表">
-    <h2>文章列表／時間長河／統計圖</h2>
+  const rangeFromTimeline=item=>{
+    const startDate=String(item?.start||item?.raw?.start_date||'').slice(0,10);
+    const rawEnd=String(item?.end||item?.raw?.end_date||startDate).slice(0,10);
+    const endMs=Date.parse(rawEnd+'T00:00:00Z');
+    const startMs=Date.parse(startDate+'T00:00:00Z');
+    const endDate=endMs>startMs?new Date(endMs-86400000).toISOString().slice(0,10):startDate;
+    if(!validDate(startDate)||!validDate(endDate)||!focus)return;
+    setFocusRange({startDate,endDate});
+  };
+
+  if(!name)return <section className="loc-card loc-trace-works" aria-label="地圖下方地點時間">
+    <h2>地點時間</h2>
     <p className="scope-status">選擇一個空間定錨點、路線圖或痕跡圖，再選時期；報表在這裡展開，不會跳到搜尋。</p>
   </section>;
-  const loading=tab==='articles'?(selectedMediaType?mediaFiltered.isPending:list.isPending):summary.isPending;
-  const error=tab==='articles'?(selectedMediaType?mediaFiltered.error:list.error):summary.error;
-  return <section className="loc-card loc-trace-works" aria-label="文章報表">
+  const showingVisitDay=tab==='timeline'&&Boolean(selectedVisitDay);
+  const loading=showingVisitDay?(selectedMediaType?mediaFiltered.isPending:list.isPending):
+    tab==='articles'?(selectedMediaType?mediaFiltered.isPending:list.isPending):summary.isPending;
+  const error=showingVisitDay?(selectedMediaType?mediaFiltered.error:list.error):
+    tab==='articles'?(selectedMediaType?mediaFiltered.error:list.error):summary.error;
+  return <section className="loc-card loc-trace-works" aria-label={tab==='timeline'?'地點時間':'文章報表'}>
     <header className="loc-trace-works-title">
-      <div><p className="loc-eyebrow">文章報表</p><h2>文章列表／時間長河／統計圖</h2></div>
+      <div><p className="loc-eyebrow">{tab==='timeline'?'地點時間':'文章報表'}</p>
+        <h2>{tab==='timeline'?'地點關聯日期':'文章列表／時間長河／統計圖'}</h2></div>
       <span className="scope-status">{isMap?(place.trace_type==='trace'?'痕跡線段 '+place.anchor_list.length+' 段 · ':'路線 '+place.anchor_list.length+' 站 · '):''}
         {!enabled?'沒有可對應的打卡地點'
           :tab==='articles'?(listTotal==null?'按需載入中…':'已載入 '+listTotal+' 篇符合條件的文章')
@@ -347,9 +403,54 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
       loading={selectedMediaType?Boolean(mediaFiltered.isFetchingNextPage):Boolean(list.isPending||list.isFetchingNextPage)}
       error={error}
       onLoadMore={selectedMediaType?()=>mediaFiltered.fetchNextPage():list.fetchNextPage}
-      renderItem={row=><TraceWork key={targetScope+':'+row.uid} row={row} scope={scope}
+      renderItem={row=><TraceWork key={targetScope+':'+row.uid} row={row} scope={scope} place={place}
         timeLabel={timeLabelForRow(row)}/>}
     />:null}
+    {tab==='timeline'&&summary.data?<section className="loc-trace-visit-days" aria-label="地點到訪日期">
+      <div className="loc-trace-visit-days__heading">
+        <div><p className="loc-eyebrow">到訪日期</p>
+          <h3>{selectedVisitDay?'當日筆錄':'每次來到這裡的時間'}</h3></div>
+        {selectedVisitDay?<button type="button" className="loc-button"
+          onClick={()=>{setSelectedVisitDay('');clearFocusRange();}}>返回日期列表</button>:null}
+      </div>
+      <AnimatePresence mode="wait" initial={false}>
+        {selectedVisitDay?<motion.div key={'visit-day:'+selectedVisitDay}
+          className="loc-trace-visit-days__detail"
+          initial={reduceMotion?false:{opacity:0,y:8}}
+          animate={{opacity:1,y:0}}
+          exit={reduceMotion?{opacity:0}:{opacity:0,y:-5}}
+          transition={reduceMotion?{duration:0}:{duration:.2,ease:'easeOut'}}>
+          <time dateTime={selectedVisitDay}>{selectedVisitDay}</time>
+          {loading?<p className="scope-status" role="status">正在展開當日筆錄…</p>:null}
+          {!loading&&!error&&!rows.length?<p className="scope-status">這一天沒有可讀取的文章筆錄。</p>:null}
+          {rows.length?<IncrementalList items={rows} batchSize={PAGE_SIZE}
+            resetKey={['trace-day',targetScope,place?.uid,selectedVisitDay,sourceFilter,selectedMediaType,sort].join('|')}
+            className="loc-trace-works-list loc-public-article-list"
+            externalHasMore={selectedMediaType?Boolean(mediaFiltered.hasNextPage):Boolean(list.hasNextPage)}
+            loading={selectedMediaType?Boolean(mediaFiltered.isFetchingNextPage):Boolean(list.isFetchingNextPage)}
+            error={error}
+            onLoadMore={selectedMediaType?()=>mediaFiltered.fetchNextPage():list.fetchNextPage}
+            renderItem={row=><TraceWork key={targetScope+':'+row.uid} row={row} scope={scope} place={place}
+              timeLabel={timeLabelForRow(row)}/>}/>:null}
+        </motion.div>:<motion.ol key="visit-days" className="loc-trace-visit-days__list"
+          initial={reduceMotion?false:{opacity:0,y:6}}
+          animate={{opacity:1,y:0}}
+          exit={reduceMotion?{opacity:0}:{opacity:0,y:-4}}
+          transition={reduceMotion?{duration:0}:{duration:.18,ease:'easeOut'}}>
+          {visitDays.length?visitDays.map((item,index)=><motion.li key={item.day}
+            initial={reduceMotion?false:{opacity:0,y:5}}
+            animate={{opacity:1,y:0}}
+            transition={reduceMotion?{duration:0}:{duration:.16,delay:Math.min(index*.018,.18)}}>
+            <button type="button" className="loc-trace-visit-days__day"
+              onClick={()=>{setSelectedVisitDay(item.day);setFocusRange({startDate:item.day,endDate:item.day});}}>
+              <time dateTime={item.day}>{item.day}</time>
+              <span>{item.count.toLocaleString()} 篇</span>
+              <span aria-hidden="true">查看當日筆錄 →</span>
+            </button>
+          </motion.li>):<li className="scope-status">這個時間範圍內沒有到訪日期。</li>}
+        </motion.ol>}
+      </AnimatePresence>
+    </section>:null}
     {selectedMediaType&&mediaFiltered.hasNextPage&&tab!=='articles'?<p className="scope-status">
       媒體篩選的圖表只呈現已按需載入的頁面，並非整個區間的總量。
       <button type="button" className="loc-button" onClick={()=>mediaFiltered.fetchNextPage()}
@@ -360,8 +461,9 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         extraGroups={[{id:'trace-density',label:'文章月份密度',order:1,selectable:false}]}
         labelOf={()=>''} mode="source" heightVariant="double"
         windowStart={startDate} windowEnd={endDate}
+        onSelect={rangeFromTimeline}
       />:<p className="scope-status">目前沒有可顯示的時間資料。</p>}
-      <p className="scope-status">依 Galaxy.place_id 與文章日期統計；不將文章建立時間推定為實際造訪。</p>
+      <p className="scope-status">依地點關聯日期顯示；選取時間區段會同步目前焦點，不會改寫資料。</p>
     </div>:null}
     {tab==='statistics'&&!selectedMediaType&&keywordGroups.isPending?
       <p className="scope-status">正在讀取這些地點的關鍵詞分組統計…</p>:null}

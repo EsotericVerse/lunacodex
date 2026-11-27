@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {useReducedMotion} from 'motion/react';
 import {useUiLocale} from '../../../i18n/ui-locale';
 import {createTraceMap} from './trace-map-engine';
 import {spaceGraphGeojson} from './space-graph-geojson.mjs';
@@ -90,6 +91,7 @@ const STRINGS={
 };
 
 export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,routeOnly=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026,onReady=null}){
+  const reduceMotion=useReducedMotion();
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
   const containerRef=useRef(null);
@@ -141,6 +143,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
         anchors:routeOnly?[]:spatialData?.anchors||[],
         showAnchorPopup:!publicTrace,
         territoryMode,
+        reduceMotion,
         onGaugeVisibilityChange:visible=>{if(active)gaugeVisibleRef.current?.(visible);},
         onSelect:id=>{if(active)setSelected(id);},
         onAnchorSelect:!selectingLocation?anchor=>{if(active)anchorSelectRef.current?.(anchor);}:null,

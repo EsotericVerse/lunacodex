@@ -380,9 +380,68 @@
   color:var(--loc-text);
   line-height:1.45;
 }
+.loc-trace-visit-days{
+  display:grid;
+  gap:.7rem;
+  margin:.75rem 0;
+  padding:.85rem;
+  border:1px solid var(--loc-line-soft);
+  border-radius:1rem;
+  background:color-mix(in srgb,var(--loc-panel-2) 84%,transparent);
+  box-shadow:0 10px 28px color-mix(in srgb,var(--loc-shadow, #000) 9%,transparent);
+  backdrop-filter:blur(16px) saturate(1.12);
+}
+.loc-trace-visit-days__heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+}
+.loc-trace-visit-days__heading h3{
+  margin:.15rem 0 0;
+  color:var(--loc-heading);
+  font-size:1.02rem;
+}
+.loc-trace-visit-days__list{
+  display:grid;
+  gap:.38rem;
+  max-height:min(34vh,300px);
+  margin:0;
+  padding:0 .2rem 0 0;
+  overflow:auto;
+  list-style:none;
+  scrollbar-color:var(--loc-line) transparent;
+}
+.loc-trace-visit-days__day{
+  display:grid;
+  grid-template-columns:minmax(7.2rem,.8fr) auto minmax(8rem,1fr);
+  align-items:center;
+  width:100%;
+  gap:.6rem;
+  padding:.65rem .72rem;
+  border:1px solid var(--loc-line-soft);
+  border-radius:.72rem;
+  color:var(--loc-text);
+  background:color-mix(in srgb,var(--loc-panel) 88%,transparent);
+  text-align:left;
+  transition:border-color .18s ease,background-color .18s ease,transform .18s ease;
+}
+.loc-trace-visit-days__day:hover,.loc-trace-visit-days__day:focus-visible{
+  border-color:var(--loc-accent-border);
+  background:color-mix(in srgb,var(--loc-accent-soft) 42%,var(--loc-panel));
+  transform:translateY(-1px);
+}
+.loc-trace-visit-days__day time{font-variant-numeric:tabular-nums;font-weight:700;color:var(--loc-heading)}
+.loc-trace-visit-days__day>span:nth-child(2){color:var(--loc-accent);font-size:.8rem;font-weight:700}
+.loc-trace-visit-days__day>span:last-child{justify-self:end;color:var(--loc-muted);font-size:.77rem}
+.loc-trace-visit-days__detail{display:grid;gap:.6rem;max-height:min(44vh,420px);overflow:auto}
+.loc-trace-visit-days__detail>time{font-size:.9rem;font-weight:700;color:var(--loc-accent);font-variant-numeric:tabular-nums}
 @media(max-width:680px){
   .loc-trace-place-journal{gap:.25rem .55rem;padding:.4rem 0;}
   .loc-trace-place-journal__eyebrow{flex-basis:100%;}
+  .loc-trace-visit-days{padding:.7rem;}
+  .loc-trace-visit-days__day{grid-template-columns:minmax(6.8rem,1fr) auto;}
+  .loc-trace-visit-days__day>span:last-child{grid-column:1/-1;justify-self:start;}
 }
 
 /* Annual strategy territory: the second Trace map, composed from real place IDs.

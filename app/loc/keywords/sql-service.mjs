@@ -1,7 +1,6 @@
 import {KEYWORD_SCAN_START_ROWS,KEYWORD_SCAN_CHECKPOINT_ROWS}
   from './item-count-analysis.mjs';
 import {sql} from 'kysely';
-import {computeClient,keywordComputeAbsorber} from '../compute/runtime.mjs';
 // LOC Keyword patterns are the only literal match source. Item.attr.uid links
 // Pattern Anchors; Pattern.num stores occurrences while Item/Group.attr.total
 // retains class-level aggregate totals. Class completion remains in keyword_meta.
@@ -501,9 +500,8 @@ export async function analyzeKeywordScope(db,scope,classUid,{
       return q.execute();
     }
   });
-  const remoteAbsorb=keywordComputeAbsorber(await computeClient(db));
   const result=await analyzeItemKeywordCounts({
-    ...itemScope(tree),patterns:tree.patterns,expectedCount,readMetadataPage:reader,remoteAbsorb,
+    ...itemScope(tree),patterns:tree.patterns,expectedCount,readMetadataPage:reader,
     minChars:Math.max(0,Number(cfg.keyword_min_chars)||0),
     pageSize:KEYWORD_SCAN_START_ROWS,resume,
     maxRowsPerRun:KEYWORD_ROWS_PER_REQUEST,

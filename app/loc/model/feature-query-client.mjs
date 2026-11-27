@@ -1,5 +1,6 @@
 import {queryGalaxyRecords} from '../actions/galaxy/queries.mjs';
 import {queryAnchorFeature} from '../actions/anchor/queries.mjs';
+import {queryPublicSearchPatternIndex} from '../actions/search/patterns.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Named fixed record/Anchor projections. All variable values are validated
 // by the server against published Scope and ZModel model families.
@@ -17,6 +18,8 @@ export const readGalaxyRecords=(params,options={})=>
 export const readAnchorFeature=(params,options={})=>
   readFixedOperation('anchor-feature',params,{...options,
     editor:options.editor===true});
+export const readPublicSearchPatternIndex=scopeIds=>
+  queryPublicSearchPatternIndex({scopeIds});
 export async function readAllAnchorFeature({scope,family,types,startDate,endDate,
   signal=null,editor=false}={}){
   const rows=[],seen=new Set();let cursor;
