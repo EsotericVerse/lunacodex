@@ -26,7 +26,6 @@ import {
   TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceMemberUids,
   readTraceMapIndex,readCurrentTraceAnchors
 } from './trace/trace-data';
-import {useFeatureFocus} from '../feature-focus';
 
 // A Current route loads only its members. Without a saved route, show the
 // Scope's saved anchors automatically.
@@ -54,7 +53,6 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const translate=useUiText();
   const t=key=>translate(TEXT+key);
   const supported=TRACE_SCOPES.includes(scopeId);
-  const {selectFocus}=useFeatureFocus(scopeId);
   const [selectedPlace,setSelectedPlace]=useState(null);
   const [placeDayRows,setPlaceDayRows]=useState([]);
   // Annual territory is the default; route/index data loads only after choosing the classic map.
@@ -101,8 +99,6 @@ function ScopeTrace({scopeId='lo3rwang'}){
     setReportTab(tracePlaceDefaultTab());
     setSelectedPlace(anchor);
     setPlaceDayRows([]);
-    selectFocus({feature:'trace',kind:'place',id:String(anchor.source_scope||scopeId)+':'+anchor.uid,
-      label:String(anchor.title||anchor.uid)});
   };
 
 
@@ -150,7 +146,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   // An explicit article-to-place URL is a requested drill-down. Open the
-  // place's visit dates while keeping the shared article focus in the shell.
+  // place's visit dates in this Trace view.
   useEffect(()=>{
     if(selectedPlaceUid)setMapMode('routes');
   },[selectedPlaceUid]);
@@ -159,9 +155,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
     if(!selectedPlaceUid||!place?.uid)return;
     setSelectedPlace(place);
     setReportTab('timeline');
-    selectFocus({feature:'trace',kind:'place',id:periodScopeId+':'+place.uid,
-      label:String(place.title||'未命名地點')});
-  },[selectedPlaceUid,deepLinkedPlace.data,periodScopeId,selectFocus]);
+  },[selectedPlaceUid,deepLinkedPlace.data]);
   // The deep-linked point is also injected into linkedSpatialData for the map.
   // Reuse the route preference from the existing management editor. "All"
   // is a temporary view, not a persisted default or a second preference key.
@@ -346,6 +340,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
         unfolds two paper leaves above it, never transforms the canvas. */}
     <div key={mapMode} className="loc-trace-map-transition" data-map-mode={mapMode}>
     {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId} onMapReady={()=>setReadyMapMode('territory')}/>:
+    <>
     <TraceMap publicTrace onReady={()=>setReadyMapMode('routes')}
       floatingControls={floatingControls} spatialData={demoSpatialData}
        placeDayRows={reportTab==='timeline'?placeDayRows:[]}
@@ -356,8 +351,8 @@ function ScopeTrace({scopeId='lo3rwang'}){
        onAnnualGaugeVisibleChange={setAnnualGaugeDetailVisible}
       focusLocation={selectedPlace||deepLinkedPlace.data||null} hideRoutePicker
       selectedRouteUid={isLoc?'':twoPointDemo?(demoRoute?.uid||''):(currentMap?.uid||'')}
-      showAnchorSearch={!isLoc} onAnchorSelect={chooseMapAnchor}>
-      {reportPlace?<div className="loc-trace-float-report" role="dialog" aria-modal="false"
+      showAnchorSearch={!isLoc} onAnchorSelect={chooseMapAnchor}/>
+      {reportPlace?<section className="loc-trace-place-report" role="region"
         aria-label={t('placeContent')+reportPlace.title}>
         <div className="loc-trace-float-heading">
           <strong>{reportPlace.title}</strong>
@@ -438,8 +433,8 @@ function ScopeTrace({scopeId='lo3rwang'}){
           tab={reportTab} sourceName={sourceName} mediaType={mediaType} dateRange={dateRange}
           timeMode='none' defaultSort='desc' onDailyRows={setPlaceDayRows}/>:null}
 
-      </div>:null}
-    </TraceMap>}
+      </section>:null}
+    </>}
       {readyMapMode===mapMode&&!reduceMotion?<div className="loc-trace-map-unfold" aria-hidden="true">
         <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--left"
           initial={{scaleX:1}} animate={{scaleX:0}}

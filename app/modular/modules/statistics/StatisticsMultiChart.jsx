@@ -72,7 +72,8 @@ export function foldEmptyTimeBuckets(rows=[],series=[],units={}){
 }
 export default function StatisticsMultiChart({
   type='line',rows=[],series=[],distribution=[],totalKey='',height=380,foldBlank=false,
-  barLayout='horizontal',onCategoryClick=null,onSeriesClick=null,onPeriodClick=null
+  barLayout='horizontal',onCategoryClick=null,onSeriesClick=null,onPeriodClick=null,
+  selectedPeriodKey='',activeCategoryKey=''
 }){
   useUiSection('uiExtra.statisticsView');
   useUiSection('uiExtra.chartLabels');
@@ -104,11 +105,16 @@ export default function StatisticsMultiChart({
   const axes=(<><CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
     <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
+    {selectedPeriodKey?<ReferenceLine x={selectedPeriodKey} stroke={CHART_ACCENT}
+      strokeWidth={2.5} strokeDasharray="5 3" label={{value:'已選時段',position:'insideTopRight',fill:TEXT,fontSize:10}}/>:null}
     <Tooltip content={<ThemedChartTooltip/>}/>
     {display.length>32?<Brush dataKey="period" height={24} travellerWidth={9} stroke={CHART_ACCENT}/>:null}
     {fields.length>1&&!['bar','composed'].includes(actual)?<Legend wrapperStyle={{fontSize:12}}/>:null}
   </>);
-  const colored=categories.map((item,i)=>({...item,fill:item.fill?themedDataColor(item.fill):pointColor(i)}));
+  const selectedCategoryKeys=new Set(Array.isArray(activeCategoryKey)
+    ?activeCategoryKey.map(String):activeCategoryKey?[String(activeCategoryKey)]:[]);
+  const colored=categories.map((item,i)=>({...item,fill:item.fill?themedDataColor(item.fill):pointColor(i),
+    active:selectedCategoryKeys.has(String(item.key))}));
   const comparison=useMemo(()=>radarPeriodComparison(time,fields),[time,fields]);
   const coverage=useMemo(()=>activePeriodCoverage(time,fields),[time,fields]);
   // Calculate averages on the original, complete timeline before shortening gaps.
@@ -195,7 +201,10 @@ export default function StatisticsMultiChart({
     <Bar {...animation} dataKey="value" fill="var(--loc-accent)" maxBarSize={28}
       cursor={onCategoryClick?'pointer':undefined}
       onClick={onCategoryClick?(_,index)=>onCategoryClick(colored[index]?.key):undefined}>
-      {colored.map(item=><Cell key={item.key} fill={item.fill}/>)}
+      {colored.map(item=><Cell key={item.key} fill={item.fill}
+        opacity={activeCategoryKey&&!item.active?0.42:1}
+        stroke={item.active?'var(--loc-heading)':'var(--loc-panel)'}
+        strokeWidth={item.active?2.5:1}/>)}
     </Bar>
   </BarChart>;
   else if(actual==='bar')chart=<BarChart data={display} margin={margin}>

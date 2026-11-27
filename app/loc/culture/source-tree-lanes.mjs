@@ -45,8 +45,9 @@ export function buildCultureSourceTreeLanes(taxonomy={},groupedSources=[],expand
       path:row.path||[],root:row.root,groupId:'dual:source:'+row.uid,
       sourceKey:row.root+':'+row.uid,item_count:current?.count||0,
       sites:[...(current?.sites||[])],collapsible:activeChildren.length>0,
-      selectable:activeChildren.length===0&&Boolean(current?.count)&&
-        ['domain','from'].includes(row.type),
+      // Every category with actual source rows can open its aggregate article
+      // list; its disclosure control remains a separate action.
+      selectable:Boolean(current?.count&&current?.sites?.size),
       expanded:expanded.has(row.uid)
     });
     if(expanded.has(uid))for(const child of activeChildren)append(child);

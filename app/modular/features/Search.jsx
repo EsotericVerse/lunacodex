@@ -33,8 +33,6 @@ import {useEditDock} from '../edit-dock';
 import {scopeHref} from '../routing/scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../routing/feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
-import {useFeatureFocus} from '../feature-focus';
-import {featureArticleFromRow} from '../feature-focus-state.mjs';
 import {parseSearchQuery} from '../../loc/search/query.mjs';
 import {readGalaxyRecords,readAnchorFeature,readPublicSearchPatternIndex}
   from '../../loc/model/feature-query-client.mjs';
@@ -260,7 +258,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const t=useUiText();
   const defaultTimeUnit=useDefaultTimeUnit();
   const {scopeId,scope}=useScopeRuntime();
-  const {selectFocus,dateRange:sharedFocusRange,article:focusedArticle}=useFeatureFocus(scopeId);
   // Explicit management route plus verified Scope grant controls editing.
   // The independent session-only switch never grants database access.
   const adminListRequested=Boolean(legacyManagementRoute);
@@ -337,7 +334,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // An old detail request must never put a prior article back after selection.
   const detailEpoch=useRef(0);
   const searchId=useRef(0);
-  const carriedArticleRef=useRef('');
   const lastTextSearchAt=useRef(0);
   // Anchors the status/results block so a fresh search can scroll the
   // results into view instead of leaving the viewport on the search form.
@@ -345,14 +341,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const scrollPending=useRef(false);
   const [arrivalVersion,setArrivalVersion]=useState(0);
   const reduceMotion=useReducedMotion();
-  function focusArticle(row={}){
-    const uid=String(row.uid||row.resourceId||'').trim();
-    if(!uid)return;
-    carriedArticleRef.current=uid;
-    const title=String(row.title||row.name||uid).trim();
-    selectFocus({feature:'search',kind:'article',id:uid,label:title,
-      article:featureArticleFromRow(row,scopeId)});
-  }
   useEffect(()=>{
     if(activePatternSuggestion<0||!patternSuggestionsOpen)return;
     document.getElementById('scope-search-query-pattern-option-'+activePatternSuggestion)?.scrollIntoView({block:'nearest'});
@@ -683,7 +671,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       }
       if(id!==searchId.current)return;
       if(!detail)throw new Error(UI_COPY.search.notFound);
-      focusArticle({...detail,scopeId:detailScope});
       const result=toResult({...detail,resolved_links:detail.links||[]},detail.site||UI_COPY.search.displaySource,detailScope);
       setResults([result]);
       setReaderResult(result);
@@ -737,11 +724,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(fillPlace)setBulkPlace(fillPlace);
     const value=String(searchParams?.get('q')||'').trim();
     if(identity){setQuery('');executeIdentity(identity);return;}
-    const carriedIdentity=!value&&!place&&focusedArticle?.uid&&
-      carriedArticleRef.current!==String(focusedArticle.uid)&&
-      (scopeId==='loc'||focusedArticle.scopeId===scopeId)
-      ?String(focusedArticle.uid):'';
-    if(carriedIdentity){carriedArticleRef.current=carriedIdentity;setQuery('');executeIdentity(carriedIdentity);return;}
     const filters={
       contentType:managementMode?String(searchParams?.get('type')||''):'',
       sourceFilter:managementMode?String(searchParams?.get('source')||''):'',
@@ -755,14 +737,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const term=place||value;
     setPlaceOnly(Boolean(place));
     if(term){setQuery(term);void executeSearch(term,null,{overrideOptions:{...filters,placeOnly:managementMode&&Boolean(place),browse:false,sortDirection:articleSort}});}
-  },[searchParams,scopeId,scopesQuery.isSuccess,scopesQuery.data,managementMode,managementAuthorized,focusedArticle?.uid,focusedArticle?.scopeId]);
-
-  useEffect(()=>{
-    if(managementMode)return;
-    if(searchParams?.get('from')||searchParams?.get('to'))return;
-    setStartDate(sharedFocusRange?.startDate||'');
-    setEndDate(sharedFocusRange?.endDate||'');
-  },[managementMode,searchParams,sharedFocusRange?.startDate,sharedFocusRange?.endDate]);
+  },[searchParams,scopeId,scopesQuery.isSuccess,scopesQuery.data,managementMode,managementAuthorized]);
 
 
 
@@ -778,7 +753,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return;
     }
     if(result.resourceType!=='galaxy'||!result.editableTable)return;
-    focusArticle(result);
     setReaderResult(result);
     setFullTextKey(result.key);
     setFullText('');
@@ -789,7 +763,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       const fullRow=await loadGalaxyDetail(result);
       if(request!==detailEpoch.current)return;
       if(!fullRow)throw new Error(UI_COPY.search.fullTextNotFound);
-      focusArticle({...fullRow,scopeId:result.scopeId});
       setFullText(workDisplayText(fullRow.content||''));
       setFullTextRow(fullRow);
       setReaderResult({...toResult(fullRow,fullRow.site||result.source,result.scopeId),key:result.key});

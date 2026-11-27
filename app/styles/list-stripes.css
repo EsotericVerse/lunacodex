@@ -69,6 +69,8 @@
 .scope-article-page-nav>span{font-size:.82rem;color:var(--loc-muted);font-variant-numeric:tabular-nums}
 .scope-culture-source-work-scroll{display:grid;gap:.28rem}
 .scope-river-group-action{display:flex;align-items:center;justify-content:space-between;gap:.4rem;min-width:0;width:100%}
+.scope-river-group-action--expandable>.scope-river-group-button{flex:1 1 auto;min-width:0;text-align:start}
+.scope-culture-source-open-cell{display:flex;align-items:center;justify-content:center;min-width:1.8rem}
 .scope-river-group-action__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .scope-river-article-open{
   display:inline-grid;place-items:center;flex:0 0 1.65rem;width:1.65rem;height:1.65rem;

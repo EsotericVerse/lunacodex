@@ -18,17 +18,15 @@ import {selectGalaxyIdentity} from '../../../loc/galaxy/galaxy-query';
 import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 import {galaxyReadColumnsFor} from '../../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
-import {useFeatureFocus} from '../../feature-focus';
-import {featureArticleFromRow} from '../../feature-focus-state.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
 const PAGE_SIZE=100;
 const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
-function TraceWork({row,scope,place,timeLabel=''}){
-  const [opened,setOpened]=useState(false);
-  const {selectFocus}=useFeatureFocus(scope?.id||'');
+function TraceWork({row,scope,timeLabel='',initiallyOpen=false}){
+  const [opened,setOpened]=useState(initiallyOpen);
+  useEffect(()=>setOpened(initiallyOpen),[initiallyOpen,row?.uid]);
   const detail=useAsyncResource({
     queryKey:['trace-work-uid',scope?.id,row.uid],
     enabled:opened&&row.extract===true&&Boolean(scope?.galaxy&&row.uid),
@@ -59,23 +57,26 @@ function TraceWork({row,scope,place,timeLabel=''}){
       error={detail.error?String(detail.error.message||detail.error):''}
       content={String(article?.content||'')} showToggle={false}/>
     <button type="button" className="loc-button" aria-expanded={opened}
-      onClick={()=>{
-        if(!opened)selectFocus({feature:'trace',kind:'article',id:String(row.uid),
-          label:String(row.title||'未命名文章'),
-          article:featureArticleFromRow({...row,trace_place:place},scope?.id||'')});
-        setOpened(value=>!value);
-      }}>{opened?'收合文章':'閱讀文章'}</button>
+      onClick={()=>setOpened(value=>!value)}>{opened?'收合文章':'閱讀文章'}</button>
     </>:<span className='scope-status'>僅顯示列表，禁止閱讀全文</span>}
   </Article>;
+}
+function TraceArticleChoice({row,selected=false,onSelect}){
+  return <button type="button" className="loc-trace-article-choice"
+    aria-pressed={selected} onClick={onSelect}>
+    <span>{row.title||'未命名文章'}</span>
+    <time>{String(row.date||row.createtime||'').slice(0,10)}</time>
+  </button>;
 }
 
 export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId='',period=null,
   tab='articles',sourceName='',mediaType='',dateRange=null,timeMode='none',defaultSort='desc',allPlacedArticles=false,
   onDailyRows=null}){
-  const {focus,dateRange:sharedRange,setFocusRange,clearFocusRange}=useFeatureFocus(scopeId);
   const reduceMotion=useReducedMotion();
   const [sort,setSort]=useState(defaultSort);
   const [selectedVisitDay,setSelectedVisitDay]=useState('');
+  const [selectedTimeRange,setSelectedTimeRange]=useState(null);
+  const [selectedArticleUid,setSelectedArticleUid]=useState('');
   useEffect(()=>setSort(defaultSort),[defaultSort]);
   const [chartType,setChartType]=useState('bar');
   const defaultTimeUnit=useDefaultTimeUnit();
@@ -88,18 +89,13 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const nearestPlaceIds=useMemo(()=>nearestTracePlaceIds(placeIds,anchors,place),[placeIds,anchors,place]);
   const placeLabels=useMemo(()=>traceArticleLabels(place,[...anchors,...maps]),[place,anchors,maps]);
   const placesKey=placeIds.join('|');
-  const activeRange=sharedRange||dateRange;
+  const activeRange=selectedTimeRange||dateRange;
   const startDate=selectedVisitDay||(
     validDate(activeRange?.startDate)?activeRange.startDate:
       validDate(period?.start_date)?String(period.start_date).slice(0,10):'');
   const endDate=selectedVisitDay||(
     validDate(activeRange?.endDate)?activeRange.endDate:
       validDate(period?.end_date)?String(period.end_date).slice(0,10):'');
-  useEffect(()=>{
-    if(!selectedVisitDay)return;
-    if(sharedRange?.startDate!==selectedVisitDay||sharedRange?.endDate!==selectedVisitDay)
-      setSelectedVisitDay('');
-  },[selectedVisitDay,sharedRange?.startDate,sharedRange?.endDate]);
   const timeRecords=useAsyncResource({
     queryKey:['trace-saved-time-labels',targetScope,timeMode],
     enabled:timeMode!=='none'&&tab==='articles'&&Boolean(targetScope),
@@ -290,6 +286,11 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     if(selectedMediaType)return mediaRows;
     return (list.data?.pages||[]).flatMap(p=>p.rows||[]);
   },[list.data,selectedMediaType,mediaRows]);
+  useEffect(()=>{
+    const found=rows.find(row=>String(row.uid||'')===selectedArticleUid);
+    if(!found)setSelectedArticleUid(String(rows[0]?.uid||''));
+  },[rows,selectedArticleUid]);
+  const selectedArticle=rows.find(row=>String(row.uid||'')===selectedArticleUid)||null;
   const visitDays=useMemo(()=>{
     const byDay=new Map(),wanted=new Set(placeIds);
     for(const row of summary.data?.rows||[]){
@@ -354,8 +355,9 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     const endMs=Date.parse(rawEnd+'T00:00:00Z');
     const startMs=Date.parse(startDate+'T00:00:00Z');
     const endDate=endMs>startMs?new Date(endMs-86400000).toISOString().slice(0,10):startDate;
-    if(!validDate(startDate)||!validDate(endDate)||!focus)return;
-    setFocusRange({startDate,endDate});
+    if(!validDate(startDate)||!validDate(endDate))return;
+    setSelectedVisitDay('');
+    setSelectedTimeRange({startDate,endDate});
   };
 
   if(!name)return <section className="loc-card loc-trace-works" aria-label="地圖下方地點時間">
@@ -394,24 +396,34 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     {tab==='articles'&&selectedMediaType&&!rows.length&&mediaFiltered.hasNextPage?
       <button type="button" className="loc-button" onClick={()=>mediaFiltered.fetchNextPage()}
         disabled={mediaFiltered.isFetchingNextPage}>繼續篩選下一頁</button>:null}
-    {tab==='articles'&&rows.length?<IncrementalList
-      items={rows}
-      batchSize={PAGE_SIZE}
-      resetKey={[targetScope,place?.uid,placesKey,startDate,endDate,sourceFilter,selectedMediaType,sort].join('|')}
-      className="loc-trace-works-list loc-public-article-list"
-      externalHasMore={selectedMediaType?Boolean(mediaFiltered.hasNextPage):Boolean(list.hasNextPage)}
-      loading={selectedMediaType?Boolean(mediaFiltered.isFetchingNextPage):Boolean(list.isPending||list.isFetchingNextPage)}
-      error={error}
-      onLoadMore={selectedMediaType?()=>mediaFiltered.fetchNextPage():list.fetchNextPage}
-      renderItem={row=><TraceWork key={targetScope+':'+row.uid} row={row} scope={scope} place={place}
-        timeLabel={timeLabelForRow(row)}/>}
-    />:null}
+    {tab==='articles'&&rows.length?<div className="loc-trace-article-workspace">
+      <aside className="loc-trace-article-workspace__list" aria-label="地點文章列表">
+        <IncrementalList
+          items={rows}
+          batchSize={PAGE_SIZE}
+          resetKey={[targetScope,place?.uid,placesKey,startDate,endDate,sourceFilter,selectedMediaType,sort].join('|')}
+          className="loc-trace-works-list loc-public-article-list loc-trace-article-choice-list"
+          externalHasMore={selectedMediaType?Boolean(mediaFiltered.hasNextPage):Boolean(list.hasNextPage)}
+          loading={selectedMediaType?Boolean(mediaFiltered.isFetchingNextPage):Boolean(list.isPending||list.isFetchingNextPage)}
+          error={error}
+          onLoadMore={selectedMediaType?()=>mediaFiltered.fetchNextPage():list.fetchNextPage}
+          renderItem={row=><TraceArticleChoice key={targetScope+':'+row.uid} row={row}
+            selected={String(row.uid)===selectedArticleUid}
+            onSelect={()=>setSelectedArticleUid(String(row.uid||''))}/>}
+        />
+      </aside>
+      <section className="loc-trace-article-workspace__detail" aria-label="選取文章內容">
+        {selectedArticle?<TraceWork key={targetScope+':'+selectedArticle.uid}
+          row={selectedArticle} scope={scope} timeLabel={timeLabelForRow(selectedArticle)} initiallyOpen/>
+          :<p className="scope-status">從左側選取一篇文章。</p>}
+      </section>
+    </div>:null}
     {tab==='timeline'&&summary.data?<section className="loc-trace-visit-days" aria-label="地點到訪日期">
       <div className="loc-trace-visit-days__heading">
         <div><p className="loc-eyebrow">到訪日期</p>
           <h3>{selectedVisitDay?'當日筆錄':'每次來到這裡的時間'}</h3></div>
         {selectedVisitDay?<button type="button" className="loc-button"
-          onClick={()=>{setSelectedVisitDay('');clearFocusRange();}}>返回日期列表</button>:null}
+          onClick={()=>{setSelectedVisitDay('');setSelectedTimeRange(null);}}>返回日期列表</button>:null}
       </div>
       <AnimatePresence mode="wait" initial={false}>
         {selectedVisitDay?<motion.div key={'visit-day:'+selectedVisitDay}
@@ -423,15 +435,25 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
           <time dateTime={selectedVisitDay}>{selectedVisitDay}</time>
           {loading?<p className="scope-status" role="status">正在展開當日筆錄…</p>:null}
           {!loading&&!error&&!rows.length?<p className="scope-status">這一天沒有可讀取的文章筆錄。</p>:null}
-          {rows.length?<IncrementalList items={rows} batchSize={PAGE_SIZE}
-            resetKey={['trace-day',targetScope,place?.uid,selectedVisitDay,sourceFilter,selectedMediaType,sort].join('|')}
-            className="loc-trace-works-list loc-public-article-list"
-            externalHasMore={selectedMediaType?Boolean(mediaFiltered.hasNextPage):Boolean(list.hasNextPage)}
-            loading={selectedMediaType?Boolean(mediaFiltered.isFetchingNextPage):Boolean(list.isFetchingNextPage)}
-            error={error}
-            onLoadMore={selectedMediaType?()=>mediaFiltered.fetchNextPage():list.fetchNextPage}
-            renderItem={row=><TraceWork key={targetScope+':'+row.uid} row={row} scope={scope} place={place}
-              timeLabel={timeLabelForRow(row)}/>}/>:null}
+          {rows.length?<div className="loc-trace-article-workspace loc-trace-article-workspace--day">
+            <aside className="loc-trace-article-workspace__list" aria-label="當日文章列表">
+              <IncrementalList items={rows} batchSize={PAGE_SIZE}
+                resetKey={['trace-day',targetScope,place?.uid,selectedVisitDay,sourceFilter,selectedMediaType,sort].join('|')}
+                className="loc-trace-works-list loc-public-article-list loc-trace-article-choice-list"
+                externalHasMore={selectedMediaType?Boolean(mediaFiltered.hasNextPage):Boolean(list.hasNextPage)}
+                loading={selectedMediaType?Boolean(mediaFiltered.isFetchingNextPage):Boolean(list.isFetchingNextPage)}
+                error={error}
+                onLoadMore={selectedMediaType?()=>mediaFiltered.fetchNextPage():list.fetchNextPage}
+                renderItem={row=><TraceArticleChoice key={targetScope+':'+row.uid} row={row}
+                  selected={String(row.uid)===selectedArticleUid}
+                  onSelect={()=>setSelectedArticleUid(String(row.uid||''))}/>}/>
+            </aside>
+            <section className="loc-trace-article-workspace__detail" aria-label="當日選取文章">
+              {selectedArticle?<TraceWork key={targetScope+':'+selectedArticle.uid}
+                row={selectedArticle} scope={scope} timeLabel={timeLabelForRow(selectedArticle)} initiallyOpen/>
+                :<p className="scope-status">從左側選取一篇文章。</p>}
+            </section>
+          </div>:null}
         </motion.div>:<motion.ol key="visit-days" className="loc-trace-visit-days__list"
           initial={reduceMotion?false:{opacity:0,y:6}}
           animate={{opacity:1,y:0}}
@@ -442,7 +464,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
             animate={{opacity:1,y:0}}
             transition={reduceMotion?{duration:0}:{duration:.16,delay:Math.min(index*.018,.18)}}>
             <button type="button" className="loc-trace-visit-days__day"
-              onClick={()=>{setSelectedVisitDay(item.day);setFocusRange({startDate:item.day,endDate:item.day});}}>
+              onClick={()=>{setSelectedVisitDay(item.day);setSelectedTimeRange({startDate:item.day,endDate:item.day});}}>
               <time dateTime={item.day}>{item.day}</time>
               <span>{item.count.toLocaleString()} 篇</span>
               <span aria-hidden="true">查看當日筆錄 →</span>
@@ -463,7 +485,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         windowStart={startDate} windowEnd={endDate}
         onSelect={rangeFromTimeline}
       />:<p className="scope-status">目前沒有可顯示的時間資料。</p>}
-      <p className="scope-status">依地點關聯日期顯示；選取時間區段會同步目前焦點，不會改寫資料。</p>
+      <p className="scope-status">依地點關聯日期顯示；選取時間區段會縮小目前地點的日期分析範圍，不會改寫資料。</p>
     </div>:null}
     {tab==='statistics'&&!selectedMediaType&&keywordGroups.isPending?
       <p className="scope-status">正在讀取這些地點的關鍵詞分組統計…</p>:null}

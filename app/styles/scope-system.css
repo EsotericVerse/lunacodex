@@ -1084,7 +1084,19 @@
 .scope-public-culture-panel{overflow:visible}
 .scope-public-culture-river .scope-period-timeline-wrap{overflow:visible}
 .scope-public-culture-river .scope-river-reveal-shell{overflow:visible}
-.scope-public-culture-river .scope-period-timeline{min-height:0;overflow:visible}
+.scope-public-culture-river .scope-period-timeline{
+  min-height:0;overflow:visible;
+  border:1px solid color-mix(in srgb,var(--loc-accent) 22%,var(--loc-line));
+  border-radius:var(--loc-ui-radius-md,14px);
+  background:linear-gradient(145deg,color-mix(in srgb,var(--loc-accent) 8%,var(--loc-panel)),
+    color-mix(in srgb,var(--loc-gold) 6%,var(--loc-panel-2)));
+}
+.scope-culture-classification-river .scope-culture-double-river{
+  padding:.5rem;border:1px solid color-mix(in srgb,var(--loc-accent) 18%,var(--loc-line));
+  border-radius:var(--loc-ui-radius-md,14px);
+  background:linear-gradient(145deg,color-mix(in srgb,var(--loc-accent) 6%,var(--loc-panel)),
+    color-mix(in srgb,var(--loc-gold) 5%,var(--loc-panel-2)));
+}
 /* A cheap compositor-only progress indicator while a large era's SQL daily
    buckets are being aggregated; never spin/redraw an entire timeline. */
 .scope-culture-density-loading{

@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState,useTransition} from 'react';
 import dynamic from 'next/dynamic';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {FeaturePage} from '../../modular/ui';
@@ -11,8 +11,6 @@ import {selectGalaxyIdentity} from '../galaxy/galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
 import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../../modular/routing/feature-navigation';
 import {scopeHref} from '../../modular/routing/scope-registry';
-import {useFeatureFocus} from '../../modular/feature-focus';
-import {featureArticleFromRow} from '../../modular/feature-focus-state.mjs';
 import {publicCultureSourceModel} from '../culture/public-source-river.mjs';
 import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../preferences/default-year-window.mjs';
@@ -20,6 +18,8 @@ import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mj
 import {unassignedPublicDateAnchors} from '../culture/time-trace-river.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
 import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
+import ActivityMotion from '../../modular/ActivityMotion';
+import {TERRITORY_STOPS,territoryLegendColor} from '../../modular/visual-palette.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{
   loading:()=> <div className='scope-culture-density-loading' role='status' aria-busy='true'>
@@ -31,17 +31,8 @@ const Article=dynamic(()=>import('../../modular/Article'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
 const NO_FOCUS=Object.freeze({});
 const datePart=value=>String(value||'').slice(0,10);
-// Initial camera is a *rolling* twelve months, not the complete history
-// and not the fixed Jan-Dec interval used by the article-density river.
-// Compute in Taiwan calendar dates so server/browser zones agree.
-export function publicTimeRiverRecentYear(date=new Date()){
-  const now=new Date(date);
-  if(!Number.isFinite(now.getTime()))throw new RangeError('Invalid Time River date');
-  const tw=new Date(now.getTime()+8*60*60*1000);
-  const end=tw.toISOString().slice(0,10);
-  tw.setUTCFullYear(tw.getUTCFullYear()-1);
-  return {start:tw.toISOString().slice(0,10),end};
-}
+const validDateKey=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))
+  &&Number.isFinite(Date.parse(String(value)+'T00:00:00Z'));
 function list(value){
   return Array.isArray(value)?value:[];
 }
@@ -61,12 +52,12 @@ function anchorModel(rows,start,end,expanded){
     .map(row=>[String(row.uid),row]));
   const dates=all.filter(row=>row.type==='date').map(row=>({
     ...row,date:datePart(attributes(row).date)
-  })).filter(row=>row.date);
+  })).filter(row=>validDateKey(row.date));
   const periodRange=row=>{
     const attr=attributes(row);
-    const from=list(attr.date||attr.dates).map(datePart).filter(Boolean);
+    const from=list(attr.date||attr.dates).map(datePart).filter(validDateKey);
     const links=list(attr.uid||attr.anchors).map(uid=>byUid.get(String(uid)))
-      .filter(Boolean).map(item=>datePart(attributes(item).date)).filter(Boolean);
+      .filter(Boolean).map(item=>datePart(attributes(item).date)).filter(validDateKey);
     const allDates=[...from,...links].sort();
     return {start:allDates[0]||'',end:allDates[allDates.length-1]||''};
   };
@@ -84,9 +75,11 @@ function anchorModel(rows,start,end,expanded){
   const eras=all.filter(row=>row.type==='era').sort((a,b)=>
     eraStart(a).localeCompare(eraStart(b))||
     String(a.uid).localeCompare(String(b.uid)));
-  // The first river is an era tree: collapsed rows contain only eras.
-  // Date anchors belong to their eras, never to a separate sidebar lane.
+  // The Culture river combines time structure and source density on one axis.
+  // Era spans remain segmented by their real Period windows; date anchors get
+  // a dedicated lane so they stay visible without opening a source branch.
   const groups=[],items=[],eraWindows=[];
+  const eraChoices=[];
   for(const era of eras){
     const uid=String(era.uid),attr=attributes(era);
     const periodUids=list(attr.period).map(String)
@@ -98,10 +91,8 @@ function anchorModel(rows,start,end,expanded){
           .localeCompare(periodRange(b).start||'9999-12-31')||
         String(a.uid).localeCompare(String(b.uid)));
     const expandedEra=expanded.includes(uid);
-    groups.push({id:'era:'+uid,label:era.title||'時代',
-      collapsible:true,expanded:expandedEra,order:groups.length});
-    const ranges=refs.map(periodRange);
-    const eraDates=list(attr.date||attr.dates).map(datePart).filter(Boolean).sort();
+    const ranges=refs.map(periodRange).filter(range=>range.start&&range.end);
+    const eraDates=list(attr.date||attr.dates).map(datePart).filter(validDateKey).sort();
     // Classify every date using actual era/period windows even while collapsed.
     // Never use the era's outer envelope, which can cover unrelated dates.
     const windows=[...ranges.filter(range=>range.start&&range.end),
@@ -109,49 +100,65 @@ function anchorModel(rows,start,end,expanded){
     eraWindows.push(...windows);
     const begins=[...ranges.map(r=>r.start),...eraDates].filter(Boolean).sort();
     const ends=[...ranges.map(r=>r.end),...eraDates].filter(Boolean).sort();
-    if(begins.length&&ends.length&&ends[ends.length-1]>=start&&begins[0]<=end){
-      items.push({id:'era:'+uid,entry_type:'era',uid,title:era.title||'時代',
-        group_key:'era:'+uid,group_label:era.title||'時代',
-        start_date:begins[0],end_date:ends[ends.length-1]});
+    if(begins.length&&ends.length)eraChoices.push({uid,title:era.title||'時代',
+      start_date:begins[0],end_date:ends[ends.length-1]});
+    const intersects=windows.some(range=>range.end>=start&&range.start<=end);
+    if(!intersects)continue;
+    groups.push({id:'era:'+uid,label:era.title||'時代',
+      collapsible:true,expanded:expanded.includes(uid),order:groups.length,
+      className:'scope-culture-layer-era'});
+    // Keep gaps between an Era's Periods visible. The Era row is a set of
+    // real, merged intervals, never one invented first-to-last envelope.
+    const eraSegments=[];
+    for(const range of [...ranges,...eraDates.map(day=>({start:day,end:day}))]
+      .filter(range=>range.start&&range.end)
+      .sort((a,b)=>a.start.localeCompare(b.start)||a.end.localeCompare(b.end))){
+      const previous=eraSegments.at(-1);
+      const nextDay=previous?datePart(new Date(Date.parse(previous.end+'T00:00:00Z')+86400000).toISOString()):'';
+      if(previous&&range.start<=nextDay){
+        if(range.end>previous.end)previous.end=range.end;
+      }else eraSegments.push({...range});
     }
-    // Collapsed eras show only the structural envelope. Generate
-    // individual dates and sub-periods after the user expands that era.
+    for(const [index,range] of eraSegments.entries()){
+      if(range.end<start||range.start>end)continue;
+      items.push({id:'era:'+uid+':segment:'+index,entry_type:'era',uid,
+        title:era.title||'時代',group_key:'era:'+uid,
+        group_label:era.title||'時代',start_date:range.start,
+        ...(range.end>range.start?{end_date:range.end}:{}),era_uid:uid});
+    }
+    // Period rows open inside the same timeline, above the source lanes.
     if(!expandedEra)continue;
-    // Match real date points against each era's own periods. Do not use
-    // the era's overall first/last date for matching: eras may have gaps.
-    for(const row of dates){
-      if(row.date<start||row.date>end||
-        !windows.some(range=>row.date>=range.start&&row.date<=range.end))continue;
-      const pointUid=String(row.uid);
-      items.push({id:'era:'+uid+':date:'+pointUid,uid:pointUid,entry_type:'anchor',
-        start_date:row.date,title:row.title||row.date,display_label:'',
-        group_key:'era:'+uid,group_label:era.title||'時代'});
-    }
     refs.forEach(period=>{
       const id=String(period.uid),range=periodRange(period);
-      groups.push({id:'period:'+uid+':'+id,label:'　'+(period.title||'期間'),order:groups.length});
-      if(range.start&&range.end&&range.end>=start&&range.start<=end){
-        items.push({id:'era:'+uid+':period:'+id,entry_type:'period',uid:id,
-          title:period.title||'期間',group_key:'period:'+uid+':'+id,
-          group_label:period.title||'期間',
-          start_date:range.start,end_date:range.end});
-      }
+      if(!range.start||!range.end||range.end<start||range.start>end)return;
+      groups.push({id:'period:'+uid+':'+id,label:'　'+(period.title||'期間'),order:groups.length,
+        className:'scope-culture-layer-period'});
+      items.push({id:'era:'+uid+':period:'+id,entry_type:'period',uid:id,
+        title:period.title||'期間',group_key:'period:'+uid+':'+id,
+        group_label:period.title||'期間',start_date:range.start,
+        ...(range.end>range.start?{end_date:range.end}:{}),era_uid:uid,
+        class_name:'scope-culture-period-range'});
     });
   }
-  // Permanent final lane: dates that belong to no Era or Period.
-  // Keep true dates (including those outside the initial viewport), not fake
-  // positions. The user may pan the timeline to any historical date.
-  const undefinedGroup='time-undefined';
-  groups.push({id:undefinedGroup,label:'未定義',order:groups.length,
-    className:'scope-time-anchor-parent'});
-  for(const row of unassignedPublicDateAnchors(dates,eraWindows)){
-    const uid=String(row.uid);
-    items.push({id:undefinedGroup+':'+uid,uid,entry_type:'anchor',
-      title:row.title||row.date,display_label:'●',start_date:row.date,
-      group_key:undefinedGroup,group_label:'未定義',
-      class_name:'scope-time-original-anchor'});
-  }
-  return {items,groups};
+  const inRange=dates.filter(row=>row.date>=start&&row.date<=end);
+  const assigned=inRange.filter(row=>eraWindows.some(range=>
+    row.date>=range.start&&row.date<=range.end));
+  const unassigned=unassignedPublicDateAnchors(inRange,eraWindows);
+  const addDateLane=(id,label,rows,className)=>{
+    if(!rows.length)return;
+    const order=groups.length;
+    groups.push({id,label,order,className});
+    for(const row of rows){
+      const uid=String(row.uid);
+      items.push({id:id+':'+uid,uid,entry_type:'anchor',
+        title:row.title||row.date,display_label:'◆',start_date:row.date,
+        group_key:id,group_label:label,
+        class_name:'scope-time-original-anchor'});
+    }
+  };
+  addDateLane('time-anchors','時間定錨',assigned,'scope-culture-layer-anchor');
+  addDateLane('time-unassigned','未定義定錨',unassigned,'scope-culture-layer-unassigned');
+  return {items,groups,eras:eraChoices};
 }
 // Source tree groups use the same LocAnchor UID hierarchy as the management
 // editor and Statistics. Multimedia is a Universe, not a media-type pipeline.
@@ -203,11 +210,10 @@ async function queryCultureData(scope,kind,start,end,signal=null){
 }
 export default function CulturePublicReader(){
   const {scopeId}=useScopeRuntime();
-  const {selectFocus}=useFeatureFocus(scopeId);
+  const [sourceExpansionPending,startSourceExpansion]=useTransition();
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
   const start=DEFAULT_YEAR_WINDOW.startDate;
   const end=DEFAULT_YEAR_WINDOW.endDate;
-  const recentTimeWindow=useMemo(()=>publicTimeRiverRecentYear(),[]);
   const [anchors,setAnchors]=useState(NO_ITEMS);
   const [densityPeriod,setDensityPeriod]=useState('year');
   const [densityMode,setDensityMode]=useState('source');
@@ -247,8 +253,8 @@ export default function CulturePublicReader(){
   const [fullText,setFullText]=useState('');
   const [fullDetail,setFullDetail]=useState(null);
   const [fullError,setFullError]=useState('');
-  const eraChoices=useMemo(()=>anchorModel(anchors,'0001-01-01','9999-12-31',[]).items
-    .filter(item=>item.entry_type==='era'&&item.start_date&&item.end_date),[anchors]);
+  const allTimeRiver=useMemo(()=>anchorModel(anchors,'0001-01-01','9999-12-31',[]),[anchors]);
+  const eraChoices=allTimeRiver.eras;
   const selectedEra=eraChoices.find(item=>item.uid===densityPeriod)||null;
   const rangeStart=densityPeriod==='custom'?customStart:selectedEra?.start_date||start;
   const rangeEnd=densityPeriod==='custom'?customEnd:selectedEra?.end_date||end;
@@ -362,16 +368,11 @@ export default function CulturePublicReader(){
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
   },[scopeId,densityMode]);
-  // The structural river spans all historical eras. The annual date window
-  // applies only to the separate article-density river below.
-  const structureStart=eraChoices.length
-    ?eraChoices.reduce((min,row)=>row.start_date<min?row.start_date:min,eraChoices[0].start_date)
-    :start;
-  const structureEnd=eraChoices.length
-    ?eraChoices.reduce((max,row)=>row.end_date>max?row.end_date:max,eraChoices[0].end_date)
-    :end;
-  const anchorRiver=useMemo(()=>anchorModel(anchors,structureStart,structureEnd,expandedEras),
-    [anchors,structureStart,structureEnd,expandedEras]);
+  // The time layers cover the complete authored history; the source query
+  // stays bounded to its selected period. Both are drawn on one time axis.
+  const anchorRiver=useMemo(()=>expandedEras.length
+    ?anchorModel(anchors,'0001-01-01','9999-12-31',expandedEras):allTimeRiver,
+  [anchors,expandedEras,allTimeRiver]);
   // Reuse the saved DateAnchor history to exclude already-covered dates.
   // Suggestions are virtual until explicitly saved in the protected editor.
   const existingAnchorDates=useMemo(()=>anchors
@@ -408,6 +409,17 @@ export default function CulturePublicReader(){
       items:[...base.items,...candidates]};
   },[densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd,
     anchorSuggestionsOpen,suggestionAnalysis.suggestions]);
+  const unifiedRiver=useMemo(()=>{
+    const sourceOrder=anchorRiver.groups.length+2;
+    const groups=[...anchorRiver.groups,...densityRiver.groups.map((group,index)=>({
+      ...group,order:sourceOrder+(Number.isFinite(Number(group.order))?Number(group.order):index),
+      className:[group.className,'scope-culture-source-layer'].filter(Boolean).join(' ')
+    }))];
+    const sourceItems=densityRiver.items.map(item=>({
+      ...item,group_order:sourceOrder+(Number(item.group_order)||0)
+    }));
+    return {groups,items:[...anchorRiver.items,...sourceItems]};
+  },[anchorRiver,densityRiver]);
   useEffect(()=>{
     // Never keep a date selected when it is no longer a candidate.
     if(focusedSuggestionDate&&!suggestionAnalysis.suggestions.some(
@@ -478,15 +490,11 @@ export default function CulturePublicReader(){
   const toggleFull=async row=>{
     const request=++fullSequence.current;
     if(fullUid===row.uid){setFullUid('');setFullText('');setFullDetail(null);return;}
-    const focusArticle=article=>selectFocus({feature:'culture',kind:'article',id:String(row.uid),
-      label:String(article?.title||row.title||row.uid),article:featureArticleFromRow(article,scopeId)});
-    focusArticle(row);
     setFullUid(row.uid);setFullText('');setFullDetail(null);setFullError('');
     try{
       const detail=await selectGalaxyIdentity(scope,row.uid);
       if(request!==fullSequence.current)return;
       if(!detail)throw new Error('本文已隱藏');
-      focusArticle({...detail,scopeId});
       setFullText(String(detail.content||''));
       setFullDetail(detail);
     }catch(reason){
@@ -495,36 +503,25 @@ export default function CulturePublicReader(){
   };
   return <FeaturePage featureId='culture'>
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
-      <section className='scope-card scope-culture-structure-river'>
-        {loading?<div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
-          <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
-          <span>正在載入時間定錨…</span>
-        </div>:null}
-        {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
-        <div className='scope-culture-structure-toolbar'><h3>時間定錨</h3>
-          <span className='scope-status'>{recentTimeWindow.start} ～ {recentTimeWindow.end}（預設視野）</span></div>
-        {!loading&&!error?<CultureTimeline items={anchorRiver.items} extraGroups={anchorRiver.groups}
-          focus={NO_FOCUS} mode='trace'
-          windowStart={recentTimeWindow.start} windowEnd={recentTimeWindow.end}
-          onGroupToggle={group=>{
-            const uid=String(group).replace(/^era:/,'');
-            if(!String(group).startsWith('era:'))return;
-            setExpandedEras(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]);
-          }}/>:null}
-        {!loading&&!error&&!anchors.length?<p className='scope-status'>目前沒有時間定錨。</p>:null}
-      </section>
-      <section className='scope-card scope-culture-classification-river scope-public-culture-panel'>
-        <div className='scope-culture-river-toolbar'><h3>文章密度</h3></div>
+      {loading?<div className='scope-culture-density-loading' role='status' aria-live='polite' aria-busy='true'>
+        <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+        <span>正在載入時間定錨…</span>
+      </div>:null}
+      {error?<p className='scope-status scope-error' role='alert'>{error}</p>:null}
+      <section className='scope-card scope-culture-classification-river scope-public-culture-panel scope-culture-unified-panel'>
+        <div className='scope-culture-river-toolbar'><h3>文化時間長河</h3></div>
         <div className='scope-culture-river-selectors'>
           <label>時代／時期範圍
             <select className='scope-select' value={densityPeriod} onChange={event=>{
               // The largest action takes priority: abort the old SQL BEFORE
               // re-render, retire expired spool, and replace the chart with Loading.
+              const period=event.target.value;
               densityAbortRef.current?.abort();
               prepareTransientResourceAction('period');
               resetArticles();setDaily(NO_ITEMS);setKeywordDaily(NO_ITEMS);
               setDensityReadyKey('');setExpandedSources([]);setAnchorSuggestionsOpen(false);
-              setFocusedSuggestionDate('');setDensityPeriod(event.target.value);
+              setFocusedSuggestionDate('');setDensityPeriod(period);
+              setExpandedEras(eraChoices.some(row=>row.uid===period)?[period]:[]);
             }}>
               <option value='year'>{DEFAULT_YEAR_WINDOW.label}</option>
               {eraChoices.map(row=><option key={row.uid} value={row.uid}>{row.title}</option>)}
@@ -558,11 +555,27 @@ export default function CulturePublicReader(){
           <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
           <span>正在整理時間河道的每日密度…</span>
         </div>:null}
-        {!riverPending&&(densityMode!=='source'||(!catalogLoading&&!catalogError))?
-          <div className='scope-culture-double-river scope-public-culture-river'>
-        <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
-          focus={NO_FOCUS} mode='source' heightVariant='double' naturalSourceHeight
-          windowStart={rangeStart} windowEnd={rangeEnd} fixedMin={rangeStart} fixedMax={rangeEnd}
+        {!loading&&!error&&!riverPending&&(densityMode!=='source'||(!catalogLoading&&!catalogError))?
+          <div className='scope-culture-double-river scope-public-culture-river scope-culture-unified-river'>
+        <div className='scope-culture-layer-legend' role='group' aria-label='時間與文章密度圖例'>
+          <div className='scope-culture-layer-legend__time'>
+            <span><i className='is-era' aria-hidden='true'/>時代</span>
+            <span><i className='is-period' aria-hidden='true'/>期間</span>
+            <span><i className='is-anchor' aria-hidden='true'/>時間定錨</span>
+          </div>
+          <div className='scope-culture-layer-legend__density' aria-label='單日文章數密度'>
+            {TERRITORY_STOPS.map(([minimum],index)=>{
+              const maximum=TERRITORY_STOPS[index+1]?.[0];
+              const label=minimum===0?'1–2':maximum?`${minimum}–${maximum-1}`:`${minimum}+`;
+              return <span key={minimum}><i style={{background:territoryLegendColor(index)}} aria-hidden='true'/>{label} 篇</span>;
+            })}
+          </div>
+        </div>
+        <CultureTimeline items={unifiedRiver.items} eraRanges={anchorRiver.items}
+          extraGroups={unifiedRiver.groups} focus={NO_FOCUS} mode='source'
+          heightVariant='double' naturalSourceHeight stackItems
+          windowStart={densityPeriod==='year'?'':rangeStart}
+          windowEnd={densityPeriod==='year'?'':rangeEnd}
           anchorInsight={selectedSuggestion?{
             date:selectedSuggestion.date,before:selectedSuggestion.beforeCount,
             after:selectedSuggestion.afterCount,reason:(selectedSuggestion.analysis||[]).join(' ')
@@ -576,6 +589,12 @@ export default function CulturePublicReader(){
           }}
           onGroupToggle={group=>{
             const name=String(group);
+            if(name.startsWith('era:')){
+              const uid=name.slice(4);
+              if(eraChoices.some(row=>row.uid===uid))
+                setExpandedEras(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]);
+              return;
+            }
             if(name==='root:anchor-suggestions'){
               setAnchorSuggestionsOpen(open=>!open);
               setFocusedSuggestionDate('');
@@ -585,10 +604,10 @@ export default function CulturePublicReader(){
               // Any saved ancestor may open the next UID level. Daily buckets
               // are already in memory; no article query is made on toggle.
               const uid=name.slice('dual:source:'.length);
-              setExpandedSources(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]);
+              startSourceExpansion(()=>setExpandedSources(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]));
             }else if(densityMode==='keyword'&&name.startsWith('root:')){
               const id=name.slice(5);
-              setExpandedSources(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id]);
+              startSourceExpansion(()=>setExpandedSources(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id]));
             }
           }}
           onGroupSelect={group=>{
@@ -597,6 +616,11 @@ export default function CulturePublicReader(){
             const category=densityRiver.sites.find(item=>item.key===name);
             if(category)openArticles(category.site,category.key,category.sites);
           }}/>
+        </div>:null}
+        {sourceExpansionPending?<div className='scope-culture-density-loading' role='status'
+          aria-live='polite' aria-busy='true'>
+          <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
+          <span>正在整理來源分類… <ActivityMotion kind='numbers'/></span>
         </div>:null}
         {!riverPending&&anchorSuggestionsOpen?<div id='public-culture-anchor-analysis'
           className='scope-culture-anchor-actions' role='region'
@@ -636,8 +660,6 @@ export default function CulturePublicReader(){
         {densityMode==='keyword'&&keywordLoading?<p className='scope-status'>正在載入關鍵詞統計…</p>:null}
         {densityMode==='keyword'&&!classesLoading&&!keywordClasses.length?<p className='scope-status'>目前沒有可使用的公開關鍵詞科目。</p>:null}
         {densityMode==='keyword'&&keywordClass&&!keywordLoading&&!keywordError&&!keywordGroups.length?<p className='scope-status'>此範圍沒有可顯示的關鍵詞統計。</p>:null}
-        {densityMode==='source'&&expandedSources.length>0&&!articlesOpen?
-          <p className='scope-status'>展開來源分類後，點選最末層來源才會載入文章。</p>:null}
       </section>
       {articlesOpen&&densityMode==='source'&&selectedSite?<section className='scope-card scope-culture-source-detail' data-selected-category={selectedCategoryKey}>
         <div className='scope-culture-source-detail-heading'>
@@ -660,7 +682,8 @@ export default function CulturePublicReader(){
               <time>{row.date}</time>
             </div>)}
         </div>
-        {articlesLoading?<p className='scope-status' role='status' aria-live='polite'>載入中請稍後</p>:null}
+        {articlesLoading?<p className='scope-status' role='status' aria-live='polite'>
+          載入文章列表中… <ActivityMotion kind='numbers'/></p>:null}
         {!articlesLoading&&articleRows.length?<nav className='scope-article-page-nav' aria-label='文章列表分頁'>
           <button type='button' className='loc-button' disabled={articlePageStart===0||articlesLoading}
             onClick={()=>changeArticlePage(Math.max(0,articlePageStart-CULTURE_ARTICLE_PAGE_SIZE))}>上一頁</button>

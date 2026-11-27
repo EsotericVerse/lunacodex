@@ -124,8 +124,8 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
           <span role="status" className="scope-status">{mid?`已完成 ${mid.completed}／${mid.total} 個 Scope，暫計 ${totalArticles.toLocaleString()} 篇；其餘仍在計算。`:totalsQuery.data!==undefined?'文章已統計，正在補入地點座標…':'整理年度據點中…'}</span>}
         {scopeQuery.error||totalsQuery.error||pointsQuery.error?
           <span role="alert" className="scope-status scope-error">年度據點資料暫時無法完整載入。</span>:null}
-      </div>}>
-      {selected?<section className="loc-trace-float-report loc-trace-territory-dossier"
+      </div>}/>
+      {selected?<section className="loc-trace-place-report loc-trace-territory-dossier"
         aria-label={selected.title+'年度據點內政'}>
         <header className="loc-trace-float-heading">
           <div><span className="loc-trace-territory-eyebrow">據點內政 · {year}</span>
@@ -163,7 +163,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
         </details>
         <p className="scope-status">依文章日期排序，不代表實際抵達或行軍路線。</p>
       </section>:null}
-    </TraceMap>
+
       <section className="loc-trace-territory-overview" aria-label="年度版圖情報">
         <div aria-label="年度文章數色階參考" style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:'.35rem .65rem',fontSize:'.8rem'}}>
           <span className="scope-status">文章數色階</span>
