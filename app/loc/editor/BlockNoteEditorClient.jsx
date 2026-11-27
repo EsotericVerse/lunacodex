@@ -23,13 +23,15 @@ export default function BlockNoteEditorClient({
   onChange=null,
   onHtmlChange=null
 }){
+  const initialDocument=canonicalBlockNoteBlocks(initialBlocks);
   const editor=useCreateBlockNote({
-    initialContent:canonicalBlockNoteBlocks(initialBlocks),
+    initialContent:initialDocument,
     domAttributes:{editor:{'aria-label':editable?ariaLabel:'文字內容'}}
   });
   const hydratedLegacyHtml=useRef(false);
+  const hydratingLegacyHtml=useRef(false);
   const htmlEmitVersion=useRef(0);
-  const lastEmittedBlocks=useRef('');
+  const lastEmittedBlocks=useRef(JSON.stringify(initialDocument));
   // Editing is ephemeral: leaving the editor discards every pending HTML
   // conversion and prevents an old editor from writing into another page.
   const mountedRef=useRef(false);
@@ -62,7 +64,17 @@ export default function BlockNoteEditorClient({
     let mounted=true;
     // HTML imports can be asynchronous; never pass a Promise to replaceBlocks.
     const apply=blocks=>{
-      if(mounted&&mountedRef.current)editor.replaceBlocks(editor.document,canonicalBlockNoteBlocks(blocks));
+      if(!mounted||!mountedRef.current)return;
+      hydratingLegacyHtml.current=true;
+      try{
+        editor.replaceBlocks(editor.document,canonicalBlockNoteBlocks(blocks));
+        // Replacing the editor's initial HTML is hydration, not a user edit.
+        // Remember the resulting document so any deferred BlockNote event is
+        // also ignored until the document actually changes.
+        lastEmittedBlocks.current=JSON.stringify(canonicalBlockNoteBlocks(editor.document));
+      }finally{
+        hydratingLegacyHtml.current=false;
+      }
     };
     try{
       const parsed=initialHtml
@@ -77,7 +89,7 @@ export default function BlockNoteEditorClient({
   },[editor,initialHtml,initialMarkdown]);
 
   const emit=()=>{
-    if(!mountedRef.current)return;
+    if(!mountedRef.current||hydratingLegacyHtml.current)return;
     // BlockNote JSON is the editing source of truth. Empty paragraphs must
     // remain empty blocks, never literal ProseMirror U+FFFC characters.
     const blocks=canonicalBlockNoteBlocks(editor.document);
