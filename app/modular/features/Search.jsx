@@ -1270,6 +1270,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         // Direct UID navigation already has the authorized Galaxy detail in
         // toResult.editRow; ordinary expanded reading uses fullTextRow.
         const readerRow=selectedDetail||(identityReader?row.editRow:null);
+        const readingDetail=Boolean(readerRow&&row.resourceType==='galaxy'&&
+          (identityReader||expandedReader));
         const tracePlace=readerRow?.trace_place||row.tracePlace;
         const locationName=String(readerRow?.location||row.locationName||'').trim();
         const readingLinks=readerRow?galaxyRelationLinks(row.scopeId,readerRow):row.relationLinks||[];
@@ -1293,23 +1295,23 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           articleHref={!exploration&&row.resourceType==='galaxy'&&(managementMode||row.list!==false)
             ?(managementMode?scopeHref(scopeId,'search/manage')+'?identity='+encodeURIComponent(row.resourceId)+'&scope='+encodeURIComponent(row.scopeId):galaxyIdentityHref(row.scopeId,row.resourceId))
             :''}
-          detailReading={!exploration&&(identityReader||expandedReader)}
+          detailReading={readingDetail}
           source={searchParams?.get('identity')?row.styleTagMatch?'':row.source:''}
           date={row.date}
           body={''}
           hidden={false}
-          relationLinks={!exploration&&(identityReader||expandedReader)?readingLinks:[]}
-          relatedMedia={!exploration&&(identityReader||expandedReader)?relatedMedia:[]}
-          relatedTime={!exploration&&(identityReader||expandedReader)?readerRow?.related_time||row.relatedTime:null}
-          relatedSpace={!exploration&&(identityReader||expandedReader)?readerRow?.related_space||row.relatedSpace:null}
-          relatedStatistics={!exploration&&(identityReader||expandedReader)?readerRow?.related_statistics||row.relatedStatistics:null}
+          relationLinks={readingDetail?readingLinks:[]}
+          relatedMedia={readingDetail?relatedMedia:[]}
+          relatedTime={readingDetail?readerRow?.related_time||row.relatedTime:null}
+          relatedSpace={readingDetail?readerRow?.related_space||row.relatedSpace:null}
+          relatedStatistics={readingDetail?readerRow?.related_statistics||row.relatedStatistics:null}
           articleScopeId={row.scopeId}
-          articleDate={identityReader||expandedReader?readerRow?.article_day||readerRow?.date||row.articleDay||row.date:''}
-          articleCreateTime={identityReader||expandedReader?readerRow?.createtime||row.createtime:row.createtime}
-          tracePlace={!exploration&&(identityReader||expandedReader)?tracePlace:null}
-          traceHref={tracePlace?featureNavigationHref(row.scopeId,'trace',{place:tracePlace.uid}):''}
-          locationName={identityReader||expandedReader?locationName:''}
-          links={!exploration&&(identityReader||expandedReader)?readerRow?.links||row.links||[]:[]}
+          articleDate={readingDetail?readerRow?.article_day||readerRow?.date||row.articleDay||row.date:''}
+          articleCreateTime={readingDetail?readerRow?.createtime||row.createtime:row.createtime}
+          tracePlace={readingDetail?tracePlace:null}
+          traceHref={readingDetail&&tracePlace?featureNavigationHref(row.scopeId,'trace',{place:tracePlace.uid}):''}
+          locationName={readingDetail?locationName:''}
+          links={readingDetail?readerRow?.links||row.links||[]:[]}
           destinations={row.destinations}
           editable={editable}
           editing={editingKey===row.key}
