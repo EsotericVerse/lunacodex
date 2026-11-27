@@ -13,6 +13,8 @@ import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeature
 import ScopeLink from '../ScopeLink';
 import {scopeHref} from '../routing/scope-registry';
 import {useEditDock} from '../edit-dock';
+import {useFeatureFocus} from '../feature-focus';
+import {featureFocusRangeFromRow} from '../feature-focus-state.mjs';
 import {featureDataErrorMessage} from '../feature-data-state';
 // Keep a visible, CSS-only waiting state even before the timeline chunk loads.
 function CultureTimeLoading({label='正在載入時間定錨…'}){
@@ -216,6 +218,7 @@ export default function Culture(){
   const localizedLabelOf=useMemo(()=> (item,index)=>labelOf(item,index,UI_COPY.format.period(index+1)),[UI_COPY]);
   const {locale}=useUiLocale();
   const {scopeId,scope}=useScopeRuntime();
+  const {selectFocus,setFocusRange}=useFeatureFocus(scopeId);
   const [worksOpen,setWorksOpen]=useState(false);
   const searchParams=useSearchParams();
   const editDock=useEditDock();
@@ -1529,7 +1532,15 @@ export default function Culture(){
                   onGroupToggle={toggleTimeTrace}
                   windowStart={currentStructureStart}
                   windowEnd={currentStructureEnd}
-                  onSelect={item=>setSelectedTimelineInfo(item||null)}
+                  onSelect={item=>{
+                    setSelectedTimelineInfo(item||null);
+                    const range=featureFocusRangeFromRow(item?.raw||item);
+                    if(!item||!range)return;
+                    selectFocus({feature:'culture',kind:'time',
+                      id:String(item.id||item.raw?.uid||range.startDate),
+                      label:String(item.raw?.title||item.content||item.raw?.display_label||range.startDate)});
+                    setFocusRange(range);
+                  }}
                   editable={false}
                 />:<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>}
                 {selectedTimelineInfo?<div className='scope-card scope-culture-timeline-selection' role='status'>

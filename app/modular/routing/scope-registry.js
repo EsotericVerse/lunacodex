@@ -1,13 +1,13 @@
 import {UI_COPY} from '../../i18n/ui-copy.js';
 import {SCOPE_ROUTE_INDEX} from './scope-route-index.js';
+import {PRIMARY_FEATURE_ORDER} from './navigation-order.mjs';
 
 // Current Scope registry.
-export const FEATURES=Object.freeze([
-  Object.freeze({id:'statics',label:UI_COPY.features.statics.title,path:'statics'}),
-  Object.freeze({id:'culture',label:UI_COPY.features.culture.title,path:'culture'}),
-  Object.freeze({id:'trace',label:UI_COPY.features.trace?.title||'痕跡',path:'trace'}),
-  Object.freeze({id:'search',label:UI_COPY.features.search.title,path:'search'})
-]);
+export const FEATURES=Object.freeze(PRIMARY_FEATURE_ORDER.map(id=>Object.freeze({
+  id,
+  label:id==='trace'?UI_COPY.features.trace?.title||'痕跡':UI_COPY.features[id].title,
+  path:id
+})));
 
 export const SCOPES=Object.freeze({
   loc:Object.freeze({

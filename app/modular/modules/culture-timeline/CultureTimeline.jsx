@@ -4,6 +4,7 @@ import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
 import {translateUiField} from '../../../i18n/ui-copy';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {DataSet} from 'vis-data/esnext';
 import {Timeline} from 'vis-timeline/esnext';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
@@ -168,7 +169,6 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
             open.className='scope-river-article-open';
             open.textContent='⌄';
             open.setAttribute('aria-label','開啟'+label+'文章列表');
-            open.title='開啟文章列表';
             open.addEventListener('click',event=>{
               event.stopPropagation();
               onGroupSelectRef.current?.(id);
@@ -187,8 +187,7 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
           id,
           content,
           order:Number.isFinite(extra?.order)?extra.order:explicit.length?Math.min(...explicit):defaultOrder>=0?defaultOrder:100+index,
-          ...(extra?.className?{className:extra.className}:{}),
-          title:label
+          ...(extra?.className?{className:extra.className}:{})
         };
       });
 
@@ -308,9 +307,11 @@ export default function CultureTimeline({
   const timelineRef=useRef(null);
   const timelineDataRef=useRef(null);
   const timelineGroupsRef=useRef(null);
+  const timelineRowsByIdRef=useRef(new Map());
   const appliedHiddenDatesRef=useRef(hiddenDates);
   const doubleRiverWindowRef=useRef(null);
   const [selectedRowId,setSelectedRowId]=useState('');
+  const [hoverInfo,setHoverInfo]=useState(null);
   const onSelectRef=useRef(onSelect);
   const onFirstPaintRef=useRef(onFirstPaint);
   const onGroupToggleRef=useRef(onGroupToggle);
@@ -364,6 +365,11 @@ export default function CultureTimeline({
     ?[...rows].sort((a,b)=>String(b.start).localeCompare(String(a.start)))
     :EMPTY_ITEMS,[rows,chartError]);
   const selectedRow=useMemo(()=>rows.find(row=>row.id===selectedRowId)||null,[rows,selectedRowId]);
+  const hoveredRow=hoverInfo?rows.find(row=>row.id===hoverInfo.id)||null:null;
+  const hoverCardPosition=hoverInfo&&typeof window!=='undefined'?{
+    left:Math.max(12,Math.min(hoverInfo.x+14,window.innerWidth-372)),
+    top:Math.max(12,Math.min(hoverInfo.y+14,window.innerHeight-190))
+  }:null;
   // Keep all camera geometry inside vis-timeline, not Motion; animation applies
   // only to explicit navigation, never to dragging, date edits, or first paint.
   const cameraAnimation=reduceMotion?false:{duration:240,easingFunction:'easeInOutQuad'};
@@ -434,21 +440,32 @@ export default function CultureTimeline({
     setReady(false);
     try{
       if(cancelled||!containerRef.current)return()=>{cancelled=true};
-      const dataRows=paintRows.map(row=>editable?{
-        ...row,
-        editable:{
+      timelineRowsByIdRef.current=new Map(rows.map(row=>[String(row.id),row]));
+      const dataRows=paintRows.map(row=>{
+        // vis-timeline turns item.title into the browser's plain title popup.
+        // Keep the detail in React and show it in our themed hover card instead.
+        const {title,...displayRow}=row;
+        return editable?{
+          ...displayRow,
+          editable:{
           updateTime:row.entryType==='anchor',
           updateGroup:false,
           remove:Boolean(row.recordId)
-        }
-      }:row);
+          }
+        }:displayRow;
+      });
       const data=new DataSet(dataRows);
       appliedHiddenDatesRef.current=hiddenDates;
       const groupRows=makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGroupToggleRef,onGroupSelectRef);
       const groups=groupRows.length?new DataSet(groupRows):null;
       timelineDataRef.current=data;
       timelineGroupsRef.current=groups;
-      const rowById=id=>data.get(String(id))||null;
+      const rowById=id=>{
+        const stored=data.get(String(id));
+        if(!stored)return null;
+        const full=timelineRowsByIdRef.current.get(String(id));
+        return full?{...full,...stored}:stored;
+      };
       // Supply the selected camera range at construction time. Otherwise the
       // timeline may auto-fit all periods during its first layout after an
       // immediate setWindow(), making a chosen period appear to snap back.
@@ -522,6 +539,14 @@ export default function CultureTimeline({
         setSelectedRowId(row?.id||'');
         onSelectRef.current?.(row);
       });
+      instance.on('itemover',properties=>{
+        const id=String(properties?.item||'');
+        const pointer=properties?.event;
+        if(!id||!pointer||!Number.isFinite(pointer.clientX)||!Number.isFinite(pointer.clientY))return;
+        if(!timelineRowsByIdRef.current.has(id))return;
+        setHoverInfo({id,x:pointer.clientX,y:pointer.clientY});
+      });
+      instance.on('itemout',()=>setHoverInfo(null));
       instance.on('rangechanged',properties=>{
         // Only a real user pan can advance the selected period. A click or a
         // ctrl+wheel zoom must not change periods.
@@ -583,6 +608,7 @@ export default function CultureTimeline({
         timelineRef.current=null;
         timelineDataRef.current=null;
         timelineGroupsRef.current=null;
+        setHoverInfo(null);
       }
       if(instance)instance.destroy();
     };
@@ -599,9 +625,13 @@ export default function CultureTimeline({
     if(!preserveTimelineInstance||!ready)return;
     const timeline=timelineRef.current,data=timelineDataRef.current;
     if(!timeline||!data)return;
-    const nextRows=paintRows.map(row=>editable?{
-      ...row,editable:{updateTime:row.entryType==='anchor',updateGroup:false,remove:Boolean(row.recordId)}
-    }:row);
+    timelineRowsByIdRef.current=new Map(rows.map(row=>[String(row.id),row]));
+    const nextRows=paintRows.map(row=>{
+      const {title,...displayRow}=row;
+      return editable?{
+        ...displayRow,editable:{updateTime:row.entryType==='anchor',updateGroup:false,remove:Boolean(row.recordId)}
+      }:displayRow;
+    });
     const nextGroups=makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGroupToggleRef,onGroupSelectRef);
     const groups=timelineGroupsRef.current;
     try{
@@ -622,7 +652,7 @@ export default function CultureTimeline({
         const changedRows=nextRows.filter(row=>{
           const old=data.get(row.id);
           return !old||old.group!==row.group||old.start!==row.start||old.end!==row.end
-            ||old.content!==row.content||old.title!==row.title
+            ||old.content!==row.content
             ||old.className!==row.className||old.style!==row.style
             ||old.workCount!==row.workCount;
         });
@@ -814,7 +844,7 @@ export default function CultureTimeline({
     </div>:null}
     <div className={showTraceRecovery?'scope-trace-progressive-shell':undefined}>
       <div className='scope-river-reveal-shell' style={chartError&&mode==='trace'?{display:'none'}:undefined}>
-        <div ref={containerRef} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
+        <div ref={containerRef} onPointerLeave={()=>setHoverInfo(null)} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
         {/* The existing vis-timeline still owns gestures/camera once painted. */}
         {unfoldCurtain&&ready&&!reduceMotion?<motion.div className='scope-river-unfold-curtain'
           aria-hidden='true' initial={{scaleX:1}} animate={{scaleX:0}}
@@ -826,6 +856,23 @@ export default function CultureTimeline({
         onToggle={groupId=>onGroupToggleRef.current?.(groupId)}
         onSelect={row=>{setSelectedRowId(row.id);onSelectRef.current?.(row)}}/>:null}
     </div>
+    {hoveredRow&&hoverCardPosition&&typeof document!=='undefined'?createPortal(
+      <AnimatePresence initial={false}>
+        <motion.aside key={hoveredRow.id} className='scope-river-hover-card' role='tooltip'
+          style={hoverCardPosition}
+          initial={reduceMotion?false:{opacity:0,y:5,scale:.985}}
+          animate={{opacity:1,y:0,scale:1}}
+          exit={reduceMotion?{opacity:0}:{opacity:0,y:3,scale:.99}}
+          transition={reduceMotion?{duration:0}:{duration:.16,ease:'easeOut'}}>
+          <span className='scope-river-hover-card__date'>
+            {dateLabel(hoveredRow.start)}{hoveredRow.end?' ～ '+dateLabel(hoveredRow.end):''}
+          </span>
+          <strong>{String(hoveredRow.content||hoveredRow.raw?.title||hoveredRow.raw?.name||hoveredRow.period||labels.record)}</strong>
+          {hoveredRow.title?<p>{hoveredRow.title}</p>:null}
+          {hoveredRow.workCount>0?<span className='scope-river-hover-card__count'>{hoveredRow.workCount.toLocaleString(locale)} 筆關聯</span>:null}
+        </motion.aside>
+      </AnimatePresence>,document.body
+    ):null}
     <AnimatePresence initial={false}>
       {anchorInsight?<motion.aside key={anchorInsight.date}
         className='scope-candidate-insight' role='status' aria-live='polite'

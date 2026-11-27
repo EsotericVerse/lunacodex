@@ -5,6 +5,7 @@ import {calendarYearWindow} from '../../../loc/preferences/default-year-window.m
 const dateISO=date=>date.toISOString().slice(0,10);
 export const TRACE_PANEL_MODES=Object.freeze(['articles','timeline','statistics']);
 export const TRACE_TIME_WINDOWS=Object.freeze(['year','3m','12m','all','custom']);
+export const tracePlaceDefaultTab=()=> 'timeline';
 
 export function traceSourceOptions(taxonomy={}){
   const tree=Array.isArray(taxonomy?.tree)?taxonomy.tree:[];

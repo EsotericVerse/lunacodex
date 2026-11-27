@@ -85,6 +85,40 @@
 .scope-result-links{display:flex;gap:.55rem;flex-wrap:wrap;}
 .scope-result-links a{padding:.3rem .55rem;border:var(--scope-border);border-radius:999px;font-size:.85rem;text-decoration:none;}
 .scope-period-timeline .vis-item.scope-period-timeline-focus{background:var(--loc-accent);border-color:var(--loc-accent);color:var(--loc-panel);font-weight:700;}
+.scope-feature-focus{
+  position:relative;display:flex;align-items:center;justify-content:space-between;gap:.8rem;
+  min-width:0;margin:.4rem 0 1rem;padding:.75rem .9rem;
+  border:1px solid var(--loc-accent-border);border-inline-start:4px solid var(--loc-accent);
+  border-radius:var(--loc-ui-radius-md,14px);
+  background:linear-gradient(112deg,color-mix(in srgb,var(--loc-accent) 12%,var(--loc-panel)),color-mix(in srgb,var(--loc-gold) 7%,var(--loc-panel-2)) 58%,var(--loc-panel));
+  box-shadow:0 12px 30px color-mix(in srgb,var(--loc-bg) 26%,transparent),inset 0 1px color-mix(in srgb,var(--loc-text) 8%,transparent);
+  color:var(--loc-text);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+.scope-feature-focus__identity{display:flex;align-items:baseline;gap:.55rem;flex-wrap:wrap;min-width:0}
+.scope-feature-focus__eyebrow{color:var(--loc-accent);font-size:.75rem;font-weight:800;letter-spacing:.08em}
+.scope-feature-focus__identity strong{color:var(--loc-heading);font-size:1rem}
+.scope-feature-focus__identity>span:last-child{color:var(--loc-muted);font-size:.82rem}
+.scope-feature-focus__range{flex:none;color:var(--loc-text);font-size:.82rem;font-variant-numeric:tabular-nums}
+.scope-feature-focus__clear{flex:none;min-height:38px;padding:.35rem .7rem}
+.scope-river-hover-card{
+  position:fixed;z-index:10000;display:grid;gap:.32rem;
+  width:max-content;max-width:min(22rem,calc(100vw - 24px));max-height:min(12rem,calc(100vh - 24px));
+  overflow:hidden;padding:.72rem .85rem;border:1px solid var(--loc-accent-border);
+  border-inline-start:3px solid var(--loc-accent);border-radius:14px;
+  background:color-mix(in srgb,var(--loc-panel) 88%,transparent);color:var(--loc-text);
+  box-shadow:0 16px 42px color-mix(in srgb,var(--loc-bg) 52%,transparent),inset 0 1px color-mix(in srgb,var(--loc-text) 9%,transparent);
+  backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);
+  pointer-events:none;transform-origin:top left;
+}
+.scope-river-hover-card__date{color:var(--loc-accent);font-size:.74rem;font-variant-numeric:tabular-nums;font-weight:750;letter-spacing:.025em}
+.scope-river-hover-card strong{color:var(--loc-heading);font-size:.92rem;line-height:1.35}
+.scope-river-hover-card p{margin:0;color:var(--loc-text);font-size:.82rem;line-height:1.5;white-space:pre-line}
+.scope-river-hover-card__count{color:var(--loc-muted);font-size:.74rem}
+@media(max-width:680px){
+  .scope-feature-focus{align-items:flex-start;flex-wrap:wrap;gap:.45rem .7rem;padding:.7rem .75rem}
+  .scope-feature-focus__identity{flex:1 1 100%}
+  .scope-feature-focus__range{flex:1 1 auto}
+}
 /* Accessible Timeline controls do not depend on a mouse modifier key. */
 .scope-timeline-controls{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;margin:.4rem 0 .65rem}
 .scope-timeline-controls .loc-button{min-width:44px;min-height:44px;padding:.4rem .7rem}
@@ -131,6 +165,22 @@
 .scope-stat-chart-frame__canvas{min-width:0;width:100%}
 /* Motion only composites the chart surface; Recharts keeps stable dimensions. */
 .scope-multichart-motion-surface{width:100%;min-width:0;}
+.scope-multichart-axis-controls{display:flex;flex-wrap:wrap;gap:.55rem;margin:.15rem 0 .7rem}
+.scope-multichart-axis-controls label{display:grid;grid-template-columns:auto minmax(9rem,1fr);align-items:center;gap:.45rem;color:var(--loc-muted);font-size:.8rem;font-weight:700}
+.scope-multichart-axis-controls .scope-select{min-height:40px;max-width:min(100%,17rem);padding:.4rem .65rem}
+.scope-multichart-tooltip{
+  display:grid;gap:.45rem;min-width:9rem;max-width:min(22rem,calc(100vw - 24px));
+  padding:.7rem .8rem;border:1px solid var(--loc-accent-border);border-inline-start:3px solid var(--loc-accent);
+  border-radius:12px;background:color-mix(in srgb,var(--loc-panel) 90%,transparent);color:var(--loc-text);
+  box-shadow:0 12px 32px color-mix(in srgb,var(--loc-bg) 45%,transparent);
+  backdrop-filter:blur(16px) saturate(1.15);-webkit-backdrop-filter:blur(16px) saturate(1.15);
+}
+.scope-multichart-tooltip>strong{color:var(--loc-heading);font-size:.82rem}
+.scope-multichart-tooltip__row{display:flex;justify-content:space-between;gap:.8rem;align-items:baseline;font-size:.78rem}
+.scope-multichart-tooltip__row>span{min-width:0;color:var(--loc-muted)}
+.scope-multichart-tooltip__row>b{flex:none;color:var(--chart-tip-color,var(--loc-text));font-variant-numeric:tabular-nums}
+.scope-multichart .recharts-legend-item-text{color:var(--loc-text)!important}
+.scope-multichart-motion-surface[data-linkable="true"] .recharts-surface{cursor:crosshair}
 .scope-stat-zoom-rail{
   display:flex;
   flex-direction:column;

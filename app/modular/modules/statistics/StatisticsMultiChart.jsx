@@ -20,12 +20,24 @@ import {
 const CHART_ACCENT='var(--loc-accent)';
 const CHART_TEXT='var(--loc-text)';
 const CHART_GRID='var(--loc-line)';
-const CHART_TOOLTIP={background:'var(--loc-panel)',border:'1px solid var(--loc-line)',color:'var(--loc-text)',borderRadius:'8px'};
-
-const TOOLTIP={background:'var(--loc-panel)',border:'1px solid var(--loc-line)',color:'var(--loc-text)',borderRadius:'8px'};
 const GRID='var(--loc-line)',TEXT='var(--loc-text)',DAY=86400000;
 const color=i=>themedDataColor(baseColor(i));
 const pointColor=i=>themedDataColor(basePointColor(i));
+function ThemedChartTooltip({active,payload=[],label,suffix=''}){
+  if(!active||!payload.length)return null;
+  const entries=payload.filter(entry=>entry?.value!==undefined&&entry?.value!==null);
+  if(!entries.length)return null;
+  const heading=label||entries[0]?.payload?.period||'';
+  return <div className="scope-multichart-tooltip">
+    {heading?<strong>{heading}</strong>:null}
+    {entries.map((entry,index)=><div className="scope-multichart-tooltip__row"
+      key={String(entry.dataKey||entry.name||index)}
+      style={{'--chart-tip-color':entry.color||entry.fill||pointColor(index)}}>
+      <span>{entry.name||entry.dataKey||'數值'}</span>
+      <b>{typeof entry.value==='number'?entry.value.toLocaleString()+suffix:String(entry.value)}</b>
+    </div>)}
+  </div>;
+}
 function StatTreemapCell({x,y,width,height,depth,index,fill,name}){
   if(!depth||width<=0||height<=0)return null;
   const label=String(name||'');
@@ -60,7 +72,7 @@ export function foldEmptyTimeBuckets(rows=[],series=[],units={}){
 }
 export default function StatisticsMultiChart({
   type='line',rows=[],series=[],distribution=[],totalKey='',height=380,foldBlank=false,
-  barLayout='horizontal',onCategoryClick=null,onSeriesClick=null
+  barLayout='horizontal',onCategoryClick=null,onSeriesClick=null,onPeriodClick=null
 }){
   useUiSection('uiExtra.statisticsView');
   useUiSection('uiExtra.chartLabels');
@@ -76,20 +88,29 @@ export default function StatisticsMultiChart({
   const animateData=!reduceMotion&&time.length*Math.max(1,fields.length)<=600&&categories.length<=100;
   const animation={isAnimationActive:animateData,animationDuration:480,animationEasing:'ease-out'};
   const timeFields=totalKey?[{key:totalKey,label:t('uiExtra.chartLabels.total')}]:fields;
+  const [scatterAxisKeys,setScatterAxisKeys]=useState({x:'',y:''});
+  const defaultPair=useMemo(()=>scatterPair(time,fields),[time,fields]);
+  const scatterX=fields.find(field=>field.key===scatterAxisKeys.x)||defaultPair?.x||fields[0]||null;
+  const scatterY=fields.find(field=>field.key===scatterAxisKeys.y&&field.key!==scatterX?.key)
+    ||(defaultPair?.y?.key!==scatterX?.key?defaultPair?.y:null)
+    ||fields.find(field=>field.key!==scatterX?.key)||null;
+  const paired=useMemo(()=>scatterX&&scatterY
+    ?scatterPair(time,fields,scatterX.key,scatterY.key):null,
+    [time,fields,scatterX?.key,scatterY?.key]);
+  const axisLabel=field=>[field?.label||field?.key,field?.unit].filter(Boolean).join(' · ');
   const {rows:display,gaps}=useMemo(()=>foldBlank&&['line','bar','area','stacked','composed'].includes(actual)
     ?foldEmptyTimeBuckets(time,timeFields,units):{rows:time,gaps:[]},[foldBlank,actual,time,timeFields,locale]);
   const margin={top:16,right:18,bottom:44,left:0};
   const axes=(<><CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
     <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
-    <Tooltip contentStyle={TOOLTIP}/>
+    <Tooltip content={<ThemedChartTooltip/>}/>
     {display.length>32?<Brush dataKey="period" height={24} travellerWidth={9} stroke={CHART_ACCENT}/>:null}
     {fields.length>1&&!['bar','composed'].includes(actual)?<Legend wrapperStyle={{fontSize:12}}/>:null}
   </>);
   const colored=categories.map((item,i)=>({...item,fill:item.fill?themedDataColor(item.fill):pointColor(i)}));
   const comparison=useMemo(()=>radarPeriodComparison(time,fields),[time,fields]);
   const coverage=useMemo(()=>activePeriodCoverage(time,fields),[time,fields]);
-  const paired=useMemo(()=>scatterPair(time,fields),[time,fields]);
   // Calculate averages on the original, complete timeline before shortening gaps.
   const composed=useMemo(()=>{
     const full=movingAverage(time,fields,totalKey);
@@ -97,7 +118,7 @@ export default function StatisticsMultiChart({
   },[time,fields,totalKey,foldBlank,timeFields,locale]);
   let chart=null;
   if(actual==='pie')chart=<PieChart>
-    <Tooltip contentStyle={TOOLTIP}/><Legend wrapperStyle={{fontSize:11}}/>
+    <Tooltip content={<ThemedChartTooltip/>}/><Legend wrapperStyle={{fontSize:11}}/>
     <Pie {...animation} data={colored} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius="73%">
       {colored.map(item=><Cell key={item.name} fill={item.fill}/>)}
     </Pie>
@@ -107,35 +128,41 @@ export default function StatisticsMultiChart({
     content={props=><StatTreemapCell {...props}
       fill={colored[props.index]?.fill||pointColor(props.index||0)}/>}
     aspectRatio={4/3}>
-      <Tooltip contentStyle={TOOLTIP}/>
+      <Tooltip content={<ThemedChartTooltip/>}/>
     </Treemap>;
   else if(actual==='radar'&&comparison)chart=<RadarChart data={comparison} outerRadius="67%">
     <PolarGrid stroke={GRID}/><PolarAngleAxis dataKey="name" tick={{fill:TEXT,fontSize:11}}/>
     <PolarRadiusAxis domain={[0,100]} tick={{fill:TEXT,fontSize:10}}/>
     <Radar {...animation} name={t('uiExtra.chartLabels.firstHalf')} dataKey="early" stroke={color(0)} fill={color(0)} strokeWidth={3} fillOpacity={.10}/>
     <Radar {...animation} name={t('uiExtra.chartLabels.lastHalf')} dataKey="late" stroke={color(3)} fill={color(3)} strokeDasharray="7 4" strokeWidth={3} fillOpacity={.10}/>
-    <Legend/><Tooltip contentStyle={TOOLTIP} formatter={v=>Number(v).toFixed(1)+'%'}/>
+    <Legend/><Tooltip content={<ThemedChartTooltip suffix="%"/>} formatter={v=>Number(v).toFixed(1)+'%'}/>
   </RadarChart>;
   else if(actual==='radial'&&coverage)chart=<RadialBarChart data={coverage.map((row,i)=>({...row,fill:color(i)}))} innerRadius="16%" outerRadius="82%" startAngle={90} endAngle={-270}>
     <RadialBar {...animation} dataKey="value" background={{fill:'var(--loc-panel-2)'}} cornerRadius={4}>
       {coverage.map((row,i)=><Cell key={row.name} fill={color(i)}/>)}
     </RadialBar>
     <Legend layout="vertical" verticalAlign="middle" align="right" wrapperStyle={{fontSize:11}}/>
-    <Tooltip contentStyle={TOOLTIP} formatter={v=>Number(v).toFixed(1)+'%'}/>
+    <Tooltip content={<ThemedChartTooltip suffix="%"/>} formatter={v=>Number(v).toFixed(1)+'%'}/>
   </RadialBarChart>;
   else if(actual==='scatter'&&paired)chart=<ScatterChart margin={{top:20,right:20,bottom:45,left:20}}>
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
-    <XAxis type="number" dataKey="x" name={paired.x.label} tick={{fill:TEXT,fontSize:11}} stroke={GRID}
-      label={{value:paired.x.label||paired.x.key,position:'insideBottom',offset:-16,fill:TEXT}}/>
-    <YAxis type="number" dataKey="y" name={paired.y.label} tick={{fill:TEXT,fontSize:11}} stroke={GRID}
-      label={{value:paired.y.label||paired.y.key,angle:-90,position:'insideLeft',fill:TEXT}}/>
-    <Tooltip contentStyle={TOOLTIP} cursor={{strokeDasharray:'3 3'}}
-      content={({active,payload})=>active&&payload?.length?<div style={TOOLTIP}>
-        <div>{payload[0]?.payload?.period}</div>
-        <div>{paired.x.label}: {payload[0]?.payload?.x}</div>
-        <div>{paired.y.label}: {payload[0]?.payload?.y}</div>
-      </div>:null}/>
-    <Scatter {...animation} name={paired.x.label+' × '+paired.y.label} data={paired.data} fill={pointColor(0)}>
+    <XAxis type="number" dataKey="x" name={axisLabel(paired.x)} tick={{fill:TEXT,fontSize:11}} stroke={GRID}
+      label={{value:axisLabel(paired.x),position:'insideBottom',offset:-16,fill:TEXT}}/>
+    <YAxis type="number" dataKey="y" name={axisLabel(paired.y)} tick={{fill:TEXT,fontSize:11}} stroke={GRID}
+      label={{value:axisLabel(paired.y),angle:-90,position:'insideLeft',fill:TEXT}}/>
+    <Tooltip cursor={{strokeDasharray:'3 3'}} content={({active,payload})=>{
+      const point=payload?.[0]?.payload;
+      return active&&point?<div className="scope-multichart-tooltip">
+        <strong>{point.period}</strong>
+        <div className="scope-multichart-tooltip__row" style={{'--chart-tip-color':color(0)}}>
+          <span>{axisLabel(paired.x)}</span><b>{point.x.toLocaleString()} {paired.x.unit||''}</b>
+        </div>
+        <div className="scope-multichart-tooltip__row" style={{'--chart-tip-color':color(3)}}>
+          <span>{axisLabel(paired.y)}</span><b>{point.y.toLocaleString()} {paired.y.unit||''}</b>
+        </div>
+      </div>:null;
+    }}/>
+    <Scatter {...animation} name={axisLabel(paired.x)+' × '+axisLabel(paired.y)} data={paired.data} fill={pointColor(0)}>
       {paired.data.map((row,i)=><Cell key={row.period||i} fill={pointColor(i)}/>)}
     </Scatter>
   </ScatterChart>;
@@ -143,7 +170,7 @@ export default function StatisticsMultiChart({
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
     <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
-    <Tooltip contentStyle={TOOLTIP}/><Legend/>
+    <Tooltip content={<ThemedChartTooltip/>}/><Legend/>
     {composed.length>32?<Brush dataKey="period" height={24} travellerWidth={9} stroke={CHART_ACCENT}/>:null}
     <Bar {...animation} dataKey="__stat_total" name={t('uiExtra.chartLabels.periodTotal')} fill={color(0)} opacity={.8} maxBarSize={30}>
       {composed.map((_,i)=><Cell key={i} fill={pointColor(i)}/>)}
@@ -164,7 +191,7 @@ export default function StatisticsMultiChart({
     <XAxis type="number" allowDecimals={false} tick={{fill:TEXT}}/>
     <YAxis dataKey="name" type="category" width={150} tick={{fill:TEXT,fontSize:11}}
       tickFormatter={value=>String(value).length>12?String(value).slice(0,11)+'…':String(value)}/>
-    <Tooltip contentStyle={TOOLTIP}/>
+    <Tooltip content={<ThemedChartTooltip/>}/>
     <Bar {...animation} dataKey="value" fill="var(--loc-accent)" maxBarSize={28}
       cursor={onCategoryClick?'pointer':undefined}
       onClick={onCategoryClick?(_,index)=>onCategoryClick(colored[index]?.key):undefined}>
@@ -184,18 +211,47 @@ export default function StatisticsMultiChart({
       {...animation}/>)}
   </LineChart>;
   if(!usable.length)return <p className="scope-status">{t('uiExtra.chartLabels.noComparable')}</p>;
+  const periodInteractive=Boolean(onPeriodClick&&
+    ['line','bar','area','stacked','composed','scatter'].includes(actual)&&
+    !(actual==='bar'&&barLayout==='vertical'));
+  const handleChartClick=event=>{
+    const row=event?.activePayload?.find(entry=>entry?.payload)?.payload;
+    if(row)onPeriodClick?.(row);
+  };
   return <div className="scope-multichart" role="group" aria-label={t('uiExtra.chartLabels.chartAria')}>
+    {actual==='scatter'&&fields.length>1&&paired?<div className="scope-multichart-axis-controls" role="group" aria-label="散佈圖座標單位">
+      <label>X 軸
+        <select className="scope-select" value={scatterX?.key||''} onChange={event=>{
+          const key=event.target.value;
+          setScatterAxisKeys(current=>({x:key,y:current.y===key
+            ?fields.find(field=>field.key!==key)?.key||'':current.y}));
+        }}>
+          {fields.map(field=><option key={field.key} value={field.key}>{axisLabel(field)}</option>)}
+        </select>
+      </label>
+      <label>Y 軸
+        <select className="scope-select" value={scatterY?.key||''} onChange={event=>{
+          const key=event.target.value;
+          setScatterAxisKeys(current=>({x:current.x===key
+            ?fields.find(field=>field.key!==key)?.key||'':current.x,y:key}));
+        }}>
+          {fields.map(field=><option key={field.key} value={field.key} disabled={field.key===scatterX?.key}>{axisLabel(field)}</option>)}
+        </select>
+      </label>
+    </div>:null}
     {/* Recharts owns SVG geometry, data animation and hit targets. Motion only
         fades the stable-size chart surface when its visualization type changes.
         No overlapping ResponsiveContainers or layout measurements. */}
     <motion.div key={actual} className="scope-multichart-motion-surface"
+      data-linkable={periodInteractive?'true':undefined}
       initial={reduceMotion?false:{opacity:0,y:6}}
       animate={{opacity:1,y:0}}
       transition={{duration:reduceMotion?0:.22,ease:'easeOut'}}
       style={{height:barLayout==='vertical'?height:`min(${height}px, max(300px, 85vw))`}}>
       {actual==='treemap'
         ?<ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
-        :cloneElement(chart,{responsive:true,style:{width:'100%',height:'100%'}})}
+        :cloneElement(chart,{responsive:true,style:{width:'100%',height:'100%'},
+          ...(periodInteractive?{onClick:handleChartClick}:{})})}
     </motion.div>
     {foldBlank&&gaps.length?<p className="scope-status" role="note">
       {t('uiExtra.chartLabels.gapLabel')}{gaps.map(g=>g.start+'～'+g.end+'（'+(g.days||g.buckets)+' '+(g.days?units.dayUnit:units.periodUnit)+'）').join(t('uiExtra.chartLabels.gapSeparator'))}

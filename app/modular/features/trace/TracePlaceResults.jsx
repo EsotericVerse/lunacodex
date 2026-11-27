@@ -17,6 +17,7 @@ import {selectGalaxyIdentity} from '../../../loc/galaxy/galaxy-query';
 import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 import {galaxyReadColumnsFor} from '../../../../packages/zenstack/galaxy-read-models.mjs';
 import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
+import {useFeatureFocus} from '../../feature-focus';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
@@ -62,11 +63,12 @@ function TraceWork({row,scope,timeLabel=''}){
 
 export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId='',period=null,
   tab='articles',sourceName='',mediaType='',dateRange=null,timeMode='none',defaultSort='desc',allPlacedArticles=false}){
+  const {focus,setFocusRange}=useFeatureFocus();
   const [sort,setSort]=useState(defaultSort);
   useEffect(()=>setSort(defaultSort),[defaultSort]);
   const [chartType,setChartType]=useState('bar');
   const defaultTimeUnit=useDefaultTimeUnit();
-  const viewUnit=defaultTimeUnit==='auto'?'month':defaultTimeUnit;
+  const viewUnit=tab==='timeline'?'day':defaultTimeUnit==='auto'?'month':defaultTimeUnit;
   const name=String(place?.title||'').trim();
   const isMap=place?.trace_type==='path'||place?.trace_type==='trace';
   const targetScope=String(place?.source_scope||scopeId||'').trim();
@@ -306,15 +308,26 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     name:placeName,value:count
   })),[verified.places]);
 
-  if(!name)return <section className="loc-card loc-trace-works" aria-label="地圖下方文章報表">
-    <h2>文章列表／時間長河／統計圖</h2>
+  const rangeFromTimeline=item=>{
+    const startDate=String(item?.start||item?.raw?.start_date||'').slice(0,10);
+    const rawEnd=String(item?.end||item?.raw?.end_date||startDate).slice(0,10);
+    const endMs=Date.parse(rawEnd+'T00:00:00Z');
+    const startMs=Date.parse(startDate+'T00:00:00Z');
+    const endDate=endMs>startMs?new Date(endMs-86400000).toISOString().slice(0,10):startDate;
+    if(!validDate(startDate)||!validDate(endDate)||!focus)return;
+    setFocusRange({startDate,endDate});
+  };
+
+  if(!name)return <section className="loc-card loc-trace-works" aria-label="地圖下方地點時間">
+    <h2>地點時間</h2>
     <p className="scope-status">選擇一個空間定錨點、路線圖或痕跡圖，再選時期；報表在這裡展開，不會跳到搜尋。</p>
   </section>;
   const loading=tab==='articles'?(selectedMediaType?mediaFiltered.isPending:list.isPending):summary.isPending;
   const error=tab==='articles'?(selectedMediaType?mediaFiltered.error:list.error):summary.error;
-  return <section className="loc-card loc-trace-works" aria-label="文章報表">
+  return <section className="loc-card loc-trace-works" aria-label={tab==='timeline'?'地點時間':'文章報表'}>
     <header className="loc-trace-works-title">
-      <div><p className="loc-eyebrow">文章報表</p><h2>文章列表／時間長河／統計圖</h2></div>
+      <div><p className="loc-eyebrow">{tab==='timeline'?'地點時間':'文章報表'}</p>
+        <h2>{tab==='timeline'?'地點關聯日期':'文章列表／時間長河／統計圖'}</h2></div>
       <span className="scope-status">{isMap?(place.trace_type==='trace'?'痕跡線段 '+place.anchor_list.length+' 段 · ':'路線 '+place.anchor_list.length+' 站 · '):''}
         {!enabled?'沒有可對應的打卡地點'
           :tab==='articles'?(listTotal==null?'按需載入中…':'已載入 '+listTotal+' 篇符合條件的文章')
@@ -360,8 +373,9 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
         extraGroups={[{id:'trace-density',label:'文章月份密度',order:1,selectable:false}]}
         labelOf={()=>''} mode="source" heightVariant="double"
         windowStart={startDate} windowEnd={endDate}
+        onSelect={rangeFromTimeline}
       />:<p className="scope-status">目前沒有可顯示的時間資料。</p>}
-      <p className="scope-status">依 Galaxy.place_id 與文章日期統計；不將文章建立時間推定為實際造訪。</p>
+      <p className="scope-status">依地點關聯日期顯示；選取時間區段會同步目前焦點，不會改寫資料。</p>
     </div>:null}
     {tab==='statistics'&&!selectedMediaType&&keywordGroups.isPending?
       <p className="scope-status">正在讀取這些地點的關鍵詞分組統計…</p>:null}

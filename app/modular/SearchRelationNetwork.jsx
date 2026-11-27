@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {useRouter} from 'next/navigation';
 import {motion,useReducedMotion} from 'motion/react';
 import {searchRelationGroups,relationGraph} from './search-relation-model.mjs';
 import {mixVisualRgb,themedDataColor,visualColor} from './visual-palette.mjs';
@@ -8,10 +9,13 @@ import {featureNavigationHref} from './routing/feature-navigation';
 import {PUBLISHED_SEARCH_PATTERNS} from './published-search-patterns.js';
 import {compileKeywordLiteralMatcher} from '../loc/keywords/literal-matcher.mjs';
 import {keywordScanText} from '../loc/keywords/content-filter.mjs';
+import {useFeatureFocus} from './feature-focus';
 
 const norm=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
   const host=useRef(null),network=useRef(null),latest=useRef(null),dataRef=useRef(null);
+  const router=useRouter();
+  const {selectFocus}=useFeatureFocus(scopeId);
   const reduceMotion=useReducedMotion();
   const matcher=useMemo(()=>{
     const words=PUBLISHED_SEARCH_PATTERNS[scopeId]||[];
@@ -27,12 +31,23 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
   const act=item=>{
     if(!item?.action)return;
     const action=item.action;
+    selectFocus({feature:'search',kind:action.kind||'relation',
+      id:String(item.id||action.uid||item.label||row.uid),
+      label:String(item.label||row.title||'搜尋關聯')});
     if(action.kind==='galaxy')onGalaxySelect?.(action.uid);
-    else if(action.kind==='feature')window.location.assign(featureNavigationHref(scopeId,action.feature,action.navigation));
+    else if(action.kind==='feature')router.push(featureNavigationHref(scopeId,action.feature,action.navigation));
     else if(action.kind==='external'&&window.confirm('即將離開 LOC 並開啟外部網站：\n'+action.href))
       window.open(action.href,'_blank','noopener,noreferrer');
   };
-  latest.current={model,groups,act,reduceMotion};
+  const chooseGroup=group=>{
+    setExpanded(value=>value===group.id?'':group.id);
+    selectFocus({feature:'search',kind:'relation-group',id:group.id,label:group.label});
+  };
+  const chooseRoot=()=>{
+    setExpanded('');
+    selectFocus({feature:'search',kind:'article',id:String(row.uid),label:String(row.title||row.uid)});
+  };
+  latest.current={model,groups,act,reduceMotion,chooseGroup,chooseRoot};
   function dataFor(model){
     const css=getComputedStyle(host.current);
     const text=css.getPropertyValue('--loc-text').trim()||'#eef2fa';
@@ -42,9 +57,13 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
     return {nodes:model.nodes.map(node=>{
       const border=branchColor(node.colorKey);
       const background=node.colorKey?mixVisualRgb(node.colorKey,panel,.12):panel;
-      return {...node,margin:node.kind==='root'?14:8,
-        borderWidth:node.kind==='root'?3:1.5,color:{background,border,
-          hover:{background,border},highlight:{background,border}},font:{color:text,size:node.kind==='root'?16:12},
+      return {...node,shape:'box',shapeProperties:{borderRadius:node.kind==='root'?18:13},
+        shadow:{enabled:true,color:'rgba(0,0,0,.16)',size:10,x:0,y:4},
+        margin:node.kind==='root'?14:9,borderWidth:node.kind==='root'?2.5:1.25,
+        color:{background,border,
+          hover:{background:mixVisualRgb(background,accent,.18),border:accent},
+          highlight:{background:mixVisualRgb(background,accent,.12),border:accent}},
+        font:{color:text,size:node.kind==='root'?16:12},
         widthConstraint:{maximum:node.kind==='root'?190:150}};
       }),
       edges:model.edges.map(edge=>({...edge,color:{color:branchColor(edge.colorKey),opacity:.85},
@@ -68,8 +87,11 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
       network.current=instance;
       instance.on('click',event=>{
         const id=String(event.nodes?.[0]||'');
-        if(id.startsWith('branch:'))setExpanded(value=>value===id.slice(7)?'':id.slice(7));
-        else if(id==='root')setExpanded('');
+        if(id.startsWith('branch:')){
+          const group=latest.current.groups.find(item=>item.id===id.slice(7));
+          if(group)latest.current.chooseGroup(group);
+        }
+        else if(id==='root')latest.current.chooseRoot();
         else{
           const item=latest.current.groups.flatMap(group=>group.items).find(item=>item.id===id);
           if(item)latest.current.act(item);
@@ -98,19 +120,27 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
     network.current.fit({animation:reduceMotion?false:{duration:230,easingFunction:'easeInOutQuad'}});
   },[model,reduceMotion]);
   if(!groups.length)return null;
+  const motionTransition=reduceMotion?{duration:0}:{type:'spring',stiffness:380,damping:30};
   return <section className="loc-search-network" aria-label="文章關聯網絡">
     <h3>關聯網絡</h3>
     <div className="loc-search-network__branches" role="group" aria-label="關聯分支">
-      {groups.map(group=><button type="button" key={group.id} className="loc-button"
+      {groups.map(group=><motion.button layout type="button" key={group.id} className="loc-button"
         aria-pressed={expanded===group.id} style={{borderColor:themedDataColor(group.color)}}
-        onClick={()=>setExpanded(value=>value===group.id?'':group.id)}>{group.label} · {group.items.length}</button>)}
+        transition={motionTransition}
+        whileHover={reduceMotion?undefined:{y:-2}}
+        whileTap={reduceMotion?undefined:{scale:.97}}
+        onClick={()=>chooseGroup(group)}>{group.label} · {group.items.length}</motion.button>)}
     </div>
     {!failed?<motion.div ref={host} className="loc-search-network__canvas"
       initial={reduceMotion?false:{opacity:0}} animate={{opacity:1}} transition={{duration:.25}}
       role="img" aria-label="本文與各關聯分支的網絡圖"/>:<p role="status" className="scope-status">網絡圖無法載入，仍可使用下方連結。</p>}
     {active?<div className="loc-search-network__links">
-      {active.items.map(item=>item.action?<button type="button" key={item.id} className="loc-button"
-        onClick={()=>act(item)}>{item.label}</button>:<span key={item.id}>{item.label}</span>)}
+      {active.items.map(item=>item.action?<motion.button layout type="button" key={item.id} className="loc-button"
+        transition={motionTransition}
+        whileHover={reduceMotion?undefined:{y:-1}}
+        whileTap={reduceMotion?undefined:{scale:.98}}
+        onClick={()=>act(item)}>{item.label}</motion.button>:<motion.span layout key={item.id}
+          transition={motionTransition}>{item.label}</motion.span>)}
       {active.id==='statistics'&&hits?<div className="loc-search-network__distribution">
         <p>本文公開詞彙命中 {hits.length} 種 · {hits.reduce((n,[,count])=>n+count,0)} 次</p>
         {hits.slice(0,8).map(([word,count],index)=><div key={word} className="loc-search-network__count">

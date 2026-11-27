@@ -103,12 +103,19 @@ export function movingAverage(rows,series,totalKey){
     __stat_average:rows.slice(Math.max(0,i-2),i+1).reduce((n,r)=>n+totalValue(r,series,totalKey),0)/(Math.min(i+1,3))
   }));
 }
-export function scatterPair(rows,series){
-  for(let a=0;a<series.length;a++)for(let b=a+1;b<series.length;b++){
-    const left=series[a],right=series[b];
+export function scatterPair(rows,series,xKey='',yKey=''){
+  const requestedX=series.find(field=>field.key===xKey);
+  const requestedY=series.find(field=>field.key===yKey);
+  const pairs=requestedX&&requestedY&&requestedX.key!==requestedY.key
+    ?[[requestedX,requestedY]]
+    :series.flatMap((left,index)=>series.slice(index+1).flatMap(right=>[
+      [left,right],[right,left]
+    ]));
+  for(const [left,right] of pairs){
     const x=rows.map(row=>number(row[left.key])),y=rows.map(row=>number(row[right.key]));
     if(rows.length>=3&&new Set(x).size>1&&new Set(y).size>1&&rows.some(row=>number(row[left.key])&&number(row[right.key]))){
-      return {x:left,y:right,data:rows.map(row=>({x:number(row[left.key]),y:number(row[right.key]),period:row.period}))};
+      return {x:left,y:right,data:rows.map(row=>({x:number(row[left.key]),y:number(row[right.key]),
+        period:row.period,start_date:row.start_date,end_date:row.end_date}))};
     }
   }
   return null;

@@ -2,7 +2,7 @@
 import UiText,{useUiText} from '../i18n/UiText';
 
 import {createContext,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import {animate,useReducedMotion} from 'motion/react';
+import {AnimatePresence,animate,motion,useReducedMotion} from 'motion/react';
 import {scopeFeatureEnabled} from '../loc/scope/scope-config-fields.mjs';
 import dynamic from 'next/dynamic';
 import {usePathname} from 'next/navigation';
@@ -19,6 +19,7 @@ import {HomeBlock} from '../loc/blocks/home-block-model';
 import ScopeLink from './ScopeLink';
 import {featureNavigationHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
+import {useFeatureFocus} from './feature-focus';
 // Shared display stays light: mount the editor only on pages that need it.
 const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const ArticleTimeAnchorAction=dynamic(()=>import('./ArticleTimeAnchorAction'),{loading:()=>null});
@@ -54,6 +55,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const finalSubtitle=subtitle||resolvedSubtitle;
   const pathname=usePathname();
   const editDock=useEditDock();
+  const focusState=useFeatureFocus(scopeId);
   const editing=Boolean(editDock?.active&&editDock.scopeId===scopeId);
   const managementView=useContext(ManagementHeroContext);
   const managementSlot=HomeBlock.managementHeroSlot(managementView,scopeId);
@@ -135,6 +137,27 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
         {(managementMode?managementTextQuery.isSuccess&&!shared:hasFeatureHero&&publicHeroQuery.isSuccess&&sharedEnabled&&!shared)
           ?<p className="scope-status" role="status">尚無主視覺資料。</p>:null}
       </header>
+      <AnimatePresence initial={false}>
+        {!managementMode&&publicFeature&&focusState.focus?<motion.aside
+          key={focusState.focus.feature+':'+focusState.focus.kind+':'+focusState.focus.id}
+          className="scope-feature-focus" role="status" aria-live="polite"
+          initial={reduceMotion?false:{opacity:0,y:9,scale:.985}}
+          animate={{opacity:1,y:0,scale:1}}
+          exit={reduceMotion?{opacity:0}:{opacity:0,y:-5,scale:.99}}
+          transition={reduceMotion?{duration:0}:{duration:.24,ease:[.22,.8,.22,1]}}>
+          <div className="scope-feature-focus__identity">
+            <span className="scope-feature-focus__eyebrow">目前焦點</span>
+            <strong>{focusState.focus.label}</strong>
+            <span>{copy.features?.[focusState.focus.feature]?.title||focusState.focus.feature}</span>
+          </div>
+          {focusState.dateRange?<time className="scope-feature-focus__range"
+            dateTime={focusState.dateRange.startDate||focusState.dateRange.endDate}>
+            {focusState.dateRange.startDate||'起始日未設'} ～ {focusState.dateRange.endDate||'結束日未設'}
+          </time>:null}
+          <button type="button" className="loc-button scope-feature-focus__clear"
+            onClick={focusState.clearFocus}>清除焦點</button>
+        </motion.aside>:null}
+      </AnimatePresence>
       <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
         {children}
       </div>
