@@ -182,48 +182,6 @@ function safeRelationLinksOf(items=[],defaultLabel=''){
     });
 }
 
-const ArticleContextStatisticsChart=dynamic(()=>import('./modules/statistics/StatisticsMultiChart'),{
-  ssr:false,loading:()=> <p className="scope-status">正在準備統計圖…</p>
-});
-function ArticleStatisticsPreview({scopeId='',statistics=null}){
-  const [open,setOpen]=useState(false);
-  const [range,setRange]=useState('week');
-  const selection=statistics?.[range];
-  const query=useAsyncResource({
-    queryKey:['article-date-stat-chart',scopeId,range,selection?.start,selection?.end],
-    enabled:open&&Boolean(scopeId&&selection?.start&&selection?.end),
-    queryFn:async()=>{
-      const {readScopeStatistics}=await import('../loc/db/db-client.mjs');
-      return readScopeStatistics(scopeId,{startDate:selection.start,endDate:selection.end});
-    },
-    revalidateOnFocus:false,revalidateOnReconnect:false
-  });
-  if(!statistics?.week||!statistics?.year)return null;
-  const sourceRows=(query.data||[]).filter(item=>item.kind==='total'&&item.category==='文字作品');
-  const totals=new Map();
-  for(const item of sourceRows){
-    const day=String(item.day||'').slice(0,10);
-    if(day)totals.set(day,(totals.get(day)||0)+(Number(item.item_count)||0));
-  }
-  const rows=[...totals].sort(([a],[b])=>a.localeCompare(b))
-    .map(([day,count])=>({period:day.slice(5).replace('-','/'),start_date:day,value:count}));
-  return <details className="scope-article-context-stat-preview" onToggle={event=>setOpen(event.currentTarget.open)}>
-    <summary>展開相關統計圖</summary>
-    {open?<div className="scope-article-context-stat-body">
-      <label>統計範圍
-        <select value={range} className="scope-select" onChange={event=>setRange(event.target.value)}>
-          <option value="week">當週</option><option value="year">當年</option>
-        </select>
-      </label>
-      {query.isPending?<p className="scope-status" role="status">正在載入時間統計…</p>:null}
-      {query.error?<p className="scope-status scope-error" role="alert">{String(query.error?.message||query.error)}</p>:null}
-      {query.isSuccess?(rows.length?<ArticleContextStatisticsChart
-        type="line" rows={rows} series={[{key:'value',label:'文章篇數'}]}
-        height={230}/>:<p className="scope-status">這段時間沒有符合條件的文字統計。</p>):null}
-    </div>:null}
-  </details>;
-}
-
 function ArticleRelationNavigation({
   links=[],externalLinks=[],relatedMedia=[],relatedTime=null,
   relatedSpace=null,relatedStatistics=null,tracePlace=null,traceHref='',
@@ -303,13 +261,6 @@ function ArticleRelationNavigation({
   const runeMedia=mediaItems.filter((_,index)=>String(relatedMedia[index]?.type||'').toLowerCase()==='rune');
   const time=relatedTime||{},space=relatedSpace||{};
   const dateValid=/^\d{4}-\d{2}-\d{2}$/.test(day);
-  const statistics=relatedStatistics;
-  const statsItems=statistics?[
-    {name:'當週統計',data:statistics.week},
-    {name:'當年統計',data:statistics.year}
-  ].filter(item=>item.data).map(item=><ScopeLink key={item.name}
-      href={featureNavigationHref(scope,'statics',{from:item.data.start,to:item.data.end,statTab:'charts'})}
-      className="scope-article-context-link">{item.name}</ScopeLink>):[];
   const activeAnchors=Array.isArray(time.anchors)?[...time.anchors]:[];
   if(addedAnchor?.scope===scope&&addedAnchor?.day===day&&
     !activeAnchors.some(item=>item.uid===addedAnchor.anchor.uid))activeAnchors.push(addedAnchor.anchor);
@@ -319,10 +270,28 @@ function ArticleRelationNavigation({
   const periods=named(time.periods,item=>timeHref(item,'period'));
   const eras=named(time.eras,item=>timeHref(item,'period'));
   const locations=space.place?[space.place]:tracePlace?[tracePlace]:[];
-  const traceScope=item=>item?.source_scope||scope;
   const places=named(locations,item=>traceLink(item,'place'));
   const routes=named(space.routes,item=>traceLink(item,'map'));
   const traces=named(space.traces,item=>traceLink(item,'map'));
+  const timeRows=[];
+  if(timeAnchors.length)timeRows.push(row('定錨',timeAnchors));
+  else if(dateValid)timeRows.push(row('日期',<ScopeLink className="scope-article-context-link"
+    href={featureNavigationHref(scope,'culture',{from:day,to:day})}>{day} · 查看時間長河</ScopeLink>));
+  if(periods.length)timeRows.push(row('期間',periods));
+  if(eras.length)timeRows.push(row('時代',eras));
+  if(anniversarySuggestions.length)timeRows.push(row('週年建議',<span className="scope-status">
+    {anniversarySuggestions[0].title} · 可新增週年定錨
+  </span>));
+  if(dateValid&&scope!=='loc'&&scope!=='local')timeRows.push(row('新增定錨',<ArticleTimeAnchorAction
+    scopeId={scope} date={day} articleCreateTime={articleCreateTime}
+    suggestions={anniversarySuggestions}
+    label={anniversarySuggestions.length?'新增週年定錨':'新增時間定錨'}
+    onCreated={anchor=>setAddedAnchor({scope,day,anchor})}/>));
+  const spaceRows=[];
+  if(places.length)spaceRows.push(row('地點',places));
+  else if(String(locationName||'').trim())spaceRows.push(row('文章地點',String(locationName).trim()));
+  if(routes.length)spaceRows.push(row('路線',routes));
+  if(traces.length)spaceRows.push(row('痕跡圖',traces));
   return <section className="scope-article-context" aria-label="文章整合脈絡">
     {ordinaryMedia.length?row('相關媒體外部連結',ordinaryMedia):null}
     {mediaDetails.length?row('相關媒體資料',mediaDetails):null}
@@ -335,40 +304,12 @@ function ArticleRelationNavigation({
         <div className="scope-article-context-items">{articles(below)}</div>
       </details>
     </div>:null}
-    <div className="scope-article-context-group">
-      <h3>時間</h3>
-      {row('定錨',<>
-        {timeAnchors.length?timeAnchors:dateValid?'—':'文章尚未設定日期'}
-        {anniversarySuggestions.length?<span className="scope-status" role="status">
-          此日期符合週年／生日：{anniversarySuggestions[0].title}，可新增週年定錨。
-        </span>:null}
-        {dateValid&&scope!=='loc'&&scope!=='local'?<ArticleTimeAnchorAction
-          scopeId={scope} date={day} articleCreateTime={articleCreateTime} suggestions={anniversarySuggestions}
-          label={anniversarySuggestions.length?'新增週年定錨':'新增時間定錨'}
-          onCreated={anchor=>setAddedAnchor({scope,day,anchor})}/>:null}
-      </>)}
-      {row('期間',periods.length?periods:'—')}
-      {row('時代',eras.length?eras:'—')}
-
-    </div>
-    <div className="scope-article-context-group">
-      <h3>空間</h3>
-      {row('地點',places.length?places:locationName||'尚未定錨')}
-      {row('路線',routes.length?routes:'—')}
-      {row('痕跡圖',traces.length?traces:'—')}
-    </div>
-    <div className="scope-article-context-group">
-      <h3>統計</h3>
-        {row('時間統計',dateValid
-        ?statsItems.length?statsItems:<ScopeLink className="scope-article-context-link"
-          href={featureNavigationHref(scope,'statics',{from:day,to:day})}>查看時間統計</ScopeLink>
-        :'需要文章日期')}
-      {row('關鍵詞統計',dateValid?<ScopeLink className="scope-article-context-link"
-        href={featureNavigationHref(scope,'statics',{statTab:'keywords',from:day,to:day})}>查看關鍵詞統計</ScopeLink>
-        :'需要文章日期')}
-      <ArticleStatisticsPreview scopeId={scope} statistics={statistics}/>
-    </div>
-    {row('關鍵詞組別',<span className="scope-status">待建立關鍵詞對應</span>)}
+    {timeRows.length?<div className="scope-article-context-group">
+      <h3>時間</h3>{timeRows}
+    </div>:null}
+    {spaceRows.length?<div className="scope-article-context-group">
+      <h3>空間</h3>{spaceRows}
+    </div>:null}
     {originals.length?row('文章原始網址',originals.map((item,index)=><a
       key={item.id||index} className="scope-article-context-link" href={externalLink(item)}
       target="_blank" rel="noopener noreferrer">{externalLink(item)}</a>)):null}

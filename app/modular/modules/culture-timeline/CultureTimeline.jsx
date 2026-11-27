@@ -614,13 +614,22 @@ export default function CultureTimeline({
           };
         }catch{doubleRiverWindowRef.current=null;}
       }
+      const ownedData=timelineDataRef.current;
+      const ownedGroups=timelineGroupsRef.current;
       if(timelineRef.current===instance){
         timelineRef.current=null;
         timelineDataRef.current=null;
         timelineGroupsRef.current=null;
         setHoverInfo(null);
       }
-      if(instance)instance.destroy();
+      if(instance){
+        try{instance.destroy();}catch{/* The timeline may already be detached. */}
+      }
+      // DataSet retains every row and callback until cleared. Release both
+      // snapshots and the ID index on route changes or timeline replacement.
+      try{ownedData?.clear();}catch{/* DataSet may already be destroyed. */}
+      try{ownedGroups?.clear();}catch{/* Empty timelines have no group set. */}
+      timelineRowsByIdRef.current.clear();
     };
   },[preserveTimelineInstance?null:paintRows,preserveTimelineInstance?null:extraGroups,
     hasTimeKinds,preserveTimelineInstance?null:timelineMinHeight,
