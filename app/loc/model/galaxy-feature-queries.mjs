@@ -86,7 +86,7 @@ export function parseGalaxyFeatureQuery(raw){
     throw Object.assign(Error('Invalid Galaxy feature parameters'),{httpStatus:400});
   return {...value,limit:['uids','articles'].includes(value.result)?value.limit||ARTICLE_UID_PAGE_ROWS:undefined};
 }
-const PRIVATE_SITES=Object.freeze(['messenger','chatgpt','claude','gemini',
+export const PUBLIC_GALAXY_PRIVATE_SITES=Object.freeze(['messenger','chatgpt','claude','gemini',
   'msn','whatsapp','telegram','discord','line','wechat','teams','copilot',
   'grok','perplexity','meta ai','meta-ai','github','mcp']);
 // Text terms are SQL *values* only. Escape LIKE wildcard syntax so the
@@ -96,7 +96,7 @@ function baseQuery(db,model){
   let q=db.selectFrom('silver.'+model.scope+'_galaxy')
     .where(GALAXY_FEATURE_MODELS[model.feature].flag,'=',true)
     .where(eb=>eb.or([eb('site','is',null),
-      eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)]));
+      eb(eb.fn('lower',['site']),'not in',PUBLIC_GALAXY_PRIVATE_SITES)]));
   if(model.startDate)q=q.where('date','>=',model.startDate);
   if(model.endDate)q=q.where('date','<=',model.endDate);
   const selector=model.category;
