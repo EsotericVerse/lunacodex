@@ -1,17 +1,17 @@
 // One authoritative navigation contract for LOC's Group, Scope and
 // public User docks. The three levels are intentionally NOT interchangeable:
-// /manage is Group People/Works, whereas /trace/manage owns Scope space data.
+// /manage is Group Management, whereas /trace/manage owns Scope space data.
 export const LOC_MANAGEMENT_ROUTE_TABLE=Object.freeze({
   group:Object.freeze({
     system:'/admin/',
-    keywords:'statics/manage',
     members:'manage',
+    keywords:'statics/manage',
     articles:'search/manage'
   }),
   scope:Object.freeze({
     time:'culture/manage',
-    keywords:'statics/manage',
     spatial:'trace/manage',
+    keywords:'statics/manage',
     articles:'search/manage'
   }),
   user:Object.freeze({

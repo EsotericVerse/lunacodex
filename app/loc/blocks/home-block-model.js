@@ -160,7 +160,7 @@ export const MANAGEMENT_HERO_SLOTS=Object.freeze([
   {key:'spatial',label:'空間定錨',audience:'scope',featureId:'trace',page:'SpaceAnchor',englishTitle:'Space Anchor'},
   {key:'advanced',label:'文章管理',audience:'scope',featureId:'search',page:'GroupArticle',englishTitle:'Article Management'},
   {key:'system',label:'系統管理',audience:'loc',page:'group_admin',englishTitle:'Administration'},
-  {key:'members',label:'人員作品管理',audience:'loc',page:'GalaxyManage',englishTitle:'People & Works'},
+  {key:'members',label:'群組管理',audience:'loc',page:'GalaxyManage',englishTitle:'Group Management'},
   {key:'locKeywords',label:'關鍵詞',audience:'loc',page:'Groupkeyword',englishTitle:'Keywords'},
   {key:'articles',label:'文章管理',audience:'loc',page:'GroupArticle',englishTitle:'Article Management'}
 ]);
@@ -190,7 +190,7 @@ const MANAGEMENT_HERO_COPY=Object.freeze({
   SpaceAnchor:{eyebrow:'Space Anchor',title:'空間定錨'},
   ScopeArticle:{eyebrow:'Article Management',title:'文章管理'},
   group_admin:{eyebrow:'Administration',title:'系統管理'},
-  GalaxyManage:{eyebrow:'People & Works',title:'人員作品管理'},
+  GalaxyManage:{eyebrow:'Group Management',title:'群組管理'},
   Groupkeyword:{eyebrow:'Keywords',title:'關鍵詞'},
   GroupArticle:{eyebrow:'Article Management',title:'文章管理'},
   group_culture:{eyebrow:'Culture',title:'文化'},

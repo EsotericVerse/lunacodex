@@ -2,6 +2,7 @@
 
 import {useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
+import ManagementVisNetwork from './ManagementVisNetwork';
 
 const normalize=value=>String(value||'').normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
 const PANE_STAGGER_LIMIT=8;
@@ -69,6 +70,34 @@ export default function AnchorManagementNavigator({
   const primary=useMemo(()=>filter(primaryItems),[primaryItems,needle]);
   const secondary=useMemo(()=>filter(secondaryItems),[secondaryItems,needle]);
   const detail=useMemo(()=>filter(detailItems),[detailItems,needle]);
+  const graph=useMemo(()=>{
+    const rootId='anchor-root:'+label;
+    const nodes=[{id:rootId,label,level:0,x:0,y:0,fixed:true,widthConstraint:{maximum:180}}];
+    const edges=[];
+    const addPane=(items,level,parentId,selectedId)=>{
+      const visible=items.slice(0,level===3?24:40);
+      const x=level===1?230:level===2?490:750;
+      const gap=level===3?58:76;
+      const center=(visible.length-1)/2;
+      for(const [index,item] of visible.entries()){
+        const id='anchor-'+level+':'+String(item.id);
+        nodes.push({id,label:String(item.label||item.id).slice(0,42),level,
+          x,y:(index-center)*gap,fixed:true,widthConstraint:{maximum:190}});
+        edges.push({id:parentId+'>'+id,from:parentId,to:id});
+      }
+      if(selectedId&&visible.some(item=>String(item.id)===String(selectedId)))
+        return 'anchor-'+level+':'+String(selectedId);
+      return '';
+    };
+    const selectedPrimaryNode=addPane(primary,1,rootId,selectedPrimary);
+    const selectedSecondaryNode=selectedPrimaryNode
+      ?addPane(secondary,2,selectedPrimaryNode,selectedSecondary):'';
+    const selectedDetailNode=selectedSecondaryNode
+      ?addPane(detail,3,selectedSecondaryNode,selectedDetail):'';
+    return {nodes,edges,selectedId:selectedDetailNode||selectedSecondaryNode||selectedPrimaryNode};
+  },[label,primary,secondary,detail,selectedPrimary,selectedSecondary,selectedDetail]);
+  const [networkState,setNetworkState]=useState('loading');
+  const [networkError,setNetworkError]=useState('');
   return <section className={['loc-anchor-management',className].filter(Boolean).join(' ')}
     aria-label={label}>
     <label className="loc-anchor-management__search">
@@ -76,6 +105,25 @@ export default function AnchorManagementNavigator({
       <input type="search" className="scope-search-input" value={query}
         onChange={event=>setQuery(event.target.value)} placeholder={searchPlaceholder}/>
     </label>
+    <div className="loc-anchor-management__graph-shell">
+      <ManagementVisNetwork nodes={graph.nodes} edges={graph.edges}
+        selectedId={graph.selectedId} className="loc-anchor-management__graph"
+        ariaLabel={label+'階層圖'} onStatusChange={(state,message)=>{
+          setNetworkState(state);
+          if(state==='error')setNetworkError(message);
+        }} onSelect={id=>{
+          const [level,...parts]=String(id).split(':');
+          const selectedId=parts.join(':');
+          if(level==='anchor-1')onSelectPrimary?.(selectedId);
+          else if(level==='anchor-2')onSelectSecondary?.(selectedId);
+          else if(level==='anchor-3')onSelectDetail?.(selectedId);
+        }}/>
+      {networkState==='loading'?<p className="scope-status" role="status">正在整理定錨層級…</p>:null}
+      {networkState==='error'?<p className="scope-status scope-error" role="status">
+        階層圖目前無法載入，仍可使用下方清單。{networkError}</p>:null}
+      {(primary.length>40||secondary.length>40||detail.length>24)
+        ?<p className="scope-status">圖上顯示目前分層的前段項目；完整清單仍列於下方。</p>:null}
+    </div>
     <div className="loc-anchor-management__grid">
       <Pane level="primary" title={primaryTitle} items={primary}
         selected={selectedPrimary} onSelect={onSelectPrimary}

@@ -1,0 +1,184 @@
+/* Management graphs share LOC theme tokens; node hierarchy stays soft and clear. */
+.management-network-nav{
+  position:relative;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:.45rem;
+  min-width:0;
+  overflow:hidden;
+  padding:.75rem clamp(.8rem,1.4vw,1.15rem) .8rem;
+  border:1px solid var(--loc-ui-hairline,var(--loc-line));
+  border-radius:var(--loc-ui-radius-lg,18px);
+  background:var(--loc-ui-panel,var(--loc-panel));
+  box-shadow:var(--loc-ui-shadow-soft,0 8px 24px rgba(4,12,24,.08));
+}
+.management-network-nav__heading{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:.75rem;
+  min-width:0;
+  padding-inline:.15rem;
+}
+.management-network-nav__heading h2{
+  margin:0;
+  color:var(--loc-heading);
+  font-size:clamp(1.08rem,1.8vw,1.36rem);
+  font-weight:780;
+  letter-spacing:.015em;
+}
+.management-network-nav__heading>span{
+  flex:none;
+  color:var(--loc-muted);
+  font-size:.78rem;
+}
+.management-network-nav__canvas{
+  width:100%;
+  height:clamp(10.5rem,23vw,17.5rem);
+  min-width:0;
+  overflow:hidden;
+  border:1px solid var(--loc-line-soft,var(--loc-line));
+  border-radius:var(--loc-ui-radius-md,14px);
+  background:linear-gradient(135deg,var(--loc-panel-2,var(--loc-panel)) 0%,var(--loc-panel) 76%);
+}
+.management-vis-network.vis-network{outline:none;}
+.management-vis-network .vis-network:focus{outline:none;}
+.management-network-nav__selection{
+  display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:.4rem .8rem;
+  min-height:1.65rem;
+  padding-inline:.15rem;
+  color:var(--loc-text);
+}
+.management-network-nav__selection strong{
+  color:var(--loc-accent);
+  font-size:.95rem;
+  font-weight:750;
+}
+.management-network-nav__selection span{
+  color:var(--loc-muted);
+  font-size:.82rem;
+  line-height:1.5;
+}
+.management-network-nav__choices{position:relative;z-index:1;justify-self:start;max-width:100%;}
+.management-network-nav__choices summary{
+  color:var(--loc-muted);
+  font-size:.78rem;
+  cursor:pointer;
+}
+.management-network-nav__choices summary:focus-visible,
+.management-network-nav__choice-list button:focus-visible{
+  outline:2px solid var(--loc-accent);
+  outline-offset:3px;
+}
+.management-network-nav__choice-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:.4rem;
+  margin-top:.55rem;
+}
+.management-network-nav__choice-list button{
+  min-height:2.55rem;
+  padding:.5rem .78rem;
+  border:1px solid var(--loc-line);
+  border-radius:var(--loc-ui-radius-sm,10px);
+  background:var(--loc-panel-2,var(--loc-panel));
+  color:var(--loc-text);
+  font:inherit;
+  cursor:pointer;
+}
+.management-network-nav__choice-list button[aria-selected="true"]{
+  border-color:var(--loc-accent-border-soft,var(--loc-accent));
+  background:var(--loc-accent-surface,var(--loc-panel));
+  color:var(--loc-accent);
+}
+.management-network-nav__loading,
+.management-network-nav__fallback-message{
+  color:var(--loc-muted);
+  font-size:.78rem;
+}
+.management-network-nav__fallback-message{margin:.2rem 0;}
+
+/* Timeline and spatial managers expose the stored hierarchy as an interactive
+   graph, while their complete searchable lists remain available underneath. */
+.loc-anchor-management__graph-shell{
+  display:grid;gap:.2rem;min-width:0;margin:.15rem 0 .9rem;
+}
+.loc-anchor-management__graph{
+  width:100%;height:clamp(13rem,30vw,21rem);min-width:0;overflow:hidden;
+  border:1px solid var(--loc-line-soft,var(--loc-line));
+  border-radius:var(--loc-ui-radius-lg,18px);
+  background:radial-gradient(ellipse at 22% 45%,var(--loc-accent-surface,var(--loc-panel-2)) 0%,transparent 42%),
+    linear-gradient(135deg,var(--loc-panel-2,var(--loc-panel)),var(--loc-panel) 78%);
+}
+.loc-anchor-management__graph-shell>.scope-status{margin:.15rem 0;font-size:.78rem;}
+.loc-anchor-management__graph-shell>.scope-status[role="status"]:not(.scope-error){color:var(--loc-muted);}
+.admin-deployment-tree{
+  border-color:var(--loc-line-soft,var(--loc-line))!important;
+  border-radius:var(--loc-ui-radius-lg,18px)!important;
+  background:radial-gradient(ellipse at 20% 20%,var(--loc-accent-surface,var(--loc-panel-2)) 0%,transparent 48%),
+    linear-gradient(145deg,var(--loc-panel-2,var(--loc-panel)),var(--loc-panel) 74%)!important;
+  box-shadow:var(--loc-ui-shadow-soft,0 10px 28px rgba(4,12,24,.1));
+}
+.admin-deployment-tree .vis-manipulation,
+.admin-deployment-tree .vis-edit-mode{
+  border-radius:var(--loc-ui-radius-sm,10px);
+  background:var(--loc-panel)!important;color:var(--loc-text)!important;
+}
+.scope-keyword-network-canvas{
+  border-color:var(--loc-line-soft,var(--loc-line))!important;
+  border-radius:var(--loc-ui-radius-lg,18px)!important;
+  background:radial-gradient(ellipse at 22% 18%,var(--loc-accent-surface,var(--loc-panel-2)) 0%,transparent 45%),
+    linear-gradient(145deg,var(--loc-panel-2,var(--loc-panel)),var(--loc-panel) 76%)!important;
+  box-shadow:var(--loc-ui-shadow-soft,0 10px 28px rgba(4,12,24,.1));
+}
+
+/* Related editors keep graph navigation and BlockNote side by side. */
+.loc-home-block-network-editor{
+  display:grid;
+  grid-template-columns:minmax(13rem,.72fr) minmax(0,1.8fr);
+  align-items:start;
+  gap:clamp(.75rem,1.6vw,1.25rem);
+  min-width:0;
+}
+.loc-home-block-network-editor__tree{position:sticky;top:1rem;min-width:0;}
+.loc-home-block-network-editor__tree .management-vis-network{
+  width:100%;height:clamp(18rem,48vh,36rem);min-height:18rem;
+  border:1px solid var(--loc-line-soft,var(--loc-line));
+  border-radius:var(--loc-ui-radius-md,14px);
+  background:linear-gradient(145deg,var(--loc-panel-2,var(--loc-panel)),var(--loc-panel));
+}
+.loc-home-block-network-editor__title{
+  margin:0 0 .5rem;
+  color:var(--loc-heading);
+  font-size:1.02rem;
+  font-weight:760;
+}
+.loc-home-block-network-editor__fallback{
+  display:grid;gap:.35rem;margin:0 0 .6rem;
+}
+.loc-home-block-network-editor__fallback button{
+  min-height:2.6rem;padding:.5rem .7rem;
+  border:1px solid var(--loc-line);border-radius:var(--loc-ui-radius-sm,10px);
+  background:var(--loc-panel);color:var(--loc-text);text-align:start;font:inherit;
+}
+.loc-home-block-network-editor__fallback button[aria-pressed="true"]{
+  border-color:var(--loc-accent-border);background:var(--loc-accent-surface);color:var(--loc-heading);
+}
+.loc-home-block-network-editor__editor{display:grid;gap:.85rem;min-width:0;}
+.loc-home-block-network-editor__editor>.scope-block-draft{margin:0;}
+@media(max-width:760px){
+  .management-network-nav{padding:.65rem;}
+  .management-network-nav__canvas{height:clamp(10rem,42vw,14rem);}
+  .loc-anchor-management__graph{height:clamp(12rem,54vw,17rem);}
+  .management-network-nav__heading h2{font-size:1.05rem;}
+  .management-network-nav__heading>span{font-size:.72rem;}
+  .loc-home-block-network-editor{grid-template-columns:minmax(0,1fr);}
+  .loc-home-block-network-editor__tree{position:relative;top:auto;}
+  .loc-home-block-network-editor__tree .management-vis-network{height:15rem;min-height:15rem;}
+}
+@media(prefers-reduced-motion:reduce){
+  .management-network-nav *, .loc-home-block-network-editor *{scroll-behavior:auto!important;}
+}

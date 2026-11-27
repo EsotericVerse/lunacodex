@@ -20,6 +20,7 @@ import {
   LOC_MANAGEMENT_ROUTE_TABLE,
   managementRouteHref,
 } from '../app/modular/routing/management-route-table.mjs';
+import {PRIMARY_NAV_ORDER} from '../app/modular/routing/navigation-order.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
 import {SITE_ANCHOR_READ_MODE,readPublicSourceAnchors,readPublicSourceTaxonomy} from '../app/loc/source/catalog-public.mjs';
 import {queryAnchorFeature} from '../app/loc/actions/anchor/queries.mjs';
@@ -68,7 +69,7 @@ test('the routing table resolves to the exact LOC and Scope Hero artwork',async(
 test('Hero copy follows the requested management and public route labels',()=>{
   const titles={
     TimeAnchor:'時間定錨',Groupkeyword:'關鍵詞',SpaceAnchor:'空間定錨',
-    GroupArticle:'文章管理',group_admin:'系統管理',GalaxyManage:'人員作品管理',
+    GroupArticle:'文章管理',group_admin:'系統管理',GalaxyManage:'群組管理',
     group_culture:'文化',group_statics:'統計',group_trace:'痕跡',
     group_search:'搜尋',group_setting:'個人設定'
   };
@@ -102,8 +103,8 @@ test('Kysely Scope config reads receive column references rather than one CSV id
 test('management route table preserves the Group and Scope destinations',()=>{
   assert.deepEqual(LOC_MANAGEMENT_ROUTE_TABLE.group,{
     system:'/admin/',
-    keywords:'statics/manage',
     members:'manage',
+    keywords:'statics/manage',
     articles:'search/manage',
   });
   assert.deepEqual(LOC_MANAGEMENT_ROUTE_TABLE.scope,{
@@ -113,13 +114,16 @@ test('management route table preserves the Group and Scope destinations',()=>{
     articles:'search/manage',
   });
   assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.group),[
-    'system','keywords','members','articles'
+    'system','members','keywords','articles'
   ]);
   assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.scope),[
-    'time','keywords','spatial','articles'
+    'time','spatial','keywords','articles'
   ]);
   assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.user),[
     'culture','statics','trace','search'
+  ]);
+  assert.deepEqual(PRIMARY_NAV_ORDER,[
+    'home','culture','trace','statics','search','settings'
   ]);
   assert.ok(Object.values(LOC_MANAGEMENT_ROUTE_TABLE).flatMap(Object.values)
     .every(route=>!route.includes('?section=')));

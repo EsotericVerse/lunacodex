@@ -15,8 +15,8 @@ export async function readLocAccess(_db,email,{website=false}={}){
 }
 
 // Existing trusted Gateway grants are projected into the SAME ZModel
-// LocPrincipal role hierarchy. A Group grant never becomes global Admin;
-// Scope/Group grants still require their exact server-issued resource ID.
+// LocPrincipal role hierarchy. Only LOC's root Group is the unified LOC
+// administrator; other Group/Scope grants still require their exact resource.
 export function hasLocAccess(claims,type,id=''){
   const kind=String(type||'').toLowerCase();
   const scope=String(id||'').toLowerCase();

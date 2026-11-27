@@ -523,26 +523,26 @@ function AppShellInner({children,runtime}){
     :editSegments.includes('trace')&&editSegments.includes('manage')?'trace'
     :null;
   const isFeatureEditMode=Boolean(editingDockVisible&&featureEditReturn);
-  // Four fixed destinations, followed by Save/Cancel. Group works lives
+  // Four fixed destinations, followed by Save/Cancel. Group management lives
   // at /manage; Scope space management lives at /trace/manage.
   // Only the Group article link requests edit=1 explicitly.
   const editDestinations=locAdminEdit?[
     ...(editDock?.canManageGlobal?[{id:'system',icon:'settings',label:translateUiField(activeLocale,'系統管理'),
       href:managementHref('group','system')}]:[]),
+    {id:'members',icon:'culture',label:translateUiField(activeLocale,'群組管理'),
+      href:managementHref('group','members')},
     {id:'keywords',icon:'keywords',label:translateUiField(activeLocale,'關鍵詞'),
       href:managementHref('group','keywords')},
-    {id:'members',icon:'culture',label:translateUiField(activeLocale,'人員作品管理'),
-      href:managementHref('group','members')},
     {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
       href:managementHref('group','articles')}
   ]:[
     {id:'time',icon:'culture',label:translateUiField(activeLocale,'時間定錨'),
       href:editScopeAvailable?managementHref('scope','time'):''},
-    {id:'keywords',icon:'keywords',label:translateUiField(activeLocale,'關鍵詞'),
-      href:editScopeAvailable&&navScopeId!=='local'?managementHref('scope','keywords'):''},
     {id:'manage',icon:'trace',label:navScopeId==='local'?'管理':translateUiField(activeLocale,'空間定錨'),
       href:navScopeId==='local'?navigationHref('local','manage',native)
         :managementHref('scope','spatial')},
+    {id:'keywords',icon:'keywords',label:translateUiField(activeLocale,'關鍵詞'),
+      href:editScopeAvailable&&navScopeId!=='local'?managementHref('scope','keywords'):''},
     {id:'suggestions',icon:'search',label:translateUiField(activeLocale,'文章管理'),
       href:navScopeId==='local'?navigationHref('local','search',native)
         :managementHref('scope','articles')}

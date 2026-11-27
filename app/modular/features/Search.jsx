@@ -703,7 +703,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     detailEpoch.current++;
     const mediaId=String(rawMediaId||'').trim(),id=++searchId.current;
     beginRequest();
-    setError('');setStatus('');setResults([]);setEditDraft(null);setEditingKey('');
+    setError('');setStatus('');setResults([]);setEditDraft(null);setEditingKey('');setAuthorizedEditingKey('');
     setHasMore(false);setNextCursor(null);setFullText('');setFullTextRow(null);
     try{
       if(!/^[A-Za-z0-9]{8}$/.test(mediaId))throw new Error(t('uiExtra.searchUI.invalidMediaId'));
@@ -718,6 +718,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       const item=toResult({...row,record_type:'media_anchor',scope_id:mediaScopeId,__table:scopeData.anchor},'MediaAnchor',mediaScopeId);
       const {SearchEditDraft}=await import('./search-edit-draft');
       setResults([item]);setEditingKey(item.key);setEditDraft(SearchEditDraft.fromRow('media',row,item.title));
+      // The direct media editor has already checked the current Scope grant
+      // above; it does not pass through startEditing(), so establish the same
+      // per-record authorization key before rendering Save/Delete actions.
+      setAuthorizedEditingKey(item.key);
     }catch(exception){if(id===searchId.current)setError(String(exception?.message||exception||UI_COPY.search.editLoadFailed))}
   }
 

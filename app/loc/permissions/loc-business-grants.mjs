@@ -27,7 +27,8 @@ export function loc_access(email,rows=[],{website=false}={}){
     if(parsed.success&&parsed.data.email===verified)eligible.push(parsed.data);
   }
   if(!eligible.length)return empty();
-  const admin=eligible.some(row=>row.manage_role==='admin');
+  const admin=eligible.some(row=>row.manage_role==='admin')||
+    eligible.some(row=>row.id==='loc'&&row.manage_role==='group');
   const grants=new Set(admin?['global:manage']:[]);
   for(const row of eligible){
     grants.add(row.id+':manage');
