@@ -13,8 +13,6 @@ import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks,readFeature
 import ScopeLink from '../ScopeLink';
 import {scopeHref} from '../routing/scope-registry';
 import {useEditDock} from '../edit-dock';
-import {useFeatureFocus} from '../feature-focus';
-import {featureArticleFromRow,featureFocusRangeFromRow} from '../feature-focus-state.mjs';
 import {featureDataErrorMessage} from '../feature-data-state';
 // Keep a visible, CSS-only waiting state even before the timeline chunk loads.
 function CultureTimeLoading({label='正在載入時間定錨…'}){
@@ -27,7 +25,7 @@ const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTim
   loading:()=> <CultureTimeLoading label='正在準備時間長河…'/>
 });
 import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
-import {visualKeyColor} from '../visual-palette.mjs';
+import {TERRITORY_STOPS,territoryLegendColor} from '../visual-palette.mjs';
 import {eraVisualGradient} from '../modules/culture-timeline/era-visuals.mjs';
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
@@ -163,17 +161,21 @@ function CultureSourceRootSummary({items,groups,eraRanges,windowStart,windowEnd,
   const largest=Math.max(1,...totals.map(item=>Number(item.item_count)||0));
   return <div className='scope-period-timeline-wrap'>
     <div className='scope-period-timeline' role='region' aria-label='作品分類總量時間長河'
-      style={{minHeight:0,overflow:'visible',padding:'.65rem',background:'var(--loc-panel)'}}>
-      <div style={{display:'grid',gridTemplateColumns:'clamp(108px,23vw,248px) minmax(0,1fr)',gap:'.4rem .55rem',alignItems:'center'}}>
+      style={{minHeight:0,overflow:'visible',padding:'.65rem',background:'linear-gradient(135deg,color-mix(in srgb,var(--loc-accent) 10%,var(--loc-panel)),color-mix(in srgb,var(--loc-gold) 8%,var(--loc-panel-2)))'}}>
+      <div style={{display:'grid',gridTemplateColumns:'clamp(108px,23vw,248px) minmax(0,1fr) auto',gap:'.4rem .55rem',alignItems:'center'}}>
         <span className='scope-status'>分類總量</span>
         <div style={{display:'flex',justifyContent:'space-between',gap:'.5rem',fontSize:'.8rem',color:'var(--loc-muted)',backgroundImage,borderRadius:'.2rem',padding:'0 .25rem'}}>
           <time>{windowStart}</time><time>{windowEnd}</time>
         </div>
+        <span aria-hidden='true'/>
         {groups.map(group=>{
           const row=byGroup.get(group.id);
           const candidate=group.id==='dual:source:candidates';
           if(!row&&!candidate)return null;
           const count=Number(row?.item_count)||0;
+          let densityColorIndex=0;
+          for(let stop=0;stop<TERRITORY_STOPS.length;stop++)
+            if(count>=TERRITORY_STOPS[stop][0])densityColorIndex=stop;
           const action=group.collapsible?()=>onGroupToggle?.(group.id)
             :group.selectable?()=>onGroupSelect?.(group.id):null;
           return <div key={group.id} className={row?'scope-dual-river-root':'scope-candidate-lane'} style={{display:'contents'}}>
@@ -187,8 +189,13 @@ function CultureSourceRootSummary({items,groups,eraRanges,windowStart,windowEnd,
               border:'1px solid var(--loc-line)',borderRadius:'.5rem',backgroundColor:'var(--loc-panel-2)',backgroundImage}}
               role={row?'img':undefined} aria-label={row?group.label+'，'+count+'筆':''}>
               {row?<div style={{width:'100%',height:Math.max(11,Math.round(11+19*count/largest)),
-                borderRadius:'999px',background:visualKeyColor(group.id),
+                borderRadius:'999px',background:territoryLegendColor(densityColorIndex),
                 opacity:Math.max(.65,Math.min(1,count/largest)),boxShadow:'0 0 6px var(--loc-accent-border)'}}/>:null}
+            </div>
+            <div className='scope-culture-source-open-cell'>
+              {group.selectable?<button type='button' className='scope-river-article-open'
+                title={'開啟'+group.label+'文章列表'} aria-label={'開啟'+group.label+'文章列表'}
+                onClick={()=>onGroupSelect?.(group.id)}>⌄</button>:null}
             </div>
           </div>;
         })}
@@ -218,7 +225,6 @@ export default function Culture(){
   const localizedLabelOf=useMemo(()=> (item,index)=>labelOf(item,index,UI_COPY.format.period(index+1)),[UI_COPY]);
   const {locale}=useUiLocale();
   const {scopeId,scope}=useScopeRuntime();
-  const {selectFocus,setFocusRange,dateRange:sharedFocusRange}=useFeatureFocus(scopeId);
   const [worksOpen,setWorksOpen]=useState(false);
   const searchParams=useSearchParams();
   const editDock=useEditDock();
@@ -242,14 +248,7 @@ export default function Culture(){
   const [expandedLocScopes,setExpandedLocScopes]=useState([]);
   const isLocItemView=scopeId==='loc'&&locCultureView==='item';
   const resourceCache=useResourceCache();
-  const navigation=useMemo(()=>{
-    const current=readFeatureNavigation(searchParams);
-    if(isTimeEditingView||!sharedFocusRange||current.from||current.to)return current;
-    const from=String(sharedFocusRange.startDate||'').slice(0,10);
-    const to=String(sharedFocusRange.endDate||'').slice(0,10);
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return current;
-    return {...current,from,to};
-  },[searchParams,isTimeEditingView,sharedFocusRange?.startDate,sharedFocusRange?.endDate]);
+  const navigation=useMemo(()=>readFeatureNavigation(searchParams),[searchParams]);
   const query=useAsyncResource({
     queryKey:['culture-timeline',scopeId,isTimeEditingView?'management':'public'],
     queryFn:async({signal})=>{
@@ -1310,9 +1309,6 @@ export default function Culture(){
       setFullTextLoading(false);
       return;
     }
-    const focusArticle=row=>selectFocus({feature:'culture',kind:'article',id:uid,
-      label:String(row?.title||work.title||uid),article:featureArticleFromRow(row,scopeId)});
-    focusArticle(work);
     setFullTextKey(key);
     setFullText('');
     setFullTextError('');
@@ -1323,7 +1319,6 @@ export default function Culture(){
       const row=await selectGalaxyIdentity(scopeData,uid);
       if(request!==fullTextSequenceRef.current)return;
       if(!row)throw new Error(l.workNotFound);
-      focusArticle({...row,scopeId});
       setFullText(workDisplayText(row.content||''));
       setFullDetail(row);
     }catch(exception){
@@ -1558,12 +1553,6 @@ export default function Culture(){
                   windowEnd={currentStructureEnd}
                   onSelect={item=>{
                     setSelectedTimelineInfo(item||null);
-                    const range=featureFocusRangeFromRow(item?.raw||item);
-                    if(!item||!range)return;
-                    selectFocus({feature:'culture',kind:'time',
-                      id:String(item.id||item.raw?.uid||range.startDate),
-                      label:String(item.raw?.title||item.content||item.raw?.display_label||range.startDate)});
-                    setFocusRange(range);
                   }}
                   editable={false}
                 />:<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>}

@@ -9,13 +9,12 @@ import {defaultScopeData} from '../../../loc/scope/scope-data';
 import {featureNavigationHref} from '../../routing/feature-navigation';
 import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';
-import {semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType,statisticsZoomWindow} from './statistics-time-zoom.mjs';
+import {statisticsZoomWindow} from './statistics-time-zoom.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
 import {visualKeyColor} from '../../visual-palette.mjs';
 
-const StatisticsMultiChart=dynamic(()=>import('./StatisticsMultiChart'),{loading:()=>null});
 const StatisticsInsightsPanel=dynamic(()=>import('./StatisticsInsightsPanel'),{loading:()=>null});
 const LocMemberIntersection=dynamic(()=>import('./LocMemberIntersection'),{loading:()=>null});
 
@@ -25,8 +24,6 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   useUiSection('uiExtra.statisticsView');
   const UI_COPY=useUiCopy();
   const t=useUiText();
-  const [aggregateType,setAggregateType]=useState('total');
-  const [chartType,setChartType]=useState('auto');
   const [zoomLevel,setZoomLevel]=useState(0);
   // Persist intersection selections while the range-specific query remounts.
   const [memberLaneCount,setMemberLaneCount]=useState(2);
@@ -103,19 +100,6 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
     }
     return [...buckets.values()].sort((a,b)=>a._sort.localeCompare(b._sort));
   },[densityRows,startDate,observedEnd,scopeIds,bucket,taipeiDateKey]);
-  const distributionData=totals.map(row=>({term:row.scope_id,value:row.total}));
-  // Even when displaying a combined total, its composition is the real
-  // set of child Scopes. A single 100% "LOC total" pie is not analytics.
-  const locSeries=scopeIds.map(id=>({key:id,label:id}));
-  const locDistribution=distributionData.map(row=>({name:row.term,value:row.value}));
-  const locAllowed=semanticStatisticChartTypes({
-    purpose:aggregateType==='total'?'total':'source',
-    rows:trendData,series:locSeries,distribution:locDistribution,totalKey:aggregateType==='total'?'total':''
-  });
-  const locChartType=preferredStatisticChartType({purpose:aggregateType==='total'?'total':'source',available:locAllowed,requested:chartType});
-  const chartGroups=chartTypeGroups(locAllowed,aggregateType==='total'
-    ?['line','composed','bar']:['line','stacked','pie']);
-
   const insightRows=useMemo(()=>trendData.map(row=>({
     period:row.period,total:row.total,partial:row.partial
   })),[trendData]);
@@ -124,7 +108,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
       <div>
         <span className="statistics-dashboard__eyebrow">LOC / ANALYTICS</span>
         <h2>{t('uiExtra.statisticsView.dashboardTitle')}</h2>
-        <p>先看總量的高低、平均、中位數與 PELT 趨勢；傳統統計圖保留在進階檢視。</p>
+        <p>以同一個 Dashboard 檢視作品總量、時間趨勢與各 Scope 分布。</p>
       </div>
     </header>
     {densityQuery.error?<p className="scope-status scope-error" role="alert">
@@ -145,31 +129,6 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
       <StatisticsInsightsPanel rows={insightRows} range={zoomRange}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
         idPrefix="loc-stat"/>
-      <StatisticsDetails summary="標準統計圖（折線、長條、面積與來源比較）">
-        {()=> <div className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
-          <div className="scope-stat-controls statistics-dashboard__filters">
-            <label><span>{UI_COPY.statistics.item}</span>
-              <select className="scope-select" value={aggregateType}
-                onChange={event=>setAggregateType(event.target.value)}>
-                <option value="total"><UiText id="uiExtra.statisticsView.memberCount"/></option>
-                <option value="scope"><UiText id="uiExtra.statisticsView.memberDistribution"/></option>
-              </select>
-            </label>
-            <label><span>{UI_COPY.statistics.chart}</span>
-              <select className="scope-select" value={locChartType}
-                onChange={event=>setChartType(event.target.value)}>
-                {chartGroups.primary.map(([value,label])=>
-                  <option key={value} value={value}>{t(label)}</option>)}
-                {chartGroups.advanced.map(([value,label])=>
-                  <option key={value} value={value}>{t(label)}</option>)}
-              </select>
-            </label>
-          </div>
-          <StatisticsMultiChart type={locChartType} rows={trendData}
-            series={locSeries} distribution={locDistribution}
-            totalKey={aggregateType==='total'?'total':''} height={420}/>
-        </div>}
-      </StatisticsDetails>
       <StatisticsDetails summary="各 Scope 數量分布">
         {()=> <div className="statistics-dashboard__breakdown">
           {[...totals].sort((a,b)=>b.total-a.total).map(row=>

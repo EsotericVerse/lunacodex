@@ -4,7 +4,7 @@ import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import dynamic from 'next/dynamic';
 import {Capacitor} from '@capacitor/core';
 import {LayoutGroup,motion,useReducedMotion} from 'motion/react';
-import {useQueryClient} from '../packages/zenstack/client-queries';
+import {useAsyncResource,useQueryClient} from '../packages/zenstack/client-queries';
 import {translateUiField,UI_COPY,UI_LOCALE_OPTIONS,normalizeUiLocale,uiCopy,uiLocaleLoadError} from './i18n/ui-copy';
 import {UiLocaleProvider,useLoadedUiLocale,useUiLocale,useUiSection} from './i18n/ui-locale';
 import FieldText from './i18n/FieldText';
@@ -22,7 +22,6 @@ import PageResourceBoundary from './modular/PageResourceBoundary';
 import {recoverChunkOnce} from './loc/ui/chunk-recovery.mjs';
 import {DockMotionIcon,DockActiveIndicator} from './modular/BottomNavIcon';
 import {EditDockProvider,useEditDock} from './modular/edit-dock';
-import {FeatureFocusProvider} from './modular/feature-focus';
 import {PRIMARY_NAV_ORDER} from './modular/routing/navigation-order.mjs';
 // Only individual Scope homepages download the opt-in management entry.
 const ScopeHomeEditEntry=dynamic(()=>import('./loc/blocks/ScopeHomeEditEntry'),{loading:()=>null});
@@ -305,15 +304,37 @@ export default function AppShell({children}){
   const runtime=useScopeRuntime();
   const editorScopeId=runtime.pathname.startsWith('/my-phone')||runtime.scopeId==='local'
     ?'local':runtime.scope?.featureScope||runtime.scopeId;
-  return <FeatureFocusProvider scopeId={runtime.scopeId}>
-    <EditDockProvider key={runtime.scopeId} scopeId={editorScopeId}>
-      <AppShellInner runtime={runtime}>{children}</AppShellInner>
-    </EditDockProvider>
-  </FeatureFocusProvider>;
+  return <EditDockProvider key={runtime.scopeId} scopeId={editorScopeId}>
+    <AppShellInner runtime={runtime}>{children}</AppShellInner>
+  </EditDockProvider>;
 }
 
 function AppShellInner({children,runtime}){
   const queryClient=useQueryClient();
+  const featureIndexScope=runtime.scope?.featureScope||runtime.scopeId;
+  const canWarmFeatureIndexes=Boolean(featureIndexScope&&
+    !['local','admin'].includes(featureIndexScope));
+  // These are the light navigation indexes only. Era links load their related
+  // period/date anchors by UID; the Trace index lists saved route/trace maps,
+  // never all historical places or article bodies.
+  useAsyncResource({
+    queryKey:['culture-time-periods',featureIndexScope],
+    enabled:canWarmFeatureIndexes&&featureIndexScope!=='loc',
+    queryFn:async()=>{
+      const {selectScopeCultureEraIndex}=await import('./loc/culture/query');
+      return selectScopeCultureEraIndex(featureIndexScope);
+    },
+    revalidateOnFocus:false,revalidateOnReconnect:false
+  });
+  useAsyncResource({
+    queryKey:['trace-map-index',featureIndexScope],
+    enabled:canWarmFeatureIndexes,
+    queryFn:async()=>{
+      const {readTraceMapIndex}=await import('./modular/features/trace/trace-data');
+      return readTraceMapIndex(featureIndexScope);
+    },
+    revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
+  });
   const [publicPageCopy,setPublicPageCopy]=useState([]);
   useEffect(()=>{
     const url=new URL(window.location.href);

@@ -9,14 +9,11 @@ import {featureNavigationHref} from './routing/feature-navigation';
 import {PUBLISHED_SEARCH_PATTERNS} from './published-search-patterns.js';
 import {compileKeywordLiteralMatcher} from '../loc/keywords/literal-matcher.mjs';
 import {keywordScanText} from '../loc/keywords/content-filter.mjs';
-import {useFeatureFocus} from './feature-focus';
-import {featureArticleFromRow} from './feature-focus-state.mjs';
 
 const norm=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
   const host=useRef(null),network=useRef(null),latest=useRef(null),dataRef=useRef(null);
   const router=useRouter();
-  const {selectFocus}=useFeatureFocus(scopeId);
   const reduceMotion=useReducedMotion();
   const matcher=useMemo(()=>{
     const words=PUBLISHED_SEARCH_PATTERNS[scopeId]||[];
@@ -32,9 +29,6 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
   const act=item=>{
     if(!item?.action)return;
     const action=item.action;
-    selectFocus({feature:'search',kind:action.kind||'relation',
-      id:String(item.id||action.uid||item.label||row.uid),
-      label:String(item.label||row.title||'搜尋關聯')});
     if(action.kind==='galaxy')onGalaxySelect?.(action.uid);
     else if(action.kind==='feature')router.push(featureNavigationHref(scopeId,action.feature,action.navigation));
     else if(action.kind==='external'&&window.confirm('即將離開 LOC 並開啟外部網站：\n'+action.href))
@@ -42,14 +36,9 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
   };
   const chooseGroup=group=>{
     setExpanded(value=>value===group.id?'':group.id);
-    selectFocus({feature:'search',kind:'relation-group',id:group.id,label:group.label});
   };
   const chooseRoot=()=>{
     setExpanded('');
-    const uid=String(row.uid||'').trim();
-    const title=String(row.title||uid);
-    selectFocus({feature:'search',kind:'article',id:uid,label:title,
-      article:featureArticleFromRow(row,scopeId)});
   };
   latest.current={model,groups,act,reduceMotion,chooseGroup,chooseRoot};
   function dataFor(model){

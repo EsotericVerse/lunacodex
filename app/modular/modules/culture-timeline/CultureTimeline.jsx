@@ -9,7 +9,7 @@ import {DataSet} from 'vis-data/esnext';
 import {Timeline} from 'vis-timeline/esnext';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import {CultureTimelineModel} from './culture-timeline-model';
-import {visualKeyColor} from '../../visual-palette.mjs';
+import {visualKeyColor,TERRITORY_STOPS,territoryLegendColor} from '../../visual-palette.mjs';
 import {cultureEraVisuals,paintCultureRows} from './era-visuals.mjs';
 import {timelinePainted} from './timeline-paint-health.mjs';
 import useDefaultTimeUnit from '../../../loc/preferences/use-default-time-unit';
@@ -41,7 +41,6 @@ function timelineRows(items,labelOf,focus,labels={}){
     }
   }
   if(!Number.isFinite(domainStart))domainStart=today;
-  const laneColors=new Map();
   return source.flatMap((item,index)=>{
     const rawStart=item?.start_date||item?.active_from||item?.date;
     const rawEnd=item?.end_date||item?.active_until;
@@ -74,8 +73,12 @@ function timelineRows(items,labelOf,focus,labels={}){
       focused?'scope-period-timeline-focus':'',
       density?'scope-period-density':''
     ].filter(Boolean).join(' ');
-    if(density&&group&&!laneColors.has(group))laneColors.set(group,visualKeyColor(group));
-    const laneColor=laneColors.get(group)||'var(--loc-accent)';
+    const densityCount=Math.max(0,Number(item?.item_count)||0);
+    let densityColorIndex=0;
+    for(let stop=0;stop<TERRITORY_STOPS.length;stop++)
+      if(densityCount>=TERRITORY_STOPS[stop][0])densityColorIndex=stop;
+    const laneColor=density?territoryLegendColor(densityColorIndex)
+      :group?visualKeyColor(group):'var(--loc-accent)';
     const densityStyle=density
       ?'--culture-lane-color:'+laneColor+';--culture-density:'+Math.max(.08,Math.min(1,ratio||Math.min(1,Number(item?.item_count||0)/100)))+';height:'+(8+Math.round(Math.max(.08,Math.min(1,ratio||0))*20))+'px;background:linear-gradient(105deg,color-mix(in srgb,var(--culture-lane-color) '+Math.round((.2+density.glow*.62)*100)+'%,var(--loc-panel)),color-mix(in srgb,var(--culture-lane-color) '+Math.round((.1+density.glow*.34)*100)+'%,var(--loc-panel)));border-color:color-mix(in srgb,var(--culture-lane-color) '+Math.round((.44+density.glow*.48)*100)+'%,var(--loc-line));border-inline-start:3px solid var(--culture-lane-color);color:var(--loc-text);filter:saturate(1.14) brightness('+density.brightness+');box-shadow:0 0 '+density.blur+' color-mix(in srgb,var(--culture-lane-color) '+Math.round(density.glow*100)+'%,transparent);'
       :'';
@@ -147,36 +150,40 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
         const depth=Math.max(0,Math.min(3,Number(extra?.depth)||0));
         let content=label;
         if(extra?.collapsible||extra?.selectable){
-          const button=document.createElement('button');
-          button.type='button';
-          button.className='scope-river-group-button';
-          // SiteAnchor depth is visible even if a parent has one child.
-          // Indentation is local to the Source river's extraGroups only.
-          if(depth>0)button.style.paddingInlineStart=depth*1.1+'rem';
-          button.textContent=extra.collapsible?(extra.expanded?'−  ':'＋  ')+label:label;
-          button.setAttribute('aria-label',label);
+          const makeOpenButton=()=>{
+            const open=document.createElement('button');
+            open.type='button';open.className='scope-river-article-open';
+            open.textContent='⌄';open.setAttribute('aria-label','開啟'+label+'文章列表');
+            open.addEventListener('click',event=>{
+              event.stopPropagation();onGroupSelectRef.current?.(id);
+            });
+            return open;
+          };
           if(extra.collapsible){
+            const action=document.createElement('span');
+            action.className='scope-river-group-action'+(extra.selectable?' scope-river-group-action--expandable':'');
+            const button=document.createElement('button');
+            button.type='button';button.className='scope-river-group-button';
+            // SiteAnchor depth is visible even if a parent has one child.
+            // Indentation is local to the Source river's extraGroups only.
+            if(depth>0)button.style.paddingInlineStart=depth*1.1+'rem';
+            button.textContent=(extra.expanded?'−  ':'＋  ')+label;
+            button.setAttribute('aria-label',(extra.expanded?'收合':'展開')+label);
             button.setAttribute('aria-expanded',String(Boolean(extra.expanded)));
             button.addEventListener('click',()=>onGroupToggleRef.current?.(id));
+            action.append(button);
+            if(extra.selectable)action.append(makeOpenButton());
+            content=action;
           }else{
             const action=document.createElement('span');
             action.className='scope-river-group-action';
             const text=document.createElement('span');
             text.className='scope-river-group-action__label';
             text.textContent=label;
-            const open=document.createElement('button');
-            open.type='button';
-            open.className='scope-river-article-open';
-            open.textContent='⌄';
-            open.setAttribute('aria-label','開啟'+label+'文章列表');
-            open.addEventListener('click',event=>{
-              event.stopPropagation();
-              onGroupSelectRef.current?.(id);
-            });
+            const open=makeOpenButton();
             action.append(text,open);
             content=action;
           }
-          if(extra.collapsible)content=button;
         }else if(depth>0){
           const indented=document.createElement('span');
           indented.style.paddingInlineStart=depth*1.1+'rem';
@@ -282,6 +289,9 @@ export default function CultureTimeline({
   // The public Culture source river uses the library's natural content height
   // with a viewport cap; group count must never determine its container size.
   naturalSourceHeight=false,
+  // Combined Culture layers may contain overlapping Era/Period intervals and
+  // same-day anchors. Stacking is opt-in so other source timelines stay dense.
+  stackItems=false,
   // The management-only Era browser has a bounded viewport. The whole
   // historical graph remains in memory, but only the chosen branch opens.
   compactHierarchy=false,
@@ -526,7 +536,7 @@ export default function CultureTimeline({
         // Time management is an Era LIST, not an independently stacked item
         // list. Multiple disjoint intervals retain their real dates but share
         // one lane; only an explicitly expanded Period adds another lane.
-        stack:compactHierarchy?false:mode!=='source',
+        stack:compactHierarchy?false:(stackItems||mode!=='source'),
         margin:compactHierarchy
           ?{axis:8,item:{horizontal:2,vertical:3}}
           :mode==='source'?{axis:10,item:{horizontal:3,vertical:5}}
@@ -616,7 +626,7 @@ export default function CultureTimeline({
     hasTimeKinds,preserveTimelineInstance?null:timelineMinHeight,
     preserveTimelineInstance?null:timelineMaxHeight,
     Boolean(rows.length||editable||extraGroups.length),
-    heightVariant,mode,naturalSourceHeight,readOnlyViewport,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
+    heightVariant,mode,naturalSourceHeight,stackItems,readOnlyViewport,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
     preserveTimelineInstance?null:hiddenDates,editable,locale,labels,timelineLocale,defaultTimeUnit]);
 
   // When a group opens, mutate existing datasets instead of destroying and

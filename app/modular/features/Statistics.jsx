@@ -4,6 +4,7 @@ import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 
 import {useEffect,useMemo,useState} from 'react';
+import {motion,useReducedMotion} from 'motion/react';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
@@ -18,10 +19,6 @@ import {featureDataErrorMessage} from '../feature-data-state';
 import {useScopeRuntime} from '../use-scope-runtime';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
 import {FeaturePage} from '../ui';
-import {visualColor} from '../visual-palette.mjs';
-import {useFeatureFocus} from '../feature-focus';
-import {featureFocusRangeFromRow,rowsWithinFeatureFocusRange}
-  from '../feature-focus-state.mjs';
 import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs';
 import {groupedSourceOutline} from '../../loc/source/outline-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
@@ -34,6 +31,7 @@ const ScopeSelfIntersection=dynamic(()=>import('../modules/statistics/ScopeSelfI
 const ScopeGroupStatistics=dynamic(()=>import('../modules/statistics/ScopeGroupStatistics'),{loading:()=>null});
 const ScopeGroupOverview=dynamic(()=>import('../../loc/scope/ScopeGroupOverview'),{loading:()=>null});
 const StatisticsInsightsPanel=dynamic(()=>import('../modules/statistics/StatisticsInsightsPanel'),{loading:()=>null});
+const StatisticsInsightsRail=dynamic(()=>import('../modules/statistics/StatisticsInsightsPanel').then(m=>m.StatisticsInsightsRail),{loading:()=>null});
 import StatisticsChartFrame from '../modules/statistics/StatisticsChartFrame';
 import StatisticsDetails from '../modules/statistics/StatisticsDetails';
 import StatisticsDashboardKpis from '../modules/statistics/StatisticsDashboardKpis';
@@ -161,9 +159,7 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
       }));
     }}>
       {types.includes('total')?<option value='total'>{t(STAT_TYPE_KEYS.total)}</option>:null}
-      {types.includes('source')?<optgroup label="來源">
-        <option value="source">來源</option>
-      </optgroup>:null}
+      {types.includes('source')?<option value="source">{t(STAT_TYPE_KEYS.source)}</option>:null}
       {types.includes('keywords')?<optgroup label="關鍵詞">
         <option value="keywords">{t(STAT_TYPE_KEYS.keywords)}</option>
       </optgroup>:null}
@@ -175,7 +171,8 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
 function ScopeStatisticsResults({scopeId,navigation,types}){
   const UI_COPY=useUiCopy();
   const t=useUiText();
-  const {focus:sharedFocus,dateRange:sharedRange,selectFocus,setFocusRange}=useFeatureFocus(scopeId);
+  const router=useRouter();
+  const reduceMotion=useReducedMotion();
   const requested=String(navigation.rankingType||'');
   const rankingType=types.includes(requested)?requested:
     (['media_type','media_platform','media_style','media'].includes(requested)||navigation.statTab==='media'
@@ -193,16 +190,17 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
   const [sourceGroup,setSourceGroup]=useState(String(navigation.source||''));
   const [categoryChoice,setCategoryChoice]=useState('');
+  const [linkedPeriod,setLinkedPeriod]=useState(null);
   useEffect(()=>{
     setSelectedKeywordClassUid('');
     setSourceGroup(requested==='source'?String(navigation.source||''):'');
     setCategoryChoice('');
+    setLinkedPeriod(null);
   },[scopeId,navigation.statTab,requested,navigation.source]);
   // The current full calendar year is the initial Statistics window, even when
   // Era records exist. A saved Era is selected only by an explicit UI action.
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('year');
-  const [periodOptionsRequested,setPeriodOptionsRequested]=useState(false);
-  useEffect(()=>{setSelectedPeriodKey('year');setPeriodOptionsRequested(false);},[scopeId]);
+  useEffect(()=>{setSelectedPeriodKey('year');},[scopeId]);
   const queryEndDate=useMemo(()=>taipeiDateKey(),[]);
   // The active route already resolves the requested Scope; no registry-wide SELECT.
   const targetScopes=useMemo(()=>[defaultScopeData(scopeId)].filter(Boolean),[scopeId]);
@@ -214,14 +212,14 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     [zoomLevel,queryEndDate,knownEarliest]);
   const periodQuery=useAsyncResource({
     queryKey:['culture-time-periods',scopeId],
-    // Default Statistics reads Galaxy counts only. Saved TimeAnchor period
-    // choices load on the user's interaction, never on landing.
-    enabled:periodOptionsRequested&&scopeId!=='local'&&scopeId!=='loc'&&Boolean(targetScopes[0]),
+    // Load the small Era index before the native select receives focus.
+    // Updating React state inside onFocus can close a browser's open select.
+    enabled:scopeId!=='local'&&scopeId!=='loc'&&Boolean(targetScopes[0]),
     queryFn:async()=>{
       // Period anchors remain on the independently working direct reader.
       // ISR never becomes a required path when an endpoint is not available.
-      const {selectScopeCultureData}=await import('../../loc/culture/query');
-      return (await selectScopeCultureData(scopeId)).eras?.eras||[];
+      const {selectScopeCultureEraIndex}=await import('../../loc/culture/query');
+      return selectScopeCultureEraIndex(scopeId);
     },
     revalidateOnFocus:false,
     revalidateOnReconnect:false
@@ -237,19 +235,11 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // An empty or non-period Scope must not request a nonexistent Period index.
   const requestedStart=dateKey(navigation.from),requestedEnd=dateKey(navigation.to);
   const hasRequestedWindow=Boolean(requestedStart&&requestedEnd&&requestedStart<=requestedEnd);
-  const sharedStart=dateKey(sharedRange?.startDate),sharedEnd=dateKey(sharedRange?.endDate);
-  const hasSharedFocusWindow=Boolean(sharedStart&&sharedEnd&&sharedStart<=sharedEnd);
-  const periodNavigationReady=hasRequestedWindow||hasSharedFocusWindow||selectedPeriodKey==='year'||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
+  const periodNavigationReady=hasRequestedWindow||selectedPeriodKey==='year'||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
   const queryRange=useMemo(()=>{
     if(hasRequestedWindow){
       const days=Math.round((Date.parse(requestedEnd+'T00:00:00Z')-Date.parse(requestedStart+'T00:00:00Z'))/86_400_000);
       return {...customQueryRange,startDate:requestedStart,endDate:requestedEnd,
-        bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
-        fullHistory:false,canZoomOut:false,canZoomIn:false};
-    }
-    if(hasSharedFocusWindow){
-      const days=Math.round((Date.parse(sharedEnd+'T00:00:00Z')-Date.parse(sharedStart+'T00:00:00Z'))/86_400_000);
-      return {...customQueryRange,startDate:sharedStart,endDate:sharedEnd,
         bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
         fullHistory:false,canZoomOut:false,canZoomIn:false};
     }
@@ -266,15 +256,16 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
       fullHistory:false,canZoomOut:false,canZoomIn:false};
   },[selectedPeriodKey,selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,
-    requestedStart,requestedEnd,hasSharedFocusWindow,sharedStart,sharedEnd,defaultTimeUnit]);
+    requestedStart,requestedEnd,defaultTimeUnit]);
   // Both editors store flat names. Show one direct source choice, not a group tree.
   const activeSourceSelection=rankingType==='source'?sourceGroup:'';
   const totalChart=rankingType==='total'&&Boolean(targetScopes.length);
   const sourceChart=rankingType==='source'&&Boolean(targetScopes.length);
   const placeChart=categoryChart&&Boolean(targetScopes.length);
-  // Statistics landing reads ONLY grouped daily Galaxy totals; it never
-  // requests SourceAnchor taxonomy, site grouping or an article list.
+  // The Statistics landing begins with grouped daily totals only. Source taxonomy
+  // and category counts load after a user selects a period for cross-analysis.
   const observedEnd=queryRange.endDate<queryEndDate?queryRange.endDate:queryEndDate;
+  const observedSourceEnd=queryRange.endDate<queryEndDate?queryRange.endDate:queryEndDate;
   const totalDaily=useAsyncResource({
     queryKey:['statistics-total-daily-v1',scopeId,queryRange.startDate,observedEnd],
     enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd),
@@ -313,16 +304,30 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     queryRange.bucket,queryEndDate]);
   // ONE request per source chart: earliest date + exact daily counts + source taxonomy.
   const overview=useAsyncResource({
-    queryKey:['scope-overview',scopeId,queryRange.startDate,queryRange.endDate],
-    enabled:sourceChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
+    queryKey:['scope-overview',scopeId,queryRange.startDate,observedSourceEnd],
+    enabled:sourceChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedSourceEnd&&queryRange.startDate<=observedSourceEnd),
     queryFn:async({signal})=>{
       const {selectScopeOverview}=await loadGalaxyStatistics();
-      const data=await selectScopeOverview(targetScopes[0],{...queryRange,signal});
+      const data=await selectScopeOverview(targetScopes[0],{...queryRange,endDate:observedSourceEnd,signal});
       if(signal.aborted)return data;
       // The self-intersection panel reads the same rows; seed its cache so opening it is free.
       resourceCache.set(['own-scope-source-intersection',scopeId,queryRange.startDate,queryRange.endDate],data.rows);
       return data;
     },
+  });
+  const linkedSourceOverview=useAsyncResource({
+    queryKey:['statistics-linked-source-overview',scopeId,linkedPeriod?.startDate,linkedPeriod?.endDate],
+    enabled:totalChart&&Boolean(linkedPeriod&&targetScopes[0]),
+    queryFn:async({signal})=>{
+      signal?.throwIfAborted?.();
+      const {selectScopeOverview}=await loadGalaxyStatistics();
+      const data=await selectScopeOverview(targetScopes[0],{
+        startDate:linkedPeriod.startDate,endDate:linkedPeriod.endDate,signal
+      });
+      signal?.throwIfAborted?.();
+      return data;
+    },
+    revalidateOnFocus:false,revalidateOnReconnect:false
   });
   useEffect(()=>{
     const first=(totalChart?totalDaily.data?.earliest:overview.data?.earliest)||'';
@@ -331,14 +336,14 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const sourceRows={isPending:overview.isPending&&sourceChart,isSuccess:overview.isSuccess,error:overview.error,
     data:overview.data?.rows,dataUpdatedAt:overview.dataUpdatedAt};
   const categoryDaily=useAsyncResource({
-    queryKey:['statistics-category-daily',scopeId,rankingType,queryRange.startDate,queryRange.endDate],
-    enabled:placeChart&&periodNavigationReady&&Boolean(queryRange.startDate&&queryRange.endDate),
+    queryKey:['statistics-category-daily',scopeId,rankingType,queryRange.startDate,observedEnd],
+    enabled:placeChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd),
     queryFn:async({signal})=>{
       signal?.throwIfAborted?.();
       const {queryTrace}=await import('../../loc/actions/trace/queries.mjs');
       const {data}=await queryTrace({
         p_scope_id:scopeId,p_view:'trace_places',
-        p_start:queryRange.startDate,p_end:queryRange.endDate,
+        p_start:queryRange.startDate,p_end:observedEnd,
         // Statistics' place view must satisfy both independent feature flags.
         // Ordinary Trace views keep their own trace-only read semantics.
         p_options:{statisticsOnly:true}
@@ -354,7 +359,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // back to a local source list, a hardcoded category snapshot or media tree.
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['loc-zmodel-source-taxonomy'],
-    enabled:sourceChart,
+    enabled:sourceChart||(totalChart&&Boolean(linkedPeriod)),
     queryFn:async()=>{
       const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
       return readPublicSourceTaxonomy();
@@ -362,30 +367,42 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const sourceCatalog={
-    isPending:sourceTaxonomyQuery.isPending&&sourceChart,
+    isPending:sourceTaxonomyQuery.isPending&&(sourceChart||(totalChart&&Boolean(linkedPeriod))),
     isSuccess:sourceTaxonomyQuery.isSuccess,
     error:sourceTaxonomyQuery.error,
     data:sourceTaxonomyQuery.data,
     dataUpdatedAt:sourceTaxonomyQuery.dataUpdatedAt
   };
-  const selectedRawNames=null;
+  const linkedSourceBreakdown=useMemo(()=>{
+    if(!linkedPeriod||!sourceCatalog.isSuccess||!linkedSourceOverview.data)return null;
+    return administrativeSourceTrend(linkedSourceOverview.data.rows||[],sourceCatalog.data||{}, {
+      startDate:linkedPeriod.startDate,endDate:linkedPeriod.endDate,unit:'day'
+    });
+  },[linkedPeriod,sourceCatalog.isSuccess,sourceCatalog.data,linkedSourceOverview.data]);
+  const linkedSourceDistribution=useMemo(()=>linkedSourceBreakdown
+    ?linkedSourceBreakdown.distribution.map((row,index)=>({
+      key:String(linkedSourceBreakdown.series[index]?.key||'').replace(/^category_/,''),
+      name:row.name,value:row.value
+    }))
+    :[],[linkedSourceBreakdown]);
   // Numeric counts use the existing scoped database query. Category bucketing
   // is tiny synchronous presentation work, not an independent remote resource:
   // avoid a second loading cycle after the numeric response arrives.
   const adminSource=useMemo(()=>{
     if(!sourceChart||!sourceCatalog.isSuccess)return null;
     return administrativeSourceTrend(overview.data?.rows||[],sourceCatalog.data||{},{
-      startDate:queryRange.startDate,endDate:queryRange.endDate,
-      unit:queryRange.bucket,sourceCategory:activeSourceSelection,sourceNames:selectedRawNames
+      startDate:queryRange.startDate,endDate:observedSourceEnd,
+      unit:queryRange.bucket,sourceCategory:activeSourceSelection
     });
   },[sourceChart,sourceCatalog.isSuccess,sourceCatalog.data,overview.data,
-    queryRange.startDate,queryRange.endDate,queryRange.bucket,activeSourceSelection]);
+    queryRange.startDate,observedSourceEnd,queryRange.bucket,activeSourceSelection]);
   const adminSourceReady=Boolean(adminSource);
   const resolvedAdminSource=adminSource||{rows:[],series:[],distribution:[],total:0};
   // Place is a separate geographical dimension. All multimedia platforms
   // are already represented in the unified Galaxy.site source taxonomy.
-  const categoryWindow=useMemo(()=>rowsInWindow(categoryDaily.data||[],queryRange),
-    [categoryDaily.data,queryRange.startDate,queryRange.endDate,queryRange.bucket]);
+  const categoryWindow=useMemo(()=>rowsInWindow(categoryDaily.data||[],{
+    ...queryRange,endDate:observedEnd
+  }),[categoryDaily.data,queryRange.startDate,observedEnd,queryRange.bucket]);
   const categoryCatalog=useMemo(()=>facetTotals(categoryWindow.rows),[categoryWindow.rows]);
   const selectedCategory=categoryCatalog.find(row=>row.term===categoryChoice);
   const displayedCategories=useMemo(()=>selectedCategory?[selectedCategory.term]:
@@ -397,58 +414,82 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     key:'category_'+index,label:term
   })),[displayedCategories,rankingType]);
   const categoryDistribution=useMemo(()=>displayedCategories.map(term=>({
-    name:term,
+    key:term,name:term,
     value:categoryCatalog.find(row=>row.term===term)?.item_count||0
   })),[displayedCategories,categoryCatalog,rankingType]);
   const basicTrend=totalChart?totalTrend:placeChart?categoryTrend:resolvedAdminSource.rows;
-  const chartTrend=useMemo(()=>rowsWithinFeatureFocusRange(basicTrend,sharedRange),
-    [basicTrend,sharedRange?.startDate,sharedRange?.endDate]);
-  const onFocusPeriod=row=>{
-    const range=featureFocusRangeFromRow(row);
-    if(!range)return;
-    selectFocus({feature:'statics',kind:'period',
-      id:range.startDate+':'+range.endDate,label:String(row.period||range.startDate)});
-    setFocusRange(range);
+  const chartTrend=basicTrend;
+  const onSelectChartPeriod=row=>{
+    const startDate=dateKey(row?.start_date);
+    const rawEnd=dateKey(row?.end_date||row?.start_date);
+    const endDate=rawEnd>queryEndDate?queryEndDate:rawEnd;
+    if(!startDate||!endDate||startDate>endDate)return;
+    const period=String(row?.period||'');
+    setLinkedPeriod(current=>current?.period===period?null:{
+      startDate,endDate,period,label:period||startDate
+    });
   };
   const basicSeries=totalChart?[]:placeChart?categorySeries:resolvedAdminSource.series;
   const basicDistribution=totalChart?[]:placeChart?categoryDistribution:resolvedAdminSource.distribution;
-  // One grouped source-name index for the active chart, not one full scan
-  // per category. Rebuild it only when the selected source dataset changes.
-  const sourceNamesByCategory=useMemo(()=>{
-    const names=new Map();
-    if(!sourceChart)return names;
-    const aliases=sourceCatalog.data?.aliases||[];
-    const categories=sourceCatalog.data?.categories||[];
-    for(const entry of sourceRows.data||[]){
-      if(entry.kind!=='source')continue;
-      const category=assignedSource(entry.category,aliases,categories);
-      const name=String(entry.category??'').trim();
-      if(!names.has(category))names.set(category,new Set());
-      names.get(category).add(name);
-    }
-    return new Map([...names].map(([category,sites])=>[category,[...sites]]));
-  },[sourceChart,sourceRows.data,sourceCatalog.data]);
-  // The existing source breakdown already drives the chart and its summary.
-  // Do not re-scan Galaxy and Galaxy Media in a second trend query.
+  const insightRows=useMemo(()=>chartTrend.map(row=>({
+    period:row.period,
+    total:sourceChart?Number(row.total)||0:basicSeries.reduce((sum,field)=>sum+(Number(row[field.key])||0),0),
+    start_date:row.start_date,end_date:row.end_date,
+    partial:Boolean(row.end_date&&dateKey(row.end_date)>=queryEndDate)
+  })),[chartTrend,sourceChart,basicSeries,queryEndDate]);
+  // The same source breakdown drives the KPI and the connected Recharts view.
+  // Do not rescan Galaxy or request one aggregate per individual category.
   const sourceSummary={total:resolvedAdminSource.total,
-    sources:resolvedAdminSource.distribution.map((row,index)=>{
-      // Category codes and labels share the same order in administrativeSourceTrend.
-      const category=String(resolvedAdminSource.series[index]?.key||'').replace(/^category_/,'');
-      const sourceNames=(sourceNamesByCategory.get(category)||[])
-        .filter(name=>!selectedRawNames||selectedRawNames.includes(name.toLowerCase()));
-      return {term:row.name,item_count:row.value,category,sourceNames};
-    }),
-    startDate:queryRange.startDate,endDate:queryRange.endDate,
-    rawRows:selectedRawNames?(sourceRows.data||[]).filter(row=>row.kind!=='source'||selectedRawNames.includes(String(row.category||'').trim().toLowerCase())):sourceRows.data||[],
-    catalog:sourceCatalog.data||{}
+    sources:resolvedAdminSource.distribution,
+    startDate:queryRange.startDate,endDate:observedSourceEnd,
   };
+  const sourceCategoryDistribution=useMemo(()=>{
+    if(!sourceChart)return [];
+    const start=linkedPeriod?.startDate||queryRange.startDate;
+    const end=linkedPeriod?.endDate||observedSourceEnd;
+    const catalog=sourceCatalog.data||{};
+    const labels=new Map((catalog.categories||[]).map(row=>[
+      String(row.category_code||''),String(row.display_name||row.category_code||'')
+    ]));
+    labels.set('others','未分類');
+    const totals=new Map();
+    for(const row of sourceRows.data||[]){
+      if(row.kind!=='source')continue;
+      const day=dateKey(row.day);
+      if(!day||day<start||day>end)continue;
+      const category=String(assignedSource(row.category,catalog.aliases||[],catalog.categories||[])||'others');
+      totals.set(category,(totals.get(category)||0)+Math.max(0,Number(row.item_count)||0));
+    }
+    return [...totals].map(([key,value])=>({
+      key,name:labels.get(key)||'未分類',value
+    })).filter(row=>row.value>0)
+      .sort((a,b)=>b.value-a.value||a.name.localeCompare(b.name)).slice(0,12);
+  },[sourceChart,linkedPeriod,queryRange.startDate,observedSourceEnd,sourceCatalog.data,sourceRows.data]);
+  const activeSourceCategoryKeys=useMemo(()=>{
+    if(!activeSourceSelection)return [];
+    if(activeSourceSelection==='others')return ['others'];
+    const descendants=(sourceCatalog.data?.tree||[])
+      .filter(row=>Array.isArray(row.path)&&row.path.includes(activeSourceSelection))
+      .map(row=>String(row.uid||''));
+    return [activeSourceSelection,...descendants];
+  },[activeSourceSelection,sourceCatalog.data]);
+  const placeDistribution=useMemo(()=>{
+    if(!placeChart)return [];
+    const start=linkedPeriod?.startDate||queryRange.startDate;
+    const end=linkedPeriod?.endDate||queryRange.endDate;
+    const rows=linkedPeriod?rowsInWindow(categoryWindow.rows,{
+      startDate:start,endDate:end,bucket:queryRange.bucket
+    }).rows:categoryWindow.rows;
+    const totals=facetTotals(rows);
+    return totals.slice(0,12).map(row=>({key:row.term,name:row.term,value:row.item_count}));
+  },[placeChart,linkedPeriod,queryRange.startDate,queryRange.endDate,queryRange.bucket,categoryWindow.rows]);
   const categorySummary={
     total:categoryCatalog.reduce((sum,row)=>sum+Number(row.item_count||0),0),
     sources:displayedCategories.map(term=>({
       term,
       item_count:categoryCatalog.find(row=>row.term===term)?.item_count||0
     })),
-    startDate:queryRange.startDate,endDate:queryRange.endDate
+    startDate:queryRange.startDate,endDate:observedEnd
   };
   const displaySummary=placeChart?categorySummary:sourceSummary;
   const chartPurpose=totalChart?'total':sourceChart?'source':categoryChart?'place':'total';
@@ -496,7 +537,6 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       &&Boolean(styleRange.startDate&&styleRange.endDate),
   });
 
-  const sourceBreakdownTotal=displaySummary.sources.reduce((sum,row)=>sum+(Number(row.item_count)||0),0);
   const showTotalOverview=totalChart&&!totalDaily.isPending&&!totalDaily.error&&Boolean(totalDaily.data);
   const categoryPending=sourceChart?(sourceRows.isPending||sourceCatalog.isPending||!adminSourceReady):categoryDaily.isPending;
   const categoryError=sourceChart?(sourceRows.error||sourceCatalog.error):categoryDaily.error;
@@ -534,18 +574,17 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       <label>
         <span>時期</span>
         <select className="scope-select" aria-label="時期" value={selectedPeriodKey}
-          onFocus={()=>setPeriodOptionsRequested(true)}
           onChange={event=>{
             prepareTransientResourceAction('period',{queryKeys:[
               ['statistics-total-daily-v1',scopeId],['scope-overview',scopeId],
               ['statistics-keyword-class',scopeId]
             ]});
-            setPeriodOptionsRequested(true);setSelectedPeriodKey(event.target.value);
+            setSelectedPeriodKey(event.target.value);setLinkedPeriod(null);
           }}>
           <option value="year">{DEFAULT_YEAR_WINDOW.label}</option>
           <option value="latest">最新時期</option>
           <option value="">自選時間（原有縮放）</option>
-          {periodOptionsRequested&&periodQuery.isPending?<option disabled value="__loading">正在載入時期…</option>:null}
+          {periodQuery.isPending?<option disabled value="__loading">正在載入時期…</option>:null}
           {periods.map(period=><option key={period.uid||period.period} value={String(period.period||period.era_id||period.uid)}>
             {period.title||period.name||period.period}
           </option>)}
@@ -593,8 +632,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       ]}/>:null}
     </div>
     <>
-    {/* The total-only landing never loads Source taxonomy, article lists or
-         category grouping. Advanced Source charts remain explicit. */}
+    {/* Total statistics stay lightweight until a selected period asks for its
+        related source distribution. Category analysis uses the same Dashboard. */}
     {totalChart&&totalDaily.isPending?<div className="loc-progressive-chart-frame" role="status" aria-busy="true">
       <span>正在統計作品總數… <ActivityMotion kind="numbers"/></span>
       <div className="loc-progressive-chart-axis" aria-hidden="true"/>
@@ -603,27 +642,41 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     {totalChart&&totalDaily.error?<p className="scope-status scope-error" role="alert">
       {featureDataErrorMessage(totalDaily.error,UI_COPY)}
     </p>:null}
-    {showTotalOverview?<>
+    {showTotalOverview? <>
       <StatisticsInsightsPanel rows={chartTrend} range={queryRange}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
-        idPrefix="scope-stat" showMethodologyNote={scopeId!=='lo3rwang'}/>
-      <StatisticsDetails summary="標準統計圖（折線、長條、面積與組合圖）">
-        {()=> <section className="statistics-dashboard__panel" style={{display:'grid',gap:12}}>
-          <label><span>{UI_COPY.statistics.chart}</span>
-            <select className="scope-select" value={effectiveChartType}
-              onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
-              {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-              {chartGroups.advanced.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-            </select>
-          </label>
-          <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel}
-            range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart key={'total:'+effectiveChartType} type={effectiveChartType} rows={chartTrend}
-              series={[]} totalKey="total" height={420} foldBlank={foldBlank}
-              onPeriodClick={onFocusPeriod}/>
-          </StatisticsChartFrame>
-        </section>}
-      </StatisticsDetails>
+        idPrefix="scope-stat" showMethodologyNote={scopeId!=='lo3rwang'}
+        onPeriodClick={onSelectChartPeriod} selectedPeriodKey={linkedPeriod?.period}
+        relatedContent={linkedPeriod?<motion.section className="statistics-dashboard__linked-source-panel"
+          role="region" aria-label="所選時間的來源分類"
+          initial={reduceMotion?false:{opacity:0,y:10,scale:.985}}
+          animate={{opacity:1,y:0,scale:1}}
+          transition={{duration:reduceMotion?0:.24,ease:'easeOut'}}>
+          <header className="statistics-dashboard__panel-heading">
+            <h3>{linkedPeriod.label} · 來源分布</h3>
+            <button type="button" className="loc-button loc-button--small"
+              onClick={()=>setLinkedPeriod(null)}>清除連動</button>
+          </header>
+          <p className="scope-status">點選來源分類，會開啟該分類的時間分析。</p>
+          {linkedSourceOverview.isPending||sourceCatalog.isPending
+            ?<p className="scope-status" role="status" aria-busy="true">
+              正在整理這段時間的來源分類… <ActivityMotion kind="numbers"/>
+            </p>:null}
+          {linkedSourceOverview.error||sourceCatalog.error
+            ?<p className="scope-status scope-error" role="alert">
+              {featureDataErrorMessage(linkedSourceOverview.error||sourceCatalog.error,UI_COPY)}
+            </p>:null}
+          {!linkedSourceOverview.isPending&&!sourceCatalog.isPending
+            &&!linkedSourceOverview.error&&!sourceCatalog.error
+            ?linkedSourceDistribution.length?<StatisticsMultiChart type="bar" barLayout="vertical"
+              height={Math.max(280,Math.min(12,linkedSourceDistribution.length)*34+70)}
+              distribution={linkedSourceDistribution}
+              onCategoryClick={key=>router.push(featureNavigationHref(scopeId,'statics',{
+                ...navigation,rankingType:'source',source:String(key||''),
+                from:linkedPeriod.startDate,to:linkedPeriod.endDate
+              }))}/>
+              :<p className="scope-status">這段時間沒有可顯示的來源分類。</p>:null}
+        </motion.section>:null}/>
     </>:null}
     {(sourceChart||placeChart)&&categoryPending&&!categoryError?<div className="scope-stat-data-pending loc-progressive-chart-frame">
       <p className="scope-status" role="status">{sourceChart&&overview.data&&!sourceCatalog.isSuccess?
@@ -652,27 +705,43 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             <StatisticsMultiChart key={rankingType+':'+effectiveChartType} type={effectiveChartType} rows={chartTrend}
               series={basicSeries} distribution={basicDistribution}
               totalKey={rankingType==='total'?'total':''}
-              foldBlank={foldBlank} height={420} onPeriodClick={onFocusPeriod}/>
+              foldBlank={foldBlank} height={420} onPeriodClick={onSelectChartPeriod}
+              selectedPeriodKey={linkedPeriod?.period}/>
           </StatisticsChartFrame>
         </section>
-        <aside className="statistics-dashboard__panel statistics-dashboard__panel--insights" aria-label={t('uiExtra.statisticsView.dashboardDistributionTitle')}>
-          <header className="statistics-dashboard__panel-heading">
-            <h3>{t('uiExtra.statisticsView.dashboardDistributionTitle')}</h3>
-          </header>
-          {displaySummary.sources.length?<div className="statistics-dashboard__breakdown">
-            {[...displaySummary.sources].sort((a,b)=>b.item_count-a.item_count).slice(0,8).map((row,index)=>{
-              const ratio=sourceBreakdownTotal>0?(Number(row.item_count)||0)/sourceBreakdownTotal*100:0;
-              return <div key={row.category||row.term} className="statistics-dashboard__breakdown-item">
-                <div className="statistics-dashboard__breakdown-label">
-                  <span title={row.term}>{row.term}</span>
-                  <strong>{Number(row.item_count||0).toLocaleString()}</strong>
-                </div>
-                <div className="statistics-dashboard__bar" aria-hidden="true"><span style={{width:ratio+'%',background:visualColor(index)}}/></div>
-              </div>;
-            })}
-          </div>:<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>}
-          {/* The chart reads only the selected ZModel dimension; no article list. */}
-        </aside>
+        <div className="statistics-dashboard__analysis-stack">
+          <section className="statistics-dashboard__panel statistics-dashboard__panel--distribution"
+            aria-label={t('uiExtra.statisticsView.dashboardDistributionTitle')}>
+            <header className="statistics-dashboard__panel-heading">
+              <h3>{placeChart?'地點分布':t('uiExtra.statisticsView.dashboardDistributionTitle')}</h3>
+            </header>
+            <p className="scope-status">{linkedPeriod
+              ?'已選 '+linkedPeriod.label+'；點選分類會同步更新左側趨勢。'
+              :sourceChart?'點選時間點查看該期來源；再點來源分類，左側會切換成該分類趨勢。'
+                :'點選時間點查看該期地點分布；再點地點，左側會切換成該地點趨勢。'}
+              {linkedPeriod?<button type="button" className="loc-button loc-button--small"
+                onClick={()=>setLinkedPeriod(null)}>顯示完整區間</button>:null}
+            </p>
+            {sourceChart?sourceCategoryDistribution.length?<StatisticsMultiChart
+              key={'source-related:'+linkedPeriod?.startDate+':'+linkedPeriod?.endDate}
+              type="bar" barLayout="vertical" height={Math.max(280,Math.min(12,sourceCategoryDistribution.length)*34+75)}
+              distribution={sourceCategoryDistribution} activeCategoryKey={activeSourceCategoryKeys}
+              onCategoryClick={key=>setSourceGroup(current=>current===String(key||'')?'':String(key||''))}/>
+              :<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>
+              :placeDistribution.length?<StatisticsMultiChart type="bar" barLayout="vertical"
+                height={Math.max(280,Math.min(12,placeDistribution.length)*34+75)}
+                distribution={placeDistribution} activeCategoryKey={selectedCategory?.term||''}
+                onCategoryClick={key=>setCategoryChoice(current=>current===String(key||'')?'':String(key||''))}/>
+                :<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>}
+          </section>
+          <StatisticsInsightsRail rows={insightRows}
+            title={sourceChart?'來源趨勢分析':'地點趨勢分析'}
+            measureLabel={sourceChart?'來源作品':'地點作品'}
+            showMethodologyNote={scopeId!=='lo3rwang'}
+            methodologyNote={sourceChart
+              ?'分析以來源分類的每日筆數計算，不載入文章本文。'
+              :'分析以地點每日筆數計算，不載入文章本文。'}/>
+        </div>
       </div>
     </>:null}
     {keywordDimension?<>

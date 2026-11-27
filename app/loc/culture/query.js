@@ -17,7 +17,7 @@ import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.m
 import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../../packages/zenstack/anchor-hierarchy.mjs';
 import {readTimeAnchorQuery,readAllTimeAnchorQueries} from './time-anchor-query.mjs';
 import {readGalaxyFeature} from '../galaxy/feature-query-client.mjs';
-import {readAnchorFeature} from '../model/feature-query-client.mjs';
+import {readAnchorFeature,readAllAnchorFeature} from '../model/feature-query-client.mjs';
 
 
 
@@ -463,6 +463,43 @@ export async function selectScopeCultureData(scopeId){
     styleComments:parts.styleComments,
     works:[]
   };
+}
+
+// A small public navigation index: only Era rows and the Period/Date anchors
+// they reference are fetched. Statistics and the global shell can warm the
+// era selector without loading every unrelated TimeAnchor record.
+export async function selectScopeCultureEraIndex(scopeId){
+  const id=scopeIdOf(scopeId);
+  if(!id||id==='loc'||id==='local')return [];
+  const published=(PUBLISHED_SITE_BOOTSTRAP.registry||[]).some(row=>
+    row.scope_id===id&&row.scope_kind==='scope'&&row.active!==false);
+  if(!published) return [];
+  const eras=await readAllAnchorFeature({scope:id,family:'time',types:['era']});
+  if(!eras.length)return [];
+  const attrOf=row=>{
+    if(typeof row?.attr==='string'){
+      try{return JSON.parse(row.attr)||{};}catch{return {};}
+    }
+    return row?.attr&&typeof row.attr==='object'&&!Array.isArray(row.attr)?row.attr:{};
+  };
+  const unique=values=>[...new Set(values.map(value=>String(value||'').trim())
+    .filter(value=>/^[A-Za-z0-9]{8}$/.test(value)))];
+  const periodUids=unique(eras.flatMap(row=>Array.isArray(attrOf(row).period)?attrOf(row).period:[]));
+  const loadUids=async(type,uids)=>{
+    const pages=[];
+    for(let offset=0;offset<uids.length;offset+=100){
+      const chunk=uids.slice(offset,offset+100);
+      const result=await readAnchorFeature({scope:id,family:'time',types:[type],uids:chunk,limit:chunk.length});
+      if(!Array.isArray(result?.rows))throw new Error('Invalid TimeAnchor index response');
+      pages.push(...result.rows);
+    }
+    return pages;
+  };
+  const periods=await loadUids('period',periodUids);
+  const dateUids=unique(periods.flatMap(row=>Array.isArray(attrOf(row).uid)?attrOf(row).uid:[]));
+  const dates=await loadUids('date',dateUids);
+  const projected=projectScopeTimeRecords(id,[...dates,...periods,...eras].map(projectTimeAnchor));
+  return cultureParts(projected,id).eras;
 }
 
 export async function selectScopePeriodSourceSnapshot(scope,{startDate='',endDate=null,numericRows=null,periodRanges=null}={}){
