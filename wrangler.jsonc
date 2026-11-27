@@ -3,6 +3,9 @@
   "name": "lunacodex",
   "main": "workers/loc-worker.mjs",
   "compatibility_date": "2026-11-24",
+  "cache": {
+    "enabled": true
+  },
   "previews": {
     "hyperdrive": [
       {
@@ -17,7 +20,11 @@
         "bucket_name": "loc-hero-assets"
       }
     ],
+    "cache": {
+      "enabled": true
+    },
     "observability": {
+      "enabled": true,
       "logs": {
         "enabled": true,
         "head_sampling_rate": 1,
@@ -30,7 +37,7 @@
         "persist": true
       },
       "issues": {
-        "enabled": false
+        "enabled": true
       }
     }
   },
@@ -106,7 +113,7 @@
       "persist": true
     },
     "issues": {
-      "enabled": false
+      "enabled": true
     }
   }
 }

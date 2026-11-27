@@ -3,9 +3,27 @@ import assert from 'node:assert/strict';
 import {handleLocSelfPermissions} from '../app/loc/permissions/loc-permissions-server.mjs';
 import {LOC_OWNER_EMAIL} from '../app/loc/permissions/loc-business-grants.mjs';
 import {loc_access} from '../app/loc/permissions/loc_access.mjs';
+import {hasLocAccess} from '../app/loc/permissions/loc_access.mjs';
+import {locRolePrincipal} from '../packages/zenstack/role-hierarchy.mjs';
 import {handleNativeLocOperation,requireManagedActionGrant} from '../app/loc/bridge/native-operations.mjs';
 import {withAuthorizedLocRead} from '../app/loc/actions/read-context.mjs';
 import {executeManagedKyselyAction} from '../app/loc/providers/kysely-management.mjs';
+
+test('LOC root Group owns unified global administration while other Groups stay scoped',()=>{
+  const rootRows=[{id:'loc',email:'root@example.com',manage_role:'group',active:true}];
+  const rootAccess=loc_access('root@example.com',rootRows);
+  assert.ok(rootAccess.grants.includes('group:loc:manage'));
+  assert.ok(rootAccess.grants.includes('global:manage'));
+  const rootClaims={provider:'loc',me:true,sub:'root-user',grants:rootAccess.grants};
+  assert.equal(locRolePrincipal(rootClaims).role,'admin');
+  assert.equal(hasLocAccess(rootClaims,'global'),true);
+
+  const otherClaims={provider:'loc',me:true,sub:'group-user',
+    grants:['group:family:manage']};
+  assert.equal(locRolePrincipal(otherClaims).role,'group');
+  assert.equal(hasLocAccess(otherClaims,'group','family'),true);
+  assert.equal(hasLocAccess(otherClaims,'global'),false);
+});
 
 {
 

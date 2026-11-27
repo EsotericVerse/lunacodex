@@ -7,7 +7,8 @@ import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {useScopeRuntime} from '../../modular/use-scope-runtime';
 import {useEditDock} from '../../modular/edit-dock';
 import {useVerifiedManagementGrants} from '../management/ManagementAccess';
-import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
+import ManagementNetworkNav from '../../modular/ManagementNetworkNav';
+import {ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
 const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks').catch(recoverChunkOnce),{loading:()=>null});
@@ -47,11 +48,9 @@ export default function SearchManagement(){
   const options=isLocAdmin?[...LOC_OPTIONS,GROUP_OPTION]
     :canShowGroupAccess?[...ARTICLE_CONTROL_SECTIONS,GROUP_OPTION]:ARTICLE_CONTROL_SECTIONS;
   const [activeSection,setSection]=useManagementSection(options,'publish');
-  const currentSection=options.find(option=>option.value===activeSection)||options[0];
-
   return <FeaturePage featureId="search">
     <ManagementWorkspaceFrame level={isLocAdmin?'group':'scope'} title="文章管理">
-      <ManagementSectionNav id="management-search-sections" title="文章管理"
+      <ManagementNetworkNav id="management-search-sections" title="文章管理"
         panelId="management-search-panel" items={options} mobileSelect
         value={activeSection} onChange={next=>{
           if(next===activeSection)return;
@@ -59,7 +58,7 @@ export default function SearchManagement(){
           else setSection(next);
         }}/>
       <div id="management-search-panel" className="management-workspace-panel" role="region"
-        aria-labelledby={'management-search-sections-option-'+currentSection.value}>
+        aria-labelledby="management-search-sections-selected-title">
         <ManagementSectionTransition value={activeSection}>
         <ProtectedManagementSlot>
         {!isLocAdmin&&activeSection==='publish'?<div className="article-control-stacked">

@@ -175,7 +175,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
   const managementRoute=['manage','searchManage','sourceManage','keywordManage','keywords'].includes(forcedView)||
     (forcedView==='culture'&&forcedSection==='timeManage');
   // Management is LOC Web business UI, not LOC Auth account administration.
-// Admin: system management; Group: member works/keywords/trace/articles;
+// Group: system/group/keywords/articles; Scope: time/keywords/space/articles;
 // Scope: time anchors/keywords/space anchors/articles; actual grants remain server-owned.
 // This is the Group's Article Management, not System Admin. A user's
   // admin role grants access but must not change the destination/level.

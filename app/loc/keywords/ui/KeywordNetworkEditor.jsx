@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 
 function graphOriginGroup(items=[]){
   return String(items.find(row=>row.group_uid)?.group_uid||'');
@@ -107,6 +108,7 @@ export default function KeywordNetworkEditor({
   const handlersRef=useRef({onSelectNode,onNewChild,onSelectItem,onSelectGroup,onSelectClass,onNewGroup,onNewItem,onMessage});
   const [error,setError]=useState('');
   const [selectionLabel,setSelectionLabel]=useState('');
+  const reduceMotion=useReducedMotion();
   const graph=useMemo(()=>{
     return Array.isArray(sourceNodes)?buildSourceGraph(sourceNodes,classId):
       buildGraph(items,className,classId,expandedGroup,expandedItemId,groups);
@@ -131,18 +133,25 @@ export default function KeywordNetworkEditor({
     const muted=styles.getPropertyValue('--loc-muted').trim()||'#9ca8b5';
     const accent=styles.getPropertyValue('--loc-accent').trim()||'#7c9bbd';
     const panel=styles.getPropertyValue('--loc-panel').trim()||'#162536';
+    const soft=styles.getPropertyValue('--loc-panel-2').trim()||panel;
+    const accentSurface=styles.getPropertyValue('--loc-accent-surface').trim()||panel;
     const line=styles.getPropertyValue('--loc-line').trim()||'#526272';
     return {
       nodes:model.nodes.map(node=>({
         ...node,borderWidth:node.kind==='class'?3:node.kind==='group'?2:1,
+        shapeProperties:{borderRadius:node.kind==='class'?18:14},
+        shadow:{enabled:true,color:'rgba(5,12,24,.16)',size:node.kind==='class'?12:8,x:0,y:3},
         margin:node.kind==='keyword'?3:10,
-        color:{background:panel,border:node.kind==='class'?accent:line,
-          highlight:{background:panel,border:accent}},
+        color:{background:node.kind==='class'?accentSurface:node.kind==='group'?soft:panel,
+          border:node.kind==='class'?accent:line,
+          highlight:{background:soft,border:accent},
+          hover:{background:soft,border:accent}},
         font:{color:node.kind==='keyword'?muted:text,
-          size:node.kind==='class'?16:node.kind==='group'?14:13,face:'inherit'},
+          size:node.kind==='class'?16:node.kind==='group'?14:13,face:'system-ui'},
         widthConstraint:node.kind==='keyword'?{maximum:150}:{maximum:220}
       })),
-      edges:model.edges.map(edge=>({...edge,color:{color:line,highlight:accent,hover:accent},
+      edges:model.edges.map(edge=>({...edge,color:{color:line,opacity:.58,highlight:accent,hover:accent},
+        width:1.35,selectionWidth:1.5,hoverWidth:1.5,
         arrows:'to',smooth:{type:'cubicBezier',forceDirection:'horizontal',roundness:.35}}))
     };
   };
@@ -269,7 +278,14 @@ export default function KeywordNetworkEditor({
       <button type="button" className="loc-button" onClick={()=>zoom(1/1.3)} aria-label="縮小關聯圖">縮小</button>
       <button type="button" className="loc-button" onClick={()=>networkRef.current?.fit({animation:false})}>全圖</button>
     </div>
-    {selectionLabel?<p className="scope-status" role="status">已選取：{selectionLabel}</p>:null}
+    <AnimatePresence mode="wait">
+      {selectionLabel?<motion.p key={selectionLabel} className="scope-status" role="status"
+        initial={reduceMotion?false:{opacity:0,y:5}}
+        animate={{opacity:1,y:0}}
+        exit={reduceMotion?undefined:{opacity:0,y:-3}}
+        transition={reduceMotion?{duration:0}:{duration:.2,ease:'easeOut'}}>
+        已選取：{selectionLabel}</motion.p>:null}
+    </AnimatePresence>
     {error?<p className="scope-status scope-error" role="alert">{error}</p>:null}
     <div ref={containerRef} className="scope-graph-canvas scope-keyword-network-canvas" role="application"
       aria-label={className+(isSource?' 來源關聯圖':' 關鍵詞關聯圖')}/>

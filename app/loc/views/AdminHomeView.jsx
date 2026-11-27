@@ -7,21 +7,19 @@ import {useEditDock} from '../../modular/edit-dock';
 import {editorSessionStatus} from '../auth/edit-session-ttl.mjs';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
-import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
+import ManagementNetworkNav from '../../modular/ManagementNetworkNav';
+import {ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
-// Group member display-name editing lives in the Group People/Works page.
-// Admin keeps only privileged registry provisioning and system configuration.
+// People and Group Registry operations live in the Group Management page.
 
 const ADMIN_OPTIONS=Object.freeze([
   {value:'featureHero',label:'頁面主視覺',shortLabel:'頁面',description:'功能頁圖片與文字'},
   {value:'themes',label:'主題配色',shortLabel:'配色',description:'主題色彩'},
-  {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'},
-  {value:'registry',label:'人員架構',shortLabel:'人員',description:'管理人員與群組關係'}
+  {value:'network',label:'資料庫連線',shortLabel:'連線',description:'資料庫連線管理'}
 ]);
 const DatabaseTarget=dynamic(()=>import('./admin-panels/DatabaseTarget'),{loading:PanelLoading});
 const ThemeEditor=dynamic(()=>import('./admin-panels/ThemeEditor'),{loading:PanelLoading});
 const FeatureHeroImages=dynamic(()=>import('./admin-panels/FeatureHeroImages'),{loading:PanelLoading});
-const AdminRegistry=dynamic(()=>import('./admin-panels/AdminRegistry'),{loading:PanelLoading});
 
 export default function AdminHomeView({scopeGroup}){
   useUiSection('admin');
@@ -86,16 +84,14 @@ export default function AdminHomeView({scopeGroup}){
       setLoginDenied(true);setEntryVerified(false);
     }finally{setRetrying(false);}
   };
-  const selectedOption=ADMIN_OPTIONS.find(option=>option.value===section)||ADMIN_OPTIONS[0];
-
   // Admin controls render their fixed frame before privilege verification.
   const authPending=account.loading||account.permissionLoading;
   return <FeaturePage featureId="admin">
     <ManagementWorkspaceFrame level="admin" title="系統管理">
-      <ManagementSectionNav id="admin-sections" title="系統管理" panelId="admin-management-panel"
+      <ManagementNetworkNav id="admin-sections" title="系統管理" panelId="admin-management-panel"
         items={ADMIN_OPTIONS} value={section} onChange={switchSection} mobileSelect/>
       <div className="management-workspace-panel" id="admin-management-panel" role="region"
-        aria-labelledby={'admin-sections-option-'+selectedOption.value}>
+        aria-labelledby="admin-sections-selected-title">
         {authPending?<p className="scope-status" role="status">{UI_COPY.admin?.checking||'正在確認管理權限…'}</p>
           :loginDenied||!canManage?<section className="loc-card scope-feature-card">
             <p role="alert">{signInError||account.error||(account.user
@@ -113,7 +109,6 @@ export default function AdminHomeView({scopeGroup}){
             {section==='network'?<DatabaseTarget scopeGroup={scopeGroup}/>:null}
             {section==='featureHero'?<FeatureHeroImages/>:null}
             {section==='themes'?<ThemeEditor/>:null}
-            {section==='registry'?<AdminRegistry/>:null}
           </ManagementSectionTransition>}
 
       </div>

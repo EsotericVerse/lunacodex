@@ -36,6 +36,10 @@ function trustedScopeTree(rows){
  * before passing the claims. The optional scopeTree MUST be trusted server-side
  * metadata, never a browser-provided organization tree.
  *
+ * The LOC root Group is the unified LOC administrator. Other Group grants do
+ * not become global; only an explicit `group:loc:manage` grant is equivalent
+ * to the former `global:manage` grant.
+ *
  * This is a policy projection, NOT a replacement for server/Gateway authorization:
  * group-inherited scopes are not usable for SQL writes until LOC Auth explicitly
  * issues equivalent resource grants. No privilege is inferred from role strings.
@@ -46,7 +50,7 @@ export function locRolePrincipal(claims,{scopeTree=[]}={}){
   const grants=Array.isArray(claims.grants)?claims.grants:[];
   const {nodes,children}=trustedScopeTree(scopeTree);
   const scopeIds=new Set(),groupIds=new Set();
-  const global=grants.includes('global:manage');
+  const global=grants.includes('global:manage')||grants.includes('group:loc:manage');
   for(const value of grants){
     if(typeof value!=='string')continue;
     // Explicit ZModel business roles win over legacy ID-only grants.

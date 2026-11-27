@@ -4,6 +4,7 @@ import UiText from '../../../i18n/UiText';
 import FieldText from '../../../i18n/FieldText';
 import {normalizeUiLocale,UI_LOCALE_OPTIONS} from '../../../i18n/ui-copy';
 import {useCallback,useEffect,useRef,useState} from 'react';
+import {motion,useReducedMotion} from 'motion/react';
 import {invalidatePublicScopeMetadata} from '../../scope/scope-data';
 import {useEditDock,useEditDockForm} from '../../../modular/edit-dock';
 import {duplicateDomainLabelError} from '../../../modular/routing/scope-registry';
@@ -127,8 +128,11 @@ function DeploymentTree({registry=[],configs={},selectedId='',onSelect,onMovePar
       id:row.scope_id,
       label:(configs[row.scope_id]?.display_name||row.display_name||row.scope_id)+'\n'+row.scope_id+(row.active===false?' · 停用':''),
       shape:'box',
+      group:row.scope_id==='loc'?'root':row.scope_kind,
       borderWidth:row.scope_kind==='group'?2:1,
-      shapeProperties:{borderRadius:12},
+      scopeKind:row.scope_kind,
+      shapeProperties:{borderRadius:row.scope_kind==='group'?18:14},
+      shadow:{enabled:true,color:'rgba(5,12,24,.16)',size:row.scope_kind==='group'?11:7,x:0,y:3},
       widthConstraint:{maximum:210},
       fixed:row.scope_id==='loc',
       mass:1
@@ -145,6 +149,8 @@ function DeploymentTree({registry=[],configs={},selectedId='',onSelect,onMovePar
         const css=getComputedStyle(document.documentElement);
         const token=(name,fallback)=>css.getPropertyValue(name).trim()||fallback;
         const panel=token('--loc-panel','#181922');
+        const soft=token('--loc-panel-2',panel);
+        const accentSurface=token('--loc-accent-surface',panel);
         const text=token('--loc-text','#fafafa');
         const line=token('--loc-line','#626574');
         const accent=token('--loc-accent','#8da8d4');
@@ -152,9 +158,21 @@ function DeploymentTree({registry=[],configs={},selectedId='',onSelect,onMovePar
           nodes:{
             color:{background:panel,border:line,highlight:{background:panel,border:accent},hover:{background:panel,border:accent}},
             font:{color:text,face:'system-ui',size:15,multi:false},
-            margin:14
+            margin:{top:13,right:17,bottom:13,left:17},
+            shapeProperties:{borderRadius:15},
+            shadow:{enabled:true,color:'rgba(5,12,24,.16)',size:8,x:0,y:3}
           },
-          edges:{color:{color:line,highlight:accent,hover:accent}}
+          groups:{
+            root:{color:{background:accentSurface,border:accent,
+              highlight:{background:soft,border:accent},hover:{background:soft,border:accent}},borderWidth:2.5},
+            group:{color:{background:soft,border:accent,
+              highlight:{background:soft,border:accent},hover:{background:soft,border:accent}},borderWidth:2},
+            scope:{color:{background:panel,border:line,
+              highlight:{background:soft,border:accent},hover:{background:soft,border:accent}},borderWidth:1}
+          },
+          edges:{color:{color:line,highlight:accent,hover:accent},
+            width:1.35,selectionWidth:1.6,hoverWidth:1.5,
+            smooth:{enabled:true,type:'cubicBezier',forceDirection:'horizontal',roundness:.32}}
         };
       };
       const initialTheme=themeOptions();
@@ -693,6 +711,7 @@ function CreateNodePanel({data,kind='scope',onClose}){
 
 export default function AdminRegistry(){
   const data=useAdminScopeData();
+  const reduceMotion=useReducedMotion();
   const {registry,configs,setRegistry,setStatus,refresh}=data;
   const [selectedId,setSelectedId]=useState('');
   const [createKind,setCreateKind]=useState('');
@@ -798,9 +817,12 @@ export default function AdminRegistry(){
       </section>:null}
       {deleteNotice?<p className={'scope-status'+(deleteNotice.includes('失敗')?' scope-error':'')} role="status">{deleteNotice}</p>:null}
       {data.status?<p className="scope-status" role="status">{data.status}</p>:null}
-      <div className="admin-editor-section" id="admin-scope-editor">
+      <motion.div key={createKind||selectedId} className="admin-editor-section" id="admin-scope-editor"
+        initial={reduceMotion?false:{opacity:0,y:8}}
+        animate={{opacity:1,y:0}}
+        transition={reduceMotion?{duration:0}:{duration:.22,ease:'easeOut'}}>
         {createKind?<CreateNodePanel data={data} kind={createKind} onClose={()=>setCreateKind('')}/>:<RegistryNodePanel key={selectedId} data={data} selectedId={selectedId} dirtyRef={dirtyRef} onDeleted={()=>setSelectedId('')} onDeleteNode={requestDelete}/>}
-      </div>
+      </motion.div>
     </div>
   </section>;
 }

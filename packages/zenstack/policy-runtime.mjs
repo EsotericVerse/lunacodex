@@ -14,11 +14,12 @@ const ADMIN_FIXED_WRITES=Object.freeze({
   'api.manage':'Manage',
   'silver.loc':'Loc'
 });
-/** Only signed global LOC grants may update/delete a fixed admin model. */
+/** Only signed global or LOC root Group grants may update/delete fixed admin models. */
 export function fixedPolicyWriteModel(target,body,role,claims){
   if(target?.engine!=='postgres'||
       role!=='authenticated'||claims?.provider!=='loc'||claims?.me!==true||
-      !Array.isArray(claims.grants)||!claims.grants.includes('global:manage'))
+      !Array.isArray(claims.grants)||
+      !(claims.grants.includes('global:manage')||claims.grants.includes('group:loc:manage')))
     return null;
   let relation='';
   if(body?.kind==='managed-write'&&['update','delete'].includes(body.payload?.p_operation))
