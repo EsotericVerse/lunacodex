@@ -86,7 +86,8 @@
 .scope-result-links a{padding:.3rem .55rem;border:var(--scope-border);border-radius:999px;font-size:.85rem;text-decoration:none;}
 .scope-period-timeline .vis-item.scope-period-timeline-focus{background:var(--loc-accent);border-color:var(--loc-accent);color:var(--loc-panel);font-weight:700;}
 .scope-feature-focus{
-  position:relative;display:flex;align-items:center;justify-content:space-between;gap:.8rem;
+  position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto auto;
+  align-items:center;gap:.8rem;
   min-width:0;margin:.4rem 0 1rem;padding:.75rem .9rem;
   border:1px solid var(--loc-accent-border);border-inline-start:4px solid var(--loc-accent);
   border-radius:var(--loc-ui-radius-md,14px);
@@ -94,12 +95,37 @@
   box-shadow:0 12px 30px color-mix(in srgb,var(--loc-bg) 26%,transparent),inset 0 1px color-mix(in srgb,var(--loc-text) 8%,transparent);
   color:var(--loc-text);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
 }
-.scope-feature-focus__identity{display:flex;align-items:baseline;gap:.55rem;flex-wrap:wrap;min-width:0}
+.scope-feature-focus__identity{grid-column:1;display:flex;align-items:baseline;gap:.55rem;flex-wrap:wrap;min-width:0}
 .scope-feature-focus__eyebrow{color:var(--loc-accent);font-size:.75rem;font-weight:800;letter-spacing:.08em}
 .scope-feature-focus__identity strong{color:var(--loc-heading);font-size:1rem}
 .scope-feature-focus__identity>span:last-child{color:var(--loc-muted);font-size:.82rem}
 .scope-feature-focus__range{flex:none;color:var(--loc-text);font-size:.82rem;font-variant-numeric:tabular-nums}
 .scope-feature-focus__clear{flex:none;min-height:38px;padding:.35rem .7rem}
+.scope-feature-focus__article{
+  grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;gap:.65rem .9rem;padding-top:.65rem;
+  border-top:1px solid color-mix(in srgb,var(--loc-accent-border) 65%,transparent);
+}
+.scope-feature-focus__article.no-article{grid-template-columns:minmax(0,1fr)}
+.scope-feature-focus__article-copy{display:grid;gap:.12rem;min-width:0}
+.scope-feature-focus__article-copy>span{color:var(--loc-accent);font-size:.7rem;font-weight:800;letter-spacing:.08em}
+.scope-feature-focus__article-copy>strong{overflow:hidden;color:var(--loc-heading);font-size:.94rem;text-overflow:ellipsis;white-space:nowrap}
+.scope-feature-focus__article-copy>small{color:var(--loc-muted);font-size:.76rem}
+.scope-feature-focus__perspectives{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:.35rem}
+.scope-feature-focus__article.no-article .scope-feature-focus__perspectives{grid-column:1/-1;justify-content:flex-start}
+.scope-feature-focus__perspective{
+  display:inline-flex;align-items:center;min-height:34px;padding:.28rem .62rem;
+  border:1px solid var(--loc-line);border-radius:999px;color:var(--loc-text);
+  background:color-mix(in srgb,var(--loc-panel) 78%,transparent);
+  font-size:.76rem;font-weight:650;text-decoration:none;
+  transition:color .16s ease,border-color .16s ease,background-color .16s ease,transform .16s ease;
+}
+.scope-feature-focus__perspective:hover,.scope-feature-focus__perspective:focus-visible,
+.scope-feature-focus__perspective[aria-current="page"]{
+  border-color:var(--loc-accent-border);color:var(--loc-heading);
+  background:color-mix(in srgb,var(--loc-accent) 14%,var(--loc-panel));
+  transform:translateY(-1px);
+}
 .scope-river-hover-card{
   position:fixed;z-index:10000;display:grid;gap:.32rem;
   width:max-content;max-width:min(22rem,calc(100vw - 24px));max-height:min(12rem,calc(100vh - 24px));
@@ -115,9 +141,13 @@
 .scope-river-hover-card p{margin:0;color:var(--loc-text);font-size:.82rem;line-height:1.5;white-space:pre-line}
 .scope-river-hover-card__count{color:var(--loc-muted);font-size:.74rem}
 @media(max-width:680px){
-  .scope-feature-focus{align-items:flex-start;flex-wrap:wrap;gap:.45rem .7rem;padding:.7rem .75rem}
+  .scope-feature-focus{grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:.45rem .7rem;padding:.7rem .75rem}
   .scope-feature-focus__identity{flex:1 1 100%}
-  .scope-feature-focus__range{flex:1 1 auto}
+  .scope-feature-focus__identity{grid-column:1/-1}
+  .scope-feature-focus__range{grid-column:1;align-self:center}
+  .scope-feature-focus__clear{grid-column:2;grid-row:auto}
+  .scope-feature-focus__article{grid-template-columns:minmax(0,1fr);}
+  .scope-feature-focus__perspectives{justify-content:flex-start}
 }
 /* Accessible Timeline controls do not depend on a mouse modifier key. */
 .scope-timeline-controls{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem;margin:.4rem 0 .65rem}

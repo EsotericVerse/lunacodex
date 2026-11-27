@@ -50,7 +50,7 @@ import {queryImportSitePresence,queryImportSiteIdCandidates,
   queryImportLinkedMediaRows,queryImportImageGalaxyPage,
   queryImportUidConflicts,queryImportSiteIdRows,
   queryImportSourceTimePage,queryImportOccupiedDatePage,
-  queryImportUndatedTimesPage,readImportComputeMode,runImportIdentityCompute}
+  queryImportUndatedTimesPage}
   from '../actions/import/queries.mjs';
 import {importSourceCategories} from './source-categories.mjs';
 const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[],warnings:[]});
@@ -1319,11 +1319,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // timestamp comparison so edits in export time cannot create duplicates.
       const existingCandidates=unique.filter(row=>
         siteAvailability.get(String(row.site||'').trim()));
-      const remoteCompute=!nativeLocal&&existingCandidates.length>=512&&
-        await readImportComputeMode(scopeId).catch(()=>false)
-        ?(kind,payload)=>runImportIdentityCompute(scopeId,kind,payload):null;
       const matchesById=existingCandidates.length?await matchExistingImportBySiteId(existingCandidates,{
-        compute:remoteCompute,
         onProgress:p=>showProgress('依來源文章 ID 比對',p.completed,p.total),
         readSiteIds:async(ids,consumePage,site)=>{
           if(!nativeLocal&&site.length<=512&&
@@ -1384,7 +1380,6 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // Rows using UpdateTime fallback skip this matcher.
       const matchesByTime=unresolved.length?
         await matchExistingImportByCreatedAt(unresolved,{
-          compute:remoteCompute,
           excludeSavedUids:new Set([
             ...matchesById.values(),...byPrimaryUid.values()
           ].map(row=>String(row.uid))),

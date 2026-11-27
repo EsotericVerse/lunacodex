@@ -10,6 +10,7 @@ import {PUBLISHED_SEARCH_PATTERNS} from './published-search-patterns.js';
 import {compileKeywordLiteralMatcher} from '../loc/keywords/literal-matcher.mjs';
 import {keywordScanText} from '../loc/keywords/content-filter.mjs';
 import {useFeatureFocus} from './feature-focus';
+import {featureArticleFromRow} from './feature-focus-state.mjs';
 
 const norm=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
@@ -45,7 +46,10 @@ export default function SearchRelationNetwork({scopeId,row,onGalaxySelect}){
   };
   const chooseRoot=()=>{
     setExpanded('');
-    selectFocus({feature:'search',kind:'article',id:String(row.uid),label:String(row.title||row.uid)});
+    const uid=String(row.uid||'').trim();
+    const title=String(row.title||uid);
+    selectFocus({feature:'search',kind:'article',id:uid,label:title,
+      article:featureArticleFromRow(row,scopeId)});
   };
   latest.current={model,groups,act,reduceMotion,chooseGroup,chooseRoot};
   function dataFor(model){

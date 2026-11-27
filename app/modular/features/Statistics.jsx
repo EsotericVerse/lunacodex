@@ -237,11 +237,19 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // An empty or non-period Scope must not request a nonexistent Period index.
   const requestedStart=dateKey(navigation.from),requestedEnd=dateKey(navigation.to);
   const hasRequestedWindow=Boolean(requestedStart&&requestedEnd&&requestedStart<=requestedEnd);
-  const periodNavigationReady=hasRequestedWindow||selectedPeriodKey==='year'||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
+  const sharedStart=dateKey(sharedRange?.startDate),sharedEnd=dateKey(sharedRange?.endDate);
+  const hasSharedFocusWindow=Boolean(sharedStart&&sharedEnd&&sharedStart<=sharedEnd);
+  const periodNavigationReady=hasRequestedWindow||hasSharedFocusWindow||selectedPeriodKey==='year'||scopeId==='local'||scopeId==='loc'||periodQuery.data!==undefined||Boolean(periodQuery.error);
   const queryRange=useMemo(()=>{
     if(hasRequestedWindow){
       const days=Math.round((Date.parse(requestedEnd+'T00:00:00Z')-Date.parse(requestedStart+'T00:00:00Z'))/86_400_000);
       return {...customQueryRange,startDate:requestedStart,endDate:requestedEnd,
+        bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
+        fullHistory:false,canZoomOut:false,canZoomIn:false};
+    }
+    if(hasSharedFocusWindow){
+      const days=Math.round((Date.parse(sharedEnd+'T00:00:00Z')-Date.parse(sharedStart+'T00:00:00Z'))/86_400_000);
+      return {...customQueryRange,startDate:sharedStart,endDate:sharedEnd,
         bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
         fullHistory:false,canZoomOut:false,canZoomIn:false};
     }
@@ -257,7 +265,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     return {...customQueryRange,startDate,endDate,
       bucket:defaultTimeUnit==='auto'?(days>180?'month':days>31?'week':'day'):defaultTimeUnit,
       fullHistory:false,canZoomOut:false,canZoomIn:false};
-  },[selectedPeriodKey,selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,requestedStart,requestedEnd,defaultTimeUnit]);
+  },[selectedPeriodKey,selectedPeriod,customQueryRange,queryEndDate,hasRequestedWindow,
+    requestedStart,requestedEnd,hasSharedFocusWindow,sharedStart,sharedEnd,defaultTimeUnit]);
   // Both editors store flat names. Show one direct source choice, not a group tree.
   const activeSourceSelection=rankingType==='source'?sourceGroup:'';
   const totalChart=rankingType==='total'&&Boolean(targetScopes.length);
@@ -397,7 +406,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const onFocusPeriod=row=>{
     const range=featureFocusRangeFromRow(row);
     if(!range)return;
-    if(!sharedFocus)selectFocus({feature:'statics',kind:'period',
+    selectFocus({feature:'statics',kind:'period',
       id:range.startDate+':'+range.endDate,label:String(row.period||range.startDate)});
     setFocusRange(range);
   };

@@ -305,11 +305,11 @@ export default function AppShell({children}){
   const runtime=useScopeRuntime();
   const editorScopeId=runtime.pathname.startsWith('/my-phone')||runtime.scopeId==='local'
     ?'local':runtime.scope?.featureScope||runtime.scopeId;
-  return <EditDockProvider key={runtime.scopeId} scopeId={editorScopeId}>
-    <FeatureFocusProvider key={runtime.scopeId} scopeId={runtime.scopeId}>
+  return <FeatureFocusProvider scopeId={runtime.scopeId}>
+    <EditDockProvider key={runtime.scopeId} scopeId={editorScopeId}>
       <AppShellInner runtime={runtime}>{children}</AppShellInner>
-    </FeatureFocusProvider>
-  </EditDockProvider>;
+    </EditDockProvider>
+  </FeatureFocusProvider>;
 }
 
 function AppShellInner({children,runtime}){

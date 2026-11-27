@@ -56,6 +56,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const supported=TRACE_SCOPES.includes(scopeId);
   const {selectFocus}=useFeatureFocus(scopeId);
   const [selectedPlace,setSelectedPlace]=useState(null);
+  const [placeDayRows,setPlaceDayRows]=useState([]);
   // Annual territory is the default; route/index data loads only after choosing the classic map.
   const [mapMode,setMapMode]=useState('territory');
   const [readyMapMode,setReadyMapMode]=useState('');
@@ -99,6 +100,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
     // The map's selected anchor is a Frame drill-down, not a Search navigation.
     setReportTab(tracePlaceDefaultTab());
     setSelectedPlace(anchor);
+    setPlaceDayRows([]);
     selectFocus({feature:'trace',kind:'place',id:String(anchor.source_scope||scopeId)+':'+anchor.uid,
       label:String(anchor.title||anchor.uid)});
   };
@@ -147,9 +149,20 @@ function ScopeTrace({scopeId='lo3rwang'}){
     queryFn:async()=>(await readCurrentTraceAnchors(periodScopeId,[selectedPlaceUid]))[0]||null,
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  // The deep-linked point is injected into linkedSpatialData for the map.
-  // Do NOT automatically select it, mount the floating report, or fetch Galaxy.
-  // A user-initiated map click is the only entry to those controls.
+  // An explicit article-to-place URL is a requested drill-down. Open the
+  // place's visit dates while keeping the shared article focus in the shell.
+  useEffect(()=>{
+    if(selectedPlaceUid)setMapMode('routes');
+  },[selectedPlaceUid]);
+  useEffect(()=>{
+    const place=deepLinkedPlace.data;
+    if(!selectedPlaceUid||!place?.uid)return;
+    setSelectedPlace(place);
+    setReportTab('timeline');
+    selectFocus({feature:'trace',kind:'place',id:periodScopeId+':'+place.uid,
+      label:String(place.title||'未命名地點')});
+  },[selectedPlaceUid,deepLinkedPlace.data,periodScopeId,selectFocus]);
+  // The deep-linked point is also injected into linkedSpatialData for the map.
   // Reuse the route preference from the existing management editor. "All"
   // is a temporary view, not a persisted default or a second preference key.
   useEffect(()=>{
@@ -335,6 +348,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
     {mapMode==='territory'?<TraceTerritoryPanel scopeId={scopeId} onMapReady={()=>setReadyMapMode('territory')}/>:
     <TraceMap publicTrace onReady={()=>setReadyMapMode('routes')}
       floatingControls={floatingControls} spatialData={demoSpatialData}
+       placeDayRows={reportTab==='timeline'?placeDayRows:[]}
        annualGauges={annualGauges} annualGaugeOn={annualGaugeOn}
        annualGaugeBusy={annualGaugeOn&&annualGaugeDetailVisible&&annualGroups.length>0&&annualSummary.isPending}
        annualGaugeError={Boolean(annualSummary.error)}
@@ -348,7 +362,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
         <div className="loc-trace-float-heading">
           <strong>{reportPlace.title}</strong>
           <button type="button" className="loc-button" aria-label={t("closePlace")}
-            onClick={()=>{setSelectedPlace(null);setReportTab(null);}}>×</button>
+            onClick={()=>{setSelectedPlace(null);setReportTab(null);setPlaceDayRows([]);}}>×</button>
         </div>
         {reportAnnual&&reportTab!=='timeline'?<div className="loc-trace-place-journal" aria-label="近一年地點文章紀錄">
           <span className="loc-trace-place-journal__eyebrow">旅程檔案 · 近一年</span>
@@ -422,7 +436,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
         {reportTab?<TracePlaceResults key={reportPlace.source_scope+':'+reportPlace.uid} place={reportPlace}
           anchors={spatialData?.anchors||[]} maps={spatialData?.maps||[]} scopeId={reportScopeId}
           tab={reportTab} sourceName={sourceName} mediaType={mediaType} dateRange={dateRange}
-          timeMode='none' defaultSort='desc'/>:null}
+          timeMode='none' defaultSort='desc' onDailyRows={setPlaceDayRows}/>:null}
 
       </div>:null}
     </TraceMap>}

@@ -9,7 +9,10 @@ import {defaultScopeData} from '../scope/scope-data';
 import {selectCultureArticleListPage,CULTURE_ARTICLE_PAGE_SIZE} from '../culture/query';
 import {selectGalaxyIdentity} from '../galaxy/galaxy-query';
 import ScopeLink from '../../modular/ScopeLink';
+import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../../modular/routing/feature-navigation';
 import {scopeHref} from '../../modular/routing/scope-registry';
+import {useFeatureFocus} from '../../modular/feature-focus';
+import {featureArticleFromRow} from '../../modular/feature-focus-state.mjs';
 import {publicCultureSourceModel} from '../culture/public-source-river.mjs';
 import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../preferences/default-year-window.mjs';
@@ -24,6 +27,7 @@ const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline
     <span>正在準備時間長河…</span>
   </div>
 });
+const Article=dynamic(()=>import('../../modular/Article'),{loading:()=>null});
 const NO_ITEMS=Object.freeze([]);
 const NO_FOCUS=Object.freeze({});
 const datePart=value=>String(value||'').slice(0,10);
@@ -199,6 +203,7 @@ async function queryCultureData(scope,kind,start,end,signal=null){
 }
 export default function CulturePublicReader(){
   const {scopeId}=useScopeRuntime();
+  const {selectFocus}=useFeatureFocus(scopeId);
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
   const start=DEFAULT_YEAR_WINDOW.startDate;
   const end=DEFAULT_YEAR_WINDOW.endDate;
@@ -240,6 +245,7 @@ export default function CulturePublicReader(){
   const [articleError,setArticleError]=useState('');
   const [fullUid,setFullUid]=useState('');
   const [fullText,setFullText]=useState('');
+  const [fullDetail,setFullDetail]=useState(null);
   const [fullError,setFullError]=useState('');
   const eraChoices=useMemo(()=>anchorModel(anchors,'0001-01-01','9999-12-31',[]).items
     .filter(item=>item.entry_type==='era'&&item.start_date&&item.end_date),[anchors]);
@@ -412,7 +418,7 @@ export default function CulturePublicReader(){
     sequence.current+=1;setSelectedSite(site);setSelectedSites(sites);setSelectedCategoryKey(categoryKey);setArticlesOpen(false);
     setArticleRows([]);setArticleOffset(0);setArticlePageStart(0);
     setArticleMore(false);setArticlesLoading(false);setArticleError('');fullSequence.current+=1;
-    setFullUid('');setFullText('');setFullError('');
+    setFullUid('');setFullText('');setFullDetail(null);setFullError('');
   };
   const fetchArticles=async({offset=0,site=selectedSite,sites=selectedSites}={})=>{
     if(!scope||!site||densityMode!=='source'||!validRange)return;
@@ -459,25 +465,30 @@ export default function CulturePublicReader(){
     setArticlesOpen(false);setArticleRows([]);setArticleOffset(0);setArticlePageStart(0);
     setArticleMore(false);setArticlesLoading(false);setArticleError('');
     setSelectedSite('');setSelectedSites(NO_ITEMS);setSelectedCategoryKey('');
-    setFullUid('');setFullText('');setFullError('');
+    setFullUid('');setFullText('');setFullDetail(null);setFullError('');
     setExpandedSources([]);
     setAnchorSuggestionsOpen(false);setFocusedSuggestionDate('');
   },[scopeId,rangeStart,rangeEnd,densityMode,keywordClass]);
   const changeArticlePage=nextOffset=>{
     if(!articlesOpen||!selectedSite||articlesLoading)return;
     const offset=Math.max(0,Math.floor(Number(nextOffset)||0));
-    fullSequence.current+=1;setFullUid('');setFullText('');setFullError('');
+    fullSequence.current+=1;setFullUid('');setFullText('');setFullDetail(null);setFullError('');
     fetchArticles({offset,sites:selectedSites});
   };
   const toggleFull=async row=>{
     const request=++fullSequence.current;
-    if(fullUid===row.uid){setFullUid('');setFullText('');return;}
-    setFullUid(row.uid);setFullText('');setFullError('');
+    if(fullUid===row.uid){setFullUid('');setFullText('');setFullDetail(null);return;}
+    const focusArticle=article=>selectFocus({feature:'culture',kind:'article',id:String(row.uid),
+      label:String(article?.title||row.title||row.uid),article:featureArticleFromRow(article,scopeId)});
+    focusArticle(row);
+    setFullUid(row.uid);setFullText('');setFullDetail(null);setFullError('');
     try{
       const detail=await selectGalaxyIdentity(scope,row.uid);
       if(request!==fullSequence.current)return;
       if(!detail)throw new Error('本文已隱藏');
+      focusArticle({...detail,scopeId});
       setFullText(String(detail.content||''));
+      setFullDetail(detail);
     }catch(reason){
       if(request===fullSequence.current)setFullError(String(reason?.message||reason));
     }
@@ -661,15 +672,33 @@ export default function CulturePublicReader(){
           ?<p className='scope-status'>沒有相關文章。</p>:null}
       </section>:null}
       {fullUid?<div className='loc-article-reader-backdrop' role='presentation' onMouseDown={event=>{
-        if(event.target===event.currentTarget){fullSequence.current+=1;setFullUid('');setFullText('');setFullError('');}
+        if(event.target===event.currentTarget){fullSequence.current+=1;setFullUid('');setFullText('');setFullDetail(null);setFullError('');}
       }}>
         <section className='loc-article-reader' role='dialog' aria-modal='true' aria-label='文章內容'>
-          <header><strong>{articleRows.find(row=>row.uid===fullUid)?.title||'文章內容'}</strong>
-            <button type='button' className='loc-button' onClick={()=>{fullSequence.current+=1;setFullUid('');setFullText('');setFullError('');}}>關閉</button>
+          <header><strong>文章內容</strong>
+            <button type='button' className='loc-button' onClick={()=>{fullSequence.current+=1;setFullUid('');setFullText('');setFullDetail(null);setFullError('');}}>關閉</button>
           </header>
           {fullError?<p className='scope-status scope-error'>{fullError}</p>:null}
           {!fullText&&!fullError?<p className='scope-status' role='status'>正在載入文章…</p>:null}
-          {fullText?<div className='loc-article-reader__body'><p>{fullText}</p>
+          {fullDetail?<div className='loc-article-reader__body'>
+            <Article uid={fullUid} title={fullDetail.title||articleRows.find(row=>row.uid===fullUid)?.title||'未命名文章'}
+              articleHref={galaxyIdentityHref(scopeId,fullUid)}
+              date={fullDetail.article_day||fullDetail.date||articleRows.find(row=>row.uid===fullUid)?.date||''}
+              source={fullDetail.site||''} detailReading
+              relationLinks={galaxyRelationLinks(scopeId,fullDetail)}
+              relatedMedia={fullDetail.related_media||[]}
+              relatedTime={fullDetail.related_time||null}
+              relatedSpace={fullDetail.related_space||null}
+              relatedStatistics={fullDetail.related_statistics||null}
+              articleScopeId={scopeId}
+              articleDate={fullDetail.article_day||fullDetail.date||''}
+              articleCreateTime={fullDetail.createtime||''}
+              tracePlace={fullDetail.trace_place||null}
+              traceHref={fullDetail.trace_place
+                ?featureNavigationHref(scopeId,'trace',{place:fullDetail.trace_place.uid}):''}
+              locationName={fullDetail.location||''}
+              links={fullDetail.links||[]}
+              body={fullText} editOnCardClick={false}/>
             <ScopeLink className='loc-button' href={(()=>{
               const base=scopeHref(scopeId,'search/manage');
               return base+(base.includes('?')?'&':'?')+'identity='+encodeURIComponent(fullUid);
