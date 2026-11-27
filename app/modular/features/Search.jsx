@@ -21,10 +21,6 @@ import SearchSummary from '../../loc/search/Summary';
 // Article cards/editing are requested only when results actually render.
 const LazyArticle=lazy(()=>import('../Article'));
 function Article(props){return <Suspense fallback={null}><LazyArticle {...props}/></Suspense>;}
-// Mount the Inter-Net only for an explicitly opened Galaxy detail.
-const LazySearchRelationNetwork=lazy(()=>import('../SearchRelationNetwork'));
-const LazyGalaxyInterNetBranches=lazy(()=>import('../GalaxyInterNetBranches'));
-function GalaxyInterNetBranches(props){return <Suspense fallback={null}><LazyGalaxyInterNetBranches {...props}/></Suspense>;}
 import {useScopeRuntime} from '../use-scope-runtime';
 import {useSearchManagerSwitch} from '../../loc/preferences/use-search-manager-switch';
 import useDefaultTimeUnit from '../../loc/preferences/use-default-time-unit';
@@ -455,7 +451,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     }).map(item=>item.row);
   },[results,scopeId,availableScopes,articleSort]);
   const advancedRef=useRef(null);
-  const collectionLabel=scopeId==='loc'?UI_COPY.search.allContent:String(scope?.label||scopeId);
+  // A Scope search already implies its single Scope. Only LOC-wide search
+  // needs a collection label, and only it can optionally name a chosen Scope.
+  const collectionLabel=scopeId==='loc'?UI_COPY.search.allContent:'';
 
   async function loadGalaxyDetail(result){
     const scopeData=scopeById.get(result.scopeId);
@@ -493,8 +491,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(scopeId==='loc'&&options.scopeFilter&&!searchScopes.length){
       setError(t('uiExtra.searchUI.scopeUnavailable'));return;
     }
-    const searchCollectionLabel=scopeId==='loc'&&options.scopeFilter
-      ?scopeLabel(options.scopeFilter):collectionLabel;
+      const searchCollectionLabel=scopeId==='loc'&&options.scopeFilter
+        ?scopeLabel(options.scopeFilter):collectionLabel;
     if(options.startDate&&options.endDate&&options.startDate>options.endDate){
       setError(t('uiExtra.searchUI.invalidDateRange'));return;
     }
@@ -599,7 +597,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       if(!append){
         setStatus(!pageResults.length&&!search.hasMore
           ?search.failures?.length?UI_COPY.search.failed:UI_COPY.search.empty
-          :options.browse?t('uiExtra.searchUI.browsingResults'):UI_COPY.format.searchResult({label:'「'+searchCollectionLabel+'」',query:q,hasMore:search.hasMore,partial}));
+          :options.browse?t('uiExtra.searchUI.browsingResults'):UI_COPY.format.searchResult({
+            label:searchCollectionLabel?'「'+searchCollectionLabel+'」':'',
+            query:q,hasMore:search.hasMore,partial
+          }));
         scrollToResults();
       }
     }catch(exception){
@@ -772,17 +773,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     }finally{
       if(request===detailEpoch.current)setFullTextLoading(false);
     }
-  }
-
-  function followReaderGalaxy(uid){
-    const current=readerResult;
-    if(!current||current.federated||!/^[A-Za-z0-9]{8}$/.test(String(uid)))return;
-    const existing=orderedResults.find(row=>row.scopeId===current.scopeId&&
-      row.resourceId===uid&&row.resourceType==='galaxy'&&!row.federated);
-    if(existing){void toggleFullText(existing);return;}
-    void toggleFullText({...current,key:current.scopeId+':relation:'+uid,resourceId:uid,
-      editResourceId:uid,title:fullTextRow?.relation_titles?.[uid]||'關聯文章',
-      editRow:null,dbId:'',federated:false});
   }
 
   async function startEditing(result){
@@ -1336,11 +1326,6 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             </button>:null}
           </div>:null}
 
-          {readerRow?.uid&&row.resourceType==='galaxy'?
-            exploration?<Suspense fallback={<p className="scope-status">正在繪製關聯網絡…</p>}>
-              <LazySearchRelationNetwork key={row.scopeId+':'+readerRow.uid}
-                scopeId={row.scopeId} row={readerRow} onGalaxySelect={followReaderGalaxy}/>
-            </Suspense>:<GalaxyInterNetBranches scopeId={row.scopeId} row={readerRow} managementMode={managementMode}/>:null}
         </Article>
         </Fragment>;
   }

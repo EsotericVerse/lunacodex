@@ -1,6 +1,6 @@
 'use client';
 
-import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
+import {useUiCopy,useUiLocale,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 
 import {useEffect,useMemo,useState} from 'react';
@@ -140,9 +140,15 @@ function facetTrend(rows=[],window={},selectedCategories=[]){
 }
 
 function StatisticTypeSelect({scopeId,navigation,types}) {
-  const UI_COPY=useUiCopy();
+  const {locale}=useUiLocale();
   const t=useUiText();
   const router=useRouter();
+  // The frame paints before the route dictionary arrives. Keep these control
+  // labels readable during that short window instead of exposing raw keys.
+  const pageText=(key,traditional,english)=>{
+    const value=t(key);
+    return value===key||!value?(locale==='en'?english:traditional):value;
+  };
   // Pick one ZModel dimension. The Source subtree is picked in a separate
   // field only when Source is active, avoiding duplicate long dropdowns.
   const requested=String(navigation.rankingType||'');
@@ -150,7 +156,7 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
     (['media_type','media_platform','media_style','media'].includes(requested)?'source':types[0]||'');
   if(!types.length)return null;
   return <label>
-    <span>{UI_COPY.statistics.item}</span>
+    <span>{pageText('statistics.item','統計項目','Item')}</span>
     <select id="statistics-ranking-type" className="scope-select" value={active} onChange={event=>{
       const value=event.target.value;
       if(!value||value===active)return;
@@ -158,10 +164,10 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
         ...navigation,rankingType:value,source:undefined
       }));
     }}>
-      {types.includes('total')?<option value='total'>{t(STAT_TYPE_KEYS.total)}</option>:null}
-      {types.includes('source')?<option value="source">{t(STAT_TYPE_KEYS.source)}</option>:null}
+      {types.includes('total')?<option value='total'>{pageText(STAT_TYPE_KEYS.total,'作品總數','Total works')}</option>:null}
+      {types.includes('source')?<option value="source">{pageText(STAT_TYPE_KEYS.source,'文章來源分類','Source category')}</option>:null}
       {types.includes('keywords')?<optgroup label="關鍵詞">
-        <option value="keywords">{t(STAT_TYPE_KEYS.keywords)}</option>
+        <option value="keywords">{pageText(STAT_TYPE_KEYS.keywords,'關鍵字群組科目','Keyword class')}</option>
       </optgroup>:null}
       {types.includes('place')?<optgroup label="地點"><option value="place">地點</option></optgroup>:null}
     </select>
