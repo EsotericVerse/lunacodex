@@ -52,6 +52,8 @@ test('Search exposes cancellation and distinguishes cancelled from failed work',
   assert.match(search,/setStatus\(wasReadingArticle\?'已取消讀取文章。':'已取消搜尋。'\)/);
   assert.match(search,/async function loadGalaxyDetail\(result,signal=null\)/);
   assert.match(search,/signal:controller\.signal/);
+  assert.match(search,/if\(id!==searchId\.current\|\|controller\.signal\.aborted\)return;/);
+  assert.match(search,/id===searchId\.current&&abortRef\.current===controller/);
   assert.match(search,/ActivityMotion state="cancelled"/);
   const galaxy=await source('app/loc/galaxy/galaxy-query.js');
   assert.match(galaxy,/signal\?\.aborted/);
