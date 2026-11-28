@@ -6,7 +6,6 @@ import UiText,{useUiText} from '../../../i18n/UiText';
 import {useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy/galaxy-query';
-import {semanticStatisticChartTypes,chartTypeGroups} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
@@ -61,7 +60,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const [numberOfLanes,setNumberOfLanes]=useState(2);
   const [selected,setSelected]=useState([]);
   const [laneKinds,setLaneKinds]=useState([]);
-  const [chartType,setChartType]=useState('line');
+  const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
   const [foldBlank,setFoldBlank]=useState(true);
   const start=dateOnly(range?.startDate),end=dateOnly(range?.endDate);
   const valid=Boolean(scope?.id&&scope.galaxy&&scope.lucus&&start&&end&&start<=end);
@@ -276,9 +275,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     start,end,unit,valid,keywords.data,keywordItems.data,selectedKeywordItems]);
   const series=categories.map(c=>({key:c.id,label:c.name}));
   const enough=maximumLanes>=2&&categories.length===lanes;
-  const availableCharts=semanticStatisticChartTypes({purpose:'comparison',rows:calculated.chart,series,distribution:calculated.totals});
-  const shownChartType=availableCharts.some(([id])=>id===chartType)?chartType:(availableCharts[0]?.[0]||'line');
-  const chartGroups=chartTypeGroups(availableCharts,['line','stacked','scatter']);
+  const selectedPoint=calculated.chart.find(row=>row.period===selectedPeriodKey)||null;
 
   return <section className="scope-stat-section scope-self-intersection" aria-label={t('uiExtra.statisticsView.selfIntersectionTitle')}>
     <h3><UiText id="uiExtra.statisticsView.selfIntersectionTitle"/></h3>
@@ -394,25 +391,31 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
           })}
         </div>
         <div className="scope-stat-controls">
-          <label><span><FieldText text="圖表"/></span>
-            <select className="scope-select" value={chartType} onChange={e=>setChartType(e.target.value)}>
-              {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
-  {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-</optgroup>:null}
-{chartGroups.advanced.length?<optgroup label={t('uiExtra.statisticsView.chartAdvanced')}>
-  {chartGroups.advanced.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-</optgroup>:null}{!availableCharts.length?<option value="line"><FieldText text="尚無可用圖形"/></option>:null}
-            </select>
-          </label>
+          <span className="scope-status">依時間點數自動選擇直條圖或折線圖</span>
           <label className="scope-setting-toggle"><input type="checkbox" checked={foldBlank} onChange={e=>setFoldBlank(e.target.checked)}/> {l.foldEmptyTime}</label>
         </div>
         {selectedKeywordItems&&keywordItems.isPending?<p className="scope-status" role="status">正在讀取關鍵詞項目的每日統計…</p>:null}
         {selectedKeywordItems&&keywordItems.error?<p role="alert" className="scope-status scope-error">{String(keywordItems.error?.message||keywordItems.error)}</p>:null}
         {enough&&(!selectedKeywordItems||keywordItems.isSuccess)?<div>
           <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange} range={range} idPrefix="scope-self-stat">
-            <StatisticsMultiChart type={shownChartType} rows={calculated.chart} series={series}
-              distribution={calculated.totals} foldBlank={foldBlank} height={410}/>
+            <StatisticsMultiChart intent="trend" rows={calculated.chart} series={series}
+              distribution={calculated.totals} foldBlank={foldBlank} height={410}
+              selectedPeriodKey={selectedPeriodKey}
+              onPeriodClick={row=>setSelectedPeriodKey(String(row?.period||''))}/>
           </StatisticsChartFrame>
+          {selectedPoint?<section className="scope-self-intersection-selected" aria-live="polite">
+            <header className="statistics-dashboard__panel-heading">
+              <h4>{selectedPoint.period} · 選取時段</h4>
+              <button type="button" className="loc-button loc-button--small"
+                onClick={()=>setSelectedPeriodKey('')}>清除選取</button>
+            </header>
+            <div className="scope-ranking">
+              {categories.map(category=><div key={category.id}>
+                <strong>{category.name}</strong>
+                <span>{Number(selectedPoint[category.id]||0).toLocaleString(locale)}{l.recordUnit}</span>
+              </div>)}
+            </div>
+          </section>:null}
           <p className="scope-status">交錯以「同日活躍」計算；時間為 Era／Period、空間為 Trace／Path、關鍵詞為 Group／Item、來源為 Galaxy／Domain。父子節點各自統計，不將同篇作品重複加進同一項；同日出現不代表同篇文章交集。</p>
           <StatisticsDetails>{()=><>
           <div className="scope-ranking">
