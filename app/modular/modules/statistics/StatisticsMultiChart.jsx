@@ -691,9 +691,11 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
     uid:field.key+'|'+row.period,label:field.label+' · '+row.period,
     period:row.period,value:Number(row[field.key])||0
   })));
-  const trendRecords=trendRows.map(row=>({...row,uid:row.period,title:row.period,date:row.start_date}));
+  const trendRecords=trendRows.map(row=>({...row,uid:row.period,title:row.period,
+    date:row.start_date,family:'keyword',type:'group'}));
   const itemValues=groupRows.map(row=>({
-    uid:row.uid,label:groupLabel(row.label,t),value:Number(row.count)||0,
+    uid:row.uid,label:groupLabel(row.label,t),title:row.label,
+    family:'keyword',type:'item',value:Number(row.count)||0,
     count:Number(row.count)||0,documents:Number(row.document_count)||0
   }));
   const itemFields=[
