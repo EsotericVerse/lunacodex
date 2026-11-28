@@ -6,8 +6,8 @@ import {useEditDock} from '../../modular/edit-dock';
 import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
-import ManagementNetworkNav from '../../modular/ManagementNetworkNav';
-import {ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
 import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {PLACE_OPTIONS} from '../trace/PlaceManagement';
@@ -30,7 +30,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
       ?'scope-management-layout scope-management-layout--lucus':'scope-management-layout'}>
       <ManagementWorkspaceFrame level={isLoc?'group':'scope'}
         title="空間定錨管理">
-        <ManagementNetworkNav id="scope-sections" title="空間定錨管理" panelId="scope-management-panel"
+        <ManagementSectionNav id="scope-sections" title="空間定錨管理" panelId="scope-management-panel"
           items={options} value={section} mobileSelect onChange={next=>{
             if(next===section)return;
             if(editDock?.active)editDock.switchSection(next,setSection);
