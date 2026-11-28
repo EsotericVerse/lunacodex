@@ -31,7 +31,7 @@
   --loc-danger-border:color-mix(in srgb,var(--loc-danger) 34%,transparent);
   --loc-primary-start:color-mix(in srgb,var(--loc-accent) 26%,var(--loc-panel));
   --loc-primary-end:color-mix(in srgb,var(--loc-accent) 12%,var(--loc-panel-2));
-  --loc-shadow:var(--loc-material-shadow);
+  --loc-shadow:var(--loc-material-shadow-hover);
   --loc-shadow-card:var(--loc-material-shadow);
 
   --loc-material-radius:var(--loc-ui-radius-lg,18px);
