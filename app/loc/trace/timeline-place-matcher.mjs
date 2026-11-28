@@ -114,8 +114,8 @@ export function matchTimelineWindows(windows,anchors,radius=TIMELINE_RADIUS_METE
   let omitted=0,ambiguous=0;
   const selected=[];
   for(const window of windows){
-    const candidates=nearby(window).map(anchor=>({...anchor,distance:distanceInMeters(window,anchor)}))
-      .filter(anchor=>anchor.distance<=radius).sort((a,b)=>a.distance-b.distance||a.order-b.order);
+    const candidates=nearby(window).map(lucus=>({...lucus,distance:distanceInMeters(window,lucus)}))
+      .filter(lucus=>lucus.distance<=radius).sort((a,b)=>a.distance-b.distance||a.order-b.order);
     if(!candidates.length){omitted++;continue;}
     if(candidates.length>1||window.uncertain)ambiguous++;
     selected.push({...window,index:selected.length,candidates:candidates.map(({uid,title,distance})=>({
@@ -147,12 +147,12 @@ export function accumulateTimelineArticles(matches){
     const unique=candidates.length===1&&!item.disputed;
     const coordinates=[...item.coordinates].sort();
     // A GPS reading is evidence, not a location identity. The closest
-    // existing anchor is only a review bucket, never an automatic assignment.
+    // existing lucus is only a review bucket, never an automatic assignment.
     const common=candidates.filter(candidate=>item.commonAnchors?.has(candidate.uid));
     const reviewAnchor=item.existingPlaceId&&common.some(c=>c.uid===item.existingPlaceId)
       ?item.existingPlaceId:common[0]?.uid;
     const article={...item,candidates,coordinates,
-      groupKey:reviewAnchor?'anchor:'+reviewAnchor:'article:'+item.uid};
+      groupKey:reviewAnchor?'lucus:'+reviewAnchor:'article:'+item.uid};
     if(unique&&(!item.existingPlaceId||item.existingPlaceId===candidates[0].uid))
       ready.push({...article,placeId:candidates[0].uid});
     else disputes.push({...article,reason:coordinates.length>1?'文章跨多組座標，必須逐篇確認':
@@ -164,7 +164,7 @@ export function accumulateTimelineArticles(matches){
   return {ready,disputes,unchanged};
 }
 
-/* Review is grouped by an existing anchor, not by GPS coordinate strings.
+/* Review is grouped by an existing lucus, not by GPS coordinate strings.
    Article-level candidate validation still governs every proposed update. */
 export function groupTimelineMissingPlaces(analysis){
   const groups=new Map();
@@ -174,8 +174,8 @@ export function groupTimelineMissingPlaces(analysis){
     groups.get(key).rows.push(row);
   }
   return [...groups.values()].map(group=>{
-    const anchorId=group.key.startsWith('anchor:')?group.key.slice('anchor:'.length):'';
-    // Always present the matching anchor as a group-level selection.
+    const anchorId=group.key.startsWith('lucus:')?group.key.slice('lucus:'.length):'';
+    // Always present the matching lucus as a group-level selection.
     // Ambiguous rows remain visibly disputed and can be changed individually.
     const unanimous=Boolean(anchorId)&&group.rows.every(row=>
       row.candidates.length===1&&!row.disputed&&row.candidates[0].uid===anchorId&&

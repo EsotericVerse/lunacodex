@@ -14,14 +14,14 @@ export function cultureDensityByUnit(rows=[],unit='day'){
   return [...seen.values()];
 }
 export function simpleTimeRiver(rows=[],mode='era'){
-  const kind=mode==='anchor'?'anchor':'period';
+  const kind=mode==='lucus'?'lucus':'period';
   const entries=rows.filter(row=>row?.entry_type===kind&&row.uid);
   const groups=[],items=[],scopes=new Set();
   for(const row of entries){
     const scope=String(row.scope_id||'');
     if(!scopes.has(scope)){
       scopes.add(scope);
-      groups.push({id:'time-mode:'+kind+':'+scope,label:kind==='anchor'?'定錨點':'期間',
+      groups.push({id:'time-mode:'+kind+':'+scope,label:kind==='lucus'?'定錨點':'期間',
         order:groups.length,collapsible:false});
     }
     const ranges=kind==='period'&&Array.isArray(row.ranges)&&row.ranges.length
@@ -34,14 +34,14 @@ export function simpleTimeRiver(rows=[],mode='era'){
         uid:row.uid,entry_type:kind,scope_id:scope,
         group_key:'time-mode:'+kind+':'+scope,
         start_date:start,...(end>=start&&/^\d{4}-\d{2}-\d{2}$/.test(end)?{end_date:end}:{}),
-        title:row.title||row.uid,display_label:kind==='anchor'?'●':row.title||row.uid,
+        title:row.title||row.uid,display_label:kind==='lucus'?'●':row.title||row.uid,
         description:row.description||'',group_order:groups.length});
     }
   }
   return {items,groups};
 }
-export function traceHomeMapChoices(maps=[],display='anchor'){
-  if(display==='anchor')return [];
+export function traceHomeMapChoices(maps=[],display='lucus'){
+  if(display==='lucus')return [];
   return maps.filter(row=>row.trace_type===display);
 }
 export function nearestTracePlaceIds(placeIds=[],anchors=[],selection=null){

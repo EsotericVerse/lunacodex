@@ -249,7 +249,7 @@ function normalize(row,{platform,kind,path,index,conversation}){
   // (place, location, checkin, venue...). Those field names also occur,
   // unrelated to any check-in, inside Instagram/Threads/X payloads (e.g. a
   // generic geotag or an unrelated "location" object), so applying it across
-  // every platform turned ordinary posts into spurious Time-anchor check-ins.
+  // every platform turned ordinary posts into spurious Time-lucus check-ins.
   // Only Facebook's own export is a documented check-in source.
   const sourcePlace=actualKind==='post'&&platform==='facebook'?facebookBackupPlace(item):'';
   const attachments=archiveAttachmentReferences(item);

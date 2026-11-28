@@ -35,7 +35,7 @@ export async function locAccessRows(db,type,id=null){
     ['group','scope'].includes(kind)&&!SCOPE.test(scope)))
     throw Object.assign(new Error('Invalid LOC access type or Scope'),{httpStatus:400});
   if(kind!=='self')return [{
-    id:scope,email:null,role:kind,galaxy:null,anchor:null,birthday:null,
+    id:scope,email:null,role:kind,galaxy:null,lucus:null,birthday:null,
     allowed:canLocAccess(db,kind,scope)
   }];
   const state=sessions.get(db);
@@ -55,7 +55,7 @@ export async function locAccessRows(db,type,id=null){
     const level=parsed.data.manage_role==='admin'?'global':parsed.data.manage_role;
     if(!canLocAccess(db,level,row.id))return [];
     return [{id:row.id,email:row.email,role:parsed.data.manage_role,
-      galaxy:row.galaxy_table,anchor:row.anchor_table,
+      galaxy:row.galaxy_table,lucus:row.lucus_table,
       birthday:row.birthday,allowed:true}];
   });
 }

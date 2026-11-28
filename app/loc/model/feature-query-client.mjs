@@ -1,5 +1,5 @@
 import {queryGalaxyRecords} from '../actions/galaxy/queries.mjs';
-import {queryAnchorFeature} from '../actions/anchor/queries.mjs';
+import {queryLucusFeature} from '../actions/lucus/queries.mjs';
 import {queryPublicSearchPatternIndex} from '../actions/search/patterns.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Named fixed record/Anchor projections. All variable values are validated
@@ -7,7 +7,7 @@ import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../quer
 async function readFixedOperation(operation,params,{signal=null,editor=false}={}){
   const body={kind:'query',operation,...params,mode:editor?'editor':'public'};
   const json=operation==='galaxy-records'
-    ?await queryGalaxyRecords(body):await queryAnchorFeature(body);
+    ?await queryGalaxyRecords(body):await queryLucusFeature(body);
   if(!json?.data||json.query?.model!==operation)
     throw Error('Invalid LOC fixed model response');
   return json.data;
@@ -15,17 +15,17 @@ async function readFixedOperation(operation,params,{signal=null,editor=false}={}
 export const readGalaxyRecords=(params,options={})=>
   readFixedOperation('galaxy-records',params,{...options,
     editor:options.editor===true});
-export const readAnchorFeature=(params,options={})=>
-  readFixedOperation('anchor-feature',params,{...options,
+export const readLucusFeature=(params,options={})=>
+  readFixedOperation('lucus-feature',params,{...options,
     editor:options.editor===true});
 export const readPublicSearchPatternIndex=scopeIds=>
   queryPublicSearchPatternIndex({scopeIds});
-export async function readAllAnchorFeature({scope,family,types,startDate,endDate,
+export async function readAllLucusFeature({scope,family,types,startDate,endDate,
   signal=null,editor=false}={}){
   const rows=[],seen=new Set();let cursor;
   const batch=createTextAdaptiveRows({initial:MAX_ROWS,maximum:TIME_ANCHOR_MAX_PAGE_ROWS});
   for(;;){
-    const data=await readAnchorFeature({scope,family,types,startDate,endDate,
+    const data=await readLucusFeature({scope,family,types,startDate,endDate,
       cursor,limit:batch.size},
       {signal,editor});
     for(const row of data.rows||[]){

@@ -1,7 +1,7 @@
 import {sourceOutlineOptions} from '../source/outline-options.mjs';
 
 // Multiple-item statistics use the ONLY Source taxonomy:
-// silver.loc_anchor.attr.uid: Universe > Galaxy > Domain > From (site).
+// silver.loc_lucus.attr.uid: Universe > Galaxy > Domain > From (site).
 // Galaxy.site is a platform label; Galaxy.site_id is the native post ID,
 // and Galaxy.media_link is an array of URL strings. Neither is a source UID.
 const SEP=String.fromCharCode(0);

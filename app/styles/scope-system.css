@@ -1123,7 +1123,7 @@
 .scope-candidate-insight-close{position:absolute;top:.25rem;right:.35rem;min-width:32px;min-height:32px;border:0;background:transparent;color:var(--loc-text);cursor:pointer;font-size:1.2rem}
 @media(max-width:760px){.scope-culture-river-selectors{width:100%}.scope-culture-river-selectors label{flex:1 1 160px}.scope-culture-river-selectors select{max-width:100%;min-width:0}.scope-candidate-insight{max-width:100%}}
 
-/* First Culture Time river: real trace -> event -> dated anchor levels. */
+/* First Culture Time river: real trace -> event -> dated lucus levels. */
 .scope-culture-structure-river .scope-river-group-button{
   appearance:none;border:0;background:transparent;color:inherit;
   cursor:pointer;text-align:left;font:inherit;font-weight:600;

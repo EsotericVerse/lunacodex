@@ -3,18 +3,19 @@
 // Only use the resulting ORM from a trusted server AFTER LOC Auth/Gateway has
 // verified the requested database, Scope, operation and row visibility.
 //
-// Ordinary Scopes share galaxy, anchor and blocks. LOC itself stores its
-// presentation Blocks in loc_anchor, so it does not expose a LOC Blocks table.
+// Ordinary Scopes share configured Galaxy, Lucus and Blocks relations. LOC
+// stores presentation Blocks in loc_lucus, so it has no separate Blocks table.
 // The scopes' independent data and eight-character UIDs are never merged here.
 // ZenStack V3 can compile PostgreSQL and MySQL providers; MSSQL remains on
 // the shared Kysely path because ZenStack V3 has no MSSQL provider.
 import {schema as fixedSchema} from './schema.mjs';
+import {DEFAULT_SCOPE_TABLE_SETTINGS,scopeTableName} from './scope-table-names.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const NAMESPACE=/^[a-z_][a-z0-9_]{0,62}$/;
 const SOURCES=Object.freeze({
   Galaxy:['Lo3rwangGalaxy','LrunesGalaxy','galaxy'],
-  Anchor:['Lo3rwangAnchor','LrunesAnchor','anchor'],
+  Lucus:['Lo3rwangLucus','LrunesLucus','lucus'],
   Blocks:['Lo3rwangBlocks','LrunesBlocks','blocks']
 });
 const ZENSTACK_PROVIDERS=Object.freeze({postgres:'postgresql',mysql:'mysql'});
@@ -58,7 +59,7 @@ const VERIFIED_SCOPE_MODELS=Object.freeze(Object.fromEntries(
 /**
  * Instantiates only the model *metadata* of a single verified Scope.
  *
- * It intentionally omits @@allow policies for Galaxy/Anchor/Blocks:
+ * It intentionally omits @@allow policies for Galaxy/Lucus/Blocks:
  * their visibility depends on operation-specific article flags and signed
  * delegation, not on a universal unconditional read policy. The associated
  * ORM client MUST NOT be exposed to public requests or treated as an ACL.
@@ -70,6 +71,10 @@ export function scopedZModelSchema({scopeId,namespace='silver',engine='postgres'
   const models={};
   for(const [kind,{base,suffix}] of Object.entries(VERIFIED_SCOPE_MODELS)){
     if(scopeId==='loc'&&kind==='Blocks')continue;
+    const tableName=kind==='Galaxy'||kind==='Lucus'
+      ?scopeTableName(scopeId,kind.toLowerCase(),
+        DEFAULT_SCOPE_TABLE_SETTINGS[scopeId]||{})
+      :scopeId+'_'+suffix;
     models[kind]={
       ...base,
       name:kind,
@@ -77,7 +82,7 @@ export function scopedZModelSchema({scopeId,namespace='silver',engine='postgres'
       fields:base.fields,
       idFields:[...base.idFields],
       uniqueFields:base.uniqueFields,
-      attributes:[mapped('@@map',scopeId+'_'+suffix),mapped('@@schema',namespace)]
+      attributes:[mapped('@@map',tableName),mapped('@@schema',namespace)]
     };
   }
   return {

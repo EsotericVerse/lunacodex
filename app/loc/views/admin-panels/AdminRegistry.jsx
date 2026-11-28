@@ -21,7 +21,7 @@ import {
 
 const EMPTY_SCOPE_CREATE={scope_id:'',email:'',locale:'zh-Hant',route_mode:'directory'};
 const EMPTY_GROUP_CREATE={scope_id:'',display_name:'',route_mode:'directory',parent_scope_id:'loc'};
-const EMPTY_MAPPING={email:'',galaxy:'galaxy',anchor:'anchor'};
+const EMPTY_MAPPING={email:'',galaxy:'galaxy',lucus:'lucus'};
 
 function normalizeAliases(value){
   return [...new Set((Array.isArray(value)?value:String(value||'').split(/[\n,，]/g))
@@ -56,7 +56,7 @@ function useAdminScopeData(){
         }));
         const mappingRows=locRows.filter(row=>row.email).map(row=>({
           id:row.id,email:row.email,role:row.manage_role,
-          galaxy:row.galaxy_table,anchor:row.anchor_table
+          galaxy:row.galaxy_table,lucus:row.lucus_table
         }));
         // The graph needs only the registry: show it immediately instead of
         // waiting for every independent Scope configuration request.
@@ -394,7 +394,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         throw new Error('Email 格式不正確。');
       writes.push(registryUpdate('api.manage',{
         email,galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
-        anchor_table:String(row.anchor||'anchor').trim()||'anchor'
+        lucus_table:String(row.lucus||'lucus').trim()||'lucus'
       },row.id));
     }
     if(newMappingDirty){
@@ -406,7 +406,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       writes.push(registryUpdate('api.manage',{
         email,manage_role:'scope',
         galaxy_table:String(newMapping.galaxy||'galaxy').trim()||'galaxy',
-        anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor'
+        lucus_table:String(newMapping.lucus||'lucus').trim()||'lucus'
       },selected.scope_id));
     }
     return writes;
@@ -463,7 +463,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       await updateRows('api.manage',{
         email,
         galaxy_table:String(row.galaxy||'galaxy').trim()||'galaxy',
-        anchor_table:String(row.anchor||'anchor').trim()||'anchor'
+        lucus_table:String(row.lucus||'lucus').trim()||'lucus'
       },{filters:[{column:'id',operator:'eq',value:row.id}]});
       setStatus('Mapping 已更新。');refresh();return true;
     }catch(error){setStatus(error?.message||'Mapping 更新失敗。');return false;}
@@ -491,7 +491,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
       await updateRows('api.manage',{
         email:email,manage_role:'scope',
         galaxy_table:String(newMapping.galaxy||'galaxy').trim()||'galaxy',
-        anchor_table:String(newMapping.anchor||'anchor').trim()||'anchor'
+        lucus_table:String(newMapping.lucus||'lucus').trim()||'lucus'
       },{filters:[{column:'id',operator:'eq',value:selected.scope_id}]});
       setNewMapping({...EMPTY_MAPPING});setStatus('Mapping 已新增。');refresh();return true;
     }catch(error){setStatus(error?.message||'Mapping 新增失敗。');return false;}
@@ -577,7 +577,7 @@ function RegistryNodePanel({data,selectedId,onDeleted,onDeleteNode,dirtyRef}){
         <label><span>管理者 Email</span><input type="email" value={row.email||''} onChange={e=>patchMapping(row.id,'email',e.target.value)}/></label>
         <div className="scope-management-fields">
           <label><span><UiText id="uiExtra.adminView.galaxyTable"/></span><input value={row.galaxy||'galaxy'} onChange={e=>patchMapping(row.id,'galaxy',e.target.value)}/></label>
-          <label><span>Anchor</span><input value={row.anchor||'anchor'} onChange={e=>patchMapping(row.id,'anchor',e.target.value)}/></label>
+          <label><span>Lucus</span><input value={row.lucus||'lucus'} onChange={e=>patchMapping(row.id,'lucus',e.target.value)}/></label>
         </div>
         <div className="scope-tabs">{!inDock?<button type="button" onClick={()=>saveMapping(row)}><UiText id="uiExtra.adminView.saveMapping"/></button>:null}<button type="button" disabled={['admin','loc'].includes(row.id)} onClick={()=>removeMapping(row)}><UiText id="uiExtra.adminView.remove"/></button></div>
       </article>)}

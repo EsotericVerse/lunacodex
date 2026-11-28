@@ -22,8 +22,8 @@ import {
 } from '../app/modular/routing/management-route-table.mjs';
 import {PRIMARY_NAV_ORDER} from '../app/modular/routing/navigation-order.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.js';
-import {SITE_ANCHOR_READ_MODE,readPublicSourceAnchors,readPublicSourceTaxonomy} from '../app/loc/source/catalog-public.mjs';
-import {queryAnchorFeature} from '../app/loc/actions/anchor/queries.mjs';
+import {SITE_LUCUS_READ_MODE,readPublicSourceLucus,readPublicSourceTaxonomy} from '../app/loc/source/catalog-public.mjs';
+import {queryLucusFeature} from '../app/loc/actions/lucus/queries.mjs';
 import {readLocSourceHierarchy} from '../app/loc/actions/admin/queries.mjs';
 import {traceSourceOptions} from '../app/modular/features/trace/trace-panel-filters.mjs';
 import {blockWritePermissionKey,scopeBlockStoragePage} from '../app/loc/blocks/scope-block-storage-page.mjs';
@@ -152,22 +152,22 @@ test('LOC governance copy is stored as governance while other Scope pages keep t
 });
 
 test('public SiteAnchor is available from resident publication without a SQL read',async()=>{
-  assert.equal(SITE_ANCHOR_READ_MODE,'published-js');
-  assert.equal(PUBLISHED_SITE_BOOTSTRAP.site_anchors.length,36);
-  assert.equal((await readPublicSourceAnchors()).length,36);
+  assert.equal(SITE_LUCUS_READ_MODE,'published-js');
+  assert.equal(PUBLISHED_SITE_BOOTSTRAP.site_lucus.length,36);
+  assert.equal((await readPublicSourceLucus()).length,36);
   const taxonomy=await readPublicSourceTaxonomy();
   assert.equal(taxonomy.tree.length,36);
   assert.equal(taxonomy.roots.length,3);
   const admin=await readLocSourceHierarchy();
-  assert.deepEqual(admin.data,await readPublicSourceAnchors());
-  const result=await queryAnchorFeature({kind:'query',operation:'anchor-feature',
+  assert.deepEqual(admin.data,await readPublicSourceLucus());
+  const result=await queryLucusFeature({kind:'query',operation:'lucus-feature',
     scope:'loc',family:'source',mode:'public',types:['from'],limit:5,
     includeTotal:true});
   assert.equal(result.query.mode,'published-js');
   assert.equal(result.data.rows.length,5);
   assert.equal(result.data.hasMore,true);
   assert.equal(result.data.totalCount,
-    (await readPublicSourceAnchors()).filter(row=>row.type==='from').length);
+    (await readPublicSourceLucus()).filter(row=>row.type==='from').length);
 });
 
 test('Trace source options use the published SiteAnchor tree and retain the Galaxy.site value',async()=>{

@@ -9,11 +9,12 @@ import {shortImportLookupPlan,shortImportInsertRows} from './short-import-zk.mjs
 import {galaxyReadColumns} from './galaxy-read-models.mjs';
 import {portableRelation,getSqlEnginePort}
   from '../../app/loc/providers/sql-engine-ports.mjs';
+import {scopeTableName} from './scope-table-names.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 // site_id is the original source platform's post/media identifier, scoped
 // by Galaxy.site for deduplication; it must NEVER be replaced by a source
-// taxonomy node UID from silver.loc_anchor. Galaxy.uid is separate LOC identity.
+// taxonomy node UID from silver.loc_lucus. Galaxy.uid is separate LOC identity.
 // Galaxy.media_link is a list of media URLs, not a list of Source Anchor IDs;
 // Galaxy.url is the article's own permalink.
 const LOOKUP_FIELDS=Object.freeze(['uid','content','site_id','site']);
@@ -31,7 +32,7 @@ export function portableGalaxyImportMapping({scopeId,engine='postgres',namespace
     throw new TypeError('Invalid LOC import Scope');
   getSqlEnginePort(engine);
   const schema=namespace===undefined?(engine==='postgres'?'silver':engine==='mssql'?'dbo':''):namespace;
-  const physicalTable=scopeId+'_galaxy';
+  const physicalTable=scopeTableName(scopeId,'galaxy');
   const table=portableRelation(physicalTable,engine,schema);
   const fields=modelFieldsForSql('silver',physicalTable);
   const pk=modeledPrimaryKeyColumns('silver',physicalTable);

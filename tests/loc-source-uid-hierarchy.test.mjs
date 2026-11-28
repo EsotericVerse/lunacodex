@@ -1,19 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sourceTaxonomyFromAnchors} from '../app/loc/source/classification.mjs';
-import {SOURCE_ANCHOR_FIXTURE} from './fixtures/source-anchor.mjs';
+import {sourceTaxonomyFromLucus} from '../app/loc/source/classification.mjs';
+import {SOURCE_LUCUS_FIXTURE} from './fixtures/source-lucus.mjs';
 import {sourceOutlineOptions} from '../app/loc/source/outline-options.mjs';
 import {sourceEditorOutlineOptions} from '../app/loc/source/outline-options.mjs';
 import {rollupCultureSourceDays} from '../app/loc/culture/source-tree-lanes.mjs';
 import {publicCultureSourceModel} from '../app/loc/culture/public-source-river.mjs';
-import {parseAnchorFeatureQuery} from '../app/loc/model/anchor-feature-queries.mjs';
+import {parseLucusFeatureQuery} from '../app/loc/model/lucus-feature-queries.mjs';
 
 {
-const catalog=sourceTaxonomyFromAnchors(SOURCE_ANCHOR_FIXTURE);
-test('SiteAnchor reads are global loc_anchor queries, never Scope Anchor queries',()=>{
-  const request={kind:'query',operation:'anchor-feature',scope:'loc',family:'source'};
-  assert.equal(parseAnchorFeatureQuery(request).scope,'loc');
-  assert.throws(()=>parseAnchorFeatureQuery({...request,scope:'lo3rwang'}),
+const catalog=sourceTaxonomyFromLucus(SOURCE_LUCUS_FIXTURE);
+test('SiteAnchor reads are global loc_lucus queries, never Scope Anchor queries',()=>{
+  const request={kind:'query',operation:'lucus-feature',scope:'loc',family:'source'};
+  assert.equal(parseLucusFeatureQuery(request).scope,'loc');
+  assert.throws(()=>parseLucusFeatureQuery({...request,scope:'lo3rwang'}),
     /Invalid Anchor feature selection/);
 });
 const byTitle=new Map(catalog.tree.map(row=>[row.title,row]));
@@ -45,14 +45,14 @@ test('daily counts roll up by saved parent UID without treating site as a node t
 
 
 test('protected Source editor preserves hidden saved UID nodes; public projection does not',async()=>{
-  const target=SOURCE_ANCHOR_FIXTURE.find(row=>row.type==='from'&&row.title==='Vocus');
-  const modified=SOURCE_ANCHOR_FIXTURE.map(row=>row.uid===target.uid?{...row,invisible:true}:row);
+  const target=SOURCE_LUCUS_FIXTURE.find(row=>row.type==='from'&&row.title==='Vocus');
+  const modified=SOURCE_LUCUS_FIXTURE.map(row=>row.uid===target.uid?{...row,invisible:true}:row);
   const editor=sourceEditorOutlineOptions(modified);
-  assert.equal(editor.length,SOURCE_ANCHOR_FIXTURE.length);
+  assert.equal(editor.length,SOURCE_LUCUS_FIXTURE.length);
   assert.deepEqual(editor.filter(row=>row.path.includes(target.uid)).map(row=>[row.label,row.level]),[['Vocus',3]]);
   assert.equal(editor.find(row=>row.code===target.uid)?.path.length,4);
   // The public tree hides invisible nodes without changing the persisted UID.
-  const guest=sourceOutlineOptions(sourceTaxonomyFromAnchors(modified));
+  const guest=sourceOutlineOptions(sourceTaxonomyFromLucus(modified));
   assert.ok(!guest.some(row=>row.code===target.uid));
 });
 }
@@ -62,7 +62,7 @@ test('protected Source editor preserves hidden saved UID nodes; public projectio
 }
 
 {
-const catalog=sourceTaxonomyFromAnchors(SOURCE_ANCHOR_FIXTURE);
+const catalog=sourceTaxonomyFromLucus(SOURCE_LUCUS_FIXTURE);
 const uid=name=>catalog.tree.find(row=>row.title===name)?.uid;
 const daily=[
   {day:'2026-11-01',site:'Facebook',item_count:2},

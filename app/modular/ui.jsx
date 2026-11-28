@@ -196,7 +196,7 @@ function ArticleRelationNavigation({
   const day=String(articleDate||'').slice(0,10);
   const [addedAnchor,setAddedAnchor]=useState(null);
   const timeHref=(item,kind)=>featureNavigationHref(scope,'culture',{
-    from:day,to:day,...(kind==='anchor'?{anchor:item.uid}:{period:item.uid})
+    from:day,to:day,...(kind==='lucus'?{lucus:item.uid}:{period:item.uid})
   });
   const traceLink=(item,kind)=>featureNavigationHref(item?.source_scope||scope,'trace',
     kind==='place'?{place:item.uid}:{map:item.uid});
@@ -263,8 +263,8 @@ function ArticleRelationNavigation({
   const dateValid=/^\d{4}-\d{2}-\d{2}$/.test(day);
   const activeAnchors=Array.isArray(time.anchors)?[...time.anchors]:[];
   if(addedAnchor?.scope===scope&&addedAnchor?.day===day&&
-    !activeAnchors.some(item=>item.uid===addedAnchor.anchor.uid))activeAnchors.push(addedAnchor.anchor);
-  const timeAnchors=named(activeAnchors,item=>timeHref(item,'anchor'));
+    !activeAnchors.some(item=>item.uid===addedAnchor.lucus.uid))activeAnchors.push(addedAnchor.lucus);
+  const timeAnchors=named(activeAnchors,item=>timeHref(item,'lucus'));
   const anniversarySuggestions=activeAnchors.length?[]:
     (Array.isArray(time.anniversarySuggestions)?time.anniversarySuggestions:[]);
   const periods=named(time.periods,item=>timeHref(item,'period'));
@@ -286,7 +286,7 @@ function ArticleRelationNavigation({
     scopeId={scope} date={day} articleCreateTime={articleCreateTime}
     suggestions={anniversarySuggestions}
     label={anniversarySuggestions.length?'新增週年定錨':'新增時間定錨'}
-    onCreated={anchor=>setAddedAnchor({scope,day,anchor})}/>));
+    onCreated={lucus=>setAddedAnchor({scope,day,lucus})}/>));
   const spaceRows=[];
   if(places.length)spaceRows.push(row('地點',places));
   else if(String(locationName||'').trim())spaceRows.push(row('文章地點',String(locationName).trim()));

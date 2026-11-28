@@ -3,6 +3,7 @@
 // no database query or write ever references Galaxy.able.
 // Each feature flag: true = enabled/eligible; false = excluded. Never invert it.
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 export const GALAXY_ABLE_KEYS=Object.freeze(galaxyReadColumns('GalaxyAttr'));
 export const GALAXY_ABLE_COLUMNS=GALAXY_ABLE_KEYS.join(',');
 function booleanOrUndefined(raw){
@@ -36,7 +37,7 @@ export function galaxyAble(row={}){
 }
 
 export function isScopedGalaxy(table){
-  return /^silver\.[a-z][a-z0-9]{0,14}_galaxy$/.test(String(table||''));
+  return scopeTableDescriptor(String(table||'').split('.').at(-1))?.kind==='galaxy';
 }
 export function prepareGalaxyInsertRows(table,rows=[]){
   if(!isScopedGalaxy(table))return rows;

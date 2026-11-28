@@ -4,7 +4,7 @@
 // Display old-to-new, based on the earliest saved date in each branch.
 // Missing dates sort last; equal start dates use the saved UID as a stable tie.
 const id=row=>String(row?.uid||'').trim();
-const kind=row=>row?.type==='date'?'anchor':row?.type;
+const kind=row=>row?.type==='date'?'lucus':row?.type;
 const links=(row,key)=>{
   const source=Array.isArray(row?.anchor_ids)?row.anchor_ids:row?.attr?.[key];
   return Array.isArray(source)?[...new Set(source.map(String).filter(Boolean))]:[];
@@ -23,7 +23,7 @@ export function timeRecordHierarchy(rows=[]){
   const all=Array.isArray(rows)?rows:[];
   const eras=all.filter(row=>kind(row)==='era'&&id(row));
   const periods=all.filter(row=>kind(row)==='period'&&id(row));
-  const dates=all.filter(row=>kind(row)==='anchor'&&id(row));
+  const dates=all.filter(row=>kind(row)==='lucus'&&id(row));
   const periodByUid=new Map(periods.map(row=>[id(row),row]));
   const dateByUid=new Map(dates.map(row=>[id(row),row]));
   const assignedPeriods=new Set(),assignedDates=new Set();

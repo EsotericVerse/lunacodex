@@ -1,4 +1,4 @@
-import {decodeTimeSegments,encodeTimeSegment} from '../../../loc/culture/time-anchor-ranges.mjs';
+import {decodeTimeSegments,encodeTimeSegment} from '../../../loc/culture/time-lucus-ranges.mjs';
 const DENSITY_LEVELS=Object.freeze([
   Object.freeze({minimum:1001,key:'focus-6',label:'1001 篇以上',brightness:1.4,glow:0.9}),
   Object.freeze({minimum:501,key:'focus-5',label:'501–1000 篇',brightness:1.32,glow:0.78}),
@@ -115,7 +115,7 @@ function previousDay(date){
 }
 function anchorEntries(items){
   return (Array.isArray(items)?items:[])
-    .filter(item=>item?.entry_type==='anchor'&&item?.uid&&item?.start_date)
+    .filter(item=>item?.entry_type==='lucus'&&item?.uid&&item?.start_date)
     .map(item=>({id:String(item.uid),day:dateKey(item.start_date)}))
     .filter(item=>item.day)
     .sort((a,b)=>a.day.localeCompare(b.day)||a.id.localeCompare(b.id));
@@ -134,7 +134,7 @@ export function snapTimelineRangeToAnchors(item,row,timeRows=[]){
   if(!original.start||!original.end||original.end==='0')
     throw new Error('單點／開放時期請在時期編輯器調整定錨點。');
   const anchors=anchorEntries(timeRows);
-  const byId=new Map(anchors.map(anchor=>[anchor.id,anchor]));
+  const byId=new Map(anchors.map(lucus=>[lucus.id,lucus]));
   const oldStart=byId.get(original.start),oldEnd=byId.get(original.end);
   if(!oldStart||!oldEnd)throw new Error('起訖定錨點不存在，請修正失效連線。');
   const requestedStart=dateKey(item?.start),requestedEnd=dateKey(item?.end);
@@ -150,7 +150,7 @@ export function snapTimelineRangeToAnchors(item,row,timeRows=[]){
       previousDay(nextEnd.day):nextEnd.day}};
 }
 
-/** Compose culture date/display utilities and canonical Time-anchor range behavior. */
+/** Compose culture date/display utilities and canonical Time-lucus range behavior. */
 export const CultureTimelineModel=Object.freeze({
   densityStyleForCount,densityStyleForRatio,formatCultureDateTime,decodeCultureText,
   snapTimelineRangeToAnchors

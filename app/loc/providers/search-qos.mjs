@@ -3,6 +3,7 @@
 // Only explicit Galaxy.content text predicates are eligible. Other public
 // reads, exact UID lookup, culture, trace and statistics are unaffected.
 import {detectCountChangepoints} from '../model/karaul-count-changepoints.mjs';
+import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const TEXT_OPS=new Set(['ilike','like','contains']);
 const BUCKET_MS=5000;
@@ -21,7 +22,7 @@ export function isTextSearchQuery(body){
   if(!body||typeof body!=='object'||
      body.kind!==undefined&&body.kind!=='query'||
      body.operation!==undefined&&body.operation!=='select'||
-     !/_galaxy$/.test(String(body.table||'')))return false;
+     scopeTableDescriptor(String(body.table||'').split('.').at(-1))?.kind!=='galaxy')return false;
   return (Array.isArray(body.filters)&&body.filters.some(textPredicate))||
     (Array.isArray(body.or)&&body.or.some(textPredicate))||
     (Array.isArray(body.orFilters)&&body.orFilters.some(textPredicate))||false;

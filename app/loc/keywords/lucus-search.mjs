@@ -5,12 +5,13 @@ import {readItemKeywordProjection} from './item-count-analysis.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {portableRelation} from '../providers/sql-engine-ports.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const TYPES=['date','point','item','pattern'];
-const anchorTable=(s,engine='postgres',namespace='silver')=>{
+const lucusTable=(s,engine='postgres',namespace='silver')=>{
   if(!SCOPE.test(String(s||'')))throw Error('Invalid Scope');
-  return portableRelation(s+'_anchor',engine,namespace);
+  return portableRelation(scopeTableName(s,'lucus'),engine,namespace);
 };
 const attrs=row=>{
   const raw=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr;
@@ -18,13 +19,14 @@ const attrs=row=>{
 };
 // Class/Group/Item attr.uid points to child Anchor UIDs, never Galaxy article UIDs.
 const kids=row=>Array.isArray(attrs(row).uid)?attrs(row).uid.filter(uid=>UID.test(String(uid))):[];
-const sourceTable=(s,engine='postgres',namespace='silver')=>portableRelation(s+'_galaxy',engine,namespace);
+const sourceTable=(s,engine='postgres',namespace='silver')=>
+  portableRelation(scopeTableName(s,'galaxy'),engine,namespace);
 function err(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 
 // Retain only the best offset+page+1 article identities while scanning.
  // The stream still evaluates every matching article, but never stores an
  // unbounded UID list just to sort it after the scan.
-export function createAnchorArticlePageBuffer({offset=0,limit=20,sortDirection='desc'}={}){
+export function createLucusArticlePageBuffer({offset=0,limit=20,sortDirection='desc'}={}){
   if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||
     !['asc','desc'].includes(sortDirection))
     throw new TypeError('Invalid Anchor article page buffer');
@@ -107,7 +109,7 @@ export async function accessibleKeywordAnchors(db,scope,owner=false,{engine='pos
   return {items:visible,patterns,indexed,published:settings?.search===true};
 }
 
-export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
+export async function queryLucusArticles(db,{scopeId,uid,type,owner=false,
   offset=0,limit=20,sortDirection='desc',startDate='',endDate='',contentType='',sourceFilter='',
   engine='postgres',namespace='silver'
 }={}){
@@ -119,10 +121,10 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
     (endDate&&!/^\d{4}-\d{2}-\d{2}$/.test(endDate))||
     !['','galaxy','lyrics_work','text_work'].includes(contentType)||
     String(sourceFilter).length>150)err('Invalid Anchor navigation request');
-  const scope=scopeId,anchor=await db.selectFrom(anchorTable(scope,engine,namespace))
+  const scope=scopeId,lucus=await db.selectFrom(anchorTable(scope,engine,namespace))
     .select(['uid','type','title','attr','invisible'])
     .where('uid','=',uid).where('type','=',type).executeTakeFirst();
-  if(!anchor||(!owner&&anchor.invisible))err('Anchor is unavailable',404);
+  if(!lucus||(!owner&&lucus.invisible))err('Anchor is unavailable',404);
   if(['item','pattern'].includes(type)){
     const visible=await accessibleKeywordAnchors(db,scope,owner,{engine,namespace});
     const allowed=type==='item'?visible.items:visible.patterns;
@@ -135,7 +137,7 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
       .where('id','=',scope).executeTakeFirst();
     if(settings?.search!==true)err('This Scope does not publish Search',403);
   }
-  const current=attrs(anchor),galaxy=sourceTable(scope,engine,namespace);
+  const current=attrs(lucus),galaxy=sourceTable(scope,engine,namespace);
   if(type==='date'&&!/^\d{4}-\d{2}-\d{2}$/.test(String(current.date||'')))
     return {rows:[],hasMore:false,nextOffset:null};
   // Item/Pattern navigation evaluates authored Item rules on demand.
@@ -165,8 +167,8 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
       keywords:kids(item).map(patternUid=>patternByUid.get(patternUid)?.title||''),
       group_uid:itemToGroup.get(item.uid)
     }));
-    const selectedWord=String(anchor.title||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');
-    const pageBuffer=createAnchorArticlePageBuffer({offset,limit,sortDirection});
+    const selectedWord=String(lucus.title||'').normalize('NFKC').toLocaleLowerCase('zh-Hant');
+    const pageBuffer=createLucusArticlePageBuffer({offset,limit,sortDirection});
     await readItemKeywordProjection(db,scope,{
       items,groups:groups.map(g=>({uid:g.uid,title:g.title})),
       patterns:[...patternByUid.values()],
@@ -185,7 +187,7 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
     const {rows:sorted,hasMore}=pageBuffer.page();
     const selected=sorted.map(row=>row.uid);
     if(!selected.length)return {rows:[],hasMore:false,nextOffset:null};
-    const cols=galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor')
+    const cols=galaxyReadColumnsFor('GalaxyList','GalaxyUidLucus')
       .filter((col,index,all)=>all.indexOf(col)===index);
     let q=db.selectFrom(galaxy).select(cols).where('uid','in',selected);
     if(!owner)q=q.where('search','=',true);
@@ -195,9 +197,9 @@ export async function queryAnchorArticles(db,{scopeId,uid,type,owner=false,
       source:String(row.site||scope)})),hasMore,
       nextOffset:hasMore?offset+limit:null};
   }
-  // Keyword navigation returns an article list plus its anchor context; both
+  // Keyword navigation returns an article list plus its lucus context; both
   // halves come from the shared Galaxy projections rather than a local list.
-  const cols=galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor')
+  const cols=galaxyReadColumnsFor('GalaxyList','GalaxyUidLucus')
     .filter((column,index,all)=>all.indexOf(column)===index);
   let q=db.selectFrom(galaxy).select(cols);
   if(!owner)q=q.where('search','=',true);

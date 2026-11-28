@@ -38,9 +38,9 @@ function routedSchema(schemaName,cloudSchema){
       if(schemaName==='local'||args?.p_scope_id==='local')return unavailableLocal();
       return cloudSchema.managedAction(name,args);
     },
-    anchor(scopeId,type,attr={}){
+    lucus(scopeId,type,attr={}){
       if(scopeId==='local')return unavailableLocal();
-      return cloudSchema.anchor(scopeId,type,attr);
+      return cloudSchema.lucus(scopeId,type,attr);
     },
   };
 }

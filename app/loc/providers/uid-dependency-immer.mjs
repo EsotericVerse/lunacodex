@@ -1,10 +1,10 @@
 import {produce} from 'immer';
-import {PERSISTED_ANCHOR_TYPES,anchorUidListCount} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {PERSISTED_LUCUS_TYPES,lucusUidListCount} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 
 // An exact UID is an identity; location, date and site are source values,
 // never replacement UIDs. Do not infer identities from titles or dates.
 const UID=/^[A-Za-z0-9]{8}$/;
-export const UID_DEPENDENT_ANCHOR_FIELDS=Object.freeze({
+export const UID_DEPENDENT_LUCUS_FIELDS=Object.freeze({
   date:Object.freeze({period:'uid'}),
   period:Object.freeze({era:'period'}),
   point:Object.freeze({path:'point',trace:'point'}),
@@ -72,17 +72,17 @@ function mark(map,uid){
  * Each update carries the dependent record's PK and old values so the writer
  * can reject concurrent modification rather than silently overwriting it.
  */
-export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',galaxyRows=[],anchorRows=[]}={}){
+export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',galaxyRows=[],lucusRows=[]}={}){
   const uid=uidOf(deletedUid);
-  if(!['galaxy','anchor'].includes(deletedTable))throw new TypeError('Invalid deleted table');
-  if(!Array.isArray(galaxyRows)||!Array.isArray(anchorRows))
+  if(!['galaxy','lucus'].includes(deletedTable))throw new TypeError('Invalid deleted table');
+  if(!Array.isArray(galaxyRows)||!Array.isArray(lucusRows))
     throw new TypeError('Invalid dependency projection');
-  if(deletedTable==='anchor'&&!PERSISTED_ANCHOR_TYPES.includes(deletedType))
+  if(deletedTable==='lucus'&&!PERSISTED_LUCUS_TYPES.includes(deletedType))
     throw new TypeError('Unknown Anchor type');
   const isGalaxy=deletedTable==='galaxy';
   const point=!isGalaxy&&deletedType==='point';
-  const parentFields=isGalaxy?{}:UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
-  const galaxyUpdates=[],anchorUpdates=[],galaxySeen=new Set(),anchorSeen=new Set();
+  const parentFields=isGalaxy?{}:UID_DEPENDENT_LUCUS_FIELDS[deletedType]||{};
+  const galaxyUpdates=[],lucusUpdates=[],galaxySeen=new Set(),lucusSeen=new Set();
   for(const source of galaxyRows){
     const row={...source};
     for(const key of ['target_id'])
@@ -110,9 +110,9 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
     }
     if(Object.keys(values).length)galaxyUpdates.push({uid:id,values,expected});
   }
-  for(const row of anchorRows){
+  for(const row of lucusRows){
     const id=uidOf(row?.uid);
-    mark(anchorSeen,id);
+    mark(lucusSeen,id);
     if(!isGalaxy&&id===uid)continue;
     const original=attrOf(row);
     const field=parentFields[String(row.type||'')];
@@ -136,10 +136,10 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
     if(row.type==='trace'&&field==='point'&&next.point.length===0&&
       (!Array.isArray(next.path)||next.path.length===0))
       throw new Error('Cannot delete Point: the dependent Trace would have no segments or routes');
-    anchorUpdates.push({uid:id,type:row.type,
-      values:{attr:next,num:BigInt(anchorUidListCount(row.type,next))},
+    lucusUpdates.push({uid:id,type:row.type,
+      values:{attr:next,num:BigInt(lucusUidListCount(row.type,next))},
       expected:{attr:original}});
   }
-  return {deletedUid:uid,deletedTable,deletedType,galaxyUpdates,anchorUpdates,
-    affected:galaxyUpdates.length+anchorUpdates.length};
+  return {deletedUid:uid,deletedTable,deletedType,galaxyUpdates,lucusUpdates,
+    affected:galaxyUpdates.length+lucusUpdates.length};
 }

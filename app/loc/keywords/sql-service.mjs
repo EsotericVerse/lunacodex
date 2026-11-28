@@ -12,7 +12,8 @@ import {completeKeywordClass,invalidateKeywordClass,
   readKeywordScanProgress,writeKeywordScanProgress,
   keywordClassEpoch,bumpKeywordClassEpoch} from './class-state.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {allocateAnchorUid} from '../model/uid.js';
+import {allocateLucusUid} from '../model/uid.js';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[0-9A-Za-z]{8}$/;
@@ -37,8 +38,8 @@ const children=node=>{
   const raw=attr(node).uid;
   return Array.isArray(raw)?raw.filter(uid=>UID.test(String(uid))):[];
 };
-const anchorName=scope=>'silver.'+checkScope(scope)+'_anchor';
-const galaxyName=scope=>'silver.'+checkScope(scope)+'_galaxy';
+const lucusName=scope=>'silver.'+scopeTableName(checkScope(scope),'lucus');
+const galaxyName=scope=>'silver.'+scopeTableName(checkScope(scope),'galaxy');
 const configName=scope=>'silver.'+checkScope(scope);
 // Item-rule aggregate analysis reads Gallery metadata by date/UID only;
 // no Pattern-to-Galaxy article UID postings or full-text index are created.
@@ -87,25 +88,25 @@ function shared(config,classUid){
 }
 
 async function classTree(db,scope,classUid){
-  const anchor=anchorName(scope);
-  const root=await db.selectFrom(anchor).select(['uid','type','title','description','attr'])
+  const lucus=lucusName(scope);
+  const root=await db.selectFrom(lucus).select(['uid','type','title','description','attr'])
     .where('uid','=',checkClass(classUid)).where('type','=','class').executeTakeFirst();
   if(!root)fail('Unknown Keyword Class',404);
   const groupUids=children(root);
-  const groups=groupUids.length?await db.selectFrom(anchor)
+  const groups=groupUids.length?await db.selectFrom(lucus)
     .select(['uid','type','title','description','attr']).where('type','=','group')
     .where('uid','in',groupUids).execute():[];
   const groupMap=new Map(groups.map(group=>[group.uid,group]));
   if(groupUids.some(uid=>!groupMap.has(uid)))fail('Keyword Group relationship incomplete');
   const ordered=groupUids.map(uid=>groupMap.get(uid));
   const itemUids=[...new Set(ordered.flatMap(children))];
-  const items=itemUids.length?await db.selectFrom(anchor)
+  const items=itemUids.length?await db.selectFrom(lucus)
     .select(['uid','type','title','description','attr']).where('type','=','item')
     .where('uid','in',itemUids).execute():[];
   const byItem=new Map(items.map(item=>[item.uid,item]));
   if(itemUids.some(uid=>!byItem.has(uid)))fail('Keyword Item relationship incomplete');
   const patternIds=[...new Set(items.flatMap(children))].sort();
-  const matches=patternIds.length?await db.selectFrom(anchor)
+  const matches=patternIds.length?await db.selectFrom(lucus)
     .select(['uid','title','num']).where('type','=','pattern')
     .where('uid','in',patternIds).execute():[];
   const byPattern=new Map(matches.map(row=>[row.uid,row]));
@@ -137,14 +138,14 @@ export async function readKeywordWorkspace(db,scope,{cursor='',limit=250}={}){
   if(cursor&&!UID.test(cursor))fail('Invalid Keyword editor cursor',400);
   if(!Number.isInteger(limit)||limit<1||limit>250)
     fail('Invalid Keyword editor page size',400);
-  let q=db.selectFrom(anchorName(scope))
+  let q=db.selectFrom(lucusName(scope))
     .select(['uid','type','title','description','attr'])
     .where('type','in',['category','class','group','item']);
   if(cursor)q=q.where('uid','>',cursor);
   const rows=await q.orderBy('uid','asc').limit(limit+1).execute();
   const page=rows.slice(0,limit);
   const patternIds=[...new Set(page.filter(row=>row.type==='item').flatMap(children))].sort();
-  const patternRows=patternIds.length?await db.selectFrom(anchorName(scope))
+  const patternRows=patternIds.length?await db.selectFrom(lucusName(scope))
     .select(['uid','title','num']).where('type','=','pattern')
     .where('uid','in',patternIds).execute():[];
   const patternByUid=new Map(patternRows.map(row=>[row.uid,{uid:row.uid,
@@ -184,11 +185,11 @@ export async function readKeywordWorkspace(db,scope,{cursor='',limit=250}={}){
 export async function readKeywordClasses(db,scope,{owner=false}={}){
   checkScope(scope);
   const cfg=await configuration(db,scope);
-  const classes=await db.selectFrom(anchorName(scope)).select(['uid','title'])
+  const classes=await db.selectFrom(lucusName(scope)).select(['uid','title'])
     .where('type','=','class').execute();
   const visible=classes.filter(row=>owner||shared(cfg,row.uid));
   if(!visible.length)return {classes:[],currentClassUid:''};
-  const categories=await db.selectFrom(anchorName(scope))
+  const categories=await db.selectFrom(lucusName(scope))
     .select(['uid','title','attr']).where('type','=','category').execute();
   const categoryByClass=new Map();
   for(const category of categories)
@@ -225,7 +226,7 @@ export async function readKeywordStatistics(db,scope,classUid,{
     });
     counts=result.totals;daily=result.daily;
   }else{
-    const rows=await db.selectFrom(anchorName(scope))
+    const rows=await db.selectFrom(lucusName(scope))
       .select(['uid','attr']).where('uid','in',[
         tree.root.uid,...tree.groups.map(row=>row.uid),
         ...tree.items.map(row=>row.uid)
@@ -264,7 +265,7 @@ export async function readKeywordCatalog(db,scope,classUid,{owner=false}={}){
     uid_lists:[],total:node.type==='item'?indexed.get(node.uid)?.hit_count||0:
       node.type==='group'?groups.get(node.uid)?.hit_count||0:0
   });
-  const anchor=anchorName(scope);
+  const lucus=lucusName(scope);
   const itemByUid=new Map(tree.itemRows.map(row=>[row.uid,row]));
   return {class_uid:classUid,rows:[
     model(tree.root),...tree.groups.map(model),
@@ -307,10 +308,10 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
   // Suggestions are a read stream over the selected dialect's Kysely query
   // interface. Keep each driver result bounded instead of materializing every
   // Item and Pattern row for every Scope in one request.
-  const streamType=async function*(anchor,type,columns,pageSize){
+  const streamType=async function*(lucus,type,columns,pageSize){
     let cursor='';
     for(;;){
-      let pageQuery=db.selectFrom(anchor).select(columns).where('type','=',type);
+      let pageQuery=db.selectFrom(lucus).select(columns).where('type','=',type);
       if(cursor)pageQuery=pageQuery.where('uid','>',cursor);
       const page=await pageQuery.orderBy('uid','asc').limit(pageSize).execute();
       if(!Array.isArray(page)||page.length>pageSize)
@@ -329,15 +330,15 @@ export async function suggestKeywordPatterns(db,scopeIds=[],query='',{
   };
   for(const scope of new Set(scopeIds)){
     if(!ownerScopes.has(scope))continue;
-    const anchor=anchorName(scope);
+    const lucus=lucusName(scope);
     const linked=new Set();
-    for await(const item of streamType(anchor,'item',['uid','attr'],512))
+    for await(const item of streamType(lucus,'item',['uid','attr'],512))
       for(const uid of children(item))linked.add(uid);
     if(!linked.size)continue;
     // Pattern remains the searchable vocabulary owner; Item only links to
     // Pattern UIDs. Scan Pattern pages in UID order and retain only literal
     // matches linked from an Item. No Item.title matching or article scan.
-    for await(const row of streamType(anchor,'pattern',['uid','title'],1024)){
+    for await(const row of streamType(lucus,'pattern',['uid','title'],1024)){
       if(!linked.has(String(row.uid)))continue;
       const literal=String(row.title||'').trim(),key=norm(literal);
       if(!key.includes(prefix)||!literal||parseRuneKeywordRuleSentence(literal).rules.length)continue;
@@ -388,7 +389,7 @@ async function writeKeywordTotals(trx,scope,updates){
     fail('Keyword aggregate target type is required');
   const physicalUpdates=planKeywordTotalWrites(updates);
   if(!physicalUpdates.length)return 0;
-  const table=sql.ref(anchorName(scope));
+  const table=sql.ref(lucusName(scope));
   const itemGroupUpdates=physicalUpdates.filter(row=>row.type==='item'||row.type==='group');
   if(itemGroupUpdates.length){
     const payload=JSON.stringify(itemGroupUpdates);
@@ -599,7 +600,7 @@ export async function resetKeywordScope(db,scope,classUid,{
     const tree=legacyItemsMaterialized
       ?await classTree(trx,scope,classUid):before;
     const classItems=new Set(tree.items.map(item=>item.uid));
-    const otherItems=await trx.selectFrom(anchorName(scope)).select(['uid','attr'])
+    const otherItems=await trx.selectFrom(lucusName(scope)).select(['uid','attr'])
       .where('type','=','item').execute();
     const sharedPatterns=new Set(otherItems.filter(item=>!classItems.has(item.uid))
       .flatMap(children));
@@ -642,14 +643,14 @@ function checkKeywordWordList(value){
   return out;
 }
 async function findContainingGroup(trx,scope,itemUid){
-  const groups=await trx.selectFrom(anchorName(scope))
+  const groups=await trx.selectFrom(lucusName(scope))
     .select(['uid','attr']).where('type','=','group').execute();
   const parents=groups.filter(group=>children(group).includes(itemUid));
   if(parents.length!==1)fail('Keyword Item parent Group is missing or ambiguous',409);
   return parents[0];
 }
 async function classContainingGroup(trx,scope,groupUid){
-  const classes=await trx.selectFrom(anchorName(scope))
+  const classes=await trx.selectFrom(lucusName(scope))
     .select(['uid','attr']).where('type','=','class').execute();
   const matched=classes.filter(row=>children(row).includes(groupUid));
   if(matched.length!==1)fail('Keyword Group parent Class is missing or ambiguous',409);
@@ -659,7 +660,7 @@ async function classContainingGroup(trx,scope,groupUid){
 // property. Old Item.title semantics become an explicit Pattern once; new
 // Items have no such marker and never inherit their label as a match rule.
 async function materializeLegacyItemPatterns(trx,scope,tree){
-  const table=anchorName(scope),legacyItems=tree.itemRows.filter(row=>
+  const table=lucusName(scope),legacyItems=tree.itemRows.filter(row=>
     Object.hasOwn(attr(row),'keyword'));
   if(!legacyItems.length)return 0;
   const rows=await trx.selectFrom(table).select(['uid','title'])
@@ -687,7 +688,7 @@ async function materializeLegacyItemPatterns(trx,scope,tree){
       if(!pattern){
         let inserted=null;
         for(let attempt=0;attempt<32&&!inserted;attempt++){
-          const uid=allocateAnchorUid(assigned);assigned.add(uid);
+          const uid=allocateLucusUid(assigned);assigned.add(uid);
           inserted=await trx.insertInto(table).values({uid,type:'pattern',
             title:word,description:'',attr:'{}'}).onConflict(oc=>
             oc.column('uid').doNothing()).returning(['uid','title']).executeTakeFirst();
@@ -731,7 +732,7 @@ export async function saveKeywordItem(db,scope,values,{
     const scopeLock=await trx.selectFrom(configName(scope)).select('id')
       .where('id','=',scope).forUpdate().executeTakeFirst();
     if(!scopeLock)fail('Keyword Scope not configured',404);
-    const table=anchorName(scope),old=await trx.selectFrom(table)
+    const table=lucusName(scope),old=await trx.selectFrom(table)
       .select(['uid','type','attr']).where('uid','=',values.uid).forUpdate().executeTakeFirst();
     const patternRows=await trx.selectFrom(table).select(['uid','title'])
       .where('type','=','pattern').orderBy('uid','asc').execute();
@@ -748,7 +749,7 @@ export async function saveKeywordItem(db,scope,values,{
       if(!pattern){
         let inserted=null;
         for(let attempt=0;attempt<32&&!inserted;attempt++){
-          const uid=allocateAnchorUid(assigned);
+          const uid=allocateLucusUid(assigned);
           assigned.add(uid);
           inserted=await trx.insertInto(table).values({uid,type:'pattern',title:word,
             description:'',attr:'{}'}).onConflict(oc=>oc.column('uid').doNothing())
@@ -795,7 +796,7 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
     const scopeLock=await trx.selectFrom(configName(scope)).select('id')
       .where('id','=',scope).forUpdate().executeTakeFirst();
     if(!scopeLock)fail('Keyword Scope not configured',404);
-    const table=anchorName(scope);
+    const table=lucusName(scope);
     const item=await trx.selectFrom(table).select(['uid','type','attr'])
       .where('uid','=',itemUid).forUpdate().executeTakeFirst();
     if(item?.type!=='item')fail('Keyword Item missing',404);

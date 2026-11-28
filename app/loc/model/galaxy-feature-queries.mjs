@@ -8,6 +8,7 @@ import {galaxyReadColumns,galaxyReadColumnsFor}
 import {parseSearchQuery} from '../search/query.mjs';
 import {readAdaptiveSqlPages} from '../query/adaptive-sql-read.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 export const GALAXY_FEATURE_MODELS=Object.freeze({
   culture:Object.freeze({flag:'culture',name:'GalaxyCulture'}),
@@ -93,7 +94,7 @@ export const PUBLIC_GALAXY_PRIVATE_SITES=Object.freeze(['messenger','chatgpt','c
 // search grammar cannot accidentally become a pattern-language SQL API.
 const pattern=value=>'%'+String(value).replace(/[\\%_]/g,x=>'\\'+x)+'%';
 function baseQuery(db,model){
-  let q=db.selectFrom('silver.'+model.scope+'_galaxy')
+  let q=db.selectFrom('silver.'+scopeTableName(model.scope,'galaxy'))
     .where(GALAXY_FEATURE_MODELS[model.feature].flag,'=',true)
     .where(eb=>eb.or([eb('site','is',null),
       eb(eb.fn('lower',['site']),'not in',PUBLIC_GALAXY_PRIVATE_SITES)]));
@@ -255,7 +256,7 @@ export async function executeGalaxyFeatureQuery(db,model){
       ?Number((await q.select(eb=>eb.fn.countAll().as('count'))
         .executeTakeFirst())?.count||0):null;
     const limit=model.limit,offset=model.offset||0;
-    let list=q.select(galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor'));
+    let list=q.select(galaxyReadColumnsFor('GalaxyList','GalaxyUidLucus'));
     if(model.feature!=='culture'||model.orderByDate===true)
       list=list.orderBy('date',model.sortDirection||'desc');
     const rows=await list.orderBy('createtime',model.sortDirection||'desc')

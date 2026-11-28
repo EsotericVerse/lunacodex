@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {timeRecordHierarchy} from '../app/loc/culture/time-record-hierarchy-options.mjs';
-import {resolveTimeSegments} from '../app/loc/culture/time-anchor-ranges.mjs';
-import {resolveTimeTrace} from '../app/loc/culture/time-anchor-ranges.mjs';
+import {resolveTimeSegments} from '../app/loc/culture/time-lucus-ranges.mjs';
+import {resolveTimeTrace} from '../app/loc/culture/time-lucus-ranges.mjs';
 import {traceRouteHierarchy} from '../app/modular/features/trace/trace-route-hierarchy.mjs';
 
 {
 const era=(uid,title,anchor_ids,attr={})=>({uid,title,type:'era',anchor_ids,attr});
 const period=(uid,title,anchor_ids,attr={})=>({uid,title,type:'period',anchor_ids,attr});
-const date=(uid,address)=>({uid,type:'anchor',title:address,address});
+const date=(uid,address)=>({uid,type:'lucus',title:address,address});
 
 test('Era rows sort oldest-to-newest by their linked Period/Date, not input order',()=>{
   const rows=[
@@ -32,9 +32,9 @@ test('Era rows sort oldest-to-newest by their linked Period/Date, not input orde
 {
 const scope='lo3rwang';
 const dates=[
-  {uid:'DATE0001',scope_id:scope,type:'anchor',entry_type:'anchor',
+  {uid:'DATE0001',scope_id:scope,type:'lucus',entry_type:'lucus',
    start_date:'2025-01-01',title:'年初定錨點'},
-  {uid:'DATE0002',scope_id:scope,type:'anchor',entry_type:'anchor',
+  {uid:'DATE0002',scope_id:scope,type:'lucus',entry_type:'lucus',
    start_date:'2025-06-01',title:'六月定錨點'}
 ];
 const byDate=new Map(dates.map(row=>[row.uid,{...row,attr:{date:row.start_date}}]));

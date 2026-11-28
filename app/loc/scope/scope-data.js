@@ -12,6 +12,8 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {cachedRead,invalidateCachedRead,invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {getOrLoadScopedRead,invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
+import {DEFAULT_SCOPE_TABLE_SETTINGS,scopeTableName}
+  from '../../../packages/zenstack/scope-table-names.mjs';
 import {scopeBlockPageName,scopeBlockStoragePage} from '../blocks/scope-block-storage-page.mjs';
 
 // Public page copy and Scope labels use the fixed R2/SQL page-copy action.
@@ -21,40 +23,31 @@ import {scopeBlockPageName,scopeBlockStoragePage} from '../blocks/scope-block-st
 // Public queries never fetch the private api.manage relation.
 
 const SCOPE_ID_PATTERN=/^[a-z][a-z0-9]{0,14}$/;
-const TABLE_TOKEN_PATTERN=/^[a-z][a-z0-9_]*$/;
-
-// No remote ISR address is permitted, including when an old build
-// environment variable still contains one.
-function requiredToken(value,label){
-  const token=String(value||'').trim()||label;
-  if(!TABLE_TOKEN_PATTERN.test(token))throw new Error('silver.loc '+label+' 設定無效');
-  return token;
-}
 
 function buildScopeData(row,id){
-  const galaxySuffix=requiredToken(row?.galaxy_table,'galaxy');
-  const anchorSuffix=requiredToken(row?.anchor_table,'anchor');
-  const galaxy=`silver.${id}_${galaxySuffix}`;
+  const settings=row||DEFAULT_SCOPE_TABLE_SETTINGS[id]||{};
+  const galaxy=`silver.${scopeTableName(id,'galaxy',settings)}`;
+  const lucus=`silver.${scopeTableName(id,'lucus',settings)}`;
   return {
     id,
     config:`silver.${id}`,
     role:String(row?.manage_role||'').trim(),
     birthday:String(row?.birthday||PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[id]||'').slice(0,10)||null,
     galaxy,
-    // TimeAnchor (Galaxy.date/createtime), LocationAnchor (location/place_id),
-// MediaAnchor (media_link), KeywordAnchor (keyword), SiteAnchor (site) all reuse Anchor.
-// One physical store for Time, Trace, Keywords and Media.
-    anchor:`silver.${id}_${anchorSuffix}`,
-    // Time and Keyword share the same typed physical Anchor.
-    time:`silver.${id}_${anchorSuffix}`,
-    keywords:`silver.${id}_${anchorSuffix}`,
-    blocks:id==='loc'?'silver.loc_anchor':`silver.${id}_blocks`
+    // TLucus, LLucus, MLucus, KLucus, and SLucus remain typed projections
+    // over one configured physical Scope Lucus relation.
+    lucus,
+    time:lucus,
+    keywords:lucus,
+    blocks:id==='loc'?lucus:`silver.${id}_blocks`
   };
 }
 
 export function defaultScopeData(scopeId){
   const id=String(scopeId||'').trim();
-  return SCOPE_ID_PATTERN.test(id)?buildScopeData({},id):null;
+  return SCOPE_ID_PATTERN.test(id)
+    ?buildScopeData(PUBLISHED_SITE_BOOTSTRAP.scope_tables?.[id]||
+      DEFAULT_SCOPE_TABLE_SETTINGS[id]||{},id):null;
 }
 
 export function scopeDataFromManageRows(rows=[]){
@@ -64,8 +57,8 @@ export function scopeDataFromManageRows(rows=[]){
     if(!SCOPE_ID_PATTERN.test(id))continue;
     const next=buildScopeData(row,id);
     const current=scopes.get(id);
-    if(current&&(current.galaxy!==next.galaxy||current.anchor!==next.anchor)){
-      throw new Error('silver.loc Scope '+id+' 的 galaxy/anchor 設定不一致');
+    if(current&&(current.galaxy!==next.galaxy||current.lucus!==next.lucus)){
+      throw new Error('silver.loc Scope '+id+' 的 galaxy/lucus 設定不一致');
     }
     scopes.set(id,current
       ?{...current,role:current.role==='admin'||next.role==='admin'?'admin':next.role,birthday:current.birthday||next.birthday}
@@ -86,8 +79,9 @@ export function selectManagedScopes(){
   const rows=(PUBLISHED_SITE_BOOTSTRAP.registry||[])
     .filter(row=>row?.active!==false&&row?.scope_kind==='scope')
     .map(row=>({
-      id:row.scope_id,manage_role:'scope',galaxy_table:'galaxy',
-      anchor_table:'anchor',
+      id:row.scope_id,manage_role:'scope',
+      ...(PUBLISHED_SITE_BOOTSTRAP.scope_tables?.[row.scope_id]||
+        DEFAULT_SCOPE_TABLE_SETTINGS[row.scope_id]||{}),
       birthday:PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[row.scope_id]||''
     }));
   managedScopesRequest=Promise.resolve(scopeDataFromManageRows(rows));
@@ -271,9 +265,10 @@ export function selectScopeConfig(scopeId){
 
 
 // Presentation Blocks and public Anchor projections share the same physical
-// ZModel-backed read cache. LOC's Blocks are typed rows in silver.loc_anchor.
+// ZModel-backed read cache. LOC's Blocks are typed rows in silver.loc_lucus.
 // This is NOT a SQL idx/index, IndexedDB or a second Cache Storage layer.
-const blockRelation=id=>'silver.'+(id==='loc'?'loc_anchor':id+'_blocks');
+const blockRelation=id=>id==='loc'
+  ?`silver.${scopeTableName(id,'lucus')}`:`silver.${id}_blocks`;
 export function invalidateScopeBlockPage(scopeId,page='index'){
   const id=String(scopeId||'').trim().toLowerCase();
   if(id==='local'||!SCOPE_ID_PATTERN.test(id))return;

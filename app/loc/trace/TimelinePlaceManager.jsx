@@ -247,7 +247,7 @@ export default function TimelinePlaceManager({scopeId}){
         if(Date.now()>=deadline)throw Error('批次寫入已達 5 分鐘操作期限；請核對已成功寫入筆數。');
         assertEditorSession(window.sessionStorage);
         const batch=updates.slice(i,i+WRITE_BATCH);
-        const result=await dbAuthClient.schema('silver').anchor(scopeId,'point',
+        const result=await dbAuthClient.schema('silver').lucus(scopeId,'point',
           {op:'link',mode:'place_id',updates:batch});
         if(run!==runRef.current)break;
         const affected=Number(checked(result,'批次補寫 place_id')?.count||0);
@@ -350,7 +350,7 @@ export default function TimelinePlaceManager({scopeId}){
           const groupPage=groupPages[group.key]||0;
           const writableCount=group.rows.filter(row=>writableUids.has(row.uid)).length;
           return <details key={group.key} className="scope-card">
-            <summary>{group.candidates.find(candidate=>candidate.uid===chosen)?.title||group.candidates.find(candidate=>candidate.uid===group.suggestedPlaceId)?.title||'待選地點'} · {group.rows.length.toLocaleString()} 篇 · 可寫入 {writableCount.toLocaleString()} 篇 · {group.key.startsWith('anchor:')?(group.disputed?'定錨點附近 · 待確認':'定錨點附近 · 已自動對應'):'需逐篇確認'}</summary>
+            <summary>{group.candidates.find(candidate=>candidate.uid===chosen)?.title||group.candidates.find(candidate=>candidate.uid===group.suggestedPlaceId)?.title||'待選地點'} · {group.rows.length.toLocaleString()} 篇 · 可寫入 {writableCount.toLocaleString()} 篇 · {group.key.startsWith('lucus:')?(group.disputed?'定錨點附近 · 待確認':'定錨點附近 · 已自動對應'):'需逐篇確認'}</summary>
             <div className="scope-stat-controls">
               <button type="button" className="loc-button" disabled={writing||!chosen}
                 onClick={()=>selectGroup(group,true,chosen)}>全選這組可寫入文章</button>

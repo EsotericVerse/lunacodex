@@ -213,7 +213,7 @@ test('occupied-time import lookup stays paged, Scope-authorized and exact-time m
   assert.match(queries,/withImportScope\(args,async\(db,_args,port\)=>/);
   assert.match(queries,/\.where\('date','in',days\)/);
   assert.match(queries,/\.orderBy\('date','asc'\)\.orderBy\('uid','asc'\)/);
-  assert.match(queries,/assertZModelSelectRows\('silver\.'\+scope\+'_galaxy'/);
+  assert.ok(queries.includes("assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy')"));
   assert.match(panel,/queryImportOccupiedDatePage\(/);
   assert.match(panel,/new Date\(Math\.floor\(instant\/1000\)\*1000\)\.toISOString\(\)/);
   assert.match(matcher,/const key=importTimeKey\(row\),milli=importMillisKey\(row\)/);

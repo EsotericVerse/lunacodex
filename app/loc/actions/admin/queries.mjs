@@ -7,7 +7,7 @@ import {readLocHyperdriveMode,writeLocHyperdriveMode}
 import {withAuthorizedLocRead} from '../read-context.mjs';
 import {DATABASE_ACCESS_LIST} from '../../providers/access.js';
 import {FIXED_MANAGE_ROWS} from '../../permissions/fixed-manage-registry.mjs';
-import {readPublicSourceAnchors} from '../../source/catalog-public.mjs';
+import {readPublicSourceLucus} from '../../source/catalog-public.mjs';
 import {scopeConfigColumnList} from '../../scope/scope-config-fields.mjs';
 
 export async function readHyperdriveMode(){
@@ -54,7 +54,7 @@ export async function setHyperdriveMode(enabled){
 }
 
 export async function readLocSourceHierarchy(){
-  const rows=await readPublicSourceAnchors();
+  const rows=await readPublicSourceLucus();
   return {data:rows,count:rows.length};
 }
 

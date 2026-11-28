@@ -35,7 +35,7 @@ export default function UnifiedSpatialManagement({scopeId,initialType='point',in
       initialType={selected.type} spatialData={spatial} reloadSpatial={()=>query.mutate()}
       onRegisterLeave={registerLeave} onRemoved={()=>setSelected(old=>({type:'point',uid:'',serial:old.serial+1}))}/>:<TraceManagementPanel
       key={scopeId+':point:'+selected.uid+':'+selected.serial}
-      scopeId={scopeId} mode="anchor" embedded selectedUid={selected.uid}
+      scopeId={scopeId} mode="lucus" embedded selectedUid={selected.uid}
       spatialData={spatial} reloadSpatial={()=>query.mutate()} onRegisterLeave={registerLeave}/>}
   </SpaceAnchorTree>;
 }

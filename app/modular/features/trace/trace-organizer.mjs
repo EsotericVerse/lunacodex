@@ -6,21 +6,21 @@ const TAIWAN_ALIASES=Object.freeze({'台北市':'臺北市','台中市':'臺中�
 export function normalizeAnchorAddress(value){
   return String(value||'').trim().replace(/臺/g,'台').replace(/[，,．.。；;\s　]/g,'').toLowerCase();
 }
-export function anchorAddress(anchor){
+export function anchorAddress(lucus){
   // Prefer the structured field. Legacy approved descriptions still provide
   // evidence until their contents have been individually reviewed.
-  if(String(anchor?.postal_address||'').trim())return String(anchor.postal_address).trim();
-  const text=typeof anchor?.description==='string'?anchor.description:String(anchor?.description?.text||'');
+  if(String(lucus?.postal_address||'').trim())return String(lucus.postal_address).trim();
+  const text=typeof lucus?.description==='string'?lucus.description:String(lucus?.description?.text||'');
   return (text.match(/地址[：:]\s*([^。；;\n]+)/)?.[1]||'').trim();
 }
-export function countyOfAnchor(anchor){
-  const title=String(anchor?.title||'');
-  const note=typeof anchor?.description==='string'?anchor.description:String(anchor?.description?.text||'');
-  const address=anchorAddress(anchor);
+export function countyOfAnchor(lucus){
+  const title=String(lucus?.title||'');
+  const note=typeof lucus?.description==='string'?lucus.description:String(lucus?.description?.text||'');
+  const address=anchorAddress(lucus);
   const text=address+' '+title+' '+note;
   const found=text.match(/(基隆市|臺北市|台北市|新北市|桃園市|新竹市|新竹縣|苗栗縣|臺中市|台中市|彰化縣|南投縣|雲林縣|嘉義市|嘉義縣|臺南市|台南市|高雄市|屏東縣|宜蘭縣|花蓮縣|臺東縣|台東縣|澎湖縣|金門縣|連江縣)/);
   if(found)return TAIWAN_ALIASES[found[1]]||found[1];
-  // Older anchor descriptions may contain only a district or a familiar station.
+  // Older lucus descriptions may contain only a district or a familiar station.
   const hints=[
     [/板橋|江子翠|亞東醫院|中和|永和|土城|新莊|三重|福隆|貢寮|輔仁|亞運保齡球館/,'新北市'],
     [/行天宮|臺大醫院|台大醫院/,'臺北市'],
@@ -34,10 +34,10 @@ export function countyOfAnchor(anchor){
 }
 export function groupAnchorsByCounty(anchors){
   const groups=new Map();
-  for(const anchor of anchors||[]){
-    const county=countyOfAnchor(anchor);
+  for(const lucus of anchors||[]){
+    const county=countyOfAnchor(lucus);
     if(!groups.has(county))groups.set(county,[]);
-    groups.get(county).push(anchor);
+    groups.get(county).push(lucus);
   }
   const order=x=>REGIONS.indexOf(x)===-1?REGIONS.length:REGIONS.indexOf(x);
   return [...groups].sort(([a],[b])=>order(a)-order(b)||a.localeCompare(b,'zh-Hant'))
@@ -70,11 +70,11 @@ function compareAnchorPair(a,b){
   return {key:[a.uid,b.uid].sort().join(':'),a,b,address:match?aa:'',meters,type,
     canMerge:type==='same-address'||type==='near-unverified',
     // Same building/coordinates/name may represent another floor or an old
-    // business. An anchor UID is never automatically folded into another.
+    // business. An lucus UID is never automatically folded into another.
     safeReuse:false};
 }
-export function findAnchorWriteMatches(anchor,existing=[]){
-  const incoming={...anchor,uid:'__incoming__',trace_type:'space_anchor'};
+export function findAnchorWriteMatches(lucus,existing=[]){
+  const incoming={...lucus,uid:'__incoming__',trace_type:'space_anchor'};
   return (Array.isArray(existing)?existing:[])
     .filter(row=>row?.trace_type==='space_anchor')
     .map(row=>compareAnchorPair(incoming,row))
@@ -98,17 +98,17 @@ export function organizeAnchorCandidates(anchors){
 // never authorizes a merge: different shops/floors remain separate UIDs.
 export function organizeAnchorCoordinateGroups(anchors=[]){
   const byPosition=new Map();
-  for(const anchor of anchors){
-    if(anchor?.trace_type!=='anchor')continue;
-    const lat=anchor.latitude,lng=anchor.longitude;
+  for(const lucus of anchors){
+    if(lucus?.trace_type!=='lucus')continue;
+    const lat=lucus.latitude,lng=lucus.longitude;
     if(lat==null||lng==null||String(lat).trim()===''||String(lng).trim()==='')continue;
     if(!Number.isFinite(Number(lat))||!Number.isFinite(Number(lng)))continue;
-    const scope=String(anchor.source_scope||'');
+    const scope=String(lucus.source_scope||'');
     const position=Number(lat).toFixed(6)+','+Number(lng).toFixed(6);
     const key=scope+':'+position;
     let group=byPosition.get(key);
     if(!group){group={key,scope,position,anchors:[],uids:new Set()};byPosition.set(key,group);}
-    if(!group.uids.has(anchor.uid)){group.anchors.push(anchor);group.uids.add(anchor.uid);}
+    if(!group.uids.has(lucus.uid)){group.anchors.push(lucus);group.uids.add(lucus.uid);}
   }
   return [...byPosition.values()].filter(group=>group.anchors.length>1)
     .map(({uids,...group})=>({...group,anchors:group.anchors.sort((a,b)=>

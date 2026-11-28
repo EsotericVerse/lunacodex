@@ -3,10 +3,11 @@ import {sql} from 'kysely';
 import {withAuthorizedLocRead} from '../read-context.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {modeledBooleanColumns} from '../../../../packages/zenstack/model-column-guard.mjs';
+import {scopeTableName} from '../../../../packages/zenstack/scope-table-names.mjs';
 
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const BULK_FLAGS=new Set(modeledBooleanColumns('silver','lo3rwang_galaxy'));
+const BULK_FLAGS=new Set(modeledBooleanColumns('silver',scopeTableName('lo3rwang','galaxy')));
 
 function scopeId(value){
   const scope=String(value||'').trim().toLowerCase();
@@ -14,7 +15,7 @@ function scopeId(value){
   return scope;
 }
 function tableFor(scope,port){
-  return portableRelation(scope+'_galaxy',port.engine,
+  return portableRelation(scopeTableName(scope,'galaxy'),port.engine,
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
 }
 function locationIsEmpty(query){

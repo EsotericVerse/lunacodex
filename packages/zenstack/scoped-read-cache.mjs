@@ -1,12 +1,12 @@
-// One in-memory query-result store for ALL scoped ZModel Anchor/Blocks.
+// One in-memory query-result store for ALL scoped ZModel Lucus/Blocks.
 // No Galaxy, identity, grants, private read, SQL indexes/idx tables, TTL,
 // polling, ISR, persistent browser cache, or additional physical relations.
 // Model mapping is taken from LOC's existing ZModel SchemaDef (not a new
-// manually maintained table or index). LOC Blocks live in loc_anchor.
+// manually maintained table or index). LOC Blocks live in loc_lucus.
 import {modelNameForSql} from './model-column-guard.mjs';
-const RELATION=/^silver\.([a-z][a-z0-9]{0,14})_(anchor|blocks)$/;
+const RELATION=/^silver\.([a-z][a-z0-9]{0,14})_(.+)$/;
 const ALLOWED_MODELS=new Set([
-  'LocAnchor','Lo3rwangAnchor','LrunesAnchor',
+  'LocLucus','Lo3rwangLucus','LrunesLucus',
   'Lo3rwangBlocks','LrunesBlocks'
 ]);
 const MAX_ENTRIES=120;
@@ -19,7 +19,8 @@ export function scopedReadRelation(value){
   if(!matched||name==='silver.loc_blocks'||matched[1]==='local')return null;
   const modelName=modelNameForSql('silver',name.slice('silver.'.length));
   if(!ALLOWED_MODELS.has(modelName))return null;
-  return {name,scopeId:matched[1],kind:matched[2],modelName};
+  return {name,scopeId:matched[1],
+    kind:modelName.endsWith('Lucus')?'lucus':'blocks',modelName};
 }
 function touch(key,entry){
   entries.delete(key);

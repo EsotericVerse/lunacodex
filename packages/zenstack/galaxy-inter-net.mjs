@@ -21,7 +21,7 @@ export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={
   const origin=asUid(shape.uid);
   if(!origin)throw new Error('Galaxy Inter-Net requires a real Galaxy UID');
   const relation=shape.relation||{};
-  const anchor=shape.anchor||{};
+  const lucus=shape.lucus||{};
   const output={relation:[],media:[],space:[],time:[],source:[]};
   const seen=new Set();
   const put=(group,field,value,{kind='galaxy',label='',resolved=null}={})=>{
@@ -46,13 +46,13 @@ export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={
     if(/^https?:\/\//i.test(url))
       put('media','media_link',url,{kind:'url',label:url,resolved:true});
   }
-  if(!federated)put('space','place_id',anchor.place_id,{kind:'point',
-    label:place?.uid===anchor.place_id?place?.title||place?.location||'':'',
-    resolved:place?.uid===anchor.place_id?true:null});
+  if(!federated)put('space','place_id',lucus.place_id,{kind:'point',
+    label:place?.uid===lucus.place_id?place?.title||place?.location||'':'',
+    resolved:place?.uid===lucus.place_id?true:null});
   // Free text coordinates/location and literal source labels are not UID links.
-  if(!federated)put('space','location',anchor.location,{kind:'literal'});
-  if(!federated)put('time','date',anchor.date,{kind:'date'});
-  put('source','site',anchor.site,{kind:'literal'});
+  if(!federated)put('space','location',lucus.location,{kind:'literal'});
+  if(!federated)put('time','date',lucus.date,{kind:'date'});
+  put('source','site',lucus.site,{kind:'literal'});
   return Object.freeze({uid:origin,branches:Object.freeze(Object.fromEntries(
     GROUPS.map(group=>[group,Object.freeze(output[group])])
   ))});

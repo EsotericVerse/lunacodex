@@ -2,34 +2,34 @@
 // The fixed ZModel catalogue is published into the resident JavaScript bundle;
 // feature reads must never open a SQL connection or depend on Cloudflare ASSETS.
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
-import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {sourceTaxonomyFromAnchors} from './classification.mjs';
+import {LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
+import {sourceTaxonomyFromLucus} from './classification.mjs';
 
 // This is a versioned JS snapshot, not the Cloudflare Workers ASSETS binding
 // and not R2. Update it only through the explicit public publication flow.
-export const SITE_ANCHOR_READ_MODE='published-js';
+export const SITE_LUCUS_READ_MODE='published-js';
 
 const readPublished=()=>{
-  const rows=PUBLISHED_SITE_BOOTSTRAP.site_anchors;
+  const rows=PUBLISHED_SITE_BOOTSTRAP.site_lucus;
   if(!Array.isArray(rows)||!rows.length)
     throw new Error('LOC SiteAnchor JS 發布資料缺失；請執行 sync:public 並檢查產生檔。');
-  const allowed=new Set(ANCHOR_TYPE_GROUPS.source);
+  const allowed=new Set(LUCUS_TYPE_GROUPS.source);
   const visible=rows.filter(row=>allowed.has(row?.type)&&row?.invisible!==true);
   if(!visible.length)
     throw new Error('LOC SiteAnchor JS 發布資料沒有可用的公開節點。');
   return visible;
 };
 
-export async function readPublicSourceAnchors(){
+export async function readPublicSourceLucus(){
   return readPublished();
 }
 
 export async function readPublicSourceTaxonomy(){
-  return sourceTaxonomyFromAnchors(await readPublicSourceAnchors());
+  return sourceTaxonomyFromLucus(await readPublicSourceLucus());
 }
 
-export async function queryPublishedSourceAnchors(operation){
-  const rows=(await readPublicSourceAnchors()).filter(row=>
+export async function queryPublishedSourceLucus(operation){
+  const rows=(await readPublicSourceLucus()).filter(row=>
     operation.types.includes(row.type)&&
     (!operation.uids||operation.uids.includes(row.uid))&&
     (!operation.cursor||row.uid>operation.cursor));

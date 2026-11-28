@@ -14,7 +14,7 @@ export default function TimeAnchorTree({
 }){
   const hierarchy=useMemo(()=>timeRecordHierarchy(rows),[rows]);
   const selectedRow=rows.find(row=>uid(row)===String(value||''))||null;
-  const selectedType=selectedRow?.type==='date'?'anchor':selectedRow?.type||'';
+  const selectedType=selectedRow?.type==='date'?'lucus':selectedRow?.type||'';
   const findEraForPeriod=periodUid=>hierarchy.eras.find(group=>
     group.periods.some(branch=>uid(branch.row)===periodUid))||null;
   const findPeriodForDate=(groups,dateUid)=>groups.flatMap(group=>group.periods)
@@ -22,7 +22,7 @@ export default function TimeAnchorTree({
   const selectedPeriod=selectedType==='period'
     ?hierarchy.eras.flatMap(group=>group.periods).find(branch=>uid(branch.row)===uid(selectedRow))
       ||hierarchy.unclassifiedPeriods.find(branch=>uid(branch.row)===uid(selectedRow))
-    :selectedType==='anchor'
+    :selectedType==='lucus'
       ?findPeriodForDate(hierarchy.eras,uid(selectedRow))
         ||findPeriodForDate([{periods:hierarchy.unclassifiedPeriods}],uid(selectedRow))
       :null;
@@ -48,10 +48,10 @@ export default function TimeAnchorTree({
       searchText:['未歸屬時間定錨',...hierarchy.unclassifiedDates.map(dateLabel)].join(' ')
     }]:[])
   ];
-  const selectedUnclassifiedDates=selectedType==='anchor'&&!selectedPeriod;
+  const selectedUnclassifiedDates=selectedType==='lucus'&&!selectedPeriod;
   const selectedSecondary=selectedPeriod?uid(selectedPeriod.row):
     selectedUnclassifiedDates?dateBranchId:'';
-  const detailRows=selectedType==='anchor'
+  const detailRows=selectedType==='lucus'
     ?selectedPeriod?.dates||hierarchy.unclassifiedDates
     :selectedType==='period'?selectedPeriod?.dates||[]:[];
   const detailItems=detailRows.map(row=>({
@@ -78,7 +78,7 @@ export default function TimeAnchorTree({
     unclassifiedSelected?'__unclassified__':(!selectedRow?uid(hierarchy.eras[0]?.row):'');
   const create=type=>()=>onCreate?.(type);
   return <AnchorManagementNavigator
-    className="loc-time-anchor-tree"
+    className="loc-time-lucus-tree"
     label="時間定錨階層管理"
     searchLabel="搜尋時代、期間與時間定錨"
     primaryTitle="時代"
@@ -99,10 +99,10 @@ export default function TimeAnchorTree({
     onCreateSecondary={create('period')}
     detailTitle="時間定錨與操作"
     detailItems={detailItems}
-    selectedDetail={selectedType==='anchor'?uid(selectedRow):''}
+    selectedDetail={selectedType==='lucus'?uid(selectedRow):''}
     onSelectDetail={id=>onSelect?.(id)}
     detailCreateLabel="＋ 新增時間定錨"
-    onCreateDetail={create('anchor')}
+    onCreateDetail={create('lucus')}
     primaryEmpty="目前沒有時代紀錄"
     secondaryEmpty="選擇時代後顯示所屬期間"
     detailEmpty="選擇期間後顯示日期定錨點"

@@ -14,7 +14,7 @@ import {modelFieldsForSql,modelNameForSql,modeledPrimaryKeyColumns,
   from '../../../packages/zenstack/model-column-guard.mjs';
 import {managedRowsIssue,managedUpdateValuesValid,managedFiltersValid,
   MANAGED_FILTER_SQL} from '../../../packages/zenstack/sql-input-shape.mjs';
-import {assertZModelGalaxyManagedValues,assertZModelAnchorBlockManagedValues,
+import {assertZModelGalaxyManagedValues,assertZModelLucusBlockManagedValues,
   assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
 import {validateLocRegistryDomain} from './loc-domain.mjs';
 import {sql} from 'kysely';
@@ -23,19 +23,24 @@ import {saveBlocksKysely} from './kysely-blocks.mjs';
 import {buildKyselyUpsertQuery,planKyselyUpsertBatches}
   from './kysely-runtime.mjs';
 import {saveTracePageInTransaction} from './kysely-trace-page.mjs';
-import {allocateAnchorUid} from '../model/uid.js';
-import {ANCHOR_TYPE_GROUPS,PERSISTED_ANCHOR_TYPES,mediaAnchorProjection,anchorUidListCount}
-  from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {allocateLucusUid} from '../model/uid.js';
+import {LUCUS_TYPE_GROUPS,PERSISTED_LUCUS_TYPES,mediaLucusProjection,lucusUidListCount}
+  from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import * as z from 'zod';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {readItemKeywordProjection,itemKeywordStatistics,
   itemKeywordSuggestions} from '../keywords/item-count-analysis.mjs';
 import {parseSearchQuery} from '../search/query.mjs';
 import {galaxyReadColumns,galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
+import {scopeTableDescriptor,scopeTableName,scopeTableSettingsMatch}
+  from '../../../packages/zenstack/scope-table-names.mjs';
+import {portableRelation} from './sql-engine-ports.mjs';
 
 const ID=/^[a-z][a-z0-9_]*$/i;
 const UID=/^[A-Za-z0-9]{8}$/;
-const SCOPED_SUFFIXES=['_galaxy','_anchor','_blocks'];
+const managedScopeRelation=(scope,kind='lucus')=>
+  'silver.'+scopeTableName(scope,kind,fixedManageScope(scope)||undefined);
+const isScopeTableKind=(table,kind)=>scopeTableDescriptor(table)?.kind===kind;
 
 function reject(message,status=400){
   const error=new Error(message);
@@ -51,7 +56,7 @@ function tableName(value){
 // Galaxy.media_link is the stored external URL list, never an Anchor UID list.
 // Validate even privileged raw managed writes, not only import/UI callers.
 function validateGalaxyMediaLinks(table,operation,rows,values){
-  if(!/^[a-z][a-z0-9]{0,14}_galaxy$/.test(table))return;
+  if(!isScopeTableKind(table,'galaxy'))return;
   const candidates=['insert','upsert','update_batch'].includes(operation)
     ?rows:operation==='update'?[values]:[];
   for(const row of candidates){
@@ -94,10 +99,15 @@ export function postgresManagedJsonbValues(values,relation){
   ]));
 }
 function scopeFromTable(table){
-  for(const suffix of SCOPED_SUFFIXES){
-    if(table.endsWith(suffix))return table.slice(0,-suffix.length);
+  const descriptor=scopeTableDescriptor(table);
+  if(descriptor)return descriptor.scope;
+  for(const row of FIXED_MANAGE_ROWS){
+    const names=[row.id,row.id+'_blocks',
+      scopeTableName(row.id,'galaxy',row),scopeTableName(row.id,'lucus',row)];
+    if(names.includes(table))return row.id;
   }
-  return table;
+  if(String(table).endsWith('_blocks'))return String(table).slice(0,-'_blocks'.length);
+  return String(table).split('_',1)[0];
 }
 /** PK contract for the only relations accepted by authorizeRelation().
  * No pg_catalog SELECT: verified against actual Registry/Scope primary keys.
@@ -116,7 +126,7 @@ export function managedPrimaryKeyColumns(table,modelName=''){
   // table names are not in the frozen 17-model snapshot. Preserve their
   // existing Kysely primary-key behavior after authorizeRelation(), rather
   // than guessing a ZModel or changing database routing.
-  return [SCOPED_SUFFIXES.some(suffix=>table.endsWith(suffix))?'uid':'id'];
+  return [scopeTableDescriptor(table)||String(table).endsWith('_blocks')?'uid':'id'];
 }
 // A Scope absent from published JS has no business authorization.
  // No fallback to api.manage SQL, including for dynamic/unpublished Scopes.
@@ -124,7 +134,7 @@ async function registeredScope(_trx,scope){
   return publishedManagedScope(scope);
 }
 async function authorizeRelation(trx,table,operation,values,filters,rows){
-  if(table==='manage'||table==='loc'||table==='loc_anchor'){
+  if(table==='manage'||table==='loc'||table===scopeTableName('loc','lucus')){
     if(!await canLocAccess(trx,'global'))reject('Global management permission required',403);
     return;
   }
@@ -134,7 +144,7 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
     return;
   }
   // LOC text frames are no longer a managed physical Blocks table.
-  if(table==='loc_blocks')reject('LOC Blocks have moved to loc_anchor; use save_blocks',400);
+  if(table==='loc_blocks')reject('LOC Blocks have moved to '+scopeTableName('loc','lucus')+'; use save_blocks',400);
   const scope=scopeFromTable(table);
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scope)||!await canLocAccess(trx,'scope',scope))
     reject('Scope management permission required',403);
@@ -143,14 +153,17 @@ async function authorizeRelation(trx,table,operation,values,filters,rows){
   const record=await registeredScope(trx,scope);
   if(!record||!['scope','admin'].includes(record.manage_role))reject('Scope is not registered',403);
   const galaxy=String(record.galaxy_table||'galaxy');
-  const anchor=String(record.anchor_table||'anchor');
-  if(!ID.test(galaxy)||!ID.test(anchor))reject('Scope registry is invalid',403);
+  const lucus=String(record.lucus_table||'lucus');
+  if(!ID.test(galaxy)||!ID.test(lucus))reject('Scope registry is invalid',403);
+  if(!scopeTableSettingsMatch(scope,'galaxy',record)||
+    !scopeTableSettingsMatch(scope,'lucus',record))
+    reject('Scope table mapping differs from the deployed LOC snapshot',403);
   const allowed=new Set([scope,scope+'_blocks',scope+'_'+galaxy,
-    scope+'_'+anchor]);
+    scope+'_'+lucus]);
   if(!allowed.has(table))reject('Relation is not managed by this Scope',403);
 }
 function validateGalaxyUpdateBatch(table,rows){
-  if(!/^[a-z][a-z0-9_]*_galaxy$/.test(table))reject('Article batch updates require a Galaxy table');
+  if(!isScopeTableKind(table,'galaxy'))reject('Article batch updates require a Galaxy table');
   if(!Array.isArray(rows)||rows.length>10000)reject('Invalid article batch size');
   if(!rows.length)return;
   // All approved Galaxy columns use the existing ZModel/Zod payload checks.
@@ -237,7 +250,7 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
   // do not traverse those same row keys again in the generic SQL guard.
   const galaxyValidated=assertZModelGalaxyManagedValues(
     namespace+'.'+table,operation,modelValues);
-  const anchorBlockValidated=!galaxyValidated&&assertZModelAnchorBlockManagedValues(
+  const anchorBlockValidated=!galaxyValidated&&assertZModelLucusBlockManagedValues(
     namespace+'.'+table,operation,modelValues);
   verifyModeledSqlFields({
     schema:namespace,table,
@@ -245,17 +258,17 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
   });
   // Physical Anchor.num follows the typed UID list, not a caller-supplied
   // Keyword count or LOC Block order. Derive it inside the same transaction.
-  const isAnchor=table==='loc_anchor'||/_anchor$/.test(table);
-  if(isAnchor&&['insert','upsert'].includes(operation)){
+  const isLucus=Boolean(modelNameForSql('silver',table)?.endsWith('Lucus'));
+  if(isLucus&&['insert','upsert'].includes(operation)){
     for(const row of rows){
       if(row.attr!==undefined){
         if(!row.type)reject('Anchor type required for UID count');
-        row.num=anchorUidListCount(row.type,row.attr);
+        row.num=lucusUidListCount(row.type,row.attr);
       }else if(Object.hasOwn(row,'num'))reject('Anchor.num requires attr');
     }
   }
   // Fail fast without occupying a SQL connection for invalid identifiers.
-  if(isAnchor&&operation==='update'&&Object.hasOwn(values,'num')&&
+  if(isLucus&&operation==='update'&&Object.hasOwn(values,'num')&&
     !Object.hasOwn(values,'attr')&&!Object.hasOwn(values,'type'))
     reject('Anchor.num cannot be changed independently');
   if(operation==='update'){
@@ -264,7 +277,7 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
       reject('Primary keys cannot be updated');
   }
   if(operation==='append_media_link'&&(
-    !/^[a-z][a-z0-9]{0,14}_galaxy$/.test(table)||
+    !isScopeTableKind(table,'galaxy')||
     !values||typeof values!=='object'||Array.isArray(values)||
     Object.keys(values).sort().join(',')!=='article_uid,media_uid'||
     !UID.test(values.article_uid)||!UID.test(values.media_uid)||
@@ -289,13 +302,13 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
   // Split only the SQL statement; all chunks retain ONE caller transaction.
   const updateBatchGroups=operation==='update_batch'
     ?planJsonRecordsetBatches(payload.p_rows):null;
-  return {payload,table,operation,rows,values,filters,isAnchor,namespace,
+  return {payload,table,operation,rows,values,filters,isLucus,namespace,
     upsertBatches,insertGroups,updateBatchGroups};
 }
 
 export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=null}={}){
   const plan=prepared||prepareManagedKyselyWrite(body,{modelName});
-  const {payload,table,operation,rows,values,filters,isAnchor,namespace}=plan;
+  const {payload,table,operation,rows,values,filters,isLucus,namespace}=plan;
   if(modelName&&!(modelName==='Manage'&&table==='manage'||
       modelName==='Loc'&&table==='loc'))
     reject('Invalid fixed LOC model for management write',403);
@@ -305,9 +318,9 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
     // The Anchor INSERT and this row-locked append belong to the same
     // existing Kysely transaction and cannot overwrite concurrent links.
     const scope=table.slice(0,-7),galaxy='silver.'+table;
-    const linked=await trx.selectFrom('silver.'+scope+'_anchor')
+    const linked=await trx.selectFrom(managedScopeRelation(scope,'lucus'))
       .select(['uid','attr']).where('uid','=',values.media_uid)
-      .where('type','in',ANCHOR_TYPE_GROUPS.media).executeTakeFirst();
+      .where('type','in',LUCUS_TYPE_GROUPS.media).executeTakeFirst();
     if(!linked)reject('MediaAnchor was not inserted in this Scope',409);
     const url=String(linked.attr?.url||'').trim();
     if(!/^https?:\/\//i.test(url))
@@ -327,7 +340,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
       reject('Media URL link update did not complete',409);
     return {data:{count:1}};
   }
-  if(isAnchor&&operation==='update'){
+  if(isLucus&&operation==='update'){
     if(Object.hasOwn(values,'attr')||Object.hasOwn(values,'type')||
        Object.hasOwn(values,'title')){
       const targets=await withFilters(trx.selectFrom('silver.'+table)
@@ -344,7 +357,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
         else delete values.num;
       }else if(Object.hasOwn(values,'attr')||Object.hasOwn(values,'type')){
         const sizes=targets.map((row,index)=>nextTypes[index]==='pattern'?0:
-          anchorUidListCount(nextTypes[index],
+          lucusUidListCount(nextTypes[index],
             Object.hasOwn(values,'attr')?values.attr:row.attr));
         if(new Set(sizes).size>1)
           reject('Anchor update spans different UID-list sizes');
@@ -429,8 +442,8 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
 
 // Only existing Galaxy Boolean fields can be bulk-toggled. Read the actual
 // ZModel contract shared by both fixed Scope exemplars; no second flag map.
-const GALAXY_BULK_FLAGS=new Set(modeledBooleanColumns('silver','lo3rwang_galaxy'));
-const runeGalaxyFlags=modeledBooleanColumns('silver','lrunes_galaxy');
+const GALAXY_BULK_FLAGS=new Set(modeledBooleanColumns('silver',scopeTableName('lo3rwang','galaxy')));
+const runeGalaxyFlags=modeledBooleanColumns('silver',scopeTableName('lrunes','galaxy'));
 if(!GALAXY_BULK_FLAGS.size||GALAXY_BULK_FLAGS.size!==runeGalaxyFlags.length||
    runeGalaxyFlags.some(name=>!GALAXY_BULK_FLAGS.has(name)))
   throw new Error('LOC Galaxy Boolean ZModel contracts differ');
@@ -449,9 +462,10 @@ async function bulkUpdateGalaxyFlags(trx,args){
   if(!await canLocAccess(trx,'scope',scope))reject('Scope management permission required',403);
   // Reuse the Scope Registry. Do not trust user-supplied SQL relation names.
   const registry=await registeredScope(trx,scope);
-  if(!['scope','admin'].includes(registry?.manage_role)||registry.galaxy_table!=='galaxy')
+  if(!['scope','admin'].includes(registry?.manage_role)||
+    !scopeTableSettingsMatch(scope,'galaxy',registry))
     reject('Scope Galaxy mapping unavailable',403);
-  const table=sql.ref('silver.'+scope+'_galaxy');
+  const table=sql.ref(managedScopeRelation(scope,'galaxy'));
   const values=Object.entries(flags);
   const different=sql.join(values.map(([name,value])=>
     sql`${sql.ref('g.'+name)} is distinct from ${value}`),sql` or `);
@@ -531,7 +545,8 @@ export async function searchPrivateGalaxy(trx,args,claims){
   if(scope==='loc'||scope==='local'||!await canLocAccess(trx,'scope',scope))
     reject('Private Search Scope access denied',403);
   const registry=await registeredScope(trx,scope);
-  if(registry?.manage_role!=='scope'||registry.active!==true||registry.galaxy_table!=='galaxy')
+  if(registry?.manage_role!=='scope'||registry.active!==true||
+    !scopeTableSettingsMatch(scope,'galaxy',registry))
     reject('Private Search Scope unavailable',403);
   if(start&&end&&start>end)reject('Invalid private Search time range');
   const parsedTerms=parseSearchQuery(raw);
@@ -548,7 +563,7 @@ export async function searchPrivateGalaxy(trx,args,claims){
       eb('title','ilike',privateSearchLike(term)),
       eb('content','ilike',privateSearchLike(term))
     ]);
-  let query=trx.selectFrom('silver.'+scope+'_galaxy')
+  let query=trx.selectFrom(managedScopeRelation(scope,'galaxy'))
     .select(PRIVATE_SEARCH_COLUMNS);
   query=query.where(eb=>eb.or(parsedTerms.groups.map(group=>
     eb.and(group.map(term=>matchTerm(eb,term)))
@@ -575,7 +590,7 @@ export async function searchPrivateGalaxy(trx,args,claims){
   const rows=await query.orderBy('date',direction).orderBy('uid','asc')
     .offset(offset).limit(limit+1).execute();
   const visible=rows.slice(0,limit);
-  assertZModelSelectRows('silver.'+scope+'_galaxy',PRIVATE_SEARCH_COLUMNS,visible);
+  assertZModelSelectRows(managedScopeRelation(scope,'galaxy'),PRIVATE_SEARCH_COLUMNS,visible);
   return {data:{rows:visible,hasMore:rows.length>limit,
     nextCursor:rows.length>limit?offset+limit:null},count:visible.length};
 }
@@ -625,7 +640,7 @@ const IMPORT_OCCUPIED_TIME_COLUMNS=Object.freeze(['uid','createtime']);
 async function authorizedImportGalaxy(trx,scope){
   if(scope==='local'||!await canLocAccess(trx,'scope',scope))
     reject('Import Scope access denied',403);
-  return 'silver.'+scope+'_galaxy';
+  return managedScopeRelation(scope,'galaxy');
 }
 function withinImportInstants(query,instants,duration,{wholeSeconds=false}={}){
   const starts=[...new Set(instants.map(value=>Date.parse(value)))];
@@ -698,24 +713,25 @@ export async function readImportOccupiedTimes(trx,args={}){
     {after,limit});
 }
 
-export async function readImportAnchorPage(trx,args={}){
-  const parsed=anchorImportPageArgsSchema.safeParse(args);
+export async function readImportLucusPage(trx,args={},port={}){
+  const parsed=lucusImportPageArgsSchema.safeParse(args);
   if(!parsed.success)reject('Invalid Zod Anchor import page request');
   const {p_scope_id:scope,p_types:types,p_after_uid:after,p_limit:limit}=parsed.data;
   if(scope==='local'||!await canLocAccess(trx,'scope',scope))
     reject('Anchor import Scope access denied',403);
-  let query=trx.selectFrom('silver.'+scope+'_anchor')
-    .select(ANCHOR_IMPORT_PAGE_COLUMNS).where('type','in',types)
+  const table=port.engine?portableRelation(scopeTableName(scope,'lucus'),port.engine,port.namespace):managedScopeRelation(scope,'lucus');
+  let query=trx.selectFrom(table)
+    .select(LUCUS_IMPORT_PAGE_COLUMNS).where('type','in',types)
     .orderBy('uid','asc').limit(limit);
   if(after)query=query.where('uid','>',after);
   const rows=await query.execute();
   if(rows.some(row=>!types.includes(String(row.type))))
     reject('Anchor import query returned an unexpected ZModel type');
-  assertZModelSelectRows('silver.'+scope+'_anchor',ANCHOR_IMPORT_PAGE_COLUMNS,rows);
+  assertZModelSelectRows((port.namespace||'silver')+'.'+table.split('.').at(-1),LUCUS_IMPORT_PAGE_COLUMNS,rows);
   return {data:rows,count:rows.length};
 }
 
-export async function readImportMediaCandidates(trx,args={}){
+export async function readImportMediaCandidates(trx,args={},port={}){
   const parsed=mediaImportCandidateArgsSchema.safeParse(args);
   if(!parsed.success)reject('Invalid Zod MediaAnchor candidate request');
   const {p_scope_id:scope,p_uids:uids,p_urls:urls,
@@ -727,20 +743,21 @@ export async function readImportMediaCandidates(trx,args={}){
   if(uids.length)conditions.push(eb=>eb('uid','in',uids));
   if(urls.length)conditions.push(eb=>sql`(attr->>'url') in
     (${sql.join(urls.map(url=>sql`${url}`))})`);
-  let query=trx.selectFrom('silver.'+scope+'_anchor')
+  const table=port.engine?portableRelation(scopeTableName(scope,'lucus'),port.engine,port.namespace):managedScopeRelation(scope,'lucus');
+  let query=trx.selectFrom(table)
     .select(MEDIA_IMPORT_CANDIDATE_COLUMNS)
-    .where('type','in',ANCHOR_TYPE_GROUPS.media)
+    .where('type','in',LUCUS_TYPE_GROUPS.media)
     .where(eb=>eb.or(conditions.map(condition=>condition(eb))))
     .orderBy('uid','asc').limit(limit);
   if(after)query=query.where('uid','>',after);
   const matches=await query.execute();
-  assertZModelSelectRows('silver.'+scope+'_anchor',MEDIA_IMPORT_CANDIDATE_COLUMNS,matches);
-  if(matches.some(row=>!ANCHOR_TYPE_GROUPS.media.includes(row.type)))
+  assertZModelSelectRows((port.namespace||'silver')+'.'+table.split('.').at(-1),MEDIA_IMPORT_CANDIDATE_COLUMNS,matches);
+  if(matches.some(row=>!LUCUS_TYPE_GROUPS.media.includes(row.type)))
     reject('MediaAnchor lookup returned a non-media type');
-  return {data:matches.map(mediaAnchorProjection),count:matches.length};
+  return {data:matches.map(mediaLucusProjection),count:matches.length};
 }
 // Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
-const ANCHOR_IMPORT_PAGE_COLUMNS=Object.freeze([
+const LUCUS_IMPORT_PAGE_COLUMNS=Object.freeze([
   'uid','type','title','description','attr','createtime'
 ]);
 // Media lookup matches only caller-supplied UID or exact stored URL;
@@ -755,10 +772,10 @@ const mediaImportCandidateArgsSchema=z.strictObject({
 const MEDIA_IMPORT_CANDIDATE_COLUMNS=Object.freeze([
   'uid','type','title','description','attr','createtime','invisible'
 ]);
-const anchorImportPageArgsSchema=z.strictObject({
+const lucusImportPageArgsSchema=z.strictObject({
   p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
-  p_types:z.array(z.enum(PERSISTED_ANCHOR_TYPES)).min(1)
-    .max(PERSISTED_ANCHOR_TYPES.length)
+  p_types:z.array(z.enum(PERSISTED_LUCUS_TYPES)).min(1)
+    .max(PERSISTED_LUCUS_TYPES.length)
     .refine(values=>new Set(values).size===values.length),
   p_after_uid:z.string().regex(UID).nullable().optional(),
   p_limit:z.number().int().min(1).max(TIME_ANCHOR_MAX_PAGE_ROWS)
@@ -783,7 +800,7 @@ export async function keywordPatternStatistics(trx,args){
     .where('id','=',scope).executeTakeFirst();
   if(!owner&&config?.keyword_meta?.class_shares?.[classUid]!==true)
     reject('Keyword Class not shared or authorized',403);
-  const table='silver.'+scope+'_anchor';
+  const table=managedScopeRelation(scope,'lucus');
   const root=await trx.selectFrom(table).select(['uid','type','title','attr'])
     .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
   if(!root)reject('Unknown Keyword Class');
@@ -865,7 +882,7 @@ export async function suggestSearchPatterns(trx,args){
   if(!granted.length)reject('No authorized Keyword Scope',403);
   const found=new Map();
   for(const scope of granted){
-    const table='silver.'+scope+'_anchor';
+    const table=managedScopeRelation(scope,'lucus');
     const rows=await trx.selectFrom(table).select(['title','attr'])
       .where('type','=','item').execute();
     const patternIds=[...new Set(rows.flatMap(item=>{
@@ -985,7 +1002,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   if(!authorized)reject('Block management permission required',403);
   await sql`reset role`.execute(trx);
   const loc=scope==='loc';
-  const relation=loc?'silver.loc_anchor':'silver.'+scope+'_blocks';
+  const relation=loc?'silver.'+scopeTableName(scope,'lucus'):'silver.'+scope+'_blocks';
   const pageField=loc?'type':'page_name',orderField='block_order';
   await sql`select pg_advisory_xact_lock(hashtext(${scope}),hashtext(${page}))`.execute(trx);
   if(loc){
@@ -1051,7 +1068,7 @@ async function applyGalaxyPlaceFill(trx,args){
   const place=placeLabel(args.p_place);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!/^\d{4}-\d{2}-\d{2}$/.test(end)||
      start>end||start<'1900-01-01'||end>='2100-01-01')reject('Invalid date interval');
-  const rel=sql.ref('silver.'+scope+'_galaxy');
+  const rel=sql.ref(managedScopeRelation(scope,'galaxy'));
   const condition=sql`createtime>=(${start}::date::timestamp at time zone 'Asia/Taipei')
     and createtime<((${end}::date+1)::timestamp at time zone 'Asia/Taipei')
     and nullif(btrim(location),'') is null`;
@@ -1074,7 +1091,7 @@ async function batchFillGalaxyLocation(trx,args){
   if(!Array.isArray(values)||values.length<1||values.length>200||
      values.some(uid=>!UID.test(String(uid||''))))reject('Select 1–200 valid articles');
   const uids=[...new Set(values)];
-  const table='silver.'+scope+'_galaxy';
+  const table=managedScopeRelation(scope,'galaxy');
   const found=await trx.selectFrom(table).select('uid').where('uid','in',uids).execute();
   if(found.length!==uids.length)reject('Article selection changed',409);
   const eligible=await trx.selectFrom(table).select('uid').where('uid','in',uids)
@@ -1095,7 +1112,7 @@ async function renameScopeSiteBatch(trx,args){
   if(!before||!after||before===after||before.length>80||after.length>80||
      !Number.isInteger(limit)||limit<1||limit>1000)
     reject('Invalid source correction');
-  const table='silver.'+scope+'_galaxy';
+  const table=managedScopeRelation(scope,'galaxy');
   const targets=await trx.selectFrom(table).select('uid')
     .where('site','=',before).orderBy('createtime','asc')
     .limit(limit).forUpdate().skipLocked().execute();
@@ -1110,7 +1127,7 @@ async function saveScopePointAliases(trx,args){
   const requested=args.p_names;
   if(!Array.isArray(requested)||requested.length>250||
      requested.some(name=>typeof name!=='string'))reject('Invalid Point aliases');
-  const table='silver.'+scope+'_anchor';
+  const table=managedScopeRelation(scope,'lucus');
   const point=await trx.selectFrom(table).select('attr')
     .where('uid','=',uid).where('type','=','point')
     .forUpdate().executeTakeFirst();
@@ -1211,7 +1228,7 @@ export async function managedLocSettings(trx,args,claims){
 
 async function refreshScopeSearchSummary(trx,args){
   const scope=await scopedWrite(trx,args.p_scope_id);
-  const galaxy=sql.ref('silver.'+scope+'_galaxy');
+  const galaxy=sql.ref(managedScopeRelation(scope,'galaxy'));
   const response=await sql`select count(*)::integer as article_count,
       coalesce(sum(char_length(regexp_replace(
         regexp_replace(content,'<[^>]*>','','g'),
@@ -1241,11 +1258,11 @@ async function mergeScopePoints(trx,args,{authorizedScope=''}={}){
      removed.some(id=>!UID.test(String(id))||id===keep)||
      new Set(removed).size!==removed.length)reject('Invalid Point merge UIDs');
   const scope=authorizedScope||await scopedWrite(trx,args.p_scope_id);
-  const anchor='silver.'+scope+'_anchor',galaxy='silver.'+scope+'_galaxy';
-  const points=await trx.selectFrom(anchor).select(['uid','title','attr'])
+  const lucus=managedScopeRelation(scope,'lucus'),galaxy=managedScopeRelation(scope,'galaxy');
+  const points=await trx.selectFrom(lucus).select(['uid','title','attr'])
     .where('type','=','point').where('uid','in',[keep,...removed]).forUpdate().execute();
   if(points.length!==removed.length+1)reject('Missing or cross-Scope Points');
-  const ref=sql.ref(anchor);
+  const ref=sql.ref(lucus);
   const overlap=await sql`select exists(
     select 1 from ${ref} a where a.type in ('path','trace')
       and jsonb_typeof(a.attr->'point')='array'
@@ -1270,14 +1287,14 @@ async function mergeScopePoints(trx,args,{authorizedScope=''}={}){
       and (a.attr->'point') ?| ${removed}::text[]`.execute(trx);
   const galaxyResult=await trx.updateTable(galaxy)
     .set({place_id:keep}).where('place_id','in',removed).executeTakeFirst();
-  const keepResult=await trx.updateTable(anchor)
+  const keepResult=await trx.updateTable(lucus)
     // Point stores location aliases only. Time follows the linked articles;
     // retire any legacy attr.times on the kept Point instead of recomputing it.
     .set({attr:sql`jsonb_set(coalesce(attr,'{}'::jsonb)-'times',
       '{location}',${JSON.stringify(aliases)}::jsonb,true)`})
     .where('uid','=',keep).where('type','=','point').executeTakeFirst();
   if(Number(keepResult?.numUpdatedRows||0)!==1)reject('Kept Point not updated');
-  const deleted=await trx.deleteFrom(anchor)
+  const deleted=await trx.deleteFrom(lucus)
     .where('type','=','point').where('uid','in',removed).executeTakeFirst();
   const count=Number(deleted?.numDeletedRows||0);
   if(count!==removed.length)reject('Point merge was not complete',409);
@@ -1297,7 +1314,7 @@ async function importSharedKeywordClass(trx,args){
     .where('id','=',from).executeTakeFirst();
   if(sourceConfig?.keyword_meta?.class_shares?.[classUid]!==true)
     reject('Source Keyword Class is not public',403);
-  const source='silver.'+from+'_anchor',target='silver.'+to+'_anchor';
+  const source=managedScopeRelation(from,'lucus'),target=managedScopeRelation(to,'lucus');
   const root=await trx.selectFrom(source)
     .select(['uid','title','description','invisible','attr'])
     .where('uid','=',classUid).where('type','=','class').executeTakeFirst();
@@ -1309,7 +1326,7 @@ async function importSharedKeywordClass(trx,args){
   const assigned=new Set();
   const insertCopy=async(type,node,attr,{num=0}={})=>{
     for(let attempt=0;attempt<32;attempt++){
-      const uid=allocateAnchorUid(assigned);
+      const uid=allocateLucusUid(assigned);
       assigned.add(uid);
       const inserted=await trx.insertInto(target).values({
         uid,type,title:node.title,description:node.description,
@@ -1362,7 +1379,7 @@ async function importSharedKeywordClass(trx,args){
 
 export async function findGalaxyDuplicates(trx,args){
   const scope=await scopedWrite(trx,args.p_scope_id);
-  const table='silver.'+scope+'_galaxy';
+  const table=managedScopeRelation(scope,'galaxy');
   const build=()=>trx.selectFrom(table).where('createtime','is not',null)
     .where('content','is not',null).where('content','!=','');
   const groups=new Map();

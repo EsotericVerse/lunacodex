@@ -13,7 +13,7 @@ import StatisticsDetails from './StatisticsDetails';
 import {sourceStatisticsTree} from '../../../loc/statistics/source-tree-measures.mjs';
 import SourceTreePicker from './SourceTreePicker';
 import {INTERSECTION_FAMILIES,timeIntersectionMetrics,spaceIntersectionMetrics,
-  fourDimensionDailyCounts} from '../../../loc/statistics/four-anchor-intersection.mjs';
+  fourDimensionDailyCounts} from '../../../loc/statistics/four-lucus-intersection.mjs';
 import {comparisonMetricGroups,selectedComparisonMetricGroup,firstAvailableGroupMetric} from './statistics-compare-options.mjs';
 
 const DAY_MS=86400000;
@@ -64,7 +64,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const [chartType,setChartType]=useState('line');
   const [foldBlank,setFoldBlank]=useState(true);
   const start=dateOnly(range?.startDate),end=dateOnly(range?.endDate);
-  const valid=Boolean(scope?.id&&scope.galaxy&&scope.anchor&&start&&end&&start<=end);
+  const valid=Boolean(scope?.id&&scope.galaxy&&scope.lucus&&start&&end&&start<=end);
   const query=useAsyncResource(valid?['own-scope-source-intersection',scope?.id,start,end]:null,
     ()=>selectScopeSourceBreakdownRows(scope,{startDate:start,endDate:end}));
   const rows=query.data||[];
@@ -73,7 +73,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     return readPublicSourceTaxonomy();
   });
   const catalog=sharedCatalog||localCatalog;
-  // The only Source dimension is Galaxy.site mapped through loc_anchor.
+  // The only Source dimension is Galaxy.site mapped through loc_lucus.
   // Mutlimedia is a Universe in the SAME Source tree, not a second counter.
   const sourceModel=useMemo(
     ()=>sourceStatisticsTree(rows,catalog.data||{}),[rows,catalog.data]);
@@ -98,21 +98,21 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     index===0?'source':'keyword');
   const keywordModeActive=keywordTabAvailable&&shownKinds.includes('keyword');
   const timeAnchors=useAsyncResource({
-    queryKey:['scope-intersection-time-anchor',scope?.id],
+    queryKey:['scope-intersection-time-lucus',scope?.id],
     enabled:valid&&shownKinds.includes('time'),
     queryFn:async({signal})=>{
-      const {readAllAnchorFeature}=await import('../../../loc/model/feature-query-client.mjs');
-      return readAllAnchorFeature({scope:scope.id,family:'time',
+      const {readAllLucusFeature}=await import('../../../loc/model/feature-query-client.mjs');
+      return readAllLucusFeature({scope:scope.id,family:'time',
         types:['era','period','date'],signal});
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const spaceAnchors=useAsyncResource({
-    queryKey:['scope-intersection-space-anchor',scope?.id],
+    queryKey:['scope-intersection-space-lucus',scope?.id],
     enabled:valid&&shownKinds.includes('space'),
     queryFn:async({signal})=>{
-      const {readAllAnchorFeature}=await import('../../../loc/model/feature-query-client.mjs');
-      return readAllAnchorFeature({scope:scope.id,family:'space',
+      const {readAllLucusFeature}=await import('../../../loc/model/feature-query-client.mjs');
+      return readAllLucusFeature({scope:scope.id,family:'space',
         types:['trace','path','point'],signal});
     },
     revalidateOnFocus:false,revalidateOnReconnect:false

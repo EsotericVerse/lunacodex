@@ -22,14 +22,14 @@ export async function readTracePoint(scope,uid){
   const id=requireScope(scope),key=String(uid||'');
   if(!/^[A-Za-z0-9]{8}$/.test(key))throw Error('Invalid Point UID');
   return withTraceDatabase(id,async(db,table)=>
-    (await db.selectFrom(table('anchor')).select(['uid','attr'])
+    (await db.selectFrom(table('lucus')).select(['uid','attr'])
       .where('uid','=',key).where('type','=','point').executeTakeFirst())||null);
 }
 export async function readTraceRouteUids(scope,uids){
   const id=requireScope(scope),ids=[...new Set((Array.isArray(uids)?uids:[]).map(String))];
   if(!ids.length||ids.length>80||ids.some(uid=>!/^[A-Za-z0-9]{8}$/.test(uid)))
     throw Error('Invalid Trace route UID list');
-  return withTraceDatabase(id,async(db,table)=>db.selectFrom(table('anchor'))
+  return withTraceDatabase(id,async(db,table)=>db.selectFrom(table('lucus'))
     .select('uid').where('type','=','path').where('uid','in',ids).limit(81).execute());
 }
 export async function readTimelineArticlePage(scope,startDate,nextDate,offset,limit){
@@ -39,7 +39,7 @@ export async function readTimelineArticlePage(scope,startDate,nextDate,offset,li
     !Number.isSafeInteger(limit)||limit<1||limit>500)
     throw Error('Invalid Trace article page');
   return withTraceDatabase(id,async(db,table)=>db.selectFrom(table('galaxy'))
-    .select(galaxyReadColumnsFor('GalaxyList','GalaxyUidAnchor'))
+    .select(galaxyReadColumnsFor('GalaxyList','GalaxyUidLucus'))
     .where('date','>=',start).where('date','<',end)
     .orderBy('date','asc').orderBy('createtime','asc')
     .limit(limit).offset(offset).execute());

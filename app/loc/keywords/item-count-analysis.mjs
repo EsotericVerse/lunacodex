@@ -5,6 +5,7 @@ import {SQL_WORKLOAD_POLICY} from '../../../modules/loc/dialect/sql-workload-pol
 import {createKeywordDocumentClassifier} from '../model/keyword-engine.mjs';
 import {keywordScanText} from './content-filter.mjs';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 const norm=x=>String(x??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 const UID=/^[A-Za-z0-9]{8}$/;
 const count=x=>Math.max(0,Number(x)||0);
@@ -401,7 +402,7 @@ export async function analyzeItemKeywordCounts({items,groups,patterns=[],expecte
 }
 export async function readItemKeywordProjection(db,scope,{items,groups,patterns=[],start='',end='',
   source='',places=null,owner=true,minChars=0,onRow=null,
-  galaxyTable='silver.'+scope+'_galaxy',engine='postgres',namespace='silver',
+  galaxyTable='silver.'+scopeTableName(scope,'galaxy'),engine='postgres',namespace='silver',
   signal=null}={}){
   const a=createItemCountAccumulator(items,groups,null,{minChars,patterns});
   const table=String(galaxyTable).split('.').at(-1);

@@ -115,8 +115,8 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   const anchorMatches=useMemo(()=>{
     const q=anchorQuery.trim().normalize('NFKC').toLocaleLowerCase();
     if(!q)return [];
-    return savedAnchors.filter(anchor=>
-      String(anchor.title||'').normalize('NFKC').toLocaleLowerCase().includes(q))
+    return savedAnchors.filter(lucus=>
+      String(lucus.title||'').normalize('NFKC').toLocaleLowerCase().includes(q))
       .slice(0,12);
   },[spatialData?.anchors,anchorQuery]);
   useEffect(()=>{
@@ -146,7 +146,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
         reduceMotion,
         onGaugeVisibilityChange:visible=>{if(active)gaugeVisibleRef.current?.(visible);},
         onSelect:id=>{if(active)setSelected(id);},
-        onAnchorSelect:!selectingLocation?anchor=>{if(active)anchorSelectRef.current?.(anchor);}:null,
+        onAnchorSelect:!selectingLocation?lucus=>{if(active)anchorSelectRef.current?.(lucus);}:null,
         onLocationPick:selectingLocation?coords=>{if(active)locationPickRef.current?.(coords);}:null,
         onStatus:code=>{
           if(!active)return;
@@ -283,20 +283,20 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
       </label>
       {anchorQuery.trim()?<div className="loc-trace-quick-results" role="group"
         aria-label="符合的空間定錨點">
-        {anchorMatches.map(anchor=><button type="button" className="loc-button"
-          aria-pressed={anchorUid===String(anchor.uid||anchor.id)}
-          key={(anchor.source_scope||'')+':'+(anchor.uid||anchor.id)}
+        {anchorMatches.map(lucus=><button type="button" className="loc-button"
+          aria-pressed={anchorUid===String(lucus.uid||lucus.id)}
+          key={(lucus.source_scope||'')+':'+(lucus.uid||lucus.id)}
           onClick={()=>{
-            setAnchorUid(String(anchor.uid||anchor.id));
-            setAnchorQuery(String(anchor.title||''));
-            const coordinates=spaceCoordinates(anchor);
+            setAnchorUid(String(lucus.uid||lucus.id));
+            setAnchorQuery(String(lucus.title||''));
+            const coordinates=spaceCoordinates(lucus);
             if(coordinates)mapRef.current?.focusCoordinates({
-              longitude:coordinates[0],latitude:coordinates[1],name:anchor.title
+              longitude:coordinates[0],latitude:coordinates[1],name:lucus.title
             });
-            onAnchorSelect?.(anchor);
+            onAnchorSelect?.(lucus);
           }}>
-          {anchor.title}
-          {!spaceCoordinates(anchor)?'（待補地圖座標）':''}
+          {lucus.title}
+          {!spaceCoordinates(lucus)?'（待補地圖座標）':''}
         </button>)}
         {!anchorMatches.length?<p className="scope-status">目前載入的地點沒有符合項目。</p>:null}
         {anchorMatches.length===12?<p className="scope-status">顯示前 12 筆，可繼續輸入縮小範圍。</p>:null}
@@ -336,7 +336,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     </div>:null}
     {!publicTrace?<div className="loc-trace-controls" role="group" aria-label={copy.controls}>
       <button type="button" className="loc-button" onClick={()=>{mapRef.current?.overview();setSelected('');}} disabled={!ready}>
-        {spatialData?.anchors?.some(anchor=>anchor.trace_type==='space_anchor'&&Boolean(spaceCoordinates(anchor)))
+        {spatialData?.anchors?.some(lucus=>lucus.trace_type==='space_anchor'&&Boolean(spaceCoordinates(lucus)))
           ?copy.all:(selectingLocation?copy.examples:copy.all)}
       </button>
       {selectingLocation?<>{DEMO_PLACES.map(place=><button key={place.id} type="button" aria-pressed={selected===place.id}

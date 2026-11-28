@@ -7,7 +7,7 @@ const optional=(type,array=false)=>Object.freeze({type,array,optional:true});
 const required=type=>Object.freeze({type});
 
 // Small bricks own their fields once. Composite bricks refer to them by type,
-// rather than copying eight flags or UID relation/anchor fields into every view.
+// rather than copying eight flags or UID relation/lucus fields into every view.
 export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
   // GalaxyAttr is eight flat physical flags: statics,culture,search,trace,list,keyword,extract,others.
 // true = included for that feature; false = excluded; not the Anchor.invisible flag.
@@ -21,8 +21,8 @@ export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
     source_id:optional('String'),target_id:optional('String',true),
     ref_id:optional('String')
   }),
-  // GalaxyUidAnchor tracks location/time/site; media_link is plain URL data.
-  GalaxyUidAnchor:Object.freeze({
+  // GalaxyUidLucus tracks location/time/site; media_link is plain URL data.
+  GalaxyUidLucus:Object.freeze({
     place_id:optional('String'),
     location:optional('String'),date:optional('DateTime'),site:optional('String')
   }),
@@ -32,13 +32,13 @@ export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
     createtime:optional('DateTime'),date:optional('DateTime'),
     site:optional('String'),attr:optional('GalaxyAttr')
   }),
-  // GalaxyUidRead: uid/title/content/createtime/url plus UID relation/anchor projections.
+  // GalaxyUidRead: uid/title/content/createtime/url plus UID relation/lucus projections.
   GalaxyUidRead:Object.freeze({
     uid:required('String'),title:optional('String'),
     content:optional('String'),createtime:optional('DateTime'),
     url:optional('String'),
     relation:optional('GalaxyUidRelation'),
-    anchor:optional('GalaxyUidAnchor')
+    lucus:optional('GalaxyUidLucus')
   })
 });
 

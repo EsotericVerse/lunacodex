@@ -6,7 +6,7 @@ import {Capacitor} from '@capacitor/core';
 // Local Scope SQL has not been provisioned; native-only reads remain disabled.
 export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
   const [{forEachAllRowsPage},{defaultScopeData},{queryTrace},
-    {readAllAnchorFeature}]=await Promise.all([
+    {readAllLucusFeature}]=await Promise.all([
     import('../db/db-query.mjs'),import('../scope/scope-data'),
     import('../actions/trace/queries.mjs'),
     import('../model/feature-query-client.mjs')
@@ -22,7 +22,7 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
     let anchors=[];
     if(['lo3rwang','lrunes'].includes(scopeId)){
       // Query the physical Anchor directly. Legacy *_trace views are retired.
-      const rows=await readAllAnchorFeature({
+      const rows=await readAllLucusFeature({
         scope:scopeId,family:'space',types:['point']
       });
       anchors=rows.map(row=>({uid:row.uid,title:row.title}))

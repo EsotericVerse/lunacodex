@@ -84,7 +84,7 @@ export default function SpaceAnchorTree({
     unclassifiedSelected?'__unclassified__':(!selectedType?uid(hierarchy.traces[0]?.row):'');
   const create=type=>()=>onCreate?.(type);
   return <AnchorManagementNavigator
-    className={['loc-space-anchor-tree',className].filter(Boolean).join(' ')}
+    className={['loc-space-lucus-tree',className].filter(Boolean).join(' ')}
     label="空間定錨階層管理"
     searchLabel="搜尋痕跡、路徑與地點"
     searchPlaceholder="依名稱、地址或 UID 搜尋"

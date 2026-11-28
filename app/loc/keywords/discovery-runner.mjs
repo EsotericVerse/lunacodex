@@ -4,6 +4,7 @@ import {KeywordDiscoveryQueue} from './discovery-queue.mjs';
 import {queryKeywordDiscoveryCount,queryKeywordDiscoveryPage}
   from '../actions/keywords/queries.mjs';
 import * as z from 'zod';
+import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 
 // The owner's explicit action starts the only scan. Never run during render,
 // ordinary Search, Culture navigation or the existing Keyword reanalysis.
@@ -41,9 +42,9 @@ export async function readPageWithRetry(run,signal,{attempts=4,baseDelayMs=500,o
 }
 
 export async function suggestNewKeywords({galaxy,existingRows=[],classUid='',onProgress=()=>{},signal}={}){
-  if(!/^silver\.[a-z][a-z0-9_]*_galaxy$/.test(String(galaxy||'')))
-    throw new Error('Galaxy Scope 資料表無效');
-  const scopeId=String(galaxy).slice('silver.'.length,-'_galaxy'.length);
+  const descriptor=scopeTableDescriptor(String(galaxy).split('.').at(-1));
+  if(descriptor?.kind!=='galaxy')throw Error('Keyword discovery requires a Galaxy relation');
+  const scopeId=descriptor.scope;
   if(signal?.aborted)throw aborted();
   const worker=new Worker(new URL('./discovery-worker.mjs',import.meta.url),{type:'module'});
   const readController=new AbortController();

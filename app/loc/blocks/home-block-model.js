@@ -127,7 +127,7 @@ export function removeDuplicatedLegacySubtitle(body='',subtitle=''){
   return text.startsWith(heading)?text.slice(heading.length):text;
 }
 
-// Feature headers share LOC-managed Hero rows on silver.loc_anchor,
+// Feature headers share LOC-managed Hero rows on silver.loc_lucus,
 // normally page_name='group_<feature>', block_order always 1. Trace uses group_trace (the same identifier as the feature route).
 // (the same symmetric "<kind>_<feature>" naming already used for the 8
 // feature-hero images, see admin-panels/FeatureHeroImages.jsx). block_order
@@ -140,7 +140,7 @@ export function removeDuplicatedLegacySubtitle(body='',subtitle=''){
 // other public Scope; only LOC admins edit the shared group_<feature> copy.
 // admin is LOC Group administration and uses group_admin for both copy and
 // artwork. setting uses group_setting for both. Scope /trace/manage is the
-// spatial-anchor editor (view='manage') even when its root Scope ID is loc;
+// spatial-lucus editor (view='manage') even when its root Scope ID is loc;
 // Group people/works management is the distinct view='sourceManage'.
 export const FEATURE_HERO_ORDER=Object.freeze({
   culture:1,

@@ -14,7 +14,7 @@ import {canonicalImportSourceName,inferImportSourceFromFilename} from '../source
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from '../scope/scope-data';
 import {createUid8} from '../model/uid';
-import {mediaAnchorRecord,mediaAnchorProjection,canonicalMediaAnchorType,MEDIA_ANCHOR_COLUMNS,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {mediaLucusRecord,mediaLucusProjection,canonicalMediaLucusType,MEDIA_LUCUS_COLUMNS,LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import {createImportProgressStore} from './progress-store.mjs';
 import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './checkpoint.mjs';
 import {remapArchiveArticleUids} from './random-uids.mjs';
@@ -28,8 +28,8 @@ import {importTimeRangeWindow,filterImportAnalysisByTime} from './time-range.mjs
 import {finalizeImportCreatedTimes,importCalendarDay} from './unique-createtime.mjs';
 import {prepareImportPlaceAnchors,importedPlaceId} from './place-anchors.mjs';
 import {prepareImportTimeAnchors} from './time-anchors.mjs';
-import {readImportPointDateAnchors} from './anchor-read.mjs';
-import {readPublicSourceAnchors,readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
+import {readImportPointDateAnchors} from './lucus-read.mjs';
+import {readPublicSourceLucus,readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {auditImportedSourceSites} from '../source/classification.mjs';
 import {reconcileExistingImportAnchors} from './reconcile-anchors.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './geocoordinates.mjs';
@@ -171,7 +171,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     // article halfway through MediaAnchor writes. Report them in the preview.
     const rejected=new Set();
     mediaRecords=mediaRecords.filter(record=>{
-      try{canonicalMediaAnchorType(record.media_type,record.url);return true;}
+      try{canonicalMediaLucusType(record.media_type,record.url);return true;}
       catch{rejected.add(String(record.media_type||'unknown'));return false;}
     });
     if(rejected.size)mediaWarning='附件型別不支援，已略過：'+[...rejected].join('、');
@@ -192,7 +192,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     const type=String(value('media_type')||(runeResultText?'rune':'')).trim();
     const url=String(value('url')||'').trim();
     if(type){
-      try{canonicalMediaAnchorType(type,url);}catch(error){
+      try{canonicalMediaLucusType(type,url);}catch(error){
         return {record:null,error:'來源只有媒體物件，但型別不支援：'+type+
           '。'+String(error?.message||error)};
       }
@@ -379,7 +379,7 @@ async function readImportMediaCandidates(scopeId,uids=[],urls=[],message='媒體
       for(const row of data){
         const uid=String(row?.uid||'');
         if(!/^[A-Za-z0-9]{8}$/.test(uid)||seenBatch.has(uid)||
-            !ANCHOR_TYPE_GROUPS.media.includes(row?.type))
+            !LUCUS_TYPE_GROUPS.media.includes(row?.type))
           throw new Error('MediaAnchor lookup contains duplicate or invalid UID/type');
         seenBatch.add(uid);
         const previous=out.get(uid);
@@ -398,7 +398,7 @@ async function readImportMediaCandidates(scopeId,uids=[],urls=[],message='媒體
 
 // Existing import idempotency is preserved with one authorized, bounded
 // Kysely lookup for UID and attr.url candidates; no Galaxy Media table.
-async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],knownArticleIds=new Map(),scopeId,galaxy,mediaAnchor,t,onProgress}={}){
+async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],knownArticleIds=new Map(),scopeId,galaxy,mediaLucus,t,onProgress}={}){
       // Media-only imports and embedded media use the one typed MediaAnchor table.
       // Attach only to article UIDs established by the import plan.
       const originalPlans=normalized.flatMap(item=>{
@@ -411,7 +411,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       // Never duplicate the article in Galaxy just to store a card spread.
       const plans=originalPlans.flatMap(source=>{
         const {rune_references,media_type:legacyType,...rest}=source;
-        const record={...rest,type:canonicalMediaAnchorType(source.type||legacyType,source.url)};
+        const record={...rest,type:canonicalMediaLucusType(source.type||legacyType,source.url)};
         if(rune_references==null||rune_references===''||
             JSON.stringify(rune_references)==='[]'||JSON.stringify(rune_references)==='{}')
           return [record];
@@ -466,9 +466,9 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
         const characters=createMedia.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
         // Size the exact MediaAnchor rows sent to the writer, not their
         // larger pre-normalization envelopes with different physical fields.
-        const prepared=createMedia.map(mediaAnchorRecord);
+        const prepared=createMedia.map(mediaLucusRecord);
         await writeImportBatches(prepared,{
-          writeBatch:batch=>insertImportRows(mediaAnchor,batch),
+          writeBatch:batch=>insertImportRows(mediaLucus,batch),
           onProgress:p=>onProgress?.({stage:'新增媒體紀錄',completed:created+p.completed,total:created+count})
         });
         created+=count;
@@ -680,8 +680,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
   // Import source choices come from the fixed resident SiteAnchor JS snapshot;
   // imported rows never trigger a live SQL taxonomy read.
-  const sourceAnchorResource=useAsyncResource(['loc-source-anchor'],async()=>{
-    const nodes=await readPublicSourceAnchors();
+  const sourceAnchorResource=useAsyncResource(['loc-source-lucus'],async()=>{
+    const nodes=await readPublicSourceLucus();
     return {categories:nodes.filter(row=>row.type==='from').map(row=>row.title),
       aliases:[],groups:[],nodes};
   },{enabled:sourceCategoriesEnabled});
@@ -1252,8 +1252,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         });
       }
       const scope=nativeLocal?defaultScopeData('local'):account.scopeDataFor(scopeId);
-      const galaxy=scope?.galaxy,mediaAnchor=scope?.anchor;
-      if(!galaxy||!mediaAnchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
+      const galaxy=scope?.galaxy,mediaLucus=scope?.lucus;
+      if(!galaxy||!mediaLucus)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
       // First narrow all database comparisons to the source site, then timestamp.
       // Check each site's existing data ONCE before creating a comparison pool.
       // If site is empty, the complete file stays in INSERT mode regardless
@@ -1589,7 +1589,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         releaseCompletedFile();
         return;
       }
-      // Importing an original check-in also restores its spatial anchor.
+      // Importing an original check-in also restores its spatial lucus.
       // The Timeline importer remains supplemental and does not run here.
       showProgress('準備空間定錨');
       const geoAnchorRecords=eligibleGeoRecords;
@@ -1793,7 +1793,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           {...record,__article_uid:knownArticleIds.get(owner)||null,
             createtime:record.createtime||articleTimes.get(owner)||null}:record;
       });
-      const visualType=row=>canonicalMediaAnchorType(row.type||row.media_type,row.url);
+      const visualType=row=>canonicalMediaLucusType(row.type||row.media_type,row.url);
       const isVisual=row=>['image','video'].includes(visualType(row));
       const visualRecords=[
         ...analyzed.normalized.flatMap(item=>(item.mediaRecords||[]).filter(isVisual)),
@@ -1816,7 +1816,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         })),
         mediaOnly:[...safeMediaOnly,...canonicalArchiveMedia].filter(row=>!isVisual(row)),
         extraLinks:archivePlan.mediaLinks,
-        knownArticleIds,scopeId,galaxy,mediaAnchor,t,
+        knownArticleIds,scopeId,galaxy,mediaLucus,t,
         onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
       });
       // Media and article stages are both confirmed, but cleanup still waits
@@ -1866,7 +1866,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           keywordReviewText='；本次關鍵詞文字核對未完成，文章匯入結果不受影響。';
         }
       }
-      // SiteAnchor is the global silver.loc_anchor source taxonomy, NOT an
+      // SiteAnchor is the global silver.loc_lucus source taxonomy, NOT an
       // article foreign key or a second publisher identity. Audit the source
       // labels once after successful writes; ambiguity is informational and
       // never rewrites Galaxy.site or triggers a second import attempt.

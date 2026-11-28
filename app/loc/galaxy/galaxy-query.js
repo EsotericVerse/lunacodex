@@ -7,15 +7,16 @@ import {queryPrivateGalaxy} from '../actions/search/management-queries.mjs';
 
 import {DEFAULT_LIST_BATCH_SIZE} from '../db/db-contract.mjs';
 import {normalizeRelationIds,publicContentFilters} from '../content/content-policy';
-import {timePeriodContainsDate} from '../culture/time-anchor-ranges.mjs';
+import {timePeriodContainsDate} from '../culture/time-lucus-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../culture/anniversary.mjs';
 import {selectRows} from '../db/db-query.mjs';
 import {dbAuthClient,readLocStatistics,readScopeCategoryTotals,readScopeEarliest,readScopeOverview,readScopeStatistics} from '../db/db-client.mjs';
 import {cachedRead} from '../db/semi-dynamic-cache.mjs';
 import {readGalaxyFeature} from './feature-query-client.mjs';
-import {readGalaxyRecords,readAnchorFeature} from '../model/feature-query-client.mjs';
+import {readGalaxyRecords,readLucusFeature} from '../model/feature-query-client.mjs';
 import {readTraceMapIndex} from '../../modular/features/trace/trace-data.js';
 import {galaxyAble} from '../model/galaxy-able.mjs';
+import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
 const galaxyUidReadWithPolicyColumns=()=>unique([
@@ -35,11 +36,11 @@ function unique(values=[]){
   return [...new Set(values.map(value=>String(value||'').trim()).filter(Boolean))];
 }
 function scopeOf(scope){
-  if(!scope?.id||!scope?.galaxy||!scope?.anchor)throw new Error('Scope data 未解析');
+  if(!scope?.id||!scope?.galaxy||!scope?.lucus)throw new Error('Scope data 未解析');
   return scope;
 }
 const dayColumn=table=>
-  /^silver\.[a-z][a-z0-9]*_galaxy$/.test(String(table||''))?'date':'createtime';
+  scopeTableDescriptor(String(table||'').split('.').at(-1))?.kind==='galaxy'?'date':'createtime';
 function countBy(rows,keyOf,{includeEmpty=false}={}){
   const counts=new Map();
   for(const row of Array.isArray(rows)?rows:[]){
@@ -198,7 +199,7 @@ export async function selectGalaxyContent(scope,uid,{authenticated=false,dbId=''
   const id=String(uid||'').trim();
   if(!id)return null;
   // A single-article read uses the complete GalaxyUidRead projection. The
-  // caller may still consume only `content`, but relation/anchor context is
+  // caller may still consume only `content`, but relation/lucus context is
   // no longer silently lost at this boundary.
   if(dbId)throw Error('Qualified external database reads need the authorized source');
   const data=await readGalaxyRecords({scope:current.id,view:'detail',uids:[id]},
@@ -251,7 +252,7 @@ async function articleTimeContext(scope,day){
   const rows=await articleTimeRows(scope);
   const matches=row=>timePeriodContainsDate(row,day);
   const labels=items=>items.map(item=>({uid:String(item.uid),title:String(item.title||'')}));
-  const dateAnchors=rows.filter(row=>row.entry_type==='anchor');
+  const dateAnchors=rows.filter(row=>row.entry_type==='lucus');
   const anchors=dateAnchors.filter(row=>String(row.address||'').slice(0,10)===day);
   let anniversarySuggestions=[];
   if(!anchors.length){
@@ -268,11 +269,11 @@ async function articleTimeContext(scope,day){
 async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
   if(!/^[A-Za-z0-9]{8}$/.test(placeId)||!scope?.id||scope.id==='loc')
     return {place:null,routes:[],traces:[]};
-    // LOC's four legacy relations were consolidated into _anchor. The shared
+    // LOC's four legacy relations were consolidated into _lucus. The shared
     // Trace reader projects native attr.point/attr.path without relying on
     // removed trace_type, anchor_list or route_list physical columns.
     const [pointPage,maps]=await Promise.all([
-      readAnchorFeature({scope:scope.id,family:'space',
+      readLucusFeature({scope:scope.id,family:'space',
         types:['point'],uids:[placeId],limit:1},{editor:authenticated})
         .then(data=>({rows:data.rows})),
       readTraceMapIndex(scope.id,{includeHidden:authenticated})
@@ -335,7 +336,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
 }
 
 function recordFor(row,source,providerId,scope,table){
-  return {row:{...row,scope_id:row?.scope_id||scope.id,__table:table,__media_anchor_table:scope.anchor},source,providerId};
+  return {row:{...row,scope_id:row?.scope_id||scope.id,__table:table,__media_lucus_table:scope.lucus},source,providerId};
 }
 
 // Search selections use the same enabled categories and alias assignments as
@@ -369,7 +370,7 @@ function resolveSourceSelection(value,taxonomy={}){
 // table, projection, OR-AST or SQL predicate. All results are GalaxyList rows.
 function genericScopeProviders(scope){
   // Guest Search is intentionally title/content-only, with optional dates.
-  // Site classification belongs to the shared loc_anchor source statistics;
+  // Site classification belongs to the shared loc_lucus source statistics;
   // location belongs to Trace and authorized management, not guest Search.
   const current=scopeOf(scope);
   const source=current.id+' 文章',id=current.id+':article-content';

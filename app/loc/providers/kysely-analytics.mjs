@@ -3,6 +3,7 @@ import {portableRelation} from './sql-engine-ports.mjs';
 import {publishedManagedScope} from './published-managed-scope.mjs';
 import {readItemKeywordProjection,itemKeywordStatistics,itemScope} from '../keywords/item-count-analysis.mjs';
 import {mapBounded} from '../query/bounded-parallel.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 // Fixed feature projections used by LOC-owned Server Actions.
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -58,7 +59,7 @@ function uidList(node){
 function published(cfg,uid){
   return Boolean(cfg?.keyword_meta?.class_shares?.[uid]===true);
 }
-async function keywordClassInfo(trx,scope,anchor,requested,role,
+async function keywordClassInfo(trx,scope,lucus,requested,role,
   configTable='silver.'+scope){
   const configRow=await trx.selectFrom(configTable)
     .select(['current_keyword_class_uid','keyword_meta'])
@@ -75,7 +76,7 @@ async function keywordClassInfo(trx,scope,anchor,requested,role,
   const done=meta.by_class?.[uid]?.completedAt;
   return {uid,allowed,ready:Boolean(done),config};
 }
-export async function sharedClasses(trx,scope,anchor,role,
+export async function sharedClasses(trx,scope,lucus,role,
   {configTable='silver.'+scope}={}){
   const owner=await owns(trx,scope,role);
   const cfgRow=await trx.selectFrom(configTable).select('keyword_meta')
@@ -87,7 +88,7 @@ export async function sharedClasses(trx,scope,anchor,role,
   const cfg={keyword_meta:keywordMeta};
   // Kysely projects every public alias in the Class SELECT itself.
   // Previously each shared Class caused another PostgreSQL round trip.
-  let query=trx.selectFrom(anchor).select(['uid','title'])
+  let query=trx.selectFrom(lucus).select(['uid','title'])
     .where('type','=','class').orderBy('title','asc');
   if(!owner){
     const sharedIds=Object.entries(cfg?.keyword_meta?.class_shares||{})
@@ -118,11 +119,11 @@ export async function sharedClasses(trx,scope,anchor,role,
 // READ PROJECTION for existing chart/tree consumers: uid_lists:[] is an
 // output compatibility shape, not a stored Item/Group article index. Counts
 // below are computed from Pattern postings. Do not persist the projection.
-export async function keywordCatalog(trx,scope,anchor,requested,role,
+export async function keywordCatalog(trx,scope,lucus,requested,role,
   {withTotals=true,configTable='silver.'+scope}={}){
-  const info=await keywordClassInfo(trx,scope,anchor,requested,role,configTable);
+  const info=await keywordClassInfo(trx,scope,lucus,requested,role,configTable);
   if(!info?.allowed)return {};
-  const root=await trx.selectFrom(anchor).select(['uid','type','title','description','attr'])
+  const root=await trx.selectFrom(lucus).select(['uid','type','title','description','attr'])
     .where('uid','=',info.uid).where('type','=','class').executeTakeFirst();
   if(!root)return {class_uid:info.uid,rows:[]};
   const attr=node=>typeof node?.attr==='string'?JSON.parse(node.attr):node?.attr||{};
@@ -131,20 +132,20 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,
     return Array.isArray(value)?value.filter(uid=>UID.test(String(uid))):[];
   };
   const groupIds=children(root,'groups');
-  const groups=groupIds.length?await trx.selectFrom(anchor)
+  const groups=groupIds.length?await trx.selectFrom(lucus)
     .select(['uid','type','title','description','attr'])
     .where('type','=','group').where('uid','in',groupIds).execute():[];
   const byGroup=new Map(groups.map(row=>[row.uid,row]));
   if(groupIds.some(uid=>!byGroup.has(uid)))reject('Broken Keyword Group relationship');
   const ordered=groupIds.map(uid=>byGroup.get(uid));
   const itemIds=[...new Set(ordered.flatMap(row=>children(row,'items')))];
-  const items=itemIds.length?await trx.selectFrom(anchor)
+  const items=itemIds.length?await trx.selectFrom(lucus)
     .select(['uid','type','title','description','attr'])
     .where('type','=','item').where('uid','in',itemIds).execute():[];
   const byItem=new Map(items.map(row=>[row.uid,row]));
   if(itemIds.some(uid=>!byItem.has(uid)))reject('Broken Keyword Item relationship');
   const patternIds=[...new Set(items.flatMap(item=>children(item)))];
-  const patterns=patternIds.length?await trx.selectFrom(anchor)
+  const patterns=patternIds.length?await trx.selectFrom(lucus)
     .select(['uid','type','title']).where('type','=','pattern')
     .where('uid','in',patternIds).execute():[];
   const byPattern=new Map(patterns.map(row=>[row.uid,row]));
@@ -162,7 +163,7 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,
   }));
   let totals=new Map(),groupTotals=new Map();
   if(withTotals){
-    const stored=await trx.selectFrom(anchor)
+    const stored=await trx.selectFrom(lucus)
       .select(['uid','attr']).where('uid','in',descriptions.map(i=>i.uid)
         .concat(ordered.map(g=>g.uid))).execute();
     const byUid=new Map(stored.map(row=>[row.uid,Number(attr(row).total)||0]));
@@ -181,12 +182,12 @@ export async function keywordCatalog(trx,scope,anchor,requested,role,
   return {class_uid:info.uid,rows:[model(root),...ordered.map(model),
     ...descriptions.map(item=>model(byItem.get(item.uid)))]};
 }
-export async function traceKeywordGroups(trx,scope,anchor,places,start,end,source,requested,role,
-  {configTable='silver.'+scope,galaxyTable='silver.'+scope+'_galaxy',
+export async function traceKeywordGroups(trx,scope,lucus,places,start,end,source,requested,role,
+  {configTable='silver.'+scope,galaxyTable='silver.'+scopeTableName(scope,'galaxy'),
     engine='postgres',namespace='silver'}={}){
-  const info=await keywordClassInfo(trx,scope,anchor,requested,role,configTable);
+  const info=await keywordClassInfo(trx,scope,lucus,requested,role,configTable);
   if(!info?.allowed||!info.ready)return [];
-  const catalog=await keywordCatalog(trx,scope,anchor,requested,role,
+  const catalog=await keywordCatalog(trx,scope,lucus,requested,role,
     {withTotals:false,configTable});
   if(!catalog.class_uid||!Array.isArray(places)||!places.length)return [];
   const groups=(catalog.rows||[]).filter(row=>row.type==='group');
@@ -204,12 +205,12 @@ export async function traceKeywordGroups(trx,scope,anchor,places,start,end,sourc
     document_count:Number(res.totals.groupDocuments?.[group.uid])||0
   }));
 }
-export async function keywordSummary(trx,scope,anchor,start,end,source,requested,role,
-  {configTable='silver.'+scope,galaxyTable='silver.'+scope+'_galaxy',
+export async function keywordSummary(trx,scope,lucus,start,end,source,requested,role,
+  {configTable='silver.'+scope,galaxyTable='silver.'+scopeTableName(scope,'galaxy'),
     engine='postgres',namespace='silver'}={}){
-  const info=await keywordClassInfo(trx,scope,anchor,requested,role,configTable);
+  const info=await keywordClassInfo(trx,scope,lucus,requested,role,configTable);
   if(!info?.allowed||!info.ready)return [];
-  const catalog=await keywordCatalog(trx,scope,anchor,requested,role,
+  const catalog=await keywordCatalog(trx,scope,lucus,requested,role,
     {withTotals:false,configTable});
   if(!catalog.class_uid)return [];
   const groups=(catalog.rows||[]).filter(row=>row.type==='group');

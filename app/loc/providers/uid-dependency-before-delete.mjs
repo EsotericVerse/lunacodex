@@ -1,9 +1,10 @@
-import {planUidDependencyRepair,UID_DEPENDENT_ANCHOR_FIELDS} from './uid-dependency-immer.mjs';
+import {planUidDependencyRepair,UID_DEPENDENT_LUCUS_FIELDS} from './uid-dependency-immer.mjs';
 import {sql} from 'kysely';
-import {PERSISTED_ANCHOR_TYPES} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {PERSISTED_LUCUS_TYPES} from '../../../packages/zenstack/lucus-hierarchy.mjs';
+import {DEFAULT_SCOPE_TABLE_SETTINGS,scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
-const SCOPED=/^([a-z][a-z0-9]{0,14})_(galaxy|anchor)$/;
+const SCOPED=/^([a-z][a-z0-9]{0,14})_(galaxy|lucus)$/;
 
 function failed(){
   const error=new Error('UID 引用修正未完成，已拒絕刪除；請重新載入。');
@@ -208,33 +209,42 @@ async function checkRepairBatch(query,expected){
  */
 export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',namespace='silver',
   serialize=(values)=>values}={}){
-  const match=SCOPED.exec(String(table||''));
-  const globalSource=table==='loc_anchor';
+  const rawTable=String(table||'');
+  let match=SCOPED.exec(rawTable);
+  if(!match){
+    for(const scope of Object.keys(DEFAULT_SCOPE_TABLE_SETTINGS)){
+      for(const kind of ['galaxy','lucus']){
+        if(scopeTableName(scope,kind)===rawTable){match=[rawTable,scope,kind];break;}
+      }
+      if(match)break;
+    }
+  }
+  const globalSource=rawTable===scopeTableName('loc','lucus');
   if(!match&&!globalSource)return {affected:0,handled:false};
   const uid=samePkDeletion(filters);
   if(!uid)failed(); // Never silently bypass the guard for broad deletes.
-  const owner=match?.[1]||'loc',kind=match?.[2]||'anchor';
-  const anchor=typedTable(globalSource?'loc_anchor':owner+'_anchor',engine,namespace);
-  const galaxy=globalSource?null:typedTable(owner+'_galaxy',engine,namespace);
+  const owner=match?.[1]||'loc',kind=match?.[2]||'lucus';
+  const lucus=typedTable(scopeTableName(globalSource?'loc':owner,'lucus'),engine,namespace);
+  const galaxy=globalSource?null:typedTable(scopeTableName(owner,'galaxy'),engine,namespace);
   let deletedType='';
-  if(kind==='anchor'){
-    const row=await db.selectFrom(anchor).select(['uid','type'])
+  if(kind==='lucus'){
+    const row=await db.selectFrom(lucus).select(['uid','type'])
       .where('uid','=',uid).executeTakeFirst();
     if(!row)return {affected:0,handled:true};
     deletedType=String(row.type||'');
     if(filters.some(f=>f.column==='type'&&f.value!==deletedType))
       return {affected:0,handled:true};
-    // LOC Blocks share loc_anchor; they aren't typed source nodes.
-    if(globalSource&&!PERSISTED_ANCHOR_TYPES.includes(deletedType))
+    // LOC Blocks share loc_lucus; they aren't typed source nodes.
+    if(globalSource&&!PERSISTED_LUCUS_TYPES.includes(deletedType))
       return {affected:0,handled:true};
   }
   const galaxyColumns=kind==='galaxy'
     ?['uid','source_id','target_id','ref_id']
     :deletedType==='point'?['uid','place_id']:[];
   // Galaxy articles are not stored in Pattern: there are no posting links to repair.
-  const parentFields=kind==='galaxy'?{}:UID_DEPENDENT_ANCHOR_FIELDS[deletedType]||{};
+  const parentFields=kind==='galaxy'?{}:UID_DEPENDENT_LUCUS_FIELDS[deletedType]||{};
   const parentTypes=Object.keys(parentFields);
-  let galaxyRows=[],anchorRows=[];
+  let galaxyRows=[],lucusRows=[];
   // One narrow SELECT per physical table, only rows mentioning the exact UID.
   // The deleted article is included in the same result to establish existence.
   if(galaxy&&galaxyColumns.length){
@@ -254,14 +264,14 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
   if(kind==='galaxy'&&!galaxyRows.some(row=>row.uid===uid))
     return {affected:0,handled:true};
   if(parentTypes.length){
-    anchorRows=await db.selectFrom(anchor).select(['uid','type','attr'])
+    lucusRows=await db.selectFrom(lucus).select(['uid','type','attr'])
       .where(eb=>eb.or(parentTypes.map(type=>eb.and([
         eb('type','=',type),
         listContains('attr',uid,engine,parentFields[type])
       ])))).execute();
   }
   const plan=planUidDependencyRepair({deletedUid:uid,deletedTable:kind,
-    deletedType,galaxyRows,anchorRows});
+    deletedType,galaxyRows,lucusRows});
   // One bounded UPDATE per scalar shape, rather than one round-trip per row.
   // A concurrent change to any expected UID reference fails the row receipt.
   const {batches,singles}=planUidScalarRepairBatches(plan.galaxyUpdates,uid);
@@ -283,10 +293,10 @@ export async function repairBeforeUidDelete(db,{table,filters,engine='postgres',
   for(const batch of planUidRepairStatementBatches(portable))
     await checkRepairBatch(buildUidCaseRepairQuery(db,galaxy,batch,serialize),
       batch.length);
-  // Trace endpoint pairs and derived Anchor.num are validated before the
+  // Trace endpoint pairs and derived Lucus.num are validated before the
   // UPDATE. Every CASE arm must also match that row's original attr (CAS).
-  for(const batch of planUidRepairStatementBatches(plan.anchorUpdates))
-    await checkRepairBatch(buildUidCaseRepairQuery(db,anchor,batch,serialize),
+  for(const batch of planUidRepairStatementBatches(plan.lucusUpdates))
+    await checkRepairBatch(buildUidCaseRepairQuery(db,lucus,batch,serialize),
       batch.length);
   return {affected:plan.affected,handled:true};
 }

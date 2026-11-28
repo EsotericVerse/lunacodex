@@ -1,22 +1,23 @@
 // One authenticated, Scope-filtered Anchor scan for the existing import index.
 // The 19 persisted types come from ZModel; this importer consumes Point/Date
 // together without creating a parallel Anchor table or a semantic PK.
-import {ANCHOR_TYPE_PROJECTIONS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {LUCUS_TYPE_PROJECTIONS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
-import {queryImportPointUidRows,queryImportAnchorPage}
+import {queryImportPointUidRows,queryImportLucusPage}
   from '../actions/import/queries.mjs';
 import {createImportPlaceIndex} from './place-anchors.mjs';
 import {createImportDateIndex} from './time-anchors.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const TYPES=Object.freeze(['point','date']);
-if(TYPES.some(type=>!ANCHOR_TYPE_PROJECTIONS[type]))
+if(TYPES.some(type=>!LUCUS_TYPE_PROJECTIONS[type]))
   throw Error('Point/Date ZModel Anchor projection is unavailable');
 
 async function authorizedAnchorPage({scopeId,afterUid,limit,types=TYPES}){
   // Managed actions use the existing Better Auth website Session and the
   // server's published JavaScript permission check. Never fetch private import evidence
   // through the feature-owned Trace query action.
-  const {data}=await queryImportAnchorPage({p_scope_id:scopeId,p_types:types,
+  const {data}=await queryImportLucusPage({p_scope_id:scopeId,p_types:types,
     p_after_uid:afterUid,p_limit:limit});
   return data;
 }
@@ -54,7 +55,7 @@ export async function readImportPointDateAnchors({
     throw Error('Point UID 主鍵查詢參數無效');
   const requestedPointUids=pointUids===null?null:[...new Set(pointUids)];
   const types=requestedPointUids===null?TYPES:['date'];
-  const table='silver.'+scopeId+'_anchor';
+  const table='silver.'+scopeTableName(scopeId,'lucus');
   const place=createImportPlaceIndex(),time=createImportDateIndex();
   const seen=new Set();
   let afterUid=null,completed=0;

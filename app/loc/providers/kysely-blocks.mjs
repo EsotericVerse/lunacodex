@@ -3,8 +3,9 @@ import {buildKyselyUpsertQuery,executeMssqlUpsert,executeMysqlUpsert}
   from './kysely-runtime.mjs';
 import {portableRelation,serializePortableJsonFields} from './sql-engine-ports.mjs';
 import {modelFieldsForSql} from '../../../packages/zenstack/model-column-guard.mjs';
-import {modelWriteSchemaForSqlTable,locBlocksZModelSchema} from '../../../packages/zenstack/import-validation.mjs';
-import {isLocBlockPage,locBlockToAnchor} from '../blocks/loc-block-anchor.mjs';
+import {modelWriteSchemaForSqlTable,blockLucusZModelSchema} from '../../../packages/zenstack/import-validation.mjs';
+import {isLocBlockPage,locBlockToLucus} from '../blocks/loc-block-lucus.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PAGE=/^[A-Za-z][A-Za-z0-9_-]{0,60}$/;
@@ -24,14 +25,14 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
   if(!SCOPE.test(scope)||!PAGE.test(type)||!Array.isArray(supplied)||supplied.length>50)
     reject('Invalid Block save request');
   if(scope==='loc'&&!isLocBlockPage(type))reject('Invalid LOC Block page');
-  const tableName=scope==='loc'?'loc_anchor':scope+'_blocks';
+  const tableName=scope==='loc'?scopeTableName(scope,'lucus'):scope+'_blocks';
   const table=engine==='postgres'?'silver.'+tableName:
     portableRelation(tableName,engine,namespace);
   // Reuse the already cached ZenStack→Zod model schema used by Galaxy import.
   // No separate Block field, UID or physical-type validator is maintained here.
-  // Validate LOC's own ZModel value type, then persist into LocAnchor.
+  // Validate LOC's own ZModel value type, then persist into LocLucus.
   // All non-LOC Scope Blocks retain their unchanged physical-table validator.
-  const blockSchema=scope==='loc'?locBlocksZModelSchema:
+  const blockSchema=scope==='loc'?blockLucusZModelSchema:
     modelWriteSchemaForSqlTable('silver.'+tableName);
   const seen=new Set(),orders=new Set();
   const rows=supplied.map(row=>{
@@ -74,7 +75,7 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
   const removed=existing.filter(row=>pageOf(row)===type&&!seen.has(String(row.uid).trim()))
     .map(row=>String(row.uid).trim());
   if(rows.length){
-    const mapped=loc?rows.map(locBlockToAnchor):rows;
+    const mapped=loc?rows.map(locBlockToLucus):rows;
     const payload=engine==='postgres'?mapped.map(row=>loc
       ?{...row,attr:sql`${JSON.stringify(row.attr)}::jsonb`}
       :{...row,block_entity:sql`${JSON.stringify(row.block_entity)}::jsonb`})

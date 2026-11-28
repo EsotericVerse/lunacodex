@@ -6,7 +6,7 @@ export const BASE62_FOUR=/^[A-Za-z0-9]{4}$/; // Legacy diagnostic/export only.
 export const BASE62_UID=/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/; // Current anchors use eight characters.
 export function spaceType(row){
   const type=String(row?.type||row?.trace_type||'');
-  return type==='anchor'?SPACE_ANCHOR:type==='map'||type==='space_road'?SPACE_PERIOD:type;
+  return type==='lucus'?SPACE_ANCHOR:type==='map'||type==='space_road'?SPACE_PERIOD:type;
 }
 export const spaceId=row=>String(row?.id??row?.uid??'').trim();
 export const spaceScope=row=>String(row?.source_scope??row?.scope_id??'').trim();

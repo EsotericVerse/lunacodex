@@ -10,6 +10,7 @@ import {invalidateCachedReadPrefix} from '../db/semi-dynamic-cache.mjs';
 import {isManagedReadAction,isManagedWriteAction}
   from '../actions/managed-query-routes.mjs';
 import {runLocalLocWrite} from '../actions/local-write.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const AUTH='https://auth.lo3rwang.cc';
 function errorFromResponse(result,response){
@@ -68,18 +69,18 @@ export function createConfiguredAdapter({
           const scope=String(fields.args?.p_scope_id||'').trim().toLowerCase();
           if(/^[a-z][a-z0-9]{0,14}$/.test(scope)){
             if(['save_blocks','move_scope_block'].includes(fields.name))
-              invalidateScopedReadCache('silver.'+(scope==='loc'?'loc_anchor':scope+'_blocks'));
+              invalidateScopedReadCache('silver.'+(scope==='loc'?scopeTableName(scope,'lucus'):scope+'_blocks'));
             else if(['save_scope_trace_place_names','merge_scope_trace_place_names',
               'import_shared_keyword_class'].includes(fields.name))
-              invalidateScopedReadCache('silver.'+scope+'_anchor');
+              invalidateScopedReadCache('silver.'+scopeTableName(scope,'lucus'));
             else if(['provision_scope','delete_scope'].includes(fields.name)){
-              invalidateScopedReadCache('silver.'+scope+'_anchor');
+              invalidateScopedReadCache('silver.'+scopeTableName(scope,'lucus'));
               invalidateScopedReadCache('silver.'+scope+'_blocks');
             }
           }
         }
         if(kind==='short-import')
-          invalidateScopedReadCache('silver.'+scopeid+'_anchor');
+          invalidateScopedReadCache('silver.'+scopeTableName(scopeid,'lucus'));
         const stopped=new Error('編輯已取消；已送出的交易結果須重新讀取確認。');
         stopped.code='LOC_EDITOR_CANCELLED';
         throw stopped;
@@ -120,12 +121,12 @@ export function createConfiguredAdapter({
     const scope=String(args?.p_scope_id||'').trim().toLowerCase();
     if(/^[a-z][a-z0-9]{0,14}$/.test(scope)){
       if(name==='save_blocks'||name==='move_scope_block')
-        invalidateScopedReadCache('silver.'+(scope==='loc'?'loc_anchor':scope+'_blocks'));
+        invalidateScopedReadCache('silver.'+(scope==='loc'?scopeTableName(scope,'lucus'):scope+'_blocks'));
       else if(name==='save_scope_trace_place_names'||
         name==='merge_scope_trace_place_names'||name==='import_shared_keyword_class')
-        invalidateScopedReadCache('silver.'+scope+'_anchor');
+        invalidateScopedReadCache('silver.'+scopeTableName(scope,'lucus'));
       else if(name==='provision_scope'||name==='delete_scope'){
-        invalidateScopedReadCache('silver.'+scope+'_anchor');
+        invalidateScopedReadCache('silver.'+scopeTableName(scope,'lucus'));
         invalidateScopedReadCache('silver.'+scope+'_blocks');
       }
     }
@@ -162,7 +163,7 @@ export function createConfiguredAdapter({
       throw Error('Invalid LOC import Scope');
     const result=await operation('short-import',scopeid,{batch});
     // The import endpoint can also materialize Time/Place Anchor rows.
-    invalidateScopedReadCache('silver.'+scopeid+'_anchor');
+    invalidateScopedReadCache('silver.'+scopeTableName(scopeid,'lucus'));
     return result;
   };
   const authClient={...authenticatedClient,shortImport,

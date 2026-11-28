@@ -8,7 +8,7 @@ import {transactionWrites} from '../db/db-client.mjs';
 import {createUid8} from '../model/uid';
 import {useAccount} from '../auth/use-account';
 import {hasIrrecoverableEncoding,repairMojibakeText} from '../content/content-policy';
-import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {mediaLucusRecord} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 
 const blankMedia=()=>({
   galaxy_link:'',type:'image',title:'',
@@ -67,15 +67,15 @@ export default function ManagementMediaPublisher({scopeId,dockScopeId=scopeId,gl
     // the SAME backend SQL transaction that inserts the new MediaAnchor.
     // No pre-transaction SELECT or overwrite from a stale JS snapshot.
     const mediaUid=createUid8();
-    const anchor=scope?.anchor;
-    if(!anchor)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
-    const record=mediaAnchorRecord({
+    const lucus=scope?.lucus;
+    if(!lucus)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
+    const record=mediaLucusRecord({
       uid:mediaUid,type:mediaType,title:mediaTitle||null,
       url:String(draft.url||'').trim()||null,
       description:mediaDescription,
       createtime:mediaIso(draft.createtime)||new Date().toISOString()
     });
-    const operations=[{p_table:anchor,p_operation:'insert',p_rows:[record]}];
+    const operations=[{p_table:lucus,p_operation:'insert',p_rows:[record]}];
     // A URL-less MediaAnchor is allowed, but has no URL for Galaxy.media_link.
     if(galaxyLink&&!/^https?:\/\//i.test(String(record.attr?.url||'')))
       throw Error('附加媒體至文章需要有效公開網址；無網址的 MediaAnchor 可獨立儲存。');

@@ -3,10 +3,11 @@ import {withKeywordScope} from './context.mjs';
 import {readKeywordClasses,readKeywordStatistics,readKeywordCatalog,
   readKeywordDaily,readKeywordWorkspace,readKeywordAnalysisCompletion,
   suggestKeywordPatterns} from '../../keywords/sql-service.mjs';
-import {queryAnchorArticles} from '../../keywords/anchor-search.mjs';
+import {queryLucusArticles} from '../../keywords/lucus-search.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {KEYWORD_DISCOVERY_MAX_ROWS} from '../../query/query-batch-size.mjs';
 import {assertZModelSelectRows} from '../../../../packages/zenstack/import-validation.mjs';
+import {scopeTableName} from '../../../../packages/zenstack/scope-table-names.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const ATTEMPT=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -35,7 +36,7 @@ function validScopeId(value){
   return scope;
 }
 function keywordGalaxy(scope,port){
-  return portableRelation(scope+'_galaxy',port.engine,
+  return portableRelation(scopeTableName(scope,'galaxy'),port.engine,
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
 }
 
@@ -88,7 +89,7 @@ export async function queryKeywordDiscoveryPage(args={}){
       if(afterUid!==null)query=query.where('uid','>',afterUid);
     }
     const rows=await query.limit(limit).execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',DISCOVERY_COLUMNS,rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),DISCOVERY_COLUMNS,rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -179,7 +180,7 @@ export async function queryKeywordAnchorArticles(args={}){
     !['','galaxy','lyrics_work','text_work'].includes(contentType))
     throw Error('Invalid Anchor navigation request');
   return withKeywordScope(args.scopeId,{},({db,scope,owner,port})=>
-    queryAnchorArticles(db,{scopeId:scope,uid:String(args.uid||''),
+    queryLucusArticles(db,{scopeId:scope,uid:String(args.uid||''),
       type:String(args.type||''),owner,offset,
       limit,sortDirection:String(args.sortDirection||'desc'),
       startDate,endDate,

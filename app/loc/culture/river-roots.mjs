@@ -1,5 +1,5 @@
 // Compact first view of article sources. The sole classification hierarchy is
-// the LOC-wide SiteAnchor tree in silver.loc_anchor; all counts come from
+// the LOC-wide SiteAnchor tree in silver.loc_lucus; all counts come from
 // the actual Galaxy.site daily aggregate, including Suno/Spotify/Youtube.
 import {assignedSource} from '../statistics/member-intersection-model.mjs';
 

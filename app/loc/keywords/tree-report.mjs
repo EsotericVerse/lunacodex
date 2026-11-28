@@ -4,7 +4,7 @@ import {indexKeywordTree} from './tree.mjs';
 // Its Group.uid_lists and Item.{uid,times} shapes are compatibility input to
 // older report consumers, NOT persisted Anchor posting lists. Current source
 // of truth: Item rules and cached Item/Group.attr.total, connected through
-// Item/Group/Class/Category Anchor UIDs by anchor-hierarchy.mjs.
+// Item/Group/Class/Category Anchor UIDs by lucus-hierarchy.mjs.
 // Do not create/update Group or Item hit lists for new Statistics/Culture work.
 export function keywordTreeCatalog(rows,classUid){
   const tree=indexKeywordTree(rows),root=tree.index.get(classUid);

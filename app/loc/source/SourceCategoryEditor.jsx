@@ -2,7 +2,7 @@
 import {lazy,Suspense} from 'react';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {readPublicSourceAnchors} from './catalog-public.mjs';
+import {readPublicSourceLucus} from './catalog-public.mjs';
 import {sourceEditorOutlineGroups} from './outline-options.mjs';
 
 const LazyKeywordNetworkEditor=lazy(()=>import('../keywords/ui/KeywordNetworkEditor'));
@@ -18,10 +18,10 @@ const normalized=rows=>(rows||[]).map(row=>{
   return {...row,attr:{...attr,uid:Array.isArray(attr.uid)?attr.uid:[],
     counts:{...EMPTY_COUNTS,...counts}}};
 });
-async function fetchSources(){return normalized(await readPublicSourceAnchors());}
+async function fetchSources(){return normalized(await readPublicSourceLucus());}
 
 export function useSourceCategories(){
-  return useAsyncResource(['loc-source-anchor'],async()=>{
+  return useAsyncResource(['loc-source-lucus'],async()=>{
     const nodes=await fetchSources();
     return {categories:nodes.filter(row=>row.type==='from').map(row=>row.title),
       aliases:[],groups:[],nodes};

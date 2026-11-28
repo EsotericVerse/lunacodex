@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {sourceTaxonomyFromAnchors}
+import {sourceTaxonomyFromLucus}
   from '../app/loc/source/classification.mjs';
-import {SOURCE_ANCHOR_FIXTURE} from './fixtures/source-anchor.mjs';
+import {SOURCE_LUCUS_FIXTURE} from './fixtures/source-lucus.mjs';
 import {sourceStatisticsTree,sourceTreeMetricId,SOURCE_UNCLASSIFIED_METRIC}
   from '../app/loc/statistics/source-tree-measures.mjs';
 
-const taxonomy=sourceTaxonomyFromAnchors(SOURCE_ANCHOR_FIXTURE);
+const taxonomy=sourceTaxonomyFromLucus(SOURCE_LUCUS_FIXTURE);
 const treeByTitle=new Map(taxonomy.tree.map(item=>[item.title,item]));
 const stat=(name,result)=>result.totals.get(sourceTreeMetricId(treeByTitle.get(name).uid))||0;
 const row=(site,count,extra={})=>({

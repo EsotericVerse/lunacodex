@@ -1,7 +1,7 @@
-import {sourceTaxonomyFromAnchors} from './classification.mjs';
+import {sourceTaxonomyFromLucus} from './classification.mjs';
 
 // All source UIs traverse the same hierarchy projected from
-// silver.loc_anchor.attr.uid: Universe → Galaxy → Domain → From (site).
+// silver.loc_lucus.attr.uid: Universe → Galaxy → Domain → From (site).
 // A node is never replaced by its single child or inferred from a title.
 export function sourceOutlineOptions(taxonomy){
   const rootOrder=new Map([['Words',0],['Mutlimedia',1],['PastBy',2]]);
@@ -39,12 +39,12 @@ export function groupedSourceOutline(taxonomy={}){
   return groups;
 }
 
-export function sourceEditorOutlineGroups(anchorRows=[]){
-  return groupedSourceOutline(sourceTaxonomyFromAnchors(anchorRows,{includeHidden:true}));
+export function sourceEditorOutlineGroups(lucusRows=[]){
+  return groupedSourceOutline(sourceTaxonomyFromLucus(lucusRows,{includeHidden:true}));
 }
 
 // Editors retain invisible nodes in their hierarchy; public views filter
-// them out in sourceTaxonomyFromAnchors' default mode.
-export function sourceEditorOutlineOptions(anchorRows=[]){
-  return sourceOutlineOptions(sourceTaxonomyFromAnchors(anchorRows,{includeHidden:true}));
+// them out in sourceTaxonomyFromLucus' default mode.
+export function sourceEditorOutlineOptions(lucusRows=[]){
+  return sourceOutlineOptions(sourceTaxonomyFromLucus(lucusRows,{includeHidden:true}));
 }

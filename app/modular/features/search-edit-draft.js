@@ -2,7 +2,7 @@
 // an article or media entry for editing (dynamic import in Search.jsx), so the
 // plain search page never ships this code.
 import {plainTextToBlocks} from '../../loc/editor/blocknote-content.mjs';
-import {canonicalMediaAnchorType} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {canonicalMediaLucusType} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 
 function nullableText(value){
   const text=String(value??'').trim();
@@ -72,7 +72,7 @@ function mediaDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
 function changedMediaAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{},changed={};
   if(current.type!==initial.type)
-    changed.type=canonicalMediaAnchorType(current.type,current.url);
+    changed.type=canonicalMediaLucusType(current.type,current.url);
   if(current.description!==initial.description)
     changed.description=nullableText(current.description);
   const dateChanged=current.createtime!==initial.createtime;

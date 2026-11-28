@@ -2,8 +2,9 @@
 
 import {dbAuthClient,transactionWrites} from '../../../loc/db/db-client.mjs';
 import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
-import {allocateAnchorUid} from '../../../loc/model/uid.js';
-import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
+import {allocateLucusUid} from '../../../loc/model/uid.js';
+import {LUCUS_TYPE_GROUPS} from '../../../../packages/zenstack/lucus-hierarchy.mjs';
+import {scopeTableName} from '../../../../packages/zenstack/scope-table-names.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../routing/scope-route-index.js';
 import {selectScopeGroupMemberIds} from '../../../loc/scope/scope-data';
 import {scopeFeatureEnabled} from '../../../loc/scope/scope-config-fields.mjs';
@@ -30,12 +31,13 @@ export const traceCurrentKey=(scopeId,route,{nativeOnly=false,includeHidden=fals
 export const traceAllAnchorsKey=(scopeId,{nativeOnly=false,includeHidden=false}={})=>
   ['trace-all-anchors',scopeId,...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
 const VALID_ID=/^[A-Za-z0-9]{8}$/;
-const TRACE_TYPES=ANCHOR_TYPE_GROUPS.space;
+const TRACE_TYPES=LUCUS_TYPE_GROUPS.space;
 const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
-import {readAnchorFeature,readAllAnchorFeature} from '../../../loc/model/feature-query-client.mjs';
+import {readLucusFeature,readAllLucusFeature} from '../../../loc/model/feature-query-client.mjs';
 import {queryTracePlaceNames} from '../../../loc/actions/trace/queries.mjs';
 import {readTracePoint,readTraceRouteUids} from '../../../loc/actions/trace/direct-query.mjs';
-const physicalPoint=id=>dbAuthClient.schema('silver').from(id+'_anchor');
+const physicalLucus=id=>scopeTableName(id,'lucus');
+const physicalPoint=id=>dbAuthClient.schema('silver').from(physicalLucus(id));
 const pointAttr=({address,longitude,latitude})=>{
   const coords=coordinateArray(longitude,latitude),attr={};
   if(coords){attr.longitude=coords[0];attr.latitude=coords[1];}
@@ -117,7 +119,7 @@ function readRow(row,scope){
 async function readPages(id,{filter=null,types=null,limit=null,includeHidden=false}={}){
   if(id==='loc')return [];
   const selectedTypes=types|| (filter?[filter==='space_anchor'?'point':filter]:TRACE_TYPES);
-  const rows=await readAllAnchorFeature({
+  const rows=await readAllLucusFeature({
     scope:id,family:'space',types:selectedTypes,editor:includeHidden
   });
   const sorted=rows.map(row=>projectUnified(row,id))
@@ -147,7 +149,7 @@ export async function readCurrentTraceAnchors(scopeId,anchorUids=[],{includeHidd
   if(ids.length>800)throw Error('地點數量超過上限');
   const pages=await mapBounded(Array.from({length:Math.ceil(ids.length/100)},
     (_,index)=>ids.slice(index*100,index*100+100)),
-    async uids=>(await readAnchorFeature({
+    async uids=>(await readLucusFeature({
       scope:id,family:'space',types:['point'],uids,limit:100
     },{editor:includeHidden})).rows);
   const rows=pages.flat().map(row=>projectUnified(row,id));
@@ -172,7 +174,7 @@ export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
   }),'搜尋地點標題')||[];
   const ids=data.map(row=>row.uid).filter(uid=>VALID_ID.test(String(uid)));
   if(!ids.length)return [];
-  const allowed=(await readAnchorFeature({
+  const allowed=(await readLucusFeature({
     scope:id,family:'space',types:['point'],uids:ids.slice(0,100),limit:100
   },{editor:true})).rows;
   const byUid=new Map(allowed.map(row=>[row.uid,row]));
@@ -194,15 +196,15 @@ export async function readTracePopularAnchors(scopeId){
 export async function readTraceAddressReferences(_scopeId,_term,_limit=8){
   return [];
 }
-export async function inspectTraceAnchorBeforeWrite({scopeId,anchor,excludeUid=''}){
+export async function inspectTraceAnchorBeforeWrite({scopeId,lucus,excludeUid=''}){
   const id=idScope(scopeId),anchors=await readAllTraceAnchors(id,{nativeOnly:id==='loc'});
-  const matches=findAnchorWriteMatches({...anchor,trace_type:'space_anchor',source_scope:id},
+  const matches=findAnchorWriteMatches({...lucus,trace_type:'space_anchor',source_scope:id},
     anchors.filter(row=>row.uid!==excludeUid));
   return {reuse:null,matches}; // Never merge spatial identities without explicit approval.
 }
 export async function addTraceAnchor({scopeId,title,description='',address='',longitude,latitude,invisible=false}){
   const id=writableScope(scopeId);
-  const row={uid:allocateAnchorUid(),type:'point',title:nonempty(title,'地點標題'),
+  const row={uid:allocateLucusUid(),type:'point',title:nonempty(title,'地點標題'),
     description:descriptionText(description),invisible:normalizedInvisible(invisible),
     attr:pointAttr({address,longitude,latitude})};
   return checked(await physicalPoint(id).insert(row).select('uid').single(),'新增空間定錨點');
@@ -233,7 +235,7 @@ function traceUidChanges(scope,ids,values){
   return Array.from({length:Math.ceil(ids.length/500)},(_,i)=>{
     const batch=ids.slice(i*500,(i+1)*500);
     return {
-      p_table:'silver.'+scope+'_anchor',p_operation:'update',p_values:values,
+      p_table:'silver.'+physicalLucus(scope),p_operation:'update',p_values:values,
       p_filters:[{column:'type',operator:'eq',value:'point'},
         {column:'uid',operator:'in',value:batch}],
       p_expected_count:batch.length
@@ -265,7 +267,7 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
   }
   const allocated=new Set();
   const rows=inserts.map(place=>{
-    const uid=allocateAnchorUid(allocated);
+    const uid=allocateLucusUid(allocated);
     allocated.add(uid);
     return {uid,type:'point',title:place.title,
       description:place.description,invisible:false,
@@ -273,7 +275,7 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
         longitude:place.address?.[0],latitude:place.address?.[1]})};
   });
   if(rows.length)await transactionWrites([{
-    p_table:'silver.'+id+'_anchor',p_operation:'insert',p_rows:rows
+    p_table:'silver.'+physicalLucus(id),p_operation:'insert',p_rows:rows
   }]);
   const count=rows.length;
   // A successful SQL COMMIT cannot be reclassified as a failed import
@@ -316,8 +318,8 @@ const validUid=value=>VALID_ID.test(textValue(value));
 export async function addTraceMap({scopeId,title,description='',type='path',anchorUids=[],anchors=[],routeUids=[],invisible=false}){
   const id=writableScope(scopeId),route_list=await validatedRouteList(id,type,routeUids);
   const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
-  return checked(await dbAuthClient.schema('silver').from(id+'_anchor').insert({
-    uid:allocateAnchorUid(),type,title:nonempty(title,'名稱'),
+  return checked(await dbAuthClient.schema('silver').from(physicalLucus(id)).insert({
+    uid:allocateLucusUid(),type,title:nonempty(title,'名稱'),
     description:descriptionText(description),invisible:normalizedInvisible(invisible),
     attr:type==='path'?{point:anchor_list}:{point:anchor_list.flat(),path:route_list}
   }).select('uid').single(),'儲存路線或痕跡圖');
@@ -328,12 +330,12 @@ export async function updateTraceMap({scopeId,uid,title,description='',type='pat
   const route_list=await validatedRouteList(id,type,routeUids);
   const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
   const current=type==='point'?await readTracePoint(id,key):
-    (await readAnchorFeature({scope:id,family:'space',types:[type],uids:[key],limit:1},
+    (await readLucusFeature({scope:id,family:'space',types:[type],uids:[key],limit:1},
       {editor:true})).rows[0]||null;
   if(!current)throw Error('指定的路線／痕跡圖不存在');
   const attr={...(current.attr||{}),point:type==='trace'?anchor_list.flat():anchor_list};
   if(type==='trace')attr.path=route_list;
-  return checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+  return checked(await dbAuthClient.schema('silver').from(physicalLucus(id))
     .update({title:nonempty(title,'名稱'),description:descriptionText(description),
       invisible:normalizedInvisible(invisible),attr})
     .eq('uid',key).eq('type',type).select('uid').single(),'更新路線或痕跡圖');
@@ -366,7 +368,7 @@ export async function saveTracePage({scopeId,renames=[],point=null,
 export async function deleteTraceMap({scopeId,uid,type='path'}){
   const id=writableScope(scopeId);
   if(!validUid(uid)||!['path','trace'].includes(type))throw Error('無效的刪除目標');
-  return checked(await dbAuthClient.schema('silver').from(id+'_anchor')
+  return checked(await dbAuthClient.schema('silver').from(physicalLucus(id))
     .delete().eq('uid',uid).eq('type',type).select('uid').single(),'刪除路線或痕跡圖');
 }
 /** User-approved merge: one authenticated RPC owns the single database transaction.

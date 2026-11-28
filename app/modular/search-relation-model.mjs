@@ -24,9 +24,9 @@ export function searchRelationGroups(row,keywordCount=null){
     if(!place&&row.location)add('space','literal',row.location);
     if(DAY.test(day)){
       add('time','date',day,{kind:'feature',feature:'culture',navigation:{from:day,to:day}});
-      for(const [type,items] of [['anchor',row.related_time?.anchors],['period',row.related_time?.periods],['era',row.related_time?.eras]])
+      for(const [type,items] of [['lucus',row.related_time?.anchors],['period',row.related_time?.periods],['era',row.related_time?.eras]])
         for(const item of items||[])if(UID.test(String(item.uid||'')))
-          add('time',item.uid,item.title,{kind:'feature',feature:'culture',navigation:{from:day,to:day,[type==='anchor'?'anchor':'period']:item.uid}});
+          add('time',item.uid,item.title,{kind:'feature',feature:'culture',navigation:{from:day,to:day,[type==='lucus'?'lucus':'period']:item.uid}});
       add('statistics','keywords',keywordCount===null?'關鍵詞分佈':('公開詞彙命中 '+keywordCount+' 種'),
         {kind:'feature',feature:'statics',navigation:{statTab:'keywords',from:day,to:day}});
       for(const [key,label] of [['week','當週統計'],['year','當年統計']]){

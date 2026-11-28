@@ -2,9 +2,10 @@
 // The caller owns authentication, COMMIT/ROLLBACK, cancellation and DB.close.
 // No generic SQL, extra worker, stored RPC, RLS or migration.
 import {sql} from 'kysely';
-import {allocateAnchorUid} from '../model/uid.js';
-import {assertZModelAnchorBlockManagedValues}
+import {allocateLucusUid} from '../model/uid.js';
+import {assertZModelLucusBlockManagedValues}
   from '../../../packages/zenstack/import-validation.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 function fail(message,status=400){
@@ -44,7 +45,7 @@ function pointRecord(input){
     invisible:input.invisible};
 }
 function modeled(scope,operation,values){
-  assertZModelAnchorBlockManagedValues('silver.'+scope+'_anchor',operation,
+  assertZModelLucusBlockManagedValues('silver.'+scopeTableName(scope,'lucus'),operation,
     operation==='insert'?[values]:values);
 }
 function jsonb(value){return sql`${JSON.stringify(value)}::jsonb`;}
@@ -63,7 +64,7 @@ async function updateUids(trx,relation,scope,ids,values){
 }
 
 export async function saveTracePageInTransaction(trx,scope,args,mergePoints){
-  const relation='silver.'+scope+'_anchor';
+  const relation='silver.'+scopeTableName(scope,'lucus');
   const rawRenames=args.p_renames??[];
   if(!Array.isArray(rawRenames))fail('Invalid Trace rename plans');
   const renames=rawRenames.map(row=>{
@@ -100,7 +101,7 @@ export async function saveTracePageInTransaction(trx,scope,args,mergePoints){
 
   let savedUid='',created=false;
   if(point){
-    savedUid=point.uid||allocateAnchorUid();
+    savedUid=point.uid||allocateLucusUid();
     let attrs={};
     if(point.uid){
       const before=await trx.selectFrom(relation).select('attr')

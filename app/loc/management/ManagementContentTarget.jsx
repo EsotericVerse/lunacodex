@@ -20,7 +20,7 @@ export default function ManagementContentTarget({scopeId,mode='import',globalAdm
   const targetScopeId=globalAdmin&&scopeId==='loc'?DEFAULT_MANAGED_SCOPE_ID:scopeId;
   const allowed=Boolean(targetScopeId&&(account.canLocAccessSync('scope',targetScopeId)||(globalAdmin&&account.canLocAccessSync('global'))));
   const scopeData=allowed?(account.scopeDataFor(targetScopeId)||defaultScopeData(targetScopeId)):null;
-  const table=mode==='media'?scopeData?.anchor:scopeData?.galaxy;
+  const table=mode==='media'?scopeData?.lucus:scopeData?.galaxy;
   return <section className="loc-card admin-workspace">
     <h2>{mode==='media'?'新增多媒體':mode==='article'?'發表／編輯文章':'文章資料匯入'}</h2>
     {account.loading||account.permissionLoading

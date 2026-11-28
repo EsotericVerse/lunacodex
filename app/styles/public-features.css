@@ -776,7 +776,7 @@
   background:color-mix(in srgb,var(--loc-gold) 24%,var(--loc-panel));
   border:1px dashed var(--loc-gold-border);
 }
-.scope-culture-layer-legend__time .is-anchor{
+.scope-culture-layer-legend__time .is-lucus{
   width:9px;height:9px;margin-inline:4px 3px;transform:rotate(45deg);
   border:1px solid var(--loc-gold);background:var(--loc-gold-surface);
 }
@@ -794,7 +794,7 @@
   background:color-mix(in srgb,var(--loc-gold) 9%,var(--loc-panel))!important;
   border-inline-start:3px dashed var(--loc-gold-border);
 }
-.scope-culture-unified-river :is(.vis-label,.vis-group).scope-culture-layer-anchor{
+.scope-culture-unified-river :is(.vis-label,.vis-group).scope-culture-layer-lucus{
   background:color-mix(in srgb,var(--loc-gold) 7%,var(--loc-panel))!important;
   border-inline-start:3px solid var(--loc-gold-border);font-weight:700;
 }
@@ -805,7 +805,7 @@
 .scope-culture-unified-river .vis-label.scope-culture-source-layer.scope-dual-river-root{
   border-inline-start:3px solid color-mix(in srgb,var(--loc-accent) 72%,var(--loc-gold));
 }
-.scope-culture-unified-river .vis-item.scope-time-original-anchor{
+.scope-culture-unified-river .vis-item.scope-time-original-lucus{
   z-index:2;overflow:visible;border:0!important;background:transparent!important;
   color:var(--loc-gold)!important;font-size:13px;font-weight:900;line-height:1;
   text-shadow:0 0 8px color-mix(in srgb,var(--loc-gold) 38%,transparent);
@@ -823,7 +823,7 @@
 }
 
 
-/* Multi-item Statistics Source chooser uses the SAME loc_anchor UID hierarchy.
+/* Multi-item Statistics Source chooser uses the SAME loc_lucus UID hierarchy.
    Nested disclosure keeps large trees compact; a single-child Domain is still
    its own level. None of this triggers extra queries or computes media counts. */
 .scope-source-tree-picker{
