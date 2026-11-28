@@ -70,12 +70,17 @@ test('LOC keeps the original four Day and four Dark Theme identities',()=>{
   ]);
 });
 
-test('published palettes store only the ten canonical color tokens',async()=>{
+test('published palettes and JSON snapshots store only the ten canonical color tokens',async()=>{
   assert.deepEqual(THEME_TOKEN_KEYS,canonicalThemeTokens);
   for(let id=1;id<=8;id++){
     const css=await themeSource('public/themes/theme-'+id+'.css');
     const tokens=[...css.matchAll(/^\s*(--loc-[\w-]+)\s*:/gm)].map(match=>match[1]);
     assert.deepEqual(tokens,canonicalThemeTokens,'theme-'+id+' should publish only canonical palette colors');
+    const snapshot=JSON.parse(await themeSource('app/modular/themes/theme-'+id+'.json'));
+    const columns=canonicalThemeTokens.map(key=>key.slice(2).replaceAll('-','_'));
+    assert.deepEqual(Object.keys(snapshot).sort(),
+      ['theme_id','theme_name','theme_order','scheme','style_key','identity_color',...columns].sort(),
+      'theme-'+id+' JSON should contain metadata and the ten canonical palette values');
   }
 });
 
