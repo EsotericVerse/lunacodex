@@ -10,6 +10,7 @@
     "build:worker": "pnpm run test:core && opennextjs-cloudflare build",
     "preview:worker": "pnpm run build:worker && opennextjs-cloudflare preview",
     "check:browser": "node scripts/check-home-react-dev-console.mjs",
+    "sync:scope-routes": "node scripts/generate-public-blocks.mjs",
     "sync:public": "node scripts/generate-public-blocks.mjs",
     "check:syntax": "node scripts/check-js-syntax.mjs",
     "check:bulk-delete": "node scripts/check-bulk-delete.mjs",
