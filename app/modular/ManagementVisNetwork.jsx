@@ -2,7 +2,7 @@
 
 import {useEffect,useRef} from 'react';
 import {useReducedMotion} from 'motion/react';
-import {LOC_MOTION} from '../motion-tokens.mjs';
+import {LOC_MOTION} from './motion-tokens.mjs';
 
 function themeTokens(){
   const css=getComputedStyle(document.documentElement);
