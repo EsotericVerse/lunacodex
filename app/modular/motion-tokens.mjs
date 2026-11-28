@@ -6,6 +6,6 @@ export const LOC_MOTION=Object.freeze({
   standard:.28,
   emphasis:.52,
   arrival:.9,
-  easeOut:'easeOut',
+  ease:Object.freeze([.22,1,.36,1]),
   easeSoft:Object.freeze([.16,1,.3,1])
 });
