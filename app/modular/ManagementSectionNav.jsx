@@ -72,7 +72,7 @@ export function ManagementSectionTransition({value,children,className=''}){
   return <motion.div key={String(value)} className={classes}
     initial={changed&&!reduceMotion?{opacity:0,y:4}:false}
     animate={{opacity:1,y:0}}
-    transition={reduceMotion?{duration:0}:{duration:.18,ease:'easeOut'}}>
+    transition={reduceMotion?{duration:0}:{duration:LOC_MOTION.feedback,ease:'easeOut'}}>
     {children}
   </motion.div>;
 }
