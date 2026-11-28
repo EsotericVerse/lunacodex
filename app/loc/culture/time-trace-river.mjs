@@ -1,8 +1,8 @@
 // View model for the first Culture Time river.
 // Y axis: era, expanded period children.
-// X axis: actual anchor.address dates only. Trace rows show separate
-// event intervals; expanded child rows show the real endpoint anchor points.
-// Neither a single anchor nor multiple disjoint events imply an open range.
+// X axis: actual lucus.address dates only. Trace rows show separate
+// event intervals; expanded child rows show the real endpoint lucus points.
+// Neither a single lucus nor multiple disjoint events imply an open range.
 const text=value=>String(value||'').trim();
 const list=value=>Array.isArray(value)?value:[];
 const validDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(text(value).slice(0,10));
@@ -31,8 +31,8 @@ const uniqueByUid=rows=>{
 export function unassignedPublicDateAnchors(dates,eraWindows){
   const windows=list(eraWindows).filter(range=>
     validDate(range?.start)&&validDate(range?.end)&&range.start<=range.end);
-  return list(dates).filter(anchor=>{
-    const day=text(anchor?.date).slice(0,10);
+  return list(dates).filter(lucus=>{
+    const day=text(lucus?.date).slice(0,10);
     return validDate(day)&&!windows.some(range=>range.start<=day&&day<=range.end);
   });
 }
@@ -59,7 +59,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     .sort(chronological);
   const events=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='period'))
     .map(row=>[text(row.scope_id)+':'+text(row.uid),row]));
-  const anchors=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='anchor'))
+  const anchors=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='lucus'))
     .map(row=>[text(row.scope_id)+':'+text(row.uid),row]));
   const orderedPeriodIds=(trace,scope)=>
     [...new Set(list(trace.anchor_ids).map(text).filter(Boolean))]
@@ -69,12 +69,12 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
   const expanded=new Set(list(expandedEraIds).map(text));
   const items=[],groups=[];
   const datedAnchors=[...anchors.values()]
-    .filter(anchor=>validDate(anchor.start_date))
+    .filter(lucus=>validDate(lucus.start_date))
     .sort((a,b)=>text(a.start_date).localeCompare(text(b.start_date)));
   const assigned=new Set();
-  const withinTrace=(anchor,trace)=>{
-    if(text(anchor.scope_id)!==text(trace.scope_id))return false;
-    const day=text(anchor.start_date).slice(0,10);
+  const withinTrace=(lucus,trace)=>{
+    if(text(lucus.scope_id)!==text(trace.scope_id))return false;
+    const day=text(lucus.start_date).slice(0,10);
     const spans=list(trace.ranges).length?trace.ranges:[trace];
     return spans.some(range=>{
       const start=text(range?.start_date).slice(0,10);
@@ -117,7 +117,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
         const event=events.get(scope+':'+eventId);
         // Determine membership without rendering the collapsed child nodes.
         // One real Date can belong to multiple saved Periods and Eras.
-        const eventPoints=event?datedAnchors.filter(anchor=>withinTrace(anchor,event)):[];
+        const eventPoints=event?datedAnchors.filter(lucus=>withinTrace(lucus,event)):[];
         for(const point of eventPoints)assignedToPeriod.add(text(point.scope_id)+':'+text(point.uid));
         if(!isExpanded)continue;
         const periodGroup=groupId+':period:'+eventId;
@@ -144,41 +144,41 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
         const dateGroup=periodGroup+':dates';
         const dateOrder=addGroup({id:dateGroup,label:'定錨點',depth:2,
           className:'scope-time-trace-child'});
-        for(const anchor of eventPoints){
-          const pointUid=text(anchor.uid);
+        for(const lucus of eventPoints){
+          const pointUid=text(lucus.uid);
           items.push({id:dateGroup+':'+pointUid,uid:pointUid,scope_id:scope,
-            entry_type:'anchor',group_key:dateGroup,group_label:'定錨點',
-            group_order:dateOrder,start_date:text(anchor.start_date).slice(0,10),
-            title:anchor.title||pointUid,display_label:'●',
+            entry_type:'lucus',group_key:dateGroup,group_label:'定錨點',
+            group_order:dateOrder,start_date:text(lucus.start_date).slice(0,10),
+            title:lucus.title||pointUid,display_label:'●',
             era_uid:uid,period_uid:eventId,
-            class_name:'scope-time-original-anchor'});
+            class_name:'scope-time-original-lucus'});
         }
       }
     }
     // Only dates without any actual linked Era -> Period membership belong
     // at the very end. Keep their records available, but do not render the
     // entire unclassified list until the visitor opens it.
-    const unassigned=datedAnchors.filter(anchor=>
-      !assignedToPeriod.has(text(anchor.scope_id)+':'+text(anchor.uid)));
+    const unassigned=datedAnchors.filter(lucus=>
+      !assignedToPeriod.has(text(lucus.scope_id)+':'+text(lucus.uid)));
     // The last root is ALWAYS "未定義定錨", even when it currently has no
     // orphan dates. It stays collapsed until explicitly opened. Keep Scope
     // identity in its UID so a previous Scope cannot show another's dates.
-    const scopes=[...new Set([text(scopeId),...unassigned.map(anchor=>
-      text(anchor.scope_id))].filter(Boolean))];
+    const scopes=[...new Set([text(scopeId),...unassigned.map(lucus=>
+      text(lucus.scope_id))].filter(Boolean))];
     for(const scope of scopes){
       const groupId='time-undefined:'+scope;
       const isExpanded=expanded.has(groupId);
       const order=addGroup({id:groupId,label:'未定義定錨',
         collapsible:true,expanded:isExpanded,
-        className:'scope-time-anchor-parent'});
+        className:'scope-time-lucus-parent'});
       if(!isExpanded)continue;
-      for(const anchor of unassigned.filter(row=>text(row.scope_id)===scope)){
-        const uid=text(anchor.uid);
+      for(const lucus of unassigned.filter(row=>text(row.scope_id)===scope)){
+        const uid=text(lucus.uid);
         items.push({id:groupId+':'+uid,uid,scope_id:scope,
-          entry_type:'anchor',group_key:groupId,group_label:'未定義定錨',
-          group_order:order,start_date:text(anchor.start_date).slice(0,10),
-          title:anchor.title||uid,display_label:'●',
-          class_name:'scope-time-original-anchor'});
+          entry_type:'lucus',group_key:groupId,group_label:'未定義定錨',
+          group_order:order,start_date:text(lucus.start_date).slice(0,10),
+          title:lucus.title||uid,display_label:'●',
+          class_name:'scope-time-original-lucus'});
       }
     }
     return {items,groups};
@@ -209,8 +209,8 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
         display_label:range?.point?'●':'',
         ...(range?.invalid?{class_name:'scope-time-trace-broken'}:{})});
     }
-    const traceAnchors=datedAnchors.filter(anchor=>withinTrace(anchor,trace));
-    for(const anchor of traceAnchors)assigned.add(scope+':'+text(anchor.uid));
+    const traceAnchors=datedAnchors.filter(lucus=>withinTrace(lucus,trace));
+    for(const lucus of traceAnchors)assigned.add(scope+':'+text(lucus.uid));
     if(!isExpanded)continue;
     const seenEvents=new Set();
     for(const [position,eventId] of eventIds.entries()){
@@ -247,15 +247,15 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
         for(const anchorId of references){
           if(seenAnchors.has(anchorId))continue;
           seenAnchors.add(anchorId);
-          const anchor=anchors.get(scope+':'+anchorId);
-          const date=text(anchor?.start_date).slice(0,10);
+          const lucus=anchors.get(scope+':'+anchorId);
+          const date=text(lucus?.start_date).slice(0,10);
           if(!validDate(date))continue;
           items.push({id:eventGroup+':'+segment+':'+anchorId,
-            uid:anchor.uid,scope_id:scope,entry_type:'anchor',
+            uid:lucus.uid,scope_id:scope,entry_type:'lucus',
             group_key:eventGroup,group_label:event.title,
-            start_date:date,display_label:anchor.title||anchorId,
-            title:anchor.title||anchorId,
-            description:anchor.summary||anchor.description||'',
+            start_date:date,display_label:lucus.title||anchorId,
+            title:lucus.title||anchorId,
+            description:lucus.summary||lucus.description||'',
             era_uid:id,period_uid:eventId,
             group_order:traceIndex*10000+position+2});
         }
@@ -264,37 +264,37 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     const anchorGroup='trace-anchors:'+scope+':'+id;
     if(traceAnchors.length)groups.push({id:anchorGroup,label:'定錨點',
       order:traceIndex*10000+9000,className:'scope-time-trace-child'});
-    for(const anchor of traceAnchors){
-      const anchorId=text(anchor.uid),title=text(anchor.title)||anchorId;
-      items.push({id:groupId+':anchor:'+anchorId,
-        uid:anchorId,scope_id:scope,entry_type:'anchor',
+    for(const lucus of traceAnchors){
+      const anchorId=text(lucus.uid),title=text(lucus.title)||anchorId;
+      items.push({id:groupId+':lucus:'+anchorId,
+        uid:anchorId,scope_id:scope,entry_type:'lucus',
         group_key:anchorGroup,group_label:'定錨點',
         group_order:traceIndex*10000+9000,
-        start_date:text(anchor.start_date).slice(0,10),
+        start_date:text(lucus.start_date).slice(0,10),
         display_label:'●',title,
-        class_name:'scope-time-original-anchor',
-        description:anchor.summary||anchor.description||''});
+        class_name:'scope-time-original-lucus',
+        description:lucus.summary||lucus.description||''});
     }
   }
-  const unassigned=datedAnchors.filter(anchor=>
-    !assigned.has(text(anchor.scope_id)+':'+text(anchor.uid)));
+  const unassigned=datedAnchors.filter(lucus=>
+    !assigned.has(text(lucus.scope_id)+':'+text(lucus.uid)));
   const scopes=[...new Set([text(scopeId),...source.map(row=>text(row?.scope_id)).filter(Boolean),
-    ...unassigned.map(anchor=>text(anchor.scope_id))].filter(Boolean))];
+    ...unassigned.map(lucus=>text(lucus.scope_id))].filter(Boolean))];
   for(const [index,scope] of scopes.entries()){
     const groupId='time-undefined:'+scope;
     const label='未定義';
     const isExpanded=expanded.has(groupId);
     groups.push({id:groupId,label,order:(traces.length+1)*10000+index,
-      collapsible:true,expanded:isExpanded,className:'scope-time-anchor-parent'});
-    for(const anchor of unassigned.filter(row=>text(row.scope_id)===scope)){
-      const uid=text(anchor.uid),title=text(anchor.title)||uid;
-      items.push({id:groupId+':'+uid,uid,scope_id:scope,entry_type:'anchor',
+      collapsible:true,expanded:isExpanded,className:'scope-time-lucus-parent'});
+    for(const lucus of unassigned.filter(row=>text(row.scope_id)===scope)){
+      const uid=text(lucus.uid),title=text(lucus.title)||uid;
+      items.push({id:groupId+':'+uid,uid,scope_id:scope,entry_type:'lucus',
         group_key:groupId,group_label:label,
         group_order:(traces.length+1)*10000+index,
-        start_date:text(anchor.start_date).slice(0,10),
+        start_date:text(lucus.start_date).slice(0,10),
         display_label:isExpanded?title:'●',title,
-        class_name:'scope-time-original-anchor',
-        description:anchor.summary||anchor.description||''});
+        class_name:'scope-time-original-lucus',
+        description:lucus.summary||lucus.description||''});
     }
   }
   return {items,groups};

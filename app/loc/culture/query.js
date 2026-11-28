@@ -12,25 +12,26 @@ import {mapBounded} from '../query/bounded-parallel.mjs';
 import {publicContentFilters} from '../content/content-policy';
 import {selectScopeGroupMemberIds,defaultScopeData} from '../scope/scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
-import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-anchor-ranges.mjs';
+import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-lucus-ranges.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS,MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {readTimeAnchorQuery,readAllTimeAnchorQueries} from './time-anchor-query.mjs';
+import {LUCUS_TYPE_GROUPS,MEDIA_LUCUS_COLUMNS,mediaLucusProjection} from '../../../packages/zenstack/lucus-hierarchy.mjs';
+import {readTimeAnchorQuery,readAllTimeAnchorQueries} from './time-lucus-query.mjs';
 import {readGalaxyFeature} from '../galaxy/feature-query-client.mjs';
-import {readAnchorFeature,readAllAnchorFeature} from '../model/feature-query-client.mjs';
+import {readLucusFeature,readAllLucusFeature} from '../model/feature-query-client.mjs';
+import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 
 
 
 // TimeAnchor date/period/era is read independently from SiteAnchor; UI windows do not limit historical anchors.
 // Culture density counts the full selected interval, not a 100-row article-list page.
-// TimeAnchor: one physical _anchor relation. Legacy UI presentation keys are
+// TimeAnchor: one physical _lucus relation. Legacy UI presentation keys are
 // derived in memory; no _time table, RPC or compatibility writer is consulted.
 const TIME_COLUMNS='uid,type,title,description,attr';
 function projectTimeAnchor(row){
   const attr=row?.attr&&typeof row.attr==='object'&&!Array.isArray(row.attr)
     ?row.attr:typeof row?.attr==='string'?JSON.parse(row.attr):{};
   const type=String(row?.type||'');
-  return {...row,type:type==='date'?'anchor':type,
+  return {...row,type:type==='date'?'lucus':type,
     address:type==='date'?String(attr.date||'').slice(0,10):null,
     anchor_ids:type==='era'?(Array.isArray(attr.period)?attr.period:[]):
       type==='period'?(Array.isArray(attr.uid)?attr.uid:[]):[],
@@ -47,7 +48,7 @@ function previousDay(value){
 export async function selectCultureTimeRows(scope,birthday=''){
   const scopeId=scopeIdOf(scope?.id);
   // TimeAnchor is stored exclusively in the physical ZModel Anchor relation.
-  const table=String(scope?.anchor||'');
+  const table=String(scope?.lucus||'');
   if(!scopeId||!table)throw new Error('Scope data 未解析');
   // Collect every Time Anchor/period/era. Internal transport pagination does
   // not cap the historical timeline or borrow the old Data API Max Rows limit.
@@ -58,11 +59,11 @@ export async function selectCultureTimeRows(scope,birthday=''){
 // Public and protected editor reads must project the SAME typed Time Anchors.
 // The editor already has all records; reuse them, never issue a second SQL read.
 export function projectScopeTimeRecords(scopeId,rows=[]){
-  const anchors=rows.filter(row=>row.type==='anchor');
+  const anchors=rows.filter(row=>row.type==='lucus');
   const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
   const normalize=(row,type,eventMap)=>{
     const id=String(row.uid||'');
-    const ranges=type==='anchor'?[{
+    const ranges=type==='lucus'?[{
       index:0,start_date:timeDate(row),end_date:timeDate(row),
       start_anchor_id:id,end_anchor_id:null,anchor_ids:[id],point:true,invalid:false
     }]:type==='era'
@@ -83,8 +84,8 @@ export function projectScopeTimeRecords(scopeId,rows=[]){
       title:row.title||id,summary:row.description||'',
       era_id:type==='era'?id:null,period:type==='era'?id:null,
       entry_name:type==='era'?String(row.title||'').replace(/^P\d+\s*[｜|]\s*/,''):null,
-      anchor_id:type==='anchor'?id:null,
-      anchor_ids:type==='anchor'?[]:(Array.isArray(row.anchor_ids)?row.anchor_ids:[]),
+      anchor_id:type==='lucus'?id:null,
+      anchor_ids:type==='lucus'?[]:(Array.isArray(row.anchor_ids)?row.anchor_ids:[]),
       ranges,
       start_anchor_id:first?.start_anchor_id||null,
       end_anchor_id:last?.end_anchor_id||null,
@@ -102,7 +103,7 @@ export function projectScopeTimeRecords(scopeId,rows=[]){
   const byEventUid=new Map(events.map(row=>[String(row.uid),row]));
   const periods=rows.filter(row=>row.type==='era')
     .map(row=>normalize(row,'era',byEventUid));
-  return [...anchors.map(row=>normalize(row,'anchor',new Map())),
+  return [...anchors.map(row=>normalize(row,'lucus',new Map())),
     ...periods,...events];
 }
 
@@ -125,7 +126,7 @@ function openPeriodRangeFromRows(scopeId,rows=[]){
   if(!closest||!Number.isFinite(closest.distance))return null;
   return {...closest,scope_id:scopeId,
     display_label:closest.title||'時代',
-    derived_from:'era period UID collection of actual anchor dates'};
+    derived_from:'era period UID collection of actual lucus dates'};
 }
 
 import {assignedSource} from '../statistics/member-intersection-model.mjs';
@@ -242,14 +243,14 @@ function periodRows(rows){
 }
 function timelineItems(rows,{includeScope=false}={}){
   const all=Array.isArray(rows)?rows:[];
-  const anchors=new Map(all.filter(row=>row.entry_type==='anchor').map(row=>[row.scope_id+':'+row.anchor_id,row]));
-  return all.filter(row=>['anchor','period','era'].includes(row.entry_type))
+  const anchors=new Map(all.filter(row=>row.entry_type==='lucus').map(row=>[row.scope_id+':'+row.anchor_id,row]));
+  return all.filter(row=>['lucus','period','era'].includes(row.entry_type))
     .flatMap(row=>{
-      const slices=row.entry_type==='anchor'?[row]:row.ranges?.length?row.ranges:[row];
+      const slices=row.entry_type==='lucus'?[row]:row.ranges?.length?row.ranges:[row];
       return slices.map((range,index)=>{
         const scopeId=scopeIdOf(row.scope_id);
         const start=range.start_date||null,end=range.end_date||null;
-        const kindLabel={anchor:'定錨點',period:'期間',era:'時代'}[row.entry_type];
+        const kindLabel={lucus:'定錨點',period:'期間',era:'時代'}[row.entry_type];
         return {...row,scope_id:scopeId,
           id:scopeId+':'+row.entry_key+':'+index,
           entry_id:scopeId+':'+row.entry_key+':'+index,
@@ -259,7 +260,7 @@ function timelineItems(rows,{includeScope=false}={}){
           display_label:row.title,description:row.summary,
           group_key:includeScope?scopeId+':'+row.entry_type:'kind:'+row.entry_type,
           group_label:includeScope?scopeId+' · '+kindLabel:kindLabel,
-          group_order:{anchor:0,period:1,era:2}[row.entry_type]??99
+          group_order:{lucus:0,period:1,era:2}[row.entry_type]??99
         };
       });
     }).filter(row=>row.start_date||row.entry_type==='era')
@@ -292,7 +293,7 @@ function cultureParts(scopeContext,runtimeId){
     anchor_ids:Array.isArray(row.anchor_ids)?row.anchor_ids:[],
     visibility:'public'
   }));
-  const trajectories=normalizedContext.filter(row=>row.entry_type==='anchor').map(row=>({
+  const trajectories=normalizedContext.filter(row=>row.entry_type==='lucus').map(row=>({
     entry_id:row.entry_key,
     trajectory_id:row.entry_key,
     scope_id:runtimeId,
@@ -357,9 +358,9 @@ const TARGET_MANAGED_TIME_PAGE_BYTES=TIME_ANCHOR_TARGET_BYTES;
 // A one-year camera is only a viewport, never a SQL date filter. This is a
 // single authorized read flow with bounded transport pages, no extra COUNT.
 async function readManagedTimeRecords(table,{signal=null}={}){
-  const match=/^silver\.([a-z][a-z0-9]{0,14})_anchor$/.exec(String(table||''));
-  if(!match)throw Error('TimeAnchor physical relation required');
-  const scope=match[1];
+  const descriptor=scopeTableDescriptor(String(table||'').split('.').at(-1));
+  if(descriptor?.kind!=='lucus')throw Error('Time Lucus physical relation required');
+  const scope=descriptor.scope;
   const collected=[],seen=new Set();
   let afterUid='',pageRows=DB_QUERY_BATCH_SIZE;
   let averageBytes=0,totalBytes=0;
@@ -474,7 +475,7 @@ export async function selectScopeCultureEraIndex(scopeId){
   const published=(PUBLISHED_SITE_BOOTSTRAP.registry||[]).some(row=>
     row.scope_id===id&&row.scope_kind==='scope'&&row.active!==false);
   if(!published) return [];
-  const eras=await readAllAnchorFeature({scope:id,family:'time',types:['era']});
+  const eras=await readAllLucusFeature({scope:id,family:'time',types:['era']});
   if(!eras.length)return [];
   const attrOf=row=>{
     if(typeof row?.attr==='string'){
@@ -489,7 +490,7 @@ export async function selectScopeCultureEraIndex(scopeId){
     const pages=[];
     for(let offset=0;offset<uids.length;offset+=100){
       const chunk=uids.slice(offset,offset+100);
-      const result=await readAnchorFeature({scope:id,family:'time',types:[type],uids:chunk,limit:chunk.length});
+      const result=await readLucusFeature({scope:id,family:'time',types:[type],uids:chunk,limit:chunk.length});
       if(!Array.isArray(result?.rows))throw new Error('Invalid TimeAnchor index response');
       pages.push(...result.rows);
     }
@@ -762,7 +763,7 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     ...dateFilters(startDate,endDate,scope.id==='local'?'createtime':'date'),
     ...(rawSources.length?[{column:'site',operator:'in',value:rawSources}]:[])
   ]);
-  const selectedMedia=rawMedia.filter(type=>ANCHOR_TYPE_GROUPS.media.includes(type));
+  const selectedMedia=rawMedia.filter(type=>LUCUS_TYPE_GROUPS.media.includes(type));
   const mediaFilters=[
     ...dateFilters(startDate,endDate),
     {column:'type',operator:'in',value:selectedMedia},
@@ -792,12 +793,12 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
         limit:pageSize,offset:galaxyOffset,includeTotal:!hasCursorCounts
       }).then(response=>({...response.data,count:response.data.totalCount})),
     !includeMedia?Promise.resolve({rows:[],count:0}):
-      scopeId==='local'?selectRows(scope.anchor,{
+      scopeId==='local'?selectRows(scope.lucus,{
         columns:'uid,createtime',filters:mediaFilters,
         orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
         limit:pageSize,offset:mediaOffset,maxLimit:pageSize,
         count:hasCursorCounts?null:'exact'
-      }):readAnchorFeature({
+      }):readLucusFeature({
         scope:scopeId,family:'media',types:selectedMedia,
         startDate:startDate||undefined,endDate:endDate||undefined,
         order:'createtime',sortDirection:ascending?'asc':'desc',
@@ -876,13 +877,13 @@ export async function selectScopePeriodWorkDetails(scope,{items=[]}={}){
   const mediaIds=[...new Set(source.filter(row=>row?.entry_type==='media_metadata')
     .map(row=>String(row?.uid||row?.entry_id||'').trim()).filter(Boolean))];
   const mediaResult=!mediaIds.length?{rows:[]}:
-    scopeId==='local'?await selectRows(scope.anchor,{
-      columns:MEDIA_ANCHOR_COLUMNS,
+    scopeId==='local'?await selectRows(scope.lucus,{
+      columns:MEDIA_LUCUS_COLUMNS,
       filters:[{column:'uid',operator:'in',value:mediaIds},
-        {column:'type',operator:'in',value:ANCHOR_TYPE_GROUPS.media},
+        {column:'type',operator:'in',value:LUCUS_TYPE_GROUPS.media},
         {column:'invisible',operator:'eq',value:false}],
       limit:mediaIds.length
-    }):await readAnchorFeature({
+    }):await readLucusFeature({
       scope:scopeId,family:'media',uids:mediaIds,limit:mediaIds.length
     });
   const galaxyById=new Map(source.filter(row=>row.entry_type==='work').map(row=>[String(row.uid),{
@@ -899,7 +900,7 @@ export async function selectScopePeriodWorkDetails(scope,{items=[]}={}){
     scope_id:scopeId,
     links:[]
   }]));
-  const mediaById=new Map((mediaResult.rows||[]).map(mediaAnchorProjection).map(row=>{
+  const mediaById=new Map((mediaResult.rows||[]).map(mediaLucusProjection).map(row=>{
     return [String(row.uid),{
     ...row,
     key:'media:'+row.uid,

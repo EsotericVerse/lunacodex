@@ -8,6 +8,7 @@ import {schema as zmodel} from '../../../packages/zenstack/schema.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {CAPTURE_FROM_SITES,CAPTURE_LOOKUP_SITES} from '../source/site-from-url.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const SCOPE_MODELS=Object.freeze({lo3rwang:'Lo3rwangGalaxy',lrunes:'LrunesGalaxy'});
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
@@ -39,7 +40,7 @@ function relation(scope,engine,namespace){
   const required=['uid','title','content','createtime','site','site_id','UpdateTime',...FLAGS];
   if(!model||required.some(field=>!Object.hasOwn(model.fields,field)))
     reject('Fixed LOC ZModel Galaxy contract mismatch',503);
-  return portableRelation(scope+'_galaxy',engine,namespace||'silver');
+  return portableRelation(scopeTableName(scope,'galaxy'),engine,namespace||'silver');
 }
 function validateSync(body){
   const row=body.row;

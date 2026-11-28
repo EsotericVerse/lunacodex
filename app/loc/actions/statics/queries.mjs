@@ -40,16 +40,16 @@ export async function queryStatics(args={}){
     start&&end&&start>end)throw Error('Invalid Keyword query');
   return withPublicLocRead({scope},async(db,port)=>{
     const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
-    const anchor=relation(scope,'anchor',port);
+    const lucus=relation(scope,'lucus',port);
     const configTable=portableRelation(scope,port.engine,namespace);
     const galaxyTable=relation(scope,'galaxy',port);
     let data;
     if(view==='shared_classes')
-      data=await sharedClasses(db,scope,anchor,'public',{configTable});
+      data=await sharedClasses(db,scope,lucus,'public',{configTable});
     else if(view==='keyword_catalog')
-      data=await keywordCatalog(db,scope,anchor,options.classUid||null,
+      data=await keywordCatalog(db,scope,lucus,options.classUid||null,
         'public',{configTable});
-    else data=await keywordSummary(db,scope,anchor,start||null,end||null,
+    else data=await keywordSummary(db,scope,lucus,start||null,end||null,
       options.source||null,options.classUid||null,'public',
       {configTable,galaxyTable,engine:port.engine,namespace:port.namespace});
     return {data,count:null};

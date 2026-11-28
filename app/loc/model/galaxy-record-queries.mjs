@@ -3,6 +3,7 @@
 import {z} from 'zod';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const scopes=new Set(SCOPE_ROUTE_INDEX.filter(s=>s.active!==false&&
   s.scope_id!=='loc'&&s.scope_id!=='admin').map(s=>s.scope_id));
@@ -28,7 +29,7 @@ export async function executeGalaxyRecordQuery(db,body){
     ?galaxyReadColumnsFor('GalaxyList')
     :[...new Set([...galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr'),
       'media_link','site_id'])];
-  let query=db.selectFrom('silver.'+body.scope+'_galaxy')
+  let query=db.selectFrom('silver.'+scopeTableName(body.scope,'galaxy'))
     .select(columns).where('uid','in',body.uids);
   if(body.mode==='public'){
     query=query.where('list','=',true).where(eb=>eb.or([

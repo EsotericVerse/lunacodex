@@ -5,6 +5,8 @@ import {MSSQL_SQL_TYPE} from '../../../modules/loc/dialect/mssql.mjs';
 import {repairBeforeUidDelete} from './uid-dependency-before-delete.mjs';
 import {modelFieldsForSql,modeledPrimaryKeyColumns,verifyModeledSqlFields}
   from '../../../packages/zenstack/model-column-guard.mjs';
+import {DEFAULT_SCOPE_TABLE_SETTINGS,scopeTableDescriptor,scopeTableName}
+  from '../../../packages/zenstack/scope-table-names.mjs';
 // The explicit Type files own their SQL characteristics. This projection is
 // metadata for trusted dispatch only, not a SQL gateway or fallback layer.
 export const SQL_ENGINE_PORTS=Object.freeze([
@@ -68,7 +70,20 @@ const externalPublicReads=new Set(CROSS_ENGINE_PUBLIC_READ_TABLES);
 // settings and must also not be exposed via the cross-engine public gate.
 // Only fixed reference data and public presentation Blocks are anonymous.
 const publicScopeBlocks=/^(?!loc_blocks$)[a-z][a-z0-9]{0,14}_blocks$/;
-const publicScopeData=/^[a-z][a-z0-9]{0,14}_(galaxy|anchor)$/;
+const SCOPE_RELATION=/^([a-z][a-z0-9]{0,14})_(.+)$/;
+function scopeRelationKind(table){
+  const descriptor=scopeTableDescriptor(table,DEFAULT_SCOPE_TABLE_SETTINGS);
+  if(descriptor)return descriptor;
+  const match=SCOPE_RELATION.exec(String(table||''));
+  if(!match)return null;
+  const [,scope]=match;
+  if(table===scope+'_blocks')return {scope,kind:'blocks'};
+  return null;
+}
+const publicScopeData=table=>{
+  const relation=scopeRelationKind(table);
+  return Boolean(relation&&['galaxy','lucus'].includes(relation.kind));
+};
 function publicReference(request){
   const table=String(request?.table||'');
   return request?.schema==='silver'&&(
@@ -77,27 +92,31 @@ function publicReference(request){
 export function portableRelation(table,engine,namespace=''){
   if(!/^[a-z][a-z0-9_]*$/i.test(table))throw new Error('Invalid SQL relation');
   const type=getSqlEnginePort(engine);
+  const match=/^([a-z][a-z0-9]{0,14})_(galaxy|lucus)$/.exec(table);
+  const relation=match
+    ?scopeTableName(match[1],match[2],DEFAULT_SCOPE_TABLE_SETTINGS[match[1]]||{})
+    :table;
   // MySQL selects the database at connection time; SQL Server and
   // PostgreSQL have schema-qualified tables. Never infer another SQL Type.
-  if(type.namespace==='database')return table;
+  if(type.namespace==='database')return relation;
   const schema=String(namespace||type.defaultNamespace);
   if(!/^[a-z][a-z0-9_]*$/i.test(schema))throw new Error('Invalid SQL namespace');
-  return schema+'.'+table;
+  return schema+'.'+relation;
 }
 export function assertCrossEnginePublicRead(request){
   if(request?.kind!=='query'||request.operation!=='select'||
       typeof request.table!=='string'||!(
         publicReference(request)||
-        request.schema==='silver'&&publicScopeData.test(request.table))){
+        request.schema==='silver'&&publicScopeData(request.table))){
     const error=new Error('External SQL public read requires a published LOC relation');
     error.httpStatus=403;
     throw error;
   }
-  return {publicOnly:publicScopeData.test(request.table)};
+  return {publicOnly:publicScopeData(request.table)};
 }
 
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
-const PRIVATE_RELATION=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})(?:_(galaxy|anchor|blocks))?$/;
+const PRIVATE_RELATION=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})(?:_(.+))?$/;
 const VERIFIED_EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /**
  * LOC delegation is verified by the trusted Edge before any database call.
@@ -128,11 +147,12 @@ export async function authorizeCrossEngineQuery(db,request,{role='anon',claims={
       new Error('Global LOC permission denied'),{httpStatus:403});
     return {publicOnly:false};
   }
-  const scope=table.match(PRIVATE_RELATION)?.[1];
+  const scope=scopeRelationKind(table)?.scope||
+    (table.match(PRIVATE_RELATION)?.[2]?null:table.match(PRIVATE_RELATION)?.[1]);
   const permitted=await canLocAccess(db,'global')||
     scope&&SCOPE_ID.test(scope)&&await canLocAccess(db,'scope',scope);
   if(permitted)return {publicOnly:false};
-  if(request.operation==='select'&&publicScopeData.test(table))
+  if(request.operation==='select'&&publicScopeData(table))
     return {publicOnly:true};
   throw Object.assign(
     new Error('LOC Scope permission denied for selected SQL target'),{httpStatus:403});
@@ -273,7 +293,7 @@ export async function executeCrossEngineManagedWrite(db,body,context){
     if(!result)invalidWrite('Portable managed UPSERT engine unsupported');
     count+=Number(result.count||0);
   }else if(operation==='update_batch'){
-    if(!table.endsWith('_galaxy')||!Array.isArray(p.p_rows)||
+    if(scopeTableDescriptor(table)?.kind!=='galaxy'||!Array.isArray(p.p_rows)||
        p.p_rows.length>10000)invalidWrite('Invalid Galaxy update batch');
     const seen=new Set();
     for(const row of p.p_rows){

@@ -24,10 +24,11 @@ import {DATABASE_ACCESS_LIST} from '../providers/access.js';
 import {registryRelationForEngine} from '../providers/live-database-target.mjs';
 import {block_list,hero_block} from '../providers/kysely-public.mjs';
 import {readPublicHomePageCopySql} from '../blocks/public-home-sql.mjs';
-import {PUBLIC_HOME_PAGE_COPY_KEY,PUBLIC_HOME_R2_PREFIX,
+import {PUBLIC_HOME_PAGE_COPY_KEY,PUBLIC_HOME_R2_PREFIX,PUBLIC_LOC_HOME_BLOCKS_PREFIX,
   publicHomeBucket,publicHomeKeysForWrite,invalidatePublicHomeObjects,
   writePublicHomeObject} from '../blocks/public-home-r2.mjs';
 import {publicScopeBlockPage} from '../blocks/public-scope-pages.mjs';
+import {LOC_LUCUS_RELATION} from '../../../packages/zenstack/scope-table-names.mjs';
 import {fixedPolicyWriteModel} from '../../../packages/zenstack/policy-runtime.mjs';
 import {isManagedReadAction,isManagedWriteAction}
   from '../actions/managed-query-routes.mjs';
@@ -43,7 +44,7 @@ const bulkImportEnabled=env=>{
   return Number.isFinite(until)&&until>Date.now();
 };
 const PUBLISHED_MANAGE_FIELDS=new Set([
-  'email','manage_role','active','galaxy_table','anchor_table',
+  'email','manage_role','active','galaxy_table','lucus_table',
   'domain','directory','parent_scope_id','sort_order'
 ]);
 // A published JS identity cannot be changed first by SQL. Role and
@@ -93,14 +94,14 @@ export function requireManagedActionGrant(body,claims){
 }
 function requireManagedRelationGrant(payload,claims){
   const relation=String(payload?.p_table||'');
-  if(['api.manage','silver.loc','silver.loc_anchor'].includes(relation)){
+  if(['api.manage','silver.loc',LOC_LUCUS_RELATION].includes(relation)){
     if(!hasLocAccess(claims,'global'))
       throw refusal('LOC global management permission denied',403);
     return;
   }
   if(relation==='silver.loc_blocks')
     throw refusal('LOC Blocks are managed through the feature action',403);
-  const match=/^silver\.([a-z][a-z0-9]{0,14})(?:_(?:galaxy|anchor|blocks))?$/.exec(relation);
+  const match=/^silver\.([a-z][a-z0-9]{0,14})(?:_(?:galaxy|lucus|blocks))?$/.exec(relation);
   const scope=match?.[1]||'';
   const allowed=relation==='silver.lrunes_daily'
     ?hasLocAccess(claims,'scope','lrunes')
@@ -148,7 +149,7 @@ function reply(payload,status=200){
 async function rowsForPublicHomeKey(db,key,{engine,namespace}){
   if(key===PUBLIC_HOME_PAGE_COPY_KEY)
     return readPublicHomePageCopySql(db,{engine,namespace});
-  const locPrefix=PUBLIC_HOME_R2_PREFIX+'/loc-anchor-blocks/';
+  const locPrefix=PUBLIC_LOC_HOME_BLOCKS_PREFIX;
   if(key===locPrefix+'home.json')
     return block_list(db,'loc',{engine,namespace,pageName:'index'});
   if(key.startsWith(locPrefix)){

@@ -3,29 +3,29 @@ import assert from 'node:assert/strict';
 import {
   timeIntersectionMetrics,spaceIntersectionMetrics,
   fourDimensionDailyCounts
-} from '../app/loc/statistics/four-anchor-intersection.mjs';
+} from '../app/loc/statistics/four-lucus-intersection.mjs';
 
-const anchor=(type,uid,title,attr)=>({type,uid,title,attr});
+const lucus=(type,uid,title,attr)=>({type,uid,title,attr});
 const dayCount=(counts,metric,day)=>counts.get(metric.id)?.get(day)||0;
 const labels=(rows)=>rows.map(row=>row.name);
 
 const timeline=[
-  anchor('date','DATE0001','Jan 1',{date:'2026-01-01'}),
-  anchor('date','DATE0002','Jan 31',{date:'2026-01-31'}),
-  anchor('date','DATE0003','Mar 1',{date:'2026-03-01'}),
-  anchor('date','DATE0004','Mar 31',{date:'2026-03-31'}),
-  anchor('period','PERI0001','January',{uid:['DATE0001','DATE0002']}),
-  anchor('period','PERI0002','March',{uid:['DATE0003','DATE0004']}),
-  anchor('period','PERI0003','Unassigned',{date:['2026-04-01','2026-04-30']}),
-  anchor('era','ERA00001','Year Part',{period:['PERI0001','PERI0002'],
+  lucus('date','DATE0001','Jan 1',{date:'2026-01-01'}),
+  lucus('date','DATE0002','Jan 31',{date:'2026-01-31'}),
+  lucus('date','DATE0003','Mar 1',{date:'2026-03-01'}),
+  lucus('date','DATE0004','Mar 31',{date:'2026-03-31'}),
+  lucus('period','PERI0001','January',{uid:['DATE0001','DATE0002']}),
+  lucus('period','PERI0002','March',{uid:['DATE0003','DATE0004']}),
+  lucus('period','PERI0003','Unassigned',{date:['2026-04-01','2026-04-30']}),
+  lucus('era','ERA00001','Year Part',{period:['PERI0001','PERI0002'],
     date:['2026-01-01','2026-03-31']})
 ];
 const places=[
-  anchor('point','POIN0001','One',{latitude:25,longitude:121}),
-  anchor('point','POIN0002','Two',{latitude:25,longitude:121}),
-  anchor('path','PATH0001','Road One',{point:['POIN0001','POIN0001','POIN0002']}),
-  anchor('path','PATH0002','Other Road',{point:['POIN0002']}),
-  anchor('trace','TRAC0001','My Trace',{
+  lucus('point','POIN0001','One',{latitude:25,longitude:121}),
+  lucus('point','POIN0002','Two',{latitude:25,longitude:121}),
+  lucus('path','PATH0001','Road One',{point:['POIN0001','POIN0001','POIN0002']}),
+  lucus('path','PATH0002','Other Road',{point:['POIN0002']}),
+  lucus('trace','TRAC0001','My Trace',{
     path:['PATH0001'],point:['POIN0001','POIN0001']
   })
 ];

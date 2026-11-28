@@ -4,6 +4,7 @@
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {mergeOrdered} from './ordered-conversation.mjs';
 import {siteForCapturedUrl} from '../source/site-from-url.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -15,7 +16,7 @@ function fail(message,httpStatus=400){
 }
 function target(scope){
   if(!SCOPE.test(String(scope||'')))throw fail('Invalid conversation Scope');
-  return 'silver.'+scope+'_galaxy';
+  return 'silver.'+scopeTableName(scope,'galaxy');
 }
 function uid(){
   const bytes=crypto.getRandomValues(new Uint8Array(8));

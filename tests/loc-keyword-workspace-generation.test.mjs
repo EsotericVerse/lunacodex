@@ -40,7 +40,7 @@ function staleJobDatabase(){
   const db={
     selectFrom(table){
       calls.push(table);
-      if(table!=='silver.lo3rwang'&&table!=='silver.lo3rwang_anchor')
+      if(table!=='silver.lo3rwang'&&table!=='silver.lo3rwang_lucus')
         throw new Error('A stale run must never touch Galaxy');
       const query={
         select(){return query},
@@ -60,7 +60,7 @@ test('new analysis cannot reuse an older generation after a reset',async()=>{
   await assert.rejects(analyzeKeywordScope(db,'lo3rwang',CLASS,{
     analysisEpoch:11
   }),/舊分析工作階段已失效/);
-  assert.deepEqual(calls,['silver.lo3rwang','silver.lo3rwang_anchor']);
+  assert.deepEqual(calls,['silver.lo3rwang','silver.lo3rwang_lucus']);
 });
 
 }
@@ -85,7 +85,7 @@ function clearedDatabase(){
     selectFrom(table){
       queried.push(table);
       // The three structural reads are enough for a cleared Class.
-      if(table!=='silver.lo3rwang_anchor'&&table!=='silver.lo3rwang')
+      if(table!=='silver.lo3rwang_lucus'&&table!=='silver.lo3rwang')
         throw Error('Reset statistics unexpectedly scanned Galaxy');
       const filters=[];
       const builder={

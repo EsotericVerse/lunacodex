@@ -26,7 +26,7 @@ function defaultTimelineLabel(item,index){
 
 function timelineRows(items,labelOf,focus,labels={}){
   const source=Array.isArray(items)?items:[];
-  const focusTerms=[focus?.identity,focus?.period,focus?.anchor].filter(Boolean).map(String);
+  const focusTerms=[focus?.identity,focus?.period,focus?.lucus].filter(Boolean).map(String);
   // Avoid 5× temporary arrays and spread arguments for long source rivers.
   // A multi-year era can contain thousands of dense daily buckets.
   const today=Date.parse(new Date().toISOString().slice(0,10));
@@ -126,7 +126,7 @@ function settle(handler,item,row,callback,defaultValue=null){
 // Generate labels as vis-timeline group content; handlers always read the
 // latest callbacks. This is shared by initial mount and in-place expansion.
 function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGroupToggleRef,onGroupSelectRef){
-      const timeGroupLabels={anchor:labels.anchor,event:labels.event,period:labels.period};
+      const timeGroupLabels={lucus:labels.lucus,event:labels.event,period:labels.period};
       const standardTimeKinds=Object.keys(timeGroupLabels);
       const membersByGroup=new Map();
       for(const row of rows){
@@ -458,7 +458,7 @@ export default function CultureTimeline({
         return editable?{
           ...displayRow,
           editable:{
-          updateTime:row.entryType==='anchor',
+          updateTime:row.entryType==='lucus',
           updateGroup:false,
           remove:Boolean(row.recordId)
           }
@@ -582,7 +582,7 @@ export default function CultureTimeline({
         }
       });
       // vis-timeline handles mouse double-click and touch double-tap here.
-      // A single tap only selects; only an authorized caller may create an anchor.
+      // A single tap only selects; only an authorized caller may create an lucus.
       instance.on('doubleClick',properties=>{
         if(!onTimeClickRef.current)return;
         if(properties?.what!=='background'&&properties?.what!=='axis')return;
@@ -648,7 +648,7 @@ export default function CultureTimeline({
     const nextRows=paintRows.map(row=>{
       const {title,...displayRow}=row;
       return editable?{
-        ...displayRow,editable:{updateTime:row.entryType==='anchor',updateGroup:false,remove:Boolean(row.recordId)}
+        ...displayRow,editable:{updateTime:row.entryType==='lucus',updateGroup:false,remove:Boolean(row.recordId)}
       }:displayRow;
     });
     const nextGroups=makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGroupToggleRef,onGroupSelectRef);
@@ -863,7 +863,7 @@ export default function CultureTimeline({
     </div>:null}
     <div className={showTraceRecovery?'scope-trace-progressive-shell':undefined}>
       <div className='scope-river-reveal-shell' style={chartError&&mode==='trace'?{display:'none'}:undefined}>
-        <div ref={containerRef} onPointerLeave={()=>setHoverInfo(null)} data-anchor-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
+        <div ref={containerRef} onPointerLeave={()=>setHoverInfo(null)} data-lucus-gesture={onTimeClick?'double-tap':'none'} className='scope-period-timeline' role='region' aria-label={t(mode==='overview'?'所有時期與定錨點時間長河':'時間長河')} style={naturalSourceHeight?undefined:{'--scope-period-timeline-min-height':timelineMinHeight+'px'}}/>
         {/* The existing vis-timeline still owns gestures/camera once painted. */}
         {unfoldCurtain&&ready&&!reduceMotion?<motion.div className='scope-river-unfold-curtain'
           aria-hidden='true' initial={{scaleX:1}} animate={{scaleX:0}}

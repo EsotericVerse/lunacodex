@@ -41,7 +41,7 @@ const TracePlaceResults=dynamic(()=>import('./trace/TracePlaceResults'),{
 });
 
 // Keep LOC's preview in a separate component tree. Its mount performs no
-// yearly-article analytics, loc_anchor reads or legacy territory rendering.
+// yearly-article analytics, loc_lucus reads or legacy territory rendering.
 // Scope Trace retains its existing full-detail feature independently.
 export default function Trace({scopeId='loc'}){
   return scopeId==='loc'?<LocTracePreview/>:<ScopeTrace scopeId={scopeId}/>;
@@ -79,7 +79,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const [customSourceName,setCustomSourceName]=useState('');
   const [mediaType,setMediaType]=useState('');
   const sourceTaxonomyQuery=useAsyncResource({
-    queryKey:['trace-site-anchor-source-taxonomy-v1'],
+    queryKey:['trace-site-lucus-source-taxonomy-v1'],
     enabled:Boolean(reportTab)&&supported,
     queryFn:async()=>{
       const {readPublicSourceTaxonomy}=await import('../../loc/source/catalog-public.mjs');
@@ -93,11 +93,11 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const sourceName=selectedSourceOption?.value||customSourceName;
   const dateRange=useMemo(()=>traceWindow(timeWindow,new Date(),
     {start:customStart,end:customEnd}),[timeWindow,customStart,customEnd]);
-  const choosePlace=anchor=>{
-    if(!anchor?.uid)return;
-    // The map's selected anchor is a Frame drill-down, not a Search navigation.
+  const choosePlace=lucus=>{
+    if(!lucus?.uid)return;
+    // The map's selected lucus is a Frame drill-down, not a Search navigation.
     setReportTab(tracePlaceDefaultTab());
-    setSelectedPlace(anchor);
+    setSelectedPlace(lucus);
     setPlaceDayRows([]);
   };
 
@@ -212,11 +212,11 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const demoRoute=useMemo(()=>traceDemoRoute(demoStopIds,spatialData?.anchors||[],periodScopeId),
     [demoStopIds,spatialData?.anchors,periodScopeId]);
   const linkedSpatialData=useMemo(()=>{
-    const anchor=deepLinkedPlace.data;
-    if(!spatialData||!anchor?.uid||spatialData.anchors.some(item=>item.uid===anchor.uid))return spatialData;
+    const lucus=deepLinkedPlace.data;
+    if(!spatialData||!lucus?.uid||spatialData.anchors.some(item=>item.uid===lucus.uid))return spatialData;
     // A direct ?place= link draws the point on the map without opening a
     // report. LOC's strictly capped preview keeps only referenced points.
-    return isLoc?spatialData:{...spatialData,anchors:[...spatialData.anchors,anchor]};
+    return isLoc?spatialData:{...spatialData,anchors:[...spatialData.anchors,lucus]};
   },[spatialData,deepLinkedPlace.data,isLoc]);
   const demoSpatialData=useMemo(()=>twoPointDemo&&linkedSpatialData
     ?{anchors:linkedSpatialData.anchors,maps:demoRoute?[demoRoute]:[]}
@@ -246,9 +246,9 @@ function ScopeTrace({scopeId='lo3rwang'}){
       annualWindow.startDate,annualWindow.endDate)
     :[],[annualGaugeOn,annualSummary.data,demoSpatialData?.anchors,annualGroups,annualWindow]);
 
-  const chooseMapAnchor=anchor=>{
-    if(!twoPointDemo){choosePlace(anchor);return;}
-    setDemoStopIds(ids=>pickTraceDemoStop(ids,anchor,periodScopeId));
+  const chooseMapAnchor=lucus=>{
+    if(!twoPointDemo){choosePlace(lucus);return;}
+    setDemoStopIds(ids=>pickTraceDemoStop(ids,lucus,periodScopeId));
   };
   const selectedAvailable=selectedPlace&&(
     selectedPlace.uid===deepLinkedPlace.data?.uid

@@ -6,6 +6,7 @@ import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../../modular/routing/scope-route-index.js';
 import {readDateRangeAggregates}
   from '../../query/date-range-aggregate.mjs';
+import {scopeTableName} from '../../../../packages/zenstack/scope-table-names.mjs';
 
 const published=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&
   row.scope_id!=='loc'&&row.scope_id!=='admin').map(row=>row.scope_id));
@@ -36,7 +37,7 @@ async function completeRange(build,start,end){
   return {start:start||day(bounds?.range_start),end:end||day(bounds?.range_end)};
 }
 function galaxyTable(scope,port){
-  return portableRelation(scope+'_galaxy',port.engine,
+  return portableRelation(scopeTableName(scope,'galaxy'),port.engine,
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
 }
 async function portableTracePlaces(db,table,start,end,statisticsOnly){
@@ -74,10 +75,10 @@ async function portableTracePlaces(db,table,start,end,statisticsOnly){
 async function portableTraceTerritory(db,scope,start,end,options,port){
   if(!start||!end)throw Error('Territory statistics require a bounded period');
   const galaxy=galaxyTable(scope,port);
-  const anchor=portableRelation(scope+'_anchor',port.engine,
+  const lucus=portableRelation(scopeTableName(scope,'lucus'),port.engine,
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
   const build=(rangeStart,rangeEnd)=>{
-    let query=db.selectFrom(galaxy+' as g').innerJoin(anchor+' as a',join=>join
+    let query=db.selectFrom(galaxy+' as g').innerJoin(lucus+' as a',join=>join
     .onRef('a.uid','=','g.place_id').on('a.type','=','point')
     .on('a.invisible','=',false))
     .where('g.place_id','is not',null).where('g.place_id','!=','')
@@ -96,7 +97,7 @@ async function portableTraceTerritory(db,scope,start,end,options,port){
         .groupBy(['g.place_id','g.site','g.date']).as('aggregate');
       let query=db.selectFrom(aggregate);
       if(options.withPoints===true){
-        query=query.innerJoin(anchor+' as a','a.uid','aggregate.place_id')
+        query=query.innerJoin(lucus+' as a','a.uid','aggregate.place_id')
           .select(['aggregate.place_id as place_id','aggregate.site as site',
             'aggregate.date as date','aggregate.item_count as item_count',
             'a.uid as point_uid','a.title as point_title','a.attr as point_attr']);
@@ -235,9 +236,9 @@ export async function queryTrace(args={}){
       const source=options.source?String(options.source).trim():null;
       if(source&&source.length>120)throw Error('Invalid Trace Source');
       const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
-      const anchor=portableRelation(scope+'_anchor',port.engine,namespace);
+      const lucus=portableRelation(scopeTableName(scope,'lucus'),port.engine,namespace);
       const configTable=portableRelation(scope,port.engine,namespace);
-      data=await traceKeywordGroups(db,scope,anchor,
+      data=await traceKeywordGroups(db,scope,lucus,
         [...new Set(ids.map(String))],start,end,source,options.classUid||null,
         'public',{configTable,galaxyTable:table,
           engine:port.engine,namespace:port.namespace});
@@ -257,14 +258,14 @@ export async function queryTracePlaceNames(args={}){
   if(!term)return {data:[],count:null};
   return withPublicLocRead({scope},async(db)=>{
     const pattern='%'+term.replace(/[\\%_]/g,char=>'\\'+char)+'%';
-    const anchor=sql.ref('silver.'+scope+'_anchor');
+    const lucus=sql.ref(portableRelation(scopeTableName(scope,'lucus'),'postgres','silver'));
     const result=await sql`select a.uid::varchar as uid,a.title,
         case when coalesce(a.attr->>'lng',a.attr->>'longitude') is not null
             and coalesce(a.attr->>'lat',a.attr->>'latitude') is not null
           then array[coalesce(a.attr->>'lng',a.attr->>'longitude')::double precision,
             coalesce(a.attr->>'lat',a.attr->>'latitude')::double precision]::double precision[]
           else null::double precision[] end as address
-      from ${anchor} as a where a.type='point' and a.invisible is false
+      from ${lucus} as a where a.type='point' and a.invisible is false
         and (a.title ilike ${pattern} or exists(
           select 1 from jsonb_array_elements_text(case jsonb_typeof(a.attr->'location')
             when 'array' then a.attr->'location'

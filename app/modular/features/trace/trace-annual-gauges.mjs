@@ -1,4 +1,4 @@
-// Annual article presence for an existing set of visible Trace anchor UIDs.
+// Annual article presence for an existing set of visible Trace lucus UIDs.
 // Ratio = distinct article days in the requested year / calendar days in that year.
 // This is not a visit count, a percentage of all articles, or a location forecast.
 export const ANNUAL_GAUGE_SCOPE_LIMIT=80;

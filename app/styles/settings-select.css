@@ -490,8 +490,8 @@
 }
 
 /* All Scope manager tabs remain compact and stable across section switches.
-   Only the spatial anchor form is width-bounded; Trace maps stay wide. */
-.scope-management-layout--anchor .management-workspace>.management-workspace-panel{
+   Only the spatial lucus form is width-bounded; Trace maps stay wide. */
+.scope-management-layout--lucus .management-workspace>.management-workspace-panel{
   width:100%;
   max-width:76rem;
   margin-inline:auto;
@@ -506,8 +506,8 @@
   min-width:0;
   padding:.55rem .85rem;
 }
-.scope-management-layout--anchor .management-workspace>.management-workspace-panel>.scope-feature-card,
-.scope-management-layout--anchor .management-workspace>.management-workspace-panel>.management-section-transition>.scope-feature-card{
+.scope-management-layout--lucus .management-workspace>.management-workspace-panel>.scope-feature-card,
+.scope-management-layout--lucus .management-workspace>.management-workspace-panel>.management-section-transition>.scope-feature-card{
   margin:0;
   padding:0;
   border:0;
@@ -515,13 +515,13 @@
   box-shadow:none;
   background:transparent;
 }
-.scope-management-layout--anchor .management-workspace-panel .scope-management-fields{
+.scope-management-layout--lucus .management-workspace-panel .scope-management-fields{
   gap:.65rem .85rem;
   padding:.75rem;
 }
-.scope-management-layout--anchor .scope-management-fields>.loc-trace-quick-field,
-.scope-management-layout--anchor .scope-management-fields>.loc-trace-quick-results,
-.scope-management-layout--anchor .scope-management-fields>.scope-status{
+.scope-management-layout--lucus .scope-management-fields>.loc-trace-quick-field,
+.scope-management-layout--lucus .scope-management-fields>.loc-trace-quick-results,
+.scope-management-layout--lucus .scope-management-fields>.scope-status{
   grid-column:1/-1;
   min-width:0;
 }
@@ -533,7 +533,7 @@
     min-height:44px;
     padding:.55rem .7rem;
   }
-  .scope-management-layout--anchor .management-workspace-panel .scope-management-fields{
+  .scope-management-layout--lucus .management-workspace-panel .scope-management-fields{
     grid-template-columns:minmax(0,1fr);
     padding:.6rem;
   }
@@ -541,22 +541,22 @@
 
 
 /* Keep main's shared management navigation and wide Frame/Queue panels.
-   Only the anchor form is container-responsive, even inside nested LOC cards. */
-.scope-management-layout--anchor{
-  container:scope-anchor-form / inline-size;
+   Only the lucus form is container-responsive, even inside nested LOC cards. */
+.scope-management-layout--lucus{
+  container:scope-lucus-form / inline-size;
   min-width:0;
   max-width:100%;
 }
-.scope-management-layout--anchor .management-workspace,
-.scope-management-layout--anchor .management-workspace-panel,
-.scope-management-layout--anchor .management-workspace-panel>.loc-card,
-.scope-management-layout--anchor .management-workspace-panel>.management-section-transition,
-.scope-management-layout--anchor .management-workspace-panel>.management-section-transition>.loc-card{
+.scope-management-layout--lucus .management-workspace,
+.scope-management-layout--lucus .management-workspace-panel,
+.scope-management-layout--lucus .management-workspace-panel>.loc-card,
+.scope-management-layout--lucus .management-workspace-panel>.management-section-transition,
+.scope-management-layout--lucus .management-workspace-panel>.management-section-transition>.loc-card{
   min-width:0;
   max-width:100%;
   box-sizing:border-box;
 }
-.scope-management-layout--anchor .management-workspace-panel :is(
+.scope-management-layout--lucus .management-workspace-panel :is(
   .scope-management-fields,.loc-trace-quick-field,.loc-trace-quick-results,
   .loc-trace-reference-panel,.loc-trace-map-shell
 ){
@@ -564,24 +564,24 @@
   max-width:100%;
   box-sizing:border-box;
 }
-.scope-management-layout--anchor .management-workspace-panel :is(input,select,textarea){
+.scope-management-layout--lucus .management-workspace-panel :is(input,select,textarea){
   box-sizing:border-box;
   max-width:100%;
 }
-.scope-management-layout--anchor .loc-trace-quick-results>.loc-button{
+.scope-management-layout--lucus .loc-trace-quick-results>.loc-button{
   min-width:0;
   max-width:100%;
   white-space:normal;
   overflow-wrap:anywhere;
 }
-@container scope-anchor-form (max-width: 39rem){
-  .scope-management-layout--anchor .management-workspace-panel .scope-management-fields{
+@container scope-lucus-form (max-width: 39rem){
+  .scope-management-layout--lucus .management-workspace-panel .scope-management-fields{
     grid-template-columns:minmax(0,1fr);
   }
-  .scope-management-layout--anchor .loc-trace-quick-field{
+  .scope-management-layout--lucus .loc-trace-quick-field{
     grid-template-columns:minmax(0,1fr);
   }
-  .scope-management-layout--anchor .loc-trace-quick-field>.loc-button{
+  .scope-management-layout--lucus .loc-trace-quick-field>.loc-button{
     width:100%;
     white-space:normal;
   }

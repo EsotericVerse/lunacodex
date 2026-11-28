@@ -1,6 +1,6 @@
-import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {indexZModelLucusHierarchy} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 // Current Keyword Tree Model: category > class > group > item > pattern.
-// Typed/composite models define node payloads; anchor-hierarchy.mjs validates
+// Typed/composite models define node payloads; lucus-hierarchy.mjs validates
 // UID edges; this module adapts them for editor/catalog consumers.
 // Pattern is a terminal vocabulary node (attr={}, num=occurrences).
 // Item.attr.uid links Pattern Anchor UIDs; Pattern.title carries each literal.
@@ -97,7 +97,7 @@ export function indexAnchorTree(rows=[],{normalize,rootType}){
     // projected separately for the editor and never copied into Item.attr.
     attr:row.type==='item'?{...row.attr}:{uid:row.lists}
   }));
-  const graph=indexZModelAnchorHierarchy(canonical,{
+  const graph=indexZModelLucusHierarchy(canonical,{
     family,strict:family==='source'
   });
   for(const uid of index.keys()){

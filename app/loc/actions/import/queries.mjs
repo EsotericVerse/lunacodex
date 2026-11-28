@@ -1,7 +1,7 @@
 'use server';
 import {withAuthorizedLocRead} from '../read-context.mjs';
 import {readImportSitePresence,readImportSiteCandidates,
-  readImportOccupiedTimes,readImportAnchorPage,readImportMediaCandidates}
+  readImportOccupiedTimes,readImportLucusPage,readImportMediaCandidates}
   from '../../providers/kysely-management.mjs';
 import {sql} from 'kysely';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
@@ -10,6 +10,7 @@ import {galaxyReadColumnsFor}
   from '../../../../packages/zenstack/galaxy-read-models.mjs';
 import {assertZModelSelectRows}
   from '../../../../packages/zenstack/import-validation.mjs';
+import {scopeTableName} from '../../../../packages/zenstack/scope-table-names.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
 const SITE_ID_COLUMNS=Object.freeze([...new Set([
@@ -33,7 +34,7 @@ async function withImportScope(args,read){
 }
 
 function galaxyTable(scope,port){
-  return portableRelation(scope+'_galaxy',port.engine,
+  return portableRelation(scopeTableName(scope,'galaxy'),port.engine,
     port.namespace||(port.engine==='postgres'?'silver':'dbo'));
 }
 function pageLimit(value,maximum=MAX_ROWS){
@@ -73,8 +74,8 @@ export async function queryImportOccupiedTimes(args={}){
   return withImportScope(args,readImportOccupiedTimes);
 }
 
-export async function queryImportAnchorPage(args={}){
-  return withImportScope(args,readImportAnchorPage);
+export async function queryImportLucusPage(args={}){
+  return withImportScope(args,readImportLucusPage);
 }
 
 export async function queryImportMediaCandidates(args={}){
@@ -86,7 +87,7 @@ export async function queryImportGalaxyIdentityRows(args={}){
   return withImportScope(args,async(db,_args,port)=>{
     const rows=await db.selectFrom(galaxyTable(scope,port))
       .select(ARTICLE_UID_COLUMNS).where('uid','in',uids).execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',ARTICLE_UID_COLUMNS,rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),ARTICLE_UID_COLUMNS,rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -96,7 +97,7 @@ export async function queryImportLinkedMediaRows(args={}){
   return withImportScope(args,async(db,_args,port)=>{
     const rows=await db.selectFrom(galaxyTable(scope,port))
       .select(linkedMediaColumns).where('uid','in',uids).execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',linkedMediaColumns,rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),linkedMediaColumns,rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -112,7 +113,7 @@ export async function queryImportImageGalaxyPage(args={}){
       .where('url','in',urls).orderBy('uid','asc').limit(limit);
     if(after!==null)query=query.where('uid','>',after);
     const rows=await query.execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',['uid','source_id','url'],rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),['uid','source_id','url'],rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -122,7 +123,7 @@ export async function queryImportUidConflicts(args={}){
   return withImportScope(args,async(db,_args,port)=>{
     const rows=await db.selectFrom(galaxyTable(scope,port)).select('uid')
       .where('uid','in',uids).execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',['uid'],rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),['uid'],rows);
     return {data:rows.map(row=>String(row.uid)),count:rows.length};
   });
 }
@@ -140,7 +141,7 @@ export async function queryImportSiteIdRows(args={}){
       .where('site_id','in',ids).orderBy('uid','asc').limit(limit);
     if(after!==null)query=query.where('uid','>',after);
     const rows=await query.execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',SITE_ID_COLUMNS,rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),SITE_ID_COLUMNS,rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -164,7 +165,7 @@ export async function queryImportSourceTimePage(args={}){
     else query=query.where('date','>=',from).where('date','<=',to);
     if(after!==null)query=query.where('uid','>',after);
     const rows=await query.execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',TIME_COLUMNS,rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),TIME_COLUMNS,rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -189,7 +190,7 @@ export async function queryImportOccupiedDatePage(args={}){
       ]));
     }
     const rows=await query.execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',['uid','createtime','date'],rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),['uid','createtime','date'],rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -203,7 +204,7 @@ export async function queryImportUndatedTimesPage(args={}){
       .where('date','is',null).orderBy('uid','asc').limit(limit);
     if(after!==null)query=query.where('uid','>',after);
     const rows=await query.execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',['uid','createtime'],rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),['uid','createtime'],rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -211,12 +212,13 @@ export async function queryImportUndatedTimesPage(args={}){
 export async function queryImportPointUidRows(args={}){
   const scope=importScope(args),uids=uidList(args.p_uids);
   return withImportScope(args,async(db,_args,port)=>{
-    const table=portableRelation(scope+'_anchor',port.engine,
+    const table=portableRelation(scopeTableName(scope,'lucus'),port.engine,
       port.namespace||(port.engine==='postgres'?'silver':'dbo'));
     const columns=['uid','type','title','attr','createtime'];
     const rows=await db.selectFrom(table).select(columns)
       .where('uid','in',uids).where('type','=','point').execute();
-    assertZModelSelectRows('silver.'+scope+'_anchor',columns,rows);
+    assertZModelSelectRows(table.includes('.')?table:
+      (port.namespace||'silver')+'.'+table,columns,rows);
     return {data:rows,count:rows.length};
   });
 }
@@ -235,7 +237,7 @@ export async function queryImportAnchorArticlesPage(args={}){
       ])).orderBy('uid','asc').limit(limit);
     if(after!==null)query=query.where('uid','>',after);
     const rows=await query.execute();
-    assertZModelSelectRows('silver.'+scope+'_galaxy',columns,rows);
+    assertZModelSelectRows('silver.'+scopeTableName(scope,'galaxy'),columns,rows);
     return {data:rows,count:rows.length};
   });
 }

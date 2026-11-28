@@ -1,6 +1,7 @@
 'use client';
 
 import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-cache.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 import {editorTransactionLease,assertEditorTransactionLease,
   isEditorTransactionCancelled} from '../db/editor-transaction-lifecycle.mjs';
 import {queryKeywordClasses,queryKeywordStatistics,queryKeywordCatalog,
@@ -57,7 +58,7 @@ function committed(operation,scope,result){
   const write=['analyze','reset','saveItem','deleteItem','setClassShare'].includes(operation);
   if(write&&!(operation==='analyze'&&result?.incomplete===true)||
     operation==='analyzeStatus'&&result?.completed)
-    invalidateScopedReadCache('silver.'+scope+'_anchor');
+    invalidateScopedReadCache('silver.'+scopeTableName(scope,'lucus'));
   return result;
 }
 

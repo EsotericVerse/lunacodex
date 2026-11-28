@@ -5,6 +5,7 @@
 // ZenStack's existing SchemaDef remains authoritative for modeled fields;
 // unknown external tables keep their existing Kysely/dialect handling.
 import {schema} from './schema.mjs';
+import {DEFAULT_SCOPE_TABLE_SETTINGS,scopeTableName} from './scope-table-names.mjs';
 
 const named=new Map();
 for(const [modelName,model] of Object.entries(schema.models)){
@@ -43,18 +44,29 @@ export function zmodelRegistryJoin(db,{optionalLoc=false}={}){
     source.innerJoin(joined,left,right);
 }
 
-const scoped=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(galaxy|anchor|blocks)$/;
-const kinds={galaxy:'Lo3rwangGalaxy',anchor:'Lo3rwangAnchor',blocks:'Lo3rwangBlocks'};
+const scoped=/^(?!loc_blocks$)([a-z][a-z0-9]{0,14})_(.+)$/;
+const kinds={galaxy:'Lo3rwangGalaxy',lucus:'Lo3rwangLucus',blocks:'Lo3rwangBlocks'};
+function scopedKindForTable(table){
+  const match=scoped.exec(String(table||''));
+  if(!match)return null;
+  const [,scope]=match,settings=DEFAULT_SCOPE_TABLE_SETTINGS[scope]||{};
+  for(const kind of ['galaxy','lucus']){
+    if(String(table)===scopeTableName(scope,kind,settings)||
+       String(table)===scope+'_'+kind)return kind;
+  }
+  return String(table)===scope+'_blocks'?'blocks':null;
+}
 
 // Share the identical model resolution with import-time Zod validation.
 // This is metadata only; neither a driver nor a new SQL lookup is created.
 export function modelNameForSql(schemaName,tableName){
-  // LOC's former Blocks table is now a semantic LocBlocks type over LocAnchor.
+  // LOC presentation Blocks are a BLucus projection over the fixed Lucus table.
   if(schemaName==='silver'&&tableName==='loc_blocks')return null;
   const exact=named.get(String(schemaName)+'.'+String(tableName));
   if(exact)return exact;
-  const match=String(schemaName)==='silver'?scoped.exec(String(tableName||'')):null;
-  return match?kinds[match[2]]||null:null;
+  if(String(schemaName)!=='silver')return null;
+  const kind=scopedKindForTable(tableName);
+  return kind?kinds[kind]||null:null;
 }
 export function modelFieldsForSql(schemaName,tableName){
   const modelName=modelNameForSql(schemaName,tableName);
@@ -68,14 +80,17 @@ export function modelFieldsForSql(schemaName,tableName){
 export function zmodelGalaxyPointJoin(source,{scopeId}={}){
   if(typeof scopeId!=='string'||!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))
     throw new TypeError('Invalid LOC Galaxy/Point JOIN Scope');
-  const galaxy=modelFieldsForSql('silver',scopeId+'_galaxy');
-  const anchor=modelFieldsForSql('silver',scopeId+'_anchor');
+  const settings=DEFAULT_SCOPE_TABLE_SETTINGS[scopeId]||{};
+  const galaxyTable=scopeTableName(scopeId,'galaxy',settings);
+  const lucusTable=scopeTableName(scopeId,'lucus',settings);
+  const galaxy=modelFieldsForSql('silver',galaxyTable);
+  const lucus=modelFieldsForSql('silver',lucusTable);
   const valid=(field,type)=>field?.type===type&&!field.array;
-  if(!valid(galaxy?.place_id,'String')||!valid(anchor?.uid,'String')||
-     !valid(anchor?.type,'String')||!valid(anchor?.invisible,'Boolean')||
-     !valid(anchor?.title,'String')||!valid(anchor?.attr,'Json'))
+  if(!valid(galaxy?.place_id,'String')||!valid(lucus?.uid,'String')||
+     !valid(lucus?.type,'String')||!valid(lucus?.invisible,'Boolean')||
+     !valid(lucus?.title,'String')||!valid(lucus?.attr,'Json'))
     throw new TypeError('LOC Galaxy/Point ZModel JOIN contract missing');
-  return source.leftJoin('silver.'+scopeId+'_anchor as a',join=>
+  return source.leftJoin('silver.'+lucusTable+' as a',join=>
     join.onRef('a.uid','=','g.place_id')
       .on('a.type','=','point').on('a.invisible','=',false));
 }

@@ -32,7 +32,7 @@ import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs
 import {buildEraRiver,nextEditorEraExpansion} from '../../loc/culture/time-trace-river.mjs';
 import {cultureEraPeriodHierarchy} from '../../loc/culture/era-period-hierarchy.mjs';
 import {buildLocCultureScopePreview} from '../../loc/culture/loc-scope-preview.mjs';
-import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-anchor-ranges.mjs';
+import {allocateTimeUid,timePeriodContainsDate,timePeriodSortDate} from '../../loc/culture/time-lucus-ranges.mjs';
 
 import {selectGalaxyIdentity,selectScopeDailyCounts} from '../../loc/galaxy/galaxy-query';
 import {defaultScopeData,revalidateServerMetadata} from '../../loc/scope/scope-data';
@@ -331,7 +331,7 @@ export default function Culture(){
   const [timelineEditorRevision,setTimelineEditorRevision]=useState(0);
   // Opening the time editor is a UI action, not an authorization check.
   // Verify the active user only when a write is actually requested.
-  const [suggestedRecordType,setSuggestedRecordType]=useState('anchor');
+  const [suggestedRecordType,setSuggestedRecordType]=useState('lucus');
   const [suggestedRequestNonce,setSuggestedRequestNonce]=useState(0);
   const [editDraft,setEditDraft]=useState(null);
   const [editBusy,setEditBusy]=useState(false);
@@ -502,7 +502,7 @@ export default function Culture(){
   const sourceStyleOptions=useMemo(()=>sourceOutlineOptions(sourceTaxonomy),[sourceTaxonomy]);
   const sourceStyleGroups=useMemo(()=>groupedSourceOutline(sourceTaxonomy),[sourceTaxonomy]);
   const stagedSourceRiver=Boolean(sourceTaxonomy)&&!isAggregateScope&&scopeId!=='local';
-  // The expanded items are saved loc_anchor UIDs; root family codes here
+  // The expanded items are saved loc_lucus UIDs; root family codes here
   // are only an internal daily-aggregate query filter, never a UI level.
   const expandedSourceRoots=(sourceTaxonomy?.roots||[])
     .filter(row=>openCultureRoots.includes(row.uid)).map(row=>row.root);
@@ -790,15 +790,15 @@ export default function Culture(){
   const editorRiverWindow=structureDateBounds;
   const currentStructureStart=activeStructureKey==='all'?structureDateBounds.start
     :String(currentStructurePeriod?.start_date||'').slice(0,10);
-  // A trace stops at its final real anchor; no virtual today endpoint.
+  // A trace stops at its final real lucus; no virtual today endpoint.
   const lastAnchorDate=String(structurePreference.lastAnchor?.start_date||'').slice(0,10);
   const savedTraceEnd=String(currentStructurePeriod?.end_date||'').slice(0,10);
   const currentStructureEnd=activeStructureKey==='all'?structureDateBounds.end
     :structureWindowKey===''&&lastAnchorDate>savedTraceEnd?lastAnchorDate:savedTraceEnd;
   // Keep the first river grouped by era UID. A selected trace changes
-  // only the camera viewport, never the saved anchor/event/trace graph.
+  // only the camera viewport, never the saved lucus/event/trace graph.
   const anchorRecords=useMemo(()=>timelineItems
-    .filter(item=>item.entry_type==='anchor'&&item.uid)
+    .filter(item=>item.entry_type==='lucus'&&item.uid)
     .sort((a,b)=>String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.display_label||'').localeCompare(String(b.display_label||''))),[timelineItems]);
   const locScopeIntervalItems=useMemo(()=>query.data?.scopeTimeRanges||[],[query.data]);
   // The LOC landing preview reads only per-Scope aggregates below.
@@ -917,7 +917,7 @@ export default function Culture(){
       setSelectedTimelineRecordId('');
       setSelectedTimelineInfo(null);
       setSuggestedRecordType(type);
-      setSelectedTimelineDate(type==='anchor'?creationDate:'');
+      setSelectedTimelineDate(type==='lucus'?creationDate:'');
       setSuggestedRequestNonce(value=>value+1);
       setTimelineEditorRevision(value=>value+1);
     });
@@ -928,7 +928,7 @@ export default function Culture(){
     if(!id)return;
     switchTimelineEditor('edit-'+id,()=>{
       const recordType=String(item?.entryType||item?.raw?.entry_type||'');
-      if(['anchor','period','era'].includes(recordType))setSuggestedRecordType(recordType);
+      if(['lucus','period','era'].includes(recordType))setSuggestedRecordType(recordType);
       setSelectedTimelineInfo(item||null);
       setSelectedTimelineRecordId(id);
       setSelectedTimelineDate('');
@@ -957,8 +957,8 @@ export default function Culture(){
   }
   async function moveTimelineRecord(item,row){
     // Dates on Time periods/events are derived exclusively from existing
-    // anchor_ids. Only a real anchor point can be moved on the river.
-    if(row?.entryType!=='anchor'||!row.recordId||!scopeData?.time)return null;
+    // anchor_ids. Only a real lucus point can be moved on the river.
+    if(row?.entryType!=='lucus'||!row.recordId||!scopeData?.time)return null;
     try{
       // Scope permissions are enforced by the database write RPC.
       const date=dayKeyFromTimelineValue(item?.start);
@@ -1006,7 +1006,7 @@ export default function Culture(){
 
   const existingAnchorDates=useMemo(()=>
     timelineItems
-      .filter(item=>String(item?.entry_type||'')==='anchor')
+      .filter(item=>String(item?.entry_type||'')==='lucus')
       .map(item=>String(item?.start_date||item?.date||'').slice(0,10))
       .filter(Boolean)
   ,[timelineItems]);
@@ -1016,7 +1016,7 @@ export default function Culture(){
     anchorSuggestOpen&&!isAggregateScope&&!isLocItemView&&usesSourceRiver&&Boolean(densityInputBuckets.length));
   const styleRiverAnalysis=useRiverDensityAnalysis(keywordDrillItems,existingAnchorDates,
     anchorSuggestOpen&&styleFilter==='rune66'&&Boolean(keywordDrillItems.length));
-  // LOC's single source river has no automatic anchor suggestion/PELT worker.
+  // LOC's single source river has no automatic lucus suggestion/PELT worker.
   const locRiverAnalysis=useRiverDensityAnalysis(locCombinedSourceRiverItems,EMPTY_CULTURE_GROUPS,false);
   const virtualAnchorItems=useMemo(()=>{
     const total=Math.max(1,Number(riverAnalysis.totalCount)||0);
@@ -1027,21 +1027,21 @@ export default function Culture(){
       const strength=Math.min(1,Math.abs(Number(item.afterMean||0)-Number(item.beforeMean||0))/Math.max(1,Number(item.afterMean||0),Number(item.beforeMean||0)));
       const position=periodPositionRatio(item.date,classificationWindowStart,classificationWindowEnd);
       return {
-        id:'virtual-anchor:'+item.date,
-        entry_id:'virtual-anchor:'+item.date,
+        id:'virtual-lucus:'+item.date,
+        entry_id:'virtual-lucus:'+item.date,
         entry_type:'virtual_anchor',
         start_date:item.date,
         title:formatCultureUi(l.candidateTitle,{date:item.date,position:(position*100).toFixed(1),before:beforeCount.toLocaleString(locale),beforeRatio:((beforeCount/total)*100).toFixed(1),after:afterCount.toLocaleString(locale),afterRatio:((afterCount/total)*100).toFixed(1),analysis:(item.analysis||[]).join(' ')}),
         display_label:'◇',
         group_label:l.candidateAnchor,
         item_count:0,
-        className:'scope-virtual-anchor'+(selected?' is-selected':''),
-        style:'--virtual-anchor-strength:'+strength+';',
+        className:'scope-virtual-lucus'+(selected?' is-selected':''),
+        style:'--virtual-lucus-strength:'+strength+';',
         virtual_anchor:{...item,position_ratio:position,before_ratio:beforeCount/total,after_ratio:afterCount/total,strength_ratio:strength}
       };
     });
   },[riverAnalysis.suggestions,riverAnalysis.totalCount,selectedVirtualAnchorDates,classificationWindowStart,classificationWindowEnd,l,locale]);
-  // The source river renders the *actual* four-level loc_anchor UID tree.
+  // The source river renders the *actual* four-level loc_lucus UID tree.
   // A single child still occupies its own row; no Universe/Galaxy/Domain/From
   // level is silently flattened into a site name.
   const showKeywordRiver=styleFilter==='rune66';
@@ -1199,11 +1199,11 @@ export default function Culture(){
       // authorization check. The database RPC remains the final guard.
       const verified=await account.refresh();
       if(!verified?.authorizer?.canLocAccessSync('scope',scopeId))throw new Error('請先登入具備此 Scope 權限的帳號。');
-      const used=new Set((query.data?.timelineItems||[]).filter(row=>row?.entry_type==='anchor').map(row=>String(row.uid||'')));
+      const used=new Set((query.data?.timelineItems||[]).filter(row=>row?.entry_type==='lucus').map(row=>String(row.uid||'')));
       const payload=dates.map(date=>{
         const uid=allocateTimeUid([...used].map(uid=>({uid})));
         used.add(uid);
-        return {uid,type:'anchor',title:'建議定錨 '+date,description:null,address:date,anchor_ids:null};
+        return {uid,type:'lucus',title:'建議定錨 '+date,description:null,address:date,anchor_ids:null};
       });
       await insertRows(scopeData.time,payload);
       setSelectedVirtualAnchorDates([]);
@@ -1389,7 +1389,7 @@ export default function Culture(){
                 selectedRecordId={selectedTimelineRecordId}
                 suggestedAnchorDate={selectedTimelineDate}
                 suggestedRecordType={suggestedRecordType}
-                defaultRecordType='anchor'
+                defaultRecordType='lucus'
                 suggestedRequestNonce={suggestedRequestNonce}
                 onDataChanged={refreshTimelineData}
                 onClose={()=>{setSelectedTimelineRecordId('');setSelectedTimelineDate('');setSelectedTimelineInfo(null);setSuggestedRequestNonce(0)}}/>
@@ -1698,9 +1698,9 @@ export default function Culture(){
                   </div>
                   <h4>{keywordDrillGroup?'符文列表｜'+String(styleQuery.data?.keywordMeta?.classes?.[keywordDrillGroup]||'群組'):'符文群組（點選河道左側名稱展開）'}</h4>
                   {!keywordWindowValid?<p className='scope-status scope-error' role='status'>請選擇有效的時間區間。</p>:null}
-                  {styleRiverAnalysis.suggestions.length>0?<details className='scope-culture-anchor-picker'>
+                  {styleRiverAnalysis.suggestions.length>0?<details className='scope-culture-lucus-picker'>
                     <summary>風格密度建議定錨點：{styleRiverAnalysis.suggestions.length} 個（點開查看）</summary>
-                    {styleRiverAnalysis.suggestions.length?<div className='scope-culture-anchor-choices'>
+                    {styleRiverAnalysis.suggestions.length?<div className='scope-culture-lucus-choices'>
                       {styleRiverAnalysis.suggestions.map(item=>{
                         // Deep-link straight to the protected TimeAnchor
                         // editor, not the public Culture view (?edit=1 alone
@@ -1744,7 +1744,7 @@ export default function Culture(){
                      explicitly clicks open the "建議定錨點" lane itself on the chart
                      above (see the dual:source:candidates group / onGroupToggle).
                      This panel is just the detail view for an already-opened lane. */}
-                 {usesSourceRiver&&!riverRangeLoading&&anchorSuggestOpen?<div className='scope-culture-anchor-actions'>
+                 {usesSourceRiver&&!riverRangeLoading&&anchorSuggestOpen?<div className='scope-culture-lucus-actions'>
                   {riverAnalysis.suggestions.length>0?<>
                     <span>{formatCultureUi(l.candidateSummary,{count:riverAnalysis.suggestions.length})}</span>
                     {canUseScopeEditor?<button type='button' className='loc-button' disabled={creatingSuggestedAnchors||!selectedVirtualAnchorDates.length}
@@ -1752,9 +1752,9 @@ export default function Culture(){
                       {creatingSuggestedAnchors?'正在新增…':'新增選取的建議定錨點（'+selectedVirtualAnchorDates.length+'）'}
                     </button>:null}
                     {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
-                    <details className='scope-culture-anchor-picker' open>
-                      <summary><span className='scope-culture-anchor-picker-mark' aria-hidden='true'/><UiText id="uiExtra.cultureView.expandToCompareWorkVolumeChanges"/></summary>
-                      <div className='scope-culture-anchor-choices'>
+                    <details className='scope-culture-lucus-picker' open>
+                      <summary><span className='scope-culture-lucus-picker-mark' aria-hidden='true'/><UiText id="uiExtra.cultureView.expandToCompareWorkVolumeChanges"/></summary>
+                      <div className='scope-culture-lucus-choices'>
                         {riverAnalysis.suggestions.map(item=>{
                           const href=scopeHref(scopeId,
                             'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date));

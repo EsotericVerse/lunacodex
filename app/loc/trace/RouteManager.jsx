@@ -5,7 +5,7 @@ import {useEffect,useMemo,useRef,useState} from 'react';
 import ScopeOptionPicker from '../../modular/ScopeOptionPicker';
 import {planTraceVisibilityUids} from './visibility-plan.mjs';
 import {traceRouteHierarchy} from '../../modular/features/trace/trace-route-hierarchy.mjs';
-import {indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {indexZModelLucusHierarchy} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import {useAccount} from '../auth/use-account';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
@@ -82,7 +82,7 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
     const mapped=(index.data||[]).filter(row=>row.source_scope===owner);
     if(!mapped.length||mapped.some(row=>!/^[A-Za-z0-9]{8}$/.test(row.uid)))return null;
     try{
-      return indexZModelAnchorHierarchy(mapped.map(row=>({
+      return indexZModelLucusHierarchy(mapped.map(row=>({
         uid:row.uid,type:row.trace_type,title:row.title,
         attr:{
           point:[...new Set(traceMemberUids(row))],
@@ -249,8 +249,8 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
     if(pairs.some(pair=>pair[0]===from&&pair[1]===to))return;
     setPairs(items=>[...items,[from,to]]);setFrom('');setTo('');
   };
-  const addMapSelectedAnchor=anchor=>{
-    const uid=String(anchor?.uid||'');
+  const addMapSelectedAnchor=lucus=>{
+    const uid=String(lucus?.uid||'');
     if(busy||!own||!editorOpen||!anchorMap.has(uid))return;
     setSpool(items=>items.includes(uid)?items:[...items,uid]);
     if(type==='path'){

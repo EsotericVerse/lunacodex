@@ -29,7 +29,7 @@ export function planAnniversaryDates({originDate,title,startYear,endYear,firstAn
 export function collectTimeDates(start,end,rows=[]){
  const first=parse(start)?.iso,last=parse(end||start)?.iso;
  if(!first||!last||last<first)return [];
- return rows.filter(row=>(row.type==='anchor'||row.type==='date')&&
+ return rows.filter(row=>(row.type==='anchor'||row.type==='lucus'||row.type==='date')&&
    parse(row.address||row.attr?.date)?.iso>=first&&
    parse(row.address||row.attr?.date)?.iso<=last)
    .sort((a,b)=>iso(a.address||a.attr?.date).localeCompare(iso(b.address||b.attr?.date)));

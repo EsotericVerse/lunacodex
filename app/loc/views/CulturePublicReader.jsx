@@ -13,8 +13,8 @@ import {scopeHref} from '../../modular/routing/scope-registry';
 import {publicCultureSourceModel} from '../culture/public-source-river.mjs';
 import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../preferences/default-year-window.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {readAnchorFeature,readAllAnchorFeature} from '../model/feature-query-client.mjs';
+import {LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
+import {readLucusFeature,readAllLucusFeature} from '../model/feature-query-client.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
 import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 import ActivityMotion from '../../modular/ActivityMotion';
@@ -49,7 +49,7 @@ function anchorModel(rows,start,end,expanded){
   // the same date can legitimately belong to multiple periods/eras.
   // Use the frozen ZModel TimeAnchor discriminator and resolve its UID edges
   // directly; the tree-only hierarchy index rejects these valid shared dates.
-  const all=list(rows).filter(row=>ANCHOR_TYPE_GROUPS.time.includes(row.type));
+  const all=list(rows).filter(row=>LUCUS_TYPE_GROUPS.time.includes(row.type));
   const byUid=new Map(all.filter(row=>/^[A-Za-z0-9]{8}$/.test(String(row.uid||'')))
     .map(row=>[String(row.uid),row]));
   const dates=all.filter(row=>row.type==='date').map(row=>({
@@ -106,10 +106,10 @@ function anchorModel(rows,start,end,expanded){
       era_uid:eraUid,class_name:'scope-culture-period-range'});
     for(const row of linkedDates){
       if(row.date<start||row.date>end)continue;
-      items.push({id:groupId+':'+row.uid,uid:String(row.uid),entry_type:'anchor',
+      items.push({id:groupId+':'+row.uid,uid:String(row.uid),entry_type:'lucus',
         title:row.title||row.date,display_label:'◆',start_date:row.date,
         group_key:groupId,group_label:period.title||'期間',
-        era_uid:eraUid,period_uid:periodUid,class_name:'scope-time-original-anchor'});
+        era_uid:eraUid,period_uid:periodUid,class_name:'scope-time-original-lucus'});
     }
   }
   // Only the selected era and period are queried for this view. Keep their
@@ -136,7 +136,7 @@ async function readTimeAnchorsByUid(scopeId,type,uids,isCurrent=()=>true){
   for(let offset=0;offset<unique.length;offset+=100){
     if(!isCurrent())return [];
     const chunk=unique.slice(offset,offset+100);
-    const result=await readAnchorFeature({scope:scopeId,family:'time',types:[type],uids:chunk,limit:chunk.length});
+    const result=await readLucusFeature({scope:scopeId,family:'time',types:[type],uids:chunk,limit:chunk.length});
     if(!isCurrent())return [];
     rows.push(...(Array.isArray(result?.rows)?result.rows:[]));
   }
@@ -273,7 +273,7 @@ export default function CulturePublicReader(){
     const request=++hierarchySequence.current;
     // First paint needs only the small top-level Era list. Periods and date
     // anchors are fetched after the visitor chooses their parent.
-    readAllAnchorFeature({scope:scopeId,family:'time',types:['era']})
+    readAllLucusFeature({scope:scopeId,family:'time',types:['era']})
       .then(rows=>{if(!cancelled&&request===hierarchySequence.current){
         setEraChoices(rows);setLoading(false);
       }})
@@ -401,18 +401,18 @@ export default function CulturePublicReader(){
       :catalog?publicCultureSourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd)
         :{items:[],groups:[],sites:[]};
     const candidateLane={
-      id:'root:anchor-suggestions',label:anchorSuggestionsOpen
+      id:'root:lucus-suggestions',label:anchorSuggestionsOpen
         ?'建議定錨點（'+suggestionAnalysis.suggestions.length+'）':'建議定錨點',
       order:9999,className:'scope-candidate-lane',
       collapsible:true,expanded:anchorSuggestionsOpen
     };
     const candidates=anchorSuggestionsOpen?suggestionAnalysis.suggestions.map(item=>({
-      id:'suggested-anchor:'+item.date,entry_type:'virtual_anchor',
+      id:'suggested-lucus:'+item.date,entry_type:'virtual_anchor',
       group_key:candidateLane.id,group_label:'建議定錨點',group_order:9999,
       start_date:item.date,display_label:'◇',title:
         item.date+' · 前 3 日 '+item.beforeCount+' 篇／後 3 日 '+item.afterCount+' 篇 · '+
         (item.analysis||[]).join(' '),
-      class_name:'scope-virtual-anchor',
+      class_name:'scope-virtual-lucus',
       virtual_anchor:item
     })):[];
     return {...base,groups:selectedPeriodUid?[...base.groups,candidateLane]:base.groups,
@@ -660,7 +660,7 @@ export default function CulturePublicReader(){
           <div className='scope-culture-layer-legend__time'>
             <span><i className='is-era' aria-hidden='true'/>時代</span>
             <span><i className='is-period' aria-hidden='true'/>期間</span>
-            <span><i className='is-anchor' aria-hidden='true'/>時間定錨</span>
+            <span><i className='is-lucus' aria-hidden='true'/>時間定錨</span>
           </div>
           <div className='scope-culture-layer-legend__density' aria-label='單日文章數密度'>
             {TERRITORY_STOPS.map(([minimum],index)=>{
@@ -688,7 +688,7 @@ export default function CulturePublicReader(){
           }}
           onGroupToggle={group=>{
             const name=String(group);
-            if(name==='root:anchor-suggestions'){
+            if(name==='root:lucus-suggestions'){
               if(!selectedPeriodUid)return;
               setAnchorSuggestionsOpen(open=>!open);
               setFocusedSuggestionDate('');
@@ -716,12 +716,12 @@ export default function CulturePublicReader(){
           <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
           <span>正在整理來源分類… <ActivityMotion kind='numbers'/></span>
         </div>:null}
-        {!riverPending&&anchorSuggestionsOpen?<div id='public-culture-anchor-analysis'
-          className='scope-culture-anchor-actions' role='region'
+        {!riverPending&&anchorSuggestionsOpen?<div id='public-culture-lucus-analysis'
+          className='scope-culture-lucus-actions' role='region'
           aria-label='建議定錨點分析'>
           {suggestionAnalysis.error?<p className='scope-status scope-error' role='alert'>
             {suggestionAnalysis.error}</p>:null}
-          {selectedSuggestion?<div className='scope-culture-anchor-selection' role='status'>
+          {selectedSuggestion?<div className='scope-culture-lucus-selection' role='status'>
             <strong>已選取建議日期：{selectedSuggestion.date}</strong>
             <ScopeLink href={scopeHref(scopeId,
               'culture/manage?edit=1&anchorDate='+encodeURIComponent(selectedSuggestion.date))}>
@@ -729,7 +729,7 @@ export default function CulturePublicReader(){
             </ScopeLink>
             <span className='scope-status'>確認名稱及日期後，再按儲存才會建立。</span>
           </div>:null}
-          {suggestionAnalysis.suggestions.length?<div className='scope-culture-anchor-choices'>
+          {suggestionAnalysis.suggestions.length?<div className='scope-culture-lucus-choices'>
             {suggestionAnalysis.suggestions.map(item=><div key={item.date}
               className='scope-status'>
               <button type='button' className='loc-button'

@@ -1,10 +1,10 @@
 // Four on-demand comparison families, each using saved LOC ZModel hierarchy.
 // Time: Era/Period; Space: Trace/Path; Keyword: Group/Item (stored summaries);
-// Source: Galaxy/Domain from silver.loc_anchor. From (site), Date and Point
+// Source: Galaxy/Domain from silver.loc_lucus. From (site), Date and Point
 // remain internal leaves and cannot be selected as comparison metrics.
 // No new MediaAnchor statistics: Suno/Spotify/Youtube belong to SiteAnchor.
 import {resolveTimeSegments,resolveTimeTrace,timeDateWindows}
-  from '../culture/time-anchor-ranges.mjs';
+  from '../culture/time-lucus-ranges.mjs';
 import {sourceStatisticsTree} from './source-tree-measures.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -131,7 +131,7 @@ export function fourDimensionDailyCounts({
     }
   }
   // Territory is already grouped by (day,point,site) and joined to visible
-  // Points by SQL. One anchor can list the same Point repeatedly, but a
+  // Points by SQL. One lucus can list the same Point repeatedly, but a
   // Point's articles contribute only once per selected Trace/Path metric.
   for(const row of placeRows){
     const day=cleanDay(row.day),point=String(row.place_id||''),

@@ -1,20 +1,20 @@
 'use server';
 import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
-import {parseAnchorFeatureQuery,executeAnchorFeatureQuery}
-  from '../../model/anchor-feature-queries.mjs';
-import {queryPublishedSourceAnchors} from '../../source/catalog-public.mjs';
+import {parseLucusFeatureQuery,executeLucusFeatureQuery}
+  from '../../model/lucus-feature-queries.mjs';
+import {queryPublishedSourceLucus} from '../../source/catalog-public.mjs';
 
-export async function queryAnchorFeature(body){
-  const operation=parseAnchorFeatureQuery(body);
+export async function queryLucusFeature(body){
+  const operation=parseLucusFeatureQuery(body);
   const scope=operation.scope;
   if(operation.family==='source'){
-    const data=await queryPublishedSourceAnchors(operation);
-    return {data,query:{requestedBy:'anchor',scope,model:'anchor-feature',
+    const data=await queryPublishedSourceLucus(operation);
+    return {data,query:{requestedBy:'lucus',scope,model:'lucus-feature',
       view:operation.family,mode:'published-js'}};
   }
   const read=async(db,port)=>({
-    data:await executeAnchorFeatureQuery(db,operation),
-    query:{requestedBy:'anchor',scope,model:'anchor-feature',
+    data:await executeLucusFeatureQuery(db,operation),
+    query:{requestedBy:'lucus',scope,model:'lucus-feature',
       view:operation.view||operation.family,mode:operation.mode}
   });
   // Public SiteAnchor taxonomy reads the fixed ZModel projection without

@@ -50,7 +50,7 @@
   background:currentColor;
   box-shadow:0 0 8px rgba(248,230,176,.5);
 }
-.home-hero-identity--anchor::before,
+.home-hero-identity--lucus::before,
 .home-hero-identity--moon::before{
   content:"";
   display:block;

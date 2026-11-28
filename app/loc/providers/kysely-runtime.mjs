@@ -10,7 +10,8 @@ import {verifyModeledSqlFields,normalizeModeledTypeDifferences,
 import {assertZModelSelectRows} from '../../../packages/zenstack/import-validation.mjs';
 import {assertKyselyQueryShape,QUERY_FILTER_SQL}
   from '../../../packages/zenstack/sql-input-shape.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
+import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const identifier=/^[a-z][a-z0-9_]*$/i;
 const schemas=new Set(['silver','api']);
@@ -109,8 +110,8 @@ function applyOrFilters(query,groups,dialect='postgres'){
 const PRIVATE_SITES=['messenger','chatgpt','claude','gemini','msn','whatsapp',
   'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai',
   'mcp','github'];
-const PUBLIC_ANCHOR_TYPES=[...ANCHOR_TYPE_GROUPS.time,...ANCHOR_TYPE_GROUPS.space,
-  ...ANCHOR_TYPE_GROUPS.media];
+const PUBLIC_ANCHOR_TYPES=[...LUCUS_TYPE_GROUPS.time,...LUCUS_TYPE_GROUPS.space,
+  ...LUCUS_TYPE_GROUPS.media];
 function databaseTable(req,dialect,namespace,modelName=''){
   // ZenStack PolicyPlugin maps a fixed logical model to the physical table.
   if(modelName)return modelName;
@@ -120,7 +121,8 @@ function databaseTable(req,dialect,namespace,modelName=''){
 }
 function publishedOnly(query,table,enabled,columns=['*']){
   if(!enabled)return query;
-  if(table.endsWith('_galaxy')){
+  const scopeKind=scopeTableDescriptor(table)?.kind;
+  if(scopeKind==='galaxy'){
     let published=query.where(enabled==='list'?'list':'search','=',true)
       .where(eb=>eb.or([eb('site','is',null),
         eb(eb.fn('lower',['site']),'not in',PRIVATE_SITES)]));
@@ -130,7 +132,7 @@ function publishedOnly(query,table,enabled,columns=['*']){
       published=published.where('list','=',true);
     return published;
   }
-  if(table.endsWith('_anchor'))
+  if(scopeKind==='lucus')
     return query.where('invisible','=',false)
       .where('type','in',PUBLIC_ANCHOR_TYPES);
   throw new Error('Unpublished external relation');

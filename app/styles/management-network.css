@@ -103,18 +103,18 @@
 
 /* Timeline and spatial managers expose the stored hierarchy as an interactive
    graph, while their complete searchable lists remain available underneath. */
-.loc-anchor-management__graph-shell{
+.loc-lucus-management__graph-shell{
   display:grid;gap:.2rem;min-width:0;margin:.15rem 0 .9rem;
 }
-.loc-anchor-management__graph{
+.loc-lucus-management__graph{
   width:100%;height:clamp(13rem,30vw,21rem);min-width:0;overflow:hidden;
   border:1px solid var(--loc-line-soft,var(--loc-line));
   border-radius:var(--loc-ui-radius-lg,18px);
   background:radial-gradient(ellipse at 22% 45%,var(--loc-accent-surface,var(--loc-panel-2)) 0%,transparent 42%),
     linear-gradient(135deg,var(--loc-panel-2,var(--loc-panel)),var(--loc-panel) 78%);
 }
-.loc-anchor-management__graph-shell>.scope-status{margin:.15rem 0;font-size:.78rem;}
-.loc-anchor-management__graph-shell>.scope-status[role="status"]:not(.scope-error){color:var(--loc-muted);}
+.loc-lucus-management__graph-shell>.scope-status{margin:.15rem 0;font-size:.78rem;}
+.loc-lucus-management__graph-shell>.scope-status[role="status"]:not(.scope-error){color:var(--loc-muted);}
 .admin-deployment-tree{
   border-color:var(--loc-line-soft,var(--loc-line))!important;
   border-radius:var(--loc-ui-radius-lg,18px)!important;
@@ -172,7 +172,7 @@
 @media(max-width:760px){
   .management-network-nav{padding:.65rem;}
   .management-network-nav__canvas{height:clamp(10rem,42vw,14rem);}
-  .loc-anchor-management__graph{height:clamp(12rem,54vw,17rem);}
+  .loc-lucus-management__graph{height:clamp(12rem,54vw,17rem);}
   .management-network-nav__heading h2{font-size:1.05rem;}
   .management-network-nav__heading>span{font-size:.72rem;}
   .loc-home-block-network-editor{grid-template-columns:minmax(0,1fr);}

@@ -99,7 +99,7 @@ export function createKyselyPublicClient({
       FIELD(schema);
       return {from(table){return new Query(read,schema,table,mutate?write:null)},
       managedWrite:noWrite,managedAction:noWrite,
-      anchor:noWrite};
+      lucus:noWrite};
     },
     shortImport:noWrite,
     activeTarget:async()=>({data:{id:'primary'},error:null})

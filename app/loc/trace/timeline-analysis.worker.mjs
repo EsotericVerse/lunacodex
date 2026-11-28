@@ -1,6 +1,6 @@
 import {timelineVisitWindows,matchTimelineWindows} from './timeline-place-matcher.mjs';
 
-// Timeline archives stay on this browser. Only compact visit/anchor matches
+// Timeline archives stay on this browser. Only compact visit/lucus matches
 // leave the worker; the full parsed JSON is never retained by the UI thread.
 export function analyzeTimelineDocument(document,anchors,{startDate='',endDate=''}={}){
   const visits=timelineVisitWindows(document,{startDate,endDate});

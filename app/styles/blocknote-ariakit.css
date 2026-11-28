@@ -63,7 +63,7 @@
 :root .bn-ak-input::placeholder{color:var(--loc-muted)}
 :root .bn-ariakit .bn-combobox .bn-ak-input{background:transparent;box-shadow:none}
 :root :is(.bn-ak-input,.bn-ak-popover,.bn-ak-hovercard):is(:focus-visible,[data-focus-visible]){outline-color:var(--loc-accent)}
-:root :is(.bn-ak-link,.bn-ak-anchor){color:var(--loc-accent)}
+:root :is(.bn-ak-link,.bn-ak-lucus){color:var(--loc-accent)}
 :root .bn-ak-separator{border-color:var(--loc-line)}
 :root .bn-ariakit :is(.bn-side-menu,.bn-table-handle,.bn-extend-button,.bn-table-cell-handle){color:var(--loc-muted)}
 :root .bn-ak-panel-popover{background-color:transparent;border:none;box-shadow:none}

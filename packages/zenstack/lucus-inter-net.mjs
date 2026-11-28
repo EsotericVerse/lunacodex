@@ -1,7 +1,7 @@
 // Second-level Inter-Net projections built from the already present Anchor
 // ZModel families. No new SQL schema, foreign key, fabricated parenthood or
 // unbounded graph traversal. Caller owns authorization of every supplied row.
-import {indexZModelAnchorHierarchy} from './anchor-hierarchy.mjs';
+import {indexZModelLucusHierarchy} from './lucus-hierarchy.mjs';
 import {auditImportedSourceSites} from '../../app/loc/source/classification.mjs';
 
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -12,7 +12,7 @@ const FAMILIES=new Set(['source','time','space']);
 export function anchorInterNetChildren(row,family){
   if(!FAMILIES.has(family)||!UID.test(String(row?.uid||'')))
     throw new Error('Invalid Inter-Net Anchor or family');
-  const hierarchy=indexZModelAnchorHierarchy([row],{family,strict:false});
+  const hierarchy=indexZModelLucusHierarchy([row],{family,strict:false});
   return Object.freeze(hierarchy.links().map(edge=>Object.freeze({
     uid:edge.toUid,type:edge.toType,fromUid:edge.fromUid,
     field:edge.attrKey,resolved:false
@@ -20,7 +20,7 @@ export function anchorInterNetChildren(row,family){
 }
 
 // Public LOC SiteAnchor tree already passed typed UID-hierarchy validation
-// in sourceTaxonomyFromAnchors. Only the unique published alias may match a
+// in sourceTaxonomyFromLucus. Only the unique published alias may match a
 // Galaxy.site literal; similar labels do not prove identity.
 export function sourceInterNetSelection(site,taxonomy={}){
   const audit=auditImportedSourceSites([site],taxonomy);

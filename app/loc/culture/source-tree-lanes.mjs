@@ -53,7 +53,7 @@ export function buildCultureSourceTreeLanes(taxonomy={},groupedSources=[],expand
     if(expanded.has(uid))for(const child of activeChildren)append(child);
   };
   // Root order is presentation only. The parent and child UIDs come only
-  // from silver.loc_anchor.attr.uid; no synthetic Universe is created.
+  // from silver.loc_lucus.attr.uid; no synthetic Universe is created.
   const rootOrder=new Map([['Words',0],['Mutlimedia',1],['PastBy',2]]);
   const roots=nodes.filter(row=>row.type==='universe')
     .sort((a,b)=>(rootOrder.get(a.title)??100)-(rootOrder.get(b.title)??100));

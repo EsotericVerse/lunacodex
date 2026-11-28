@@ -119,8 +119,8 @@ export function analyzeRiverDensity(rows=[],anchorDates=[]){
   const coveredByAnchor=key=>{
     const value=dayMs(key);
     if(!Number.isFinite(value))return false;
-    // Sorted anchor days allow a two-neighbor check instead of linear scanning
-    // through every existing anchor for every proposed date.
+    // Sorted lucus days allow a two-neighbor check instead of linear scanning
+    // through every existing lucus for every proposed date.
     let low=0,high=existing.length;
     while(low<high){
       const mid=(low+high)>>>1;

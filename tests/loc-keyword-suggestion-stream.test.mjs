@@ -5,7 +5,7 @@ import {suggestKeywordPatterns} from '../app/loc/keywords/sql-service.mjs';
 function anchorDatabase(rows){
   const calls=[];
   return {calls,db:{selectFrom(table){
-    assert.equal(table,'silver.lo3rwang_anchor');
+    assert.equal(table,'silver.lo3rwang_lucus');
     const state={conditions:[],columns:[]};
     const query={
       select(columns){state.columns=Array.isArray(columns)?columns:[columns];return query;},

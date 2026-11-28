@@ -14,7 +14,7 @@ import {POSTGRES_SQL_TYPE,postgresCursorConstructor,postgresDialectConfig}
 import {MYSQL_SQL_TYPE} from '../modules/loc/dialect/mysql.mjs';
 import {MSSQL_SQL_TYPE} from '../modules/loc/dialect/mssql.mjs';
 import {readItemKeywordProjection,KEYWORD_CPU_SLICE_ROWS} from '../app/loc/keywords/item-count-analysis.mjs';
-import {createAnchorArticlePageBuffer} from '../app/loc/keywords/anchor-search.mjs';
+import {createLucusArticlePageBuffer} from '../app/loc/keywords/lucus-search.mjs';
 
 const postgres=new Kysely({dialect:new PostgresDialect({pool:{
   connect:async()=>{throw Error('compile-only: no database connection');}
@@ -368,7 +368,7 @@ test('PostgreSQL cursor streams 50000 rows in bounded 256-row driver batches',as
 });
 
 test('Anchor article cursor keeps only the requested top page while scanning large matches',()=>{
-  const page=createAnchorArticlePageBuffer({offset:2,limit:2,sortDirection:'asc'});
+  const page=createLucusArticlePageBuffer({offset:2,limit:2,sortDirection:'asc'});
   for(let index=999;index>=0;index--){
     page.add({
       uid:String(index+1).padStart(8,'0'),
@@ -504,7 +504,7 @@ test('anonymous reads cannot expose raw Scope configuration rows',()=>{
 });
 
 test('public SQL policy restricts Galaxy and Anchor to published rows and denies writes',()=>{
-  for(const table of ['lo3rwang_galaxy','lo3rwang_anchor']){
+  for(const table of ['lo3rwang_galaxy','lo3rwang_lucus']){
     assert.deepEqual(assertCrossEnginePublicRead(read('silver',table)),{publicOnly:true});
   }
   assert.throws(()=>assertCrossEnginePublicRead({

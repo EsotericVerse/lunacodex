@@ -8,9 +8,10 @@ import {sourceImportModel,SOURCE_IMPORT_MODEL_FIELDS} from './import-source-mode
 import physicalContract from './schema-contract.mjs';
 import {modelNameForSql} from './model-column-guard.mjs';
 import {zodValidationAdapter} from './kysera-validation-adapter.mjs';
-import {ANCHOR_GROUP_MODEL_NAMES,ANCHOR_TYPE_GROUP_FIELDS,ANCHOR_TYPE_GROUPS,
-  PERSISTED_ANCHOR_TYPES,assertSiteAnchorLeaf}
-  from './anchor-hierarchy.mjs';
+import {scopeTableDescriptor} from './scope-table-names.mjs';
+import {LUCUS_GROUP_MODEL_NAMES,LUCUS_TYPE_GROUP_FIELDS,LUCUS_TYPE_GROUPS,
+  PERSISTED_LUCUS_TYPES,assertSiteLucusLeaf}
+  from './lucus-hierarchy.mjs';
 
 const modelFactory=createSchemaFactory(schema);
 const sourceImportValidators=new Map();
@@ -39,24 +40,24 @@ export function assertZModelSourceImportRecord(row,source,index=null){
   throw new TypeError(where+profile.label+' 來源 ZModel 驗證失敗：'+field+
     ' — '+(issue?.message||'invalid value'));
 }
-// LOC-only presentation value type. Its physical storage is LocAnchor,
+// LOC-only presentation value type. Its physical storage is LocLucus,
 // not a separate loc_blocks relation or a second table model.
-export const locBlocksZModelSchema=modelFactory.makeTypeSchema('LocBlocks');
+export const blockLucusZModelSchema=modelFactory.makeTypeSchema('BLucus');
 const validators=new Map();
 const selectValidators=new Map();
-const scopedGalaxy=/^silver\.[a-z][a-z0-9]{0,14}_galaxy$/;
+const scopedGalaxy=table=>scopeTableDescriptor(String(table||'').split('.').at(-1))?.kind==='galaxy';
 const char8Uid=/^[A-Za-z0-9]{8}$/;
 // Anchor.attr validation derives from ZModel. Pattern.num is authoritative for
 // analyzed occurrences; the validator tolerates legacy attr.total on input so
 // existing import documents can be handled while LOC writes only empty attr.
-const anchorTypeGroups=Object.fromEntries(Object.entries(ANCHOR_TYPE_GROUPS)
+const anchorTypeGroups=Object.fromEntries(Object.entries(LUCUS_TYPE_GROUPS)
   .flatMap(([group,types])=>types.map(type=>[type,group])));
-const anchorPayloadValidators=new Map(PERSISTED_ANCHOR_TYPES.map(type=>{
+const anchorPayloadValidators=new Map(PERSISTED_LUCUS_TYPES.map(type=>{
   const group=anchorTypeGroups[type];
-  if(!group||!ANCHOR_TYPE_GROUP_FIELDS[type]||!ANCHOR_GROUP_MODEL_NAMES[group])
+  if(!group||!LUCUS_TYPE_GROUP_FIELDS[type]||!LUCUS_GROUP_MODEL_NAMES[group])
     throw new Error('LOC Anchor ZModel group mapping missing: '+type);
-  return [type,{field:ANCHOR_TYPE_GROUP_FIELDS[type],
-    validator:modelFactory.makeTypeSchema(ANCHOR_GROUP_MODEL_NAMES[group])}];
+  return [type,{field:LUCUS_TYPE_GROUP_FIELDS[type],
+    validator:modelFactory.makeTypeSchema(LUCUS_GROUP_MODEL_NAMES[group])}];
 }));
 
 function validateAnchorPayload(type,attr){
@@ -76,7 +77,7 @@ function validateAnchorPayload(type,attr){
   if(parsed.success){
     // Enforce terminal Source semantics in both reads and writes. ZModel
     // permits the existing empty uid:[] field on the physical From payload.
-    assertSiteAnchorLeaf(type,attr);
+    assertSiteLucusLeaf(type,attr);
     // ZenStack does not express a String | String[] union. Keep Json in the
     // declared payload and validate the original representation, not a copy.
     if(type==='point'&&attr&&typeof attr==='object'&&Object.hasOwn(attr,'location')){
@@ -86,7 +87,7 @@ function validateAnchorPayload(type,attr){
         throw new TypeError('LOC PointAnchor location must be text or text aliases');
     }
     // Per-Scope counts are cached statistics, not the physical Anchor.num.
-    if(ANCHOR_TYPE_GROUPS.source.includes(type)&&attr&&typeof attr==='object'&&
+    if(LUCUS_TYPE_GROUPS.source.includes(type)&&attr&&typeof attr==='object'&&
        Object.hasOwn(attr,'counts')){
       const counts=attr.counts;
       if(!counts||typeof counts!=='object'||Array.isArray(counts)||
@@ -104,7 +105,7 @@ function validateAnchorPayload(type,attr){
 // Fixed, named Anchor read Transactions use the same per-discriminator
 // ZModel payload validation as writes. Never invent a second attr schema or
 // expose an unverified arbitrary JSON payload to a feature consumer.
-export function assertZModelAnchorFeatureRows(rows=[]){
+export function assertZModelLucusFeatureRows(rows=[]){
   if(!Array.isArray(rows))throw new TypeError('Invalid Anchor feature rows');
   for(const row of rows){
     if(!row||typeof row!=='object'||Array.isArray(row))
@@ -247,7 +248,7 @@ function partialWriteSchema(full){
  * The server must verify network input even when the import UI prevalidated it.
  */
 export function assertZModelGalaxyManagedValues(table,operation,values){
-  if(!scopedGalaxy.test(String(table||''))||
+  if(!scopedGalaxy(table)||
      !['insert','upsert','update','update_batch'].includes(operation))
     return false;
   const schema=modelWriteSchemaForSqlTable(table);
@@ -279,18 +280,18 @@ export function assertZModelGalaxyManagedValues(table,operation,values){
 // Share the very same ZModel-derived strict shapes with existing Anchor and
 // Block management writes. LOC-wide source Anchors use the fixed contract;
 // independently named external relations are not silently mapped.
-export function assertZModelAnchorBlockManagedValues(table,operation,values){
+export function assertZModelLucusBlockManagedValues(table,operation,values){
   if(!['insert','upsert','update'].includes(operation))return false;
   const relation=String(table||'');
-  if(!/^silver\.(?!loc_blocks$)[a-z][a-z0-9]{0,14}_(?:anchor|blocks)$/.test(relation))return false;
+  if(!/^silver\.(?!loc_blocks$)[a-z][a-z0-9]{0,14}_(?:[a-z][a-z0-9_]*|blocks)$/.test(relation))return false;
   const model=modelNameForSql(...relation.split('.'));
-  if(!model||!(model.endsWith('Anchor')||model.endsWith('Blocks')))
+  if(!model||!(model.endsWith('Lucus')||model.endsWith('Blocks')))
     return false;
   const full=modelWriteSchemaForSqlTable(relation);
   const validator=operation==='update'?partialWriteSchema(full):full;
   const rows=operation==='update'?[values]:values;
   if(!Array.isArray(rows))
-    throw new TypeError('Invalid LOC Anchor/Block managed rows');
+    throw new TypeError('Invalid LOC Lucus/Block managed rows');
   for(let i=0;i<rows.length;i++){
     const row=rows[i];
     const parsed=validator.safeParse(row);
@@ -299,7 +300,7 @@ export function assertZModelAnchorBlockManagedValues(table,operation,values){
       const field=issue?.path?.join('.')||'(record)';
       // Reject unknown columns and incompatible values before SQL; never echo
       // private text, JSON attrs, or caller-supplied values in diagnostics.
-      throw new TypeError('LOC '+(model.endsWith('Anchor')?'Anchor':'Block')+
+      throw new TypeError('LOC '+(model.endsWith('Lucus')?'Lucus':'Block')+
         ' ZModel 寫入驗證失敗：第 '+(i+1)+' 筆 '+field+
         ' — '+(issue?.message||'invalid value'));
     }
@@ -307,13 +308,13 @@ export function assertZModelAnchorBlockManagedValues(table,operation,values){
     // omit `type` cannot be checked without a database read, so they retain
     // the existing partial-write contract and are validated on the next full
     // typed write.
-    if(model.endsWith('Anchor'))validateAnchorPayload(row?.type,row?.attr);
+    if(model.endsWith('Lucus'))validateAnchorPayload(row?.type,row?.attr);
   }
   return true;
 }
 
 export function assertZModelImportRows(table,rows=[],{onProgress}={}){
-  if(!scopedGalaxy.test(String(table||'')))throw new TypeError('Invalid LOC Galaxy import table');
+  if(!scopedGalaxy(table))throw new TypeError('Invalid LOC Galaxy import table');
   if(!Array.isArray(rows))throw new TypeError('LOC import batch must be an array');
   const validator=modelWriteSchemaForSqlTable(table);
   for(let index=0;index<rows.length;index++){

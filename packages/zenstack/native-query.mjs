@@ -3,7 +3,7 @@
 import {createQuerySchemaFactory} from '@zenstackhq/orm';
 import {schema} from './schema.mjs';
 
-const SCOPED={Galaxy:'Lo3rwangGalaxy',Anchor:'Lo3rwangAnchor',Blocks:'Lo3rwangBlocks'};
+const SCOPED={Galaxy:'Lo3rwangGalaxy',Lucus:'Lo3rwangLucus',Blocks:'Lo3rwangBlocks'};
 const modelForName=name=>schema.models[name]||schema.models[SCOPED[name]];
 const querySchemaFactory=createQuerySchemaFactory(schema);
 const queryModelForName=name=>SCOPED[name]||name;

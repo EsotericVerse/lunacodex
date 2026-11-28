@@ -1,6 +1,6 @@
 // One plain model for live place counts used by Culture and Statistics.
 // Galaxy.location is a text check-in, not an inferred visit or mandatory
-// trace anchor. Keep names verbatim; do not invent a classification hierarchy.
+// trace lucus. Keep names verbatim; do not invent a classification hierarchy.
 const dateKey=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||'').slice(0,10))
   ?String(value).slice(0,10):'';
 const safeCount=value=>Math.max(0,Number(value)||0);

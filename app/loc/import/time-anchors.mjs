@@ -1,10 +1,10 @@
 import {MAX_ROWS} from '../query/query-batch-size.mjs';
 import {parseImportCreatedTime} from './batch.mjs';
-import {allocateAnchorUid} from '../model/uid.js';
+import {allocateLucusUid} from '../model/uid.js';
 import {planImportDateTitleDelta,planImportDateCreate} from './point-date-immer.mjs';
 
-// Importing a known check-in creates its calendar-day Time anchor independently
-// from the spatial anchor's full-precision visit timestamps.
+// Importing a known check-in creates its calendar-day Time lucus independently
+// from the spatial lucus's full-precision visit timestamps.
 const NAME_LIMIT=120;
 
 const DESCRIPTION_LIMIT=4000;
@@ -22,7 +22,7 @@ const calendarDay=value=>{
   return instant?importDayFormatter.format(new Date(instant)):'';
 };
 
-// One calendar date is one Time anchor. The first dated article title names
+// One calendar date is one Time lucus. The first dated article title names
 // that day; a date-only source check-in can use its place name instead.
 export function importCheckinDayEntries(records=[]){
   const grouped=new Map();
@@ -103,12 +103,12 @@ export async function prepareImportTimeAnchors(records,{
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('日期定錨 Scope 無效');
   if(typeof relation!=='function')throw Error('日期定錨資料庫不存在');
   // The registry supplies the logical Time relation, but the physical source
-  // of truth for every scoped Date is its unified *_anchor table.
+  // of truth for every scoped Date is its unified *_lucus table.
   const logical=String(timeTable||'').trim();
   if(!/^silver\.[a-z][a-z0-9_]*$/.test(logical)||
       !logical.startsWith('silver.'+scopeId+'_'))
     throw Error('日期定錨尚未解析正確的 Scope Time 資料表');
-  const table='silver.'+scopeId+'_anchor';
+  const table=logical;
   if(anchorSnapshot&&
       (anchorSnapshot.scopeId!==scopeId||anchorSnapshot.table!==table||
        typeof anchorSnapshot.time?.accept!=='function'))
@@ -148,7 +148,7 @@ export async function prepareImportTimeAnchors(records,{
     let rows,data,error;
     for(let attempt=0;attempt<4;attempt++){
       rows=chunk.map(date=>{
-        const uid=allocateAnchorUid(occupied);occupied.add(uid);
+        const uid=allocateLucusUid(occupied);occupied.add(uid);
         const entry=entryByDate.get(date);
         return planImportDateCreate({uid,date,title:entry.title,
           description:entry.description,createtime:entry.createtime}).row;});

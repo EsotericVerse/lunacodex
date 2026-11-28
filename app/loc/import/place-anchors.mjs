@@ -1,8 +1,9 @@
 import {MAX_ROWS} from '../query/query-batch-size.mjs';
 import {importGeoKey} from './geocoordinates.mjs';
-import {allocateAnchorUid} from '../model/uid.js';
+import {allocateLucusUid} from '../model/uid.js';
 import {planImportPointCreate} from './point-date-immer.mjs';
 import {matchPlaceNameCandidates} from '../trace/place-name-candidates.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 // An exact coordinate identifies an existing Trace location even if the
 // original place label differs. Without GPS, only unambiguous names are used.
@@ -25,11 +26,11 @@ export const importPlaceNameKey=nameKey;
 export function createImportPlaceIndex(){
   const existingByCoordinate=new Map(),existingByName=new Map();
   const knownPointUids=new Set(),candidatePlaces=[];
-  const accept=anchor=>{
-    if(anchor?.type!=='point')throw Error('Point Anchor 索引型別不符');
-    const name=nameKey(anchor?.title),uid=String(anchor?.uid||'');
+  const accept=lucus=>{
+    if(lucus?.type!=='point')throw Error('Point Anchor 索引型別不符');
+    const name=nameKey(lucus?.title),uid=String(lucus?.uid||'');
     if(!VALID_UID.test(uid))return;
-    const coordinates=importGeoKey(anchor?.attr);
+    const coordinates=importGeoKey(lucus?.attr);
     // A place_id is authoritative even without a location label or GPS.
     // No time-list data is read or stored in the Point index.
     knownPointUids.add(uid);
@@ -37,10 +38,10 @@ export function createImportPlaceIndex(){
     const saved={uid,coordinates};
     // Names and aliases are review evidence only. The authoritative exact
     // coordinate/name indexes below are never widened by substring matches.
-    const location=anchor?.attr?.location;
+    const location=lucus?.attr?.location;
     const aliases=Array.isArray(location)?location:
       typeof location==='string'?[location]:[];
-    candidatePlaces.push({uid,title:String(anchor.title||''),aliases});
+    candidatePlaces.push({uid,title:String(lucus.title||''),aliases});
     if(name){
       if(!existingByName.has(name))existingByName.set(name,[]);
       existingByName.get(name).push(saved);
@@ -97,7 +98,7 @@ export async function prepareImportPlaceAnchors(records,{
     return unavailable();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('空間定錨 Scope 無效');
   if(typeof relation!=='function')throw Error('空間定錨資料庫不存在');
-  const table='silver.'+scopeId+'_anchor';
+  const table='silver.'+scopeTableName(scopeId,'lucus');
   if(anchorSnapshot&&
       (anchorSnapshot.scopeId!==scopeId||anchorSnapshot.table!==table||
        typeof anchorSnapshot.place?.accept!=='function'))
@@ -128,7 +129,7 @@ export async function prepareImportPlaceAnchors(records,{
     else byName.set(place.name,uid);
   };
   // Locate exact known coordinates first. Name-only visits can reuse a single
-  // unambiguous named anchor, but never choose between different coordinates.
+  // unambiguous named lucus, but never choose between different coordinates.
   const ordered=[...names.values()].sort((a,b)=>Number(Boolean(b.coordinates))-Number(Boolean(a.coordinates)));
   // Avoid scanning every location for each name-only place during large imports.
   const coordinatePeers=new Map();
@@ -179,7 +180,7 @@ export async function prepareImportPlaceAnchors(records,{
     let rows,data,error;
     for(let attempt=0;attempt<4;attempt++){
       rows=chunk.map(place=>{
-        const uid=allocateAnchorUid(assigned);assigned.add(uid);
+        const uid=allocateLucusUid(assigned);assigned.add(uid);
         return planImportPointCreate({
           uid,title:place.title,
           description:JSON.stringify({text:'',address:place.postal||null,
@@ -196,10 +197,10 @@ export async function prepareImportPlaceAnchors(records,{
       throw Error('新增空間定錨回傳筆數不符；重新執行將沿用已寫入的定錨');
     const expected=new Map(rows.map((row,i)=>[row.uid,chunk[i]]));
     const seen=new Set();
-    for(const anchor of data){
-      const uid=String(anchor?.uid||''),place=expected.get(uid);
-      const key=spatialKey(nameKey(anchor?.title),importGeoKey(anchor?.attr));
-      if(!place||seen.has(uid)||anchor?.type!=='point'||
+    for(const lucus of data){
+      const uid=String(lucus?.uid||''),place=expected.get(uid);
+      const key=spatialKey(nameKey(lucus?.title),importGeoKey(lucus?.attr));
+      if(!place||seen.has(uid)||lucus?.type!=='point'||
           key!==spatialKey(place.name,place.coordinates)||!VALID_UID.test(uid))
         throw Error('新增空間定錨名稱、座標或 UID 不符；重新執行將核對已寫入的定錨');
       seen.add(uid);

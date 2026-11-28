@@ -7,7 +7,8 @@
 import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';
 import {FIXED_MANAGE_ROWS,fixedManageScope} from '../permissions/fixed-manage-registry.mjs';
-import {allocateAnchorUid} from '../model/uid.js';
+import {allocateLucusUid} from '../model/uid.js';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -215,7 +216,7 @@ async function copyDefaultKeywordClass(trx,target){
     .executeTakeFirst();
   const classUid=text(source?.current_keyword_class_uid);
   if(!classUid)reject('Default Keyword Class is not configured',409);
-  const rows=await trx.selectFrom('silver.lo3rwang_anchor')
+  const rows=await trx.selectFrom('silver.'+scopeTableName('lo3rwang','lucus'))
     .select(['uid','type','title','description','attr'])
     .where('type','in',['category','class','group','item','pattern']).execute();
   const root=keywordSource(rows,classUid);
@@ -223,7 +224,7 @@ async function copyDefaultKeywordClass(trx,target){
   const category=rows.find(row=>row.type==='category'&&linked(row).includes(classUid));
   if(!category)reject('Default Keyword Category is missing',409);
   const assigned=new Set(),insertions=[];
-  const uid=()=>{const id=allocateAnchorUid(assigned);assigned.add(id);return id;};
+  const uid=()=>{const id=allocateLucusUid(assigned);assigned.add(id);return id;};
   const categoryId=uid(),newClassId=uid(),groups=[];
   const add=(node,kind,id,attr,num=null)=>insertions.push({
     uid:id,type:kind,title:node.title,description:node.description,
@@ -266,7 +267,7 @@ async function copyDefaultKeywordClass(trx,target){
     add(group,'group',groupId,{uid:items,total:0});
   }
   add(root,'class',newClassId,{uid:groups});
-  await trx.insertInto('silver.'+target+'_anchor')
+  await trx.insertInto('silver.'+scopeTableName(target,'lucus'))
     .values(insertions).execute();
   return {classUid:newClassId,items:insertions.filter(row=>row.type==='item').length};
 }
@@ -297,19 +298,20 @@ export async function provisionScopeNative(trx,args){
   checkReservedRoute(target);
   const sort=Math.max(0,...rows.filter(row=>row.parent_scope_id===parent)
     .map(row=>Number(row.sort_order)||0))+10;
-  const models=['', '_blocks','_galaxy','_anchor'];
+  const models=[scope,scope+'_blocks',scopeTableName(scope,'galaxy'),
+    scopeTableName(scope,'lucus')];
   const templates=['lo3rwang','lo3rwang_blocks',
-    'lo3rwang_galaxy','lrunes_anchor'];
+    scopeTableName('lo3rwang','galaxy'),scopeTableName('lrunes','lucus')];
   // One catalog SELECT, all four CREATE TABLE operations within this same
   // PostgreSQL transaction. No RLS policies, public GRANTs or DB functions.
   const existing=await sql`select relname from pg_class c
     join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='silver' and c.relname in
-      (${sql.join(models.map(suffix=>sql`${scope+suffix}`))})`
+      (${sql.join(models.map(name=>sql`${name}`))})`
     .execute(trx);
   if(existing.rows.length)reject('Scope data relation already exists',409);
   for(let i=0;i<models.length;i++)
-    await sql`create table ${record(scope+models[i])}
+    await sql`create table ${record(models[i])}
       (like ${record(templates[i])} including all)`.execute(trx);
   let classUid=null,keywordCount=0;
   if(copyKeywords){
@@ -332,7 +334,7 @@ export async function provisionScopeNative(trx,args){
     id:scope,email,
     ...target,parent_scope_id:parent,active:true,
     sort_order:sort,manage_role:'scope',
-    galaxy_table:'galaxy',anchor_table:'anchor'
+    galaxy_table:'galaxy',lucus_table:'lucus'
   }).execute();
   // Class -> Group -> Item records and their UID relationships were
   // copied in this same Registry/DDL transaction. No Pattern index exists.
@@ -351,17 +353,18 @@ export async function deleteScopeNative(trx,args){
     reject('Only an existing non-system Scope may be deleted',404);
   if(rows.some(row=>row.parent_scope_id===scope))
     reject('Scope has child Registry entries',409);
-  const suffixes=['_anchor','_galaxy_media','_trace','_time','_keywords',
-    '_place','_galaxy','_blocks',''];
-  const names=suffixes.map(suffix=>scope+suffix);
+  const suffixes=['_galaxy_media','_trace','_time','_keywords','_place','_blocks',''];
+  const galaxyTable=scopeTableName(scope,'galaxy',current);
+  const lucusTable=scopeTableName(scope,'lucus',current);
+  const names=[galaxyTable,lucusTable,...suffixes.map(suffix=>scope+suffix)];
   const existing=await sql`select c.relname from pg_class c
     join pg_namespace n on n.oid=c.relnamespace
     where n.nspname='silver' and c.relname in
       (${sql.join(names.map(name=>sql`${name}`))})`.execute(trx);
   const present=new Set(existing.rows.map(row=>row.relname));
-  if(!present.has(scope)||!present.has(scope+'_galaxy')||
+  if(!present.has(scope)||!present.has(galaxyTable)||
     !present.has(scope+'_blocks')||
-    !['anchor','keywords'].some(type=>present.has(scope+'_'+type)))
+    ![lucusTable,scope+'_keywords'].some(name=>present.has(name)))
     reject('Scope data relation missing; refusing partial deletion',409);
   for(const name of names)if(present.has(name))
     await sql`drop table ${record(name)} restrict`.execute(trx);

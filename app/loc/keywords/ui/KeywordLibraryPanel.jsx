@@ -6,7 +6,7 @@ import {useQueryClient} from '../../../../packages/zenstack/client-queries';
 import {useEditDock} from '../../../modular/edit-dock';
 import {dbAuthRelation,dbAuthClient,resetKeywordClassification,updateRows,transactionWrites,prepareKeywordLibraryWrite,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db/db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
-import {allocateAnchorUid} from '../../model/uid.js';
+import {allocateLucusUid} from '../../model/uid.js';
 import ManagementNetworkNav from '../../../modular/ManagementNetworkNav';
 import {ManagementSectionTransition} from '../../../modular/ManagementSectionNav';
 import ActivityMotion from '../../../modular/ActivityMotion';
@@ -23,7 +23,7 @@ const TYPES=['class','group','item'];
 const LABEL={category:'Category',class:'Class',group:'Group',item:'Item'};
 const onlyWords=value=>[...new Set(String(value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];
 const emptyTree={index:new Map(),parent:new Map(),roots:[]};
-const uidFor=rows=>allocateAnchorUid(new Set(rows.map(row=>String(row.uid))));
+const uidFor=rows=>allocateLucusUid(new Set(rows.map(row=>String(row.uid))));
 function freshNode(type,rows,scopeId){
   return {uid:uidFor(rows),type,name:'',desc:'',lists:[],uid_lists:[]};
 }
@@ -38,7 +38,7 @@ function classOf(tree,uid){
   return node;
 }
 export default function KeywordLibraryPanel({scopeId,account}){
-  const scope=account.scopeDataFor(scopeId),table=scope?.anchor||'';
+  const scope=account.scopeDataFor(scopeId),table=scope?.lucus||'';
   const configTable=scope?.config||'';
   const canEdit=account.canLocAccessSync('scope',scopeId)&&Boolean(table&&configTable);
   const dock=useEditDock(),dockActions=useRef(null);

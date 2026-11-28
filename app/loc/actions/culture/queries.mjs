@@ -2,8 +2,8 @@
 import {withAuthorizedLocRead,withPublicLocRead} from '../read-context.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {galaxyReadColumns} from '../../../../packages/zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
-import {assertZModelAnchorFeatureRows,assertZModelSelectRows}
+import {LUCUS_TYPE_GROUPS} from '../../../../packages/zenstack/lucus-hierarchy.mjs';
+import {assertZModelLucusFeatureRows,assertZModelSelectRows}
   from '../../../../packages/zenstack/import-validation.mjs';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS}
   from '../../query/query-batch-size.mjs';
@@ -73,11 +73,11 @@ export async function queryCultureContent(searchParams){
     throw Error('Invalid Culture query range');
   return withPublicLocRead({scope},async(db,port)=>{
     if(kind==='culture_anchors'){
-      const table=relation(scope,'anchor',port);
+      const table=relation(scope,'lucus',port);
       const rows=await db.selectFrom(table).select(['uid','type','title','attr'])
-        .where('type','in',ANCHOR_TYPE_GROUPS.time)
+        .where('type','in',LUCUS_TYPE_GROUPS.time)
         .where('invisible','=',false).execute();
-      assertZModelSelectRows(port.namespace+'.'+scope+'_anchor',
+      assertZModelSelectRows(table,
         ['uid','type','title','attr'],rows);
       return {data:rows.map(row=>({...row,attr:typeof row.attr==='string'
         ?JSON.parse(row.attr||'{}'):row.attr||{}})),count:null};
@@ -117,14 +117,14 @@ export async function queryTimeAnchors({scope:scopeValue,mode='public',
     limit>TIME_ANCHOR_MAX_PAGE_ROWS)
     throw Error('Invalid TimeAnchor page');
   const read=async(db,port)=>{
-      let query=db.selectFrom(relation(scope,'anchor',port))
+      let query=db.selectFrom(relation(scope,'lucus',port))
         .select(['uid','type','title','description','attr','invisible'])
-        .where('type','in',ANCHOR_TYPE_GROUPS.time)
+        .where('type','in',LUCUS_TYPE_GROUPS.time)
         .orderBy('uid','asc').limit(limit+1);
       if(mode==='public')query=query.where('invisible','=',false);
       if(cursor)query=query.where('uid','>',cursor);
       const rows=await query.execute();
-      const data=assertZModelAnchorFeatureRows(rows.slice(0,limit));
+      const data=assertZModelLucusFeatureRows(rows.slice(0,limit));
       return {data,nextCursor:rows.length>limit?String(data.at(-1).uid):null};
     };
   return mode==='public'?withPublicLocRead({scope},read):

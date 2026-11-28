@@ -30,15 +30,15 @@ export function exactNameCharacters(value){
 }
 export function reviewReorderedCoordinateNames(anchors=[]){
   const byKey=new Map();
-  for(const anchor of anchors){
-    if(anchor?.trace_type!=='space_anchor')continue;
-    const position=spaceCoordinates(anchor);
-    const characters=exactNameCharacters(anchor.title);
+  for(const lucus of anchors){
+    if(lucus?.trace_type!=='space_anchor')continue;
+    const position=spaceCoordinates(lucus);
+    const characters=exactNameCharacters(lucus.title);
     if(!position||characters.length<2)continue;
-    const scope=String(anchor.source_scope||'');
+    const scope=String(lucus.source_scope||'');
     const key=JSON.stringify([scope,position,characters]);
     if(!byKey.has(key))byKey.set(key,{key,position,items:[]});
-    byKey.get(key).items.push(anchor);
+    byKey.get(key).items.push(lucus);
   }
   return [...byKey.values()].filter(group=>group.items.length>1&&
     new Set(group.items.map(row=>String(row.title||''))).size>1)
@@ -77,14 +77,14 @@ export function uncertainPlaceName(a,b){
 }
 export function reviewPlaceNameGroups(anchors=[]){
   const byKey=new Map();
-  for(const anchor of anchors){
-    if(anchor?.trace_type!=='space_anchor')continue;
-    const coordinates=spaceCoordinates(anchor);
-    const characters=exactNameCharacters(anchor.title);
+  for(const lucus of anchors){
+    if(lucus?.trace_type!=='space_anchor')continue;
+    const coordinates=spaceCoordinates(lucus);
+    const characters=exactNameCharacters(lucus.title);
     if(!coordinates||!characters)continue;
-    const key=JSON.stringify([String(anchor.source_scope||''),coordinates,characters]);
+    const key=JSON.stringify([String(lucus.source_scope||''),coordinates,characters]);
     if(!byKey.has(key))byKey.set(key,[]);
-    byKey.get(key).push(anchor);
+    byKey.get(key).push(lucus);
   }
   const automatic=[],uncertain=[];
   for(const [key,rows] of byKey){

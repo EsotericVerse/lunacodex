@@ -4,9 +4,10 @@
 // Only use this after trusted LOC OAuth delegation and Scope grants are verified.
 // SQL-nullable list fields and dynamic Scope/SQL dialects remain on Kysely.
 import contract from './schema-contract.mjs';
-import {PERSISTED_ANCHOR_TYPES,ANCHOR_PAYLOAD_DEFS} from './anchor-hierarchy.mjs';
+import {PERSISTED_LUCUS_TYPES,LUCUS_PAYLOAD_DEFS} from './lucus-hierarchy.mjs';
 import {GALAXY_READ_MODEL_FIELDS} from './galaxy-read-models.mjs';
 import {SOURCE_IMPORT_MODEL_FIELDS} from './import-source-models.mjs';
+import {LOC_LUCUS_TABLE} from './scope-table-names.mjs';
 
 const formatTypes=Object.freeze({
   text:'String',varchar:'String',bpchar:'String',bool:'Boolean',
@@ -24,12 +25,12 @@ const nativeAttributes=Object.freeze({
   _int2:'@db.SmallInt',_int4:'@db.Integer'
 });
 const literal=(name,key,value)=>({name,args:[{name:key,value:{kind:'literal',value}}]});
-// Public presentation Blocks and the LOC-wide source Anchor are fixed ZModel
+// Public presentation Blocks and the LOC-wide source Lucus are fixed ZModel
 // reads alongside the control/config models. Public reads can therefore use
 // the same typed delegate without a second hand-written SQL projection.
 const PUBLIC_FIXED_READS=new Set([
   'manage','loc','lo3rwang','lrunes',
-  'loc_anchor','lo3rwang_blocks','lrunes_blocks'
+  LOC_LUCUS_TABLE,'lo3rwang_blocks','lrunes_blocks'
 ]);
 const PUBLIC_POLICY_ALLOW_READ={
   name:'@@allow',
@@ -77,13 +78,15 @@ const structuredVirtualType=(name,fields)=>({
 const locFederatedRef=plainVirtualType('LocFederatedRef',{
   databaseId:'String',scopeId:'String',uid:'String'
 });
-const locAnchorLink=plainVirtualType('LocAnchorLink',{
-  family:'String',fromUid:'String',toUid:'String',
+const locLucusLinks=plainVirtualType('LOCLucus',{
+  family:'LOCLucusFamily',fromUid:'String',toUid:'String',
   fromType:'String',toType:'String',attrKey:'String',resolved:'Boolean'
 });
-const anchorTypeDefs=Object.fromEntries(Object.entries(ANCHOR_PAYLOAD_DEFS)
+const locLucusFamilyEnum={name:'LOCLucusFamily',values:Object.fromEntries(
+  ['culture','trace','statics','search'].map(value=>[value,value]))};
+const lucusTypeDefs=Object.fromEntries(Object.entries(LUCUS_PAYLOAD_DEFS)
   .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
-const locBlocksType=structuredVirtualType('LocBlocks',{
+const blockLucusType=structuredVirtualType('BLucus',{
   uid:{type:'String'},page_name:{type:'String'},block_title:{type:'String'},
   block_text:{type:'String'},block_order:{type:'Int'},block_entity:{type:'Json'},
   block_eyebrow:{type:'String'},block_subtitle:{type:'String'},
@@ -93,11 +96,12 @@ const galaxyReadTypeDefs=Object.fromEntries(Object.entries(GALAXY_READ_MODEL_FIE
   .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
 const sourceImportTypeDefs=Object.fromEntries(Object.entries(SOURCE_IMPORT_MODEL_FIELDS)
   .map(([name,fields])=>[name,structuredVirtualType(name,fields)]));
-const anchorTypeEnum={name:'LocAnchorType',values:Object.fromEntries(
-  PERSISTED_ANCHOR_TYPES.map(type=>[type,type]))};
+const lucusTypeEnum={name:'LocLucusType',values:Object.fromEntries(
+  PERSISTED_LUCUS_TYPES.map(type=>[type,type]))};
 
 const databaseDefault=Object.freeze({kind:'call',function:'dbgenerated',args:[]});
-const modelName=table=>table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
+const modelName=table=>table==='runes_group'?'LRSLucus':
+  table.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('');
 function compileFixedSchema({schema:namespace,tables}){
   if(namespace!=='silver'||tables.length!==17)
     throw new Error('Invalid fixed LOC schema contract');
@@ -136,10 +140,10 @@ function compileFixedSchema({schema:namespace,tables}){
     };
   }
   return {provider:{type:'postgresql',defaultSchema:namespace},models,
-    enums:{LocAnchorType:anchorTypeEnum},
+    enums:{LocLucusType:lucusTypeEnum,LOCLucusFamily:locLucusFamilyEnum},
     typeDefs:{LocPrincipal:locPrincipal,LocFederatedRef:locFederatedRef,
-      LocAnchorLink:locAnchorLink,LocBlocks:locBlocksType,
-      ...anchorTypeDefs,...galaxyReadTypeDefs,...sourceImportTypeDefs},
+      LOCLucus:locLucusLinks,BLucus:blockLucusType,
+      ...lucusTypeDefs,...galaxyReadTypeDefs,...sourceImportTypeDefs},
     authType:'LocPrincipal',
     plugins:{policy:{provider:'@zenstackhq/plugin-policy'}}};
 }

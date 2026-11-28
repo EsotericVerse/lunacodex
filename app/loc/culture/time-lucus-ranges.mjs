@@ -1,8 +1,8 @@
-import {allocateAnchorUid} from '../model/uid.js';
+import {allocateLucusUid} from '../model/uid.js';
 // Canonical TimeAnchor graph:
 // date.attr.date -> period.attr.uid [startUID, optional endUID]
 // -> era.attr.period [period UID, ...].
-// A missing endpoint leaves a genuine surviving point; no '0' or now() anchor.
+// A missing endpoint leaves a genuine surviving point; no '0' or now() lucus.
 const UID=/^[A-Za-z0-9]{8}$/;
 const dateOf=value=>{
   const date=String(value||'').slice(0,10);
@@ -24,7 +24,7 @@ function timeAnchorDay(row){
 export function isTimeUid(value){return UID.test(String(value||''));}
 export function allocateTimeUid(rows=[]){
   const occupied=new Set((Array.isArray(rows)?rows:[]).map(row=>String(row?.uid||'')));
-  return allocateAnchorUid(occupied);
+  return allocateLucusUid(occupied);
 }
 export function encodeTimeSegment(start,end=''){
   const a=String(start||'').trim(),b=String(end||'').trim();
@@ -68,7 +68,7 @@ export function resolveTimeSegments(anchorIds,anchors){
 export function timeSegmentContainsDate(range,day){
   const date=dateOf(day),start=dateOf(range?.start_date),end=dateOf(range?.end_date);
   if(!date||!start||!end)return false;
-  // If one referenced anchor was deleted, the remaining point is still real.
+  // If one referenced lucus was deleted, the remaining point is still real.
   if(range.invalid&&!range.point)return false;
   return date>=start&&date<=end;
 }
@@ -100,7 +100,7 @@ export function timePeriodsWithValidRanges(rows=[]){
 // Merge only overlapping or adjoining valid ranges for efficient SQL selection.
 // Disconnected ranges remain separate and cannot inherit today's date.
 // Intersect every genuine Time interval across multiple sets of periods or
-// traces. Inclusive endpoints preserve a legitimate single-anchor point.
+// traces. Inclusive endpoints preserve a legitimate single-lucus point.
 // Inputs may be raw Time ranges or previously normalized date windows.
 export function intersectTimeDateWindows(windowSets=[]){
   if(!Array.isArray(windowSets)||!windowSets.length)return [];

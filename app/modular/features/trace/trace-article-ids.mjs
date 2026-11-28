@@ -1,4 +1,4 @@
-// Galaxy article membership depends only on the selected anchor UID spool.
+// Galaxy article membership depends only on the selected lucus UID spool.
 const shortId=value=>{
   const id=String(value||'').trim();
   return /^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/.test(id)?id:'';

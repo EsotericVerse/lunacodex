@@ -1,12 +1,13 @@
 import {schema} from './schema.mjs';
 import {locRolePrincipal} from './role-hierarchy.mjs';
+import {LOC_LUCUS_RELATION} from './scope-table-names.mjs';
 
 const PUBLIC_FIXED_MODELS=Object.freeze({
   'api.manage':'Manage',
   'silver.loc':'Loc',
   'silver.lo3rwang':'Lo3rwang',
   'silver.lrunes':'Lrunes',
-  'silver.loc_anchor':'LocAnchor',
+  [LOC_LUCUS_RELATION]:'LocLucus',
   'silver.lo3rwang_blocks':'Lo3rwangBlocks',
   'silver.lrunes_blocks':'LrunesBlocks'
 });

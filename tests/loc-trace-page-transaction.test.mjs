@@ -9,7 +9,7 @@ function fakeWrites(affected=ids=>ids.length){
   const events=[];
   const trx={
     updateTable(table){
-      assert.equal(table,'silver.lo3rwang_anchor');
+      assert.equal(table,'silver.lo3rwang_lucus');
       let value,ids=[],type='';
       const query={
         set(values){value=values;return this;},
@@ -71,15 +71,15 @@ test('Trace page fails closed before writing malformed/duplicated UIDs',async()=
 });
 
 
-test('Trace segment repair keeps endpoint pairs and anchor count',()=>{
+test('Trace segment repair keeps endpoint pairs and Lucus count',()=>{
   const plan=planUidDependencyRepair({deletedUid:'POIN0002',
-    deletedTable:'anchor',deletedType:'point',anchorRows:[{
+    deletedTable:'lucus',deletedType:'point',lucusRows:[{
       uid:'TRAC0001',type:'trace',
       attr:{point:['POIN0001','POIN0002','POIN0003','POIN0004'],path:[]}
     }]});
-  assert.equal(plan.anchorUpdates.length,1);
-  assert.deepEqual(plan.anchorUpdates[0].values.attr.point,['POIN0003','POIN0004']);
-  assert.equal(plan.anchorUpdates[0].values.num,2n);
-  assert.deepEqual(plan.anchorUpdates[0].expected.attr.point,
+  assert.equal(plan.lucusUpdates.length,1);
+  assert.deepEqual(plan.lucusUpdates[0].values.attr.point,['POIN0003','POIN0004']);
+  assert.equal(plan.lucusUpdates[0].values.num,2n);
+  assert.deepEqual(plan.lucusUpdates[0].expected.attr.point,
     ['POIN0001','POIN0002','POIN0003','POIN0004']);
 });

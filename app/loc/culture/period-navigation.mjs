@@ -1,14 +1,14 @@
-import {timePeriodContainsDate,timeDateWindows} from './time-anchor-ranges.mjs';
+import {timePeriodContainsDate,timeDateWindows} from './time-lucus-ranges.mjs';
 const toDay=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||'').slice(0,10))
   ?String(value).slice(0,10):'';
 const toMs=day=>Date.parse(day+'T00:00:00Z');
 const keyOf=row=>String(row?.period||row?.era_id||row?.uid||row?.id||'').trim();
 // Select the closest real era by distance from the *calendar today*.
-// Today is a query/selection reference, NEVER a Time anchor or a trace end.
+// Today is a query/selection reference, NEVER a Time lucus or a trace end.
 // Ranges may be disconnected, overlapping or singleton points.
 export function structurePeriodPreference(periods=[],items=[],referenceDay=''){
   const lastAnchor=(Array.isArray(items)?items:[])
-    .filter(row=>row?.entry_type==='anchor'&&toDay(row.start_date))
+    .filter(row=>row?.entry_type==='lucus'&&toDay(row.start_date))
     .sort((a,b)=>String(a.start_date).localeCompare(String(b.start_date))).at(-1)||null;
   const day=toDay(referenceDay)||new Date().toISOString().slice(0,10);
   const target=toMs(day);

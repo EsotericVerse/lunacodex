@@ -45,7 +45,7 @@ test('Cancel marks an in-flight Server Action result unknown and blocks the next
   });
   openEditorTransactionSession();
   const pending=adapter.authClient.schema('silver').managedTransaction([{
-    p_table:'silver.lo3rwang_anchor',p_operation:'update',p_values:{title:'x'},
+    p_table:'silver.lo3rwang_lucus',p_operation:'update',p_values:{title:'x'},
     p_filters:[{column:'uid',operator:'eq',value:'AAAAAAAA'}]
   }]);
   assert.equal(calls,1);
@@ -58,7 +58,7 @@ test('Cancel marks an in-flight Server Action result unknown and blocks the next
     /結果須重新讀取確認/.test(error.message));
   await assert.rejects(
     adapter.authClient.schema('silver').managedWrite({
-      p_table:'silver.lo3rwang_anchor',p_operation:'insert',
+      p_table:'silver.lo3rwang_lucus',p_operation:'insert',
       p_rows:[{uid:'BBBBBBBB'}]
     }),{code:'LOC_EDITOR_CANCELLED'});
   assert.equal(calls,1,'Cancel must never send queued/retried editor writes');

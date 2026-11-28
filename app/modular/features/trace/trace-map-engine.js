@@ -93,9 +93,9 @@ function buildStemElement(days){
   });
   return wrap;
 }
-function isValidSavedAnchor(anchor){
-  if(anchor?.trace_type!=='space_anchor')return false;
-  return Boolean(spaceCoordinates(anchor));
+function isValidSavedAnchor(lucus){
+  if(lucus?.trace_type!=='space_anchor')return false;
+  return Boolean(spaceCoordinates(lucus));
 }
 function existingAnchorPoints(anchors){
   return {type:'FeatureCollection',features:(Array.isArray(anchors)?anchors:[])
@@ -162,9 +162,9 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     // Updating GeoJSON never resets the viewport. Only explicit navigation may.
   }
   // Day stems are gated by one explicit checkbox in the map's own corner
-  // control, off by default: not a standing display for every anchor,
+  // control, off by default: not a standing display for every lucus,
   // and not something a plain click half-shows and half-hides. Checked,
-  // every currently valid/titled anchor on the map grows its stem at
+  // every currently valid/titled lucus on the map grows its stem at
   // once; unchecked, none do.
   function refreshTimelineStems(){
     timelineMarkers.forEach(marker=>marker.remove());
@@ -174,13 +174,13 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     const allowedTitles=new Set(validAnchors.map(a=>String(a.title||'').trim()).filter(Boolean));
     if(!allowedTitles.size)return;
     const byTitle=placeDayStems(timelineRows,allowedTitles);
-    for(const anchor of validAnchors){
-      const title=String(anchor.title||'').trim();
+    for(const lucus of validAnchors){
+      const title=String(lucus.title||'').trim();
       const days=byTitle.get(title);
       if(!days?.length)continue;
       const element=buildStemElement(days);
-      timelineMarkers.push(new Marker({element,anchor:'bottom',offset:[0,0]})
-        .setLngLat(spaceCoordinates(anchor)).addTo(map));
+      timelineMarkers.push(new Marker({element,lucus:'bottom',offset:[0,0]})
+        .setLngLat(spaceCoordinates(lucus)).addTo(map));
     }
   }
   function refreshAnnualGauges(){
@@ -206,7 +206,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       value.className='loc-trace-annual-gauge__number';
       value.textContent=percent+'%';
       element.appendChild(value);
-      annualGaugeMarkers.push(new Marker({element,anchor:'center'})
+      annualGaugeMarkers.push(new Marker({element,lucus:'center'})
         .setLngLat(spaceCoordinates(point)).addTo(map));
     }
   }
@@ -390,7 +390,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     // not the three Banqiao demonstration stations.
     const visibleAnchors=(Array.isArray(savedAnchors)?savedAnchors:[])
       .filter(isValidSavedAnchor)
-      .map(anchor=>({lng:Number(anchor.longitude),lat:Number(anchor.latitude)}));
+      .map(lucus=>({lng:Number(lucus.longitude),lat:Number(lucus.latitude)}));
     if(visibleAnchors.length===1){
       moveCamera({center:[visibleAnchors[0].lng,visibleAnchors[0].lat],zoom:12.5,
         pitch:45,bearing:0,essential:true});
@@ -419,7 +419,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     refreshTimelineStems();
     refreshAnnualGauges();
     if(canPickLocation){
-      // The Banqiao mock stations belong to the anchor editor only.
+      // The Banqiao mock stations belong to the lucus editor only.
       map.addSource('loc-trace-extrusions',{type:'geojson',data:pillarGeojson(EXAMPLE_ANCHORS)});
       map.addLayer({
         id:'loc-trace-3d-anchors',type:'fill-extrusion',source:'loc-trace-extrusions',
@@ -450,7 +450,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       minzoom:12,layout:{'text-field':territoryMode
         ?['concat',['get','title'],' · ',['to-string',['get','territoryTotal']],' 篇']
         :['get','title'],
-        'text-size':12,'text-offset':[0,1.2],'text-anchor':'top',
+        'text-size':12,'text-offset':[0,1.2],'text-lucus':'top',
         'text-allow-overlap':false},paint:{'text-color':'#ebfff8','text-halo-color':'#122d39','text-halo-width':1.5}});
     if(typeof onAnchorSelect==='function'){
       const chooseAnchor=event=>{
@@ -459,14 +459,14 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
         // Pass the complete saved row: its original description contains
         // reviewed aliases required by the inline article list. GeoJSON
         // presentation properties alone omit that contextual information.
-        const anchor=savedAnchors.find(row=>String(row.uid)===String(props.uid)
+        const lucus=savedAnchors.find(row=>String(row.uid)===String(props.uid)
           &&String(row.source_scope||'')===String(props.source_scope||''));
-        if(anchor){
-          if(showAnchorPopup)centerIfFar(...spaceCoordinates(anchor));
-          onAnchorSelect(anchor);
+        if(lucus){
+          if(showAnchorPopup)centerIfFar(...spaceCoordinates(lucus));
+          onAnchorSelect(lucus);
           if(showAnchorPopup)new Popup({closeButton:true,offset:18})
-            .setLngLat(spaceCoordinates(anchor))
-            .setText([anchor.title,anchor.postal_address].filter(Boolean).join(' · '))
+            .setLngLat(spaceCoordinates(lucus))
+            .setText([lucus.title,lucus.postal_address].filter(Boolean).join(' · '))
             .addTo(map);
         }
       };
@@ -499,16 +499,16 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       onGaugeVisibilityChange(next);
       refreshAnnualGauges();
     });
-    // Saved route markers render over the source anchor dots; make either
-    // visible geometry selectable and keep the full original anchor data.
+    // Saved route markers render over the source lucus dots; make either
+    // visible geometry selectable and keep the full original lucus data.
     if(typeof onAnchorSelect==='function'){
       const clickSavedStop=event=>{
         const props=event.features?.[0]?.properties;
-        const anchor=savedAnchors.find(row=>String(row.uid)===String(props?.uid||'')
+        const lucus=savedAnchors.find(row=>String(row.uid)===String(props?.uid||'')
           &&String(row.source_scope||'')===String(props?.source_scope||''));
-        if(!anchor)return;
-        if(showAnchorPopup)centerIfFar(...spaceCoordinates(anchor));
-        onAnchorSelect(anchor);
+        if(!lucus)return;
+        if(showAnchorPopup)centerIfFar(...spaceCoordinates(lucus));
+        onAnchorSelect(lucus);
       };
       for(const layer of ['loc-trace-user-route-stops','loc-trace-user-route-order']){
         map.on('click',layer,clickSavedStop);
@@ -525,11 +525,11 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     if(canPickLocation)markers=EXAMPLE_ANCHORS.map(place=>{
       const button=document.createElement('button');
       button.type='button';
-      button.className='loc-trace-anchor-marker';
+      button.className='loc-trace-lucus-marker';
       button.textContent=place.name;
       button.setAttribute('aria-label','查看'+place.name+'空間定錨示例');
       button.addEventListener('click',()=>focus(place.id));
-      return new Marker({element:button,anchor:'bottom',offset:[0,-13]})
+      return new Marker({element:button,lucus:'bottom',offset:[0,-13]})
         .setLngLat([place.lng,place.lat]).addTo(map);
     });
     // No implicit fit/overview on load: the origin remains stable until

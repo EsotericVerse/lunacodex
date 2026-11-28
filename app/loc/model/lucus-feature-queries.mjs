@@ -3,15 +3,16 @@
 import {z} from 'zod';
 import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
-import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
-import {assertZModelAnchorFeatureRows} from '../../../packages/zenstack/import-validation.mjs';
+import {LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
+import {scopeRelationName} from '../../../packages/zenstack/scope-table-names.mjs';
+import {assertZModelLucusFeatureRows} from '../../../packages/zenstack/import-validation.mjs';
 const scopes=new Set(SCOPE_ROUTE_INDEX.filter(x=>x.active!==false).map(x=>x.scope_id));
 const UID=z.string().regex(/^[A-Za-z0-9]{8}$/);
 const DAY=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 function calendarDate(value){return !Number.isNaN(Date.parse(value+'T00:00:00Z'))&&
   new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;}
 const schema=z.object({
-  kind:z.literal('query'),operation:z.literal('anchor-feature'),
+  kind:z.literal('query'),operation:z.literal('lucus-feature'),
   scope:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
   family:z.enum(['time','space','source','media']),
   mode:z.enum(['public','editor']).default('public'),
@@ -25,12 +26,12 @@ const schema=z.object({
   result:z.enum(['rows','count']).default('rows'),includeTotal:z.boolean().optional(),
   // The page name belongs to Blocks, not the Anchor search API.
 }).strict();
-export function parseAnchorFeatureQuery(body){
+export function parseLucusFeatureQuery(body){
   const parsed=schema.safeParse(body);
   if(!parsed.success)throw Object.assign(Error('Invalid Anchor feature model'),{httpStatus:400});
-  const value=parsed.data,allowed=ANCHOR_TYPE_GROUPS[value.family];
-  // The entire SiteAnchor taxonomy exists ONLY in silver.loc_anchor.
-  // Source is never a family within an author's private <scope>_anchor.
+  const value=parsed.data,allowed=LUCUS_TYPE_GROUPS[value.family];
+  // The entire SiteAnchor taxonomy exists ONLY in silver.loc_lucus.
+  // Source is never a family within an author's private <scope>_lucus.
   if(!scopes.has(value.scope)||value.scope==='admin'||
     (value.family==='source')!==(value.scope==='loc')||!Array.isArray(allowed)||
     value.types?.some(type=>!allowed.includes(type))||
@@ -50,15 +51,16 @@ export function parseAnchorFeatureQuery(body){
     limit:value.result==='count'?null:(value.limit??MAX_ROWS),
     order:value.order||'uid'};
 }
-export async function executeAnchorFeatureQuery(db,model){
+export async function executeLucusFeatureQuery(db,model){
   const table=model.family==='source'
-    ?'silver.loc_anchor':'silver.'+model.scope+'_anchor';
+    ?scopeRelationName('loc','lucus'):
+      scopeRelationName(model.scope,'lucus');
   let query=db.selectFrom(table).where('type','in',model.types);
   if(model.mode==='public')query=query.where('invisible','=',false);
   if(model.uids)query=query.where('uid','in',model.uids);
   if(model.cursor)query=query.where('uid','>',model.cursor);
   // MediaAnchor time windows use the existing physical createtime. The bounds
-  // are Taipei calendar days, not an additional time/anchor mapping table.
+  // are Taipei calendar days, not an additional time/lucus mapping table.
   if(model.startDate)query=query.where('createtime','>=',model.startDate+'T00:00:00+08:00');
   if(model.endDate)query=query.where('createtime','<=',model.endDate+'T23:59:59.999+08:00');
   if(model.result==='count'){
@@ -78,7 +80,7 @@ export async function executeAnchorFeatureQuery(db,model){
   ]).orderBy(model.order,direction);
   if(model.order!=='uid')page=page.orderBy('uid','asc');
   const rows=await page.limit(model.limit+1).offset(model.offset||0).execute();
-  const visible=assertZModelAnchorFeatureRows(rows.slice(0,model.limit));
+  const visible=assertZModelLucusFeatureRows(rows.slice(0,model.limit));
   return {rows:visible,hasMore:rows.length>model.limit,totalCount,
     nextCursor:rows.length>model.limit&&visible.length&&
       model.order==='uid'&&direction==='asc'

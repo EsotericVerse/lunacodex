@@ -1,6 +1,6 @@
 // Small test-only SiteAnchor fixture. Runtime source data is read from
-// silver.loc_anchor through the typed Anchor action.
-export const SOURCE_ANCHOR_FIXTURE=Object.freeze([
+// silver.loc_lucus through the typed Anchor action.
+export const SOURCE_LUCUS_FIXTURE=Object.freeze([
   {uid:'UNIV0001',type:'universe',title:'Words',invisible:false,attr:{uid:['GALX0001','GALX0002']}},
   {uid:'GALX0001',type:'galaxy',title:'CMS',invisible:false,attr:{uid:['DOMN0001']}},
   {uid:'DOMN0001',type:'domain',title:'Meta',invisible:false,attr:{uid:['FROM0001','FROM0002']}},

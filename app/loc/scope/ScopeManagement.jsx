@@ -23,11 +23,11 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
   // Space uses one list for Point/Path/Trace, with the other two first-level
   // operations reserved for names/quick fill and Timeline matching.
   const options=isLoc?[]:PLACE_OPTIONS;
-  const [section,setSection]=useManagementSection(options,'anchor');
+  const [section,setSection]=useManagementSection(options,'lucus');
   if(isLoc)return <FeaturePage featureId="trace"><p className="scope-status">LOC 不管理空間定錨；請進入各 Scope 的空間定錨管理頁。</p></FeaturePage>;
   return <FeaturePage featureId={isLoc||traceOnly?'trace':'manage'}>
-    <div className={section==='anchor'
-      ?'scope-management-layout scope-management-layout--anchor':'scope-management-layout'}>
+    <div className={section==='lucus'
+      ?'scope-management-layout scope-management-layout--lucus':'scope-management-layout'}>
       <ManagementWorkspaceFrame level={isLoc?'group':'scope'}
         title="空間定錨管理">
         <ManagementNetworkNav id="scope-sections" title="空間定錨管理" panelId="scope-management-panel"
@@ -40,7 +40,7 @@ export default function ScopeManagement({scopeId:routeScopeId='loc',section:entr
           aria-labelledby="scope-sections-selected-title">
           <ManagementSectionTransition value={section}>
           <ProtectedManagementSlot>
-            {section==='anchor'?<UnifiedSpatialManagement scopeId={routeScopeId}
+            {section==='lucus'?<UnifiedSpatialManagement scopeId={routeScopeId}
               initialType={traceOnly?'trace':'point'}
               initialRecordUid={searchParams?.get('frame')||''}/>:null}
             {section==='organize'||section==='timeline'?<PlaceManagement

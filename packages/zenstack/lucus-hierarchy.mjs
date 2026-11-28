@@ -10,25 +10,25 @@ const UID=/^[A-Za-z0-9]{8}$/;
 // These are the persisted semantic variants carried by the existing
 // eight-column Anchor row.  Keep the vocabulary in one place so the
 // hierarchy projection and the Kysely/Zod boundaries cannot silently drift.
-// TimeAnchor: date/period/era; LocationAnchor: point/path/trace.
-// MediaAnchor: image/video/suno/rune (semantic fields images/video/suno/runes).
-// KeywordAnchor: category > class > group > item > pattern; lrunes66 stays separate.
-// SiteAnchor: universe (all) > galaxy (group) > domain (collection) > from (single source).
-export const ANCHOR_TYPE_GROUPS=Object.freeze({
+// TLucus: date/period/era; LLucus: point/path/trace.
+// MLucus: image/video/suno/rune (semantic fields images/video/suno/runes).
+// KLucus: category > class > group > item > pattern; lrunes66 stays separate.
+// SLucus: universe (all) > galaxy (group) > domain (collection) > from (single source).
+export const LUCUS_TYPE_GROUPS=Object.freeze({
   time:Object.freeze(['date','period','era']),
   space:Object.freeze(['point','path','trace']),
   media:Object.freeze(['image','video','rune','suno']),
   keyword:Object.freeze(['pattern','item','group','class','category']),
   source:Object.freeze(['from','domain','galaxy','universe'])
 });
-// Shared physical MediaAnchor contract. No Galaxy Media SQL relation exists.
+// Shared physical MLucus contract. No Galaxy Media SQL relation exists.
 // Consumer projections are kept here beside the frozen ZModel type vocabulary.
-export const MEDIA_ANCHOR_COLUMNS='uid,type,title,description,createtime,attr,invisible';
-export function canonicalMediaAnchorType(hint='',url=''){
+export const MEDIA_LUCUS_COLUMNS='uid,type,title,description,createtime,attr,invisible';
+export function canonicalMediaLucusType(hint='',url=''){
   const type=String(hint||'').trim().toLowerCase();
   const link=String(url||'').trim().toLowerCase();
   // Explicit persisted ZModel type wins over URL-based inference.
-  if(ANCHOR_TYPE_GROUPS.media.includes(type))return type;
+  if(LUCUS_TYPE_GROUPS.media.includes(type))return type;
   if(type==='runes')return 'rune';
   const sunoHost=/^https?:\/\/(?:[a-z0-9-]+\.)*suno\.(?:com|ai)(?:[\/?#: ]|$)/i.test(link);
   if(sunoHost)return 'suno';
@@ -42,16 +42,16 @@ export function canonicalMediaAnchorType(hint='',url=''){
     return 'video';
   // Standalone audio/generic URL is NOT automatically a Suno or Image.
   // Reject uncertain formats rather than silently corrupting the fixed ZModel.
-  throw new Error('Unsupported MediaAnchor type: '+(type||'unknown'));
+  throw new Error('Unsupported MLucus type: '+(type||'unknown'));
 }
 function typedMediaAttr(row){
   const raw=row?.attr;
-  if(typeof raw==='string'){try{return JSON.parse(raw)||{};}catch{throw new Error('Invalid MediaAnchor attr JSON');}}
+  if(typeof raw==='string'){try{return JSON.parse(raw)||{};}catch{throw new Error('Invalid MLucus attr JSON');}}
   return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
 }
-export function mediaAnchorProjection(row={}, {includeAttr=false}={}){
-  if(!ANCHOR_TYPE_GROUPS.media.includes(row.type))
-    throw new Error('Not a MediaAnchor row');
+export function mediaLucusProjection(row={}, {includeAttr=false}={}){
+  if(!LUCUS_TYPE_GROUPS.media.includes(row.type))
+    throw new Error('Not a MLucus row');
   const attr=typedMediaAttr(row);
   const {attr:_sourceAttr,...fields}=row;
   // Related media and public statistics expose typed fields, never arbitrary
@@ -60,22 +60,22 @@ export function mediaAnchorProjection(row={}, {includeAttr=false}={}){
   return {...(includeAttr?row:fields),url:typeof attr.url==='string'?attr.url:null,
     media_type:row.type,date:typeof attr.date==='string'?attr.date:null};
 }
-export function mediaAnchorRecord(values={}){
+export function mediaLucusRecord(values={}){
   const url=String(values?.url??values?.attr?.url??'').trim();
-  if(url&&!/^https?:\/\//i.test(url))throw new Error('Invalid MediaAnchor public URL');
-  const type=canonicalMediaAnchorType(values?.type||values?.media_type,url);
+  if(url&&!/^https?:\/\//i.test(url))throw new Error('Invalid MLucus public URL');
+  const type=canonicalMediaLucusType(values?.type||values?.media_type,url);
   const created=values?.createtime;
   const date=String(values?.attr?.date||created||'').slice(0,10);
   const attr={...(url?{url}:{}),...(/^\d{4}-\d{2}-\d{2}$/.test(date)?{date}:{})};
   const uid=String(values?.uid||'').trim();
-  if(!/^[0-9A-Za-z]{8}$/.test(uid))throw new Error('MediaAnchor UID must be eight Base62 characters');
+  if(!/^[0-9A-Za-z]{8}$/.test(uid))throw new Error('MLucus UID must be eight Base62 characters');
   const row={uid,type,title:values?.title??null,
     description:values?.description??null,
     // Match the physical Anchor default; a missing URL is not an ACL grant.
     invisible:Boolean(values?.invisible),attr};
   if(created!==null&&created!==undefined&&created!==''){
     const iso=new Date(created);
-    if(Number.isNaN(iso.getTime()))throw new Error('Invalid MediaAnchor createtime');
+    if(Number.isNaN(iso.getTime()))throw new Error('Invalid MLucus createtime');
     row.createtime=iso.toISOString();
   }
   return row;
@@ -86,28 +86,28 @@ export function mediaAnchorRecord(values={}){
 // Keeping this map explicit prevents a semantic ZModel from being mistaken
 // for a new SQL table or from silently choosing a different physical field.
 // 'source' intentionally maps to Galaxy.site (the platform NAME), not
-// Galaxy.site_id (the upstream post/media ID) or silver.loc_anchor.uid
+// Galaxy.site_id (the upstream post/media ID) or silver.loc_lucus.uid
 // (the eight-character source-tree Anchor UID). Those IDs are unrelated.
 // 'media' maps to Galaxy.media_link, which contains real URL strings;
-// it is NOT a MediaAnchor UID edge. Galaxy.url is the article permalink.
-export const ANCHOR_GROUP_GALAXY_FIELDS=Object.freeze({
+// it is NOT a MLucus UID edge. Galaxy.url is the article permalink.
+export const LUCUS_GROUP_GALAXY_FIELDS=Object.freeze({
   time:Object.freeze(['date','createtime']),
   space:Object.freeze(['location','place_id']),
   media:Object.freeze(['media_link']),
   keyword:Object.freeze(['keyword']),
   source:Object.freeze(['site'])
 });
-export const PERSISTED_ANCHOR_TYPES=Object.freeze(Object.values(ANCHOR_TYPE_GROUPS)
+export const PERSISTED_LUCUS_TYPES=Object.freeze(Object.values(LUCUS_TYPE_GROUPS)
   .flat());
-// "anniversary"/historical "aniversary" is a VIRTUAL TimeAnchor suggestion.
+// "anniversary"/historical "aniversary" is a VIRTUAL TLucus suggestion.
 // Anniversary is a derived editor suggestion. It is deliberately not a
 // persisted discriminator and therefore is not included above.
-export const VIRTUAL_ANCHOR_TYPES=Object.freeze(['anniversary','aniversary']);
+export const VIRTUAL_LUCUS_TYPES=Object.freeze(['anniversary','aniversary']);
 // Anchor.num generally counts UID references from the typed payload. Pattern
 // is the exception: its num stores analyzed literal occurrences, while it
 // remains terminal and contributes no child-UID count here. The LOC Block
 // uidlist may start with a numeric layout marker: that marker is NOT a UID.
-export function anchorUidListCount(type,storedAttr={}){
+export function lucusUidListCount(type,storedAttr={}){
   const attr=typeof storedAttr==='string'?JSON.parse(storedAttr):storedAttr??{};
   if(!attr||typeof attr!=='object'||Array.isArray(attr))
     throw new TypeError('Invalid Anchor attr for UID counting');
@@ -118,7 +118,7 @@ export function anchorUidListCount(type,storedAttr={}){
   if(type==='era')return count('period');
   if(['period','category','class','group','item','universe','galaxy','domain','from']
       .includes(type))return count('uid');
-  if(PERSISTED_ANCHOR_TYPES.includes(type))return 0;
+  if(PERSISTED_LUCUS_TYPES.includes(type))return 0;
   return Array.isArray(attr.uidlist)?attr.uidlist.filter(value=>
     UID.test(typeof value==='string'?value:String(value?.uid||''))).length:0;
 }
@@ -128,69 +128,69 @@ export function anchorUidListCount(type,storedAttr={}){
 // are semantic projections, not extra SQL tables. Optional lists are valid in
 // a value type because the nullable-list limitation only applies to physical
 // SQL columns. Pattern does not persist article UID postings.
-export const ANCHOR_TYPE_MODEL_NAMES=Object.freeze({
-  date:'DateAnchor',period:'PeriodAnchor',era:'EraAnchor',
-  point:'PointAnchor',path:'PathAnchor',trace:'TraceAnchor',
-  image:'ImageAnchor',video:'VideoAnchor',rune:'RuneAnchor',suno:'SunoAnchor',
-  pattern:null,item:'ItemAnchor',group:'GroupAnchor',
-  class:'ClassAnchor',category:'CategoryAnchor',
-  from:'FromAnchor',domain:'DomainAnchor',galaxy:'GalaxyAnchor',universe:'UniverseAnchor'
+export const LUCUS_TYPE_MODEL_NAMES=Object.freeze({
+  date:'DateLucus',period:'PeriodLucus',era:'EraLucus',
+  point:'PointLucus',path:'PathLucus',trace:'TraceLucus',
+  image:'ImageLucus',video:'VideoLucus',rune:'RuneLucus',suno:'SunoLucus',
+  pattern:null,item:'ItemLucus',group:'GroupLucus',
+  class:'ClassLucus',category:'CategoryLucus',
+  from:'FromLucus',domain:'DomainLucus',galaxy:'GalaxyLucus',universe:'UniverseLucus'
 });
-export const ANCHOR_GROUP_MODEL_NAMES=Object.freeze({
-  time:'TimeAnchor',space:'LocationAnchor',media:'MediaAnchor',
-  keyword:'KeywordAnchor',source:'SiteAnchor'
+export const LUCUS_GROUP_MODEL_NAMES=Object.freeze({
+  time:'TLucus',space:'LLucus',media:'MLucus',
+  keyword:'KLucus',source:'SLucus'
 });
-export const ANCHOR_TYPE_GROUP_FIELDS=Object.freeze({
+export const LUCUS_TYPE_GROUP_FIELDS=Object.freeze({
   date:'date',period:'period',era:'era',
   point:'point',path:'path',trace:'trace',
   image:'images',video:'video',rune:'runes',suno:'suno',
   pattern:'pattern',item:'item',group:'group',class:'class',category:'category',
   from:'from',domain:'domain',galaxy:'galaxy',universe:'universe'
 });
-export const VIRTUAL_ANCHOR_TYPE_MODEL_NAMES=Object.freeze({
+export const VIRTUAL_LUCUS_TYPE_MODEL_NAMES=Object.freeze({
   anniversary:'AnniversarySuggestion',aniversary:'AnniversarySuggestion'
 });
-export const ANCHOR_TYPE_PROJECTIONS=Object.freeze(Object.fromEntries(
-  Object.entries(ANCHOR_TYPE_GROUPS).flatMap(([group,types])=>types.map(type=>[
-    type,Object.freeze({group,modelName:ANCHOR_GROUP_MODEL_NAMES[group],
-      payloadModelName:ANCHOR_TYPE_MODEL_NAMES[type],
-      groupField:ANCHOR_TYPE_GROUP_FIELDS[type],
-      galaxyFields:ANCHOR_GROUP_GALAXY_FIELDS[group]})
+export const LUCUS_TYPE_PROJECTIONS=Object.freeze(Object.fromEntries(
+  Object.entries(LUCUS_TYPE_GROUPS).flatMap(([group,types])=>types.map(type=>[
+    type,Object.freeze({group,modelName:LUCUS_GROUP_MODEL_NAMES[group],
+      payloadModelName:LUCUS_TYPE_MODEL_NAMES[type],
+      groupField:LUCUS_TYPE_GROUP_FIELDS[type],
+      galaxyFields:LUCUS_GROUP_GALAXY_FIELDS[group]})
   ]))
 ));
-export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
-  DateAnchor:{date:{type:'String'}},
-  PeriodAnchor:{uid:{type:'String',array:true,optional:true},date:{type:'String',array:true,optional:true}},
-  EraAnchor:{period:{type:'String',array:true,optional:true},date:{type:'String',array:true,optional:true}},
-  PointAnchor:{longitude:{type:'Float',optional:true},latitude:{type:'Float',optional:true},
+export const LUCUS_PAYLOAD_DEFS=Object.freeze({
+  DateLucus:{date:{type:'String'}},
+  PeriodLucus:{uid:{type:'String',array:true,optional:true},date:{type:'String',array:true,optional:true}},
+  EraLucus:{period:{type:'String',array:true,optional:true},date:{type:'String',array:true,optional:true}},
+  PointLucus:{longitude:{type:'Float',optional:true},latitude:{type:'Float',optional:true},
     location:{type:'Json',optional:true}},
-  PathAnchor:{point:{type:'String',array:true,optional:true}},
-  TraceAnchor:{point:{type:'String',array:true,optional:true},path:{type:'String',array:true,optional:true}},
-  ImageAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
-  VideoAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
-  RuneAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
-  SunoAnchor:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
-  ItemAnchor:{keyword:{type:'String',array:true,optional:true},uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
-  GroupAnchor:{uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
-  ClassAnchor:{uid:{type:'String',array:true,optional:true},
+  PathLucus:{point:{type:'String',array:true,optional:true}},
+  TraceLucus:{point:{type:'String',array:true,optional:true},path:{type:'String',array:true,optional:true}},
+  ImageLucus:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
+  VideoLucus:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
+  RuneLucus:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
+  SunoLucus:{url:{type:'String',optional:true},date:{type:'String',optional:true}},
+  ItemLucus:{keyword:{type:'String',array:true,optional:true},uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
+  GroupLucus:{uid:{type:'String',array:true,optional:true},total:{type:'Int',optional:true}},
+  ClassLucus:{uid:{type:'String',array:true,optional:true},
     exceptions:{type:'Json',optional:true}},
-  CategoryAnchor:{uid:{type:'String',array:true,optional:true}},
-  FromAnchor:{uid:{type:'String',array:true,optional:true},counts:{type:'Json',optional:true}},
-  DomainAnchor:{uid:{type:'String',array:true,optional:true},counts:{type:'Json',optional:true}},
-  GalaxyAnchor:{uid:{type:'String',array:true,optional:true},counts:{type:'Json',optional:true}},
-  UniverseAnchor:{uid:{type:'String',array:true,optional:true},counts:{type:'Json',optional:true}},
+  CategoryLucus:{uid:{type:'String',array:true,optional:true}},
+  FromLucus:{uid:{type:'String',array:true,optional:true},counts:{type:'Json',optional:true}},
+  DomainLucus:{uid:{type:'String',array:true,optional:true},counts:{type:'Json',optional:true}},
+  GalaxyLucus:{uid:{type:'String',array:true,optional:true},counts:{type:'Json',optional:true}},
+  UniverseLucus:{uid:{type:'String',array:true,optional:true},counts:{type:'Json',optional:true}},
   AnniversarySuggestion:{date:{type:'String'},years:{type:'Int'},sourceUid:{type:'String',optional:true},title:{type:'String'}},
-  TimeAnchor:{date:{type:'DateAnchor',optional:true},period:{type:'PeriodAnchor',optional:true},
-    era:{type:'EraAnchor',optional:true},anniversary:{type:'AnniversarySuggestion',optional:true}},
-  LocationAnchor:{point:{type:'PointAnchor',optional:true},path:{type:'PathAnchor',optional:true},
-    trace:{type:'TraceAnchor',optional:true}},
-  MediaAnchor:{images:{type:'ImageAnchor',optional:true},video:{type:'VideoAnchor',optional:true},
-    suno:{type:'SunoAnchor',optional:true},runes:{type:'RuneAnchor',optional:true}},
-  KeywordAnchor:{pattern:{type:'Json',optional:true},item:{type:'ItemAnchor',optional:true},
-    group:{type:'GroupAnchor',optional:true},class:{type:'ClassAnchor',optional:true},
-    category:{type:'CategoryAnchor',optional:true}},
-  SiteAnchor:{universe:{type:'UniverseAnchor',optional:true},galaxy:{type:'GalaxyAnchor',optional:true},
-    domain:{type:'DomainAnchor',optional:true},from:{type:'FromAnchor',optional:true}},
+  TLucus:{date:{type:'DateLucus',optional:true},period:{type:'PeriodLucus',optional:true},
+    era:{type:'EraLucus',optional:true},anniversary:{type:'AnniversarySuggestion',optional:true}},
+  LLucus:{point:{type:'PointLucus',optional:true},path:{type:'PathLucus',optional:true},
+    trace:{type:'TraceLucus',optional:true}},
+  MLucus:{images:{type:'ImageLucus',optional:true},video:{type:'VideoLucus',optional:true},
+    suno:{type:'SunoLucus',optional:true},runes:{type:'RuneLucus',optional:true}},
+  KLucus:{pattern:{type:'Json',optional:true},item:{type:'ItemLucus',optional:true},
+    group:{type:'GroupLucus',optional:true},class:{type:'ClassLucus',optional:true},
+    category:{type:'CategoryLucus',optional:true}},
+  SLucus:{universe:{type:'UniverseLucus',optional:true},galaxy:{type:'GalaxyLucus',optional:true},
+    domain:{type:'DomainLucus',optional:true},from:{type:'FromLucus',optional:true}},
   LRunes66:{rune_id:{type:'Int'},rune_name:{type:'String',optional:true},
     english_name:{type:'String',optional:true},totem:{type:'String',optional:true},
     group_name:{type:'String',optional:true},moon_phase:{type:'Int',optional:true},
@@ -206,12 +206,12 @@ export const ANCHOR_PAYLOAD_DEFS=Object.freeze({
     class_enable:{type:'Boolean',optional:true}}
 });
 
-// A FromAnchor is the terminal SiteAnchor discriminator. The physical
+// A FromLucus is the terminal SLucus discriminator. The physical
 // payload still stores uid:[] (and ZModel accepts that legacy shape), but a
 // nonempty list cannot silently become an unmodeled fifth Source level.
-export function assertSiteAnchorLeaf(type,attr){
+export function assertSiteLucusLeaf(type,attr){
   if(type==='from'&&Array.isArray(attr?.uid)&&attr.uid.length>0)
-    throw new TypeError('LOC FromAnchor is a terminal Source node; attr.uid must be empty');
+    throw new TypeError('LOC FromLucus is a terminal Source node; attr.uid must be empty');
 }
 
 // TREE MODEL is a separate relationship layer over typed/composite Models.
@@ -239,10 +239,10 @@ const FAMILY_DEFS=Object.freeze({
     edges:{trace:{path:'path',point:'point'},path:{point:'point'},point:{}}
   }
 });
-export const ANCHOR_HIERARCHY_FAMILIES=Object.freeze(Object.keys(FAMILY_DEFS));
+export const LUCUS_HIERARCHY_FAMILIES=Object.freeze(Object.keys(FAMILY_DEFS));
 // Typed payloads say what a node contains; FAMILY_DEFS says how nodes connect.
 // Editor transition checks use the SAME ZModel hierarchy as typed readers.
-export function nextZModelAnchorType(family,type){
+export function nextZModelLucusType(family,type){
   const edges=FAMILY_DEFS[String(family||'')]?.edges?.[String(type||'')];
   const next=edges?Object.values(edges):[];
   return next.length===1?next[0]:null;
@@ -274,7 +274,7 @@ function linksOf(node,key){
  * reported, never assumed to be nonexistent. Set strict=true when validating
  * an intentionally complete hierarchy.
  */
-export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
+export function indexZModelLucusHierarchy(rows,{family,strict=false}={}){
   const def=FAMILY_DEFS[family];
   if(!def||!Array.isArray(rows))
     throw new Error('Unknown or invalid ZModel Anchor hierarchy');
@@ -286,7 +286,7 @@ export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
     if(!UID.test(uid)||nodes.has(uid))
       throw new Error('Invalid or repeated Anchor UID: '+uid);
     const attr=attrOf(row);
-    if(family==='source')assertSiteAnchorLeaf(type,attr);
+    if(family==='source')assertSiteLucusLeaf(type,attr);
     nodes.set(uid,{uid,type,title:String(row?.title||''),attr});
   }
   const unresolved=[],relations=[];
@@ -303,7 +303,7 @@ export function indexZModelAnchorHierarchy(rows,{family,strict=false}={}){
         if(!child){unresolved.push({from:node.uid,uid,type:childType});continue;}
         if(child.type!==childType)
           throw new Error('Invalid Anchor hierarchy ('+family+'): '+node.type+' -> '+child.type);
-        // TimeAnchor is a DAG: dates/periods may be reused by multiple ranges.
+        // TLucus is a DAG: dates/periods may be reused by multiple ranges.
         // Only strict Keyword/Site hierarchies require unique parents.
         const sharedChild=family==='space'||family==='time'||
           (family==='keyword'&&childType==='pattern');

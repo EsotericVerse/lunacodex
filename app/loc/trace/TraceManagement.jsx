@@ -14,7 +14,7 @@ import {reviewReorderedCoordinateNames} from '../../modular/features/trace/trace
 import {selectPointMergeSources} from './point-merge-selection.mjs';
 import {
   filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
-} from './bulk-anchor-filter.mjs';
+} from './bulk-lucus-filter.mjs';
 import {readPlaceSummary} from './place-summary-client';
 
 const LazyBlockNoteEditor=lazy(()=>import('../editor/BlockNoteEditor'));
@@ -160,7 +160,7 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
       if(visibility){setPendingVisibility(null);setBulkUids([]);}
       // reload() already revalidates the mounted, authenticated Trace query.
       // Invalidating that very key again would erase the fresh result and
-      // expose an empty anchor list on the next edit without another fetch.
+      // expose an empty lucus list on the next edit without another fetch.
       let refreshFailed=false;
       try{
         const refreshed=await reload();
@@ -223,10 +223,10 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
   };
   useEditDockForm({save,isDirty:()=>dirty,isBusy:()=>busy||bulkBusy,
     isDestructive:()=>mergeUids.length>0||Boolean(pendingVisibility)});
-  return <section className="loc-card scope-feature-card loc-trace-anchor-editor">
+  return <section className="loc-card scope-feature-card loc-trace-lucus-editor">
     <h3>{editingUid?'編輯空間定錨點':'新增空間定錨點'}</h3>
     {!embedded?<label>編輯既有地點（直接搜尋標題）
-      <ScopeOptionPicker id={'trace-anchor-edit-'+scopeId} options={options}
+      <ScopeOptionPicker id={'trace-lucus-edit-'+scopeId} options={options}
         value={editingUid} onChange={pickExisting} disabled={busy||bulkBusy} resetKey={scopeId}
         placeholder="搜尋標題，或留空新增"/>
     </label>:null}
@@ -331,7 +331,7 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
 
 // Embedded under the existing /manage (Scope) or /admin (LOC) routes.
 // The parent manager owns authorization, edit mode and tab navigation.
-export default function TraceManagementPanel({scopeId,mode='anchor',routeMode='all',spatialData=null,reloadSpatial=null,selectedUid='',embedded=false,onRegisterLeave=null}){
+export default function TraceManagementPanel({scopeId,mode='lucus',routeMode='all',spatialData=null,reloadSpatial=null,selectedUid='',embedded=false,onRegisterLeave=null}){
   const enabled=TRACE_SCOPES.includes(scopeId);
   const query=useAsyncResource(traceKey(scopeId,{includeHidden:true}),()=>readTraceData(scopeId,{includeHidden:true}),{
     enabled:enabled&&mode!=='map'&&!spatialData,revalidateOnFocus:false,revalidateOnReconnect:false
@@ -345,5 +345,5 @@ export default function TraceManagementPanel({scopeId,mode='anchor',routeMode='a
   const reload=reloadSpatial||(()=>query.mutate());
   return mode==='cleanup'
     ?<TraceOrganizer key={scopeId+'-cleanup'} scopeId={scopeId} spatial={spatial} reload={reload}/>
-    :<AnchorEditor key={scopeId+'-anchor-'+(embedded?selectedUid:'')} scopeId={scopeId} spatial={spatial} reload={reload} selectedUid={selectedUid} embedded={embedded} onRegisterLeave={onRegisterLeave}/>;
+    :<AnchorEditor key={scopeId+'-lucus-'+(embedded?selectedUid:'')} scopeId={scopeId} spatial={spatial} reload={reload} selectedUid={selectedUid} embedded={embedded} onRegisterLeave={onRegisterLeave}/>;
 }

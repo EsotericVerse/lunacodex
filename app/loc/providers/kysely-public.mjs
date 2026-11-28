@@ -1,7 +1,8 @@
 import {publicScopeBlockPage} from '../blocks/public-scope-pages.mjs';
 import {portableRelation} from './sql-engine-ports.mjs';
-import {LOC_BLOCK_ANCHOR_FIELDS,locAnchorToBlock,isLocBlockPage}
-  from '../blocks/loc-block-anchor.mjs';
+import {LOC_BLOCK_LUCUS_FIELDS,locLucusToBlock,isLocBlockPage}
+  from '../blocks/loc-block-lucus.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const scopePattern=/^[a-z][a-z0-9]{0,14}$/;
 function id(value){
@@ -19,8 +20,8 @@ const blockRelation=(name,engine,namespace)=>engine==='postgres'
   ?'silver.'+name:portableRelation(name,engine,namespace);
 
 async function readLocBlockAnchors(db,types,{engine='postgres',namespace='silver'}={}){
-  return db.selectFrom(blockRelation('loc_anchor',engine,namespace))
-    .select(LOC_BLOCK_ANCHOR_FIELDS)
+  return db.selectFrom(blockRelation(scopeTableName('loc','lucus'),engine,namespace))
+    .select(LOC_BLOCK_LUCUS_FIELDS)
     .where('type','in',types).where('invisible','=',false)
     .orderBy('uid','asc').execute();
 }
@@ -32,7 +33,7 @@ export async function block_list(db,scopeValue,options={}){
   if(scope==='loc'){
     if(page!=='index')throw Object.assign(new Error('Invalid LOC public Block page'),{httpStatus:400});
     const rows=await readLocBlockAnchors(db,LOC_LIST_TYPES,options);
-    return rows.map(locAnchorToBlock)
+    return rows.map(locLucusToBlock)
       .sort((a,b)=>a.page_name.localeCompare(b.page_name)||
         a.block_order-b.block_order);
   }
@@ -48,7 +49,7 @@ export async function hero_block(db,specificValue,options={}){
     types.some(type=>!isLocBlockPage(type)||LOC_LIST_TYPES.includes(type)))
     throw Object.assign(new Error('Invalid specific Hero type'),{httpStatus:400});
   const rows=await readLocBlockAnchors(db,types,options);
-  return rows.map(locAnchorToBlock).sort((a,b)=>
+  return rows.map(locLucusToBlock).sort((a,b)=>
     types.indexOf(a.page_name)-types.indexOf(b.page_name)||
     a.block_order-b.block_order);
 }

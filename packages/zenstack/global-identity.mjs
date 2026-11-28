@@ -35,11 +35,11 @@ export function locGlobalRowRef(row,context){
  * Different databases with the same uid remain distinct. This is indexing
  * metadata, NOT an authorization decision or a database synchronization job.
  */
-export function qualifyLocAnchorLinks(links,{databaseId,scopeId}={}){
+export function qualifyLOCLucus(links,{databaseId,scopeId}={}){
   if(!Array.isArray(links))throw new Error('Invalid LOC Anchor link collection');
   return links.map(link=>{
     if(!link||typeof link!=='object'||
-       !['keyword','source','time','space'].includes(link.family)||
+       !['culture','trace','statics','search'].includes(link.family)||
        typeof link.fromType!=='string'||!link.fromType||
        typeof link.toType!=='string'||!link.toType||
        !['uid','period','path','point'].includes(link.attrKey)||

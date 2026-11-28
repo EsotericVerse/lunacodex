@@ -1,4 +1,4 @@
-// Import-only Point / Date planning for the unified <scope>_anchor table.
+// Import-only Point / Date planning for the unified <scope>_lucus table.
 // Simple INSERT and title-backfill values are constructed in JS; the
 // authorized Kysely caller still owns ZModel validation, SQL and CAS.
 const UID=/^[A-Za-z0-9]{8}$/;

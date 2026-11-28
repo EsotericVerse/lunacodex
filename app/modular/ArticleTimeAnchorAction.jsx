@@ -4,9 +4,9 @@ import {useEffect,useId,useRef,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {useAccount} from '../loc/auth/use-account';
 import {selectManagedScope} from '../loc/scope/scope-data';
-import {readAllAnchorFeature} from '../loc/model/feature-query-client.mjs';
+import {readAllLucusFeature} from '../loc/model/feature-query-client.mjs';
 import {insertRows} from '../loc/db/db-client.mjs';
-import {allocateTimeUid} from '../loc/culture/time-anchor-ranges.mjs';
+import {allocateTimeUid} from '../loc/culture/time-lucus-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../loc/culture/anniversary.mjs';
 import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/auth/edit-session-ttl.mjs';
 
@@ -14,10 +14,10 @@ const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loadi
 const validDay=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
 async function findDateAnchor(scope,date){
-  const rows=await readAllAnchorFeature({
+  const rows=await readAllLucusFeature({
     scope,family:'time',types:['date'],editor:true
   });
-  const projected=rows.map(row=>({...row,type:'anchor',
+  const projected=rows.map(row=>({...row,type:'lucus',
     address:String(row.attr?.date||'').slice(0,10)}));
   return {existing:projected.find(row=>row.address===date)||null,all:projected};
 }
@@ -139,7 +139,7 @@ export default function ArticleTimeAnchorAction({
           ...(Number.isFinite(original)?{createtime:new Date(original).toISOString()}:{})};
         const result=await insertRows(table,[record]);
         if(result?.count!==1)throw new Error('新增時間定錨未確認成功。');
-        onCreated?.({...record,type:'anchor',address:date});
+        onCreated?.({...record,type:'lucus',address:date});
         setNotice('已新增 '+date+' 的時間定錨。');
       }
       setOpen(false);

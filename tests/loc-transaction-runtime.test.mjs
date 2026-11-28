@@ -83,7 +83,7 @@ test('row-specific Anchor JSON CASE preserves num and full original attr CAS',()
   ];
   const serialize=values=>Object.fromEntries(Object.entries(values).map(
     ([key,value])=>[key,key==='attr'?sql`${JSON.stringify(value)}::jsonb`:value]));
-  const compiled=buildUidCaseRepairQuery(db,'silver.loc_anchor',items,
+  const compiled=buildUidCaseRepairQuery(db,'silver.loc_lucus',items,
     serialize).compile();
   assert.match(compiled.sql,/CASE/i);
   assert.match(compiled.sql,/::jsonb/i);
@@ -113,7 +113,7 @@ test('UID delete refuses an incomplete CAS batch with conflict status',async()=>
   const db={selectFrom:select,updateTable:update};
   await assert.rejects(
     repairBeforeUidDelete(db,{
-      table:'lo3rwang_anchor',
+      table:'lo3rwang_lucus',
       filters:[{column:'uid',operator:'eq',value:'DELE0001'}],
       engine:'postgres'
     }),

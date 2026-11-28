@@ -9,6 +9,7 @@ import {invalidateScopedReadCache} from '../../../packages/zenstack/scoped-read-
 import {isScopedGalaxy,prepareGalaxyInsertRows,prepareGalaxyUpdateValues} from '../model/galaxy-able.mjs';
 import {queryGalaxyDuplicates} from '../actions/galaxy/management-queries.mjs';
 import {queryStatics,queryStaticsContent} from '../actions/statics/queries.mjs';
+import {scopeTableDescriptor,scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 // Database contract transports physical Galaxy/Anchor rows. Keyword Tree
 // adapters may expose legacy lists for editor compatibility; new persistent
@@ -22,7 +23,7 @@ export const KEYWORD_CLASSIFICATION_WRITE_COOLDOWN_MS=1000;
 // consistently for publisher, search, culture and import paths.
 // MediaAnchor and Blocks are typed separately from Galaxy records.
 function validateGalaxyWrite(table,values){
-  if(!/^silver\.[a-z][a-z0-9_]{0,40}_galaxy$/.test(String(table||'')))return values;
+  if(scopeTableDescriptor(String(table||'').split('.').at(-1))?.kind!=='galaxy')return values;
   const {content:body,...attributes}=values||{};
   assertPlainGalaxyAttributes(attributes);
   return values;
@@ -222,7 +223,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   async function updateImportRowsUnchecked(table,rows){
     const lease=editorTransactionLease();
     assertEditorTransactionLease(lease);
-    if(!/^silver\\.[a-z][a-z0-9_]*_galaxy$/.test(String(table||'')))
+    if(scopeTableDescriptor(String(table||'').split('.').at(-1))?.kind!=='galaxy')
       throw Error('文章批次更新資料表無效');
     const list=Array.isArray(rows)?rows:[];
     const allowedFields=new Set(['title','content','place_id','url','media_link',
@@ -294,7 +295,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function readOwnedKeywordNodes(table){
-    const scope=String(table||'').match(/^silver\.([a-z][a-z0-9]{0,14})_anchor$/)?.[1];
+    const scope=String(table||'').match(/^silver\.([a-z][a-z0-9]{0,14})_[a-z][a-z0-9_]*$/)?.[1];
     if(!scope)throw Error('KeywordAnchor Scope is invalid');
     const {queryKeywordNodesForCopy}=await import('../actions/keywords/queries.mjs');
     const rows=[];
@@ -439,7 +440,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
 
   async function prepareKeywordLibraryWrite(scopeId,operation,node={}){
-    const scope=normalizeScopeId(scopeId),table='silver.'+scope+'_anchor';
+    const scope=normalizeScopeId(scopeId),table='silver.'+scopeTableName(scope,'lucus');
     preflightWrite(table);
     const op=String(operation||'').toLowerCase();
     if(!['insert','update','delete'].includes(op))
@@ -477,11 +478,11 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const scope=normalizeScopeId(scopeId),source=String(sourceClassUid||''),
       target=String(targetClassName||'').trim();
     if(!/^[0-9A-Za-z]{8}$/.test(source)||!target)throw new Error('Keywords Class 識別或名稱不正確');
-    const table='silver.'+scope+'_anchor';
+    const table='silver.'+scopeTableName(scope,'lucus');
     preflightWrite(table);
     const data=await readOwnedKeywordNodes(table);
     const {indexKeywordTree,descendantsOfKeyword}=await import('../keywords/tree.mjs');
-    const {allocateAnchorUid}=await import('../model/uid.js');
+    const {allocateLucusUid}=await import('../model/uid.js');
     const tree=indexKeywordTree(data);
     const original=tree.index.get(source);
     if(!original||original.type!=='class')throw new Error('找不到來源 Class');
@@ -493,7 +494,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     // and sort every Anchor just to allocate new UIDs; the database PK is the
     // authoritative collision check and this batch owns its allocated set.
     for(const node of descendants){
-      const uid=allocateAnchorUid(new Set(occupied));
+      const uid=allocateLucusUid(new Set(occupied));
       occupied.push(uid);mapping.set(node.uid,uid);
     }
     const operations=[];
@@ -515,8 +516,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
 
   async function copyRune66KeywordClassUnchecked(scopeId,sourceClassUid){
-    const {allocateAnchorUid}=await import('../model/uid.js');
-    const uid=allocateAnchorUid();
+    const {allocateLucusUid}=await import('../model/uid.js');
+    const uid=allocateLucusUid();
     return copyKeywordLibraryClass(scopeId,sourceClassUid,'符文66副本-'+uid);
   }
 
@@ -532,7 +533,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
         assertEditorSession(window.sessionStorage);
         if(!canAuthorizeLocAccess('group','loc'))throw new Error('LOC 群組首頁編輯權限不足。');
       }
-    }else preflightWrite(scope==='loc'?'silver.loc_anchor':'silver.'+scope+'_blocks');
+    }else preflightWrite(scope==='loc'?'silver.'+scopeTableName(scope,'lucus'):'silver.'+scope+'_blocks');
     const {data,error,homeCacheSync}=await authClient.schema('silver').managedAction('move_scope_block',{
       p_scope_id:scope,p_page_name:normalizedPage,p_uid:blockUid,p_direction:direction
     });

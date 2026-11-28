@@ -25,7 +25,7 @@ const batchEnvelope=z.strictObject({
   estimatedBytes:z.number().int().nonnegative()
 });
 // Keep transport validation on the composed *physical* Galaxy projection.
-// Date now lives in the nested GalaxyUidAnchor brick.
+// Date now lives in the nested GalaxyUidLucus brick.
 const GALAXY_READ_COLUMNS=new Set(galaxyReadColumns('GalaxyUidRead'));
 for(const field of ['uid','content','createtime','date']){
   if(!GALAXY_READ_COLUMNS.has(field))

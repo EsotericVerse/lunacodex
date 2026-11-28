@@ -1,4 +1,4 @@
-import {ANCHOR_TYPE_GROUPS,indexZModelAnchorHierarchy} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {LUCUS_TYPE_GROUPS,indexZModelLucusHierarchy} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 
 // Public SiteAnchor projection. The ZModel graph owns parent/child semantics.
 const norm=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -10,7 +10,7 @@ export function sourceLabelMatchesSite(site,label){
  return Boolean(a&&b&&(a===b||sourceSiteKeyForLabel(b)===a));
 }
 // CURRENT Site Tree Model: typed From/Domain/Galaxy/Universe payloads compose
-// under SiteAnchor; anchor-hierarchy.mjs validates real attr.uid child edges.
+// under SiteAnchor; lucus-hierarchy.mjs validates real attr.uid child edges.
 // Source taxonomy aliases and flat UI choices are projections of the one
 // canonical tree; never infer parenthood from titles or create another tree.
 // The source taxonomy is the existing LocAnchor ZModel, not a second
@@ -27,7 +27,7 @@ export function sourceLabelMatchesSite(site,label){
 // when source records are explicitly edited; never rewrite Galaxy.site on import.
 // SiteAnchor from/domain/galaxy/universe is a real UID-linked hierarchy; flat UI is only presentation.
 // Never derive parenthood from matching display titles.
-const SOURCE_LEVELS=Object.freeze([...ANCHOR_TYPE_GROUPS.source].reverse());
+const SOURCE_LEVELS=Object.freeze([...LUCUS_TYPE_GROUPS.source].reverse());
 const sourceRoot=title=>{
   const label=norm(title);
   return label==='mutlimedia'||label==='multimedia'?'media':
@@ -35,10 +35,10 @@ const sourceRoot=title=>{
 };
 
 /** Pure projection of the published SiteAnchor JS snapshot for Culture/Statistics.
- * Publication reads silver.loc_anchor explicitly; feature reads stay in JS.
+ * Publication reads silver.loc_lucus explicitly; feature reads stay in JS.
  * This creates no foreign keys, aliases, extra tables, or article-side changes.
  */
-export function sourceTaxonomyFromAnchors(rows=[],{includeHidden=false}={}){
+export function sourceTaxonomyFromLucus(rows=[],{includeHidden=false}={}){
   const allowed=new Set(SOURCE_LEVELS);
   const nodes=(Array.isArray(rows)?rows:[]).filter(row=>
     allowed.has(row?.type)&&typeof row?.uid==='string'&&row.uid&&
@@ -47,7 +47,7 @@ export function sourceTaxonomyFromAnchors(rows=[],{includeHidden=false}={}){
   const byUid=new Map(nodes.map(row=>[row.uid,row]));
   // Validate links and read typed children from the existing ZModel hierarchy.
   // Partial published lists may omit hidden descendants; unresolved IDs are not inferred.
-  const graph=indexZModelAnchorHierarchy(nodes,{family:'source'});
+  const graph=indexZModelLucusHierarchy(nodes,{family:'source'});
   const roots=graph.roots.map(uid=>byUid.get(uid)).filter(Boolean);
   const categories=[],tree=[],visited=new Set();
   // Source alias labels are semantic identities, not UNIQUE columns. Build

@@ -25,10 +25,10 @@ test('Era backgrounds keep real segments, stable colors, gaps and read-only sema
   assert.ok(visuals.backgrounds.every(row=>row.type==='background'&&row.selectable===false&&row.editable===false&&!row.group));
   assert.deepEqual(cultureEraVisuals([...records].reverse()).backgrounds,visuals.backgrounds);
   const period={id:'period',raw:{entry_type:'period',scope_id:'scope',era_uid:a.uid}};
-  const anchor={id:'anchor',raw:{entry_type:'anchor'}};
-  const painted=paintCultureRows([period,anchor],visuals);
+  const lucus={id:'lucus',raw:{entry_type:'lucus'}};
+  const painted=paintCultureRows([period,lucus],visuals);
   assert.match(painted[0].className,/scope-era-period/);
-  assert.strictEqual(painted[1],anchor);
+  assert.strictEqual(painted[1],lucus);
   assert.equal(painted.length,5);
 });
 

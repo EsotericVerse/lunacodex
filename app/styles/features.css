@@ -493,7 +493,7 @@
 @media(max-width:540px){.scope-culture-record-browser-select{flex-basis:100%}}
 
 /* Expand parent Era first, then Period, before any Date records are shown. */
-.loc-time-anchor-tree{min-width:0;border:1px solid var(--loc-line);border-radius:var(--loc-radius);padding:.55rem;max-height:min(55vh,32rem);overflow:auto}
+.loc-time-lucus-tree{min-width:0;border:1px solid var(--loc-line);border-radius:var(--loc-radius);padding:.55rem;max-height:min(55vh,32rem);overflow:auto}
 .loc-time-tree-search{display:grid;gap:.28rem;font-size:.87rem;color:var(--loc-muted);margin-bottom:.6rem}
 .loc-time-tree-search input{width:100%;min-width:0}
 .loc-time-tree-roots,.loc-time-tree-children,.loc-time-tree-unclassified ul{list-style:none;margin:0;padding:0;min-width:0}
@@ -512,7 +512,7 @@
 .loc-time-tree-date-choice{font-size:.9rem;padding-inline-start:1.2rem;flex-wrap:wrap}
 .loc-time-tree-date-choice time{white-space:nowrap;color:var(--loc-muted);font-variant-numeric:tabular-nums}
 .loc-time-tree-subheading{padding:.4rem .5rem;font-size:.86rem;font-weight:650;color:var(--loc-muted)}
-@media(max-width:540px){.loc-time-anchor-tree{padding:.35rem}.loc-time-tree-children{margin-inline-start:.6rem;padding-inline-start:.4rem}.loc-time-tree-date-choice{padding-inline-start:.6rem}}
+@media(max-width:540px){.loc-time-lucus-tree{padding:.35rem}.loc-time-tree-children{margin-inline-start:.6rem;padding-inline-start:.4rem}.loc-time-tree-date-choice{padding-inline-start:.6rem}}
 
 .scope-culture-time-input-area{display:grid;gap:.5rem;margin-top:.85rem;min-width:0}
 .scope-culture-record-kind{display:flex;flex-wrap:wrap;gap:.45rem}
@@ -534,30 +534,30 @@
 .scope-culture-quick-actions .loc-button{min-height:2.5rem}
 @media(max-width:920px){.scope-culture-quick-primary{grid-template-columns:repeat(2,minmax(0,1fr))}.scope-culture-quick-name{grid-column:1/-1}}
 @media(max-width:540px){.scope-culture-quick-primary,.scope-culture-quick-anchors{grid-template-columns:minmax(0,1fr)}.scope-culture-quick-name{grid-column:auto}.scope-culture-inline-editor{padding:.65rem}}
-.scope-culture-quick-anchor-connect{grid-column:1/-1;display:grid;gap:.5rem;padding-top:.5rem;border-top:1px solid var(--loc-line)}
-.scope-culture-quick-anchor-connect h5{margin:0;font-size:.88rem;color:var(--loc-muted)}
-.scope-culture-quick-anchor-connect-list{display:grid;gap:.4rem}
-.scope-culture-quick-anchor-connect-item{display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;padding:.4rem .55rem;border:1px solid var(--loc-line);border-radius:var(--loc-radius-sm);overflow-wrap:anywhere}
-@media(max-width:540px){.scope-culture-quick-anchor-connect .scope-culture-quick-primary{grid-template-columns:minmax(0,1fr)}}
-.scope-culture-anchor-actions{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin:.65rem 0;padding:.65rem .8rem;border:1px solid var(--loc-line);border-radius:var(--loc-radius-sm);background:color-mix(in srgb,var(--loc-panel) 76%,transparent);color:var(--loc-muted);font-size:.9rem}
-.scope-period-timeline .vis-item.scope-virtual-anchor{overflow:visible;border:0!important;background:transparent!important;color:color-mix(in srgb,var(--loc-accent) calc(55% + var(--virtual-anchor-strength,0)*45%),var(--loc-text))!important;font-weight:800;line-height:1;filter:drop-shadow(0 0 calc(4px + var(--virtual-anchor-strength,0)*10px) color-mix(in srgb,var(--loc-accent) 55%,transparent))}
-.scope-period-timeline .vis-item.scope-virtual-anchor .vis-item-content{display:block!important;overflow:visible!important;padding:.15rem .25rem!important;transform:none;cursor:pointer}
-.scope-period-timeline .vis-item.scope-virtual-anchor{min-width:30px;min-height:32px;cursor:pointer;position:relative!important;z-index:2}
-.scope-period-timeline .vis-item.scope-virtual-anchor .vis-item-content{font-size:0!important;min-width:28px;min-height:30px;position:relative!important}
-.scope-period-timeline .vis-item.scope-virtual-anchor .vis-item-content::before{content:'';position:absolute;left:7px;top:8px;width:15px;height:15px;border:2px solid color-mix(in srgb,var(--loc-accent) 85%,#f9cf75);background:transparent;border-radius:2px;transform:rotate(45deg);box-shadow:0 0 0 5px color-mix(in srgb,var(--loc-accent) 7%,transparent),0 0 14px color-mix(in srgb,var(--loc-accent) 23%,transparent)}
-.scope-period-timeline .vis-item.scope-virtual-anchor .vis-item-content::after{content:'';position:absolute;left:12px;top:13px;width:5px;height:5px;border-radius:50%;background:color-mix(in srgb,var(--loc-accent) 38%,#fff1ae);box-shadow:0 0 8px 3px color-mix(in srgb,var(--loc-accent) 24%,transparent)}
-.scope-period-timeline .vis-item.scope-virtual-anchor.is-selected .vis-item-content::before{border-color:#edc66a;box-shadow:0 0 0 7px color-mix(in srgb,var(--loc-accent) 9%,transparent),0 0 17px color-mix(in srgb,var(--loc-accent) 33%,transparent)}
-.scope-culture-anchor-picker{flex:1 1 100%;min-width:0}
-.scope-culture-anchor-picker summary{cursor:pointer;font-weight:650;color:var(--loc-text);list-style:none;display:flex;align-items:center;gap:.4rem}
-.scope-culture-anchor-picker summary::-webkit-details-marker{display:none}
-.scope-culture-anchor-picker-mark{display:inline-flex;align-items:center;justify-content:center;width:1.1rem;height:1.1rem;border:1px solid var(--loc-line);border-radius:3px;font-size:.8rem;line-height:1;color:var(--loc-muted);flex:none}
-.scope-culture-anchor-picker-mark::before{content:'+'}
-.scope-culture-anchor-picker[open] .scope-culture-anchor-picker-mark::before{content:'−'}
-.scope-culture-anchor-choices{display:flex;flex-wrap:wrap;gap:.45rem;max-height:12rem;overflow:auto;margin-top:.5rem}
-.scope-culture-anchor-choices label{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .5rem;border:1px solid var(--loc-line);border-radius:var(--loc-radius-sm);cursor:pointer}
-.scope-culture-anchor-choices label:has(input:checked){border-color:var(--loc-accent);color:var(--loc-text)}
-.scope-culture-anchor-actions .scope-preview-links{display:flex;flex-wrap:wrap;gap:.5rem;width:100%}
-.scope-period-timeline .vis-item.scope-virtual-anchor.is-selected{color:var(--loc-gold)!important;filter:drop-shadow(0 0 12px color-mix(in srgb,var(--loc-gold) 72%,transparent))}
+.scope-culture-quick-lucus-connect{grid-column:1/-1;display:grid;gap:.5rem;padding-top:.5rem;border-top:1px solid var(--loc-line)}
+.scope-culture-quick-lucus-connect h5{margin:0;font-size:.88rem;color:var(--loc-muted)}
+.scope-culture-quick-lucus-connect-list{display:grid;gap:.4rem}
+.scope-culture-quick-lucus-connect-item{display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap;padding:.4rem .55rem;border:1px solid var(--loc-line);border-radius:var(--loc-radius-sm);overflow-wrap:anywhere}
+@media(max-width:540px){.scope-culture-quick-lucus-connect .scope-culture-quick-primary{grid-template-columns:minmax(0,1fr)}}
+.scope-culture-lucus-actions{display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;margin:.65rem 0;padding:.65rem .8rem;border:1px solid var(--loc-line);border-radius:var(--loc-radius-sm);background:color-mix(in srgb,var(--loc-panel) 76%,transparent);color:var(--loc-muted);font-size:.9rem}
+.scope-period-timeline .vis-item.scope-virtual-lucus{overflow:visible;border:0!important;background:transparent!important;color:color-mix(in srgb,var(--loc-accent) calc(55% + var(--virtual-lucus-strength,0)*45%),var(--loc-text))!important;font-weight:800;line-height:1;filter:drop-shadow(0 0 calc(4px + var(--virtual-lucus-strength,0)*10px) color-mix(in srgb,var(--loc-accent) 55%,transparent))}
+.scope-period-timeline .vis-item.scope-virtual-lucus .vis-item-content{display:block!important;overflow:visible!important;padding:.15rem .25rem!important;transform:none;cursor:pointer}
+.scope-period-timeline .vis-item.scope-virtual-lucus{min-width:30px;min-height:32px;cursor:pointer;position:relative!important;z-index:2}
+.scope-period-timeline .vis-item.scope-virtual-lucus .vis-item-content{font-size:0!important;min-width:28px;min-height:30px;position:relative!important}
+.scope-period-timeline .vis-item.scope-virtual-lucus .vis-item-content::before{content:'';position:absolute;left:7px;top:8px;width:15px;height:15px;border:2px solid color-mix(in srgb,var(--loc-accent) 85%,#f9cf75);background:transparent;border-radius:2px;transform:rotate(45deg);box-shadow:0 0 0 5px color-mix(in srgb,var(--loc-accent) 7%,transparent),0 0 14px color-mix(in srgb,var(--loc-accent) 23%,transparent)}
+.scope-period-timeline .vis-item.scope-virtual-lucus .vis-item-content::after{content:'';position:absolute;left:12px;top:13px;width:5px;height:5px;border-radius:50%;background:color-mix(in srgb,var(--loc-accent) 38%,#fff1ae);box-shadow:0 0 8px 3px color-mix(in srgb,var(--loc-accent) 24%,transparent)}
+.scope-period-timeline .vis-item.scope-virtual-lucus.is-selected .vis-item-content::before{border-color:#edc66a;box-shadow:0 0 0 7px color-mix(in srgb,var(--loc-accent) 9%,transparent),0 0 17px color-mix(in srgb,var(--loc-accent) 33%,transparent)}
+.scope-culture-lucus-picker{flex:1 1 100%;min-width:0}
+.scope-culture-lucus-picker summary{cursor:pointer;font-weight:650;color:var(--loc-text);list-style:none;display:flex;align-items:center;gap:.4rem}
+.scope-culture-lucus-picker summary::-webkit-details-marker{display:none}
+.scope-culture-lucus-picker-mark{display:inline-flex;align-items:center;justify-content:center;width:1.1rem;height:1.1rem;border:1px solid var(--loc-line);border-radius:3px;font-size:.8rem;line-height:1;color:var(--loc-muted);flex:none}
+.scope-culture-lucus-picker-mark::before{content:'+'}
+.scope-culture-lucus-picker[open] .scope-culture-lucus-picker-mark::before{content:'−'}
+.scope-culture-lucus-choices{display:flex;flex-wrap:wrap;gap:.45rem;max-height:12rem;overflow:auto;margin-top:.5rem}
+.scope-culture-lucus-choices label{display:inline-flex;align-items:center;gap:.4rem;padding:.3rem .5rem;border:1px solid var(--loc-line);border-radius:var(--loc-radius-sm);cursor:pointer}
+.scope-culture-lucus-choices label:has(input:checked){border-color:var(--loc-accent);color:var(--loc-text)}
+.scope-culture-lucus-actions .scope-preview-links{display:flex;flex-wrap:wrap;gap:.5rem;width:100%}
+.scope-period-timeline .vis-item.scope-virtual-lucus.is-selected{color:var(--loc-gold)!important;filter:drop-shadow(0 0 12px color-mix(in srgb,var(--loc-gold) 72%,transparent))}
 
 /* BlockNote is the single text/media authoring surface. Media remains URL-backed; rich structure is stored separately. */
 .scope-blocknote,
@@ -1229,7 +1229,7 @@
 .loc-trace-panel,.loc-trace-map-manager,.loc-trace-map-shell{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
 .loc-trace-map-shell>.loc-trace-map-frame{max-width:100%!important}
 /* Trace / spatial anchoring demonstration (the legacy trace Hero is
-   unchanged). The map is not a 3D terrain; only the anchor symbols extrude. */
+   unchanged). The map is not a 3D terrain; only the lucus symbols extrude. */
 .loc-trace-panel{
   min-width:0;
   max-width:100%;
@@ -1247,7 +1247,7 @@
 }
 .loc-trace-intro h2{margin:.2rem 0 0}
 .loc-trace-intro>.scope-status{max-width:37rem;margin:.25rem 0}
-/* Public Trace: select city/county first, then one real spatial anchor.
+/* Public Trace: select city/county first, then one real spatial lucus.
    No walls of station shortcuts; on phones the controls stack vertically. */
 .loc-trace-hierarchy{
   display:grid;
@@ -1351,7 +1351,7 @@
   width:100%;
   height:100%;
 }
-.loc-trace-anchor-marker{
+.loc-trace-lucus-marker{
   border:1px solid var(--loc-accent-border);
   border-radius:999px;
   padding:.4rem .65rem;
@@ -1365,7 +1365,7 @@
   box-shadow:var(--loc-shadow-card);
   white-space:nowrap;
 }
-.loc-trace-anchor-marker:focus-visible{
+.loc-trace-lucus-marker:focus-visible{
   outline:3px solid var(--loc-gold);
   outline-offset:3px;
 }
@@ -1430,7 +1430,7 @@
 .loc-trace-location-results .loc-button{max-width:100%;white-space:normal;text-align:left;overflow-wrap:anywhere}
 
 
-/* One-click spatial locator beside the existing anchor-name field. */
+/* One-click spatial locator beside the existing lucus-name field. */
 .loc-trace-quick-field{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem;align-items:end;min-width:0}
 .loc-trace-quick-field>label{display:grid;gap:.32rem;min-width:0;padding:.65rem .8rem;border:1px solid color-mix(in srgb,var(--loc-accent) 42%,var(--loc-line));border-radius:var(--loc-ui-radius-sm);background:var(--loc-ui-accent-soft)}
 .loc-trace-quick-field>label>input{width:100%;min-width:0;padding:.5rem .55rem;border:1px solid var(--loc-ui-hairline);border-radius:var(--loc-ui-radius-sm);background:var(--loc-panel);color:var(--loc-text);font:inherit}
@@ -1630,9 +1630,9 @@
 .loc-trace-other-scopes-list>.loc-button{display:grid;gap:.3rem;justify-items:start;min-width:0;min-height:44px;white-space:normal;text-align:left;overflow-wrap:anywhere}
 .loc-trace-other-scopes-list>.loc-button span{color:var(--loc-muted);font-size:.85rem}
 
-/* Scope anchor editor: theme-aware text, full-width notes and reviewed quick updates. */
-.loc-trace-anchor-editor .scope-management-fields>.loc-trace-description-field{grid-column:1/-1}
-.loc-trace-anchor-editor .loc-trace-description-field textarea{
+/* Scope lucus editor: theme-aware text, full-width notes and reviewed quick updates. */
+.loc-trace-lucus-editor .scope-management-fields>.loc-trace-description-field{grid-column:1/-1}
+.loc-trace-lucus-editor .loc-trace-description-field textarea{
   width:100%;min-height:11rem;resize:vertical;line-height:1.65;
   background:var(--loc-panel);color:var(--loc-text)
 }
@@ -1647,15 +1647,15 @@
 }
 .loc-scope-option-picker option{background:var(--loc-panel);color:var(--loc-text)}
 .loc-scope-option-picker .scope-status{font-size:.75rem;color:var(--loc-muted)}
-:is(.loc-trace-anchor-editor,.loc-trace-map-manager,.loc-trace-article-choice) select{
+:is(.loc-trace-lucus-editor,.loc-trace-map-manager,.loc-trace-article-choice) select{
   color-scheme:inherit;
   color:var(--loc-text)!important
 }
-:is(.loc-trace-anchor-editor,.loc-trace-map-manager,.loc-trace-article-choice) select option{
+:is(.loc-trace-lucus-editor,.loc-trace-map-manager,.loc-trace-article-choice) select option{
   background:var(--loc-panel);
   color:var(--loc-text)
 }
-:is(.loc-trace-anchor-editor,.loc-trace-map-manager,.loc-trace-article-choice) select option:checked{
+:is(.loc-trace-lucus-editor,.loc-trace-map-manager,.loc-trace-article-choice) select option:checked{
   background:var(--loc-rune-selected-bg);
   color:var(--loc-text)
 }
@@ -2112,26 +2112,26 @@
 
 
 /* Anchor Inter-Net: small, bounded branches which never preload the whole graph. */
-.loc-inter-net__anchor-detail{margin:.65rem 0 .35rem;padding:.45rem .65rem;
+.loc-inter-net__lucus-detail{margin:.65rem 0 .35rem;padding:.45rem .65rem;
   background:var(--loc-surface-soft);border-radius:var(--loc-radius-sm)}
-.loc-inter-net__anchor-detail>small{display:block;color:var(--loc-muted);margin-bottom:.35rem}
-.loc-inter-net__anchor-tree{list-style:none;margin:.35rem 0 .15rem;padding:0 0 0 .65rem;
+.loc-inter-net__lucus-detail>small{display:block;color:var(--loc-muted);margin-bottom:.35rem}
+.loc-inter-net__lucus-tree{list-style:none;margin:.35rem 0 .15rem;padding:0 0 0 .65rem;
   border-left:1px solid var(--loc-line);display:grid;gap:.3rem}
-.loc-inter-net__anchor-tree li{display:block;min-width:0}
-.loc-inter-net__anchor-tree li.is-current>details>summary,
-.loc-inter-net__anchor-tree li.is-current>span{color:var(--loc-accent);font-weight:650}
-.loc-inter-net__anchor-tree details{min-width:0}
-.loc-inter-net__anchor-tree summary{cursor:pointer;padding:.2rem .3rem;overflow-wrap:anywhere}
-.loc-inter-net__anchor-tree summary:focus-visible,
-.loc-inter-net__anchor-detail button:focus-visible{
+.loc-inter-net__lucus-tree li{display:block;min-width:0}
+.loc-inter-net__lucus-tree li.is-current>details>summary,
+.loc-inter-net__lucus-tree li.is-current>span{color:var(--loc-accent);font-weight:650}
+.loc-inter-net__lucus-tree details{min-width:0}
+.loc-inter-net__lucus-tree summary{cursor:pointer;padding:.2rem .3rem;overflow-wrap:anywhere}
+.loc-inter-net__lucus-tree summary:focus-visible,
+.loc-inter-net__lucus-detail button:focus-visible{
   outline:2px solid var(--loc-accent);outline-offset:2px
 }
-.loc-inter-net__anchor-detail a{display:inline-block;margin:.25rem .2rem .25rem .5rem;
+.loc-inter-net__lucus-detail a{display:inline-block;margin:.25rem .2rem .25rem .5rem;
   color:var(--loc-accent);text-underline-offset:2px}
-.loc-inter-net__anchor-tree .scope-status{font-size:.8rem;margin:.2rem}
+.loc-inter-net__lucus-tree .scope-status{font-size:.8rem;margin:.2rem}
 @media(max-width:600px){
-  .loc-inter-net__anchor-detail{padding:.4rem}
-  .loc-inter-net__anchor-tree{padding-left:.4rem}
+  .loc-inter-net__lucus-detail{padding:.4rem}
+  .loc-inter-net__lucus-tree{padding-left:.4rem}
 }
 
 /* Search is a continuous reader, not a stack of expanded result cards. */

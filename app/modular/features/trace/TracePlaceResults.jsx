@@ -7,7 +7,7 @@ import {timeUnitBucket} from '../../../loc/preferences/default-time-unit.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncInfiniteResource,useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {readGalaxyFeature} from '../../../loc/galaxy/feature-query-client.mjs';
-import {readAnchorFeature} from '../../../loc/model/feature-query-client.mjs';
+import {readLucusFeature} from '../../../loc/model/feature-query-client.mjs';
 import {traceArticleIdFilters,groupedTraceDays} from './trace-panel-filters.mjs';
 import {nearestTracePlaceIds} from '../../../loc/preferences/loc-feature-preferences.mjs';
 import {defaultScopeData} from '../../../loc/scope/scope-data';
@@ -17,7 +17,7 @@ import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../.
 import {selectGalaxyIdentity} from '../../../loc/galaxy/galaxy-query';
 import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 import {galaxyReadColumnsFor} from '../../../../packages/zenstack/galaxy-read-models.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../../packages/zenstack/anchor-hierarchy.mjs';
+import {LUCUS_TYPE_GROUPS} from '../../../../packages/zenstack/lucus-hierarchy.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
@@ -170,16 +170,16 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const mediaFiltered=useAsyncInfiniteResource({
     queryKey:['trace-media-filter-v3',targetScope,placesKey,startDate,endDate,
       sourceFilter,selectedMediaType,sort],
-    enabled:enabled&&Boolean(selectedMediaType)&&Boolean(scope?.anchor),
+    enabled:enabled&&Boolean(selectedMediaType)&&Boolean(scope?.lucus),
     initialPageParam:{mediaOffset:0,articleOffset:0},
     getNextPageParam:page=>page.nextCursor||undefined,
     queryFn:async({pageParam,signal})=>{
       const mediaOffset=Number(pageParam?.mediaOffset)||0;
       const articleOffset=Number(pageParam?.articleOffset)||0;
       const mediaLimit=80;
-      if(!ANCHOR_TYPE_GROUPS.media.includes(selectedMediaType))
+      if(!LUCUS_TYPE_GROUPS.media.includes(selectedMediaType))
         return {rows:[],nextCursor:null};
-      const {rows:mediaPage}=await readAnchorFeature({
+      const {rows:mediaPage}=await readLucusFeature({
         scope:targetScope,family:'media',types:[selectedMediaType],
         limit:mediaLimit,offset:mediaOffset
       },{signal});

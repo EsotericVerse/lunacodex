@@ -5,7 +5,7 @@ import {useEditDock} from '../../modular/edit-dock';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import UiText,{useUiText} from '../../i18n/UiText';
 import {transactionWrites} from '../db/db-client.mjs';
-import {mediaAnchorRecord} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {mediaLucusRecord} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import {useAccount} from '../auth/use-account';
 import {createUid8} from '../model/uid';
 import {hasIrrecoverableEncoding,normalizeGalaxyContent,normalizeRelationIds,repairMojibakeText} from '../content/content-policy';
@@ -64,7 +64,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
       const sourceId=draft.source_id.trim()||(styleUid?draft.ref_id.trim():'')||null;
       const scopeData=account.scopeDataFor(scopeId);
       if(!scopeData)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
-      const {galaxy,anchor}=scopeData;
+      const {galaxy,lucus}=scopeData;
       const operations=[];
       if(lyricsUid){
         operations.push({p_table:galaxy,p_operation:'insert',p_rows:[{
@@ -83,7 +83,7 @@ export default function SunoImportPanel({scopeId,dockScopeId=scopeId,globalAdmin
           statics:false,culture:false,search:false,trace:false,list:false,keyword:false,others:true,extract:true
         }]});
       }
-      operations.push({p_table:anchor,p_operation:'insert',p_rows:[mediaAnchorRecord({
+      operations.push({p_table:lucus,p_operation:'insert',p_rows:[mediaLucusRecord({
         uid:mediaUid,type:'suno',title,url:draft.url.trim()||null,
         description:description||null,createtime
       })]});

@@ -6,28 +6,29 @@ import ScopeOptionPicker from '../ScopeOptionPicker';
 import {useUiCopy,useUiSection} from '../../i18n/ui-locale';
 import {useEditDock} from '../edit-dock';
 import {transactionWrites} from '../../loc/db/db-client.mjs';
-import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/culture/time-anchor-ranges.mjs';
+import {decodeTimeSegments,encodeTimeSegment,resolveTimeSegments,isTimeUid,allocateTimeUid} from '../../loc/culture/time-lucus-ranges.mjs';
 import {anniversarySuggestionsForDate} from '../../loc/culture/anniversary.mjs';
 import TimeAnchorTree from './TimeAnchorTree';
-import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture/anchor-bulk.mjs';
-import {ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {planAnniversaryDates,collectTimeDates,collectEraPeriods} from '../../loc/culture/lucus-bulk.mjs';
+import {LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
+import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const LazyBlockNoteEditor=lazy(()=>import('../../loc/editor/BlockNoteEditor'));
 function BlockNoteEditor(props){return <Suspense fallback={null}><LazyBlockNoteEditor {...props}/></Suspense>;}
 
 const TIME_COLUMNS='uid,type,title,description,attr,invisible';
-// Read/write the physical TimeAnchor variant; the editor's 'anchor' label is
+// Read/write the physical TimeAnchor variant; the editor's 'lucus' label is
 // presentation only and never becomes an SQL relation or persisted type.
-const PERSISTED_TIME_TYPES=ANCHOR_TYPE_GROUPS.time;
+const PERSISTED_TIME_TYPES=LUCUS_TYPE_GROUPS.time;
 function projectTimeAnchorRow(row){
   const attr=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr||{};
-  const type=row.type==='date'?'anchor':row.type;
-  return {...row,type,address:type==='anchor'?String(attr.date||'').slice(0,10):'',
+  const type=row.type==='date'?'lucus':row.type;
+  return {...row,type,address:type==='lucus'?String(attr.date||'').slice(0,10):'',
     anchor_ids:type==='era'?(Array.isArray(attr.period)?attr.period:[]):
       type==='period'?(Array.isArray(attr.uid)?attr.uid:[]):[]};
 }
 function writeTimeAnchorRow(row,previous=null){
-  const type=row.type==='anchor'?'date':row.type;
+  const type=row.type==='lucus'?'date':row.type;
   if(!PERSISTED_TIME_TYPES.includes(type))throw new Error('Unknown TimeAnchor subtype');
   const previousAttr=previous?.attr&&typeof previous.attr==='object'&&!Array.isArray(previous.attr)?previous.attr:{};
   const attr={...previousAttr};
@@ -37,11 +38,11 @@ function writeTimeAnchorRow(row,previous=null){
   return {...(row.uid?{uid:row.uid}:{}),type,title:row.title,
     description:row.description,invisible:Boolean(row.invisible),attr};
 }
-const TYPES=['anchor','period','era'];
+const TYPES=['lucus','period','era'];
 const TYPE_TABS=[...TYPES].reverse();
 const normalizeType=value=>({event:'period'}[value]||value);
-const displayType={anchor:'定錨點',period:'期間',era:'時代'};
-const blank=(type='anchor')=>({uid:'',type:normalizeType(type),title:'',description:'',address:'',anchor_ids:[],invisible:false});
+const displayType={lucus:'定錨點',period:'期間',era:'時代'};
+const blank=(type='lucus')=>({uid:'',type:normalizeType(type),title:'',description:'',address:'',anchor_ids:[],invisible:false});
 const day=value=>value?String(value).slice(0,10):'';
 function normalizeDraft(row){
   if(!row)return blank();
@@ -51,7 +52,7 @@ function normalizeDraft(row){
 export default function CultureTimelineEditor({
   scopeId='',timeTable:providedTimeTable='',timeRecords=null,timeLoading=false,timeError=null,
   birthday='',selectedRecordId='',suggestedAnchorDate='',
-  suggestedRecordType='anchor',suggestedRequestNonce=0,defaultRecordType='anchor',onClose=null,onDataChanged=null
+  suggestedRecordType='lucus',suggestedRequestNonce=0,defaultRecordType='lucus',onClose=null,onDataChanged=null
 }){
   useUiSection('uiExtra.dataErrors');
   const copy=useUiCopy();
@@ -62,10 +63,10 @@ export default function CultureTimelineEditor({
   const dataScope=String(scopeId||'').trim();
   const timeTable=String(providedTimeTable||'').trim();
   // Only the configured physical Anchor relation is a valid editor target.
-  if(timeTable&&!/^silver\.[a-z][a-z0-9]{0,14}_anchor$/.test(timeTable))
+  if(timeTable&&scopeTableDescriptor(String(timeTable).split('.').at(-1))?.kind!=='lucus')
     throw new Error('TimeAnchor physical relation required');
   const editable=Boolean(dataScope&&dataScope!=='loc'&&timeTable);
-  const defaultType=TYPES.includes(normalizeType(defaultRecordType))?normalizeType(defaultRecordType):'anchor';
+  const defaultType=TYPES.includes(normalizeType(defaultRecordType))?normalizeType(defaultRecordType):'lucus';
   const [draft,setDraft]=useState(()=>blank(defaultType));
   const [selectedId,setSelectedId]=useState('');
   const [browseType,setBrowseType]=useState(defaultType);
@@ -92,13 +93,13 @@ export default function CultureTimelineEditor({
   // issue another SQL query just to reshape the same Time Anchors.
   const all=Array.isArray(timeRecords)?timeRecords:[];
   const query={isPending:timeLoading||!Array.isArray(timeRecords),error:timeError};
-  const anchors=useMemo(()=>new Map(all.filter(row=>row.type==='anchor').map(row=>[String(row.uid),row])),[all]);
+  const anchors=useMemo(()=>new Map(all.filter(row=>row.type==='lucus').map(row=>[String(row.uid),row])),[all]);
   const eventChoices=useMemo(()=>[...all].filter(row=>row.type==='period'),[all]);
   const eventByUid=useMemo(()=>new Map(eventChoices.map(row=>[String(row.uid),row])),[eventChoices]);
   const anchorChoices=useMemo(()=>[...anchors.values()]
     .sort((a,b)=>day(a.address).localeCompare(day(b.address))),[anchors]);
   const anniversarySuggestions=useMemo(()=>
-    !selectedId&&draft.type==='anchor'
+    !selectedId&&draft.type==='lucus'
       ?anniversarySuggestionsForDate(day(draft.address),anchorChoices,{birthday})
       :[],[selectedId,draft.type,draft.address,anchorChoices,birthday]);
   const suggestionRows=useMemo(()=>[
@@ -128,7 +129,7 @@ export default function CultureTimelineEditor({
       event.uid,earliest(resolveTimeSegments(event.anchor_ids,anchors,{period:false}))
     ]));
     const positions=new Map(all.map(row=>{
-      if(row.type==='anchor')return [row.uid,day(row.address)];
+      if(row.type==='lucus')return [row.uid,day(row.address)];
       if(row.type==='era')return [row.uid,(row.anchor_ids||[])
         .map(uid=>periodStarts.get(uid)).filter(Boolean).sort()[0]||'9999-12-31'];
       return [row.uid,earliest(resolveTimeSegments(row.anchor_ids,anchors,{period:false}))];
@@ -164,12 +165,12 @@ export default function CultureTimelineEditor({
   },[selectedRecordId,all]);
   useEffect(()=>{
     const preferred=normalizeType(suggestedRecordType);
-    const type=TYPES.includes(preferred)?preferred:'anchor';
+    const type=TYPES.includes(preferred)?preferred:'lucus';
     if(selectedRecordId||(!effectiveAnchorDate&&!suggestedRequestNonce))return;
     const key=[suggestedRequestNonce,effectiveAnchorDate,type].join(':');
     if(requestSeen.current===key)return;
     requestSeen.current=key;
-    const fresh={...blank(type),address:type==='anchor'?effectiveAnchorDate:''};
+    const fresh={...blank(type),address:type==='lucus'?effectiveAnchorDate:''};
     setDraft(fresh);original.current=fresh;setSelectedId('');setBrowseType(type);setMessage('');
     setTracePairs([]);setPairFrom(null);setPairTo(null);
   },[suggestedRecordType,suggestedRequestNonce,effectiveAnchorDate,selectedRecordId]);
@@ -236,7 +237,7 @@ export default function CultureTimelineEditor({
     setBusy(true);setMessage('');setOrganizedDates([]);
     try{
       const complete=await loadTimeRecords();
-      const points=complete.filter(x=>x.type==='anchor');
+      const points=complete.filter(x=>x.type==='lucus');
       const periods=complete.filter(x=>x.type==='period');
       const datesByUid=new Map(points.map(x=>[x.uid,x]));
       const datesForPeriod=period=>{
@@ -274,13 +275,13 @@ export default function CultureTimelineEditor({
       const plans=planAnniversaryDates(annual);
       if(!plans.length)throw Error('選擇的範圍內沒有符合的週年日期。');
       const complete=await loadTimeRecords();
-      const knownDays=new Set(complete.filter(x=>x.type==='anchor').map(x=>day(x.address)));
+      const knownDays=new Set(complete.filter(x=>x.type==='lucus').map(x=>day(x.address)));
       const occupied=[...complete];
       const additions=[];
       for(const item of plans){
         if(knownDays.has(item.date))continue;
         const uid=allocateTimeUid(occupied);
-        const record={uid,type:'anchor',title:item.title,description:null,
+        const record={uid,type:'lucus',title:item.title,description:null,
           address:item.date,anchor_ids:null,invisible:false};
         additions.push(record);occupied.push(record);knownDays.add(item.date);
       }
@@ -292,7 +293,7 @@ export default function CultureTimelineEditor({
         p_rows:additions.map(row=>writeTimeAnchorRow(row))
       }]);
       await onDataChanged?.();
-      setAnnualOpen(false);startNew('anchor');
+      setAnnualOpen(false);startNew('lucus');
       setMessage('已建立 '+additions.length+' 個紀念日定錨，跳過 '+
         (plans.length-additions.length)+' 個既有日期。');
     }catch(error){setMessage(error?.message||'批次建立失敗');}
@@ -307,7 +308,7 @@ export default function CultureTimelineEditor({
       const payload={type,title,description:String(draft.description||'').trim()||null,
         address:null,anchor_ids:null,invisible:Boolean(draft.invisible)};
       let extraPeriodRows=[];
-      if(type==='anchor'){
+      if(type==='lucus'){
         const timeDate=day(draft.address);
         if(!/^\d{4}-\d{2}-\d{2}$/.test(timeDate))throw new Error('請先指定有效的定錨日期');
         payload.address=timeDate;
@@ -398,7 +399,7 @@ export default function CultureTimelineEditor({
     if(!selectedId||busy)return;
     setBusy(true);setMessage('');
     try{
-      // Periods survive anchor deletion; only their affected UID links become invalid.
+      // Periods survive lucus deletion; only their affected UID links become invalid.
       await transactionWrites([{p_table:timeTable,p_operation:'delete',
         p_filters:[{column:'uid',operator:'eq',value:selectedId}]}]);
       reset();
@@ -440,11 +441,11 @@ export default function CultureTimelineEditor({
       <h4>{selectedId?'編輯':'新增'}{displayType[draft.type]}</h4>
     </header>
     {query.error?<p className="scope-status scope-error" role="alert">{query.error.message}</p>:null}
-    {browseType==='anchor'?<div className="scope-culture-record-browser-row">
+    {browseType==='lucus'?<div className="scope-culture-record-browser-row">
       <button type="button" className="loc-button" disabled={busy}
         onClick={()=>setAnnualOpen(v=>!v)}>＋ 建議紀念日</button>
     </div>:null}
-    {annualOpen&&browseType==='anchor'?<div className="scope-card" role="group" aria-label="建議紀念日批次建立">
+    {annualOpen&&browseType==='lucus'?<div className="scope-card" role="group" aria-label="建議紀念日批次建立">
       <h5>建議紀念日｜批次建立真實日期定錨</h5>
       <p className="scope-status">僅在按下建立後寫入 date。相同日期已存在就略過，不修改文章或期間。</p>
       <div className="scope-culture-quick-primary">
@@ -497,12 +498,12 @@ export default function CultureTimelineEditor({
             <option value={0}>顯示</option><option value={1}>隱藏</option>
           </select>
         </label>
-        {draft.type==='anchor'?<label>定錨日期
+        {draft.type==='lucus'?<label>定錨日期
           <input className="scope-select" type="date" required value={day(draft.address)}
             onChange={event=>change('address',event.target.value)}/>
         </label>:null}
       </div>
-      {!selectedId&&draft.type==='anchor'&&anniversarySuggestions.length
+      {!selectedId&&draft.type==='lucus'&&anniversarySuggestions.length
         ?<div className="scope-status" role="group" aria-label="週年紀念虛擬定錨建議">
           <strong>週年紀念建議（虛擬定錨，尚未儲存）</strong>
           {anniversarySuggestions.map(item=><div key={item.sourceUid+':'+item.date}>
@@ -511,7 +512,7 @@ export default function CultureTimelineEditor({
               onClick={()=>change('title',item.title)}>套用建議</button>
           </div>)}
         </div>:null}
-      {draft.type!=='anchor'?<div className="scope-culture-quick-anchors">
+      {draft.type!=='lucus'?<div className="scope-culture-quick-anchors">
         <button type="button" className="loc-button" disabled={busy||query.isPending}
           onClick={autoOrganize}>自動整理</button>
         {organizedDates.length?<details className="scope-card">
@@ -548,7 +549,7 @@ export default function CultureTimelineEditor({
           ?!eventByUid.has(seg.start)
           :resolveTimeSegments(draft.anchor_ids,anchors).some(r=>r.invalid))?
           <p className="scope-status scope-error">部分定錨點連線已失效，請修正對應區間。</p>:null}
-        {draft.type==='era'?<div className="scope-culture-quick-anchor-connect">
+        {draft.type==='era'?<div className="scope-culture-quick-lucus-connect">
           <h5>或：用定錨點連線加入（自動建立對應期間）</h5>
           {!anchorChoices.length?<p className="scope-status scope-error">請先建立時間定錨點。</p>:
           <div className="scope-culture-quick-primary">
@@ -566,8 +567,8 @@ export default function CultureTimelineEditor({
               disabled={!pairFrom||!pairTo||pairFrom.value===pairTo?.value}
               onClick={addPair}>＋ 加入連線</button>
           </div>}
-          <div className="scope-culture-quick-anchor-connect-list">
-            {tracePairs.map((pair,index)=><div key={pair.join(':')+':'+index} className="scope-culture-quick-anchor-connect-item">
+          <div className="scope-culture-quick-lucus-connect-list">
+            {tracePairs.map((pair,index)=><div key={pair.join(':')+':'+index} className="scope-culture-quick-lucus-connect-item">
               <span>{anchors.get(pair[0])?.title||pair[0]} — {anchors.get(pair[1])?.title||pair[1]}
                 {existingPeriodByPair.has(periodKeyOf(pair))?'（沿用既有期間）':'（存檔時自動建立期間）'}</span>
               <button type="button" className="loc-button" onClick={()=>removePair(index)}>移除</button>

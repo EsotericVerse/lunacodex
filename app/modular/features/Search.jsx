@@ -30,12 +30,13 @@ import {scopeHref} from '../routing/scope-registry';
 import {featureNavigationHref,galaxyIdentityHref,galaxyRelationLinks} from '../routing/feature-navigation';
 import {featureDataErrorMessage} from '../feature-data-state';
 import {parseSearchQuery} from '../../loc/search/query.mjs';
-import {readGalaxyRecords,readAnchorFeature,readPublicSearchPatternIndex}
+import {readGalaxyRecords,readLucusFeature,readPublicSearchPatternIndex}
   from '../../loc/model/feature-query-client.mjs';
+import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 import {queryGalaxyLocationBatchPreview} from '../../loc/actions/trace/management-queries.mjs';
 import {locGlobalUid} from '../../../packages/zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {MEDIA_ANCHOR_COLUMNS,mediaAnchorProjection,ANCHOR_TYPE_GROUPS} from '../../../packages/zenstack/anchor-hierarchy.mjs';
+import {MEDIA_LUCUS_COLUMNS,mediaLucusProjection,LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import {galaxyAble} from '../../loc/model/galaxy-able.mjs';
 import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity} from '../../loc/galaxy/galaxy-query';
 import {readPublicSourceTaxonomy as selectSourceTaxonomy} from '../../loc/source/catalog-public.mjs';
@@ -54,7 +55,7 @@ const LazyTraceBlocks=lazy(()=>import('./TraceBlocks'));
 function TraceBlocks(props){return <Suspense fallback={null}><LazyTraceBlocks {...props}/></Suspense>;}
 
 
-const MEDIA_EDITOR_COLUMNS=MEDIA_ANCHOR_COLUMNS;
+const MEDIA_EDITOR_COLUMNS=MEDIA_LUCUS_COLUMNS;
 const EMPTY_SEARCH_PATTERN_INDEX=Object.freeze({patterns:[],featuredArticles:[]});
 const MEDIA_ATTR_ORDER=['uid','type','url','description','createtime'];
 const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
@@ -82,19 +83,20 @@ function canManageSearchScope(account,scopeId){
 
 async function selectPublicEditableRow(table,idColumn,id,columns,{authenticated=false}={}){
   if(idColumn!=='uid'||!authenticated)throw Error('Authenticated UID required');
-  const galaxy=/^silver\.([a-z][a-z0-9]{0,14})_galaxy$/.exec(String(table||''));
-  if(galaxy&&galaxy[1]!=='local'){
-    const {rows}=await readGalaxyRecords({scope:galaxy[1],
+  const relation=String(table||'').split('.').at(-1);
+  const galaxy=scopeTableDescriptor(relation);
+  if(galaxy?.kind==='galaxy'&&galaxy.scope!=='local'){
+    const {rows}=await readGalaxyRecords({scope:galaxy.scope,
       view:'detail',uids:[String(id)]},{editor:true});
     return rows[0]||null;
   }
-  const anchor=/^silver\.([a-z][a-z0-9]{0,14})_anchor$/.exec(String(table||''));
-  if(anchor&&anchor[1]!=='local'){
-    const {rows}=await readAnchorFeature({scope:anchor[1],
+  const lucus=scopeTableDescriptor(relation);
+  if(lucus?.kind==='lucus'&&lucus.scope!=='local'){
+    const {rows}=await readLucusFeature({scope:lucus.scope,
       family:'media',uids:[String(id)],limit:1},{editor:true});
     return rows[0]||null;
   }
-  if(!/^silver\.local_(?:galaxy|anchor)$/.test(String(table||'')))
+  if(!['local_galaxy','local_lucus'].includes(relation))
     throw Error('Unsupported LOC editor relation');
   const {rows=[]}=await selectRows(table,{columns,
     filters:[{column:'uid',operator:'eq',value:String(id)}],
@@ -698,12 +700,12 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       const mediaScopeId=managementMode&&scopeId==='loc'?String(searchParams?.get('scope')||'').trim():scopeId;
       if(!managementMode||!mediaScopeId||!canManageSearchScope(account,mediaScopeId))throw new Error(t('uiExtra.searchUI.mediaManageDenied'));
       const scopeData=account.scopeDataFor(mediaScopeId)||defaultScopeData(mediaScopeId);
-      if(!scopeData?.anchor)throw new Error(UI_COPY.search.notFound);
-      const stored=await selectPublicEditableRow(scopeData.anchor,'uid',mediaId,MEDIA_EDITOR_COLUMNS,{authenticated:true});
-      const row=stored&&ANCHOR_TYPE_GROUPS.media.includes(stored.type)?mediaAnchorProjection(stored,{includeAttr:true}):null;
+      if(!scopeData?.lucus)throw new Error(UI_COPY.search.notFound);
+      const stored=await selectPublicEditableRow(scopeData.lucus,'uid',mediaId,MEDIA_EDITOR_COLUMNS,{authenticated:true});
+      const row=stored&&LUCUS_TYPE_GROUPS.media.includes(stored.type)?mediaLucusProjection(stored,{includeAttr:true}):null;
       if(id!==searchId.current)return;
       if(!row)throw new Error(UI_COPY.search.notFound);
-      const item=toResult({...row,record_type:'media_anchor',scope_id:mediaScopeId,__table:scopeData.anchor},'MediaAnchor',mediaScopeId);
+      const item=toResult({...row,record_type:'media_anchor',scope_id:mediaScopeId,__table:scopeData.lucus},'MediaAnchor',mediaScopeId);
       const {SearchEditDraft}=await import('./search-edit-draft');
       setResults([item]);setEditingKey(item.key);setEditDraft(SearchEditDraft.fromRow('media',row,item.title));
       // The direct media editor has already checked the current Scope grant
@@ -812,7 +814,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       );
       if(!fullRow)throw new Error(UI_COPY.search.editNotFound);
       const typedRow=result.resourceType==='media_anchor'?
-        (ANCHOR_TYPE_GROUPS.media.includes(fullRow.type)?mediaAnchorProjection(fullRow,{includeAttr:true}):null):fullRow;
+        (LUCUS_TYPE_GROUPS.media.includes(fullRow.type)?mediaLucusProjection(fullRow,{includeAttr:true}):null):fullRow;
       if(!typedRow)throw new Error(UI_COPY.search.editNotFound);
       const {SearchEditDraft}=await import('./search-edit-draft');
       editTargetRef.current=result;
@@ -1212,7 +1214,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         const rowScopeData=account.scopeDataFor(row.scopeId)||defaultScopeData(row.scopeId);
         const editableTable=row.editableTable||(
           row.resourceType==='galaxy'?rowScopeData?.galaxy:
-          row.resourceType==='media_anchor'?rowScopeData?.anchor:''
+          row.resourceType==='media_anchor'?rowScopeData?.lucus:''
         );
         const editTarget={
           ...row,

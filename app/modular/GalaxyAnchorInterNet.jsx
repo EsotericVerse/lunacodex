@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {anchorInterNetChildren,sourceInterNetSelection} from '../../packages/zenstack/anchor-inter-net.mjs';
+import {anchorInterNetChildren,sourceInterNetSelection} from '../../packages/zenstack/lucus-inter-net.mjs';
 import {featureNavigationHref} from './routing/feature-navigation';
 
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -46,9 +46,9 @@ function SourceAnchorBranch({site}){
   }
   const selectedPath=new Set(state.path.map(node=>node.uid));
   const roots=state.tree.filter(node=>node.type==='universe'&&!node.parentUid);
-  return <div className="loc-inter-net__anchor-detail">
+  return <div className="loc-inter-net__lucus-detail">
     <p className="scope-status">已連接：{state.path.map(node=>node.title).join(' → ')}</p>
-    <ul className="loc-inter-net__anchor-tree">
+    <ul className="loc-inter-net__lucus-tree">
       {roots.map(root=><SourceNode key={root.uid} row={root}
         indexed={indexed} selectedPath={selectedPath}/>)}
     </ul>
@@ -67,9 +67,9 @@ function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
     controller.current=abort;
     setState(prev=>({...prev,status:'loading'}));
     try{
-      const {readAnchorFeature}=await import('../loc/model/feature-query-client.mjs');
+      const {readLucusFeature}=await import('../loc/model/feature-query-client.mjs');
       if(abort.signal.aborted)return;
-      const {rows=[]}=await readAnchorFeature({
+      const {rows=[]}=await readLucusFeature({
         scope:scopeId,family,types:[node.type==='space_anchor'?'point':node.type],
         uids:[node.uid],limit:1
       },{signal:abort.signal});
@@ -98,10 +98,10 @@ function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
       {state.status==='missing'?<small>此節點未公開或不存在，未繼續展開</small>:null}
       {state.status==='error'?<button type="button" className="loc-button"
         onClick={()=>{setState({status:'unread',row:null,children:[]});void read();}}>重試讀取</button>:null}
-      {state.status==='ready'?<div className="loc-inter-net__anchor-detail">
+      {state.status==='ready'?<div className="loc-inter-net__lucus-detail">
         {dateHref?<a href={dateHref}>查看這一天的文化時間長河</a>:null}
         {pointHref?<a href={pointHref}>在痕跡地圖查看地點</a>:null}
-        {state.children.length?<ul className="loc-inter-net__anchor-tree">
+        {state.children.length?<ul className="loc-inter-net__lucus-tree">
           {state.children.map(child=><TypedAnchorNode
             key={child.uid} scopeId={scopeId} family={family} depth={depth+1}
             node={child} ancestors={[...ancestors,node.uid]}/>)}
@@ -128,9 +128,9 @@ export default function GalaxyAnchorInterNet({family,scopeId,row}){
       nodes.push({uid:entry.uid,type,title:String(entry.title||'')});
     }
   }
-  return nodes.length?<div className="loc-inter-net__anchor-detail">
+  return nodes.length?<div className="loc-inter-net__lucus-detail">
     <small>沿已確認的 Anchor UID 逐節點展開；每次只讀取所選節點。</small>
-    <ul className="loc-inter-net__anchor-tree">
+    <ul className="loc-inter-net__lucus-tree">
       {nodes.slice(0,100).map(node=><TypedAnchorNode key={node.uid}
         scopeId={scopeId} family={family} node={node}/>)}
     </ul>

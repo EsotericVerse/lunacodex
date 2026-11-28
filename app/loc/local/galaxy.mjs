@@ -2,6 +2,7 @@
 // Galaxy Link Extension, but with a dedicated Galaxy store (NOT its Queue).
 // Nothing here imports cloud authentication, RPC, networking, or SQL drivers.
 import {modelWriteSchemaForSqlTable} from '../../../packages/zenstack/import-validation.mjs';
+import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 import {createUid8} from '../model/uid.js';
 
 export const LOCAL_GALAXY_DB='loc-local-galaxy-v1';
@@ -12,7 +13,7 @@ const UID=/^[A-Za-z0-9]{8}$/;
 // Use the exact 23-column physical Galaxy ZModel/Zod contract already used
 // by the cloud importer. The local store supplies its own defaults, so the
 // partial writer validates known fields without inventing a second SQL model.
-const validator=modelWriteSchemaForSqlTable('silver.lo3rwang_galaxy').partial();
+const validator=modelWriteSchemaForSqlTable('silver.'+scopeTableName('lo3rwang','galaxy')).partial();
 const FIELDS=new Set(Object.keys(validator.shape));
 
 function dateValue(value,field){
