@@ -4,7 +4,7 @@ import {cloneElement,useEffect,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
-import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,compositionPercentages,compositionTrendRows,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
+import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,availableStatisticIntents,STATISTIC_INTENTS,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,compositionPercentages,compositionTrendRows,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
 import {themedDataColor} from '../../visual-palette.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
@@ -687,8 +687,28 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   const trendRows=shown==='group'?trend:[];
   const series=shown==='group'
     ?trendSeries.filter(field=>!activeGroupId||field.key==='class_'+activeGroupId):[];
-  const intentOptions=shown==='group'&&trendRows.length
-    ?['ranking','trend']:shown==='item'?['ranking']:[];
+  const trendValues=trendRows.flatMap(row=>trendSeries.map(field=>({
+    uid:field.key+'|'+row.period,label:field.label+' · '+row.period,
+    period:row.period,value:Number(row[field.key])||0
+  })));
+  const trendRecords=trendRows.map(row=>({...row,uid:row.period,title:row.period,date:row.start_date}));
+  const itemValues=groupRows.map(row=>({
+    uid:row.uid,label:groupLabel(row.label,t),value:Number(row.count)||0,
+    count:Number(row.count)||0,documents:Number(row.document_count)||0
+  }));
+  const itemFields=[
+    {key:'count',label:'命中次數',unit:'次'},
+    {key:'documents',label:'涉及作品數',unit:'篇'}
+  ];
+  const intentOptions=shown==='group'?availableStatisticIntents({
+    rows:trendRows,series:trendSeries,distribution:groupDistribution,
+    values:trendValues,records:trendRecords,recordFields:trendSeries,
+    mutuallyExclusive:true,seriesExclusive:true,
+    attainmentValue:classifiedTotal,targetValue:Number(data.documentCount)||0
+  }):shown==='item'?availableStatisticIntents({
+    distribution:itemDistribution,values:itemValues,records:itemValues,
+    recordFields:itemFields
+  }):[];
   const effectiveIntent=intentOptions.includes(chartIntent)?chartIntent:'ranking';
   const mixedHierarchy=shown==='both';
   const chooseKeywordCategory=key=>{
@@ -716,31 +736,45 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
       </label>
       {intentOptions.length>1?<label><span>分析意圖</span>
         <select className="scope-select" value={effectiveIntent} onChange={event=>{
-          setChartIntent(event.target.value);setSelectedPeriodKey('');
-          if(event.target.value==='ranking')setSelectedKey('');
+          setChartIntent(event.target.value);setSelectedPeriodKey('');setSelectedKey('');
         }}>
           {intentOptions.map(value=><option key={value} value={value}>
-            {value==='trend'?'看趨勢':'看排名'}
+            {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
           </option>)}
         </select>
       </label>:null}
-      {effectiveIntent==='trend'?<button type="button" className="loc-button loc-button--small"
-        onClick={()=>{setChartIntent('ranking');setSelectedKey('');setSelectedPeriodKey('');}}>返回排名</button>:null}
+      {['trend','compositionTrend'].includes(effectiveIntent)
+        ?<button type="button" className="loc-button loc-button--small"
+          onClick={()=>{setChartIntent('ranking');setSelectedKey('');setSelectedPeriodKey('');}}>返回排名</button>:null}
     </div>
     {shown==='both'&&groupCatalog.isPending?<p className="scope-status" role="status">正在載入關鍵詞項目的 Class 歸屬…</p>:null}
     {shown==='both'&&groupCatalog.error?<p className="scope-status scope-error" role="alert">群組對應讀取失敗：{String(groupCatalog.error?.message||groupCatalog.error)}</p>:null}
     {shown==='both'&&!groupCatalog.isSuccess?null:
       distribution.length?<StatisticsMultiChart
         intent={mixedHierarchy?'legacy':effectiveIntent}
-        type="bar" rows={trendRows} series={series} distribution={distribution}
+        type="bar"
+        rows={['trend','compositionTrend'].includes(effectiveIntent)?trendRows:[]}
+        series={effectiveIntent==='compositionTrend'?trendSeries:series}
+        distribution={effectiveIntent==='composition'?groupDistribution:distribution}
+        values={shown==='group'?trendValues:itemValues}
+        records={shown==='group'?trendRecords:itemValues}
+        recordFields={shown==='group'?trendSeries:itemFields}
+        mutuallyExclusive={shown==='group'} seriesExclusive={shown==='group'}
+        attainmentValue={classifiedTotal} targetValue={Number(data.documentCount)||0}
+        attainmentLabel="關鍵詞分類涵蓋率" attainmentTargetLabel="可分類作品數"
+        recordLabel={shown==='group'?'統計時段':'關鍵詞 Item'}
+        relationshipNote={shown==='group'
+          ?'每個點代表一個統計時段；比較不同 Group 的命中變化，不代表因果關係。'
+          :'每個點代表一個 Item；比較命中次數與涉及作品數，不代表因果關係。'}
         barLayout="vertical" height={Math.max(340,Math.min(24,distribution.length)*36+85)}
-        activeCategoryKey={selectedKey} onCategoryClick={chooseKeywordCategory}
-        rankingOffset={offset}
-        selectedPeriodKey={selectedPeriodKey}
-        onPeriodClick={effectiveIntent==='trend'
+        activeCategoryKey={selectedKey}
+        onCategoryClick={['ranking','compare','composition'].includes(effectiveIntent)
+          ?chooseKeywordCategory:null}
+        rankingOffset={offset} selectedPeriodKey={selectedPeriodKey}
+        onPeriodClick={['trend','compositionTrend','distribution'].includes(effectiveIntent)
           ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>:
         <p className="scope-status">{t('uiExtra.statisticsView.noVisual')}</p>}
-    {selectedPeriodKey&&effectiveIntent==='trend'?<section
+    {selectedPeriodKey&&['trend','compositionTrend'].includes(effectiveIntent)?<section
       className="scope-self-intersection-selected" aria-live="polite">
       <header className="statistics-dashboard__panel-heading">
         <h4>{selectedPeriodKey} · 關鍵詞趨勢明細</h4>
