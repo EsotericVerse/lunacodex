@@ -175,6 +175,9 @@ test('funnel calculates conversion between adjacent stages and from the first st
   assert.equal(resolveStatisticIntent({
     intent:'funnel',stages
   }).type,'funnel');
+  assert.equal(resolveStatisticIntent({
+    intent:'funnel',stages:[{name:'A',value:0},{name:'B',value:0}]
+  }).available,false);
 });
 
 test('all nine intents become available only when their required data is supplied',()=>{
