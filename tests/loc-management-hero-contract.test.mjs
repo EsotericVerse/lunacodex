@@ -109,8 +109,8 @@ test('management route table preserves the Group and Scope destinations',()=>{
   });
   assert.deepEqual(LOC_MANAGEMENT_ROUTE_TABLE.scope,{
     time:'culture/manage',
-    keywords:'statics/manage',
     spatial:'trace/manage',
+    keywords:'statics/manage',
     articles:'search/manage',
   });
   assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.group),[
@@ -120,7 +120,7 @@ test('management route table preserves the Group and Scope destinations',()=>{
     'time','spatial','keywords','articles'
   ]);
   assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.user),[
-    'culture','statics','trace','search'
+    'culture','trace','statics','search'
   ]);
   assert.deepEqual(PRIMARY_NAV_ORDER,[
     'home','culture','trace','statics','search','settings'
