@@ -74,7 +74,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     {intent==='ranking'&&distribution.length?<StatisticsMultiChart intent="ranking" distribution={distribution}
       activeCategoryKey={selectedKey}
       onCategoryClick={key=>setSelectedKey(current=>current===String(key||'')?'':String(key||''))}
-      height={Math.max(300,Math.min(800,distribution.length*34+90)}/>:
+      height={Math.max(300,Math.min(800,distribution.length*34+90))}/>:
       intent==='distribution'&&metricValues.length>1?<StatisticsMultiChart intent="distribution"
         values={metricValues} height={380}/>:
       <p className="scope-status">尚無足夠的詞級命中紀錄。</p>}
