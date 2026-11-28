@@ -90,7 +90,7 @@ const STRINGS={
   }
 };
 
-export default function TraceMap({onLocationPick=null,onLucusSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,routeOnly=false,showLucusSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026,lineOnlySavedGraph=false,onReady=null}){
+export default function TraceMap({onLocationPick=null,onLucusSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,routeOnly=false,showLucusSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026,onReady=null}){
   const reduceMotion=useReducedMotion();
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
@@ -201,10 +201,10 @@ export default function TraceMap({onLocationPick=null,onLucusSelect=null,onRoute
     ],{scopeId:selectedMap.source_scope||selectedMap.scope_id}):null;
     // Only line geometry is meaningful on LOC's routes-only map. Excluding
     // route-stop points prevents creating a second dense place marker layer.
-    mapRef.current?.setSavedGraph((routeOnly||lineOnlySavedGraph)&&graph
+    mapRef.current?.setSavedGraph(routeOnly&&graph
       ?{...graph,features:graph.features.filter(feature=>feature.geometry?.type==='LineString')}
       :graph);
-  },[ready,spatialData,selectedRouteUid,routeOnly,lineOnlySavedGraph]);
+  },[ready,spatialData,selectedRouteUid,routeOnly]);
   useEffect(()=>{
     if(ready&&focusLocation)mapRef.current?.focusCoordinates(focusLocation);
   },[ready,focusLocation]);
