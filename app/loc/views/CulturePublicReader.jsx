@@ -19,6 +19,7 @@ import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/us
 import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 import ActivityMotion from '../../modular/ActivityMotion';
 import {TERRITORY_STOPS,territoryLegendColor} from '../../modular/visual-palette.mjs';
+import LocGroupCultureReader from './LocGroupCultureReader';
 
 const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline/CultureTimeline'),{
   loading:()=> <div className='scope-culture-density-loading' role='status' aria-busy='true'>
@@ -190,7 +191,7 @@ async function queryCultureData(scope,kind,start,end,signal=null){
   signal?.throwIfAborted?.();
   return Array.isArray(data)?data:[];
 }
-export default function CulturePublicReader(){
+function ScopeCulturePublicReader(){
   const {scopeId}=useScopeRuntime();
   const [sourceExpansionPending,startSourceExpansion]=useTransition();
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
@@ -825,4 +826,10 @@ export default function CulturePublicReader(){
       </div>:null}
     </section>
   </FeaturePage>;
+}
+
+
+export default function CulturePublicReader(){
+  const {scopeId}=useScopeRuntime();
+  return scopeId==='loc'?<LocGroupCultureReader/>:<ScopeCulturePublicReader/>;
 }
