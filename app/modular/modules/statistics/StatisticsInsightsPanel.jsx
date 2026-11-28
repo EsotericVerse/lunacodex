@@ -243,7 +243,7 @@ export default function StatisticsInsightsPanel({
       </header>
       <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange}
         range={range} idPrefix={idPrefix}>
-    {rows.length?<div className="statistics-dashboard__trend-plot"
+    {rows.length?<div className="statistics-dashboard__trend-plot" data-intent={intent}
       role="group" aria-label={intent==='compare'?'作品數量比較圖':
         intent==='distribution'?'作品數量分布直方圖':'總數、平均、中位數與變化點趨勢圖'}>
       {intent==='distribution'
