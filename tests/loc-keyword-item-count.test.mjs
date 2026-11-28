@@ -171,7 +171,7 @@ test('Sparse Pattern matching preserves overlap counts and Unicode fallback',()=
 test('keyword discovery keeps only 2–4 character Han words and filters noise',()=>{
   const discovery=createNewKeywordDiscovery([]);
   discovery.consume([
-    {uid:'GALA0001',title:'月光',content:'我很好？作者來自於台灣！'},
+    {uid:'GALA0001',title:'月光',content:'我很好？作者來自於台灣！你我他'},
     {uid:'GALA0002',title:'標題',content:'月光與星火；等等。'}
   ]);
   const results=discovery.finish();
@@ -181,7 +181,7 @@ test('keyword discovery keeps only 2–4 character Han words and filters noise',
   assert.ok(words.has('很好'));
   assert.ok(words.has('台灣'));
   assert.ok(words.has('星火'));
-  for(const excluded of ['我','我很','作者','來自於','等等','?','!','？','！','；'])
+  for(const excluded of ['我','我很','你我他','作者','來自於','等等','?','!','？','！','；'])
     assert.ok(!words.has(excluded),'unexpected discovery candidate: '+excluded);
   assert.ok(results.candidates.every(row=>{
     const length=Array.from(row.word).length;
