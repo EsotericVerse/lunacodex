@@ -69,9 +69,9 @@ export function sourceStatisticsTree(rows=[],taxonomy={}){
     totals};
 }
 
-// Intersection navigation starts at each Universe heading, then exposes only
-// Galaxy and Domain. From nodes stay inside metricIdsForSite rollups, never
-// appear as selectable or displayed rows in this two-level chooser.
+// Compact legacy navigation starts at each Universe heading, then exposes
+// Galaxy and Domain only. The full statistics picker uses the entire metrics
+// projection directly and includes Universe and From as well.
 // Follow persisted Lucus parent UIDs, never guess a path from source names.
 export function sourceIntersectionOutline(metrics=[]){
   const nodes=(Array.isArray(metrics)?metrics:[])
