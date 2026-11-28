@@ -151,9 +151,14 @@ export default function StatisticsInsightsPanel({
   const reduceMotion=useReducedMotion();
   const analysis=useStatisticsInsightData(rows);
   const {stats,insight}=analysis;
-  const comparisonRows=useMemo(()=>rows.map(row=>({
-    ...row,period:String(row.period||''),value:Number(row.total)||0,sourceRow:row
-  })).sort((a,b)=>b.value-a.value||a.period.localeCompare(b.period)),[rows]);
+  const comparisonRows=useMemo(()=>{
+    const output=rows.map(row=>({
+      ...row,period:String(row.period||''),value:Number(row.total)||0,sourceRow:row
+    }));
+    if(output.length>6)
+      output.sort((a,b)=>b.value-a.value||a.period.localeCompare(b.period));
+    return output;
+  },[rows]);
   const comparisonHorizontal=comparisonRows.length>6;
   const TrendChart=rows.length>=6?LineChart:BarChart;
   const trendRows=useMemo(()=>rows.map(row=>({
