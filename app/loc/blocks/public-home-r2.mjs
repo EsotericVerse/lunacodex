@@ -2,7 +2,6 @@ import {isLocBlockPage} from './loc-block-lucus.mjs';
 import {publicScopeBlockPage} from './public-scope-pages.mjs';
 
 const PREFIX='loc/public-home/v1';
-const LEGACY_LOC_BLOCKS_PREFIX=PREFIX+'/loc-anchor-blocks/';
 export const PUBLIC_LOC_HOME_BLOCKS_PREFIX=PREFIX+'/loc-lucus-blocks/';
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const PAGE_COPY_FIELDS=new Set(['scope_id','display_name','title_tw','desc_tw']);
@@ -89,62 +88,6 @@ export async function invalidatePublicHomeObjects(bucket,keys){
       await bucket.delete(key);
     return true;
   }catch{return false;}
-}
-
-// R2 does not provide an atomic rename operation. This one-time migration
-// streams each legacy cache object to its Lucus key, verifies size and ETag,
-// and deletes the old key only after verification. Conflicting destinations
-// stop the move without overwriting either object.
-export async function moveLegacyLocHomeBlockObjects(bucket){
-  if(!bucket?.list||!bucket?.get||!bucket?.put||!bucket?.head||!bucket?.delete)
-    throw new TypeError('R2 bucket move operations are unavailable');
-  const moved=[];
-  let cursor;
-  do{
-    const page=await bucket.list({prefix:LEGACY_LOC_BLOCKS_PREFIX,limit:1000,...(cursor?{cursor}:{})});
-    for(const entry of page.objects||[]){
-      const oldKey=String(entry.key||'');
-      if(!oldKey.startsWith(LEGACY_LOC_BLOCKS_PREFIX))continue;
-      const newKey=PUBLIC_LOC_HOME_BLOCKS_PREFIX+oldKey.slice(LEGACY_LOC_BLOCKS_PREFIX.length);
-      const listedSource=await bucket.head(oldKey);
-      if(!listedSource||Number(listedSource.size)!==Number(entry.size)||
-        String(listedSource.etag||'')!==String(entry.etag||''))
-        throw new Error('R2 legacy object changed during Lucus move: '+oldKey);
-      const destination=await bucket.head(newKey);
-      if(destination){
-        if(Number(destination.size)!==Number(entry.size)||
-          String(destination.etag||'')!==String(entry.etag||''))
-          throw new Error('R2 Lucus object already exists with different content: '+newKey);
-        await bucket.delete(oldKey);
-        moved.push({from:oldKey,to:newKey,alreadyPresent:true});
-        continue;
-      }
-      const source=await bucket.get(oldKey);
-      if(!source)continue;
-      if(Number(source.size)!==Number(entry.size)||
-        String(source.etag||'')!==String(entry.etag||''))
-        throw new Error('R2 legacy object changed during Lucus move: '+oldKey);
-      const created=await bucket.put(newKey,source.body,{
-        onlyIf:{etagDoesNotMatch:'*'},
-        ...(source.httpMetadata?{httpMetadata:source.httpMetadata}:{}),
-        ...(source.customMetadata?{customMetadata:source.customMetadata}:{}),
-        ...(source.storageClass?{storageClass:source.storageClass}:{})
-      });
-      const verified=created||await bucket.head(newKey);
-      if(!verified||Number(verified.size)!==Number(source.size)||
-        String(verified.etag||'')!==String(source.etag||''))
-        throw new Error('R2 Lucus destination conflicts with source: '+newKey);
-      const sourceStillMatches=await bucket.head(oldKey);
-      if(!sourceStillMatches||Number(sourceStillMatches.size)!==Number(source.size)||
-        String(sourceStillMatches.etag||'')!==String(source.etag||''))
-        throw new Error('R2 legacy object changed before Lucus move completed: '+oldKey);
-      await bucket.delete(oldKey);
-      moved.push({from:oldKey,to:newKey,alreadyPresent:false});
-    }
-    cursor=page.truncated?page.cursor:undefined;
-    if(page.truncated&&!cursor)throw new Error('R2 object list omitted its continuation cursor');
-  }while(cursor);
-  return moved;
 }
 
 // Mutations retire only the exact public-home projection they can affect.
