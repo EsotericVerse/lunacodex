@@ -89,7 +89,7 @@ function periodEndpointUidQuery(engine,table){
 // endpoints, and Date rows inside the requested windows. Range mode returns
 // only Date rows from every member Scope inside the selected Era's exact windows.
 export async function queryLocCultureTimeRiver(args={}){
-  if(!exactKeys(args,['mode','scope','ranges'])||
+  if(!exactKeys(args,['mode','ranges'])||
     !['index','range'].includes(args.mode))
     throw Error('Invalid LOC Culture TimeLucus request');
   const windows=dateWindows(args.ranges);
