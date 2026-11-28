@@ -25,6 +25,21 @@
 .scope-ranking>div{display:flex;justify-content:space-between;gap:1rem;border-bottom:var(--scope-border)}
 .scope-ranking>div:last-child{border-bottom:0}
 .scope-ranking span{color:var(--scope-muted)}
+.scope-ranking>div[data-selected="true"]{
+  padding:.35rem .5rem;
+  border-radius:8px;
+  background:var(--loc-panel-2);
+  outline:1px solid var(--loc-accent);
+}
+.scope-self-intersection-selected{
+  display:grid;
+  gap:.65rem;
+  margin:1rem 0;
+  padding:.8rem;
+  border:var(--scope-border);
+  border-radius:12px;
+  background:var(--loc-panel);
+}
 .scope-search-form{display:grid;}
 .scope-search-form input{min-width:0;padding:.7rem .9rem;color:var(--scope-text)}
 .scope-search-highlight{color:var(--loc-accent);font-weight:800}
