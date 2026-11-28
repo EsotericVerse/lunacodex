@@ -740,13 +740,6 @@ export default function Culture(){
   // Management displays the same complete historical Time graph as Culture;
   // the current calendar year is not a filter or the initial editor camera.
   const editorRiverWindow=structureDateBounds;
-  const currentStructureStart=activeStructureKey==='all'?structureDateBounds.start
-    :String(currentStructurePeriod?.start_date||'').slice(0,10);
-  // A trace stops at its final real lucus; no virtual today endpoint.
-  const lastAnchorDate=String(structurePreference.lastAnchor?.start_date||'').slice(0,10);
-  const savedTraceEnd=String(currentStructurePeriod?.end_date||'').slice(0,10);
-  const currentStructureEnd=activeStructureKey==='all'?structureDateBounds.end
-    :structureWindowKey===''&&lastAnchorDate>savedTraceEnd?lastAnchorDate:savedTraceEnd;
   // Keep the first river grouped by era UID. A selected trace changes
   // only the camera viewport, never the saved lucus/event/trace graph.
   const anchorRecords=useMemo(()=>timelineItems
