@@ -76,7 +76,7 @@ export default function StatisticsMultiChart({
   targetValue=null,attainmentValue=null,attainmentLabel='達成率',funnelStages=[],
   mutuallyExclusive=false,seriesExclusive=false,
   onCategoryClick=null,onSeriesClick=null,onPeriodClick=null,onDatumClick=null,
-  selectedPeriodKey='',activeCategoryKey=''
+  selectedPeriodKey='',activeCategoryKey='',rankingOffset=0
 }){
   useUiSection('uiExtra.statisticsView');
   useUiSection('uiExtra.chartLabels');
@@ -145,7 +145,7 @@ export default function StatisticsMultiChart({
     key:String(row.period||index),name:String(row.period||index),
     value:totalKey?number(row[totalKey]):fields.reduce((sum,field)=>sum+number(row[field.key]),0),
     period:row.period,start_date:row.start_date,end_date:row.end_date,raw:row
-  })).filter(row=>row.value>0).sort((a,b)=>b.value-a.value||a.name.localeCompare(b.name)),
+  })).sort((a,b)=>b.value-a.value||a.name.localeCompare(b.name)),
     [time,fields,totalKey]);
   const comparisonCategories=renderMode==='time-comparison'?timeComparison:displayCategories;
   const colored=comparisonCategories.map((item,i)=>({...item,
@@ -178,6 +178,7 @@ export default function StatisticsMultiChart({
   const isDistribution=renderMode==='distribution'||renderMode==='time-comparison'||
     (intent==='legacy'&&actual==='bar'&&legacyBarLayout==='vertical'&&categories.length>0);
   const highlightTop=Number(intentConfig?.highlightTop||0);
+  const rankingStart=Math.max(0,Math.trunc(Number(rankingOffset)||0));
   const [selectedDatum,setSelectedDatum]=useState(null);
   const emitDatum=(datum)=>{
     if(!datum)return;
@@ -298,6 +299,8 @@ export default function StatisticsMultiChart({
     <YAxis type="number" domain={[0,100]} tickFormatter={value=>Math.round(Number(value))+'%'}
       tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
     <Tooltip content={<ThemedChartTooltip suffix="%"/>}/>
+    {selectedPeriodKey?<ReferenceLine x={selectedPeriodKey} stroke={CHART_ACCENT}
+      strokeWidth={2.5} strokeDasharray="5 3"/>:null}
     <Legend wrapperStyle={{fontSize:11}}/>
     {compositionTrend.fields.map((field,index)=><Bar key={field.key} {...animation}
       dataKey={field.dataKey} name={field.label} stackId="composition" fill={color(index)}
@@ -394,7 +397,7 @@ export default function StatisticsMultiChart({
       cursor={onCategoryClick||onDatumClick?'pointer':undefined}
       onClick={(_,index)=>barClick(index)}>
       {distributionData.map((item,index)=><Cell key={item.key}
-        fill={highlightTop?(index<highlightTop?'var(--loc-heading)':'var(--loc-muted)'):item.fill}
+        fill={highlightTop?(index+rankingStart<highlightTop?'var(--loc-heading)':'var(--loc-muted)'):item.fill}
         opacity={activeCategoryKey&&!item.active?0.42:1}
         stroke={item.active?'var(--loc-heading)':'var(--loc-panel)'}
         strokeWidth={item.active?2.5:1}/>)}
@@ -697,6 +700,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
         type="bar" rows={trendRows} series={series} distribution={distribution}
         barLayout="vertical" height={Math.max(340,Math.min(24,distribution.length)*36+85)}
         activeCategoryKey={selectedKey} onCategoryClick={chooseKeywordCategory}
+        rankingOffset={offset}
         selectedPeriodKey={selectedPeriodKey}
         onPeriodClick={effectiveIntent==='trend'
           ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>:
