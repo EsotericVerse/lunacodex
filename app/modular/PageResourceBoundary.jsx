@@ -3,6 +3,7 @@
 import {useLayoutEffect,useRef} from 'react';
 import {animate,useReducedMotion} from 'motion/react';
 import {releaseTransientPageResources} from '../../packages/zenstack/client-queries';
+import {LOC_MOTION} from './motion-tokens.mjs';
 
 // The shell remains mounted. Cleanup is independent of visual motion and
 // happens before new passive reads; never retain or remount an outgoing page.
@@ -25,7 +26,7 @@ export default function PageResourceBoundary({routeKey,children}){
       const original=element.style.opacity;
       const restore=()=>{element.style.opacity=original;};
       const control=animate(element,{opacity:[.78,1]},
-        {duration:.24,ease:'easeOut',onComplete:restore});
+        {duration:LOC_MOTION.standard,ease:'easeOut',onComplete:restore});
       return ()=>{control.stop();restore();};
     });
     return ()=>animations.forEach(stop=>stop());
