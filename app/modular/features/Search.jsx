@@ -626,10 +626,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       }
     }finally{
       timeout.removeEventListener('abort',onTimeout);
-      if(id===searchId.current){
+      if(id===searchId.current&&abortRef.current===controller){
         setSearchInFlight(false);
         if(append)setLoadingMore(false);
-        if(abortRef.current===controller)abortRef.current=null;
+        abortRef.current=null;
       }
     }
   }
@@ -707,13 +707,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       setFullTextRow(detail);
       setStatus('');
     }catch(exception){
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       setResults([]);setError(featureDataErrorMessage(exception,UI_COPY));setStatus(UI_COPY.search.relationFailed);
     }finally{
-      if(id===searchId.current){
+      if(id===searchId.current&&abortRef.current===controller){
         setFullTextLoading(false);
         setSearchInFlight(false);
-        if(abortRef.current===controller)abortRef.current=null;
+        abortRef.current=null;
       }
     }
   }
