@@ -99,8 +99,6 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
   const publicFeature=!managementMode&&['culture','statics','search','trace'].includes(featureId)?featureId:'';
   const heroRef=useRef(null);
   const heroPlayed=useRef('');
-  const contentRef=useRef(null);
-  const contentPlayed=useRef('');
   const reduceMotion=useReducedMotion();
   const heroIdentity=[scopeId,pathname,featureId,managementTextPage].join('|');
   const heroReady=managementMode?managementTextQuery.isSuccess:
@@ -111,7 +109,11 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     if(reduceMotion||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
     const direction=featureId==='culture'?{x:[-9,0]}:
       featureId==='trace'?{x:[9,0]}:featureId==='statics'?{y:[7,0]}:{y:[4,0]};
-    const elements=heroRef.current.querySelectorAll(':scope > .loc-eyebrow, :scope > .home-title-row, :scope > .scope-hero-description');
+    // FeatureHeroContent owns an inner copy wrapper; target its actual
+    // semantic rows instead of querying siblings that do not exist.
+    const elements=heroRef.current.querySelectorAll(
+      '.scope-feature-hero-copy > .loc-eyebrow, .scope-feature-hero-copy > .home-title-row, .scope-feature-hero-copy > .scope-hero-description'
+    );
     const controls=Array.from(elements).map((element,index)=>{
       const original={opacity:element.style.opacity,transform:element.style.transform};
       const restore=()=>Object.assign(element.style,original);
@@ -121,17 +123,6 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
     });
     return ()=>controls.forEach(stop=>stop());
   },[heroReady,heroIdentity,featureId,reduceMotion]);
-  useLayoutEffect(()=>{
-    const element=contentRef.current;
-    if(!element||contentPlayed.current===heroIdentity)return;
-    contentPlayed.current=heroIdentity;
-    if(reduceMotion||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-    const original={opacity:element.style.opacity,transform:element.style.transform};
-    const restore=()=>Object.assign(element.style,original);
-    const control=animate(element,{opacity:[.9,1],y:[5,0]},
-      {duration:.24,ease:'easeOut',onComplete:restore});
-    return ()=>{control.stop();restore();};
-  },[heroIdentity,reduceMotion]);
   return <main className={'scope-main'+(managementMode?' scope-main--edit-workspace':'')} data-public-feature={publicFeature||undefined}>
     <section className="scope-page">
       <header ref={heroRef} className={heroClassName} style={heroStyle} data-feature-hero-source={managementMode?managementTextPage:shared?'loc':'default'}>
@@ -148,7 +139,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
         {(managementMode?managementTextQuery.isSuccess&&!shared:hasFeatureHero&&publicHeroQuery.isSuccess&&sharedEnabled&&!shared)
           ?<p className="scope-status" role="status">尚無主視覺資料。</p>:null}
       </header>
-      <div ref={contentRef} className={"scope-content"+(publicFeature?" loc-public-content":"")}>
+      <div className={"scope-content"+(publicFeature?" loc-public-content":"")}>
         {children}
       </div>
     </section>
