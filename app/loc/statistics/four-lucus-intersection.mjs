@@ -144,12 +144,14 @@ export function areLucusMetricsMutuallyExclusive(metrics=[]){
   if(first.kind==='keyword_group')return true;
   if(first.kind==='source_tree')return true;
   if(first.kind==='period'||first.kind==='era'){
+    if(rows.some(row=>!Array.isArray(row.windows)||!row.windows.length))return false;
     for(let i=0;i<rows.length;i++)for(let j=i+1;j<rows.length;j++)
       for(const a of rows[i].windows||[])for(const b of rows[j].windows||[])
         if(a.startDate<=b.endDate&&b.startDate<=a.endDate)return false;
     return true;
   }
   if(first.kind==='path'||first.kind==='trace'){
+    if(rows.some(row=>!(row.points instanceof Set)||!row.points.size))return false;
     const seen=new Set();
     for(const row of rows)for(const point of row.points||[]){
       if(seen.has(point))return false;
