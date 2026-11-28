@@ -47,7 +47,7 @@ test('expanding an Era reveals its Period and real DateLucus points',()=>{
 
 test('bounded public TimeLucus query keeps hierarchy metadata and filters DateLucus only',()=>{
   const request={
-    kind:'query',operation:'lucus-feature',scope:'loc',family:'time',mode:'public',
+    kind:'query',operation:'lucus-feature',scope:'lo3rwang',family:'time',mode:'public',
     types:['era','period','date'],dateStart:'2026-01-01',dateEnd:'2026-12-31'
   };
   const parsed=parseLucusFeatureQuery(request);
@@ -67,6 +67,7 @@ test('Scope Culture restores two independent rivers and the suggested-Lucus lane
   assert.match(page,/dateStart:start,dateEnd:end/);
   assert.match(page,/groups:\[\.\.\.base\.groups,candidateLane\]/);
   assert.doesNotMatch(page,/selectedPeriodUid\)return;/);
+  assert.match(page,/scopeId==='loc'\?<LocGroupCultureReader\/>:<ScopeCulturePublicReader\/>/);
   const groupReader=await source('app/loc/views/LocGroupCultureReader.jsx');
   assert.match(groupReader,/CultureTimeline/);
 });
