@@ -278,7 +278,7 @@ export default function StatisticsMultiChart({
     <Tooltip content={<ThemedChartTooltip suffix="%"/>} formatter={v=>Number(v).toFixed(1)+'%'}/>
   </RadialBarChart>;
   else if(actual==='composition')chart=<BarChart data={[compositionRow]} layout="vertical"
-    stackOffset="expand" margin={{top:22,right:18,bottom:20,left:18}}>
+    margin={{top:22,right:18,bottom:20,left:18}}>
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
     <XAxis type="number" domain={[0,100]} tickFormatter={value=>Math.round(Number(value))+'%'}
       tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
