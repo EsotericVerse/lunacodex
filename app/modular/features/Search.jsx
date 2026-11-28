@@ -690,7 +690,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       const identityScope=managementMode?String(searchParams?.get('scope')||'').trim():'';
       const detailScopes=identityScope?availableScopes.filter(scope=>scope.id===identityScope):targetScopes;
       for(const scopeData of detailScopes){
-        detail=await selectGalaxyIdentity(scopeData,identity,{includeHidden:canManageSearchScope(account,scopeData.id)});
+        detail=await selectGalaxyIdentity(scopeData,identity,{
+          includeHidden:canManageSearchScope(account,scopeData.id),signal:controller.signal
+        });
         if(detail){detailScope=scopeData.id;break;}
       }
       if(id!==searchId.current)return;
