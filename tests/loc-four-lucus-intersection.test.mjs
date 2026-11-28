@@ -2,12 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   timeIntersectionMetrics,spaceIntersectionMetrics,sourceIntersectionMetrics,
-  fourDimensionDailyCounts
+  fourDimensionDailyCounts,areLucusMetricsMutuallyExclusive
 } from '../app/loc/statistics/four-lucus-intersection.mjs';
 
 const lucus=(type,uid,title,attr)=>({type,uid,title,attr});
 const dayCount=(counts,metric,day)=>counts.get(metric.id)?.get(day)||0;
 const labels=(rows)=>rows.map(row=>row.name);
+
+test('composition is limited to mutually exclusive siblings within one Lucus level',()=>{
+  assert.equal(areLucusMetricsMutuallyExclusive([
+    {kind:'period',parentUid:'ERA00001',windows:[{startDate:'2026-01-01',endDate:'2026-01-31'}]},
+    {kind:'period',parentUid:'ERA00001',windows:[{startDate:'2026-02-01',endDate:'2026-02-28'}]}
+  ]),true);
+  assert.equal(areLucusMetricsMutuallyExclusive([
+    {kind:'period',parentUid:'ERA00001',windows:[{startDate:'2026-01-01',endDate:'2026-02-15'}]},
+    {kind:'period',parentUid:'ERA00001',windows:[{startDate:'2026-02-01',endDate:'2026-02-28'}]}
+  ]),false);
+  assert.equal(areLucusMetricsMutuallyExclusive([
+    {kind:'trace',points:new Set(['POIN0001'])},
+    {kind:'trace',points:new Set(['POIN0002'])}
+  ]),true);
+  assert.equal(areLucusMetricsMutuallyExclusive([
+    {kind:'trace',points:new Set(['POIN0001'])},
+    {kind:'trace',points:new Set(['POIN0001','POIN0002'])}
+  ]),false);
+  assert.equal(areLucusMetricsMutuallyExclusive([
+    {kind:'source_tree',type:'domain',parentUid:'GALAXY1'},
+    {kind:'source_tree',type:'domain',parentUid:'GALAXY1'}
+  ]),true);
+  assert.equal(areLucusMetricsMutuallyExclusive([
+    {kind:'source_tree',type:'domain',parentUid:'GALAXY1'},
+    {kind:'source_tree',type:'from',parentUid:'DOMAIN01'}
+  ]),false);
+  assert.equal(areLucusMetricsMutuallyExclusive([
+    {kind:'keyword_group',parentUid:'CLASS001'},
+    {kind:'keyword_group',parentUid:'CLASS001'}
+  ]),true);
+  assert.equal(areLucusMetricsMutuallyExclusive([
+    {kind:'keyword_item',parentUid:'GROUP001'},
+    {kind:'keyword_item',parentUid:'GROUP001'}
+  ]),false);
+});
 
 const timeline=[
   lucus('date','DATE0001','Jan 1',{date:'2026-01-01'}),
