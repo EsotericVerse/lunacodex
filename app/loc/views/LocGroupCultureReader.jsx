@@ -105,8 +105,9 @@ export default function LocGroupCultureReader(){
     const load=async()=>{
       setPending(true);setError('');
       try{
-        const [timeResult,taxonomyResult]=await Promise.all([
+        const [timeResult,densityResult,taxonomyResult]=await Promise.all([
           queryLocCultureTimeRiver({mode:'index',ranges:YEAR_WINDOWS}),
+          queryLocCultureDensity({ranges:YEAR_WINDOWS}),
           readPublicSourceTaxonomy()
         ]);
         if(!active||request!==sequence.current)return;
@@ -115,31 +116,15 @@ export default function LocGroupCultureReader(){
         const yearStart=DEFAULT_YEAR_WINDOW.startDate,yearEnd=DEFAULT_YEAR_WINDOW.endDate;
         const current=choices.find(era=>era.ranges.some(range=>
           String(range.end_date||range.start_date)>=yearStart&&
-          String(range.start_date)<=yearEnd))||choices[0]||null;
+          String(range.start_date)<=yearEnd))||null;
         setIndexRows(rows);
         setTaxonomy(taxonomyResult||null);
         setActiveEraKey(current?.key||'');
         setRangeRows(EMPTY);
+        setRangeWindows(YEAR_WINDOWS);
+        setDensityRows(Array.isArray(densityResult?.data?.rows)?densityResult.data.rows:[]);
         setExpandedSources([]);
         setSelectedSource(null);
-        if(current&&!current.ranges.some(range=>
-          String(range.end_date||range.start_date)>=yearStart&&
-          String(range.start_date)<=yearEnd)){
-          const windows=locEraWindows(current);
-          const [timeRange,density]=await Promise.all([
-            queryLocCultureTimeRiver({mode:'range',scope:current.scope_id,ranges:windows}),
-            queryLocCultureDensity({ranges:windows})
-          ]);
-          if(!active||request!==sequence.current)return;
-          setRangeWindows(windows);
-          setRangeRows(Array.isArray(timeRange?.data?.rows)?timeRange.data.rows:[]);
-          setDensityRows(Array.isArray(density?.data?.rows)?density.data.rows:[]);
-        }else{
-          const density=await queryLocCultureDensity({ranges:YEAR_WINDOWS});
-          if(!active||request!==sequence.current)return;
-          setRangeWindows(YEAR_WINDOWS);
-          setDensityRows(Array.isArray(density?.data?.rows)?density.data.rows:[]);
-        }
       }catch(reason){
         if(active&&request===sequence.current)setError(String(reason?.message||reason));
       }finally{
@@ -153,7 +138,9 @@ export default function LocGroupCultureReader(){
   const navigateEra=useCallback(async direction=>{
     if(pending||!eras.length)return;
     const current=activeEraIndex;
-    const nextIndex=direction==='previous'?current+1:current-1;
+    const nextIndex=current<0
+      ?(direction==='previous'?0:-1)
+      :direction==='previous'?current+1:current-1;
     if(nextIndex<0||nextIndex>=eras.length)return;
     const next=eras[nextIndex],windows=locEraWindows(next);
     if(!windows.length){
@@ -245,7 +232,7 @@ export default function LocGroupCultureReader(){
         windowEnd={bounds.end}
         onEraNavigate={direction=>void navigateEra(direction)}
         eraNavigationDisabled={{
-          previous:pending||activeEraIndex<0||activeEraIndex>=eras.length-1,
+          previous:pending||!eras.length||activeEraIndex>=eras.length-1,
           next:pending||activeEraIndex<=0
         }}
         onGroupToggle={toggleSource}
