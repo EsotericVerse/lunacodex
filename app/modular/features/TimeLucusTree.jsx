@@ -1,8 +1,7 @@
 'use client';
 
-import {useMemo} from 'react';
+import {useMemo,useState} from 'react';
 import {timeRecordHierarchy} from '../../loc/culture/time-record-hierarchy-options.mjs';
-import LucusManagementNavigator from '../LucusManagementNavigator';
 
 const uid=row=>String(row?.uid||'');
 const title=row=>String(row?.title||row?.uid||'未命名紀錄');
@@ -13,6 +12,18 @@ export default function TimeLucusTree({
   rows=[],value='',disabled=false,onSelect,onCreate,children=null
 }){
   const hierarchy=useMemo(()=>timeRecordHierarchy(rows),[rows]);
+  const [search,setSearch]=useState('');
+  const needle=search.normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
+  const filterOptions=(items,selected='')=>{
+    if(!needle)return items;
+    const filtered=items.filter(item=>String(item.searchText||item.label||'')
+      .normalize('NFKC').toLocaleLowerCase('zh-Hant').includes(needle));
+    if(selected&&!filtered.some(item=>item.id===selected)){
+      const current=items.find(item=>item.id===selected);
+      if(current)filtered.unshift(current);
+    }
+    return filtered;
+  };
   const selectedRow=rows.find(row=>uid(row)===String(value||''))||null;
   const selectedType=selectedRow?.type==='date'?'lucus':selectedRow?.type||'';
   const findEraForPeriod=periodUid=>hierarchy.eras.find(group=>
@@ -33,8 +44,8 @@ export default function TimeLucusTree({
   const unclassifiedSelected=Boolean(selectedRow&&!selectedEra)||
     (!selectedRow&&!hierarchy.eras.length&&hasUnclassified);
   const activeEra=selectedEra||(!selectedRow?hierarchy.eras[0]||null:null);
-  const unclassifiedPeriods=unclassifiedSelected?hierarchy.unclassifiedPeriods:[];
-  const periodBranches=activeEra?.periods||unclassifiedPeriods;
+  const periodBranches=activeEra?.periods||
+    (unclassifiedSelected?hierarchy.unclassifiedPeriods:[]);
   const dateBranchId='__unclassified_dates__';
   const secondaryItems=[
     ...periodBranches.map(branch=>({
@@ -42,7 +53,7 @@ export default function TimeLucusTree({
       meta:branch.dates.length+' 個日期定錨點',
       searchText:[title(branch.row),...branch.dates.map(dateLabel)].join(' ')
     })),
-    ...(!activeEra&&hierarchy.unclassifiedDates.length?[{
+    ...(!activeEra&&unclassifiedSelected&&hierarchy.unclassifiedDates.length?[{
       id:dateBranchId,label:'未歸屬時間定錨',
       meta:hierarchy.unclassifiedDates.length+' 個日期',
       searchText:['未歸屬時間定錨',...hierarchy.unclassifiedDates.map(dateLabel)].join(' ')
@@ -76,37 +87,76 @@ export default function TimeLucusTree({
   ];
   const selectedPrimary=selectedEra?uid(selectedEra.row):
     unclassifiedSelected?'__unclassified__':(!selectedRow?uid(hierarchy.eras[0]?.row):'');
-  const create=type=>()=>onCreate?.(type);
-  return <LucusManagementNavigator
-    className="loc-time-lucus-tree"
-    label="時間定錨階層管理"
-    searchLabel="搜尋時代、期間與時間定錨"
-    primaryTitle="時代"
-    primaryItems={primaryItems}
-    selectedPrimary={selectedPrimary}
-    onSelectPrimary={id=>id==='__unclassified__'
-      ?onSelect?.(uid(hierarchy.unclassifiedPeriods[0]?.row)||uid(hierarchy.unclassifiedDates[0]))
-      :onSelect?.(id)}
-    primaryCreateLabel="＋ 新增時代"
-    onCreatePrimary={create('era')}
-    secondaryTitle={unclassifiedSelected&&!hierarchy.unclassifiedPeriods.length?'未分類時間':unclassifiedSelected?'未分類期間':'期間'}
-    secondaryItems={secondaryItems}
-    selectedSecondary={selectedSecondary}
-    onSelectSecondary={id=>id===dateBranchId
-      ?onSelect?.(uid(hierarchy.unclassifiedDates[0]))
-      :onSelect?.(id)}
-    secondaryCreateLabel="＋ 新增期間"
-    onCreateSecondary={create('period')}
-    detailTitle="時間定錨與操作"
-    detailItems={detailItems}
-    selectedDetail={selectedType==='lucus'?uid(selectedRow):''}
-    onSelectDetail={id=>onSelect?.(id)}
-    detailCreateLabel="＋ 新增時間定錨"
-    onCreateDetail={create('lucus')}
-    primaryEmpty="目前沒有時代紀錄"
-    secondaryEmpty="選擇時代後顯示所屬期間"
-    detailEmpty="選擇期間後顯示日期定錨點"
-    disabled={disabled}>
-    {children}
-  </LucusManagementNavigator>;
+  const filteredPrimary=filterOptions(primaryItems,selectedPrimary);
+  const filteredSecondary=filterOptions(secondaryItems,selectedSecondary);
+  const filteredDetails=filterOptions(detailItems,selectedType==='lucus'?uid(selectedRow):'');
+    const create=type=>()=>onCreate?.(type);
+  return <section className="loc-lucus-select-workspace loc-time-lucus-tree"
+    aria-label="時間定錨階層管理">
+    <label className="loc-lucus-select-workspace__search">
+      <span>搜尋時代、期間與時間定錨點</span>
+      <input type="search" className="scope-search-input" value={search}
+        onChange={event=>setSearch(event.target.value)} placeholder="輸入名稱或日期"/>
+    </label>
+    <div className="loc-lucus-select-workspace__levels">
+      <section className="loc-lucus-select-workspace__field">
+        <header><h3>時代</h3><span>{hierarchy.eras.length}</span></header>
+        <label><span>選擇時代</span>
+          <select className="scope-select" value={selectedPrimary||'__none__'} disabled={disabled}
+            onChange={event=>{
+              const id=event.target.value;
+              if(id==='__unclassified__'){
+                const first=uid(hierarchy.unclassifiedPeriods[0]?.row)||uid(hierarchy.unclassifiedDates[0]);
+                if(first)onSelect?.(first);
+              }else if(id!=='__none__')onSelect?.(id);
+            }}>
+            <option value="__none__">選擇時代</option>
+            {filteredPrimary.map(item=>
+              <option key={item.id} value={item.id}>{item.label} · {item.meta}</option>)}
+          </select>
+        </label>
+        <button type="button" className="loc-button" disabled={disabled}
+          onClick={create('era')}>＋ 新增時代</button>
+      </section>
+      <section className="loc-lucus-select-workspace__field">
+        <header><h3>期間</h3><span>{secondaryItems.length}</span></header>
+        <label><span>選擇期間</span>
+          <select className="scope-select"
+            value={selectedType==='era'?'__era__':selectedSecondary||'__none__'}
+            disabled={disabled||(!activeEra&&!unclassifiedSelected)}
+            onChange={event=>{
+              const id=event.target.value;
+              if(id==='__era__'){if(activeEra)onSelect?.(uid(activeEra.row));}
+              else if(id===dateBranchId){
+                const first=uid(hierarchy.unclassifiedDates[0]);
+                if(first)onSelect?.(first);
+              }else if(id!=='__none__')onSelect?.(id);
+            }}>
+            <option value="__none__">選擇期間</option>
+            {activeEra?<option value="__era__">整個時代</option>:null}
+            {filteredSecondary.map(item=>
+              <option key={item.id} value={item.id}>{item.label} · {item.meta}</option>)}
+          </select>
+        </label>
+        <button type="button" className="loc-button" disabled={disabled}
+          onClick={create('period')}>＋ 新增期間</button>
+      </section>
+      <section className="loc-lucus-select-workspace__field">
+        <header><h3>時間定錨點</h3><span>{detailItems.length}</span></header>
+        <label><span>選擇日期定錨點</span>
+          <select className="scope-select" value={selectedType==='lucus'?uid(selectedRow):'__none__'}
+            disabled={disabled||!detailItems.length}
+            onChange={event=>{if(event.target.value!=='__none__')onSelect?.(event.target.value);}}>
+            <option value="__none__">選擇時間定錨點</option>
+            {filteredDetails.map(item=><option key={item.id} value={item.id}>
+              {item.meta?item.meta+'｜':''}{item.label}
+            </option>)}
+          </select>
+        </label>
+        <button type="button" className="loc-button" disabled={disabled}
+          onClick={create('lucus')}>＋ 新增時間定錨點</button>
+      </section>
+    </div>
+    {children?<div className="loc-lucus-select-workspace__detail">{children}</div>:null}
+  </section>;
 }

@@ -1,8 +1,7 @@
 'use client';
 
-import {useMemo} from 'react';
+import {useMemo,useState} from 'react';
 import {spaceRecordHierarchy} from './space-record-hierarchy.mjs';
-import LucusManagementNavigator from '../../modular/LucusManagementNavigator';
 
 const uid=row=>String(row?.uid||'');
 const name=row=>String(row?.title||row?.uid||'未命名紀錄');
@@ -13,6 +12,18 @@ export default function SpaceLucusTree({
   className='loc-unified-spatial-manager'
 }){
   const hierarchy=useMemo(()=>spaceRecordHierarchy(spatial,scopeId),[spatial,scopeId]);
+  const [search,setSearch]=useState('');
+  const needle=search.normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
+  const filterOptions=(items,selected='')=>{
+    if(!needle)return items;
+    const filtered=items.filter(item=>String(item.searchText||item.label||'')
+      .normalize('NFKC').toLocaleLowerCase('zh-Hant').includes(needle));
+    if(selected&&!filtered.some(item=>item.id===selected)){
+      const current=items.find(item=>item.id===selected);
+      if(current)filtered.unshift(current);
+    }
+    return filtered;
+  };
   const [selectedType='',selectedUid='']=String(value||'').split(':',2);
   const traceForPath=hierarchy.traces.find(group=>
     group.paths.some(branch=>uid(branch.row)===selectedUid))||null;
@@ -82,39 +93,75 @@ export default function SpaceLucusTree({
   ];
   const selectedPrimary=selectedTrace?uid(selectedTrace.row):
     unclassifiedSelected?'__unclassified__':(!selectedType?uid(hierarchy.traces[0]?.row):'');
+  const filteredPrimary=filterOptions(primaryItems,selectedPrimary);
+  const filteredSecondary=filterOptions(secondaryItems,selectedSecondary);
+  const filteredDetails=filterOptions(detailItems,selectedType==='point'?selectedUid:'');
   const create=type=>()=>onCreate?.(type);
-  return <LucusManagementNavigator
-    className={['loc-space-lucus-tree',className].filter(Boolean).join(' ')}
-    label="空間定錨階層管理"
-    searchLabel="搜尋痕跡、路徑與地點"
-    searchPlaceholder="依名稱、地址或 UID 搜尋"
-    primaryTitle="痕跡"
-    primaryItems={primaryItems}
-    selectedPrimary={selectedPrimary}
-    onSelectPrimary={id=>id==='__unclassified__'
-      ?onSelect?.(hierarchy.unclassifiedPaths.length?'path':'point',
-        uid(hierarchy.unclassifiedPaths[0]?.row)||uid(hierarchy.unclassifiedPoints[0]))
-      :onSelect?.('trace',id)}
-    primaryCreateLabel="＋ 新增痕跡"
-    onCreatePrimary={create('trace')}
-    secondaryTitle={unclassifiedSelected&&!hierarchy.unclassifiedPaths.length?'未歸屬地點':unclassifiedSelected?'未歸屬路徑':'路徑'}
-    secondaryItems={secondaryItems}
-    selectedSecondary={selectedSecondary}
-    onSelectSecondary={id=>id===directBranchId
-      ?onSelect?.('point',uid(directPoints[0]))
-      :onSelect?.('path',id)}
-    secondaryCreateLabel="＋ 新增路徑"
-    onCreateSecondary={create('path')}
-    detailTitle="地點與操作"
-    detailItems={detailItems}
-    selectedDetail={selectedType==='point'?selectedUid:''}
-    onSelectDetail={id=>onSelect?.('point',id)}
-    detailCreateLabel="＋ 新增地點"
-    onCreateDetail={create('point')}
-    primaryEmpty="目前沒有痕跡紀錄"
-    secondaryEmpty="選擇痕跡後顯示所屬路徑"
-    detailEmpty="選擇路徑後顯示所屬地點"
-    disabled={disabled}>
-    {children}
-  </LucusManagementNavigator>;
+  return <section className={['loc-lucus-select-workspace','loc-space-lucus-tree',className].filter(Boolean).join(' ')}
+    aria-label="空間定錨階層管理">
+    <label className="loc-lucus-select-workspace__search">
+      <span>搜尋痕跡、路徑與地點</span>
+      <input type="search" className="scope-search-input" value={search}
+        onChange={event=>setSearch(event.target.value)} placeholder="輸入名稱、地址或 UID"/>
+    </label>
+    <div className="loc-lucus-select-workspace__levels">
+      <section className="loc-lucus-select-workspace__field">
+        <header><h3>痕跡</h3><span>{hierarchy.traces.length}</span></header>
+        <label><span>選擇痕跡圖</span>
+          <select className="scope-select" value={selectedPrimary||'__none__'} disabled={disabled}
+            onChange={event=>{
+              const id=event.target.value;
+              if(id==='__unclassified__'){
+                const first=uid(hierarchy.unclassifiedPaths[0]?.row)||uid(hierarchy.unclassifiedPoints[0]);
+                if(first)onSelect?.(hierarchy.unclassifiedPaths.length?'path':'point',first);
+              }else if(id!=='__none__')onSelect?.('trace',id);
+            }}>
+            <option value="__none__">選擇痕跡</option>
+            {filteredPrimary.map(item=><option key={item.id} value={item.id}>
+              {item.label} · {item.meta}
+            </option>)}
+          </select>
+        </label>
+        <button type="button" className="loc-button" disabled={disabled}
+          onClick={create('trace')}>＋ 新增痕跡</button>
+      </section>
+      <section className="loc-lucus-select-workspace__field">
+        <header><h3>路徑</h3><span>{secondaryItems.length}</span></header>
+        <label><span>選擇路徑圖</span>
+          <select className="scope-select" value={selectedSecondary||'__none__'}
+            disabled={disabled||(!activeTrace&&!unclassifiedSelected)}
+            onChange={event=>{
+              const id=event.target.value;
+              if(id===directBranchId){
+                const first=uid(directPoints[0]);
+                if(first)onSelect?.('point',first);
+              }else if(id!=='__none__')onSelect?.('path',id);
+            }}>
+            <option value="__none__">選擇路徑</option>
+            {filteredSecondary.map(item=><option key={item.id} value={item.id}>
+              {item.label} · {item.meta}
+            </option>)}
+          </select>
+        </label>
+        <button type="button" className="loc-button" disabled={disabled}
+          onClick={create('path')}>＋ 新增路徑</button>
+      </section>
+      <section className="loc-lucus-select-workspace__field">
+        <header><h3>地點</h3><span>{detailItems.length}</span></header>
+        <label><span>選擇空間定錨點</span>
+          <select className="scope-select" value={selectedType==='point'?selectedUid:'__none__'}
+            disabled={disabled||!detailItems.length}
+            onChange={event=>{if(event.target.value!=='__none__')onSelect?.('point',event.target.value);}}>
+            <option value="__none__">選擇地點</option>
+            {filteredDetails.map(item=><option key={item.id} value={item.id}>
+              {item.label}{item.meta?'｜'+item.meta:''}
+            </option>)}
+          </select>
+        </label>
+        <button type="button" className="loc-button" disabled={disabled}
+          onClick={create('point')}>＋ 新增地點</button>
+      </section>
+    </div>
+    {children?<div className="loc-lucus-select-workspace__detail">{children}</div>:null}
+  </section>;
 }

@@ -102,3 +102,35 @@ test('Management graph uses vis-network and reads all colors from active theme t
   assert.match(graph,/--loc-accent/);
   assert.doesNotMatch(graph,/#(?:[0-9a-f]{3,8})\b|rgba\(/i);
 });
+
+test('LOC management uses React selectors for the Time and Space Lucus hierarchies',async()=>{
+  const time=await source('app/modular/features/TimeLucusTree.jsx');
+  const space=await source('app/loc/trace/SpaceLucusTree.jsx');
+  for(const component of [time,space]){
+    assert.match(component,/<select className="scope-select"/);
+    assert.doesNotMatch(component,/LucusManagementNavigator|ManagementVisNetwork/);
+  }
+  assert.match(time,/選擇時代/);
+  assert.match(time,/選擇期間/);
+  assert.match(time,/選擇日期定錨點/);
+  assert.match(space,/選擇痕跡圖/);
+  assert.match(space,/選擇路徑圖/);
+  assert.match(space,/選擇空間定錨點/);
+});
+
+test('Home block editing restores the ordered draft list while retaining the current preview',async()=>{
+  const editor=await source('app/loc/blocks/ScopeBlockDraftList.jsx');
+  assert.match(editor,/visibleDrafts\.map\(\(draft,index\)=>renderDraft\(draft,index,visibleDrafts\)\)/);
+  assert.match(editor,/showingPreview\?previewRows/);
+  assert.doesNotMatch(editor,/ManagementVisNetwork|loc-home-block-network-editor/);
+});
+
+test('Keyword and Space management use React section navigation without duplicating their own graph',async()=>{
+  const keyword=await source('app/loc/keywords/ui/KeywordLibraryPanel.jsx');
+  const space=await source('app/loc/scope/ScopeManagement.jsx');
+  assert.match(keyword,/ManagementSectionNav/);
+  assert.match(keyword,/KeywordNetworkEditor/);
+  assert.doesNotMatch(keyword,/ManagementNetworkNav/);
+  assert.match(space,/ManagementSectionNav/);
+  assert.doesNotMatch(space,/ManagementNetworkNav/);
+});

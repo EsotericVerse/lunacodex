@@ -101,20 +101,6 @@
 }
 .management-network-nav__fallback-message{margin:.2rem 0;}
 
-/* Timeline and spatial managers expose the stored hierarchy as an interactive
-   graph, while their complete searchable lists remain available underneath. */
-.loc-lucus-management__graph-shell{
-  display:grid;gap:.2rem;min-width:0;margin:.15rem 0 .9rem;
-}
-.loc-lucus-management__graph{
-  width:100%;height:clamp(13rem,30vw,21rem);min-width:0;overflow:hidden;
-  border:1px solid var(--loc-line-soft,var(--loc-line));
-  border-radius:var(--loc-ui-radius-lg,18px);
-  background:radial-gradient(ellipse at 22% 45%,var(--loc-accent-surface,var(--loc-panel-2)) 0%,transparent 42%),
-    linear-gradient(135deg,var(--loc-panel-2,var(--loc-panel)),var(--loc-panel) 78%);
-}
-.loc-lucus-management__graph-shell>.scope-status{margin:.15rem 0;font-size:.78rem;}
-.loc-lucus-management__graph-shell>.scope-status[role="status"]:not(.scope-error){color:var(--loc-muted);}
 .admin-deployment-tree{
   border-color:var(--loc-line-soft,var(--loc-line))!important;
   border-radius:var(--loc-ui-radius-lg,18px)!important;
@@ -135,50 +121,12 @@
   box-shadow:var(--loc-ui-shadow-soft,0 10px 28px rgba(4,12,24,.1));
 }
 
-/* Related editors keep graph navigation and BlockNote side by side. */
-.loc-home-block-network-editor{
-  display:grid;
-  grid-template-columns:minmax(13rem,.72fr) minmax(0,1.8fr);
-  align-items:start;
-  gap:clamp(.75rem,1.6vw,1.25rem);
-  min-width:0;
-}
-.loc-home-block-network-editor__tree{position:sticky;top:1rem;min-width:0;}
-.loc-home-block-network-editor__tree .management-vis-network{
-  width:100%;height:clamp(18rem,48vh,36rem);min-height:18rem;
-  border:1px solid var(--loc-line-soft,var(--loc-line));
-  border-radius:var(--loc-ui-radius-md,14px);
-  background:linear-gradient(145deg,var(--loc-panel-2,var(--loc-panel)),var(--loc-panel));
-}
-.loc-home-block-network-editor__title{
-  margin:0 0 .5rem;
-  color:var(--loc-heading);
-  font-size:1.02rem;
-  font-weight:760;
-}
-.loc-home-block-network-editor__fallback{
-  display:grid;gap:.35rem;margin:0 0 .6rem;
-}
-.loc-home-block-network-editor__fallback button{
-  min-height:2.6rem;padding:.5rem .7rem;
-  border:1px solid var(--loc-line);border-radius:var(--loc-ui-radius-sm,10px);
-  background:var(--loc-panel);color:var(--loc-text);text-align:start;font:inherit;
-}
-.loc-home-block-network-editor__fallback button[aria-pressed="true"]{
-  border-color:var(--loc-accent-border);background:var(--loc-accent-surface);color:var(--loc-heading);
-}
-.loc-home-block-network-editor__editor{display:grid;gap:.85rem;min-width:0;}
-.loc-home-block-network-editor__editor>.scope-block-draft{margin:0;}
 @media(max-width:760px){
   .management-network-nav{padding:.65rem;}
   .management-network-nav__canvas{height:clamp(10rem,42vw,14rem);}
-  .loc-lucus-management__graph{height:clamp(12rem,54vw,17rem);}
   .management-network-nav__heading h2{font-size:1.05rem;}
   .management-network-nav__heading>span{font-size:.72rem;}
-  .loc-home-block-network-editor{grid-template-columns:minmax(0,1fr);}
-  .loc-home-block-network-editor__tree{position:relative;top:auto;}
-  .loc-home-block-network-editor__tree .management-vis-network{height:15rem;min-height:15rem;}
 }
 @media(prefers-reduced-motion:reduce){
-  .management-network-nav *, .loc-home-block-network-editor *{scroll-behavior:auto!important;}
+  .management-network-nav *{scroll-behavior:auto!important;}
 }
