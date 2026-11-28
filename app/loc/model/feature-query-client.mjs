@@ -4,6 +4,8 @@ import {queryPublicSearchPatternIndex} from '../actions/search/patterns.mjs';
 import {MAX_ROWS,TIME_LUCUS_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
 // Named fixed record/Lucus projections. All variable values are validated
 // by the server against published Scope and ZModel model families.
+// Server Actions do not accept a browser AbortSignal: cancellation here is a
+// client-side stale-result guard; an already-dispatched server read may finish.
 async function readFixedOperation(operation,params,{signal=null,editor=false}={}){
   if(signal?.aborted){const error=new Error('The operation was aborted');error.name='AbortError';throw error;}
   const body={kind:'query',operation,...params,mode:editor?'editor':'public'};
