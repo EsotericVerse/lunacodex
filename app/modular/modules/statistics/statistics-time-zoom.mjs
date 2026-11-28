@@ -238,12 +238,51 @@ export function recordScatterPair(records=[],fields=[],xKey='',yKey=''){
   return null;
 }
 
+export function compositionPercentages(distribution=[]){
+  const rows=normalizeDistribution(distribution);
+  const total=rows.reduce((sum,row)=>sum+row.value,0);
+  return rows.map(row=>({...row,percent:total>0?row.value/total*100:0}));
+}
+
+// Keep the 100% denominator across every source category. To prevent a long
+// legend from swallowing the chart, retain the seven largest series and group
+// the rest as a truthful "其他" segment. The grouped segment remains inspectable.
+export function compositionTrendRows(rows=[],series=[],maxVisible=7){
+  const time=Array.isArray(rows)?rows:[];
+  const fields=(Array.isArray(series)?series:[])
+    .filter(field=>field?.key&&time.some(row=>finiteMetric(row?.[field.key])>0))
+    .map(field=>({...field,total:time.reduce((sum,row)=>sum+Math.max(0,Number(row?.[field.key])||0),0)}))
+    .sort((a,b)=>b.total-a.total||String(a.label||a.key).localeCompare(String(b.label||b.key)));
+  if(fields.length<2)return {rows:[],fields:[]};
+  const limit=Math.max(2,Math.min(12,Math.trunc(Number(maxVisible)||7)));
+  const visible=fields.slice(0,limit);
+  const hidden=fields.slice(limit);
+  const outputFields=[
+    ...visible.map((field,index)=>({...field,dataKey:'__composition_'+index,sourceKeys:[field.key]}))
+  ];
+  if(hidden.length)outputFields.push({
+    key:'__composition_other',dataKey:'__composition_other',label:'其他',
+    sourceKeys:hidden.map(field=>field.key),aggregated:true
+  });
+  const outputRows=time.map(row=>{
+    const total=fields.reduce((sum,field)=>sum+Math.max(0,Number(row?.[field.key])||0),0);
+    const output={...row};
+    for(const field of outputFields){
+      const raw=field.sourceKeys.reduce((sum,key)=>sum+Math.max(0,Number(row?.[key])||0),0);
+      output[field.dataKey]=total>0?raw/total*100:0;
+    }
+    return output;
+  });
+  return {rows:outputRows,fields:outputFields};
+}
+
 export function histogramBins(values=[],requestedBins=0){
   const rows=(Array.isArray(values)?values:[]).flatMap((item,index)=>{
-    const value=finiteMetric(typeof item==='number'?item:item?.value);
+    const source=item&&typeof item==='object'?item:{value:item};
+    const value=finiteMetric(source.value);
     return value===null?[]:[{
-      value,recordId:String(item?.uid??item?.id??index),
-      label:String(item?.label||item?.title||'')
+      ...source,value,recordId:String(source.uid??source.id??index),
+      label:String(source.label||source.title||source.name||'')
     }];
   });
   if(!rows.length)return [];
@@ -279,6 +318,7 @@ export function normalizeFunnelStages(stages=[]){
     ...row,
     conversionRate:index===0?100:(rows[index-1].value>0
       ?row.value/rows[index-1].value*100:0),
+    dropOff:index===0?0:Math.max(0,rows[index-1].value-row.value),
     overallRate:rows[0]?.value>0?row.value/rows[0].value*100:0
   }));
 }
@@ -297,7 +337,8 @@ export function resolveStatisticIntent({
       barLayout:categories.length>6?'vertical':'horizontal',sort:'desc'
     };
     return time.length&&(fields.length||(totalKey&&time.some(row=>finiteMetric(row?.[totalKey])!==null)))?{
-      intent,available:true,type:'bar',dataMode:'time',barLayout:'horizontal'
+      intent,available:true,type:'bar',dataMode:'time-comparison',
+      barLayout:time.length>6?'vertical':'horizontal',sort:'desc'
     }:unavailable;
   }
   if(intent==='trend')return time.length&&(fields.length||(totalKey&&time.some(row=>finiteMetric(row?.[totalKey])!==null)))?{
@@ -326,7 +367,7 @@ export function resolveStatisticIntent({
   if(intent==='attainment'){
     const actual=finiteMetric(attainmentValue);
     const target=finiteMetric(targetValue);
-    return actual!==null&&target!==null&&target>0?{
+    return actual!==null&&actual>=0&&target!==null&&target>0?{
       intent,available:true,type:'attainment',dataMode:'attainment',
       actual,target,ratio:actual/target*100
     }:unavailable;
