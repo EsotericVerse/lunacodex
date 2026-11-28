@@ -2,11 +2,10 @@
 import UiText,{useUiText} from '../../../i18n/UiText';
 import {useUiSection} from '../../../i18n/ui-locale';
 
-import {useMemo} from 'react';
+import {useMemo,useState} from 'react';
 import {useAsyncResource,useResourceCache} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
 import {availableMemberMeasures,calculateMemberCross} from '../../../loc/statistics/member-intersection-model.mjs';
-import {semanticStatisticChartTypes} from './statistics-time-zoom.mjs';
 import StatisticsMultiChart from './StatisticsMultiChart';
 import StatisticsChartFrame from './StatisticsChartFrame';
 import StatisticsDetails from './StatisticsDetails';
@@ -14,13 +13,14 @@ import StatisticsDetails from './StatisticsDetails';
 const DEFAULT_LANE_COUNT=2;
 export default function LocMemberIntersection({
   scopes=[],startDate='',endDate='',unit='month',
-  laneCount=DEFAULT_LANE_COUNT,choices=[],graph='line',
-  onLaneCountChange,onChoicesChange,onGraphChange,
+  laneCount=DEFAULT_LANE_COUNT,choices=[],
+  onLaneCountChange,onChoicesChange,
   zoomLevel=0,onZoomLevelChange,zoomRange={},loadGalaxyStatistics=null
 }){
   useUiSection('uiExtra.statisticsView');
   const t=useUiText();
   const resourceCache=useResourceCache();
+  const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
   // The time range identifies the returned dataset. Choices live in the LOC
   // parent, so remounting one range cannot silently reset selected comparisons.
   const rangeKey=startDate+'|'+endDate;
@@ -67,8 +67,7 @@ export default function LocMemberIntersection({
     from:startDate,to:endDate,unit
   }),[JSON.stringify(adjusted),datasets,startDate,endDate,unit]);
   const distribution=calculated.totals.map(item=>({name:item.name,value:item.value}));
-  const charts=semanticStatisticChartTypes({purpose:'comparison',rows:calculated.rows,series:calculated.series,distribution});
-  const chosenChart=charts.some(([kind])=>kind===graph)?graph:(charts[0]?.[0]||'line');
+  const selectedPoint=calculated.rows.find(row=>row.period===selectedPeriodKey)||null;
   const update=(i,part)=>onChoicesChange?.(old=>{
     const next=Array.from({length:laneCount},(_,index)=>({...lanes[index]}));
     next[i]={...next[i],...part};
@@ -86,11 +85,7 @@ export default function LocMemberIntersection({
           {[2,3,4].map(n=><option key={n} value={n}>{n}<UiText id="uiExtra.statisticsView.memberCrossGroupUnit"/></option>)}
         </select>
       </label>
-      <label><span><UiText id="uiExtra.statisticsView.memberCrossChart"/></span>
-        <select className="scope-select" value={chosenChart} onChange={e=>onGraphChange?.(e.target.value)}>
-          {charts.map(([value,label])=><option value={value} key={value}>{t(label)}</option>)}
-        </select>
-      </label>
+
     </div>
     <div className="scope-stat-controls">
       {lanes.map((lane,index)=><div className="scope-inline-card" key={index}>
@@ -110,9 +105,24 @@ export default function LocMemberIntersection({
     {fetched.isPending||fetched.isFetching?<p className="scope-status" role="status"><UiText id="uiExtra.statisticsView.memberCrossUpdate"/></p>:null}
     {!fetched.isPending&&!fetched.isFetching&&hasCurrentData?<>
       <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange} range={zoomRange} idPrefix="loc-member-stat">
-        <StatisticsMultiChart type={chosenChart} rows={calculated.rows} series={calculated.series}
-          distribution={distribution} height={420} foldBlank/>
+        <StatisticsMultiChart intent="trend" rows={calculated.rows} series={calculated.series}
+          distribution={distribution} height={420} foldBlank
+          selectedPeriodKey={selectedPeriodKey}
+          onPeriodClick={row=>setSelectedPeriodKey(String(row?.period||''))}/>
       </StatisticsChartFrame>
+      {selectedPoint?<section className="scope-self-intersection-selected" aria-live="polite">
+        <header className="statistics-dashboard__panel-heading">
+          <h3>{selectedPeriodKey} · 選取時段</h3>
+          <button type="button" className="loc-button loc-button--small"
+            onClick={()=>setSelectedPeriodKey('')}>清除選取</button>
+        </header>
+        <div className="scope-ranking">
+          {calculated.series.map(field=><div key={field.key}>
+            <strong>{field.label}</strong>
+            <span>{Number(selectedPoint[field.key]||0).toLocaleString()}</span>
+          </div>)}
+        </div>
+      </section>:null}
       <StatisticsDetails>{()=><>
       <div className="scope-ranking">
         <div><strong><UiText id="uiExtra.statisticsView.memberCrossCommonDays"/></strong><span>{calculated.commonDays.toLocaleString()}<UiText id="uiExtra.statisticsView.memberCrossDayUnit"/></span></div>
