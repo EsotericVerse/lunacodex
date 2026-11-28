@@ -3,7 +3,7 @@ import FieldText from '../../../i18n/FieldText';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
 import UiText,{useUiText} from '../../../i18n/UiText';
 
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {selectScopeSourceBreakdownRows} from '../../../loc/galaxy/galaxy-query';
 import StatisticsMultiChart from './StatisticsMultiChart';
@@ -61,6 +61,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const [selected,setSelected]=useState([]);
   const [laneKinds,setLaneKinds]=useState([]);
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
+  useEffect(()=>setSelectedPeriodKey(''),[scope?.id,range?.startDate,range?.endDate]);
   const [foldBlank,setFoldBlank]=useState(true);
   const start=dateOnly(range?.startDate),end=dateOnly(range?.endDate);
   const valid=Boolean(scope?.id&&scope.galaxy&&scope.lucus&&start&&end&&start<=end);
