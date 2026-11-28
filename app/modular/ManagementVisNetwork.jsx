@@ -2,6 +2,7 @@
 
 import {useEffect,useRef} from 'react';
 import {useReducedMotion} from 'motion/react';
+import {LOC_MOTION} from '../motion-tokens.mjs';
 
 function themeTokens(){
   const css=getComputedStyle(document.documentElement);
@@ -69,7 +70,7 @@ export default function ManagementVisNetwork({
       instance.selectNodes(active?[latest.current.selectedId]:[]);
       if(fit){
         instance.fit({animation:latest.current.reduceMotion?false:
-          {duration:210,easingFunction:'easeInOutQuad'},maxZoomLevel:1.15});
+          {duration:LOC_MOTION.standard*1000,easingFunction:'easeInOutQuad'},maxZoomLevel:1.15});
       }else if(view.position&&Number.isFinite(view.scale)){
         instance.moveTo({position:view.position,scale:view.scale,animation:false});
       }
@@ -117,7 +118,7 @@ export default function ManagementVisNetwork({
     network.current.setData(graphData(latest.current,tokens));
     network.current.selectNodes(nodes.some(node=>String(node.id)===String(selectedId))?[selectedId]:[]);
     if(fitKey)network.current.fit({animation:reduceMotion?false:
-      {duration:180,easingFunction:'easeInOutQuad'},maxZoomLevel:1.15});
+      {duration:LOC_MOTION.fast*1000,easingFunction:'easeInOutQuad'},maxZoomLevel:1.15});
     else if(view.position&&Number.isFinite(view.scale))
       network.current.moveTo({position:view.position,scale:view.scale,animation:false});
   },[modelKey,selectedId,fitKey,reduceMotion]);
