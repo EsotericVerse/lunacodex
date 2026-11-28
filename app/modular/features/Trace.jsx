@@ -5,6 +5,7 @@ import {useSearchParams} from 'next/navigation';
 import dynamic from 'next/dynamic';
 import {motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
+import {LOC_MOTION} from '../motion-tokens.mjs';
 import {FeaturePage} from '../ui';
 import LocTracePreview from './LocTracePreview';
 import UiText,{useUiText} from '../../i18n/UiText';
@@ -428,10 +429,10 @@ function ScopeTrace({scopeId='lo3rwang'}){
       {readyMapMode===mapMode&&!reduceMotion?<div className="loc-trace-map-unfold" aria-hidden="true">
         <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--left"
           initial={{scaleX:1}} animate={{scaleX:0}}
-          transition={{duration:.52,ease:[.25,.75,.2,1]}}/>
+          transition={{duration:LOC_MOTION.emphasis,ease:[.25,.75,.2,1]}}/>
         <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--right"
           initial={{scaleX:1}} animate={{scaleX:0}}
-          transition={{duration:.52,ease:[.25,.75,.2,1]}}/>
+          transition={{duration:LOC_MOTION.emphasis,ease:[.25,.75,.2,1]}}/>
       </div>:null}
     </div>
   </FeaturePage>;

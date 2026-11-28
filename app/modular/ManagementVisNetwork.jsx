@@ -2,17 +2,23 @@
 
 import {useEffect,useRef} from 'react';
 import {useReducedMotion} from 'motion/react';
+import {LOC_MOTION} from './motion-tokens.mjs';
 
 function themeTokens(){
   const css=getComputedStyle(document.documentElement);
   const token=(name,fallback)=>css.getPropertyValue(name).trim()||fallback;
+  const text=css.color||'currentColor';
+  const panel=css.backgroundColor||'transparent';
+  const line=token('--loc-line',token('--loc-line-soft',text));
   return {
-    text:token('--loc-text','#edf5fb'),muted:token('--loc-muted','#9fb6c9'),
-    accent:token('--loc-accent','#86c8ff'),panel:token('--loc-panel','#162536'),
-    soft:token('--loc-panel-2',token('--loc-surface-soft','#203449')),
-    line:token('--loc-line','rgba(180,205,230,.22)'),
-    edge:token('--loc-graph-edge',token('--loc-line-soft','rgba(180,205,230,.14)')),
-    selected:token('--loc-accent-surface-strong','rgba(134,200,255,.14)')
+    text:token('--loc-text',text),
+    muted:token('--loc-muted',text),
+    accent:token('--loc-accent',text),
+    panel:token('--loc-panel',panel),
+    soft:token('--loc-panel-2',token('--loc-surface-soft',panel)),
+    line,
+    edge:token('--loc-graph-edge',token('--loc-line-soft',line)),
+    selected:token('--loc-accent-surface-strong',token('--loc-accent-surface',panel))
   };
 }
 
@@ -24,7 +30,7 @@ function graphData(model,theme){
     const border=selected?theme.accent:root?theme.line:theme.line;
     return {...node,shape:node.shape||'box',borderWidth:selected?2:1,
       shapeProperties:{borderRadius:root?19:15,...node.shapeProperties},
-      shadow:node.shadow||{enabled:true,color:'rgba(4,12,24,.14)',size:selected?11:7,x:0,y:3},
+      shadow:node.shadow||{enabled:true,color:theme.edge,size:selected?11:7,x:0,y:3},
       color:{background,border,highlight:{background,border:theme.accent},
         hover:{background:theme.soft,border:theme.accent}},
       font:{color:root?theme.text:selected?theme.accent:theme.text,
@@ -69,7 +75,7 @@ export default function ManagementVisNetwork({
       instance.selectNodes(active?[latest.current.selectedId]:[]);
       if(fit){
         instance.fit({animation:latest.current.reduceMotion?false:
-          {duration:210,easingFunction:'easeInOutQuad'},maxZoomLevel:1.15});
+          {duration:LOC_MOTION.standard*1000,easingFunction:'easeInOutQuad'},maxZoomLevel:1.15});
       }else if(view.position&&Number.isFinite(view.scale)){
         instance.moveTo({position:view.position,scale:view.scale,animation:false});
       }
@@ -117,7 +123,7 @@ export default function ManagementVisNetwork({
     network.current.setData(graphData(latest.current,tokens));
     network.current.selectNodes(nodes.some(node=>String(node.id)===String(selectedId))?[selectedId]:[]);
     if(fitKey)network.current.fit({animation:reduceMotion?false:
-      {duration:180,easingFunction:'easeInOutQuad'},maxZoomLevel:1.15});
+      {duration:LOC_MOTION.fast*1000,easingFunction:'easeInOutQuad'},maxZoomLevel:1.15});
     else if(view.position&&Number.isFinite(view.scale))
       network.current.moveTo({position:view.position,scale:view.scale,animation:false});
   },[modelKey,selectedId,fitKey,reduceMotion]);

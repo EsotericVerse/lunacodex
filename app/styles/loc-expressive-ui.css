@@ -2,8 +2,10 @@
    Palette values come exclusively from the active published Theme. */
 :root{
   --loc-motion-fast:160ms;
+  --loc-motion-feedback:180ms;
   --loc-motion-standard:280ms;
   --loc-motion-emphasis:520ms;
+  --loc-motion-arrival:900ms;
   --loc-motion-ease:cubic-bezier(.22,1,.36,1);
   --loc-motion-ease-soft:cubic-bezier(.16,1,.3,1);
   --loc-surface-base:var(--loc-bg);

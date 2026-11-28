@@ -9,6 +9,7 @@ import UiText,{useUiText} from '../../i18n/UiText';
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
+import {LOC_MOTION} from '../motion-tokens.mjs';
 import {searchPatternSuggestions,applyFeaturedSearchResults}
   from '../../loc/search/search-pattern-index.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
@@ -303,6 +304,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const [hasMore,setHasMore]=useState(false);
   const [nextCursor,setNextCursor]=useState(null);
   const [loadingMore,setLoadingMore]=useState(false);
+  const [searchInFlight,setSearchInFlight]=useState(false);
   const [editingKey,setEditingKey]=useState('');
   const editTargetRef=useRef(null);
   const dockActions=useRef({save:null,discard:null});
@@ -359,7 +361,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     matchedQueryRef.current||results.length||fullTextKey||error||
     status&&status!==UI_COPY.search.start
   );
-  const publicStatusIsActionable=Boolean(error)||status==='搜尋中請稍後'||
+  const publicStatusIsActionable=Boolean(error)||status==='搜尋中請稍後'||status==='已取消搜尋。'||status==='已取消讀取文章。'||
     status===UI_COPY.search.empty||status===UI_COPY.search.failed||
     status===UI_COPY.search.relationFailed;
   const pageSize=DEFAULT_LIST_BATCH_SIZE;
@@ -453,11 +455,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // needs a collection label, and only it can optionally name a chosen Scope.
   const collectionLabel=scopeId==='loc'?UI_COPY.search.allContent:'';
 
-  async function loadGalaxyDetail(result){
+  async function loadGalaxyDetail(result,signal=null){
     const scopeData=scopeById.get(result.scopeId);
     if(!scopeData)throw new Error(UI_COPY.search.fullTextNotFound);
     const id=result.editResourceId||result.resourceId;
-    return selectGalaxyIdentity(scopeData,id,{includeHidden:canManageSearchScope(account,result.scopeId),dbId:result.dbId||'',federated:result.federated===true});
+    return selectGalaxyIdentity(scopeData,id,{includeHidden:canManageSearchScope(account,result.scopeId),dbId:result.dbId||'',federated:result.federated===true,signal});
   }
 
   async function executeSearch(rawQuery,cursor=null,{append=false,browse=false,overrideOptions=null}={}){
@@ -498,6 +500,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
 
     const id=++searchId.current;
     const controller=beginRequest();
+    setSearchInFlight(true);
     // Request admission is already governed by the existing Karaul/PELT QoS.
     // A 25s client cutoff was interrupting legitimate long-range searches.
     const timeout=AbortSignal.timeout(60000);
@@ -542,7 +545,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     try{
       // Public Search never performs a preference write or a private read.
       // Signed management actions remain available only on management routes.
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       const patternIndexPromise=!managementMode&&q&&!options.browse?loadPublicPatternIndex():Promise.resolve(EMPTY_SEARCH_PATTERN_INDEX);
       // The category is a semantic database filter, not a literal
       // site. Fetch the same cached taxonomy before searching.
@@ -552,7 +555,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           queryFn:selectSourceTaxonomy,
         })
         :null;
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       // Search is one request: return title and date only. Article details load on entry.
       // A search-only manager grant must use signed, scoped Kysely instead of
       // bypassing visibility via the anonymous public SELECT transport.
@@ -567,11 +570,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         startDate:options.startDate,endDate:options.endDate,browse:options.browse,
         managementOnly:managementMode,sortDirection:options.sortDirection,signal
       });
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       const patternIndex=await patternIndexPromise;
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       const searchRows=search.rows||[];
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
 
 
       if(!append)matchedQueryRef.current=q;
@@ -623,7 +626,30 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       }
     }finally{
       timeout.removeEventListener('abort',onTimeout);
-      if(append&&id===searchId.current)setLoadingMore(false);
+      if(id===searchId.current&&abortRef.current===controller){
+        setSearchInFlight(false);
+        if(append)setLoadingMore(false);
+        abortRef.current=null;
+      }
+    }
+  }
+
+  function cancelSearch(){
+    const controller=abortRef.current;
+    if(!controller||controller.signal.aborted)return;
+    const wasLoadingMore=loadingMore;
+    const wasReadingArticle=fullTextLoading;
+    controller.abort();
+    abortRef.current=null;
+    searchId.current++;
+    loadMoreInFlight.current=false;
+    setSearchInFlight(false);
+    setLoadingMore(false);
+    setFullTextLoading(false);
+    if(wasLoadingMore)setLoadMoreError('已取消載入更多文章。');
+    else{
+      setError('');
+      setStatus(wasReadingArticle?'已取消讀取文章。':'已取消搜尋。');
     }
   }
 
@@ -653,7 +679,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const identity=String(rawIdentity||'').trim();
     if(!identity)return;
     const id=++searchId.current;
-    beginRequest();
+    const controller=beginRequest();
+    setSearchInFlight(true);
     matchedQueryRef.current='';
     setError('');setLoadMoreError('');setHasMore(false);setNextCursor(null);setLoadingMore(false);
     setResults([]);setReaderResult(null);setFullTextKey('');
@@ -665,10 +692,12 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       const identityScope=managementMode?String(searchParams?.get('scope')||'').trim():'';
       const detailScopes=identityScope?availableScopes.filter(scope=>scope.id===identityScope):targetScopes;
       for(const scopeData of detailScopes){
-        detail=await selectGalaxyIdentity(scopeData,identity,{includeHidden:canManageSearchScope(account,scopeData.id)});
+        detail=await selectGalaxyIdentity(scopeData,identity,{
+          includeHidden:canManageSearchScope(account,scopeData.id),signal:controller.signal
+        });
         if(detail){detailScope=scopeData.id;break;}
       }
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       if(!detail)throw new Error(UI_COPY.search.notFound);
       const result=toResult({...detail,resolved_links:detail.links||[]},detail.site||UI_COPY.search.displaySource,detailScope);
       setResults([result]);
@@ -678,10 +707,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       setFullTextRow(detail);
       setStatus('');
     }catch(exception){
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       setResults([]);setError(featureDataErrorMessage(exception,UI_COPY));setStatus(UI_COPY.search.relationFailed);
     }finally{
-      if(id===searchId.current)setFullTextLoading(false);
+      if(id===searchId.current&&abortRef.current===controller){
+        setFullTextLoading(false);
+        setSearchInFlight(false);
+        abortRef.current=null;
+      }
     }
   }
 
@@ -727,6 +760,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(!managementMode&&fullTextKey===result.key&&!fullTextError)return;
     const request=++detailEpoch.current;
     if(managementMode&&fullTextKey===result.key){
+      abortRef.current?.abort();abortRef.current=null;
+      setSearchInFlight(false);
       setFullTextLoading(false);
       setFullTextKey('');
       setFullText('');
@@ -735,6 +770,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return;
     }
     if(result.resourceType!=='galaxy'||!result.editableTable)return;
+    const controller=beginRequest();
+    setSearchInFlight(true);
     setReaderResult(result);
     setFullTextKey(result.key);
     setFullText('');
@@ -742,17 +779,21 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setFullTextError('');
     setFullTextLoading(true);
     try{
-      const fullRow=await loadGalaxyDetail(result);
-      if(request!==detailEpoch.current)return;
+      const fullRow=await loadGalaxyDetail(result,controller.signal);
+      if(controller.signal.aborted||request!==detailEpoch.current)return;
       if(!fullRow)throw new Error(UI_COPY.search.fullTextNotFound);
       setFullText(workDisplayText(fullRow.content||''));
       setFullTextRow(fullRow);
       setReaderResult({...toResult(fullRow,fullRow.site||result.source,result.scopeId),key:result.key});
     }catch(exception){
-      if(request===detailEpoch.current)
+      if(request===detailEpoch.current&&!controller.signal.aborted)
         setFullTextError(String(exception?.message||exception||UI_COPY.search.fullTextFailed));
     }finally{
-      if(request===detailEpoch.current)setFullTextLoading(false);
+      if(request===detailEpoch.current&&abortRef.current===controller){
+        setFullTextLoading(false);
+        setSearchInFlight(false);
+        abortRef.current=null;
+      }
     }
   }
 
@@ -889,6 +930,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setFullTextError('');setFullTextLoading(false);
     ++searchId.current;
     abortRef.current?.abort();
+    abortRef.current=null;
+    setSearchInFlight(false);
     loadMoreInFlight.current=false;
     setLoadingMore(false);
     matchedQueryRef.current='';
@@ -1155,7 +1198,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       {!managementMode?<AnimatePresence initial={false}>{open?<motion.div key={id+'-patterns'} className="loc-search-pattern-popover"
         initial={reduceMotion?false:{opacity:0,y:-4}} animate={{opacity:1,y:0}}
         exit={reduceMotion?{opacity:0}:{opacity:0,y:-3}}
-        transition={reduceMotion?{duration:0}:{duration:.16,ease:'easeOut'}}>
+        transition={reduceMotion?{duration:0}:{duration:LOC_MOTION.fast,ease:LOC_MOTION.ease}}>
         {currentPatternIndex.loading?<p className="loc-search-pattern-suggestion-status" role="status">載入關鍵詞建議…</p>:null}
         {currentPatternIndex.error?<div className="loc-search-pattern-suggestion-status"><span role="status">{currentPatternIndex.error}</span>
           <button type="button" className="loc-button" onClick={()=>void loadPublicPatternIndex()}>重試</button></div>:null}
@@ -1469,12 +1512,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {arrivalVersion>0?<motion.span key={arrivalVersion} className="scope-search-arrival-indicator"
       aria-hidden="true" initial={reduceMotion?false:{opacity:0,scaleX:.25}}
       animate={reduceMotion?{opacity:0}:{opacity:[0,1,0],scaleX:[.25,1,1]}}
-      transition={{duration:reduceMotion?0:.9,times:[0,.26,1],ease:'easeOut'}}/>:null}
+      transition={{duration:reduceMotion?0:LOC_MOTION.arrival,times:[0,.26,1],ease:LOC_MOTION.ease}}/>:null}
     {status&&(!managementMode||status!==UI_COPY.search.start)&&
       (managementMode||!publicResultsMode||publicStatusIsActionable)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'||status===UI_COPY.search.loadingRelation?<ActivityMotion/>:
       error||status===UI_COPY.search.failed||status===UI_COPY.search.relationFailed?<ActivityMotion state="error"/>:
+      status==='已取消搜尋。'||status==='已取消讀取文章。'?<ActivityMotion state="cancelled"/>:
       status===UI_COPY.search.empty?<ActivityMotion state="empty"/>:
-      status===UI_COPY.search.start?null:results.length>0?<ActivityMotion state="success"/>:null} {status}</p>:null}
+      status===UI_COPY.search.start?null:results.length>0?<ActivityMotion state="success"/>:null} {status}
+      {searchInFlight?<button type="button" className="loc-button" onClick={cancelSearch}>取消</button>:null}</p>:null}
     {!managementMode&&!publicResultsMode&&results.length>0&&!browseResults&&matchedQueryRef.current?<section className="scope-search-next-step"
       aria-label={t('uiExtra.searchUI.followupSearch')}>
       <p className="scope-status">{t('uiExtra.searchUI.followupSearch')}</p>
@@ -1502,6 +1547,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       </div>
       {bulkNotice?<p className="scope-status" role="status">{bulkNotice}</p>:null}
     </section>:null}
+    {searchInFlight&&loadingMore?<p className="scope-status" role="status" aria-live="polite">
+      正在載入更多文章… <ActivityMotion/>
+      <button type="button" className="loc-button" onClick={cancelSearch}>取消</button>
+    </p>:null}
     {results.length||hasMore?<div style={{display:'flex',justifyContent:'flex-end',marginBottom:'.5rem'}}>
       <ArticleSortSelect value={articleSort} onChange={changeArticleSort} disabled={Boolean(editingKey)}/>
     </div>:null}
@@ -1533,8 +1582,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {!managementMode&&(results.length||fullTextKey)?<section className="loc-search-explorer__reader" aria-label="文章全文與關聯">
       {fullTextKey&&readerResult?<motion.div key={fullTextKey}
         initial={reduceMotion?false:{opacity:0,x:8}} animate={{opacity:1,x:0}}
-        transition={{duration:reduceMotion?0:.2}}>
-        {fullTextLoading?<p className="scope-status" role="status">正在讀取文章… <ActivityMotion kind="hourglass"/></p>:null}
+        transition={{duration:reduceMotion?0:LOC_MOTION.feedback}}>
+        {fullTextLoading?<p className="scope-status" role="status">正在讀取文章… <ActivityMotion kind="hourglass"/>
+          {searchInFlight?<button type="button" className="loc-button" onClick={cancelSearch}>取消</button>:null}</p>:null}
         {renderSearchArticle(readerResult,0,true)}
         {fullTextError?<button type="button" className="loc-button" onClick={()=>void toggleFullText(readerResult)}>重新讀取文章</button>:null}
       </motion.div>:<p className="scope-status">選擇左側文章，閱讀全文及探索關聯。</p>}

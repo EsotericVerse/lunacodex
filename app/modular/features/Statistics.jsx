@@ -5,6 +5,7 @@ import UiText,{useUiText} from '../../i18n/UiText';
 
 import {useEffect,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
+import {LOC_MOTION} from '../motion-tokens.mjs';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
@@ -657,7 +658,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           role="region" aria-label="所選時間的來源分類"
           initial={reduceMotion?false:{opacity:0,y:10,scale:.985}}
           animate={{opacity:1,y:0,scale:1}}
-          transition={{duration:reduceMotion?0:.24,ease:'easeOut'}}>
+          transition={{duration:reduceMotion?0:LOC_MOTION.standard,ease:LOC_MOTION.ease}}>
           <header className="statistics-dashboard__panel-heading">
             <h3>{linkedPeriod.label} · 來源分布</h3>
             <button type="button" className="loc-button loc-button--small"
