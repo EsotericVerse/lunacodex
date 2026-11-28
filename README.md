@@ -20,3 +20,16 @@ LOC 現行架構、功能契約與待辦統一維護於具權限控管的 Galaxy
 - **痕跡／地形圖**：地圖為主視覺；選擇定錨點或路線後，於地點內容中切換文章、時間長河與統計。
 
 文章為四種體驗的共同閱讀入口；既有時間、空間、統計與關聯連結保持原有功能。管理選單及管理編輯介面另行維護，不適用本次公開樣式統合。
+
+## LOCLucus 關係圖
+
+LOC 的定錨概念統一以 **LOCLucus** 表示，是一個共用的邏輯關係圖，不是四套互不相干的定錨資料：
+
+| LOCLucus 分支 | 關聯領域 | 既有關係 |
+|---|---|---|
+| Culture | 時間 | Era → Period → Date |
+| Trace | 空間 | Trace → Path → Point |
+| Statics | 關鍵詞 | Category → Class → Group → Item → Pattern |
+| Search | 文章與搜尋 | Galaxy Article／Keyword |
+
+四個分支共同屬於 LOCLucus；文章、時間、空間與關鍵詞仍依各自既有資料關係連動。此圖是 LOC 的邏輯命名與關係契約，不新增資料庫、資料表或 migration，也不改動既有 UID 關聯。
