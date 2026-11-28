@@ -3,104 +3,102 @@
 import {useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
 import {FeaturePage} from '../ui';
+import ScopeLink from '../ScopeLink';
+import {featureNavigationHref} from '../routing/feature-navigation';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
-import {buildTraceTerritoryRouteModel} from './trace/trace-territory-overlay.mjs';
-import {readTraceMapIndex,readCurrentTraceLucus,traceMapIndexKey} from './trace/trace-data';
+import {traceRouteHierarchy} from './trace/trace-route-hierarchy.mjs';
+import {
+  readTraceMapIndex,readCurrentTraceLucus,traceMapIndexKey,traceMemberUids
+} from './trace/trace-data';
 
-// LOC combines its published annual article terrain and saved Trace/Path
-// hierarchy in one MapLibre instance. The heavy terrain panel remains lazy.
-const TraceTerritoryPanel=dynamic(()=>import('./trace/TraceTerritoryPanel'),{
-  ssr:false,
-  loading:()=> <p className="scope-status" role="status">正在準備年度文章地形與路徑圖…</p>
+// LOC is a lightweight cross-Scope route/trace PREVIEW, not a second
+// annual article map or an all-places database browser. Keep MapLibre out
+// of the initial JS chunk until actual published routes are available.
+const TraceMap=dynamic(()=>import('./trace/TraceMap'),{
+  ssr:false,loading:()=> <p className="scope-status" role="status">正在載入痕跡地圖…</p>
 });
+const routeKey=row=>String(row.source_scope||'')+':'+String(row.uid||'');
+const EMPTY_ROUTES=Object.freeze([]);
 
 export default function LocTracePreview(){
   const [selectedTraceKey,setSelectedTraceKey]=useState('');
   const [selectedPathKey,setSelectedPathKey]=useState('');
+  // The LOC index delegates to published member Scopes only. It reads
+  // path/trace definitions from their own Scope storage, never LOC's Point table.
   const index=useAsyncResource({
     queryKey:traceMapIndexKey('loc'),
     queryFn:()=>readTraceMapIndex('loc'),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const routeModel=useMemo(()=>buildTraceTerritoryRouteModel(
-    index.data||[],selectedTraceKey,selectedPathKey
-  ),[index.data,selectedTraceKey,selectedPathKey]);
-  const routePoints=useAsyncResource({
-    queryKey:['loc-trace-territory-route-points-v1',
-      routeModel.selected?.source_scope||'',routeModel.selected?.uid||'',
-      routeModel.memberUids.join(',')],
-    enabled:Boolean(routeModel.selected&&routeModel.memberUids.length),
-    queryFn:()=>readCurrentTraceLucus(
-      routeModel.selected.source_scope,routeModel.memberUids
-    ),
+  const routes=useMemo(()=>(index.data||[]).filter(row=>
+    ['path','trace'].includes(row.trace_type)&&row.source_scope&&row.uid),
+    [index.data]);
+  // Hierarchy comes from persisted Trace.attr.path links, never location
+  // proximity. First select a Trace, then a Path belonging to that Trace.
+  const hierarchy=useMemo(()=>traceRouteHierarchy(routes),[routes]);
+  const traceOptions=useMemo(()=>[
+    ...hierarchy.groups.map(group=>({key:routeKey(group.trace),label:group.trace.source_scope+' · '+group.trace.title})),
+    ...(hierarchy.orphans.length?[{key:'__standalone__',label:'未歸屬路線圖'}]:[])
+  ],[hierarchy]);
+  const activeTraceKey=traceOptions.some(row=>row.key===selectedTraceKey)
+    ?selectedTraceKey:traceOptions[0]?.key||'';
+  const currentGroup=hierarchy.groups.find(group=>routeKey(group.trace)===activeTraceKey)||null;
+  const routeOptions=currentGroup?.paths||hierarchy.orphans;
+  const activePath=routeOptions.find(row=>routeKey(row)===selectedPathKey)||null;
+  const selected=activePath||(currentGroup?.trace||routeOptions[0]||null);
+  const referencedRoutes=currentGroup?.trace===selected?currentGroup.paths:EMPTY_ROUTES;
+  const memberIds=useMemo(()=>[...new Set([
+    ...traceMemberUids(selected),...referencedRoutes.flatMap(traceMemberUids)
+  ])],[selected,referencedRoutes]);
+  // Read point coordinates only for the chosen saved route/trace so its
+  // lines can be drawn. Never scan places or calculate article density.
+  const points=useAsyncResource({
+    queryKey:['loc-trace-selected-route-v1',selected?.source_scope||'',selected?.uid||'',memberIds.join(',')],
+    enabled:Boolean(selected&&memberIds.length),
+    queryFn:()=>readCurrentTraceLucus(selected.source_scope,memberIds),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const routeControls=<div className="loc-trace-territory-route-controls"
-    role="group" aria-label="痕跡圖與路徑圖選擇">
-    <label>痕跡圖
-      <select className="scope-select" aria-label="痕跡圖選擇"
-        value={routeModel.activeTraceKey}
-        disabled={index.isPending||!routeModel.traceOptions.length}
-        onChange={event=>{
-          setSelectedTraceKey(event.target.value);
-          setSelectedPathKey('');
-        }}>
-        {routeModel.traceOptions.length?routeModel.traceOptions.map(row=>
-          <option key={row.key} value={row.key}>{row.label}</option>
-        ):<option value="">目前沒有公開痕跡圖</option>}
-      </select>
-    </label>
-    <label>路徑圖
-      <select className="scope-select" aria-label="所屬路徑圖選擇"
-        value={routeModel.activePath
-          ?routeModel.activePath.source_scope+':'+routeModel.activePath.uid
-          :routeModel.currentGroup?'__overview__'
-            :routeModel.selected
-              ?routeModel.selected.source_scope+':'+routeModel.selected.uid:''}
-        disabled={index.isPending||!routeModel.selected}
-        onChange={event=>setSelectedPathKey(
-          event.target.value==='__overview__'?'':event.target.value
-        )}>
-        {routeModel.currentGroup?<option value="__overview__">整個痕跡圖</option>:null}
-        {routeModel.routeOptions.map(row=><option
-          key={row.source_scope+':'+row.uid}
-          value={row.source_scope+':'+row.uid}>
-          {row.title||row.uid}
-        </option>)}
-        {!routeModel.routeOptions.length&&!routeModel.currentGroup&&routeModel.selected
-          ?<option value={routeModel.selected.source_scope+':'+routeModel.selected.uid}>
-            {routeModel.selected.title||routeModel.selected.uid}
-          </option>:null}
-      </select>
-    </label>
-    {index.isPending?<span className="scope-status" role="status">正在取得已公開的痕跡圖與路徑圖…</span>:null}
-    {index.error?<span className="scope-status scope-error" role="alert">
-      路徑索引暫時無法載入：{String(index.error.message||index.error)}
-    </span>:null}
-    {!index.isPending&&!index.error&&!routeModel.selected
-      ?<span className="scope-status">目前沒有公開的痕跡圖或路徑圖；年度文章地形仍可使用。</span>:null}
-    {routeModel.selected&&routeModel.memberUids.length&&routePoints.isPending
-      ?<span className="scope-status" role="status">正在讀取所選路徑的空間定錨點…</span>:null}
-    {routePoints.error?<span className="scope-status scope-error" role="alert">
-      路徑座標暫時無法載入：{String(routePoints.error.message||routePoints.error)}
-    </span>:null}
-    {routeModel.selected&&!routeModel.memberUids.length
-      ?<span className="scope-status">此圖尚未連結可顯示的空間定錨點。</span>:null}
-  </div>;
-
+  const spatial=useMemo(()=>selected?{
+    lucus:points.data||[],maps:[selected,...referencedRoutes]
+  }:null,[selected,points.data,referencedRoutes]);
   return <FeaturePage featureId="trace">
     <section className="loc-card scope-feature-card scope-feature-card-wide">
-      <h2>年度文章地形與痕跡路徑</h2>
-      <p className="scope-status">
-        年度文章、地點與日期沿用同一張地形圖；痕跡圖依既有 Trace → Path 關係選取，
-        不以地理距離推測父子關係。選取據點後可繼續查看日期與文章。
-      </p>
-      <TraceTerritoryPanel scopeId="loc" routeOverlay={{
-        maps:routeModel.maps,
-        points:routePoints.data||[],
-        selectedRouteUid:routeModel.selected?.uid||'',
-        controls:routeControls
-      }}/>
+      <h2>痕跡與路線圖</h2>
+      <p className="scope-status">LOC 僅預覽各 Scope 已公開的痕跡圖與路線圖，不載入年度文章或獨立地點列表。完整資料請前往所屬 Scope。</p>
+      {index.isPending?<p className="scope-status" role="status">正在取得各 Scope 路線與痕跡…</p>:null}
+      {index.error?<p className="scope-status scope-error" role="alert">{String(index.error.message||index.error)}</p>:null}
+      {!index.isPending&&!index.error&&!routes.length?
+        <p className="scope-status">目前沒有已開放的痕跡圖或路線圖。</p>:null}
+      {routes.length?<div className="scope-stat-controls">
+        <label>痕跡圖
+          <select className="scope-select" aria-label="痕跡圖選擇"
+            value={activeTraceKey} onChange={event=>{
+              setSelectedTraceKey(event.target.value);
+              setSelectedPathKey('');
+            }}>
+            {traceOptions.map(row=><option key={row.key} value={row.key}>{row.label}</option>)}
+          </select>
+        </label>
+        <label>路徑圖
+          <select className="scope-select" aria-label="所屬路徑圖選擇"
+            value={activePath?routeKey(activePath):currentGroup?'__overview__':selected?routeKey(selected):''}
+            onChange={event=>setSelectedPathKey(event.target.value==='__overview__'?'':event.target.value)}>
+            {currentGroup?<option value="__overview__">整個痕跡圖</option>:null}
+            {routeOptions.map(row=><option key={routeKey(row)} value={routeKey(row)}>
+              {row.title||row.uid}
+            </option>)}
+          </select>
+        </label>
+        {selected?<ScopeLink href={featureNavigationHref(selected.source_scope,'trace')}>
+          前往 {selected.source_scope} 查看完整痕跡
+        </ScopeLink>:null}
+      </div>:null}
+      {selected&&points.isPending?<p className="scope-status" role="status">正在讀取所選路線的座標…</p>:null}
+      {points.error?<p className="scope-status scope-error" role="alert">
+        {String(points.error.message||points.error)}
+      </p>:null}
+      {selected?<TraceMap publicTrace routeOnly spatialData={spatial}
+        selectedRouteUid={selected.uid} hideRoutePicker showLucusSearch={false}/>:null}
     </section>
   </FeaturePage>;
 }
