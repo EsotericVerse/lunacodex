@@ -9,6 +9,7 @@ import UiText,{useUiText} from '../../i18n/UiText';
 import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import ActivityMotion from '../ActivityMotion';
+import {LOC_MOTION} from '../motion-tokens.mjs';
 import {searchPatternSuggestions,applyFeaturedSearchResults}
   from '../../loc/search/search-pattern-index.mjs';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
@@ -1188,7 +1189,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       {!managementMode?<AnimatePresence initial={false}>{open?<motion.div key={id+'-patterns'} className="loc-search-pattern-popover"
         initial={reduceMotion?false:{opacity:0,y:-4}} animate={{opacity:1,y:0}}
         exit={reduceMotion?{opacity:0}:{opacity:0,y:-3}}
-        transition={reduceMotion?{duration:0}:{duration:.16,ease:'easeOut'}}>
+        transition={reduceMotion?{duration:0}:{duration:LOC_MOTION.fast,ease:'easeOut'}}>
         {currentPatternIndex.loading?<p className="loc-search-pattern-suggestion-status" role="status">載入關鍵詞建議…</p>:null}
         {currentPatternIndex.error?<div className="loc-search-pattern-suggestion-status"><span role="status">{currentPatternIndex.error}</span>
           <button type="button" className="loc-button" onClick={()=>void loadPublicPatternIndex()}>重試</button></div>:null}
@@ -1502,7 +1503,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {arrivalVersion>0?<motion.span key={arrivalVersion} className="scope-search-arrival-indicator"
       aria-hidden="true" initial={reduceMotion?false:{opacity:0,scaleX:.25}}
       animate={reduceMotion?{opacity:0}:{opacity:[0,1,0],scaleX:[.25,1,1]}}
-      transition={{duration:reduceMotion?0:.9,times:[0,.26,1],ease:'easeOut'}}/>:null}
+      transition={{duration:reduceMotion?0:LOC_MOTION.arrival,times:[0,.26,1],ease:'easeOut'}}/>:null}
     {status&&(!managementMode||status!==UI_COPY.search.start)&&
       (managementMode||!publicResultsMode||publicStatusIsActionable)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'||status===UI_COPY.search.loadingRelation?<ActivityMotion/>:
       error||status===UI_COPY.search.failed||status===UI_COPY.search.relationFailed?<ActivityMotion state="error"/>:
@@ -1572,7 +1573,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {!managementMode&&(results.length||fullTextKey)?<section className="loc-search-explorer__reader" aria-label="文章全文與關聯">
       {fullTextKey&&readerResult?<motion.div key={fullTextKey}
         initial={reduceMotion?false:{opacity:0,x:8}} animate={{opacity:1,x:0}}
-        transition={{duration:reduceMotion?0:.2}}>
+        transition={{duration:reduceMotion?0:LOC_MOTION.feedback}}>
         {fullTextLoading?<p className="scope-status" role="status">正在讀取文章… <ActivityMotion kind="hourglass"/>
           {searchInFlight?<button type="button" className="loc-button" onClick={cancelSearch}>取消</button>:null}</p>:null}
         {renderSearchArticle(readerResult,0,true)}
