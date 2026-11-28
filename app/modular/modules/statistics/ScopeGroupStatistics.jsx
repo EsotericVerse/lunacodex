@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import dynamic from 'next/dynamic';
+import {useRouter} from 'next/navigation';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
 import {useUiCopy,useUiSection} from '../../../i18n/ui-locale';
@@ -14,6 +15,7 @@ import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
 import {visualKeyColor} from '../../visual-palette.mjs';
+const StatisticsMultiChart=dynamic(()=>import('./StatisticsMultiChart'),{loading:()=>null});
 
 const StatisticsInsightsPanel=dynamic(()=>import('./StatisticsInsightsPanel'),{loading:()=>null});
 const LocMemberIntersection=dynamic(()=>import('./LocMemberIntersection'),{loading:()=>null});
@@ -24,11 +26,12 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   useUiSection('uiExtra.statisticsView');
   const UI_COPY=useUiCopy();
   const t=useUiText();
+  const router=useRouter();
   const [zoomLevel,setZoomLevel]=useState(0);
+  const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
   // Persist intersection selections while the range-specific query remounts.
   const [memberLaneCount,setMemberLaneCount]=useState(2);
   const [memberChoices,setMemberChoices]=useState([]);
-  const [memberGraph,setMemberGraph]=useState('line');
   // LOC is a set. ONE request returns every Scope's exact daily totals together with
   // the set's earliest date and Scope list; detail comparisons load only when opened.
   const endDate=DEFAULT_YEAR_WINDOW.endDate;
@@ -81,7 +84,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
       const day=cursor.toISOString().slice(0,10);
       const bucket=trendBucket(day,bucketUnit);
       if(!bucket||buckets.has(bucket.key))continue;
-      const row={period:bucket.label,_sort:bucket.key,total:0,
+      const row={period:bucket.label,_sort:bucket.key,start_date:bucket.start,end_date:bucket.end,total:0,
         partial:bucket.start<startDate||bucket.end>observedEnd||
           bucket.end>=taipeiDateKey()};
       for(const id of scopeIds)row[id]=0;
@@ -101,8 +104,22 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
     return [...buckets.values()].sort((a,b)=>a._sort.localeCompare(b._sort));
   },[densityRows,startDate,observedEnd,scopeIds,bucket,taipeiDateKey]);
   const insightRows=useMemo(()=>trendData.map(row=>({
-    period:row.period,total:row.total,partial:row.partial
+    period:row.period,total:row.total,partial:row.partial,
+    start_date:row.start_date,end_date:row.end_date
   })),[trendData]);
+  const selectedBucket=trendData.find(row=>row.period===selectedPeriodKey)||null;
+  const selectedScopeTotals=useMemo(()=>{
+    if(!selectedBucket)return [];
+    const totals=new Map(scopeIds.map(id=>[id,0]));
+    for(const row of densityRows){
+      const day=String(row.day||'').slice(0,10),id=String(row.scope_id||'');
+      if(day>=selectedBucket.start_date&&day<=selectedBucket.end_date&&totals.has(id))
+        totals.set(id,(totals.get(id)||0)+(Number(row.item_count)||0));
+    }
+    return scopes.map(scope=>({
+      key:scope.id,name:scope.label||scope.id,value:totals.get(scope.id)||0
+    })).filter(row=>row.value>0).sort((a,b)=>b.value-a.value||a.name.localeCompare(b.name));
+  },[selectedBucket,densityRows,scopeIds,scopes]);
   return <section className="scope-stat-section statistics-dashboard">
     <header className="scope-stat-domain-heading statistics-dashboard__heading">
       <div>
@@ -128,21 +145,31 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
         ]}/>
       <StatisticsInsightsPanel rows={insightRows} range={zoomRange}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
-        idPrefix="loc-stat"/>
+        idPrefix="loc-stat" selectedPeriodKey={selectedPeriodKey}
+        onPeriodClick={row=>setSelectedPeriodKey(String(row?.period||''))}/>
+      {selectedBucket?<StatisticsDetails summary={selectedBucket.period+' · 各 Scope 分布'}>
+        {()=> <div>
+          <div className="scope-stat-controls">
+            <span className="scope-status">點選 Scope 可進入該 Scope 的統計頁。</span>
+            <button type="button" className="loc-button loc-button--small"
+              onClick={()=>setSelectedPeriodKey('')}>清除選取</button>
+          </div>
+          {selectedScopeTotals.length?<StatisticsMultiChart intent="compare"
+            distribution={selectedScopeTotals} height={Math.max(280,Math.min(10,selectedScopeTotals.length)*36+80)}
+            onCategoryClick={id=>router.push(featureNavigationHref(String(id||''),'statics'))}/>
+            :<p className="scope-status">這段時間沒有可比較的 Scope 紀錄。</p>}
+        </div>}
+      </StatisticsDetails>:null}
       <StatisticsDetails summary="各 Scope 數量分布">
         {()=> <div className="statistics-dashboard__breakdown">
-          {[...totals].sort((a,b)=>b.total-a.total).map(row=>
-            <div className="statistics-dashboard__breakdown-item" key={row.scope_id}>
-              <div className="statistics-dashboard__breakdown-label">
-                <ScopeLink href={featureNavigationHref(row.scope_id,'statics')}>
-                  {scopes.find(scope=>scope.id===row.scope_id)?.label||row.scope_id}
-                </ScopeLink>
-                <strong>{row.total.toLocaleString()}</strong>
-              </div>
-              <div className="statistics-dashboard__bar" aria-hidden="true">
-                <span style={{width:row.ratio+'%',background:visualKeyColor(row.scope_id)}}/>
-              </div>
-            </div>)}
+          <StatisticsMultiChart intent="compare"
+            distribution={totals.map(row=>({
+              key:row.scope_id,
+              name:scopes.find(scope=>scope.id===row.scope_id)?.label||row.scope_id,
+              value:row.total
+            })).filter(row=>row.value>0)}
+            height={Math.max(280,Math.min(10,scopeIds.length)*36+80)}
+            onCategoryClick={id=>router.push(featureNavigationHref(String(id||''),'statics'))}/>
         </div>}
       </StatisticsDetails>
       <StatisticsDetails className="scope-stat-details" summary={
@@ -152,7 +179,6 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
           unit={bucket} loadGalaxyStatistics={loadGalaxyStatistics}
           laneCount={memberLaneCount} onLaneCountChange={setMemberLaneCount}
           choices={memberChoices} onChoicesChange={setMemberChoices}
-          graph={memberGraph} onGraphChange={setMemberGraph}
           zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
           zoomRange={zoomRange}/>}
       </StatisticsDetails>
