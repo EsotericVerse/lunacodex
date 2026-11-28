@@ -4,7 +4,7 @@ import {cloneElement,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
-import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
+import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,compositionTrendRows,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
 import {themedDataColor} from '../../visual-palette.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
@@ -121,10 +121,11 @@ export default function StatisticsMultiChart({
     :(scatterX&&scatterY?scatterPair(time,fields,scatterX.key,scatterY.key):null),
     [intent,records,scatterFields,scatterX?.key,scatterY?.key,time,fields]);
   const axisLabel=field=>[field?.label||field?.key,field?.unit].filter(Boolean).join(' · ');
+  const foldSeries=actual==='compositionTrend'?(Array.isArray(series)?series:[]):timeFields;
   const {rows:display,gaps}=useMemo(()=>foldBlank&&
     ['line','bar','area','stacked','composed','compositionTrend'].includes(actual)
-      ?foldEmptyTimeBuckets(time,timeFields,units):{rows:time,gaps:[]},
-    [foldBlank,actual,time,timeFields,locale]);
+      ?foldEmptyTimeBuckets(time,foldSeries,units):{rows:time,gaps:[]},
+    [foldBlank,actual,time,foldSeries,timeFields,locale]);
   const margin={top:16,right:18,bottom:44,left:0};
   const axes=(<><CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
     <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end"
@@ -140,7 +141,14 @@ export default function StatisticsMultiChart({
   </>);
   const selectedCategoryKeys=new Set(Array.isArray(activeCategoryKey)
     ?activeCategoryKey.map(String):activeCategoryKey?[String(activeCategoryKey)]:[]);
-  const colored=displayCategories.map((item,i)=>({...item,
+  const timeComparison=useMemo(()=>time.map((row,index)=>({
+    key:String(row.period||index),name:String(row.period||index),
+    value:totalKey?number(row[totalKey]):fields.reduce((sum,field)=>sum+number(row[field.key]),0),
+    period:row.period,start_date:row.start_date,end_date:row.end_date,raw:row
+  })).filter(row=>row.value>0).sort((a,b)=>b.value-a.value||a.name.localeCompare(b.name)),
+    [time,fields,totalKey]);
+  const comparisonCategories=renderMode==='time-comparison'?timeComparison:displayCategories;
+  const colored=comparisonCategories.map((item,i)=>({...item,
     fill:item.fill?themedDataColor(item.fill):pointColor(i),
     active:selectedCategoryKeys.has(String(item.key))}));
   const comparison=useMemo(()=>radarPeriodComparison(time,fields),[time,fields]);
@@ -153,25 +161,44 @@ export default function StatisticsMultiChart({
   const distributionData=useMemo(()=>colored.map((item,index)=>({
     ...item,__index:index
   })),[colored]);
-  const compositionFields=useMemo(()=>colored.map((item,index)=>({
-    ...item,dataKey:'__composition_'+index
-  })),[colored]);
+  const compositionFields=useMemo(()=>{
+    const total=colored.reduce((sum,item)=>sum+item.value,0);
+    return colored.map((item,index)=>({
+      ...item,dataKey:'__composition_'+index,
+      percent:total>0?item.value/total*100:0
+    }));
+  },[colored]);
   const compositionRow=useMemo(()=>Object.fromEntries([
-    ['period','全部'],...compositionFields.map(item=>[item.dataKey,item.value])
+    ['period','全部'],...compositionFields.map(item=>[item.dataKey,item.percent])
   ]),[compositionFields]);
+  const compositionTrend=useMemo(()=>compositionTrendRows(display,series),
+    [display,series]);
   const histogram=intentConfig?.bins||[];
   const funnel=intentConfig?.stages||[];
-  const isDistribution=renderMode==='distribution'||
+  const isDistribution=renderMode==='distribution'||renderMode==='time-comparison'||
     (intent==='legacy'&&actual==='bar'&&legacyBarLayout==='vertical'&&categories.length>0);
   const highlightTop=Number(intentConfig?.highlightTop||0);
+  const [selectedDatum,setSelectedDatum]=useState(null);
+  const emitDatum=(datum)=>{
+    if(!datum)return;
+    if(['record','bin','attainment','stage','other-categories'].includes(datum.kind))
+      setSelectedDatum(datum);
+    else setSelectedDatum(null);
+    onDatumClick?.(datum);
+  };
   const categoryClick=item=>{
     if(!item)return;
+    if(renderMode==='time-comparison'&&item.raw){
+      onPeriodClick?.(item.raw);
+      emitDatum({intent,kind:'period',...item.raw});
+      return;
+    }
     onCategoryClick?.(item.key);
-    onDatumClick?.({intent,kind:'category',...item});
+    emitDatum({intent,kind:'category',...item});
   };
   const seriesClick=key=>{
     onSeriesClick?.(key);
-    onDatumClick?.({intent,kind:'series',key});
+    emitDatum({intent,kind:'series',key});
   };
   const periodInteractive=Boolean(onPeriodClick&&
     ['line','bar','area','stacked','composed','compositionTrend','scatter'].includes(actual)&&
@@ -180,13 +207,47 @@ export default function StatisticsMultiChart({
     const row=event?.activePayload?.find(entry=>entry?.payload)?.payload;
     if(row&&!row.folded&&periodInteractive){
       onPeriodClick?.(row);
-      onDatumClick?.({intent,kind:'period',...row});
+      emitDatum({intent,kind:'period',...row});
     }
   };
   const barClick=(index)=>{
     const item=distributionData[index];
     categoryClick(item);
   };
+  const handleCompositionSegment=(field,event,index)=>{
+    const row=event?.payload||display[index]||{};
+    if(field.aggregated){
+      const items=field.sourceKeys.map(key=>{
+        const source=(Array.isArray(series)?series:[]).find(item=>item.key===key);
+        return {key,name:source?.label||key,value:number(row[key])};
+      }).filter(item=>item.value>0);
+      emitDatum({intent,kind:'other-categories',period:row.period,items});
+      return;
+    }
+    seriesClick(field.key);
+  };
+  const selectedDatumTitle=selectedDatum?.kind==='record'?'單筆紀錄':
+    selectedDatum?.kind==='bin'?'分布區間明細':
+    selectedDatum?.kind==='attainment'?'達成率明細':
+    selectedDatum?.kind==='stage'?'流程階段明細':'其他分類明細';
+  const selectedDatumRows=selectedDatum?.kind==='record'?[
+    ['紀錄',selectedDatum.title||selectedDatum.recordId],
+    ['日期',selectedDatum.date||'—'],['來源',selectedDatum.source||'—'],
+    ['地點',selectedDatum.place||'—']
+  ]:selectedDatum?.kind==='bin'?[
+    ['區間',selectedDatum.name],['下界',selectedDatum.from],
+    ['上界',selectedDatum.to],['筆數',selectedDatum.count]
+  ]:selectedDatum?.kind==='attainment'?[
+    ['實際值',selectedDatum.actual],['目標值',selectedDatum.target],
+    ['達成率',Number(selectedDatum.ratio||0).toFixed(1)+'%'],
+    ['差額',Number(selectedDatum.actual||0)-Number(selectedDatum.target||0)]
+  ]:selectedDatum?.kind==='stage'?[
+    ['階段',selectedDatum.name],['筆數',selectedDatum.value],
+    ['相較前一階段',Number(selectedDatum.conversionRate||0).toFixed(1)+'%'],
+    ['相較起始階段',Number(selectedDatum.overallRate||0).toFixed(1)+'%'],
+    ['流失數',Number(selectedDatum.dropOff||0)]
+  ]:[];
+
   let chart=null;
   if(actual==='pie')chart=<PieChart>
     <Tooltip content={<ThemedChartTooltip/>}/><Legend wrapperStyle={{fontSize:11}}/>
@@ -219,10 +280,10 @@ export default function StatisticsMultiChart({
   else if(actual==='composition')chart=<BarChart data={[compositionRow]} layout="vertical"
     stackOffset="expand" margin={{top:22,right:18,bottom:20,left:18}}>
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
-    <XAxis type="number" domain={[0,1]} tickFormatter={value=>Math.round(Number(value)*100)+'%'}
+    <XAxis type="number" domain={[0,100]} tickFormatter={value=>Math.round(Number(value))+'%'}
       tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
     <YAxis dataKey="period" type="category" width={72} tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
-    <Tooltip content={<ThemedChartTooltip multiplier={100} suffix="%"/>}/>
+    <Tooltip content={<ThemedChartTooltip suffix="%"/>}/>
     <Legend wrapperStyle={{fontSize:11}}/>
     {compositionFields.map((item,index)=><Bar key={item.key} {...animation}
       dataKey={item.dataKey} name={item.name} stackId="composition" fill={color(index)}
@@ -230,17 +291,17 @@ export default function StatisticsMultiChart({
       <Cell fill={color(index)}/>
     </Bar>)}
   </BarChart>;
-  else if(actual==='compositionTrend')chart=<BarChart data={display} margin={margin} stackOffset="expand">
+  else if(actual==='compositionTrend')chart=<BarChart data={compositionTrend.rows} margin={margin}>
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
     <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end"
       height={64} interval="preserveStartEnd" stroke={GRID}/>
-    <YAxis type="number" domain={[0,1]} tickFormatter={value=>Math.round(Number(value)*100)+'%'}
+    <YAxis type="number" domain={[0,100]} tickFormatter={value=>Math.round(Number(value))+'%'}
       tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
-    <Tooltip content={<ThemedChartTooltip/>} formatter={value=>(Number(value)*100).toFixed(1)+'%'}/>
+    <Tooltip content={<ThemedChartTooltip suffix="%"/>}/>
     <Legend wrapperStyle={{fontSize:11}}/>
-    {fields.map((field,index)=><Bar key={field.key} {...animation}
-      dataKey={field.key} name={field.label} stackId="composition" fill={color(index)}
-      onClick={()=>seriesClick(field.key)}/>)}
+    {compositionTrend.fields.map((field,index)=><Bar key={field.key} {...animation}
+      dataKey={field.dataKey} name={field.label} stackId="composition" fill={color(index)}
+      onClick={(event,entryIndex)=>handleCompositionSegment(field,event,entryIndex)}/>)}
   </BarChart>;
   else if(actual==='scatter'&&paired)chart=<ScatterChart margin={{top:20,right:20,bottom:45,left:20}}>
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
@@ -262,7 +323,7 @@ export default function StatisticsMultiChart({
     }}/>
     <Scatter {...animation} name={axisLabel(paired.x)+' × '+axisLabel(paired.y)} data={paired.data} fill={pointColor(0)}>
       {paired.data.map((row,i)=><Cell key={row.recordId||row.period||i} fill={pointColor(i)}
-        onClick={()=>onDatumClick?.({intent,kind:intent==='relationship'?'record':'period',...row})}/>)}
+        onClick={()=>emitDatum({intent,kind:intent==='relationship'?'record':'period',...row})}/>)}
     </Scatter>
   </ScatterChart>;
   else if(actual==='histogram')chart=<BarChart data={histogram} margin={margin} barCategoryGap={0}>
@@ -271,7 +332,7 @@ export default function StatisticsMultiChart({
     <YAxis allowDecimals={false} tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
     <Tooltip content={<ThemedChartTooltip/>}/>
     <Bar {...animation} dataKey="count" name="筆數" fill={color(0)}
-      onClick={(_,index)=>onDatumClick?.({intent,kind:'bin',...histogram[index]})}>
+      onClick={(_,index)=>emitDatum({intent,kind:'bin',...histogram[index]})}>
       {histogram.map((bin,index)=><Cell key={bin.key} fill={color(0)} opacity={.9-index*.015}/>)}
     </Bar>
   </BarChart>;
@@ -286,14 +347,14 @@ export default function StatisticsMultiChart({
     <ReferenceLine x={intentConfig.target} stroke={color(3)} strokeWidth={2.5}
       strokeDasharray="5 3" label={{value:'目標',position:'insideTopRight',fill:TEXT,fontSize:11}}/>
     <Bar {...animation} dataKey="value" name="實際值" fill={color(0)} maxBarSize={34}
-      onClick={()=>onDatumClick?.({intent,kind:'attainment',actual:intentConfig.actual,
+      onClick={()=>emitDatum({intent,kind:'attainment',actual:intentConfig.actual,
         target:intentConfig.target,ratio:intentConfig.ratio})}/>
   </BarChart>;
   else if(actual==='funnel'&&funnel.length)chart=<FunnelChart>
     <Tooltip content={<ThemedChartTooltip/>}/>
     <Funnel {...animation} dataKey="value" nameKey="name" data={funnel}>
       {funnel.map((stage,index)=><Cell key={stage.key} fill={color(index)}
-        onClick={()=>onDatumClick?.({intent,kind:'stage',...stage})}/>)}
+        onClick={()=>emitDatum({intent,kind:'stage',...stage})}/>)}
       <LabelList dataKey="name" position="right" content={props=>{
         const {x=0,y=0,payload={}}=props||{};
         const conversion=Number(payload.conversionRate||0).toFixed(1);
@@ -333,7 +394,7 @@ export default function StatisticsMultiChart({
       cursor={onCategoryClick||onDatumClick?'pointer':undefined}
       onClick={(_,index)=>barClick(index)}>
       {distributionData.map((item,index)=><Cell key={item.key}
-        fill={highlightTop?(index<highlightTop?color(index):'var(--loc-muted)'):item.fill}
+        fill={highlightTop?(index<highlightTop?'var(--loc-heading)':'var(--loc-muted)'):item.fill}
         opacity={activeCategoryKey&&!item.active?0.42:1}
         stroke={item.active?'var(--loc-heading)':'var(--loc-panel)'}
         strokeWidth={item.active?2.5:1}/>)}
@@ -341,15 +402,16 @@ export default function StatisticsMultiChart({
   </BarChart>;
   else if(actual==='bar'&&isDistribution)chart=<BarChart data={distributionData} margin={{top:14,right:18,bottom:52,left:0}}>
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
-    <XAxis dataKey="name" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end"
-      height={64} interval="preserveStartEnd" stroke={GRID}/>
+    <XAxis dataKey="name" tick={{fill:TEXT,fontSize:11}}
+      angle={distributionData.length>6?-20:0} textAnchor="end"
+      height={distributionData.length>6?64:34} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis type="number" allowDecimals={false} tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
     <Tooltip content={<ThemedChartTooltip/>}/>
     <Bar {...animation} dataKey="value" name="數量" fill={color(0)} maxBarSize={38}
       cursor={onCategoryClick||onDatumClick?'pointer':undefined}
       onClick={(_,index)=>barClick(index)}>
       {distributionData.map((item,index)=><Cell key={item.key}
-        fill={highlightTop?(index<highlightTop?color(index):'var(--loc-muted)'):item.fill}
+        fill={highlightTop?(index<highlightTop?'var(--loc-heading)':'var(--loc-muted)'):item.fill}
         opacity={activeCategoryKey&&!item.active?0.42:1}
         stroke={item.active?'var(--loc-heading)':'var(--loc-panel)'}
         strokeWidth={item.active?2.5:1}/>)}
@@ -401,12 +463,35 @@ export default function StatisticsMultiChart({
       initial={reduceMotion?false:{opacity:0,y:6}}
       animate={{opacity:1,y:0}}
       transition={{duration:reduceMotion?0:.22,ease:'easeOut'}}
-      style={{height:barLayout==='vertical'?height:`min(${height}px, max(300px, 85vw))`}}>
+      style={{height}}>
       {usesResponsiveContainer
         ?<ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
         :cloneElement(chart,{responsive:true,style:{width:'100%',height:'100%'},
           ...(periodInteractive?{onClick:handleChartClick}:{})})}
     </motion.div>
+    {selectedDatum?<section className="scope-self-intersection-selected" aria-live="polite">
+      <header className="statistics-dashboard__panel-heading">
+        <h4>{selectedDatumTitle}</h4>
+        <button type="button" className="loc-button loc-button--small"
+          onClick={()=>setSelectedDatum(null)}>清除選取</button>
+      </header>
+      {selectedDatum.period?<p className="scope-status">{selectedDatum.period}</p>:null}
+      {selectedDatumRows.length?<div className="scope-ranking">
+        {selectedDatumRows.map(([label,value])=><div key={label}>
+          <strong>{label}</strong><span>{value??'—'}</span>
+        </div>)}
+      </div>:null}
+      {selectedDatum.kind==='record'?<div className="scope-ranking">
+        <div><strong>X · {axisLabel(paired?.x)}</strong><span>{selectedDatum.x?.toLocaleString?.()??selectedDatum.x}</span></div>
+        <div><strong>Y · {axisLabel(paired?.y)}</strong><span>{selectedDatum.y?.toLocaleString?.()??selectedDatum.y}</span></div>
+      </div>:null}
+      {selectedDatum.items?.length?<div className="scope-ranking">
+        {selectedDatum.items.slice(0,30).map(item=><div key={item.recordId||item.key||item.label}>
+          <strong>{item.name||item.label||item.title||item.recordId}</strong>
+          <span>{item.value??item.date??''}</span>
+        </div>)}
+      </div>:null}
+    </section>:null}
     {intent==='relationship'?<p className="scope-status" role="note">
       每個點代表一筆紀錄；散布圖呈現數值關聯，不代表因果關係。
     </p>:null}
