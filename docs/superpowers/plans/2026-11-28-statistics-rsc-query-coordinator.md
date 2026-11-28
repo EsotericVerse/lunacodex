@@ -83,4 +83,4 @@
 - [x] Review the complete diff for authorization, stale-data, and hydration regressions.
 - [x] Report any verification that cannot be run in the current environment as unverified; do not infer success.
 
-**Verified on final Cloudflare Preview head `585377e`:** `pnpm run test:core` 159/159 passed; syntax check 492 files / 0 errors; Next.js Production Build and OpenNext Worker Build succeeded; Cloudflare Preview deployment succeeded. App Router reports all four Statistics pages as request-dynamic (`ƒ`). The Preview was deployed, but interactive browser navigation could not be performed in this session.
+**Verified on merged-main Cloudflare Preview head `d03ac36` (main parent `b57c4a9`):** `pnpm run test:core` 165/165 passed; syntax check 492 files / 0 errors; Next.js Production Build and OpenNext Worker Build succeeded; Cloudflare Preview deployment succeeded. App Router reports all four Statistics pages as request-dynamic (`ƒ`). The Preview was deployed, but interactive browser navigation could not be performed in this session.
