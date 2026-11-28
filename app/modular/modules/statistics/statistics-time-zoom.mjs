@@ -208,8 +208,8 @@ export const STATISTIC_INTENTS=Object.freeze([
   Object.freeze(['attainment','看達成率']),
   Object.freeze(['funnel','看流程流失'])
 ]);
-const finiteMetric=value=>value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value))
-  ?Number(value):null;
+const finiteMetric=value=>typeof value!=='boolean'&&value!==null&&value!==undefined&&
+  value!==''&&Number.isFinite(Number(value))?Number(value):null;
 
 export function recordScatterPair(records=[],fields=[],xKey='',yKey=''){
   const rows=Array.isArray(records)?records:[];
