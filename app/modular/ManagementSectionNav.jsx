@@ -1,6 +1,6 @@
 'use client';
 
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
 import {useEditDock} from './edit-dock';
@@ -66,7 +66,7 @@ export function ManagementSectionTransition({value,children,className=''}){
   const reduceMotion=useReducedMotion();
   const previousValue=useRef(value);
   const changed=previousValue.current!==value;
-  previousValue.current=value;
+  useLayoutEffect(()=>{previousValue.current=value;},[value]);
   const classes=['management-section-transition',className].filter(Boolean).join(' ');
   return <motion.div key={String(value)} className={classes}
     initial={changed&&!reduceMotion?{opacity:0,y:4}:false}
