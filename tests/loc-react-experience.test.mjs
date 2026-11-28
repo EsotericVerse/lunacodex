@@ -72,8 +72,8 @@ test('LOC keeps its lightweight cross-Scope route preview separate from annual t
   assert.match(preview,/TraceMap publicTrace routeOnly/);
   assert.match(preview,/ScopeLink href=/);
   assert.doesNotMatch(preview,/TraceTerritoryPanel/);
-  assert.match(tracePage,/scopeId==='loc'\\?<LocTracePreview\\/>/);
-  assert.match(tracePage,/TraceTerritoryPanel scopeId=\\{scopeId\\}/);
+  assert.ok(tracePage.includes("scopeId==='loc'?<LocTracePreview/>"));
+  assert.ok(tracePage.includes('TraceTerritoryPanel scopeId={scopeId}'));
 });
 test('React Motion timing follows the published LOC timing scale',async()=>{
   assert.deepEqual(
