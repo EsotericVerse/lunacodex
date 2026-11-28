@@ -15,7 +15,7 @@ export default function ActivityMotion({kind='hourglass',state='running'}){
       data-motion-state={state} aria-hidden="true"
       initial={reduceMotion?false:{opacity:.5,scale:.85}}
       animate={{opacity:1,scale:1}}
-      transition={{duration:reduceMotion?0:LOC_MOTION.feedback,ease:'easeOut'}}>
+      transition={{duration:reduceMotion?0:LOC_MOTION.feedback,ease:LOC_MOTION.ease}}>
       {marks[state]||marks.pending}
     </motion.span>;
   }
