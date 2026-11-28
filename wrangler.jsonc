@@ -88,9 +88,11 @@
       "bucket_name": "loc-hero-assets"
     }
   ],
-  // Historical namespace migration only. It is unbound and has no Container;
-  // deleting its class requires a separate data-destructive migration.
-  "migrations": [{"tag":"loc-compute-v1","new_sqlite_classes":["LocCompute"]}],
+  // Retire the legacy LOC Durable Object namespace after LOC Container removal.
+  "migrations": [
+    {"tag":"loc-compute-v1","new_sqlite_classes":["LocCompute"]},
+    {"tag":"loc-compute-v2","deleted_classes":["LocCompute"]}
+  ],
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
