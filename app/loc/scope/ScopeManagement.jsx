@@ -7,7 +7,6 @@ import {FeaturePage} from '../../modular/ui';
 import ManagementWorkspaceFrame from '../management/ManagementWorkspaceFrame';
 import {ProtectedManagementSlot} from '../management/ManagementAccess';
 import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
-import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
 import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
 import {PLACE_OPTIONS} from '../trace/PlaceManagement';
