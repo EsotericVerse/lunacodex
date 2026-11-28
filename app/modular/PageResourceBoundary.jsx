@@ -26,7 +26,7 @@ export default function PageResourceBoundary({routeKey,children}){
       const original=element.style.opacity;
       const restore=()=>{element.style.opacity=original;};
       const control=animate(element,{opacity:[.78,1]},
-        {duration:LOC_MOTION.standard,ease:'easeOut',onComplete:restore});
+        {duration:LOC_MOTION.standard,ease:LOC_MOTION.ease,onComplete:restore});
       return ()=>{control.stop();restore();};
     });
     return ()=>animations.forEach(stop=>stop());
