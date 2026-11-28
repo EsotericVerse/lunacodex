@@ -1,0 +1,370 @@
+/* LOC Theme Visual System
+   Eight fixed color identities (4 Day + 4 Dark), each with five coordinated
+   presentation dimensions. Palette storage is limited to ten semantic colors;
+   every opacity, ring, surface and gradient below is derived at render time. */
+
+:root,
+.admin-theme-local-preview{
+  --loc-panel-strong:color-mix(in srgb,var(--loc-panel) 96%,transparent);
+  --loc-panel-nav:color-mix(in srgb,var(--loc-panel) 90%,transparent);
+  --loc-panel-tab:color-mix(in srgb,var(--loc-panel-2) 94%,transparent);
+  --loc-rune-selected-bg:var(--loc-panel-2);
+  --loc-line-soft:color-mix(in srgb,var(--loc-line) 72%,transparent);
+  --loc-line-softer:color-mix(in srgb,var(--loc-line) 54%,transparent);
+  --loc-line-faint:color-mix(in srgb,var(--loc-line) 38%,transparent);
+  --loc-surface:color-mix(in srgb,var(--loc-panel) 96%,transparent);
+  --loc-surface-soft:color-mix(in srgb,var(--loc-accent) 7%,transparent);
+  --loc-surface-faint:color-mix(in srgb,var(--loc-accent) 3.5%,transparent);
+  --loc-surface-status:color-mix(in srgb,var(--loc-accent) 8%,transparent);
+  --loc-accent-surface:color-mix(in srgb,var(--loc-accent) 10%,transparent);
+  --loc-accent-surface-strong:color-mix(in srgb,var(--loc-accent) 18%,transparent);
+  --loc-accent-border:color-mix(in srgb,var(--loc-accent) 56%,transparent);
+  --loc-accent-border-soft:color-mix(in srgb,var(--loc-accent) 40%,transparent);
+  --loc-accent-border-faint:color-mix(in srgb,var(--loc-accent) 26%,transparent);
+  --loc-gold-surface:color-mix(in srgb,var(--loc-gold) 10%,transparent);
+  --loc-gold-surface-soft:color-mix(in srgb,var(--loc-gold) 6%,transparent);
+  --loc-gold-border:color-mix(in srgb,var(--loc-gold) 56%,transparent);
+  --loc-gold-border-soft:color-mix(in srgb,var(--loc-gold) 40%,transparent);
+  --loc-gold-border-faint:color-mix(in srgb,var(--loc-gold) 26%,transparent);
+  --loc-gold-ring:color-mix(in srgb,var(--loc-gold) 30%,transparent);
+  --loc-gold-ring-soft:color-mix(in srgb,var(--loc-gold) 17%,transparent);
+  --loc-danger-border:color-mix(in srgb,var(--loc-danger) 34%,transparent);
+  --loc-primary-start:color-mix(in srgb,var(--loc-accent) 26%,var(--loc-panel));
+  --loc-primary-end:color-mix(in srgb,var(--loc-accent) 12%,var(--loc-panel-2));
+  --loc-shadow:var(--loc-material-shadow);
+  --loc-shadow-card:var(--loc-material-shadow);
+
+  --loc-material-radius:var(--loc-ui-radius-lg,18px);
+  --loc-material-edge:1px;
+  --loc-material-edge-style:solid;
+  --loc-material-edge-color:var(--loc-line);
+  --loc-material-surface:var(--loc-panel);
+  --loc-material-shadow:0 12px 30px color-mix(in srgb,var(--loc-text) 10%,transparent);
+  --loc-material-shadow-hover:0 16px 38px color-mix(in srgb,var(--loc-text) 14%,transparent);
+  --loc-theme-divider-style:solid;
+  --loc-theme-divider-width:1px;
+  --loc-theme-control-radius:var(--loc-ui-radius-sm,12px);
+  --loc-theme-control-border-style:solid;
+  --loc-theme-bubble-radius:var(--loc-ui-radius-md,16px);
+  --loc-theme-bubble-border-width:1px;
+  --loc-theme-bubble-border-style:solid;
+  --loc-theme-bubble-edge:var(--loc-line-soft);
+  --loc-theme-bubble-surface:var(--loc-surface-soft);
+  --loc-theme-bubble-shadow:none;
+  --loc-theme-atmosphere:none;
+  --loc-font-family:Inter,"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --loc-font-display:var(--loc-font-family);
+  --loc-font-heading:var(--loc-font-family);
+  --loc-font-body:var(--loc-font-family);
+  --loc-font-meta:var(--loc-font-family);
+  --loc-weight-body:400;
+  --loc-weight-ui:550;
+  --loc-weight-page-title:760;
+  --loc-weight-section-title:700;
+  --loc-line-body:1.78;
+  --loc-line-heading:1.2;
+  --loc-theme-heading-spacing:0;
+  --loc-theme-meta-spacing:.06em;
+}
+
+/* 1 — 靈魂 / Soul: quiet nocturnal glass, fine violet light. */
+:root[data-theme-id="theme-1"],.admin-theme-local-preview[data-theme-id="theme-1"]{
+  --loc-material-radius:20px;--loc-material-edge:1px;--loc-material-edge-style:solid;
+  --loc-material-edge-color:color-mix(in srgb,var(--loc-gold) 34%,var(--loc-line));
+  --loc-material-surface:color-mix(in srgb,var(--loc-panel) 94%,var(--loc-accent) 6%);
+  --loc-material-shadow:inset 0 1px 0 var(--loc-line-faint),0 16px 42px rgba(0,0,0,.28);
+  --loc-material-shadow-hover:inset 0 1px 0 var(--loc-line-soft),0 20px 48px rgba(0,0,0,.34);
+  --loc-theme-divider-style:solid;--loc-theme-control-radius:10px;
+  --loc-theme-bubble-radius:18px 18px 18px 6px;
+  --loc-theme-bubble-edge:color-mix(in srgb,var(--loc-gold) 34%,var(--loc-line));
+  --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-accent) 12%);
+  --loc-theme-bubble-shadow:inset 0 1px 0 var(--loc-line-faint);
+  --loc-theme-atmosphere:radial-gradient(ellipse at 14% 0%,color-mix(in srgb,var(--loc-accent) 14%,transparent),transparent 52%),radial-gradient(ellipse at 88% 14%,color-mix(in srgb,var(--loc-gold) 8%,transparent),transparent 42%);
+  --loc-font-display:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --loc-font-heading:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --loc-font-meta:Inter,"Noto Sans TC",system-ui,sans-serif;
+  --loc-weight-section-title:680;--loc-theme-heading-spacing:.015em;
+}
+
+/* 2 — 連結 / Link: open paper, soft joins and airy typography. */
+:root[data-theme-id="theme-2"],.admin-theme-local-preview[data-theme-id="theme-2"]{
+  --loc-material-radius:12px;--loc-material-edge:1px;--loc-material-edge-style:solid;
+  --loc-material-edge-color:var(--loc-line);--loc-material-surface:var(--loc-panel);
+  --loc-material-shadow:0 10px 26px rgba(104,72,137,.075);
+  --loc-material-shadow-hover:0 14px 32px rgba(104,72,137,.11);
+  --loc-theme-divider-style:solid;--loc-theme-control-radius:12px;
+  --loc-theme-bubble-radius:14px;--loc-theme-bubble-edge:var(--loc-line-soft);
+  --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-accent) 8%);
+  --loc-theme-bubble-shadow:none;
+  --loc-theme-atmosphere:radial-gradient(ellipse at 8% 0%,color-mix(in srgb,var(--loc-accent) 8%,transparent),transparent 48%),radial-gradient(ellipse at 92% 100%,color-mix(in srgb,var(--loc-gold) 5%,transparent),transparent 44%);
+  --loc-font-family:Inter,"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --loc-font-heading:Inter,"Noto Sans TC","PingFang TC",system-ui,sans-serif;
+  --loc-weight-body:400;--loc-weight-ui:500;--loc-theme-heading-spacing:.005em;
+}
+
+/* 3 — 生命 / Life: warm, tactile frames and confident typography. */
+:root[data-theme-id="theme-3"],.admin-theme-local-preview[data-theme-id="theme-3"]{
+  --loc-material-radius:16px;--loc-material-edge:2px;--loc-material-edge-style:solid;
+  --loc-material-edge-color:var(--loc-accent-border-soft);
+  --loc-material-surface:color-mix(in srgb,var(--loc-panel) 96%,var(--loc-gold) 4%);
+  --loc-material-shadow:0 12px 30px rgba(153,79,0,.13),inset 0 1px 0 rgba(255,255,255,.48);
+  --loc-material-shadow-hover:0 16px 36px rgba(153,79,0,.18),inset 0 1px 0 rgba(255,255,255,.55);
+  --loc-theme-divider-style:double;--loc-theme-divider-width:2px;--loc-theme-control-radius:10px;
+  --loc-theme-bubble-radius:16px 16px 4px 16px;
+  --loc-theme-bubble-edge:color-mix(in srgb,var(--loc-accent) 48%,var(--loc-line));
+  --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 90%,var(--loc-gold) 10%);
+  --loc-theme-bubble-shadow:0 4px 12px rgba(153,79,0,.08);
+  --loc-theme-atmosphere:radial-gradient(ellipse at 12% 0%,color-mix(in srgb,var(--loc-gold) 13%,transparent),transparent 48%),radial-gradient(ellipse at 90% 88%,color-mix(in srgb,var(--loc-accent) 8%,transparent),transparent 44%);
+  --loc-font-heading:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --loc-weight-body:450;--loc-weight-ui:600;--loc-weight-page-title:780;
+  --loc-weight-section-title:760;--loc-line-heading:1.24;--loc-theme-heading-spacing:.01em;
+}
+
+/* 4 — 自然 / Nature: grounded organic relief, calm green light. */
+:root[data-theme-id="theme-4"],.admin-theme-local-preview[data-theme-id="theme-4"]{
+  --loc-material-radius:22px;--loc-material-edge:1px;--loc-material-edge-style:solid;
+  --loc-material-edge-color:color-mix(in srgb,var(--loc-gold) 34%,var(--loc-line));
+  --loc-material-surface:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-panel-2) 8%);
+  --loc-material-shadow:0 16px 38px rgba(0,0,0,.27),inset 0 1px 0 rgba(183,215,193,.08);
+  --loc-material-shadow-hover:0 20px 44px rgba(0,0,0,.34),inset 0 1px 0 rgba(183,215,193,.12);
+  --loc-theme-divider-style:solid;--loc-theme-control-radius:14px;
+  --loc-theme-bubble-radius:20px 12px 20px 8px;
+  --loc-theme-bubble-edge:color-mix(in srgb,var(--loc-gold) 30%,var(--loc-line));
+  --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 90%,var(--loc-accent) 10%);
+  --loc-theme-bubble-shadow:inset 0 1px 0 var(--loc-line-faint);
+  --loc-theme-atmosphere:radial-gradient(ellipse at 12% 8%,color-mix(in srgb,var(--loc-accent) 12%,transparent),transparent 50%),radial-gradient(ellipse at 88% 94%,color-mix(in srgb,var(--loc-gold) 8%,transparent),transparent 42%);
+  --loc-font-heading:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --loc-weight-body:420;--loc-weight-section-title:680;--loc-line-body:1.82;
+  --loc-theme-heading-spacing:.01em;
+}
+
+/* 5 — 礦物 / Mineral: cut ivory paper, double rules and precise edges. */
+:root[data-theme-id="theme-5"],.admin-theme-local-preview[data-theme-id="theme-5"]{
+  --loc-material-radius:8px;--loc-material-edge:2px;--loc-material-edge-style:double;
+  --loc-material-edge-color:var(--loc-gold-border-soft);--loc-material-surface:var(--loc-panel);
+  --loc-material-shadow:0 8px 22px rgba(114,90,15,.11);
+  --loc-material-shadow-hover:0 12px 28px rgba(114,90,15,.15);
+  --loc-theme-divider-style:double;--loc-theme-divider-width:2px;--loc-theme-control-radius:6px;
+  --loc-theme-bubble-radius:8px;--loc-theme-bubble-edge:var(--loc-gold-border-soft);
+  --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-gold) 8%);
+  --loc-theme-bubble-shadow:inset 0 1px 0 rgba(255,255,255,.7);
+  --loc-theme-atmosphere:radial-gradient(ellipse at 90% 0%,color-mix(in srgb,var(--loc-gold) 12%,transparent),transparent 48%),linear-gradient(180deg,color-mix(in srgb,var(--loc-panel) 94%,var(--loc-gold) 6%),transparent 52%);
+  --loc-font-display:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --loc-font-heading:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --loc-font-meta:Inter,"Noto Sans TC",system-ui,sans-serif;
+  --loc-weight-section-title:720;--loc-theme-heading-spacing:.015em;
+}
+
+/* 6 — 元素 / Element: compact red lacquer, hard-edged energy. */
+:root[data-theme-id="theme-6"],.admin-theme-local-preview[data-theme-id="theme-6"]{
+  --loc-material-radius:10px;--loc-material-edge:2px;--loc-material-edge-style:solid;
+  --loc-material-edge-color:var(--loc-accent-border-soft);
+  --loc-material-surface:color-mix(in srgb,var(--loc-panel) 95%,var(--loc-accent) 5%);
+  --loc-material-shadow:0 12px 32px rgba(0,0,0,.3),inset 0 0 0 1px rgba(255,112,107,.08);
+  --loc-material-shadow-hover:0 16px 38px rgba(0,0,0,.36),inset 0 0 0 1px rgba(255,112,107,.13);
+  --loc-theme-divider-style:solid;--loc-theme-control-radius:6px;
+  --loc-theme-bubble-radius:10px;--loc-theme-bubble-edge:var(--loc-accent-border-soft);
+  --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-accent) 12%);
+  --loc-theme-bubble-shadow:inset 0 1px 0 rgba(255,112,107,.1);
+  --loc-theme-atmosphere:radial-gradient(ellipse at 12% 0%,color-mix(in srgb,var(--loc-accent) 14%,transparent),transparent 50%),radial-gradient(ellipse at 90% 100%,color-mix(in srgb,var(--loc-gold) 8%,transparent),transparent 42%);
+  --loc-font-heading:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --loc-weight-body:430;--loc-weight-ui:620;--loc-weight-page-title:790;
+  --loc-weight-section-title:780;--loc-theme-heading-spacing:.005em;
+}
+
+/* 7 — 秩序 / Order: crisp white archive, strict alignment and clean rules. */
+:root[data-theme-id="theme-7"],.admin-theme-local-preview[data-theme-id="theme-7"]{
+  --loc-material-radius:4px;--loc-material-edge:1px;--loc-material-edge-style:solid;
+  --loc-material-edge-color:var(--loc-line);--loc-material-surface:var(--loc-panel);
+  --loc-material-shadow:0 4px 14px rgba(0,0,0,.045);
+  --loc-material-shadow-hover:0 7px 18px rgba(0,0,0,.065);
+  --loc-theme-divider-style:solid;--loc-theme-control-radius:4px;
+  --loc-theme-bubble-radius:4px;--loc-theme-bubble-edge:var(--loc-line);
+  --loc-theme-bubble-surface:var(--loc-panel-2);--loc-theme-bubble-shadow:none;
+  --loc-theme-atmosphere:none;
+  --loc-font-family:Inter,"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --loc-font-heading:Inter,"Noto Sans TC","PingFang TC",system-ui,sans-serif;
+  --loc-font-meta:ui-monospace,"SFMono-Regular",Consolas,monospace;
+  --loc-weight-ui:550;--loc-weight-section-title:700;--loc-theme-heading-spacing:0;
+}
+
+/* 8 — 無序 / Disorder: shifting slate, irregular geometry, controlled tension. */
+:root[data-theme-id="theme-8"],.admin-theme-local-preview[data-theme-id="theme-8"]{
+  --loc-material-radius:14px 6px 18px 9px;--loc-material-edge:1px;--loc-material-edge-style:solid;
+  --loc-material-edge-color:var(--loc-accent-border-faint);
+  --loc-material-surface:color-mix(in srgb,var(--loc-panel) 94%,var(--loc-accent) 6%);
+  --loc-material-shadow:0 14px 34px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.035);
+  --loc-material-shadow-hover:0 18px 40px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.055);
+  --loc-theme-divider-style:dashed;--loc-theme-control-radius:10px 4px 12px 5px;
+  --loc-theme-bubble-radius:14px 6px 16px 8px;
+  --loc-theme-bubble-edge:var(--loc-accent-border-soft);
+  --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-accent) 12%);
+  --loc-theme-bubble-shadow:inset 0 1px 0 rgba(255,255,255,.045);
+  --loc-theme-atmosphere:radial-gradient(ellipse at 8% 8%,color-mix(in srgb,var(--loc-accent) 12%,transparent),transparent 46%),radial-gradient(ellipse at 92% 84%,color-mix(in srgb,var(--loc-gold) 7%,transparent),transparent 44%);
+  --loc-font-heading:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --loc-weight-ui:560;--loc-weight-section-title:740;--loc-line-heading:1.28;
+  --loc-theme-heading-spacing:.008em;
+}
+
+/* Ambient layer follows the selected Theme without tinting or replacing the
+   eight original palette colors. */
+body.loc-app-shell{
+  background-color:var(--loc-bg);
+  background-image:var(--loc-theme-atmosphere);
+  background-attachment:fixed;
+  background-repeat:no-repeat;
+  background-size:cover;
+}
+.admin-theme-local-preview{
+  background-image:var(--loc-theme-atmosphere)!important;
+  background-repeat:no-repeat;
+  background-size:cover;
+}
+
+/* One material language for real functional frames across home, features,
+   management, settings and editors. Existing special border colors/widths
+   remain intact; the inset edge supplies the Theme's material weight. */
+:is(
+  .loc-card,.loc-panel,.loc-link-card,.loc-home>.loc-hero,.loc-hero .hero-note,
+  .scope-card,.scope-inline-card,.scope-feature-card,.scope-stat-section,
+  .scope-ranking-chart,.scope-hero,.loc-shared-work-card,.loc-trace-panel,
+  .admin-workspace,.management-workspace-panel,
+  .loc-lucus-select-workspace__field,.loc-lucus-select-workspace__search
+){
+  border-radius:var(--loc-material-radius);
+  border-style:var(--loc-material-edge-style);
+  background-color:var(--loc-material-surface);
+  box-shadow:var(--loc-material-shadow),inset 0 0 0 var(--loc-material-edge) var(--loc-material-edge-color);
+}
+:is(
+  .loc-card,.loc-panel,.loc-link-card,.scope-card,.scope-inline-card,
+  .scope-feature-card,.scope-stat-section,.scope-ranking-chart,
+  .loc-shared-work-card,.loc-trace-panel,.admin-workspace,
+  .management-workspace-panel
+):is(:hover,:focus-within){
+  box-shadow:var(--loc-material-shadow-hover),inset 0 0 0 var(--loc-material-edge) var(--loc-material-edge-color);
+}
+
+/* Text bubbles are a first-class part of each Theme, not generic mini-cards. */
+.loc-bubble:not(.loc-home-block__media):not(.loc-home-block__media-bubble){
+  border:var(--loc-theme-bubble-border-width) var(--loc-theme-bubble-border-style) var(--loc-theme-bubble-edge);
+  border-radius:var(--loc-theme-bubble-radius);
+  background-color:var(--loc-theme-bubble-surface);
+  box-shadow:var(--loc-theme-bubble-shadow);
+}
+
+/* Typography changes hierarchy and tone, never the authored wording or size. */
+body.loc-app-shell{font-family:var(--loc-font-family);}
+.loc-text-display{font-family:var(--loc-font-display);}
+.loc-text-heading,
+.loc-card :is(h1,h2,h3),.loc-panel :is(h1,h2,h3),
+.scope-card :is(h1,h2,h3),.scope-feature-card :is(h1,h2,h3),
+.admin-workspace :is(h1,h2,h3),.management-workspace-panel :is(h1,h2,h3),
+.loc-bubble :is(h1,h2,h3){
+  font-family:var(--loc-font-heading);
+  font-weight:var(--loc-weight-section-title);
+  line-height:var(--loc-line-heading);
+  letter-spacing:var(--loc-theme-heading-spacing);
+}
+.loc-text-body{font-family:var(--loc-font-body);line-height:var(--loc-line-body);}
+.loc-text-meta,.loc-eyebrow,.scope-eyebrow{
+  font-family:var(--loc-font-meta);
+  letter-spacing:var(--loc-theme-meta-spacing);
+}
+.scope-stat-value,.loc-stat-value,.scope-stat-number,.loc-stat-number{font-variant-numeric:tabular-nums;}
+
+/* Line language applies to dividers and section rules, not data semantics. */
+.loc-card> :is(h1,h2,h3),.loc-panel> :is(h1,h2,h3),
+.scope-card> :is(h1,h2,h3),.scope-feature-card> :is(h1,h2,h3),
+.home-section-heading> :is(h1,h2,h3){
+  border-bottom-style:var(--loc-theme-divider-style);
+  border-bottom-width:var(--loc-theme-divider-width);
+}
+.loc-card hr,.loc-panel hr,.scope-card hr,.scope-feature-card hr{
+  border:0;
+  border-top:var(--loc-material-edge) var(--loc-theme-divider-style) var(--loc-material-edge-color);
+}
+.scope-main[data-public-feature] .scope-tabs button:is([aria-pressed="true"],.active),
+.management-section-nav .management-section-nav__item[aria-pressed="true"]{
+  border-bottom-color:var(--loc-accent);
+  box-shadow:inset 0 -2px 0 var(--loc-accent);
+}
+
+/* Controls use the same Theme identity while retaining native hit targets. */
+:is(
+  .loc-button,.loc-control,.loc-settings-select,.scope-select,.scope-search-input,
+  .scope-tabs button,.scope-pagination-button,.scope-culture-source-button,
+  .scope-search-popular-toggle,.management-section-nav__item,
+  .scope-feature-dock a,.scope-feature-dock button,
+  .loc-next-main input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  .loc-next-main select,.loc-next-main textarea,
+  .scope-main input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  .scope-main select,.scope-main textarea,
+  .admin-workspace input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+  .admin-workspace select,.admin-workspace textarea
+){
+  border-radius:var(--loc-theme-control-radius);
+  border-style:var(--loc-theme-control-border-style);
+}
+
+/* Theme editor: show the five dimensions and the functional controls together. */
+.admin-theme-scheme-lock{
+  display:inline-flex;align-items:center;min-height:2.5rem;padding:.45rem .7rem;
+  border:1px solid var(--loc-line);border-radius:var(--loc-theme-control-radius);
+  background:var(--loc-panel-2);color:var(--loc-heading);font-weight:700;
+}
+.admin-theme-preview-dimensions{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem;min-width:0;
+}
+.admin-theme-preview-dimensions>article{
+  display:grid;align-content:start;gap:.4rem;min-width:0;padding:.85rem;
+  border:var(--loc-material-edge) var(--loc-material-edge-style) var(--loc-material-edge-color);
+  border-radius:var(--loc-material-radius);background:var(--loc-material-surface);
+  box-shadow:var(--loc-material-shadow);
+}
+.admin-theme-preview-dimensions>article>small{
+  color:var(--loc-muted);font-size:.67rem;font-weight:800;letter-spacing:.09em;
+}
+.admin-theme-preview-dimensions h3{margin:0;color:var(--loc-heading);font-family:var(--loc-font-heading);font-size:1rem;}
+.admin-theme-preview-dimensions p{margin:0;color:var(--loc-text);font-size:.82rem;line-height:var(--loc-line-body);}
+.admin-theme-preview-atmosphere{grid-column:1/-1;min-height:104px;background-image:var(--loc-theme-atmosphere);}
+.admin-theme-preview-material-sample{
+  margin-top:.2rem;padding:.7rem;border:var(--loc-material-edge) var(--loc-material-edge-style) var(--loc-material-edge-color);
+  border-radius:var(--loc-material-radius);background:var(--loc-material-surface);
+  box-shadow:var(--loc-material-shadow);color:var(--loc-heading);font-weight:700;
+}
+.admin-theme-preview-lines hr{
+  width:100%;margin:.35rem 0;border:0;
+  border-top:var(--loc-material-edge) var(--loc-theme-divider-style) var(--loc-material-edge-color);
+}
+.admin-theme-preview-lines .admin-theme-preview-line-accent{border-top-color:var(--loc-accent);}
+.admin-theme-preview-lines .admin-theme-preview-line-soft{border-top-color:var(--loc-line-soft);}
+.admin-theme-preview-typography>strong{
+  color:var(--loc-heading);font-family:var(--loc-font-heading);
+  font-size:1.05rem;font-weight:var(--loc-weight-section-title);
+}
+.admin-theme-preview-typography>small{color:var(--loc-muted);font-family:var(--loc-font-meta);}
+.admin-theme-preview-bubble{align-content:start;}
+.admin-theme-preview-controls{
+  display:flex;align-items:center;flex-wrap:wrap;gap:.55rem;min-width:0;
+  padding:.75rem;border:1px solid var(--loc-line);
+  border-radius:var(--loc-material-radius);background:var(--loc-panel);
+}
+.admin-theme-preview-controls input,.admin-theme-preview-controls select{
+  min-width:9rem;min-height:2.4rem;padding:.4rem .65rem;
+  border:1px solid var(--loc-line);border-radius:var(--loc-theme-control-radius);
+  background:var(--loc-panel-2);color:var(--loc-text);font:inherit;
+}
+.admin-theme-preview-controls .scope-status{margin:0;font-size:.78rem;}
+
+@media(max-width:680px){
+  .admin-theme-preview-dimensions{grid-template-columns:minmax(0,1fr);}
+  .admin-theme-preview-atmosphere{grid-column:auto;}
+  .admin-theme-preview-controls>*{max-width:100%;min-width:0;}
+}
+@media(prefers-reduced-motion:reduce){
+  .loc-card,.loc-panel,.loc-link-card,.scope-card,.scope-inline-card,
+  .scope-feature-card,.scope-stat-section,.scope-ranking-chart,
+  .loc-shared-work-card,.loc-trace-panel,.admin-workspace,
+  .management-workspace-panel{transition:none!important;}
+}
