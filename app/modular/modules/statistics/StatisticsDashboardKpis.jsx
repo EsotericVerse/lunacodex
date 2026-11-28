@@ -5,7 +5,7 @@ import {animate,useReducedMotion} from 'motion/react';
 
 function parseAnimatedNumber(value){
   const raw=String(value??'').trim();
-  if(!/^-?(?:\\d+|\\d{1,3}(?:,\\d{3})+)(?:\\.\\d+)?$/.test(raw))return null;
+  if(!/^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(raw))return null;
   const normalized=raw.replace(/,/g,'');
   const numeric=Number(normalized);
   if(!Number.isFinite(numeric))return null;
