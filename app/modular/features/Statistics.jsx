@@ -507,6 +507,10 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     ?(linkedPeriod?sourceCategoryDistribution:sourceIntentDistribution):placeDistribution;
   const intentOptions=useMemo(()=>availableStatisticIntents({
     rows:chartTrend,series:basicSeries,distribution:intentDistribution,
+    values:totalChart?chartTrend.map(row=>({
+      uid:row.period,label:row.period,period:row.period,
+      start_date:row.start_date,end_date:row.end_date,value:Number(row.total)||0
+    })):[],
     totalKey:totalChart?'total':'',
     mutuallyExclusive:sourceChart,seriesExclusive:sourceChart
   }),[chartTrend,basicSeries,intentDistribution,totalChart,sourceChart]);
