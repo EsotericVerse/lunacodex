@@ -143,7 +143,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     // /local/* feature pages do not. A bookmark must not bypass the menu.
     router.replace('/local/settings/');
   },[scopeMeta?.nativeOnly,router]);
-  const publicCulture=forcedView==='culture'&&scopeId!=='loc'&&scopeId!=='lrunes'
+  const publicCulture=forcedView==='culture'&&scopeId!=='lrunes'
     &&scopeId!=='local'&&forcedSection!=='timeManage';
   const ActiveView=publicCulture?CulturePublic:forcedView==='home'
     ?HOME_VIEWS[scopeId]||GenericScopeHomeView
