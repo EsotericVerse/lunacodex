@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
+import {PUBLISHED_THEME_META} from '../app/modular/published-theme-meta.js';
 import {visualColor,visualKeyColor,territoryColors,TERRITORY_STOPS,territoryLegendColor,territoryColorExpression} from '../app/modular/visual-palette.mjs';
 import {cultureEraVisuals,paintCultureRows,eraVisualGradient} from '../app/modular/modules/culture-timeline/era-visuals.mjs';
 
@@ -51,4 +54,71 @@ test('territory legend and map use the same fixed article-count stops',()=>{
   assert.deepEqual(stops.slice(3).filter((_,i)=>i%2===1),territoryColors('#124987','#986c23'));
   assert.match(territoryLegendColor(0),/var\(--loc-accent\)/);
   assert.match(territoryLegendColor(4),/var\(--loc-gold\)/);
+});
+
+
+const themeSource=relative=>readFile(new URL('../'+relative,import.meta.url),'utf8');
+const canonicalThemeTokens=[
+  '--loc-bg','--loc-panel','--loc-panel-2','--loc-line','--loc-text',
+  '--loc-muted','--loc-heading','--loc-accent','--loc-gold','--loc-danger'
+];
+
+test('LOC keeps the original four Day and four Dark Theme identities',()=>{
+  assert.deepEqual(PUBLISHED_THEME_META.map(([id,,scheme])=>[id,scheme]),[
+    ['theme-1','dark'],['theme-2','light'],['theme-3','light'],['theme-4','dark'],
+    ['theme-5','light'],['theme-6','dark'],['theme-7','light'],['theme-8','dark']
+  ]);
+});
+
+test('Theme Editor cannot change a Theme identity between Day and Dark',async()=>{
+  const themeData=await themeSource('app/loc/preferences/theme-data.js');
+  const editor=await themeSource('app/loc/views/admin-panels/ThemeEditor.jsx');
+  assert.ok(themeData.includes('scheme:base.scheme,'));
+  assert.ok(!themeData.includes("scheme:override?.scheme"));
+  assert.ok(editor.includes("scheme:THEME_SLOTS.find(slot=>slot.id===themeId)?.scheme||'light'"));
+  assert.ok(!editor.includes('function setScheme'));
+});
+
+test('published palettes and JSON snapshots store only the ten canonical color tokens',async()=>{
+  assert.deepEqual(THEME_TOKEN_KEYS,canonicalThemeTokens);
+  for(let id=1;id<=8;id++){
+    const css=await themeSource('public/themes/theme-'+id+'.css');
+    const tokens=[...css.matchAll(/^\s*(--loc-[\w-]+)\s*:/gm)].map(match=>match[1]);
+    assert.deepEqual(tokens,canonicalThemeTokens,'theme-'+id+' should publish only canonical palette colors');
+    const snapshot=JSON.parse(await themeSource('app/modular/themes/theme-'+id+'.json'));
+    const columns=canonicalThemeTokens.map(key=>key.slice(2).replaceAll('-','_'));
+    assert.deepEqual(Object.keys(snapshot).sort(),
+      ['theme_id','theme_name','theme_order','scheme','style_key','identity_color',...columns].sort(),
+      'theme-'+id+' JSON should contain metadata and the ten canonical palette values');
+  }
+});
+
+test('each Theme defines all five visual dimensions for runtime and local preview',async()=>{
+  const css=await themeSource('app/styles/theme-visual-system.css');
+  for(let id=1;id<=8;id++){
+    assert.ok(css.includes(':root[data-theme-id="theme-'+id+'"]'));
+    assert.ok(css.includes('.admin-theme-local-preview[data-theme-id="theme-'+id+'"]'));
+  }
+  for(const token of [
+    '--loc-material-radius','--loc-material-edge-style',
+    '--loc-theme-divider-style','--loc-font-heading',
+    '--loc-theme-atmosphere','--loc-theme-bubble-radius'
+  ])assert.ok(css.includes(token),'missing visual dimension token '+token);
+  assert.ok(css.includes('body.loc-app-shell :is('));
+});
+
+test('Theme Editor keeps Day/Dark fixed and previews the complete visual system',async()=>{
+  const editor=await themeSource('app/loc/views/admin-panels/ThemeEditor.jsx');
+  assert.doesNotMatch(editor,/function setScheme|setScheme\(/);
+  assert.ok(editor.includes("scheme:THEME_SLOTS.find(slot=>slot.id===themeId)?.scheme||'light'"));
+  assert.ok(editor.includes('data-theme-id={themeId}'));
+  assert.ok(editor.includes('admin-theme-preview-dimensions'));
+  assert.ok(editor.includes('明暗系列'));
+});
+
+test('public Theme publication rejects any change to the fixed Day/Dark grouping',async()=>{
+  const publisher=await themeSource('scripts/generate-public-blocks.mjs');
+  assert.ok(publisher.includes("const THEME_SCHEME_BY_ID=Object.freeze({1:'dark',2:'light',3:'light',4:'dark',5:'light',6:'dark',7:'light',8:'dark'});"));
+  assert.ok(publisher.includes('must retain its fixed'));
+  assert.ok(publisher.includes('const publishedTheme='));
 });

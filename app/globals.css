@@ -30,6 +30,7 @@
 @import "./styles/loc-expressive-ui.css";
 @import "./styles/loc-theme-preview.css";
 @import "./styles/management-network.css";
+@import "./styles/theme-visual-system.css";
 
 html[data-theme-bootstrap="scheme-only"] body{
   visibility:hidden;

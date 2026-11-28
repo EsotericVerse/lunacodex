@@ -49,7 +49,7 @@ export function mergeThemeSlot(themeId,override=null){
     ...base,
     id:String(override?.theme_id||base.id||themeId),
     label:String(override?.theme_name||base.label||themeId),
-    scheme:override?.scheme==='dark'?'dark':override?.scheme==='light'?'light':base.scheme,
+    scheme:base.scheme,
     styleKey:String(override?.style_key||base.styleKey||''),
     group:String(override?.theme_name||base.group||''),
     identityColor:String(override?.identity_color||base.identityColor||''),
@@ -106,8 +106,9 @@ function themeRgba(hex,alpha){
 }
 
 /**
- * Generate the linked palette from the chosen identity color.
- * Danger colors remain semantic; text colors stay neutral for readability.
+ * Generate only the ten canonical palette values from the identity color.
+ * Surface opacity, borders, rings, shadows and gradients are derived by the
+ * shared Theme CSS; they are not independently stored per Theme.
  */
 export function deriveThemeTokens(identityColor,scheme='light',currentTokens={}){
   const source=normalizeThemeHex(identityColor);
@@ -119,65 +120,24 @@ export function deriveThemeTokens(identityColor,scheme='light',currentTokens={})
   const tone=(lightness,saturationScale=.16,toneHue=hue)=>
     themeHslHex(toneHue,saturation*saturationScale,lightness);
   const accent=themeHslHex(hue,saturation,dark?.72:.38);
-  const goldHue=(hue+34)%360;
-  const gold=themeHslHex(goldHue,saturation,dark?.76:.42);
+  const gold=themeHslHex((hue+34)%360,saturation,dark?.76:.42);
   const bg=dark?tone(.055,.34):tone(.985,.12);
   const panel=dark?tone(.10,.30):tone(.998,.08);
   const panel2=dark?tone(.145,.32):tone(.955,.14);
   const text=tone(dark?.93:.18,.12);
   const heading=tone(dark?.98:.11,.08);
   const muted=tone(dark?.74:.43,.18);
-  const selected=dark?tone(.24,.34):tone(.91,.22);
-  const primaryStart=dark?tone(.40,.72):tone(.84,.78);
-  const primaryEnd=dark?tone(.28,.68):tone(.73,.76);
-  const neutralShadow=dark?'rgba(0,0,0,.34)':'rgba(15,22,32,.12)';
-  const cardShadow=dark?'rgba(0,0,0,.28)':'rgba(15,22,32,.08)';
   const danger=currentTokens['--loc-danger']||(dark?'#ffb0b8':'#a33f50');
-  const dangerBorder=currentTokens['--loc-danger-border']||(dark?'rgba(255,176,184,.32)':'rgba(163,63,80,.28)');
-
   return {
     '--loc-bg':bg,
     '--loc-panel':panel,
     '--loc-panel-2':panel2,
-    '--loc-panel-strong':themeRgba(panel,.98),
-    '--loc-panel-nav':themeRgba(panel,.97),
-    '--loc-panel-tab':themeRgba(panel2,.98),
-    '--loc-rune-bg':panel,
-    '--loc-rune-selected-bg':selected,
     '--loc-line':themeRgba(accent,dark?.30:.24),
-    '--loc-line-soft':themeRgba(accent,dark?.21:.15),
-    '--loc-line-softer':themeRgba(accent,dark?.16:.11),
-    '--loc-line-faint':themeRgba(accent,dark?.11:.075),
     '--loc-text':text,
     '--loc-muted':muted,
     '--loc-heading':heading,
     '--loc-accent':accent,
     '--loc-gold':gold,
-    '--loc-danger':danger,
-    '--loc-surface':themeRgba(panel,.96),
-    '--loc-surface-soft':themeRgba(accent,dark?.11:.07),
-    '--loc-surface-faint':themeRgba(accent,dark?.07:.04),
-    '--loc-surface-status':themeRgba(accent,dark?.13:.08),
-    '--loc-accent-surface':themeRgba(accent,dark?.18:.10),
-    '--loc-accent-surface-strong':themeRgba(accent,dark?.27:.18),
-    '--loc-accent-border':themeRgba(accent,dark?.56:.42),
-    '--loc-accent-border-soft':themeRgba(accent,dark?.40:.29),
-    '--loc-accent-border-faint':themeRgba(accent,dark?.26:.18),
-    '--loc-gold-surface':themeRgba(gold,dark?.18:.10),
-    '--loc-gold-surface-soft':themeRgba(gold,dark?.12:.065),
-    '--loc-gold-border':themeRgba(gold,dark?.54:.40),
-    '--loc-gold-border-soft':themeRgba(gold,dark?.38:.27),
-    '--loc-gold-border-faint':themeRgba(gold,dark?.24:.16),
-    '--loc-gold-ring':themeRgba(gold,dark?.34:.22),
-    '--loc-gold-ring-soft':themeRgba(gold,dark?.22:.14),
-    '--loc-danger-border':dangerBorder,
-    '--loc-primary-start':primaryStart,
-    '--loc-primary-end':primaryEnd,
-    '--loc-body-glow':dark?tone(.17,.48):tone(.96,.24),
-    '--loc-body-mid':dark?tone(.08,.30):tone(.985,.10),
-    '--loc-hero-start':themeRgba(dark?tone(.12,.34):tone(.99,.08),.99),
-    '--loc-hero-end':themeRgba(dark?tone(.075,.28):tone(.98,.10),.99),
-    '--loc-shadow':'0 20px 55px '+neutralShadow,
-    '--loc-shadow-card':'0 12px 35px '+cardShadow
+    '--loc-danger':danger
   };
 }

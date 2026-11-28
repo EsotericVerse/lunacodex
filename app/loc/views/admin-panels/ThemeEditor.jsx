@@ -62,14 +62,6 @@ export default function ThemeEditor(){
       return {...current,identityColor:normalized,tokens:{...current.tokens,...generated}};
     });
   }
-  function setScheme(value){
-    setDraft(current=>{
-      if(!current)return current;
-      const scheme=value==='dark'?'dark':'light';
-      const generated=deriveThemeTokens(current.identityColor,scheme,current.tokens)||{};
-      return {...current,scheme,tokens:{...current.tokens,...generated}};
-    });
-  }
   function setToken(key,value){
     const normalized=key==='--loc-accent'?normalizeThemeHex(value):'';
     if(normalized){
@@ -97,7 +89,7 @@ export default function ThemeEditor(){
         theme_id:themeNumber(themeId),
         theme_name:String(draft.label||themeId).trim(),
         theme_order:Number(existing?.theme_order)||Number(String(themeId).split('-')[1])||1,
-        scheme:draft.scheme==='dark'?'dark':'light',
+        scheme:THEME_SLOTS.find(slot=>slot.id===themeId)?.scheme||'light',
         style_key:String(draft.styleKey||''),
         identity_color:normalizeThemeHex(draft.identityColor),
         ...Object.fromEntries(THEME_TOKEN_KEYS.map(key=>[
@@ -143,7 +135,7 @@ export default function ThemeEditor(){
     {draft?<>
       <div className="scope-management-fields">
         <label><span><UiText id="uiExtra.adminView.name"/></span><input value={draft.label||''} onChange={e=>setDraft(v=>({...v,label:e.target.value}))}/></label>
-        <label><span><UiText id="uiExtra.adminView.themeScheme"/></span><select className="admin-native-select" value={draft.scheme||'light'} onChange={e=>setScheme(e.target.value)}><option value="light"><UiText id="uiExtra.adminView.lightScheme"/></option><option value="dark"><UiText id="uiExtra.adminView.darkScheme"/></option></select></label>
+        <label><span>明暗系列</span><output className="admin-theme-scheme-lock">{draft.scheme==='dark'?'Dark · 暗深色系':'Day · 淺色系'}</output></label>
         <label><span><UiText id="uiExtra.adminView.themeGroup"/></span><input value={draft.label||''} disabled title="Group 使用主題名稱，不重複儲存"/></label>
         <label><span><UiText id="uiExtra.adminView.themeStyleKey"/></span><input value={draft.styleKey||''} onChange={e=>setDraft(v=>({...v,styleKey:e.target.value}))}/></label>
         <fieldset className="admin-theme-primary-color">
@@ -155,12 +147,12 @@ export default function ThemeEditor(){
           <small><UiText id="uiExtra.adminView.themePrimaryHelp"/></small>
         </fieldset>
       </div>
-      <section className="scope-inline-card admin-theme-local-preview" aria-label="主題色彩預覽"
-        style={{...draft.tokens,background:'var(--loc-bg)',color:'var(--loc-text)',borderColor:'var(--loc-line)'}}>
+      <section className="scope-inline-card admin-theme-local-preview" aria-label="主題完整預覽" data-theme-id={themeId}
+        style={{...draft.tokens,backgroundColor:'var(--loc-bg)',color:'var(--loc-text)',borderColor:'var(--loc-line)'}}>
         <header className="admin-theme-preview-heading">
-          <div><strong style={{color:'var(--loc-heading)'}}>色彩預覽：{draft.label||themeId}</strong>
-            <p style={{color:'var(--loc-muted)'}}>預覽整套主題草稿；這裡的變更尚未套用到網站。</p></div>
-          <span>三層背景 · 三層文字 · 多種框體</span>
+          <div><strong style={{color:'var(--loc-heading)'}}>主題完整預覽：{draft.label||themeId}</strong>
+            <p style={{color:'var(--loc-muted)'}}>預覽五個視覺維度及功能元件；草稿尚未套用到網站。</p></div>
+          <span>外框 · 線條 · 文字 · 氛圍 · 文字泡泡</span>
         </header>
         <div className="admin-theme-preview-grid">
           <article className="admin-theme-preview-layer admin-theme-preview-layer--base"
@@ -199,6 +191,46 @@ export default function ThemeEditor(){
           <span className="admin-theme-preview-frame--accent">主色框線</span>
           <span className="admin-theme-preview-frame--double">雙層框體</span>
           <span className="admin-theme-preview-frame--danger" style={{color:'var(--loc-danger)',borderColor:'var(--loc-danger-border)'}}>警示框體</span>
+        </div>
+        <div className="admin-theme-preview-dimensions">
+          <article className="admin-theme-preview-atmosphere">
+            <small>04 / ATMOSPHERE</small>
+            <h3>整體氛圍</h3>
+            <p>背景光線、色彩空間與環境層次共同構成主題氣質。</p>
+          </article>
+          <article className="admin-theme-preview-material">
+            <small>01 / FRAME MATERIAL</small>
+            <h3>外框材質</h3>
+            <p>功能面板、卡片與內容容器使用同一套材質語言。</p>
+            <div className="admin-theme-preview-material-sample">LOC 功能面板 · 資料容器</div>
+          </article>
+          <article className="admin-theme-preview-lines">
+            <small>02 / LINE EXPRESSION</small>
+            <h3>線條表現</h3>
+            <hr/>
+            <hr className="admin-theme-preview-line-accent"/>
+            <hr className="admin-theme-preview-line-soft"/>
+          </article>
+          <article className="admin-theme-preview-typography">
+            <small>03 / TYPOGRAPHY</small>
+            <h3>文字表現</h3>
+            <strong>知識與時空的連結</strong>
+            <p>正文內容與閱讀層級</p>
+            <small>輔助資訊 · 數字 0123456789</small>
+          </article>
+          <article className="admin-theme-preview-bubble loc-bubble">
+            <small>05 / TEXT BUBBLE</small>
+            <strong>提示訊息</strong>
+            <p>這是同一套主題的文字泡泡與說明呈現。</p>
+          </article>
+        </div>
+        <div className="admin-theme-preview-controls" aria-label="功能元件預覽">
+          <button type="button" className="loc-button">主要操作</button>
+          <input aria-label="功能欄位預覽" value="功能欄位預覽" readOnly/>
+          <select aria-label="選單預覽" defaultValue="selected">
+            <option value="selected">選單與表單</option>
+          </select>
+          <span className="scope-status" role="status">功能狀態與操作回饋</span>
         </div>
       </section>
       <details className="admin-theme-advanced-colors">
