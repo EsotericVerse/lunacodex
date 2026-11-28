@@ -4,7 +4,7 @@ import {cloneElement,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
-import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,semanticStatisticChartTypes,preferredStatisticChartType,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
+import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
 import {themedDataColor} from '../../visual-palette.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
@@ -447,7 +447,8 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   const t=useUiText();
   const [page,setPage]=useState(1);
   const [shown,setShown]=useState('group');
-  const [chartType,setChartType]=useState('bar');
+  const [chartIntent,setChartIntent]=useState('ranking');
+  const [selectedKey,setSelectedKey]=useState('');
   const data=analysis||{};
   const meta=data.keywordMeta||{};
   const className=String(meta.class_name||'').trim();
@@ -540,22 +541,25 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   const distribution=shown==='both'?combinedDistribution:shown==='group'?groupDistribution:itemDistribution;
   // The mixed Class/Item view must retain its hierarchy, which a pie or
   // unrelated slices cannot express. Standalone views retain chart switching.
+  const activeGroupId=shown==='group'&&classRows.some(row=>String(row.group_uid)===selectedKey)
+    ?selectedKey:'';
   const trendRows=shown==='group'?trend:[];
-  const series=shown==='group'?trendSeries:[];
-  const options=semanticStatisticChartTypes({purpose:'keyword',rows:trendRows,series,distribution})
-    .filter(([kind])=>shown==='both'?kind==='bar'
-      :shown==='group'&&trendRows.length>0||['bar','pie','treemap'].includes(kind));
-  const actualChart=preferredStatisticChartType({purpose:'keyword',available:options,requested:chartType});
+  const series=shown==='group'
+    ?trendSeries.filter(field=>!activeGroupId||field.key==='class_'+activeGroupId):[];
+  const intentOptions=shown==='group'&&trendRows.length
+    ?['ranking','trend']:shown==='item'?['ranking']:[];
+  const effectiveIntent=intentOptions.includes(chartIntent)?chartIntent:'ranking';
+  const mixedHierarchy=shown==='both';
+  const chooseKeywordCategory=key=>{
+    const value=String(key||'');
+    setSelectedKey(current=>current===value?'':value);
+    if(shown==='group'&&classRows.some(row=>String(row.group_uid)===value))
+      setChartIntent('trend');
+  };
   if(!data.staticstime)return null;
   if(!data.statisticsEnabled)return <div className="scope-ranking">
     <div><strong>{setLabel}</strong><span>{globalCount.toLocaleString()} / {minDocuments.toLocaleString()}</span></div>
   </div>;
-  const typePicker=(id,selected,onSelect,options)=><label>
-    <span>{t('uiExtra.statisticsView.chart')}</span>
-    <select className="scope-select" aria-label={id} value={selected} onChange={event=>onSelect(event.target.value)}>
-      {options.map(([kind,label])=><option key={kind} value={kind}>{t(label)}</option>)}
-    </select>
-  </label>;
   return <section className="scope-rune66-summary scope-card">
     <h3>關鍵詞分佈統計</h3>
     <div className="scope-stat-controls">
@@ -566,15 +570,31 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
           <option value="both">群組＋項目（同圖）</option>
         </select>
       </label>
-      {options.length?typePicker('關鍵詞統計圖型',actualChart,setChartType,options):null}
+      {intentOptions.length>1?<label><span>分析意圖</span>
+        <select className="scope-select" value={effectiveIntent} onChange={event=>{
+          setChartIntent(event.target.value);
+          if(event.target.value==='ranking')setSelectedKey('');
+        }}>
+          {intentOptions.map(value=><option key={value} value={value}>
+            {value==='trend'?'看趨勢':'看排名'}
+          </option>)}
+        </select>
+      </label>:null}
+      {effectiveIntent==='trend'?<button type="button" className="loc-button loc-button--small"
+        onClick={()=>{setChartIntent('ranking');setSelectedKey('');}}>返回排名</button>:null}
     </div>
     {shown==='both'&&groupCatalog.isPending?<p className="scope-status" role="status">正在載入關鍵詞項目的 Class 歸屬…</p>:null}
     {shown==='both'&&groupCatalog.error?<p className="scope-status scope-error" role="alert">群組對應讀取失敗：{String(groupCatalog.error?.message||groupCatalog.error)}</p>:null}
     {shown==='both'&&!groupCatalog.isSuccess?null:
-      distribution.length?<StatisticsMultiChart type={actualChart}
-        rows={trendRows} series={series} distribution={distribution}
-        barLayout="vertical" height={Math.max(340,Math.min(24,distribution.length)*36+85)}/>:
+      distribution.length?<StatisticsMultiChart
+        intent={mixedHierarchy?'legacy':effectiveIntent}
+        type="bar" rows={trendRows} series={series} distribution={distribution}
+        barLayout="vertical" height={Math.max(340,Math.min(24,distribution.length)*36+85)}
+        activeCategoryKey={selectedKey} onCategoryClick={chooseKeywordCategory}/>:
         <p className="scope-status">{t('uiExtra.statisticsView.noVisual')}</p>}
+    {selectedKey?<p className="scope-status" role="status">
+      已選擇：{distribution.find(item=>String(item.key)===selectedKey)?.name||selectedKey}
+    </p>:null}
     {shown==='both'?<p className="scope-status" role="note">
       依 Class 分組，各組內依關鍵詞命中排行；每頁最多 10 個項目。父群組與子項目皆以涉及作品篇數呈現，不可相加視為不同作品總數。
     </p>:null}
@@ -588,7 +608,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
       <StatisticsDetails>{()=><>
         <div className="scope-ranking"><div><strong>{setLabel}</strong><span>{t('uiExtra.statisticsView.classifiedCount',{total:Number(data.documentCount||0).toLocaleString(),classified:classifiedTotal.toLocaleString(),unclassified:Number(data.unclassifiedCount||0).toLocaleString()})}</span></div></div>
         <div className="scope-ranking">
-          {classRows.map(row=><div key={row.group}><strong>{groupDisplay(row.group)}</strong>
+          {classRows.map(row=><div key={row.group_uid} data-selected={selectedKey===String(row.group_uid)?'true':undefined}><strong>{groupDisplay(row.group)}</strong>
             <span>{t('uiExtra.statisticsView.groupWorks',{count:Number(row.document_count||0).toLocaleString(),ratio:(classifiedTotal>0?100*Number(row.document_count||0)/classifiedTotal:0).toFixed(1)})}</span>
           </div>)}
         </div>
