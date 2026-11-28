@@ -789,10 +789,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       if(request===detailEpoch.current&&!controller.signal.aborted)
         setFullTextError(String(exception?.message||exception||UI_COPY.search.fullTextFailed));
     }finally{
-      if(request===detailEpoch.current){
+      if(request===detailEpoch.current&&abortRef.current===controller){
         setFullTextLoading(false);
         setSearchInFlight(false);
-        if(abortRef.current===controller)abortRef.current=null;
+        abortRef.current=null;
       }
     }
   }
