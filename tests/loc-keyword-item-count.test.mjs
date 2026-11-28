@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createNewKeywordDiscovery} from '../app/loc/keywords/discovery.mjs';
+import {keywordScanText} from '../app/loc/keywords/content-filter.mjs';
+import {keywordDiscoveryText} from '../app/loc/keywords/discovery-filter.mjs';
 import {planKeywordTotalWrites} from '../app/loc/keywords/sql-service.mjs';
 import {createItemCountAccumulator,analyzeItemKeywordCounts} from '../app/loc/keywords/item-count-analysis.mjs';
 import {compileKeywordLiteralMatcher} from '../app/loc/keywords/literal-matcher.mjs';
@@ -166,19 +168,33 @@ test('Sparse Pattern matching preserves overlap counts and Unicode fallback',()=
   assert.deepEqual(big.countMatches('稀有詞042稀有詞042'),[['稀有詞042',2]]);
 });
 
-test('discovery retains single-use terms and question punctuation without weighting',()=>{
+test('keyword discovery keeps only 2–4 character Han words and filters noise',()=>{
   const discovery=createNewKeywordDiscovery([]);
-  discovery.consume([{uid:'GALA0001',title:'月光',content:'我很好？'},
-    {uid:'GALA0002',title:'標題',content:'我很好！'}]);
+  discovery.consume([
+    {uid:'GALA0001',title:'月光',content:'我很好？作者來自於台灣！'},
+    {uid:'GALA0002',title:'標題',content:'月光與星火；等等。'}
+  ]);
   const results=discovery.finish();
   const words=new Set(results.candidates.map(row=>row.word));
   assert.equal(results.read,2);
-  assert.ok(words.has('?'));
-  assert.ok(words.has('!'));
   assert.ok(words.has('月光'));
-  assert.ok(words.has('？'.normalize('NFKC')));
-  assert.equal(results.candidates.some(row=>row.documents===1),true);
+  assert.ok(words.has('很好'));
+  assert.ok(words.has('台灣'));
+  assert.ok(words.has('星火'));
+  for(const excluded of ['我','我很','作者','來自於','等等','?','!','？','！','；'])
+    assert.ok(!words.has(excluded),'unexpected discovery candidate: '+excluded);
+  assert.ok(results.candidates.every(row=>{
+    const length=Array.from(row.word).length;
+    return length>=2&&length<=4&&/^\p{Script=Han}+$/u.test(row.word);
+  }));
   assert.ok(results.candidates.every(row=>!Object.hasOwn(row,'score')));
+});
+
+test('discovery punctuation cleanup does not change the shared rule-parser text projection',()=>{
+  const source='作者：月光？NOR火焰 AND星火 TO月亮 NAME';
+  const row={title:'',content:source};
+  assert.equal(keywordScanText(row),source);
+  assert.equal(keywordDiscoveryText(row),'作者 月光 NOR火焰 AND星火 TO月亮 NAME');
 });
 
 test('keyword aggregate writes normalize repeated physical Item UIDs',()=>{
