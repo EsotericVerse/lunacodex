@@ -543,3 +543,64 @@
     transform:none!important;
   }
 }
+
+
+/* Simple React selectors replace the duplicated vis-network Lucus browsers.
+   Each level remains visible so Era → Period → Date and Trace → Path → Point
+   can be followed without a second graph or a hidden fallback list. */
+.loc-lucus-select-workspace{
+  display:grid;
+  gap:clamp(.65rem,1.2vw,.95rem);
+  min-width:0;
+  width:100%;
+}
+.loc-lucus-select-workspace__search{
+  display:grid;
+  grid-template-columns:minmax(11rem,auto) minmax(0,1fr);
+  align-items:center;
+  gap:.65rem;
+  min-width:0;
+  padding:.58rem .75rem;
+  border:1px solid var(--loc-line);
+  border-inline-start:3px solid var(--loc-accent);
+  border-radius:var(--loc-ui-radius-md,16px);
+  background:linear-gradient(105deg,var(--loc-panel-2),var(--loc-panel));
+  color:var(--loc-heading);
+  font-size:.86rem;
+  font-weight:700;
+}
+.loc-lucus-select-workspace__search input{width:100%;min-width:0;}
+.loc-lucus-select-workspace__levels{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  align-items:start;
+  gap:clamp(.55rem,1vw,.85rem);
+  min-width:0;
+}
+.loc-lucus-select-workspace__field{
+  display:grid;
+  align-content:start;
+  gap:.6rem;
+  min-width:0;
+  padding:clamp(.6rem,1.1vw,.9rem);
+  border:1px solid var(--loc-line);
+  border-block-start:3px solid var(--loc-accent);
+  border-radius:var(--loc-ui-radius-lg,18px);
+  background:linear-gradient(150deg,var(--loc-panel-2),var(--loc-panel));
+  box-shadow:var(--loc-shadow-card);
+}
+.loc-lucus-select-workspace__field:nth-child(2){border-block-start-color:var(--loc-gold);}
+.loc-lucus-select-workspace__field header{
+  display:flex;align-items:baseline;justify-content:space-between;gap:.45rem;
+  min-width:0;padding-bottom:.4rem;border-bottom:1px solid var(--loc-line);
+}
+.loc-lucus-select-workspace__field h3{margin:0;color:var(--loc-heading);font-size:1rem;font-weight:760;}
+.loc-lucus-select-workspace__field header>span{color:var(--loc-muted);font-size:.76rem;font-variant-numeric:tabular-nums;}
+.loc-lucus-select-workspace__field label{display:grid;gap:.3rem;min-width:0;color:var(--loc-muted);font-size:.82rem;}
+.loc-lucus-select-workspace__field .scope-select{width:100%;min-width:0;}
+.loc-lucus-select-workspace__field>.loc-button{width:100%;}
+.loc-lucus-select-workspace__detail{display:grid;gap:.75rem;min-width:0;}
+@media(max-width:760px){
+  .loc-lucus-select-workspace__levels{grid-template-columns:minmax(0,1fr);}
+  .loc-lucus-select-workspace__search{grid-template-columns:minmax(0,1fr);}
+}
