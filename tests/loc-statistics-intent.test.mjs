@@ -166,9 +166,27 @@ test('funnel calculates conversion between adjacent stages and from the first st
   ]);
   assert.deepEqual(stages.map(row=>row.conversionRate),[100,80,50]);
   assert.deepEqual(stages.map(row=>row.overallRate),[100,80,40]);
+  assert.deepEqual(stages.map(row=>row.dropOff),[0,20,40]);
   assert.equal(resolveStatisticIntent({
     intent:'funnel',stages
   }).type,'funnel');
+});
+
+test('all nine intents become available only when their required data is supplied',()=>{
+  const records=[
+    {uid:'r1',x:1,y:4},{uid:'r2',x:2,y:5},{uid:'r3',x:3,y:6}
+  ];
+  const available=availableStatisticIntents({
+    rows:rows(8),series,distribution:distribution(4),
+    mutuallyExclusive:true,seriesExclusive:true,
+    records,recordFields:[{key:'x',label:'X'},{key:'y',label:'Y'}],
+    values:[1,2,3,4],attainmentValue:80,targetValue:100,
+    stages:[{name:'A',value:100},{name:'B',value:50}]
+  });
+  assert.deepEqual(available,[
+    'compare','trend','composition','compositionTrend',
+    'relationship','distribution','ranking','attainment','funnel'
+  ]);
 });
 
 test('unsupported intents are not offered without their required source data',()=>{
