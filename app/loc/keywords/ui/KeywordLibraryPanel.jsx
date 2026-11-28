@@ -8,7 +8,6 @@ import {dbAuthRelation,dbAuthClient,resetKeywordClassification,updateRows,transa
 import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
 import {allocateLucusUid} from '../../model/uid.js';
 import ManagementSectionNav,{ManagementSectionTransition} from '../../../modular/ManagementSectionNav';
-import ManagementSectionNav,{ManagementSectionTransition} from '../../../modular/ManagementSectionNav';
 import ActivityMotion from '../../../modular/ActivityMotion';
 import FlowProgress from '../../../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from '../class-state.mjs';
