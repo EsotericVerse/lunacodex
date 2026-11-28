@@ -36,15 +36,18 @@ export function AnimatedNumber({value}){
       return;
     }
     const from=previous.current;
-    previous.current=numeric;
     const format=current=>formatAnimatedNumber(current,fractionDigits);
     if(reduce||from===numeric){
+      previous.current=numeric;
       node.textContent=format(numeric);
       return;
     }
     const controls=animate(from??0,numeric,{
       duration:.45,ease:'easeOut',
-      onUpdate:current=>{node.textContent=format(current);}
+      onUpdate:current=>{
+        previous.current=current;
+        node.textContent=format(current);
+      }
     });
     return()=>controls.stop();
   },[numeric,fractionDigits,reduce,value]);
