@@ -69,7 +69,7 @@ const EMPTY_CULTURE_GROUPS=Object.freeze([]);
 function emptyRiverLabel(){return '';}
 function classificationRiverLabel(item){
   if(item?.entry_type==='virtual_anchor')return item.display_label||'◇';
-  if(item?.entry_type==='anchor')return item.display_label||'●';
+  if(item?.entry_type==='lucus')return item.display_label||'●';
   return '';
 }
 function labelOf(item,index,periodName=UI_COPY.format.period(index+1)){
