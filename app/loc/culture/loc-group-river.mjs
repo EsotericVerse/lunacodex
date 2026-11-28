@@ -4,7 +4,8 @@ import {
 
 const list=value=>Array.isArray(value)?value:[];
 const text=value=>String(value??'').trim();
-const day=value=>text(value).slice(0,10);
+const day=value=>value instanceof Date&&!Number.isNaN(value.getTime())
+  ?value.toISOString().slice(0,10):text(value).slice(0,10);
 function attributes(row){
   if(typeof row?.attr==='string'){
     try{return JSON.parse(row.attr)||{};}catch{return {};}
