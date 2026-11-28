@@ -492,28 +492,6 @@
 .scope-culture-record-browser-row>.loc-button{min-height:2.4rem}
 @media(max-width:540px){.scope-culture-record-browser-select{flex-basis:100%}}
 
-/* Expand parent Era first, then Period, before any Date records are shown. */
-.loc-time-lucus-tree{min-width:0;border:1px solid var(--loc-line);border-radius:var(--loc-radius);padding:.55rem;max-height:min(55vh,32rem);overflow:auto}
-.loc-time-tree-search{display:grid;gap:.28rem;font-size:.87rem;color:var(--loc-muted);margin-bottom:.6rem}
-.loc-time-tree-search input{width:100%;min-width:0}
-.loc-time-tree-roots,.loc-time-tree-children,.loc-time-tree-unclassified ul{list-style:none;margin:0;padding:0;min-width:0}
-.loc-time-tree-roots{display:grid;gap:.25rem}
-.loc-time-tree-era,.loc-time-tree-unclassified{min-width:0;border-bottom:1px solid var(--loc-line)}
-.loc-time-tree-heading{display:flex;align-items:center;gap:.35rem;min-width:0;padding:.15rem 0}
-.loc-time-tree-toggle,.loc-time-tree-date-choice{display:flex;gap:.5rem;align-items:center;text-align:start;border:0;background:transparent;color:var(--loc-text);padding:.4rem .5rem;min-width:0;flex:1;cursor:pointer;border-radius:.35rem;overflow-wrap:anywhere}
-.loc-time-tree-era>.loc-time-tree-heading>.loc-time-tree-toggle{font-weight:650}
-.loc-time-tree-toggle:hover,.loc-time-tree-date-choice:hover{background:var(--loc-ui-accent-soft)}
-.loc-time-tree-toggle:focus-visible,.loc-time-tree-edit:focus-visible,.loc-time-tree-date-choice:focus-visible{outline:2px solid var(--loc-accent-border);outline-offset:2px}
-.loc-time-tree-arrow{display:inline-flex;align-items:center;justify-content:center;flex:0 0 1.35rem;width:1.35rem;height:1.35rem;border:1px solid var(--loc-line);border-radius:.3rem;font-size:1rem}
-.loc-time-tree-edit{border:1px solid var(--loc-line);border-radius:.35rem;color:var(--loc-text);background:transparent;padding:.34rem .55rem;cursor:pointer;flex-shrink:0}
-.loc-time-tree-edit[aria-current="true"],.loc-time-tree-date-choice[aria-current="true"]{background:var(--loc-ui-accent-soft);font-weight:650}
-.loc-time-tree-children{margin-inline-start:1rem;padding-inline-start:.65rem;border-inline-start:1px solid var(--loc-line)}
-.loc-time-tree-period{min-width:0}
-.loc-time-tree-date-choice{font-size:.9rem;padding-inline-start:1.2rem;flex-wrap:wrap}
-.loc-time-tree-date-choice time{white-space:nowrap;color:var(--loc-muted);font-variant-numeric:tabular-nums}
-.loc-time-tree-subheading{padding:.4rem .5rem;font-size:.86rem;font-weight:650;color:var(--loc-muted)}
-@media(max-width:540px){.loc-time-lucus-tree{padding:.35rem}.loc-time-tree-children{margin-inline-start:.6rem;padding-inline-start:.4rem}.loc-time-tree-date-choice{padding-inline-start:.6rem}}
-
 .scope-culture-time-input-area{display:grid;gap:.5rem;margin-top:.85rem;min-width:0}
 .scope-culture-record-kind{display:flex;flex-wrap:wrap;gap:.45rem}
 .scope-culture-record-kind .loc-button{min-height:2.5rem;padding:.4rem .85rem}
