@@ -130,7 +130,7 @@ test('management route table preserves the Group and Scope destinations',()=>{
 });
 
 test('Group members route remains the existing Group people and works management page',async()=>{
-  const page=await source('app/manage/page.jsx');
+  const page=await readFile(new URL('../app/manage/page.jsx',import.meta.url),'utf8');
   assert.match(page,/title:'群組管理｜LOC 月典'/);
   assert.match(page,/description:'管理 LOC 群組、人員與作品分類。'/);
   assert.match(page,/path:'\/manage\/'/);
