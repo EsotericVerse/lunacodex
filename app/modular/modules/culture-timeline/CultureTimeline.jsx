@@ -850,7 +850,7 @@ export default function CultureTimeline({
     onSelectRef.current?.(row);
   }
 
-  if(!rows.length&&!editable&&!extraGroups.length)return <div className='scope-period-timeline-wrap scope-period-timeline-empty'><div className='scope-period-timeline scope-period-timeline-empty-line' role='region' aria-label={t('時間長河')}/><p><FieldText text={mode==='overview'?'尚未設定時期，目前以「所有」總覽顯示。':'目前時期尚無可顯示的時間資料。'}/></p></div>;
+  if(!rows.length&&!editable&&!extraGroups.length&&!onEraNavigate)return <div className='scope-period-timeline-wrap scope-period-timeline-empty'><div className='scope-period-timeline scope-period-timeline-empty-line' role='region' aria-label={t('時間長河')}/><p><FieldText text={mode==='overview'?'尚未設定時期，目前以「所有」總覽顯示。':'目前時期尚無可顯示的時間資料。'}/></p></div>;
 
   const showTraceRecovery=mode==='trace'&&extraGroups.length>0&&(chartError||!tracePainted);
   return <div className='scope-period-timeline-wrap'>
