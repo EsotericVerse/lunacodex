@@ -2,7 +2,7 @@
 import UiText,{useUiText} from '../../../i18n/UiText';
 import {useUiSection} from '../../../i18n/ui-locale';
 
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {useAsyncResource,useResourceCache} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
 import {availableMemberMeasures,calculateMemberCross} from '../../../loc/statistics/member-intersection-model.mjs';
@@ -21,6 +21,8 @@ export default function LocMemberIntersection({
   const t=useUiText();
   const resourceCache=useResourceCache();
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
+  const [chartIntent,setChartIntent]=useState('trend');
+  const [selectedSeriesKey,setSelectedSeriesKey]=useState('');
   // The time range identifies the returned dataset. Choices live in the LOC
   // parent, so remounting one range cannot silently reset selected comparisons.
   const rangeKey=startDate+'|'+endDate;
@@ -66,8 +68,22 @@ export default function LocMemberIntersection({
   const calculated=useMemo(()=>calculateMemberCross(adjusted,datasets,{
     from:startDate,to:endDate,unit
   }),[JSON.stringify(adjusted),datasets,startDate,endDate,unit]);
-  const distribution=calculated.totals.map(item=>({name:item.name,value:item.value}));
+  const distribution=calculated.totals.map((item,index)=>({
+    key:calculated.series[index]?.key||String(index),name:item.name,value:item.value
+  }));
+  const seriesKey=calculated.series.map(field=>field.key+':'+field.label).join('|');
+  useEffect(()=>{
+    setSelectedPeriodKey('');setSelectedSeriesKey('');setChartIntent('trend');
+  },[rangeKey,seriesKey]);
+  const visibleSeries=selectedSeriesKey
+    ?calculated.series.filter(field=>field.key===selectedSeriesKey):calculated.series;
+  const effectiveChartIntent=chartIntent==='compare'&&distribution.length?'compare':'trend';
   const selectedPoint=calculated.rows.find(row=>row.period===selectedPeriodKey)||null;
+  const selectMemberComparison=key=>{
+    setSelectedSeriesKey(String(key||''));
+    setChartIntent('trend');
+    setSelectedPeriodKey('');
+  };
   const update=(i,part)=>onChoicesChange?.(old=>{
     const next=Array.from({length:laneCount},(_,index)=>({...lanes[index]}));
     next[i]={...next[i],...part};
@@ -104,11 +120,31 @@ export default function LocMemberIntersection({
     {fetched.error?<p className="scope-status scope-error">{String(fetched.error?.message||t('uiExtra.statisticsView.memberCrossLoadError'))}</p>:null}
     {fetched.isPending||fetched.isFetching?<p className="scope-status" role="status"><UiText id="uiExtra.statisticsView.memberCrossUpdate"/></p>:null}
     {!fetched.isPending&&!fetched.isFetching&&hasCurrentData?<>
+      <div className="scope-stat-controls">
+        <label><span>分析意圖</span>
+          <select className="scope-select" value={effectiveChartIntent} onChange={event=>{
+            setChartIntent(event.target.value);setSelectedPeriodKey('');
+            if(event.target.value==='compare')setSelectedSeriesKey('');
+          }}>
+            <option value="trend">看趨勢</option>
+            <option value="compare">比大小</option>
+          </select>
+        </label>
+        {selectedSeriesKey?<button type="button" className="loc-button loc-button--small"
+          onClick={()=>{setSelectedSeriesKey('');setChartIntent('compare');setSelectedPeriodKey('');}}>
+          返回比較
+        </button>:null}
+      </div>
       <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange} range={zoomRange} idPrefix="loc-member-stat">
-        <StatisticsMultiChart intent="trend" rows={calculated.rows} series={calculated.series}
-          distribution={distribution} height={420} foldBlank
+        <StatisticsMultiChart intent={effectiveChartIntent}
+          rows={effectiveChartIntent==='compare'?[]:calculated.rows}
+          series={effectiveChartIntent==='compare'?[]:visibleSeries}
+          distribution={distribution} height={420} foldBlank={effectiveChartIntent==='trend'}
+          activeCategoryKey={selectedSeriesKey}
+          onCategoryClick={effectiveChartIntent==='compare'?selectMemberComparison:null}
           selectedPeriodKey={selectedPeriodKey}
-          onPeriodClick={row=>setSelectedPeriodKey(String(row?.period||''))}/>
+          onPeriodClick={effectiveChartIntent==='trend'
+            ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>
       </StatisticsChartFrame>
       {selectedPoint?<section className="scope-self-intersection-selected" aria-live="polite">
         <header className="statistics-dashboard__panel-heading">
@@ -117,7 +153,7 @@ export default function LocMemberIntersection({
             onClick={()=>setSelectedPeriodKey('')}>清除選取</button>
         </header>
         <div className="scope-ranking">
-          {calculated.series.map(field=><div key={field.key}>
+          {visibleSeries.map(field=><div key={field.key}>
             <strong>{field.label}</strong>
             <span>{Number(selectedPoint[field.key]||0).toLocaleString()}</span>
           </div>)}
