@@ -73,8 +73,10 @@ export function foldEmptyTimeBuckets(rows=[],series=[],units={}){
 export default function StatisticsMultiChart({
   type='line',intent='legacy',rows=[],series=[],distribution=[],totalKey='',height=380,foldBlank=false,
   barLayout:legacyBarLayout='horizontal',records=[],recordFields=[],values=[],
-  targetValue=null,attainmentValue=null,attainmentLabel='達成率',funnelStages=[],
-  mutuallyExclusive=false,seriesExclusive=false,
+  targetValue=null,attainmentValue=null,attainmentLabel='達成率',
+  attainmentTargetLabel='目標',recordLabel='單筆紀錄',
+  relationshipNote='每個點代表一筆紀錄；散布圖呈現數值關聯，不代表因果關係。',
+  funnelStages=[],mutuallyExclusive=false,seriesExclusive=false,
   onCategoryClick=null,onSeriesClick=null,onPeriodClick=null,onDatumClick=null,
   selectedPeriodKey='',activeCategoryKey='',rankingOffset=0
 }){
@@ -243,19 +245,21 @@ export default function StatisticsMultiChart({
     }
     seriesClick(field.key);
   };
-  const selectedDatumTitle=selectedDatum?.kind==='record'?'單筆紀錄':
+  const selectedDatumTitle=selectedDatum?.kind==='record'?recordLabel:
     selectedDatum?.kind==='bin'?'分布區間明細':
     selectedDatum?.kind==='attainment'?'達成率明細':
     selectedDatum?.kind==='stage'?'流程階段明細':'其他分類明細';
   const selectedDatumRows=selectedDatum?.kind==='record'?[
-    ['紀錄',selectedDatum.title||selectedDatum.recordId],
+    ['項目',selectedDatum.title||selectedDatum.recordId],
+    ...(selectedDatum.family?[['Lucus',selectedDatum.family]]:[]),
+    ...(selectedDatum.type?[['層級',selectedDatum.type]]:[]),
     ['日期',selectedDatum.date||'—'],['來源',selectedDatum.source||'—'],
     ['地點',selectedDatum.place||'—']
   ]:selectedDatum?.kind==='bin'?[
     ['區間',selectedDatum.name],['下界',selectedDatum.from],
     ['上界',selectedDatum.to],['筆數',selectedDatum.count]
   ]:selectedDatum?.kind==='attainment'?[
-    ['實際值',selectedDatum.actual],['目標值',selectedDatum.target],
+    ['實際值',selectedDatum.actual],[attainmentTargetLabel,selectedDatum.target],
     ['達成率',Number(selectedDatum.ratio||0).toFixed(1)+'%'],
     ['差額',Number(selectedDatum.actual||0)-Number(selectedDatum.target||0)]
   ]:selectedDatum?.kind==='stage'?[
@@ -365,7 +369,7 @@ export default function StatisticsMultiChart({
     <YAxis dataKey="name" type="category" width={92} tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
     <Tooltip content={<ThemedChartTooltip/>}/>
     <ReferenceLine x={intentConfig.target} stroke={color(3)} strokeWidth={2.5}
-      strokeDasharray="5 3" label={{value:'目標',position:'insideTopRight',fill:TEXT,fontSize:11}}/>
+      strokeDasharray="5 3" label={{value:attainmentTargetLabel,position:'insideTopRight',fill:TEXT,fontSize:11}}/>
     <Bar {...animation} dataKey="value" name="實際值" fill={color(0)} maxBarSize={34}
       onClick={()=>emitDatum({intent,kind:'attainment',actual:intentConfig.actual,
         target:intentConfig.target,ratio:intentConfig.ratio})}/>
@@ -526,7 +530,7 @@ export default function StatisticsMultiChart({
       </div>:null}
     </section>:null}
     {intent==='relationship'?<p className="scope-status" role="note">
-      每個點代表一筆紀錄；散布圖呈現數值關聯，不代表因果關係。
+      {relationshipNote}
     </p>:null}
     {foldBlank&&gaps.length?<p className="scope-status" role="note">
       {t('uiExtra.chartLabels.gapLabel')}{gaps.map(g=>g.start+'～'+g.end+'（'+(g.days||g.buckets)+' '+(g.days?units.dayUnit:units.periodUnit)+'）').join(t('uiExtra.chartLabels.gapSeparator'))}
