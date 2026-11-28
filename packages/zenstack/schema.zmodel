@@ -299,10 +299,6 @@ enum LocLucusType {
     point
     path
     trace
-    image
-    video
-    rune
-    suno
     pattern
     item
     group
