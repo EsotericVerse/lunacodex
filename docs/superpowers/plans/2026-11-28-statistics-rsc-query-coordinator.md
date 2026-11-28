@@ -32,10 +32,10 @@
 - Modify: `app/modular/routing/management-route-table.mjs`
 - Test: `tests/loc-management-hero-contract.test.mjs`
 
-- [ ] Update the expected Scope and User key order in the contract test.
-- [ ] Run the focused test and confirm it fails against the current route-table property order.
-- [ ] Reorder only the existing route-table keys; keep all route values unchanged.
-- [ ] Run the focused test.
+- [x] Update the expected Scope and User key order in the contract test.
+- [x] Run the focused test and confirm it fails against the current route-table property order.
+- [x] Reorder only the existing route-table keys; keep all route values unchanged.
+- [x] Run the focused test.
 
 ### Task 2: Add the server page bootstrap
 
@@ -46,10 +46,10 @@
 
 **Interface:** `loadStatisticsPageInitialData(scopeId, {now, query})` returns `{scopeId,startDate,endDate,data}` or `null` for an invalid/non-public Scope. `query` defaults to the existing `queryStaticsContent` Server Action and is injectable for deterministic unit tests.
 
-- [ ] Write tests for LOC `kind=loc`, individual Scope `kind=daily_total`, Taiwan date boundary, and invalid Scope rejection.
-- [ ] Run the tests and confirm the expected failure.
-- [ ] Implement the minimal loader using `calendarYearWindow` and the existing Server Action.
-- [ ] Add the test to `test:core` and run it.
+- [x] Write tests for LOC `kind=loc`, individual Scope `kind=daily_total`, Taiwan date boundary, and invalid Scope rejection.
+- [x] Run the tests and confirm the expected failure.
+- [x] Implement the minimal loader using `calendarYearWindow` and the existing Server Action.
+- [x] Add the test to `test:core` and run it.
 
 ### Task 3: Prefetch from App Router pages
 
@@ -59,9 +59,9 @@
 - Modify: `app/lrunes/statics/page.jsx`
 - Modify: `app/scope-shell/statics/page.jsx`
 
-- [ ] Convert these page functions to async server components and load the correct published Scope's initial Statistics data.
-- [ ] For `scope-shell`, use only the explicit `scopeid` search parameter; leave the bootstrap absent when it is not supplied.
-- [ ] Pass the snapshot as `initialData` to `LocApp`.
+- [x] Convert these page functions to async server components and load the correct published Scope's initial Statistics data.
+- [x] For `scope-shell`, use only the explicit `scopeid` search parameter; leave the bootstrap absent when it is not supplied.
+- [x] Pass the snapshot as `initialData` to `LocApp`.
 
 ### Task 4: Hand off and adopt the snapshot
 
@@ -70,15 +70,17 @@
 - Modify: `app/modular/features/Statistics.jsx`
 - Modify: `app/modular/modules/statistics/ScopeGroupStatistics.jsx`
 
-- [ ] Pass `initialData` through the existing feature route to Statistics.
-- [ ] Adopt LOC aggregate data in `ScopeGroupStatistics` only when Scope and observed date range match.
-- [ ] Adopt individual Scope `daily_total` data in `ScopeStatisticsResults` only when Scope and observed date range match.
-- [ ] Keep later period, category, keyword, zoom, and filter reads on their existing feature-owned Server Actions.
-- [ ] Ensure the matched initial snapshot does not trigger a duplicate browser read.
+- [x] Pass `initialData` through the existing feature route to Statistics.
+- [x] Adopt LOC aggregate data in `ScopeGroupStatistics` only when Scope and observed date range match.
+- [x] Adopt individual Scope `daily_total` data in `ScopeStatisticsResults` only when Scope and observed date range match.
+- [x] Keep later period, category, keyword, zoom, and filter reads on their existing feature-owned Server Actions.
+- [x] Ensure the matched initial snapshot does not trigger a duplicate browser read.
 
 ### Task 5: Verify integration
 
-- [ ] Run the focused tests and `pnpm test:core`.
-- [ ] Run syntax checks and the existing production/Worker build path when available.
-- [ ] Review the complete diff for authorization, stale-data, and hydration regressions.
-- [ ] Report any verification that cannot be run in the current environment as unverified; do not infer success.
+- [x] Run the focused tests and `pnpm test:core`.
+- [x] Run syntax checks and the existing production/Worker build path when available.
+- [x] Review the complete diff for authorization, stale-data, and hydration regressions.
+- [x] Report any verification that cannot be run in the current environment as unverified; do not infer success.
+
+**Verified on final Cloudflare Preview head `585377e`:** `pnpm run test:core` 159/159 passed; syntax check 492 files / 0 errors; Next.js Production Build and OpenNext Worker Build succeeded; Cloudflare Preview deployment succeeded. App Router reports all four Statistics pages as request-dynamic (`ƒ`). The Preview was deployed, but interactive browser navigation could not be performed in this session.
