@@ -1,50 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {buildTraceTerritoryRouteModel} from '../app/modular/features/trace/trace-territory-overlay.mjs';
+import {traceRouteHierarchy} from '../app/modular/features/trace/trace-route-hierarchy.mjs';
 import {LOC_MOTION} from '../app/modular/motion-tokens.mjs';
 
 const root=new URL('../',import.meta.url);
 const source=async path=>readFile(new URL(path,root),'utf8');
-const key=(scope,uid)=>scope+':'+uid;
-
 const trace={
   uid:'TRACE001',title:'北方痕跡',source_scope:'scope-a',trace_type:'trace',
-  lucus_list:['POINT001'],route_list:{routes:['PATH0001']}
+  route_list:{routes:['PATH0001']}
 };
 const pathRow={
   uid:'PATH0001',title:'第一路徑',source_scope:'scope-a',trace_type:'path',
-  lucus_list:['POINT002'],route_list:{routes:[]}
+  route_list:{routes:[]}
 };
 const otherScopePath={
   uid:'PATH0002',title:'其他 Scope 路徑',source_scope:'scope-b',trace_type:'path',
-  lucus_list:['POINT003'],route_list:{routes:[]}
+  route_list:{routes:[]}
 };
 
-test('LOC terrain defaults to a Trace parent and includes only its exact Path children',()=>{
-  const model=buildTraceTerritoryRouteModel([trace,pathRow,otherScopePath]);
-  assert.equal(model.selected.uid,trace.uid);
-  assert.deepEqual(model.maps.map(row=>row.uid),[trace.uid,pathRow.uid]);
-  assert.deepEqual(model.memberUids,['POINT001','POINT002']);
-  assert.deepEqual(model.routeOptions.map(row=>row.uid),[pathRow.uid]);
+test('Trace hierarchy follows persisted Path UIDs and keeps Scope ownership exact',()=>{
+  const hierarchy=traceRouteHierarchy([trace,pathRow,otherScopePath]);
+  assert.equal(hierarchy.groups.length,1);
+  assert.equal(hierarchy.groups[0].trace.uid,trace.uid);
+  assert.deepEqual(hierarchy.groups[0].paths.map(row=>row.uid),[pathRow.uid]);
+  assert.deepEqual(hierarchy.orphans.map(row=>row.uid),[otherScopePath.uid]);
 });
 
-test('selecting a Path narrows the terrain overlay without changing its Trace parent',()=>{
-  const model=buildTraceTerritoryRouteModel(
-    [trace,pathRow,otherScopePath],key('scope-a',trace.uid),key('scope-a',pathRow.uid)
-  );
-  assert.equal(model.activeTraceKey,key('scope-a',trace.uid));
-  assert.equal(model.selected.uid,pathRow.uid);
-  assert.deepEqual(model.maps.map(row=>row.uid),[pathRow.uid]);
-  assert.deepEqual(model.memberUids,['POINT002']);
-});
-
-test('unassigned Paths remain selectable and never attach by geographic proximity',()=>{
-  const model=buildTraceTerritoryRouteModel([otherScopePath]);
-  assert.deepEqual(model.traceOptions,[{key:'__standalone__',label:'未歸屬路徑圖'}]);
-  assert.equal(model.selected.uid,otherScopePath.uid);
-  assert.deepEqual(model.maps.map(row=>row.uid),[otherScopePath.uid]);
-  assert.deepEqual(model.memberUids,['POINT003']);
+test('unassigned Paths stay separate instead of attaching by geographic proximity',()=>{
+  const hierarchy=traceRouteHierarchy([otherScopePath]);
+  assert.equal(hierarchy.groups.length,0);
+  assert.deepEqual(hierarchy.orphans.map(row=>row.uid),[otherScopePath.uid]);
 });
 
 test('FeaturePage Motion targets the actual Hero copy rows and leaves page entrance to one boundary',async()=>{
@@ -79,17 +65,16 @@ test('public Search keeps its home/results stages and feature frames use theme t
     assert.match(css,new RegExp('data-public-feature="' + feature + '"'));
 });
 
-test('LOC Trace combines annual terrain with the selected saved route in one map',async()=>{
+test('LOC keeps its lightweight cross-Scope route preview separate from annual territory maps',async()=>{
   const preview=await source('app/modular/features/LocTracePreview.jsx');
-  const panel=await source('app/modular/features/trace/TraceTerritoryPanel.jsx');
-  const map=await source('app/modular/features/trace/TraceMap.jsx');
-  assert.match(preview,/TraceTerritoryPanel scopeId="loc"/);
-  assert.match(preview,/buildTraceTerritoryRouteModel/);
-  assert.match(panel,/routeOverlay\?\.maps/);
-  assert.match(panel,/selectedRouteUid=\{selectedRouteUid\}/);
-  assert.match(map,/lineOnlySavedGraph/);
+  const tracePage=await source('app/modular/features/Trace.jsx');
+  assert.match(preview,/traceRouteHierarchy/);
+  assert.match(preview,/TraceMap publicTrace routeOnly/);
+  assert.match(preview,/ScopeLink href=/);
+  assert.doesNotMatch(preview,/TraceTerritoryPanel/);
+  assert.match(tracePage,/scopeId==='loc'\\?<LocTracePreview\\/>/);
+  assert.match(tracePage,/TraceTerritoryPanel scopeId=\\{scopeId\\}/);
 });
-
 test('React Motion timing follows the published LOC timing scale',async()=>{
   assert.deepEqual(
     {fast:LOC_MOTION.fast,feedback:LOC_MOTION.feedback,standard:LOC_MOTION.standard,
