@@ -752,7 +752,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           </StatisticsChartFrame>
         </section>
         <div className="statistics-dashboard__analysis-stack">
-          <section className="statistics-dashboard__panel statistics-dashboard__panel--distribution"
+          {!distributionIntent?<section className="statistics-dashboard__panel statistics-dashboard__panel--distribution"
             aria-label={t('uiExtra.statisticsView.dashboardDistributionTitle')}>
             <header className="statistics-dashboard__panel-heading">
               <h3>{placeChart?'地點分布':t('uiExtra.statisticsView.dashboardDistributionTitle')}</h3>
@@ -775,7 +775,13 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
                 distribution={placeDistribution} activeCategoryKey={selectedCategory?.term||''}
                 onCategoryClick={key=>setCategoryChoice(current=>current===String(key||'')?'':String(key||''))}/>
                 :<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>}
-          </section>
+          </section>:<section className="statistics-dashboard__panel statistics-dashboard__panel--distribution"
+            aria-label="分類連動提示">
+            <header className="statistics-dashboard__panel-heading">
+              <h3>{sourceChart?'來源比較':'地點比較'}</h3>
+            </header>
+            <p className="scope-status">點選圖表中的分類，切換至該分類的時間趨勢；再次選取可清除篩選。</p>
+          </section>}
           <StatisticsInsightsRail rows={insightRows}
             title={sourceChart?'來源趨勢分析':'地點趨勢分析'}
             measureLabel={sourceChart?'來源作品':'地點作品'}
