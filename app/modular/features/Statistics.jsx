@@ -173,7 +173,7 @@ function StatisticTypeSelect({scopeId,navigation,types}) {
   </label>;
 }
 
-function ScopeStatisticsResults({scopeId,navigation,types}){
+function ScopeStatisticsResults({scopeId,navigation,types,initialData=null}){
   const UI_COPY=useUiCopy();
   const t=useUiText();
   const router=useRouter();
@@ -272,9 +272,13 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   // and category counts load after a user selects a period for cross-analysis.
   const observedEnd=queryRange.endDate<queryEndDate?queryRange.endDate:queryEndDate;
   const observedSourceEnd=queryRange.endDate<queryEndDate?queryRange.endDate:queryEndDate;
+  const initialTotalMatches=initialData?.scopeId===scopeId&&
+    initialData.startDate===queryRange.startDate&&initialData.endDate===observedEnd&&
+    Array.isArray(initialData.data?.rows);
   const totalDaily=useAsyncResource({
     queryKey:['statistics-total-daily-v1',scopeId,queryRange.startDate,observedEnd],
-    enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd),
+    enabled:totalChart&&periodNavigationReady&&Boolean(queryRange.startDate&&observedEnd&&queryRange.startDate<=observedEnd)&&!initialTotalMatches,
+    fallbackData:initialTotalMatches?initialData.data:undefined,
     queryFn:async({signal})=>{
       signal?.throwIfAborted?.();
       const {queryStaticsContent}=await import('../../loc/actions/statics/queries.mjs');
@@ -822,15 +826,16 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   </section>;
 }
 
-function ScopeStatisticsPanel({scopeId,navigation,types,canManageSources=false}){
-  return <ScopeStatisticsResults scopeId={scopeId} navigation={navigation} types={types}/>;
+function ScopeStatisticsPanel({scopeId,navigation,types,canManageSources=false,initialData=null}){
+  return <ScopeStatisticsResults scopeId={scopeId} navigation={navigation} types={types} initialData={initialData}/>;
 }
 
-function StatisticsPanel({scopeId,aggregateScopes=false,navigation,types,canManageSources=false}){
+function StatisticsPanel({scopeId,aggregateScopes=false,navigation,types,canManageSources=false,initialData=null}){
   const t=useUiText();
   // Cross-Scope statistical aggregation belongs to LOC only. Other Scope
   // Groups remain overview/navigation surfaces, never merged COUNT queries.
   if(aggregateScopes&&scopeId==='loc')return <ScopeGroupStatistics
+    initialData={initialData}
     taipeiDateKey={taipeiDateKey}
     trendBucket={trendBucket}
     loadGalaxyStatistics={loadGalaxyStatistics}/>;
@@ -840,10 +845,10 @@ function StatisticsPanel({scopeId,aggregateScopes=false,navigation,types,canMana
     title={t('uiExtra.statisticsView.scopeGroupStatisticsTitle')}
     description={t('uiExtra.statisticsView.scopeGroupStatisticsHelp')}
   />;
-  return <ScopeStatisticsPanel scopeId={scopeId} navigation={navigation} types={types} canManageSources={canManageSources}/>;
+  return <ScopeStatisticsPanel scopeId={scopeId} navigation={navigation} types={types} canManageSources={canManageSources} initialData={initialData}/>;
 }
 
-export default function Statistics(){
+export default function Statistics({initialData=null}={}){
   useUiSection('statistics');
   useUiSection('uiExtra.statisticsUI');
   useUiSection('uiExtra.statisticsView');
@@ -862,6 +867,7 @@ export default function Statistics(){
         navigation={activeNavigation}
         types={STAT_TYPES}
         canManageSources={false}
+        initialData={initialData}
       />
     </section>
   </FeaturePage>;
