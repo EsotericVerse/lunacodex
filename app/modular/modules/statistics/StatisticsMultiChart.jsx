@@ -506,10 +506,23 @@ export default function StatisticsMultiChart({
         <div><strong>Y · {axisLabel(paired?.y)}</strong><span>{selectedDatum.y?.toLocaleString?.()??selectedDatum.y}</span></div>
       </div>:null}
       {selectedDatum.items?.length?<div className="scope-ranking">
-        {selectedDatum.items.slice(0,30).map(item=><div key={item.recordId||item.key||item.label}>
-          <strong>{item.name||item.label||item.title||item.recordId}</strong>
-          <span>{item.value??item.date??''}</span>
-        </div>)}
+        {selectedDatum.items.slice(0,30).map(item=>{
+          const label=item.name||item.label||item.title||item.recordId;
+          const value=item.value??item.date??'';
+          return selectedDatum.kind==='bin'&&onPeriodClick&&item.period
+            ?<button type="button" key={item.recordId||item.key||item.label}
+              className="loc-button loc-button--small"
+              style={{display:'flex',justifyContent:'space-between',width:'100%'}}
+              onClick={()=>{
+                onPeriodClick(item);
+                setSelectedDatum(null);
+              }}>
+              <strong>{label}</strong><span>{value}</span>
+            </button>
+            :<div key={item.recordId||item.key||item.label}>
+              <strong>{label}</strong><span>{value}</span>
+            </div>;
+        })}
       </div>:null}
     </section>:null}
     {intent==='relationship'?<p className="scope-status" role="note">
