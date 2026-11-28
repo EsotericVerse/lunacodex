@@ -195,7 +195,6 @@ function ScopeCulturePublicReader(){
     setPeriodChoices(NO_ITEMS);
     setActiveTimeRows(NO_ITEMS);setSelectedPeriodUid('');setSelectedPeriodRange(null);
     setExpandedEras([]);setCustomTimeRows(NO_ITEMS);setHierarchyError('');
-    const request=++hierarchySequence.current;
     // Initial TimeLucus projection is bounded by the default year. Era/Period
     // metadata stays available for navigation; DateLucus rows do not scan history.
     // One bounded TimeLucus read: keep all Era/Period metadata, but only
@@ -203,11 +202,11 @@ function ScopeCulturePublicReader(){
     // is the second large read; neither river needs an all-history date scan.
     readAllLucusFeature({scope:scopeId,family:'time',types:['era','period','date'],
       dateStart:start,dateEnd:end})
-      .then(rows=>{if(!cancelled&&request===hierarchySequence.current){
+      .then(rows=>{if(!cancelled){
         setTimeIndexRows(rows);setEraChoices(rows.filter(row=>row.type==='era'));
         setLoading(false);
       }})
-      .catch(reason=>{if(!cancelled&&request===hierarchySequence.current){
+      .catch(reason=>{if(!cancelled){
         setHierarchyError(String(reason?.message||reason));setLoading(false);
       }});
     readPublicSourceTaxonomy()
@@ -226,14 +225,12 @@ function ScopeCulturePublicReader(){
       return undefined;
     }
     let active=true;
-    const request=++hierarchySequence.current;
     setCustomTimeRows(NO_ITEMS);
     readAllLucusFeature({scope:scopeId,family:'time',types:['era','period','date'],
       dateStart:rangeStart,dateEnd:rangeEnd})
-      .then(rows=>{if(active&&request===hierarchySequence.current)setCustomTimeRows(rows);})
-      .catch(reason=>{if(active&&request===hierarchySequence.current)
-        setHierarchyError(String(reason?.message||reason));});
-    return()=>{active=false;hierarchySequence.current++;};
+      .then(rows=>{if(active)setCustomTimeRows(rows);})
+      .catch(reason=>{if(active)setHierarchyError(String(reason?.message||reason));});
+    return()=>{active=false;};
   },[scopeId,densityPeriod,rangeStart,rangeEnd,validRange]);
   useEffect(()=>{
     let active=true;
@@ -362,7 +359,7 @@ function ScopeCulturePublicReader(){
     return {...base,groups:[...base.groups,candidateLane],
       items:[...base.items,...candidates]};
   },[densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd,
-    lucusSuggestionsOpen,suggestionAnalysis.suggestions,selectedPeriodUid]);
+    lucusSuggestionsOpen,suggestionAnalysis.suggestions]);
   useEffect(()=>{
     // Never keep a date selected when it is no longer a candidate.
     if(focusedSuggestionDate&&!suggestionAnalysis.suggestions.some(
