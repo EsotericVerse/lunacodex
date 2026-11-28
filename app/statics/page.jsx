@@ -1,5 +1,8 @@
 import LocApp from '../loc/LocApp';
 import {locMetadata} from '../seo/metadata';
+import {loadStatisticsPageInitialData} from '../loc/statistics/page-bootstrap.mjs';
+
+export const dynamic='force-dynamic';
 
 export const metadata=locMetadata({
   title:'作品統計與時間變化｜月典',
@@ -7,4 +10,7 @@ export const metadata=locMetadata({
   path:'/statics/'
 });
 
-export default function StaticsPage(){return <LocApp forcedView="statics"/>;}
+export default async function StaticsPage(){
+  const initialData=await loadStatisticsPageInitialData('loc');
+  return <LocApp forcedView="statics" initialData={initialData}/>;
+}

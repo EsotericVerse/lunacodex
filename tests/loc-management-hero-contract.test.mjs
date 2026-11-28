@@ -109,8 +109,8 @@ test('management route table preserves the Group and Scope destinations',()=>{
   });
   assert.deepEqual(LOC_MANAGEMENT_ROUTE_TABLE.scope,{
     time:'culture/manage',
-    keywords:'statics/manage',
     spatial:'trace/manage',
+    keywords:'statics/manage',
     articles:'search/manage',
   });
   assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.group),[
@@ -120,13 +120,21 @@ test('management route table preserves the Group and Scope destinations',()=>{
     'time','spatial','keywords','articles'
   ]);
   assert.deepEqual(Object.keys(LOC_MANAGEMENT_ROUTE_TABLE.user),[
-    'culture','statics','trace','search'
+    'culture','trace','statics','search'
   ]);
   assert.deepEqual(PRIMARY_NAV_ORDER,[
     'home','culture','trace','statics','search','settings'
   ]);
   assert.ok(Object.values(LOC_MANAGEMENT_ROUTE_TABLE).flatMap(Object.values)
     .every(route=>!route.includes('?section=')));
+});
+
+test('Group members route remains the existing Group people and works management page',async()=>{
+  const page=await readFile(new URL('../app/manage/page.jsx',import.meta.url),'utf8');
+  assert.match(page,/title:'群組管理｜LOC 月典'/);
+  assert.match(page,/description:'管理 LOC 群組、人員與作品分類。'/);
+  assert.match(page,/path:'\/manage\/'/);
+  assert.match(page,/forcedView="sourceManage"/);
 });
 
 test('Scope management route uses the active Scope context',()=>{
