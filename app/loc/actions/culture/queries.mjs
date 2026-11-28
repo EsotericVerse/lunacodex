@@ -76,7 +76,13 @@ function periodEndpointUidQuery(engine,table){
     join JSON_TABLE(
       case when JSON_TYPE(JSON_EXTRACT(p.attr,'$.uid'))='ARRAY'
         then JSON_EXTRACT(p.attr,'$.uid') else JSON_ARRAY() end,
-      '$[*]' COLUMNS(uid CHAR(8) PATH '
+      '$[*]' COLUMNS(uid CHAR(8) PATH '$')
+    ) as refs where p.type='period' and p.invisible=false`;
+  if(engine==='mssql')return sql`select refs.value from ${relation} as p
+    cross apply openjson(p.attr,'$.uid') as refs
+    where p.type='period' and p.invisible=0`;
+  throw Error('Unsupported Culture SQL dialect');
+}
   if(!exactKeys(args,['p_scope_id','p_view','p_start','p_end','p_options'])||
     args.p_view!=='culture_list'||!exactKeys(args.p_options||{},['site','offset']))
     throw Error('Invalid Culture list request');
@@ -172,13 +178,6 @@ export async function queryTimeLucus({scope:scopeValue,mode='public',
     };
   return mode==='public'?withPublicLocRead({scope},read):
     withAuthorizedLocRead({scope,writeScopes:[scope]},read);
-}
-)
-    ) as refs where p.type='period' and p.invisible=false`;
-  if(engine==='mssql')return sql`select refs.value from ${relation} as p
-    cross apply openjson(p.attr,'$.uid') as refs
-    where p.type='period' and p.invisible=0`;
-  throw Error('Unsupported Culture SQL dialect');
 }
 
 // LOC's Group Culture uses one fixed SQL projection across its published
