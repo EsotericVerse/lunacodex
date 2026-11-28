@@ -8,13 +8,11 @@ import {useUiCopy,useUiSection} from '../../../i18n/ui-locale';
 import UiText,{useUiText} from '../../../i18n/UiText';
 import {defaultScopeData} from '../../../loc/scope/scope-data';
 import {featureNavigationHref} from '../../routing/feature-navigation';
-import ScopeLink from '../../ScopeLink';
 import {featureDataErrorMessage} from '../../feature-data-state';
 import {statisticsZoomWindow} from './statistics-time-zoom.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
-import {visualKeyColor} from '../../visual-palette.mjs';
 const StatisticsMultiChart=dynamic(()=>import('./StatisticsMultiChart'),{loading:()=>null});
 
 const StatisticsInsightsPanel=dynamic(()=>import('./StatisticsInsightsPanel'),{loading:()=>null});
