@@ -247,8 +247,9 @@ export function histogramBins(values=[],requestedBins=0){
     }];
   });
   if(!rows.length)return [];
-  const min=Math.min(...rows.map(row=>row.value));
-  const max=Math.max(...rows.map(row=>row.value));
+  const {min,max}=rows.reduce((range,row)=>({
+    min:Math.min(range.min,row.value),max:Math.max(range.max,row.value)
+  }),{min:Infinity,max:-Infinity});
   if(min===max)return [{key:'bin:0',name:String(min),from:min,to:max,count:rows.length,items:rows}];
   const count=Math.max(2,Math.min(20,Math.trunc(Number(requestedBins)||Math.ceil(Math.sqrt(rows.length)))));
   const width=(max-min)/count;
@@ -284,7 +285,7 @@ export function normalizeFunnelStages(stages=[]){
 
 export function resolveStatisticIntent({
   intent='trend',rows=[],series=[],distribution=[],mutuallyExclusive=false,seriesExclusive=false,
-  records=[],recordFields=[],values=[],targetValue=null,attainmentValue=null,stages=[]
+  records=[],recordFields=[],values=[],targetValue=null,attainmentValue=null,stages=[],totalKey=''
 }={}){
   const time=Array.isArray(rows)?rows:[];
   const fields=nonemptySeries(time,series);
@@ -295,11 +296,11 @@ export function resolveStatisticIntent({
       intent,available:true,type:'bar',dataMode:'distribution',
       barLayout:categories.length>6?'vertical':'horizontal',sort:'desc'
     };
-    return time.length?{
+    return time.length&&(fields.length||(totalKey&&time.some(row=>finiteMetric(row?.[totalKey])!==null)))?{
       intent,available:true,type:'bar',dataMode:'time',barLayout:'horizontal'
     }:unavailable;
   }
-  if(intent==='trend')return time.length?{
+  if(intent==='trend')return time.length&&(fields.length||(totalKey&&time.some(row=>finiteMetric(row?.[totalKey])!==null)))?{
     intent,available:true,type:time.length>=6?'line':'bar',dataMode:'time'
   }:unavailable;
   if(intent==='composition')return mutuallyExclusive&&categories.length>=2?{
