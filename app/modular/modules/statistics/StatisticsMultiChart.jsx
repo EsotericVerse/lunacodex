@@ -141,12 +141,16 @@ export default function StatisticsMultiChart({
   </>);
   const selectedCategoryKeys=new Set(Array.isArray(activeCategoryKey)
     ?activeCategoryKey.map(String):activeCategoryKey?[String(activeCategoryKey)]:[]);
-  const timeComparison=useMemo(()=>time.map((row,index)=>({
-    key:String(row.period||index),name:String(row.period||index),
-    value:totalKey?number(row[totalKey]):fields.reduce((sum,field)=>sum+number(row[field.key]),0),
-    period:row.period,start_date:row.start_date,end_date:row.end_date,raw:row
-  })).sort((a,b)=>b.value-a.value||a.name.localeCompare(b.name)),
-    [time,fields,totalKey]);
+  const timeComparison=useMemo(()=>{
+    const output=time.map((row,index)=>({
+      key:String(row.period||index),name:String(row.period||index),
+      value:totalKey?number(row[totalKey]):fields.reduce((sum,field)=>sum+number(row[field.key]),0),
+      period:row.period,start_date:row.start_date,end_date:row.end_date,raw:row
+    }));
+    if(intentConfig?.sort==='desc')
+      output.sort((a,b)=>b.value-a.value||a.name.localeCompare(b.name));
+    return output;
+  },[time,fields,totalKey,intentConfig?.sort]);
   const comparisonCategories=renderMode==='time-comparison'?timeComparison:displayCategories;
   const colored=comparisonCategories.map((item,i)=>({...item,
     fill:item.fill?themedDataColor(item.fill):pointColor(i),
