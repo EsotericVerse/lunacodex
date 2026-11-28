@@ -60,7 +60,7 @@ export function timeIntersectionMetrics(lucus=[]){
     }
     return {...metric('period',row,{
       windows,durationDays:windowDays(windows),
-      dateAnchorCount:refIds(data.uid).length
+      dateAnchorCount:refIds(data.uid).length,dateUids:refIds(data.uid)
     }),ranges};
   });
   // Era combines the actual Period windows, including older periods with
@@ -83,8 +83,8 @@ export function timeIntersectionMetrics(lucus=[]){
     return metric('era',row,{
       windows,children:references,durationDays:windowDays(windows),
       periodCount:references.length,childCount:references.length,
-      dateAnchorCount:periods.filter(period=>references.includes(period.uid))
-        .reduce((sum,period)=>sum+period.dateAnchorCount,0)
+      dateAnchorCount:new Set(periods.filter(period=>references.includes(period.uid))
+        .flatMap(period=>period.dateUids||[])).size
     });
   });
   const parentsByPeriod=new Map();
