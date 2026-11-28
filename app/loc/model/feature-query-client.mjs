@@ -5,9 +5,11 @@ import {MAX_ROWS,TIME_LUCUS_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query
 // Named fixed record/Lucus projections. All variable values are validated
 // by the server against published Scope and ZModel model families.
 async function readFixedOperation(operation,params,{signal=null,editor=false}={}){
+  if(signal?.aborted){const error=new Error('The operation was aborted');error.name='AbortError';throw error;}
   const body={kind:'query',operation,...params,mode:editor?'editor':'public'};
   const json=operation==='galaxy-records'
     ?await queryGalaxyRecords(body):await queryLucusFeature(body);
+  if(signal?.aborted){const error=new Error('The operation was aborted');error.name='AbortError';throw error;}
   if(!json?.data||json.query?.model!==operation)
     throw Error('Invalid LOC fixed model response');
   return json.data;
