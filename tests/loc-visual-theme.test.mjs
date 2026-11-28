@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
+import {mergeThemeSlot} from '../app/loc/preferences/theme-data.js';
 import {PUBLISHED_THEME_META} from '../app/modular/published-theme-meta.js';
 import {visualColor,visualKeyColor,territoryColors,TERRITORY_STOPS,territoryLegendColor,territoryColorExpression} from '../app/modular/visual-palette.mjs';
 import {cultureEraVisuals,paintCultureRows,eraVisualGradient} from '../app/modular/modules/culture-timeline/era-visuals.mjs';
@@ -68,6 +69,11 @@ test('LOC keeps the original four Day and four Dark Theme identities',()=>{
     ['theme-1','dark'],['theme-2','light'],['theme-3','light'],['theme-4','dark'],
     ['theme-5','light'],['theme-6','dark'],['theme-7','light'],['theme-8','dark']
   ]);
+});
+
+test('Theme Editor cannot change a Theme identity between Day and Dark',()=>{
+  assert.equal(mergeThemeSlot('theme-2',{scheme:'dark'}).scheme,'light');
+  assert.equal(mergeThemeSlot('theme-4',{scheme:'light'}).scheme,'dark');
 });
 
 test('published palettes and JSON snapshots store only the ten canonical color tokens',async()=>{
