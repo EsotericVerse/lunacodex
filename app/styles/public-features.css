@@ -765,15 +765,9 @@
   .loc-pending-statics span{animation:none!important;transform:none!important;opacity:1!important;}
 }
 
-/* Culture uses one shared time axis: authored time layers first, source
-   density lanes after them. Each meaning has a theme-aware visual cue. */
-.scope-culture-unified-panel{display:grid;gap:.65rem;}
-.scope-culture-unified-river{
-  padding:.6rem;border:1px solid color-mix(in srgb,var(--loc-accent) 24%,var(--loc-line));
-  border-radius:var(--loc-ui-radius-md,14px);
-  background:linear-gradient(145deg,color-mix(in srgb,var(--loc-accent) 8%,var(--loc-panel)),
-    color-mix(in srgb,var(--loc-gold) 7%,var(--loc-panel-2)));
-}
+/* Scope Culture keeps TimeLucus and source density in two independent rivers. */
+.scope-culture-dual-panel{display:grid;gap:.8rem;}
+
 .scope-culture-layer-legend{
   display:flex;align-items:center;justify-content:space-between;gap:.6rem 1rem;
   flex-wrap:wrap;padding:.2rem .35rem .55rem;border-bottom:1px solid var(--loc-line-soft);
@@ -833,7 +827,6 @@
   box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--loc-accent) 24%,transparent);
 }
 @media(max-width:640px){
-  .scope-culture-unified-river{padding:.38rem;}
   .scope-culture-layer-legend{font-size:.72rem;}
   .scope-culture-layer-legend__time,.scope-culture-layer-legend__density{gap:.38rem .58rem;}
 }
