@@ -1,6 +1,6 @@
 'use client';
 
-import {useMemo} from 'react';
+import {useMemo,useState} from 'react';
 import {spaceRecordHierarchy} from './space-record-hierarchy.mjs';
 
 const uid=row=>String(row?.uid||'');
@@ -12,6 +12,18 @@ export default function SpaceLucusTree({
   className='loc-unified-spatial-manager'
 }){
   const hierarchy=useMemo(()=>spaceRecordHierarchy(spatial,scopeId),[spatial,scopeId]);
+  const [search,setSearch]=useState('');
+  const needle=search.normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
+  const filterOptions=(items,selected='')=>{
+    if(!needle)return items;
+    const filtered=items.filter(item=>String(item.searchText||item.label||'')
+      .normalize('NFKC').toLocaleLowerCase('zh-Hant').includes(needle));
+    if(selected&&!filtered.some(item=>item.id===selected)){
+      const current=items.find(item=>item.id===selected);
+      if(current)filtered.unshift(current);
+    }
+    return filtered;
+  };
   const [selectedType='',selectedUid='']=String(value||'').split(':',2);
   const traceForPath=hierarchy.traces.find(group=>
     group.paths.some(branch=>uid(branch.row)===selectedUid))||null;
@@ -81,9 +93,17 @@ export default function SpaceLucusTree({
   ];
   const selectedPrimary=selectedTrace?uid(selectedTrace.row):
     unclassifiedSelected?'__unclassified__':(!selectedType?uid(hierarchy.traces[0]?.row):'');
+  const filteredPrimary=filterOptions(primaryItems,selectedPrimary);
+  const filteredSecondary=filterOptions(secondaryItems,selectedSecondary);
+  const filteredDetails=filterOptions(detailItems,selectedType==='point'?selectedUid:'');
   const create=type=>()=>onCreate?.(type);
   return <section className={['loc-lucus-select-workspace','loc-space-lucus-tree',className].filter(Boolean).join(' ')}
     aria-label="空間定錨階層管理">
+    <label className="loc-lucus-select-workspace__search">
+      <span>搜尋痕跡、路徑與地點</span>
+      <input type="search" className="scope-search-input" value={search}
+        onChange={event=>setSearch(event.target.value)} placeholder="輸入名稱、地址或 UID"/>
+    </label>
     <div className="loc-lucus-select-workspace__levels">
       <section className="loc-lucus-select-workspace__field">
         <header><h3>痕跡</h3><span>{hierarchy.traces.length}</span></header>
@@ -97,7 +117,7 @@ export default function SpaceLucusTree({
               }else if(id!=='__none__')onSelect?.('trace',id);
             }}>
             <option value="__none__">選擇痕跡</option>
-            {primaryItems.map(item=><option key={item.id} value={item.id}>
+            {filteredPrimary.map(item=><option key={item.id} value={item.id}>
               {item.label} · {item.meta}
             </option>)}
           </select>
@@ -118,7 +138,7 @@ export default function SpaceLucusTree({
               }else if(id!=='__none__')onSelect?.('path',id);
             }}>
             <option value="__none__">選擇路徑</option>
-            {secondaryItems.map(item=><option key={item.id} value={item.id}>
+            {filteredSecondary.map(item=><option key={item.id} value={item.id}>
               {item.label} · {item.meta}
             </option>)}
           </select>
@@ -133,7 +153,7 @@ export default function SpaceLucusTree({
             disabled={disabled||!detailItems.length}
             onChange={event=>{if(event.target.value!=='__none__')onSelect?.('point',event.target.value);}}>
             <option value="__none__">選擇地點</option>
-            {detailItems.map(item=><option key={item.id} value={item.id}>
+            {filteredDetails.map(item=><option key={item.id} value={item.id}>
               {item.label}{item.meta?'｜'+item.meta:''}
             </option>)}
           </select>
