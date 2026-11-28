@@ -39,7 +39,10 @@ function relation(scope,suffix,port){
 const RANGE_LIMIT=80;
 function locCultureMemberScopes(){
   return [...new Set((PUBLISHED_SITE_BOOTSTRAP.registry||[])
-    .filter(row=>row?.scope_kind==='scope'&&row?.parent_scope_id==='loc'&&row?.active!==false)
+    // LRS is an independent framework; its legacy parent pointer to LOC
+    // must never pull rune data into the LOC Culture rivers.
+    .filter(row=>row?.scope_kind==='scope'&&row?.parent_scope_id==='loc'&&
+      row?.scope_id!=='lrunes'&&row?.active!==false)
     .map(row=>String(row.scope_id||'').trim().toLowerCase())
     .filter(value=>/^[a-z][a-z0-9]{0,14}$/.test(value)&&value!=='admin'))]
     .sort();
