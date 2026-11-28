@@ -432,7 +432,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
           transition={{duration:LOC_MOTION.emphasis,ease:[.25,.75,.2,1]}}/>
         <motion.span className="loc-trace-map-unfold__leaf loc-trace-map-unfold__leaf--right"
           initial={{scaleX:1}} animate={{scaleX:0}}
-          transition={{duration:.52,ease:[.25,.75,.2,1]}}/>
+          transition={{duration:LOC_MOTION.emphasis,ease:[.25,.75,.2,1]}}/>
       </div>:null}
     </div>
   </FeaturePage>;
