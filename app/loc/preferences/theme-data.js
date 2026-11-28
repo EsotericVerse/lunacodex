@@ -106,10 +106,6 @@ function themeRgba(hex,alpha){
 }
 
 /**
- * Generate the linked palette from the chosen identity color.
- * Danger colors remain semantic; text colors stay neutral for readability.
- */
-/**
  * Generate only the ten canonical palette values from the identity color.
  * Surface opacity, borders, rings, shadows and gradients are derived by the
  * shared Theme CSS; they are not independently stored per Theme.
