@@ -1,7 +1,7 @@
 // Four on-demand comparison families, each using saved LOC ZModel hierarchy.
 // Time: Era/Period; Space: Trace/Path; Keyword: Group/Item (stored summaries);
-// Source: Galaxy/Domain from silver.loc_lucus. From (site), Date and Point
-// remain internal leaves and cannot be selected as comparison metrics.
+// Source: the complete Universe/Galaxy/Domain/From SiteLucus hierarchy.
+// Each family exposes its own valid numeric projections; no leaf is flattened.
 // No new Galaxy 媒體作品 statistics: Suno/Spotify/Youtube belong to SiteLucus.
 import {resolveTimeSegments,resolveTimeTrace,timeDateWindows}
   from '../culture/time-lucus-ranges.mjs';
@@ -37,6 +37,13 @@ const metric=(kind,row,extra={})=>({
   kind,uid:String(row.uid),name:String(row.title||row.uid),...extra
 });
 
+const windowDays=windows=>(Array.isArray(windows)?windows:[]).reduce((sum,window)=>{
+  const start=Date.parse(String(window.startDate||'')+'T00:00:00Z');
+  const end=Date.parse(String(window.endDate||'')+'T00:00:00Z');
+  return Number.isFinite(start)&&Number.isFinite(end)&&end>=start
+    ?sum+Math.floor((end-start)/86400000)+1:sum;
+},0);
+
 export function timeIntersectionMetrics(lucus=[]){
   const all=(Array.isArray(lucus)?lucus:[]).filter(row=>UID.test(String(row?.uid)));
   const dates=new Map(all.filter(row=>row.type==='date').map(row=>[String(row.uid),row]));
@@ -51,7 +58,10 @@ export function timeIntersectionMetrics(lucus=[]){
       const start=cleanDay(data.date[0]),end=cleanDay(data.date[1])||start;
       if(start&&end&&start<=end)windows=[{startDate:start,endDate:end}];
     }
-    return {...metric('period',row,{windows}),ranges};
+    return {...metric('period',row,{
+      windows,durationDays:windowDays(windows),
+      dateAnchorCount:refIds(data.uid).length
+    }),ranges};
   });
   // Era combines the actual Period windows, including older periods with
   // saved explicit date boundaries rather than surviving DateLucus endpoints.
@@ -70,7 +80,12 @@ export function timeIntersectionMetrics(lucus=[]){
       const start=cleanDay(data.date[0]),end=cleanDay(data.date[1])||start;
       if(start&&end&&start<=end)windows=[{startDate:start,endDate:end}];
     }
-    return metric('era',row,{windows,children:references});
+    return metric('era',row,{
+      windows,children:references,durationDays:windowDays(windows),
+      periodCount:references.length,
+      dateAnchorCount:periods.filter(period=>references.includes(period.uid))
+        .reduce((sum,period)=>sum+period.dateAnchorCount,0)
+    });
   });
   return [...eras,...periods];
 }
@@ -78,9 +93,20 @@ export function timeIntersectionMetrics(lucus=[]){
 export function spaceIntersectionMetrics(lucus=[]){
   const all=(Array.isArray(lucus)?lucus:[]).filter(row=>UID.test(String(row?.uid)));
   const visiblePoints=new Set(all.filter(row=>row.type==='point').map(row=>String(row.uid)));
+  const parentTraces=new Map();
+  for(const row of all.filter(item=>item.type==='trace'))
+    for(const uid of refIds(attr(row).path)){
+      const parents=parentTraces.get(uid)||[];
+      parents.push(String(row.uid));parentTraces.set(uid,parents);
+    }
   const paths=all.filter(row=>row.type==='path').map(row=>{
     const points=refIds(attr(row).point).filter(uid=>visiblePoints.has(uid));
-    return metric('path',row,{points:new Set(points)});
+    const parents=parentTraces.get(String(row.uid))||[];
+    return metric('path',row,{
+      points:new Set(points),pointCount:new Set(points).size,
+      pathCount:1,parentUid:parents.length===1?parents[0]:null,
+      parentUids:parents
+    });
   });
   const byPath=new Map(paths.map(row=>[row.uid,row.points]));
   const traces=all.filter(row=>row.type==='trace').map(row=>{
@@ -88,7 +114,10 @@ export function spaceIntersectionMetrics(lucus=[]){
     const points=new Set(refIds(data.point).filter(uid=>visiblePoints.has(uid)));
     for(const uid of refIds(data.path))
       for(const point of byPath.get(uid)||[])points.add(point);
-    return metric('trace',row,{points,children:refIds(data.path)});
+    const children=refIds(data.path);
+    return metric('trace',row,{
+      points,children,pointCount:points.size,pathCount:children.length
+    });
   });
   return [...traces,...paths];
 }
@@ -97,8 +126,7 @@ export function spaceIntersectionMetrics(lucus=[]){
 // rollups are shared by the interactive tree and by this comparison, rather
 // than creating a competing taxonomy/SQL statistics pipeline.
 export function sourceIntersectionMetrics(taxonomy={}){
-  return sourceStatisticsTree([],taxonomy).metrics.filter(node=>
-    node.kind==='source_tree'&&['galaxy','domain'].includes(node.type));
+  return sourceStatisticsTree([],taxonomy).metrics;
 }
 
 export function fourDimensionDailyCounts({
@@ -117,10 +145,11 @@ export function fourDimensionDailyCounts({
     if(row.kind==='source'){
       for(const id of canonicalSource.metricIdsForSite(row.category)){
         const metric=chosen.find(item=>item.id===id);
-        // The caller can never aggregate whole Universes or individual
-        // From/site leaves as a comparison category; only 2nd+3rd levels.
-        if(metric?.kind==='source_tree'&&['galaxy','domain'].includes(metric.type))
-          add(id,day,count);
+        // Each real From site contributes once to every saved ancestor UID:
+        // Universe, Galaxy, Domain and its own From leaf. Selecting one level
+        // never adds the already-rolled-up child totals a second time.
+        if(metric?.kind==='source_tree'||
+          metric?.kind==='source_unclassified')add(id,day,count);
       }
     }else if(row.kind==='total'){
       for(const metric of chosen){
