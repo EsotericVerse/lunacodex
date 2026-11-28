@@ -186,7 +186,9 @@ export default function StatisticsMultiChart({
   const chartHeight=isDistribution&&barLayout==='vertical'
     ?Math.max(height,Math.min(24,distributionData.length)*34+80):height;
   const [selectedDatum,setSelectedDatum]=useState(null);
-  useEffect(()=>setSelectedDatum(null),[actual,records,values,scatterAxisKeys.x,scatterAxisKeys.y]);
+  const datumDataKey=[intent,actual,records.length,records[0]?.uid??records[0]?.id??'',
+    values.length,values[0]?.uid??values[0]?.id??''].join('|');
+  useEffect(()=>setSelectedDatum(null),[datumDataKey,scatterAxisKeys.x,scatterAxisKeys.y]);
   const emitDatum=(datum)=>{
     if(!datum)return;
     if(['record','bin','attainment','stage','other-categories'].includes(datum.kind))
