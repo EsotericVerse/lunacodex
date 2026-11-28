@@ -7,11 +7,6 @@
   --loc-feature-hairline:color-mix(in srgb,var(--loc-feature-emphasis) 27%,var(--loc-line));
   --loc-feature-depth:color-mix(in srgb,var(--loc-panel-2) 35%,var(--loc-bg));
 }
-.scope-main[data-public-feature="statics"],
-.scope-main[data-public-feature="trace"]{
-  --loc-feature-emphasis:var(--loc-gold);
-  --loc-feature-secondary:var(--loc-accent);
-}
 .scope-main[data-public-feature="culture"]{
   --loc-feature-emphasis:var(--loc-accent);
   --loc-feature-secondary:var(--loc-gold);
@@ -196,6 +191,27 @@
 [data-public-feature="search"] .scope-search-form:focus-within{
   box-shadow:0 0 0 3px color-mix(in srgb,var(--loc-feature-emphasis) 12%,transparent);
 }
+/* Results keep the authored Hero and one compact query line. Home-only
+   discovery content leaves the reading surface once a search starts. */
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"]{
+  gap:.25rem;margin:.25rem 0 .8rem;padding:.15rem 0;
+  border:0;border-radius:0;background:transparent;box-shadow:none;
+}
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"]::before{display:none}
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"] .scope-search-form{
+  grid-template-areas:"input submit reset";grid-template-columns:minmax(0,1fr) auto auto;
+  gap:.45rem;padding:.35rem;border:0;border-block-end:1px solid var(--loc-feature-hairline);
+  border-radius:0;background:transparent;box-shadow:none;
+}
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"] .scope-search-form>label{
+  position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0;
+}
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"] .scope-search-form :is(input,button){min-height:2.65rem}
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"] .scope-search-form button{padding:.45rem .8rem}
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"] .scope-search-advanced,
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"] .scope-search-popular-toggle,
+[data-public-feature="search"] .scope-search-workspace[data-search-stage="results"] #scope-search-suggestions{display:none!important}
 [data-public-feature="search"] .scope-search-highlight,
 [data-public-feature="search"] .scope-culture-work-meta-description mark{
   color:var(--loc-text);
