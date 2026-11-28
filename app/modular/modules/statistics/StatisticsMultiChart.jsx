@@ -183,6 +183,8 @@ export default function StatisticsMultiChart({
     (intent==='legacy'&&actual==='bar'&&legacyBarLayout==='vertical'&&categories.length>0);
   const highlightTop=Number(intentConfig?.highlightTop||0);
   const rankingStart=Math.max(0,Math.trunc(Number(rankingOffset)||0));
+  const chartHeight=isDistribution&&barLayout==='vertical'
+    ?Math.max(height,Math.min(24,distributionData.length)*34+80):height;
   const [selectedDatum,setSelectedDatum]=useState(null);
   const emitDatum=(datum)=>{
     if(!datum)return;
@@ -478,7 +480,7 @@ export default function StatisticsMultiChart({
       initial={reduceMotion?false:{opacity:0,y:6}}
       animate={{opacity:1,y:0}}
       transition={{duration:reduceMotion?0:.22,ease:'easeOut'}}
-      style={{height}}>
+      style={{height:chartHeight}}>
       {usesResponsiveContainer
         ?<ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
         :cloneElement(chart,{responsive:true,style:{width:'100%',height:'100%'},
