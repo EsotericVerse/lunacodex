@@ -129,6 +129,11 @@ test('relationship points retain one raw record identity per dot',()=>{
   }).available,false);
 });
 
+test('a histogram is not offered for a single observation',()=>{
+  const available=availableStatisticIntents({values:[{uid:'one',value:5}]});
+  assert.ok(!available.includes('distribution'));
+});
+
 test('histogram preserves numeric distribution rather than replacing it with a mean',()=>{
   const bins=histogramBins([300,310,320,1900,2000,2100]);
   assert.ok(bins.length>1);
