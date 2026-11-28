@@ -303,6 +303,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const [hasMore,setHasMore]=useState(false);
   const [nextCursor,setNextCursor]=useState(null);
   const [loadingMore,setLoadingMore]=useState(false);
+  const [searchInFlight,setSearchInFlight]=useState(false);
   const [editingKey,setEditingKey]=useState('');
   const editTargetRef=useRef(null);
   const dockActions=useRef({save:null,discard:null});
@@ -359,7 +360,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     matchedQueryRef.current||results.length||fullTextKey||error||
     status&&status!==UI_COPY.search.start
   );
-  const publicStatusIsActionable=Boolean(error)||status==='搜尋中請稍後'||
+  const publicStatusIsActionable=Boolean(error)||status==='搜尋中請稍後'||status==='已取消搜尋。'||
     status===UI_COPY.search.empty||status===UI_COPY.search.failed||
     status===UI_COPY.search.relationFailed;
   const pageSize=DEFAULT_LIST_BATCH_SIZE;
@@ -498,6 +499,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
 
     const id=++searchId.current;
     const controller=beginRequest();
+    setSearchInFlight(true);
     // Request admission is already governed by the existing Karaul/PELT QoS.
     // A 25s client cutoff was interrupting legitimate long-range searches.
     const timeout=AbortSignal.timeout(60000);
@@ -623,7 +625,29 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       }
     }finally{
       timeout.removeEventListener('abort',onTimeout);
-      if(append&&id===searchId.current)setLoadingMore(false);
+      if(id===searchId.current){
+        setSearchInFlight(false);
+        if(append)setLoadingMore(false);
+        if(abortRef.current===controller)abortRef.current=null;
+      }
+    }
+  }
+
+  function cancelSearch(){
+    const controller=abortRef.current;
+    if(!controller||controller.signal.aborted)return;
+    const wasLoadingMore=loadingMore;
+    controller.abort();
+    abortRef.current=null;
+    searchId.current++;
+    loadMoreInFlight.current=false;
+    setSearchInFlight(false);
+    setLoadingMore(false);
+    setFullTextLoading(false);
+    if(wasLoadingMore)setLoadMoreError('已取消載入更多文章。');
+    else{
+      setError('');
+      setStatus('已取消搜尋。');
     }
   }
 
@@ -653,7 +677,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const identity=String(rawIdentity||'').trim();
     if(!identity)return;
     const id=++searchId.current;
-    beginRequest();
+    const controller=beginRequest();
+    setSearchInFlight(true);
     matchedQueryRef.current='';
     setError('');setLoadMoreError('');setHasMore(false);setNextCursor(null);setLoadingMore(false);
     setResults([]);setReaderResult(null);setFullTextKey('');
@@ -681,7 +706,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       if(id!==searchId.current)return;
       setResults([]);setError(featureDataErrorMessage(exception,UI_COPY));setStatus(UI_COPY.search.relationFailed);
     }finally{
-      if(id===searchId.current)setFullTextLoading(false);
+      if(id===searchId.current){
+        setFullTextLoading(false);
+        setSearchInFlight(false);
+        if(abortRef.current===controller)abortRef.current=null;
+      }
     }
   }
 
@@ -889,6 +918,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setFullTextError('');setFullTextLoading(false);
     ++searchId.current;
     abortRef.current?.abort();
+    abortRef.current=null;
+    setSearchInFlight(false);
     loadMoreInFlight.current=false;
     setLoadingMore(false);
     matchedQueryRef.current='';
@@ -1473,8 +1504,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {status&&(!managementMode||status!==UI_COPY.search.start)&&
       (managementMode||!publicResultsMode||publicStatusIsActionable)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'||status===UI_COPY.search.loadingRelation?<ActivityMotion/>:
       error||status===UI_COPY.search.failed||status===UI_COPY.search.relationFailed?<ActivityMotion state="error"/>:
+      status==='已取消搜尋。'?<ActivityMotion state="cancelled"/>:
       status===UI_COPY.search.empty?<ActivityMotion state="empty"/>:
-      status===UI_COPY.search.start?null:results.length>0?<ActivityMotion state="success"/>:null} {status}</p>:null}
+      status===UI_COPY.search.start?null:results.length>0?<ActivityMotion state="success"/>:null} {status}
+      {searchInFlight?<button type="button" className="loc-button" onClick={cancelSearch}>取消</button>:null}</p>:null}
     {!managementMode&&!publicResultsMode&&results.length>0&&!browseResults&&matchedQueryRef.current?<section className="scope-search-next-step"
       aria-label={t('uiExtra.searchUI.followupSearch')}>
       <p className="scope-status">{t('uiExtra.searchUI.followupSearch')}</p>
@@ -1534,7 +1567,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       {fullTextKey&&readerResult?<motion.div key={fullTextKey}
         initial={reduceMotion?false:{opacity:0,x:8}} animate={{opacity:1,x:0}}
         transition={{duration:reduceMotion?0:.2}}>
-        {fullTextLoading?<p className="scope-status" role="status">正在讀取文章… <ActivityMotion kind="hourglass"/></p>:null}
+        {fullTextLoading?<p className="scope-status" role="status">正在讀取文章… <ActivityMotion kind="hourglass"/>
+          {searchInFlight?<button type="button" className="loc-button" onClick={cancelSearch}>取消</button>:null}</p>:null}
         {renderSearchArticle(readerResult,0,true)}
         {fullTextError?<button type="button" className="loc-button" onClick={()=>void toggleFullText(readerResult)}>重新讀取文章</button>:null}
       </motion.div>:<p className="scope-status">選擇左側文章，閱讀全文及探索關聯。</p>}
