@@ -27,6 +27,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   const router=useRouter();
   const [zoomLevel,setZoomLevel]=useState(0);
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
+  useEffect(()=>setSelectedPeriodKey(''),[startDate,rangeEndDate]);
   // Persist intersection selections while the range-specific query remounts.
   const [memberLaneCount,setMemberLaneCount]=useState(2);
   const [memberChoices,setMemberChoices]=useState([]);
