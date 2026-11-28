@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  STATISTIC_INTENTS,availableStatisticIntents,histogramBins,
-  normalizeFunnelStages,recordScatterPair,resolveStatisticIntent
+  STATISTIC_INTENTS,availableStatisticIntents,compositionPercentages,
+  compositionTrendRows,histogramBins,normalizeFunnelStages,
+  recordScatterPair,resolveStatisticIntent
 } from '../app/modular/modules/statistics/statistics-time-zoom.mjs';
 
 const series=[{key:'a',label:'A'},{key:'b',label:'B'}];
@@ -32,6 +33,19 @@ test('comparison switches from columns to sorted horizontal bars after six categ
   }).sort,'desc');
 });
 
+test('time comparisons use columns through six periods and horizontal bars after six',()=>{
+  assert.equal(resolveStatisticIntent({
+    intent:'compare',rows:rows(6),totalKey:'total'
+  }).barLayout,'horizontal');
+  assert.equal(resolveStatisticIntent({
+    intent:'compare',rows:rows(7),totalKey:'total'
+  }).barLayout,'vertical');
+  assert.equal(resolveStatisticIntent({
+    intent:'compare',rows:[{period:'p1',total:1},{period:'p2',total:4}],
+    totalKey:'total'
+  }).dataMode,'time-comparison');
+});
+
 test('trend uses columns below six points and a line from six points onward',()=>{
   assert.equal(resolveStatisticIntent({
     intent:'trend',rows:rows(3),series
@@ -57,6 +71,31 @@ test('composition charts require mutually exclusive dimensions',()=>{
   assert.equal(resolveStatisticIntent({
     intent:'compositionTrend',rows:rows(8),series,seriesExclusive:true
   }).type,'compositionTrend');
+});
+
+test('composition normalizes every category to an exact 100 percent total',()=>{
+  const rows=compositionPercentages(distribution(4));
+  assert.equal(Math.round(rows.reduce((sum,row)=>sum+row.percent,0)*100)/100,100);
+  assert.ok(rows.every(row=>row.percent>0));
+});
+
+test('composition over time keeps a 100 percent denominator and groups overflow into Other',()=>{
+  const sourceSeries=Array.from({length:10},(_,index)=>({
+    key:'s'+index,label:'Source '+index
+  }));
+  const sourceRows=Array.from({length:2},(_,period)=>({
+    period:'p'+period,
+    ...Object.fromEntries(sourceSeries.map((field,index)=>[
+      field.key,(10-index)*(period+1)
+    ]))
+  }));
+  const result=compositionTrendRows(sourceRows,sourceSeries,7);
+  assert.equal(result.fields.length,8);
+  assert.equal(result.fields.at(-1).aggregated,true);
+  for(const row of result.rows){
+    const percent=result.fields.reduce((sum,field)=>sum+row[field.dataKey],0);
+    assert.ok(Math.abs(percent-100)<1e-8);
+  }
 });
 
 test('relationship points retain one raw record identity per dot',()=>{
