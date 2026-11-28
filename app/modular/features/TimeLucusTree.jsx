@@ -75,8 +75,7 @@ export default function TimeLucusTree({
   ];
   const selectedPrimary=selectedEra?uid(selectedEra.row):
     unclassifiedSelected?'__unclassified__':(!selectedRow?uid(hierarchy.eras[0]?.row):'');
-  const visible=(items,selected)=>items.filter(item=>!selected||item.id===selected);
-  const create=type=>()=>onCreate?.(type);
+    const create=type=>()=>onCreate?.(type);
   return <section className="loc-lucus-select-workspace loc-time-lucus-tree"
     aria-label="時間定錨階層管理">
     <div className="loc-lucus-select-workspace__levels">
@@ -92,7 +91,7 @@ export default function TimeLucusTree({
               }else if(id!=='__none__')onSelect?.(id);
             }}>
             <option value="__none__">選擇時代</option>
-            {visible(primaryItems,selectedPrimary).map(item=>
+            {primaryItems.map(item=>
               <option key={item.id} value={item.id}>{item.label} · {item.meta}</option>)}
           </select>
         </label>
