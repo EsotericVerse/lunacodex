@@ -230,7 +230,8 @@ body.loc-app-shell :is(
   .scope-card,.scope-inline-card,.scope-feature-card,.scope-stat-section,
   .scope-ranking-chart,.scope-hero,.loc-shared-work-card,.loc-trace-panel,
   .admin-workspace,.management-workspace-panel,
-  .loc-lucus-select-workspace__field,.loc-lucus-select-workspace__search
+  .loc-lucus-select-workspace__field,.loc-lucus-select-workspace__search,
+  dialog,[role="dialog"],[popover],.scope-edit-switch-dialog
 ){
   border-radius:var(--loc-material-radius);
   border-style:var(--loc-material-edge-style);
@@ -247,7 +248,7 @@ body.loc-app-shell :is(
 }
 
 /* Text bubbles are a first-class part of each Theme, not generic mini-cards. */
-body.loc-app-shell .loc-bubble:not(.loc-home-block__media):not(.loc-home-block__media-bubble){
+body.loc-app-shell :is(.loc-bubble:not(.loc-home-block__media):not(.loc-home-block__media-bubble),[role="tooltip"],.loc-search-pattern-popover){
   border:var(--loc-theme-bubble-border-width) var(--loc-theme-bubble-border-style) var(--loc-theme-bubble-edge);
   border-radius:var(--loc-theme-bubble-radius);
   background-color:var(--loc-theme-bubble-surface);
