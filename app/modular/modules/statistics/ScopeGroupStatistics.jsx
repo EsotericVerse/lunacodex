@@ -18,7 +18,7 @@ const StatisticsMultiChart=dynamic(()=>import('./StatisticsMultiChart'),{loading
 const StatisticsInsightsPanel=dynamic(()=>import('./StatisticsInsightsPanel'),{loading:()=>null});
 const LocMemberIntersection=dynamic(()=>import('./LocMemberIntersection'),{loading:()=>null});
 
-export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGalaxyStatistics}){
+export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGalaxyStatistics,initialData=null}){
   useUiSection('statistics');
   useUiSection('uiExtra.statisticsUI');
   useUiSection('uiExtra.statisticsView');
@@ -44,10 +44,18 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   const {startDate,endDate:rangeEndDate,bucket}=zoomRange;
   useEffect(()=>{setSelectedPeriodKey('');setChartIntent('trend');},[startDate,rangeEndDate]);
   const observedEnd=rangeEndDate<taipeiDateKey()?rangeEndDate:taipeiDateKey();
-  const locQuery=useAsyncResource(startDate&&observedEnd&&startDate<=observedEnd
-    ?['loc-statistics',startDate,observedEnd]:null,async()=>{
+  const initialMatches=initialData?.scopeId==='loc'&&
+    initialData.startDate===startDate&&initialData.endDate===observedEnd&&
+    Array.isArray(initialData.data?.rows)&&Array.isArray(initialData.data?.scopes);
+  const locQuery=useAsyncResource({
+    queryKey:startDate&&observedEnd&&startDate<=observedEnd
+      ?['loc-statistics',startDate,observedEnd]:null,
+    enabled:Boolean(startDate&&observedEnd&&startDate<=observedEnd)&&!initialMatches,
+    fallbackData:initialMatches?initialData.data:undefined,
+    queryFn:async()=>{
       const {selectLocStatistics}=await loadGalaxyStatistics();
       return selectLocStatistics({startDate,endDate:observedEnd});
+    }
   });
   useEffect(()=>{
     const found=locQuery.data?.earliest||'';

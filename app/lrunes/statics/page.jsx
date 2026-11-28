@@ -1,5 +1,8 @@
 import LocApp from '../../loc/LocApp';
 import {lunarunesMetadata} from '../../seo/metadata';
+import {loadStatisticsPageInitialData} from '../../loc/statistics/page-bootstrap.mjs';
+
+export const dynamic='force-dynamic';
 
 export const metadata=lunarunesMetadata({
   title:'資料統計與時間變化｜月之符文',
@@ -7,4 +10,7 @@ export const metadata=lunarunesMetadata({
   path:'/statics/'
 });
 
-export default function Page(){return <LocApp forcedView="statics" forcedScope="lrunes"/>;}
+export default async function Page(){
+  const initialData=await loadStatisticsPageInitialData('lrunes');
+  return <LocApp forcedView="statics" forcedScope="lrunes" initialData={initialData}/>;
+}

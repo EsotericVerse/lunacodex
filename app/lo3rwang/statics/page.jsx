@@ -1,5 +1,8 @@
 import LocApp from '../../loc/LocApp';
 import {authorMetadata} from '../../seo/metadata';
+import {loadStatisticsPageInitialData} from '../../loc/statistics/page-bootstrap.mjs';
+
+export const dynamic='force-dynamic';
 
 export const metadata=authorMetadata({
   title:'作品統計與時間變化｜政德｜月典',
@@ -7,4 +10,7 @@ export const metadata=authorMetadata({
   path:'/lo3rwang/statics/'
 });
 
-export default function Page(){return <LocApp forcedView="statics" forcedScope="lo3rwang"/>;}
+export default async function Page(){
+  const initialData=await loadStatisticsPageInitialData('lo3rwang');
+  return <LocApp forcedView="statics" forcedScope="lo3rwang" initialData={initialData}/>;
+}
