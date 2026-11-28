@@ -300,6 +300,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     const activePeriods=totalsById.get(category.id)?.activePeriods||0;
     return {
       ...category,uid:category.uid||category.id,title:category.name,label:category.name,
+      family:dimensionForKind(category.kind),type:category.type||category.kind,
       works:total,activePeriods,
       durationDays:category.durationDays,
       dateAnchorCount:category.dateAnchorCount,
@@ -536,6 +537,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
               mutuallyExclusive={exclusive} seriesExclusive={exclusive}
               attainmentValue={calculated.days} targetValue={rangeDays}
               attainmentLabel="共同活躍日涵蓋率" attainmentTargetLabel="選取範圍日數"
+              recordLabel="Lucus 項目"
+              relationshipNote="每個點代表一個選取的 Lucus 項目；比較其數值指標，不代表因果關係。"
               foldBlank={['trend','compositionTrend'].includes(effectiveChartIntent)&&foldBlank}
               height={410} activeCategoryKey={selectedCategoryKey}
               onCategoryClick={['compare','ranking','composition'].includes(effectiveChartIntent)
