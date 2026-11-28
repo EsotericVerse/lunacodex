@@ -45,9 +45,10 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
   const ranked=[...rows].sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label));
   const shown=ranked.slice(0,30);
   const metricValues=ranked.filter(row=>Number(row.count)>0).map(row=>({
-    uid:row.key,label:row.label,value:Number(row[metricKey])||0,
-    count:Number(row.count)||0,documents:Number(row.documents)||0,
-    ratio:Number(row.ratio)||0,level,type:level==='word'?'pattern':level
+    uid:row.key,label:row.label,title:row.label,family:'keyword',
+    value:Number(row[metricKey])||0,count:Number(row.count)||0,
+    documents:Number(row.documents)||0,ratio:Number(row.ratio)||0,
+    level,type:level==='word'?'pattern':level
   }));
   const metricOptions=[
     {key:'count',label:'命中次數',unit:'次'},
@@ -115,7 +116,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
         height={Math.max(300,Math.min(800,distribution.length*34+90))}/>
       :effectiveIntent==='relationship'&&metricValues.length>1
         ?<StatisticsMultiChart intent="relationship" records={metricValues}
-          recordFields={recordFields} recordLabel={level==='word'?'Pattern 項目':'關鍵詞項目'}
+          recordFields={recordFields} recordLabel={level==='group'?'Group':level==='item'?'Item':'Pattern'}
           relationshipNote="每個點代表一個 Group、Item 或 Pattern；比較命中次數與涉及作品數，不代表因果關係。"
           height={380}/>
         :<p className="scope-status">尚無足夠的詞級命中紀錄。</p>}
