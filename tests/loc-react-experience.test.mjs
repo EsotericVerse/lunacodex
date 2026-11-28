@@ -83,8 +83,10 @@ test('React Motion timing follows the published LOC timing scale',async()=>{
   );
   const css=await source('app/styles/loc-expressive-ui.css');
   assert.match(css,/--loc-motion-fast:160ms/);
+  assert.match(css,/--loc-motion-feedback:180ms/);
   assert.match(css,/--loc-motion-standard:280ms/);
   assert.match(css,/--loc-motion-emphasis:520ms/);
+  assert.match(css,/--loc-motion-arrival:900ms/);
 });
 
 test('Management graph uses vis-network and reads all colors from active theme tokens',async()=>{
