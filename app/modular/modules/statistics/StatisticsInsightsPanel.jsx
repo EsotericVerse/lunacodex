@@ -233,9 +233,11 @@ export default function StatisticsInsightsPanel({
   // separate Insights rail. PELT adds analytical meaning, not a new layout.
   return <div className="statistics-dashboard__workspace" aria-label="作品總數 Dashboard">
     <section className="statistics-dashboard__panel statistics-dashboard__panel--chart"
-      aria-label={intent==='compare'?'作品數量比較':title}>
+      aria-label={intent==='compare'?'作品數量比較':
+        intent==='distribution'?'作品數量分布':title}>
       <header className="statistics-dashboard__panel-heading">
-        <h3>{intent==='compare'?'作品數量比較':title}</h3>
+        <h3>{intent==='compare'?'作品數量比較':
+          intent==='distribution'?'作品數量分布':title}</h3>
         <p>{range.startDate&&range.endDate
           ?range.startDate+' ～ '+range.endDate:'僅分析已取得的總數資料'}</p>
       </header>
