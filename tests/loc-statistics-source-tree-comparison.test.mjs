@@ -5,12 +5,35 @@ import {sourceTaxonomyFromLucus}
 import {SOURCE_LUCUS_FIXTURE} from './fixtures/source-lucus.mjs';
 import {sourceStatisticsTree,sourceTreeMetricId,SOURCE_UNCLASSIFIED_METRIC}
   from '../app/loc/statistics/source-tree-measures.mjs';
+import {sourceIntersectionMetrics,fourDimensionDailyCounts}
+  from '../app/loc/statistics/four-lucus-intersection.mjs';
 
 const taxonomy=sourceTaxonomyFromLucus(SOURCE_LUCUS_FIXTURE);
 const treeByTitle=new Map(taxonomy.tree.map(item=>[item.title,item]));
 const stat=(name,result)=>result.totals.get(sourceTreeMetricId(treeByTitle.get(name).uid))||0;
 const row=(site,count,extra={})=>({
   kind:'source',day:'2026-11-22',category:site,item_count:count,...extra
+});
+
+test('all four SiteLucus levels expose child and descendant counts for chart measures',()=>{
+  const model=sourceStatisticsTree([
+    row('Facebook',2),row('Threads',3),row('vocus',7),row('ptt',3)
+  ],taxonomy);
+  const metrics=sourceIntersectionMetrics(taxonomy);
+  const counts=fourDimensionDailyCounts({
+    selected:metrics,sourceRows:[
+      row('Facebook',2),row('Threads',3),row('vocus',7),row('ptt',3)
+    ],taxonomy,sourceModel:model
+  });
+  const byTitle=new Map(metrics.map(metric=>[metric.name,metric]));
+  assert.equal(byTitle.get('Words').childCount,2);
+  assert.equal(byTitle.get('Words').descendantCount,7);
+  assert.equal(byTitle.get('Words').fromCount,3);
+  assert.equal(byTitle.get('Meta').childCount,2);
+  assert.equal(byTitle.get('Facebook').childCount,0);
+  assert.equal(counts.get(byTitle.get('Facebook').id).get('2026-11-22'),2);
+  assert.equal(counts.get(byTitle.get('Meta').id).get('2026-11-22'),5);
+  assert.equal(counts.get(byTitle.get('Words').id).get('2026-11-22'),12);
 });
 
 test('each native From rolls up exactly once along its saved Universe/Galaxy/Domain path',()=>{

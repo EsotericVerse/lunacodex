@@ -4,7 +4,7 @@ import {cloneElement,useEffect,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
-import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,compositionPercentages,compositionTrendRows,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
+import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,availableStatisticIntents,STATISTIC_INTENTS,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,compositionPercentages,compositionTrendRows,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
 import {themedDataColor} from '../../visual-palette.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
@@ -73,8 +73,10 @@ export function foldEmptyTimeBuckets(rows=[],series=[],units={}){
 export default function StatisticsMultiChart({
   type='line',intent='legacy',rows=[],series=[],distribution=[],totalKey='',height=380,foldBlank=false,
   barLayout:legacyBarLayout='horizontal',records=[],recordFields=[],values=[],
-  targetValue=null,attainmentValue=null,attainmentLabel='達成率',funnelStages=[],
-  mutuallyExclusive=false,seriesExclusive=false,
+  targetValue=null,attainmentValue=null,attainmentLabel='達成率',
+  attainmentTargetLabel='目標',recordLabel='單筆紀錄',
+  relationshipNote='每個點代表一筆紀錄；散布圖呈現數值關聯，不代表因果關係。',
+  funnelStages=[],mutuallyExclusive=false,seriesExclusive=false,
   onCategoryClick=null,onSeriesClick=null,onPeriodClick=null,onDatumClick=null,
   selectedPeriodKey='',activeCategoryKey='',rankingOffset=0
 }){
@@ -243,19 +245,22 @@ export default function StatisticsMultiChart({
     }
     seriesClick(field.key);
   };
-  const selectedDatumTitle=selectedDatum?.kind==='record'?'單筆紀錄':
+  const selectedDatumTitle=selectedDatum?.kind==='record'?recordLabel:
     selectedDatum?.kind==='bin'?'分布區間明細':
     selectedDatum?.kind==='attainment'?'達成率明細':
     selectedDatum?.kind==='stage'?'流程階段明細':'其他分類明細';
   const selectedDatumRows=selectedDatum?.kind==='record'?[
-    ['紀錄',selectedDatum.title||selectedDatum.recordId],
-    ['日期',selectedDatum.date||'—'],['來源',selectedDatum.source||'—'],
-    ['地點',selectedDatum.place||'—']
+    ['項目',selectedDatum.title||selectedDatum.recordId],
+    ...(selectedDatum.family?[['Lucus',selectedDatum.family]]:[]),
+    ...(selectedDatum.type?[['層級',selectedDatum.type]]:[]),
+    ...(selectedDatum.date?[['日期',selectedDatum.date]]:[]),
+    ...(selectedDatum.source?[['來源',selectedDatum.source]]:[]),
+    ...(selectedDatum.place?[['地點',selectedDatum.place]]:[])
   ]:selectedDatum?.kind==='bin'?[
     ['區間',selectedDatum.name],['下界',selectedDatum.from],
     ['上界',selectedDatum.to],['筆數',selectedDatum.count]
   ]:selectedDatum?.kind==='attainment'?[
-    ['實際值',selectedDatum.actual],['目標值',selectedDatum.target],
+    ['實際值',selectedDatum.actual],[attainmentTargetLabel,selectedDatum.target],
     ['達成率',Number(selectedDatum.ratio||0).toFixed(1)+'%'],
     ['差額',Number(selectedDatum.actual||0)-Number(selectedDatum.target||0)]
   ]:selectedDatum?.kind==='stage'?[
@@ -365,7 +370,7 @@ export default function StatisticsMultiChart({
     <YAxis dataKey="name" type="category" width={92} tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
     <Tooltip content={<ThemedChartTooltip/>}/>
     <ReferenceLine x={intentConfig.target} stroke={color(3)} strokeWidth={2.5}
-      strokeDasharray="5 3" label={{value:'目標',position:'insideTopRight',fill:TEXT,fontSize:11}}/>
+      strokeDasharray="5 3" label={{value:attainmentTargetLabel,position:'insideTopRight',fill:TEXT,fontSize:11}}/>
     <Bar {...animation} dataKey="value" name="實際值" fill={color(0)} maxBarSize={34}
       onClick={()=>emitDatum({intent,kind:'attainment',actual:intentConfig.actual,
         target:intentConfig.target,ratio:intentConfig.ratio})}/>
@@ -526,7 +531,7 @@ export default function StatisticsMultiChart({
       </div>:null}
     </section>:null}
     {intent==='relationship'?<p className="scope-status" role="note">
-      每個點代表一筆紀錄；散布圖呈現數值關聯，不代表因果關係。
+      {relationshipNote}
     </p>:null}
     {foldBlank&&gaps.length?<p className="scope-status" role="note">
       {t('uiExtra.chartLabels.gapLabel')}{gaps.map(g=>g.start+'～'+g.end+'（'+(g.days||g.buckets)+' '+(g.days?units.dayUnit:units.periodUnit)+'）').join(t('uiExtra.chartLabels.gapSeparator'))}
@@ -683,8 +688,30 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   const trendRows=shown==='group'?trend:[];
   const series=shown==='group'
     ?trendSeries.filter(field=>!activeGroupId||field.key==='class_'+activeGroupId):[];
-  const intentOptions=shown==='group'&&trendRows.length
-    ?['ranking','trend']:shown==='item'?['ranking']:[];
+  const trendValues=trendRows.flatMap(row=>trendSeries.map(field=>({
+    uid:field.key+'|'+row.period,label:field.label+' · '+row.period,
+    period:row.period,value:Number(row[field.key])||0
+  })));
+  const trendRecords=trendRows.map(row=>({...row,uid:row.period,title:row.period,
+    date:row.start_date,family:'keyword',type:'group'}));
+  const itemValues=groupRows.map(row=>({
+    uid:row.uid,label:groupLabel(row.label,t),title:row.label,
+    family:'keyword',type:'item',value:Number(row.count)||0,
+    count:Number(row.count)||0,documents:Number(row.document_count)||0
+  }));
+  const itemFields=[
+    {key:'count',label:'命中次數',unit:'次'},
+    {key:'documents',label:'涉及作品數',unit:'篇'}
+  ];
+  const intentOptions=shown==='group'?availableStatisticIntents({
+    rows:trendRows,series:trendSeries,distribution:groupDistribution,
+    values:trendValues,records:trendRecords,recordFields:trendSeries,
+    mutuallyExclusive:true,seriesExclusive:true,
+    attainmentValue:classifiedTotal,targetValue:Number(data.documentCount)||0
+  }):shown==='item'?availableStatisticIntents({
+    distribution:itemDistribution,values:itemValues,records:itemValues,
+    recordFields:itemFields
+  }):[];
   const effectiveIntent=intentOptions.includes(chartIntent)?chartIntent:'ranking';
   const mixedHierarchy=shown==='both';
   const chooseKeywordCategory=key=>{
@@ -712,31 +739,45 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
       </label>
       {intentOptions.length>1?<label><span>分析意圖</span>
         <select className="scope-select" value={effectiveIntent} onChange={event=>{
-          setChartIntent(event.target.value);setSelectedPeriodKey('');
-          if(event.target.value==='ranking')setSelectedKey('');
+          setChartIntent(event.target.value);setSelectedPeriodKey('');setSelectedKey('');
         }}>
           {intentOptions.map(value=><option key={value} value={value}>
-            {value==='trend'?'看趨勢':'看排名'}
+            {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
           </option>)}
         </select>
       </label>:null}
-      {effectiveIntent==='trend'?<button type="button" className="loc-button loc-button--small"
-        onClick={()=>{setChartIntent('ranking');setSelectedKey('');setSelectedPeriodKey('');}}>返回排名</button>:null}
+      {['trend','compositionTrend'].includes(effectiveIntent)
+        ?<button type="button" className="loc-button loc-button--small"
+          onClick={()=>{setChartIntent('ranking');setSelectedKey('');setSelectedPeriodKey('');}}>返回排名</button>:null}
     </div>
     {shown==='both'&&groupCatalog.isPending?<p className="scope-status" role="status">正在載入關鍵詞項目的 Class 歸屬…</p>:null}
     {shown==='both'&&groupCatalog.error?<p className="scope-status scope-error" role="alert">群組對應讀取失敗：{String(groupCatalog.error?.message||groupCatalog.error)}</p>:null}
     {shown==='both'&&!groupCatalog.isSuccess?null:
       distribution.length?<StatisticsMultiChart
         intent={mixedHierarchy?'legacy':effectiveIntent}
-        type="bar" rows={trendRows} series={series} distribution={distribution}
+        type="bar"
+        rows={['trend','compositionTrend'].includes(effectiveIntent)?trendRows:[]}
+        series={effectiveIntent==='compositionTrend'?trendSeries:series}
+        distribution={effectiveIntent==='composition'?groupDistribution:distribution}
+        values={shown==='group'?trendValues:itemValues}
+        records={shown==='group'?trendRecords:itemValues}
+        recordFields={shown==='group'?trendSeries:itemFields}
+        mutuallyExclusive={shown==='group'} seriesExclusive={shown==='group'}
+        attainmentValue={classifiedTotal} targetValue={Number(data.documentCount)||0}
+        attainmentLabel="關鍵詞分類涵蓋率" attainmentTargetLabel="可分類作品數"
+        recordLabel={shown==='group'?'統計時段':'關鍵詞 Item'}
+        relationshipNote={shown==='group'
+          ?'每個點代表一個統計時段；比較不同 Group 的命中變化，不代表因果關係。'
+          :'每個點代表一個 Item；比較命中次數與涉及作品數，不代表因果關係。'}
         barLayout="vertical" height={Math.max(340,Math.min(24,distribution.length)*36+85)}
-        activeCategoryKey={selectedKey} onCategoryClick={chooseKeywordCategory}
-        rankingOffset={offset}
-        selectedPeriodKey={selectedPeriodKey}
-        onPeriodClick={effectiveIntent==='trend'
+        activeCategoryKey={selectedKey}
+        onCategoryClick={['ranking','compare','composition'].includes(effectiveIntent)
+          ?chooseKeywordCategory:null}
+        rankingOffset={shown==='item'?offset:0} selectedPeriodKey={selectedPeriodKey}
+        onPeriodClick={['trend','compositionTrend','distribution'].includes(effectiveIntent)
           ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>:
         <p className="scope-status">{t('uiExtra.statisticsView.noVisual')}</p>}
-    {selectedPeriodKey&&effectiveIntent==='trend'?<section
+    {selectedPeriodKey&&['trend','compositionTrend'].includes(effectiveIntent)?<section
       className="scope-self-intersection-selected" aria-live="polite">
       <header className="statistics-dashboard__panel-heading">
         <h4>{selectedPeriodKey} · 關鍵詞趨勢明細</h4>

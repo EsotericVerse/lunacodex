@@ -225,7 +225,9 @@ export function recordScatterPair(records=[],fields=[],xKey='',yKey=''){
       if(x===null||y===null)return [];
       return [{
         x,y,recordId:String(row?.uid??row?.id??index),
-        title:String(row?.title||row?.name||''),
+        title:String(row?.title||row?.name||row?.label||''),
+        family:String(row?.family||''),
+        type:String(row?.type||''),
         date:String(row?.date||row?.day||'').slice(0,10),
         source:row?.source??row?.site??null,
         place:row?.place??row?.place_id??null

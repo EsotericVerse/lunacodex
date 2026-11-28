@@ -39,11 +39,24 @@ export function sourceStatisticsTree(rows=[],taxonomy={}){
     for(const id of pathForSite(row.category))
       totals.set(id,(totals.get(id)||0)+count);
   }
+  const childCounts=new Map(),descendantCounts=new Map(),fromCounts=new Map();
+  for(const node of outline){
+    const parent=node.path.at(-2);
+    if(parent)childCounts.set(parent,(childCounts.get(parent)||0)+1);
+    for(const ancestor of node.path.slice(0,-1))
+      descendantCounts.set(ancestor,(descendantCounts.get(ancestor)||0)+1);
+    if(node.type==='from')
+      for(const ancestor of node.path)
+        fromCounts.set(ancestor,(fromCounts.get(ancestor)||0)+1);
+  }
   const metrics=outline.map(node=>({
     id:sourceTreeMetricId(node.code),kind:'source_tree',uid:node.code,
     parentUid:node.path.at(-2)||null,
     path:node.path,level:node.level,type:node.type,
-    name:node.label,total:totals.get(sourceTreeMetricId(node.code))||0
+    name:node.label,total:totals.get(sourceTreeMetricId(node.code))||0,
+    childCount:childCounts.get(node.code)||0,
+    descendantCount:descendantCounts.get(node.code)||0,
+    fromCount:fromCounts.get(node.code)||0
   }));
   const unmatched=totals.get(SOURCE_UNCLASSIFIED_METRIC)||0;
   if(unmatched)metrics.push({
@@ -56,9 +69,9 @@ export function sourceStatisticsTree(rows=[],taxonomy={}){
     totals};
 }
 
-// Intersection navigation starts at each Universe heading, then exposes only
-// Galaxy and Domain. From nodes stay inside metricIdsForSite rollups, never
-// appear as selectable or displayed rows in this two-level chooser.
+// Compact legacy navigation starts at each Universe heading, then exposes
+// Galaxy and Domain only. The full statistics picker uses the entire metrics
+// projection directly and includes Universe and From as well.
 // Follow persisted Lucus parent UIDs, never guess a path from source names.
 export function sourceIntersectionOutline(metrics=[]){
   const nodes=(Array.isArray(metrics)?metrics:[])

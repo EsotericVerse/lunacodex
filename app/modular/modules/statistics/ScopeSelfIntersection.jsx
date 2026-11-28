@@ -12,8 +12,10 @@ import StatisticsDetails from './StatisticsDetails';
 import {sourceStatisticsTree} from '../../../loc/statistics/source-tree-measures.mjs';
 import SourceTreePicker from './SourceTreePicker';
 import {INTERSECTION_FAMILIES,timeIntersectionMetrics,spaceIntersectionMetrics,
-  fourDimensionDailyCounts} from '../../../loc/statistics/four-lucus-intersection.mjs';
+  fourDimensionDailyCounts,areLucusMetricsMutuallyExclusive}
+  from '../../../loc/statistics/four-lucus-intersection.mjs';
 import {comparisonMetricGroups,selectedComparisonMetricGroup,firstAvailableGroupMetric} from './statistics-compare-options.mjs';
+import {availableStatisticIntents,STATISTIC_INTENTS} from './statistics-time-zoom.mjs';
 
 const DAY_MS=86400000;
 // Only second/third hierarchy levels are selectable in each comparison lane.
@@ -25,7 +27,7 @@ export const DIMENSIONS=Object.freeze([
   {kind:'trace',label:'痕跡'},{kind:'path',label:'路徑'},
   {kind:'keyword_group',label:'關鍵詞 Group'},
   {kind:'keyword_item',label:'關鍵詞 Item'},
-  {kind:'source_tree',label:'來源 Galaxy／Domain'}
+  {kind:'source_tree',label:'來源 Universe／Galaxy／Domain／From'}
 ]);
 const dimensionForKind=kind=>kind==='source_tree'?'source':
   INTERSECTION_FAMILIES.find(row=>row.types.includes(kind))?.value||'source';
@@ -63,6 +65,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
   const [chartIntent,setChartIntent]=useState('trend');
   const [selectedCategoryKey,setSelectedCategoryKey]=useState('');
+  const [compareMetricKey,setCompareMetricKey]=useState('works');
   useEffect(()=>{
     setSelectedPeriodKey('');setSelectedCategoryKey('');setChartIntent('trend');
   },[scope?.id,range?.startDate,range?.endDate]);
@@ -150,7 +153,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       if(!result.class_uid)return [];
       const {catalog}=keywordClassCatalog(result.rows,result.class_uid);
       return catalog.map(item=>({
-        uid:item.uid,group_uid:item.group_uid,class_group:item.class_group
+        uid:item.uid,group_uid:item.group_uid,class_group:item.class_group,
+        patternCount:Array.isArray(item.keywords)?item.keywords.length:0
       }));
     }
   });
@@ -158,15 +162,16 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     .filter(item=>item.class_enable!==false&&String(item.group_uid||''))
     .map(item=>[String(item.uid),String(item.group_uid)])),
   [keywordCatalog.data]);
+  const keywordItemPatternCount=useMemo(()=>new Map((keywordCatalog.data||[])
+    .map(item=>[String(item.uid),Math.max(0,Number(item.patternCount)||0)])),
+  [keywordCatalog.data]);
   const timeMetrics=useMemo(()=>timeIntersectionMetrics(timeLucus.data||[]),
     [timeLucus.data]);
   const spaceMetrics=useMemo(()=>spaceIntersectionMetrics(spaceLucus.data||[]),
     [spaceLucus.data]);
-  // Keep the single Source-tree engine. Universe is a grouping heading;
-  // From contributes to rollups but is not shown or selectable in comparisons.
-  const sourceMetrics=useMemo(()=>sourceModel.metrics.filter(item=>
-    item.kind==='source_tree'&&['galaxy','domain'].includes(item.type)),
-  [sourceModel]);
+  // Keep the one SiteLucus tree intact: Universe, Galaxy, Domain and From
+  // are all real levels. Each level is a selectable numeric projection.
+  const sourceMetrics=useMemo(()=>sourceModel.metrics,[sourceModel]);
   const hierarchyMetrics=useMemo(()=>[...timeMetrics,...spaceMetrics,...sourceMetrics],
     [timeMetrics,spaceMetrics,sourceMetrics]);
   const hierarchyCounts=useMemo(()=>fourDimensionDailyCounts({
@@ -183,18 +188,24 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       .filter(row=>Number(row.document_count||0)>0)
       .map(row=>({
         id:metricId('keyword_group',row.group_uid),kind:'keyword_group',
-        uid:String(row.group_uid),name:String(row.group||row.group_uid),
-        total:Number(row.document_count)||0
+        uid:String(row.group_uid),parentUid:String(analysis?.keywordMeta?.class_uid||''),
+        name:String(row.group||row.group_uid),total:Number(row.document_count)||0,
+        childCount:(keywordCatalog.data||[]).filter(item=>
+          String(item.group_uid)===String(row.group_uid)).length
       }));
     const items=(analysis?.runeTotals||[])
       .filter(row=>Number(row.document_count||0)>0)
       .map(row=>({
         id:metricId('keyword_item',row.uid),kind:'keyword_item',
-        group_uid:keywordItemGroup.get(String(row.uid))||'',
-        name:String(row.label||row.uid),total:Number(row.document_count)||0
+        uid:String(row.uid),group_uid:keywordItemGroup.get(String(row.uid))||'',
+        parentUid:keywordItemGroup.get(String(row.uid))||'',
+        name:String(row.label||row.uid),total:Number(row.document_count)||0,
+        patternCount:keywordItemPatternCount.get(String(row.uid))||0,
+        childCount:keywordItemPatternCount.get(String(row.uid))||0
       }));
     return [...hierarchy,...groups,...items];
-  },[hierarchyMetrics,hierarchyCounts,keywords.data,keywordItemGroup]);
+  },[hierarchyMetrics,hierarchyCounts,keywords.data,keywordItemGroup,
+    keywordItemPatternCount,keywordCatalog.data]);
   const candidatesForLane=index=>categoryList.filter(item=>
     dimensionForKind(item.kind)===shownKinds[index]&&item.total>0)
     .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name));
@@ -272,8 +283,9 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       chart,
       days:[...activeDays.values()].filter(day=>categories.every(category=>day.has(category.id))).length,
       totals:categories.map(category=>({
-        name:category.name,
-        value:chart.reduce((n,bucket)=>n+Number(bucket[category.id]||0),0)
+        id:category.id,name:category.name,
+        value:chart.reduce((n,bucket)=>n+Number(bucket[category.id]||0),0),
+        activePeriods:chart.filter(bucket=>Number(bucket[category.id]||0)>0).length
       }))
     };
   },[hierarchyCounts,categories.map(c=>c.id).join(String.fromCharCode(0)),
@@ -281,14 +293,64 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const series=categories.map(c=>({key:c.id,label:c.name}));
   const categoryKey=categories.map(category=>category.id).join('|');
   useEffect(()=>setSelectedCategoryKey(''),[categoryKey]);
-  const distribution=calculated.totals.map((item,index)=>({
-    key:categories[index]?.id||String(index),name:item.name,value:item.value
+  const totalsById=new Map(calculated.totals.map(item=>[item.id,item]));
+  const rangeDays=Math.max(0,Math.floor((Date.parse(end+'T00:00:00Z')-
+    Date.parse(start+'T00:00:00Z'))/DAY_MS)+1);
+  const chartMetricRows=categories.map(category=>{
+    const total=totalsById.get(category.id)?.value||0;
+    const activePeriods=totalsById.get(category.id)?.activePeriods||0;
+    return {
+      ...category,uid:category.uid||category.id,title:category.name,label:category.name,
+      family:dimensionForKind(category.kind),type:category.type||category.kind,
+      works:total,activePeriods,
+      durationDays:category.durationDays,periodCount:category.periodCount,
+      dateAnchorCount:category.dateAnchorCount,
+      pointCount:category.pointCount,
+      pathCount:category.pathCount,
+      childCount:category.childCount,
+      descendantCount:category.descendantCount,
+      fromCount:category.fromCount,
+      patternCount:category.patternCount
+    };
+  }).filter(row=>row.works>0);
+  const metricDefinitions=[
+    {key:'works',label:'作品數',unit:'篇'},
+    {key:'durationDays',label:'時間跨度',unit:'日'},
+    {key:'periodCount',label:'時期數',unit:'個'},
+    {key:'dateAnchorCount',label:'日期定錨數',unit:'個'},
+    {key:'pointCount',label:'Point 數',unit:'個'},
+    {key:'pathCount',label:'Path 數',unit:'條'},
+    {key:'patternCount',label:'Pattern 數',unit:'個'},
+    {key:'childCount',label:'直接子節點數',unit:'個'},
+    {key:'descendantCount',label:'下層節點數',unit:'個'},
+    {key:'fromCount',label:'From 來源數',unit:'個'},
+    {key:'activePeriods',label:'活躍區間數',unit:'個'}
+  ];
+  const metricOptions=metricDefinitions.filter(metric=>
+    chartMetricRows.length>=2&&chartMetricRows.every(row=>
+      row[metric.key]!==null&&row[metric.key]!==undefined&&
+      Number.isFinite(Number(row[metric.key]))));
+  const effectiveMetricKey=metricOptions.some(metric=>metric.key===compareMetricKey)
+    ?compareMetricKey:'works';
+  const distribution=chartMetricRows.map(row=>({
+    key:row.id,name:row.name,value:Number(row[effectiveMetricKey])||0
   })).filter(item=>item.value>0);
+  const values=chartMetricRows.map(row=>({
+    uid:row.uid,label:row.name,value:Number(row[effectiveMetricKey])||0,
+    metric:effectiveMetricKey
+  })).filter(row=>Number.isFinite(row.value));
+  const recordFields=metricOptions.map(metric=>metric);
+  const selectedCategory=categories.find(category=>category.id===selectedCategoryKey)||null;
+  const exclusive=areLucusMetricsMutuallyExclusive(categories);
+  const chartIntentOptions=availableStatisticIntents({
+    rows:calculated.chart,series,distribution,
+    records:chartMetricRows,recordFields,values,
+    mutuallyExclusive:exclusive,seriesExclusive:exclusive,
+    attainmentValue:calculated.days,targetValue:rangeDays
+  });
+  const effectiveChartIntent=chartIntentOptions.includes(chartIntent)?chartIntent:'trend';
   const visibleSeries=selectedCategoryKey
     ?series.filter(field=>field.key===selectedCategoryKey):series;
-  const chartIntentOptions=distribution.length?['trend','compare']:['trend'];
-  const effectiveChartIntent=chartIntentOptions.includes(chartIntent)?chartIntent:'trend';
-  const selectedCategory=categories.find(category=>category.id===selectedCategoryKey)||null;
   const enough=maximumLanes>=2&&categories.length===lanes;
   const selectedPoint=calculated.chart.find(row=>row.period===selectedPeriodKey)||null;
   const selectedPointCategories=selectedCategory?[selectedCategory]:categories;
@@ -376,8 +438,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
               <div className="scope-self-intersection-category-groups">
                 {kind==='source'?<SourceTreePicker
                   metrics={sourceModel.metrics} value={chosenId} takenIds={takenByOther}
-                  selectableTypes={['galaxy','domain']} onChange={selectMetric}
-                  label={l.comparisonItem+' '+(index+1)+' 來源 Galaxy／Domain'}/>:null}
+                  onChange={selectMetric}
+                  label={l.comparisonItem+' '+(index+1)+' 來源 Universe／Galaxy／Domain／From'}/>:null}
                 {kind!=='source'?<label className="scope-self-stat-picker"><span>上層分類</span>
                   <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 上層分類'}
                     value={currentGroup?.key||''}
@@ -414,37 +476,57 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
         {chartIntentOptions.length>1?<div className="scope-stat-controls">
           <label><span>分析意圖</span>
             <select className="scope-select" value={effectiveChartIntent} onChange={event=>{
-              setChartIntent(event.target.value);setSelectedPeriodKey('');
-              if(event.target.value==='compare')setSelectedCategoryKey('');
+              setChartIntent(event.target.value);setSelectedPeriodKey('');setSelectedCategoryKey('');
             }}>
-              <option value="trend">看趨勢</option>
-              <option value="compare">比大小</option>
+              {chartIntentOptions.map(value=><option key={value} value={value}>
+                {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
+              </option>)}
             </select>
           </label>
+          {['compare','ranking','distribution','composition'].includes(effectiveChartIntent)&&metricOptions.length>1
+            ?<label><span>分析數值</span>
+              <select className="scope-select" value={effectiveMetricKey}
+                onChange={event=>setCompareMetricKey(event.target.value)}>
+                {metricOptions.map(metric=><option key={metric.key} value={metric.key}>
+                  {metric.label}（{metric.unit}）
+                </option>)}
+              </select>
+            </label>:null}
           {selectedCategory?<button type="button" className="loc-button loc-button--small"
             onClick={()=>{setSelectedCategoryKey('');setChartIntent('compare');setSelectedPeriodKey('');}}>
             返回比較
           </button>:null}
-          {effectiveChartIntent==='trend'?<label className="scope-setting-toggle">
-            <input type="checkbox" checked={foldBlank} onChange={e=>setFoldBlank(e.target.checked)}/> {l.foldEmptyTime}
-          </label>:null}
+          {['trend','compositionTrend'].includes(effectiveChartIntent)
+            ?<label className="scope-setting-toggle">
+              <input type="checkbox" checked={foldBlank} onChange={e=>setFoldBlank(e.target.checked)}/> {l.foldEmptyTime}
+            </label>:null}
         </div>:null}
         {selectedKeywordItems&&keywordItems.isPending?<p className="scope-status" role="status">正在讀取關鍵詞項目的每日統計…</p>:null}
         {selectedKeywordItems&&keywordItems.error?<p role="alert" className="scope-status scope-error">{String(keywordItems.error?.message||keywordItems.error)}</p>:null}
         {enough&&(!selectedKeywordItems||keywordItems.isSuccess)?<div>
           <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange} range={range} idPrefix="scope-self-stat">
             <StatisticsMultiChart intent={effectiveChartIntent}
-              rows={effectiveChartIntent==='compare'?[]:calculated.chart}
-              series={effectiveChartIntent==='compare'?[]:visibleSeries}
-              distribution={distribution}
-              foldBlank={effectiveChartIntent==='trend'&&foldBlank} height={410}
-              activeCategoryKey={selectedCategoryKey}
-              onCategoryClick={effectiveChartIntent==='compare'?selectComparisonCategory:null}
+              rows={['trend','compositionTrend'].includes(effectiveChartIntent)
+                ?calculated.chart:[]}
+              series={['trend','compositionTrend'].includes(effectiveChartIntent)
+                ?visibleSeries:[]}
+              distribution={distribution} values={values}
+              records={chartMetricRows} recordFields={recordFields}
+              mutuallyExclusive={exclusive} seriesExclusive={exclusive}
+              attainmentValue={calculated.days} targetValue={rangeDays}
+              attainmentLabel="共同活躍日涵蓋率" attainmentTargetLabel="選取範圍日數"
+              recordLabel="Lucus 項目"
+              relationshipNote="每個點代表一個選取的 Lucus 項目；比較其數值指標，不代表因果關係。"
+              foldBlank={['trend','compositionTrend'].includes(effectiveChartIntent)&&foldBlank}
+              height={410} activeCategoryKey={selectedCategoryKey}
+              onCategoryClick={['compare','ranking','composition'].includes(effectiveChartIntent)
+                ?selectComparisonCategory:null}
               selectedPeriodKey={selectedPeriodKey}
-              onPeriodClick={effectiveChartIntent==='trend'
+              onPeriodClick={['trend','compositionTrend'].includes(effectiveChartIntent)
                 ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>
           </StatisticsChartFrame>
-          {selectedPoint?<section className="scope-self-intersection-selected" aria-live="polite">
+          {selectedPoint&&['trend','compositionTrend'].includes(effectiveChartIntent)
+            ?<section className="scope-self-intersection-selected" aria-live="polite">
             <header className="statistics-dashboard__panel-heading">
               <h4>{selectedPoint.period} · 選取時段</h4>
               <button type="button" className="loc-button loc-button--small"
@@ -457,7 +539,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
               </div>)}
             </div>
           </section>:null}
-          <p className="scope-status">交錯以「同日活躍」計算；時間為 Era／Period、空間為 Trace／Path、關鍵詞為 Group／Item、來源為 Galaxy／Domain。父子節點各自統計，不將同篇作品重複加進同一項；同日出現不代表同篇文章交集。</p>
+          <p className="scope-status">交錯以「同日活躍」計算。TLucus 使用 Era／Period 與時間跨度；LLucus 使用 Trace／Path 與 Point 數；KLucus 使用 Group／Item 與 Pattern 數；SLucus 使用 Universe／Galaxy／Domain／From 與階層數量。父子節點各自統計，不把重疊的父子總數相加成獨立作品數；同日出現不代表同篇文章交集。</p>
           <StatisticsDetails>{()=><>
           <div className="scope-ranking">
             <div><strong>{l.activeDays}</strong><span>{calculated.days.toLocaleString(locale)}{l.dayUnit}</span></div>

@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import StatisticsMultiChart from './StatisticsMultiChart';
+import {availableStatisticIntents,STATISTIC_INTENTS} from './statistics-time-zoom.mjs';
 
 // All Item/word ratios are composed from existing loc_search_pattern rows.
 // No article rescan and no Lucus count is involved in this view.
@@ -9,6 +10,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
   const [level,setLevel]=useState('item');
   const [selectedKey,setSelectedKey]=useState('');
   const [intent,setIntent]=useState('ranking');
+  const [metricKey,setMetricKey]=useState('count');
   useEffect(()=>setSelectedKey(''),[range.startDate,range.endDate]);
   const summary=useAsyncResource({
     queryKey:['statistics-keyword-pattern-ratios',scopeId,classUid,range.startDate,range.endDate],
@@ -31,23 +33,47 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
   const items=Array.isArray(data.items)?data.items:[];
   const rows=level==='group'
     ?(data.groups||[]).map(group=>({key:group.uid,label:group.name,
-      count:group.hit_count,ratio:group.ratio}))
+      count:group.hit_count,documents:group.document_count,ratio:group.ratio}))
     :level==='item'
       ?items.map(item=>({key:item.uid,label:item.name,count:item.hit_count,
-        ratio:item.ratio}))
+        documents:item.document_count,ratio:item.ratio}))
       :items.flatMap(item=>item.words.filter(word=>word.indexed).map(word=>({
         key:item.uid+':'+word.pattern,label:item.name+' / '+word.pattern,
-        count:word.count,ratio:word.ratio
+        count:word.count,documents:item.document_count,ratio:word.ratio,
+        itemUid:item.uid
       })));
   const ranked=[...rows].sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label));
   const shown=ranked.slice(0,30);
-  const distribution=shown.filter(row=>row.count>0).map(row=>({
-    key:row.key,name:row.label,value:row.count
-  }));
   const metricValues=ranked.filter(row=>Number(row.count)>0).map(row=>({
-    uid:row.key,label:row.label,value:Number(row.count)||0,
-    ratio:Number(row.ratio)||0,level
+    uid:row.key,label:row.label,title:row.label,family:'keyword',
+    value:Number(row[metricKey])||0,count:Number(row.count)||0,
+    documents:Number(row.documents)||0,ratio:Number(row.ratio)||0,
+    level,type:level==='word'?'pattern':level
   }));
+  const metricOptions=[
+    {key:'count',label:'命中次數',unit:'次'},
+    {key:'documents',label:'涉及作品數',unit:'篇'}
+  ].filter(option=>metricValues.length>1&&metricValues.every(row=>
+    Number.isFinite(Number(row[option.key]))));
+  const effectiveMetricKey=metricOptions.some(option=>option.key===metricKey)
+    ?metricKey:'count';
+  const values=metricValues.map(row=>({...row,value:Number(row[effectiveMetricKey])||0}));
+  const distribution=shown.filter(row=>row.count>0).map(row=>({
+    key:row.key,name:row.label,value:Number(row[effectiveMetricKey])||0
+  })).filter(row=>row.value>0);
+  const compositionDistribution=shown.filter(row=>row.count>0).map(row=>({
+    key:row.key,name:row.label,value:Number(row.documents)||0
+  })).filter(row=>row.value>0);
+  const recordFields=[
+    {key:'count',label:'命中次數',unit:'次'},
+    {key:'documents',label:'涉及作品數',unit:'篇'}
+  ].filter(field=>metricValues.length>1&&metricValues.every(row=>
+    Number.isFinite(Number(row[field.key]))));
+  const chartIntentOptions=availableStatisticIntents({
+    distribution,values,records:metricValues,recordFields,
+    mutuallyExclusive:level==='group'
+  }).filter(value=>value!=='composition'||compositionDistribution.length>1);
+  const effectiveIntent=chartIntentOptions.includes(intent)?intent:'ranking';
   const selectedRow=ranked.find(row=>String(row.key)===selectedKey)||null;
   const missing=Array.isArray(data.missing_patterns)?data.missing_patterns:[];
   return <section className="scope-card scope-stat-section">
@@ -56,29 +82,44 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     <label>
       <span>統計層級</span>
       <select className="scope-select" value={level}
-        onChange={event=>{setLevel(event.target.value);setSelectedKey('');setIntent('ranking');}}>
+        onChange={event=>{setLevel(event.target.value);setSelectedKey('');setIntent('ranking');setMetricKey('count');}}>
         <option value="group">Group</option>
         <option value="item">Item</option>
         <option value="word">單詞</option>
       </select>
     </label>
-    <div className="scope-stat-controls">
-      <label><span>分析意圖</span>
-        <select className="scope-select" value={intent} onChange={event=>{
+    {chartIntentOptions.length>0?<div className="scope-stat-controls">
+      {chartIntentOptions.length>1?<label><span>分析意圖</span>
+        <select className="scope-select" value={effectiveIntent} onChange={event=>{
           setIntent(event.target.value);setSelectedKey('');
         }}>
-          <option value="ranking">看排名</option>
-          {metricValues.length>1?<option value="distribution">看分布</option>:null}
+          {chartIntentOptions.map(value=><option key={value} value={value}>
+            {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
+          </option>)}
         </select>
-      </label>
-    </div>
-    {intent==='ranking'&&distribution.length?<StatisticsMultiChart intent="ranking" distribution={distribution}
-      activeCategoryKey={selectedKey}
-      onCategoryClick={key=>setSelectedKey(current=>current===String(key||'')?'':String(key||''))}
-      height={Math.max(300,Math.min(800,distribution.length*34+90))}/>:
-      intent==='distribution'&&metricValues.length>1?<StatisticsMultiChart intent="distribution"
-        values={metricValues} height={380}/>:
-      <p className="scope-status">尚無足夠的詞級命中紀錄。</p>}
+      </label>:null}
+      {metricOptions.length>1&&['ranking','distribution'].includes(effectiveIntent)
+        ?<label><span>分析數值</span>
+          <select className="scope-select" value={effectiveMetricKey}
+            onChange={event=>setMetricKey(event.target.value)}>
+            {metricOptions.map(option=><option key={option.key} value={option.key}>
+              {option.label}（{option.unit}）
+            </option>)}
+          </select>
+        </label>:null}
+    </div>:null}
+    {['ranking','distribution','composition'].includes(effectiveIntent)&&distribution.length
+      ?<StatisticsMultiChart intent={effectiveIntent}
+        distribution={effectiveIntent==='composition'?compositionDistribution:distribution}
+        mutuallyExclusive={level==='group'} activeCategoryKey={selectedKey}
+        onCategoryClick={key=>setSelectedKey(current=>current===String(key||'')?'':String(key||''))}
+        height={Math.max(300,Math.min(800,distribution.length*34+90))}/>
+      :effectiveIntent==='relationship'&&metricValues.length>1
+        ?<StatisticsMultiChart intent="relationship" records={metricValues}
+          recordFields={recordFields} recordLabel={level==='group'?'Group':level==='item'?'Item':'Pattern'}
+          relationshipNote="每個點代表一個 Group、Item 或 Pattern；比較命中次數與涉及作品數，不代表因果關係。"
+          height={380}/>
+        :<p className="scope-status">尚無足夠的詞級命中紀錄。</p>}
     {selectedRow?<section className="scope-self-intersection-selected" aria-live="polite">
       <header className="statistics-dashboard__panel-heading">
         <h4>{selectedRow.label}</h4>
@@ -87,6 +128,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
       </header>
       <div className="scope-ranking">
         <div><strong>命中數</strong><span>{Number(selectedRow.count||0).toLocaleString()}</span></div>
+        <div><strong>涉及作品</strong><span>{Number(selectedRow.documents||0).toLocaleString()}</span></div>
         <div><strong>比率</strong><span>{Number(selectedRow.ratio||0).toFixed(1)}%</span></div>
         <div><strong>統計層級</strong><span>{level}</span></div>
       </div>
