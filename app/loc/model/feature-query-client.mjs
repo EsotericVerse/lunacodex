@@ -24,12 +24,12 @@ export const readLucusFeature=(params,options={})=>
     editor:options.editor===true});
 export const readPublicSearchPatternIndex=scopeIds=>
   queryPublicSearchPatternIndex({scopeIds});
-export async function readAllLucusFeature({scope,family,types,startDate,endDate,
+export async function readAllLucusFeature({scope,family,types,dateStart,dateEnd,
   signal=null,editor=false}={}){
   const rows=[],seen=new Set();let cursor;
   const batch=createTextAdaptiveRows({initial:MAX_ROWS,maximum:TIME_LUCUS_MAX_PAGE_ROWS});
   for(;;){
-    const data=await readLucusFeature({scope,family,types,startDate,endDate,
+    const data=await readLucusFeature({scope,family,types,dateStart,dateEnd,
       cursor,limit:batch.size},
       {signal,editor});
     for(const row of data.rows||[]){
