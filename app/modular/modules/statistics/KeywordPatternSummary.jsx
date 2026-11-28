@@ -1,5 +1,5 @@
 'use client';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import StatisticsMultiChart from './StatisticsMultiChart';
 
@@ -9,6 +9,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
   const [level,setLevel]=useState('item');
   const [selectedKey,setSelectedKey]=useState('');
   const [intent,setIntent]=useState('ranking');
+  useEffect(()=>setSelectedKey(''),[range.startDate,range.endDate]);
   const summary=useAsyncResource({
     queryKey:['statistics-keyword-pattern-ratios',scopeId,classUid,range.startDate,range.endDate],
     enabled:Boolean(scopeId&&classUid),
