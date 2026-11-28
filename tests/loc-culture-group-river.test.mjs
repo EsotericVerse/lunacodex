@@ -17,7 +17,8 @@ const rows=[
   {scope_id:'beta',uid:'BETERA01',type:'era',title:'另一 Scope 時代',attr:{period:['BETPER01']}},
   {scope_id:'beta',uid:'BETPER01',type:'period',title:'另一 Scope 期間',attr:{uid:['BETDAT01','BETDAT02']}},
   {scope_id:'beta',uid:'BETDAT01',type:'date',title:'另一 Scope 起點',attr:{date:'2024-01-01'}},
-  {scope_id:'beta',uid:'BETDAT02',type:'date',title:'另一 Scope 終點',attr:{date:'2024-12-31'}}
+  {scope_id:'beta',uid:'BETDAT02',type:'date',title:'另一 Scope 終點',attr:{date:'2024-12-31'}},
+  {scope_id:'beta',uid:'BETDAT03',type:'date',title:'另一 Scope 同期定錨',attr:{date:'2001-06-01'}}
 ];
 
 test('LOC Era index keeps historical Eras even when their Date anchors are outside the current year',()=>{
@@ -37,7 +38,8 @@ test('one selected Era renders only its own Period and in-window Date anchors',(
   assert.deepEqual(river.items.filter(row=>row.entry_type==='lucus')
     .map(row=>row.start_date),['2001-01-01','2002-12-31']);
   assert.equal(river.items.some(row=>row.title==='近期時代'),false);
-  assert.equal(river.items.some(row=>row.scope_id==='beta'),false);
+  assert.ok(river.items.some(row=>row.scope_id==='beta'&&row.start_date==='2001-06-01'));
+  assert.ok(river.groups.some(group=>group.label==='beta · 時間定錨'));
 });
 
 test('initial one-year window filters Date anchors without deleting the historical Era index',()=>{
