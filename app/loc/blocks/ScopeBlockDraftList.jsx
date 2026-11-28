@@ -1,7 +1,6 @@
 'use client';
 
-import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import {motion,useReducedMotion} from 'motion/react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {scrollHomeTop,turnHomeBlocks} from './home-page-turn.mjs';
 import {useEditDock} from '../../modular/edit-dock';
 import {editorTransactionLease,assertEditorTransactionLease,isEditorTransactionCancelled} from '../db/editor-transaction-lifecycle.mjs';
@@ -18,7 +17,6 @@ import {blockWritePermissionKey,scopeBlockStoragePage} from './scope-block-stora
 import {HeroImageFieldset} from './HeroImageFields';
 import {invalidateScopeBlockPage} from '../scope/scope-data';
 import {planHomeBlockWrites} from './home-block-draft-plan.mjs';
-import ManagementVisNetwork from '../../modular/ManagementVisNetwork';
 
 const BlockNoteEditor=dynamic(()=>import('../editor/BlockNoteEditor'),{loading:()=>null});
 const ObjectEditor=dynamic(()=>import('../editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
@@ -40,7 +38,6 @@ export default function ScopeBlockDraftList({
   useUiSection('uiExtra.editBlocks');
   useUiSection('uiExtra.frameEditor');
   const t=useUiText();
-  const reduceMotion=useReducedMotion();
   const queryClient=useQueryClient();
   const editDock=useEditDock();
   const storagePage=scopeBlockStoragePage(scopeId,pageName);
@@ -58,50 +55,6 @@ export default function ScopeBlockDraftList({
     initialDrafts.current=JSON.stringify(initial);
     return initial;
   });
-  const visibleDrafts=useMemo(()=>drafts.filter(draft=>!draft._deleted),[drafts]);
-  const [activeTarget,setActiveTarget]=useState(()=>slots[0]?.uid?'block:'+slots[0].uid:'');
-  const [networkState,setNetworkState]=useState('loading');
-  const activeBlockUid=activeTarget.startsWith('entity:')
-    ?activeTarget.split(':')[1]||''
-    :activeTarget.startsWith('block:')?activeTarget.slice(6):'';
-  const activeDraft=visibleDrafts.find(draft=>draft.uid===activeBlockUid)||null;
-  const blockGraph=useMemo(()=>{
-    const center=(visibleDrafts.length-1)/2;
-    const rootId='home:'+scopeId+':'+pageName;
-    const pageRoot=pageName==='index';
-    const nodes=[{id:rootId,label:pageRoot?'首頁':'頁面',level:0,x:0,y:0,fixed:true,
-      widthConstraint:{maximum:150}}];
-    const edges=[];
-    const selectedEntities=activeDraft?.entities||[];
-    visibleDrafts.forEach((draft,index)=>{
-      const blockId='block:'+draft.uid;
-      const y=(index-center)*112;
-      nodes.push({id:blockId,label:String(draft.title||draft.eyebrow||'區塊 '+(index+1)),
-        level:1,x:220,y,fixed:true,widthConstraint:{maximum:190}});
-      edges.push({id:rootId+'>'+blockId,from:rootId,to:blockId});
-      if(draft.uid!==activeDraft?.uid)return;
-      const childCenter=(selectedEntities.length-1)/2;
-      selectedEntities.forEach((entity,entityIndex)=>{
-        const entityId='entity:'+draft.uid+':'+entity.uid;
-        const body=BlockNoteContent.text.blocksToPlainText(entity.text||'').trim();
-        nodes.push({id:entityId,
-          label:String(entity.title||body.split(/\r?\n/)[0]||'子內容 '+(entityIndex+1)).slice(0,48),
-          level:2,x:475,y:y+(entityIndex-childCenter)*64,fixed:true,
-          widthConstraint:{maximum:210}});
-        edges.push({id:blockId+'>'+entityId,from:blockId,to:entityId});
-      });
-    });
-    return {nodes,edges,rootId};
-  },[visibleDrafts,activeDraft,scopeId,pageName]);
-  useEffect(()=>{
-    if(!visibleDrafts.length){if(activeTarget)setActiveTarget('');return;}
-    if(!activeDraft){setActiveTarget('block:'+visibleDrafts[0].uid);return;}
-    if(activeTarget.startsWith('entity:')){
-      const entityUid=activeTarget.split(':')[2]||'';
-      if(!activeDraft.entities.some(entity=>entity.uid===entityUid))
-        setActiveTarget('block:'+activeDraft.uid);
-    }
-  },[visibleDrafts,activeDraft,activeTarget]);
   const [preview,setPreview]=useState(false);
   const [requestedPreview,setRequestedPreview]=useState(false);
   const turning=Boolean(PreviewDisplay&&requestedPreview!==preview);
@@ -152,15 +105,12 @@ export default function ScopeBlockDraftList({
     }));
   }
   function addEntity(uid){
-    const childUid=HomeBlock.createUid();
-    setActiveTarget('entity:'+uid+':'+childUid);
     setDrafts(current=>current.map(draft=>{
       if(draft.uid!==uid||draft.entities.length>=HomeBlock.entityLimit)return draft;
-      return {...draft,entities:[...draft.entities,{uid:childUid,title:'',text:'',order:draft.entities.length+1}]};
+      return {...draft,entities:[...draft.entities,{uid:HomeBlock.createUid(),title:'',text:'',order:draft.entities.length+1}]};
     }));
   }
   function removeEntity(uid,index){
-    if(activeTarget.startsWith('entity:'+uid+':'))setActiveTarget('block:'+uid);
     setDrafts(current=>current.map(draft=>{
       if(draft.uid!==uid)return draft;
       const mode=BlockNoteContent.image.heroImageMode(draft);
@@ -191,10 +141,6 @@ export default function ScopeBlockDraftList({
   }
   function toggleDelete(uid){
     if(!allowDelete)return;
-    if(activeBlockUid===uid){
-      const next=visibleDrafts.find(draft=>draft.uid!==uid);
-      setActiveTarget(next?'block:'+next.uid:'');
-    }
     setDrafts(current=>current.map(draft=>draft.uid===uid?{...draft,_deleted:!draft._deleted}:draft));
   }
   function moveBlock(uid,direction){
@@ -210,12 +156,10 @@ export default function ScopeBlockDraftList({
     });
   }
   function addBlock(){
-    const uid=HomeBlock.createUid();
-    setActiveTarget('block:'+uid);
     setDrafts(current=>{
       const nextOrder=Math.max(0,...current.map(draft=>Number(draft.order)||0))+1;
       return [...current,{
-        uid,stored:false,order:nextOrder,
+        uid:HomeBlock.createUid(),stored:false,order:nextOrder,
         eyebrow:'',title:'',subtitle:'',text:'',image:null,entities:[],bubbleColumns:HomeBlock.defaultBubbleColumns(pageName),_deleted:false
       }];
     });
@@ -320,13 +264,8 @@ export default function ScopeBlockDraftList({
   }
 
   function renderDraftEntities(draft){
-    const selectedChild=activeTarget.startsWith('entity:'+draft.uid+':')
-      ?activeTarget.split(':')[2]||'':'';
-    const entities=selectedChild
-      ?draft.entities.map((entity,index)=>({entity,index})).filter(row=>row.entity.uid===selectedChild)
-      :draft.entities.map((entity,index)=>({entity,index}));
     return <div className="scope-block-entity-grid" style={{'--loc-bubble-columns':HomeBlock.bubbleColumns([draft.bubbleColumns],pageName)}}>
-      {entities.map(({entity,index})=><article className={HomeBlock.childPresentation(entity.title)==='card'?'scope-block-entity':'loc-bubble scope-block-text-bubble'} key={entity.uid}>
+      {draft.entities.map((entity,index)=><article className={HomeBlock.childPresentation(entity.title)==='card'?'scope-block-entity':'loc-bubble scope-block-text-bubble'} key={entity.uid}>
         <div className="scope-block-entity-actions">
           <button type="button" className="loc-button" disabled={index===0||busy} onClick={()=>moveEntity(draft.uid,index,-1)}>←</button>
           <button type="button" className="loc-button" disabled={index===draft.entities.length-1||busy} onClick={()=>moveEntity(draft.uid,index,1)}>→</button>
@@ -418,6 +357,7 @@ export default function ScopeBlockDraftList({
     });
   },[editDock?.register]);
 
+  const visibleDrafts=drafts.filter(draft=>!draft._deleted);
   const showingPreview=Boolean(PreviewDisplay&&preview);
   const previewRows=showingPreview?visibleDrafts.map((draft,index)=>({
     ...draft,pageName,order:preserveOrder?Number(draft.order)||index+1:index+1,
@@ -437,40 +377,7 @@ export default function ScopeBlockDraftList({
       </div>:null}
     </div>
     {/* Preview owns only the draft values; no hidden BlockNote instances. */}
-    {!showingPreview?<div className="loc-home-block-network-editor">
-      <aside className="loc-home-block-network-editor__tree" aria-label={pageName==='index'?'首頁內容結構':'頁面內容結構'}>
-        <h3 className="loc-home-block-network-editor__title">{pageName==='index'?'首頁結構':'頁面結構'}</h3>
-        <ManagementVisNetwork nodes={blockGraph.nodes} edges={blockGraph.edges}
-          selectedId={activeTarget.startsWith('entity:')?activeTarget:
-            activeDraft?'block:'+activeDraft.uid:''}
-          onSelect={id=>{
-            if(id.startsWith('block:')||id.startsWith('entity:'))setActiveTarget(id);
-          }} ariaLabel="首頁區塊與子內容關係圖"
-          onStatusChange={state=>setNetworkState(state)}/>
-        {networkState==='loading'?<p className="scope-status" role="status">正在準備首頁結構圖…</p>:null}
-        {networkState==='error'?<p className="scope-status scope-error" role="status">圖譜目前無法載入；下方清單仍可切換區塊。</p>:null}
-        <details className="loc-home-block-network-editor__choices">
-          <summary>區塊與子內容清單</summary>
-          <div className="loc-home-block-network-editor__fallback">
-            {visibleDrafts.map((draft,index)=><button type="button" key={draft.uid}
-              aria-pressed={activeDraft?.uid===draft.uid&&!activeTarget.startsWith('entity:')}
-              onClick={()=>setActiveTarget('block:'+draft.uid)}>
-              {draft.title||draft.eyebrow||'區塊 '+(index+1)}
-            </button>)}
-            {activeDraft?.entities.map((entity,index)=><button type="button" key={entity.uid}
-              aria-pressed={activeTarget==='entity:'+activeDraft.uid+':'+entity.uid}
-              onClick={()=>setActiveTarget('entity:'+activeDraft.uid+':'+entity.uid)}>
-              {activeDraft.title||'區塊'} · {entity.title||'子內容 '+(index+1)}
-            </button>)}
-          </div>
-        </details>
-      </aside>
-      <motion.div layout={!reduceMotion} className="loc-home-block-network-editor__editor"
-        transition={reduceMotion?{duration:0}:{layout:{duration:.22,ease:'easeOut'}}}>
-        {activeDraft?renderDraft(activeDraft,visibleDrafts.findIndex(draft=>draft.uid===activeDraft.uid),visibleDrafts)
-          :<p className="scope-status">目前沒有首頁區塊，請新增區塊開始編輯。</p>}
-      </motion.div>
-    </div>:null}
+    {!showingPreview?visibleDrafts.map((draft,index)=>renderDraft(draft,index,visibleDrafts)):null}
     {canAddBlock&&!showingPreview?<button type="button" className="loc-button scope-add-page-block" onClick={addBlock} disabled={busy}><UiText id="uiExtra.editBlocks.addBlock"/></button>:null}
     {showingPreview?previewRows.filter(slot=>BlockNoteContent.text.hasBlockNoteFrameContent(slot)).map((slot,index)=>
       <section key={'preview:'+(slot.uid||'order:'+slot.order)}
