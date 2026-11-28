@@ -54,7 +54,7 @@ test('initial one-year window filters Date anchors without deleting the historic
 
 test('LOC density aggregation merges same-day sources across member Scopes',()=>{
   assert.deepEqual(mergeLocCultureDensityRows([
-    {scope_id:'alpha',day:'2026-01-01',site:'Facebook',item_count:3},
+    {scope_id:'alpha',day:new Date('2026-01-01T00:00:00.000Z'),site:'Facebook',item_count:3},
     {scope_id:'beta',day:'2026-01-01',site:'Facebook',item_count:4},
     {scope_id:'alpha',day:'2026-01-02',site:'Threads',item_count:2}
   ]),[
