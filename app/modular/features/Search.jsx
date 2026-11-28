@@ -1537,6 +1537,10 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       </div>
       {bulkNotice?<p className="scope-status" role="status">{bulkNotice}</p>:null}
     </section>:null}
+    {searchInFlight&&loadingMore?<p className="scope-status" role="status" aria-live="polite">
+      正在載入更多文章… <ActivityMotion/>
+      <button type="button" className="loc-button" onClick={cancelSearch}>取消</button>
+    </p>:null}
     {results.length||hasMore?<div style={{display:'flex',justifyContent:'flex-end',marginBottom:'.5rem'}}>
       <ArticleSortSelect value={articleSort} onChange={changeArticleSort} disabled={Boolean(editingKey)}/>
     </div>:null}
