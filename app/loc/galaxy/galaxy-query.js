@@ -301,16 +301,18 @@ function articleStatisticsContext(scope,day){
     year:{start:yearStart,end:yearEnd}};
 }
 
-export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='',federated=false}={}){
+export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='',federated=false,signal=null}={}){
   const current=scopeOf(scope);
   const id=String(uid||'').trim();
   if(!id)return null;
+  if(signal?.aborted){const error=new Error('The operation was aborted');error.name='AbortError';throw error;}
   // One exact UID SELECT loads the selected article through GalaxyUidRead;
   // list paths stay on GalaxyList and never read article content.
   if(dbId)throw Error('Qualified external database reads need the authorized source');
   const {rows:articleRows}=await readGalaxyRecords({
     scope:current.id,view:'detail',uids:[id]
-  },{editor:includeHidden});
+  },{editor:includeHidden,signal});
+  if(signal?.aborted){const error=new Error('The operation was aborted');error.name='AbortError';throw error;}
   const row=articleRows[0]||null;
   if(!row||(!includeHidden&&galaxyAble(row).list===false))return null;
   const placeId=String(row.place_id||'').trim();
