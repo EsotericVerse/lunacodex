@@ -570,6 +570,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   const [chartIntent,setChartIntent]=useState('ranking');
   const [selectedKey,setSelectedKey]=useState('');
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
+  useEffect(()=>setSelectedPeriodKey(''),[range?.startDate,range?.endDate]);
   const data=analysis||{};
   const meta=data.keywordMeta||{};
   const className=String(meta.class_name||'').trim();
