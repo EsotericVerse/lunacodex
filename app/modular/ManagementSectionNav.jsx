@@ -4,6 +4,7 @@ import {useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {prepareTransientResourceAction} from '../../packages/zenstack/client-queries';
 import {useEditDock} from './edit-dock';
+import {LOC_MOTION} from './motion-tokens.mjs';
 
 /**
  * In-page management navigator.
@@ -50,7 +51,7 @@ export default function ManagementSectionNav({id,title,panelId,items,value,onCha
         >
           {selected?<motion.span className="management-section-nav__active-indicator"
             layoutId={id+'-selected'} aria-hidden="true"
-            transition={reduceMotion?{duration:0}:{type:'spring',duration:.27,bounce:.12}}/>:null}
+            transition={reduceMotion?{duration:0}:{type:'spring',duration:LOC_MOTION.standard,bounce:.12}}/>:null}
           <span className="management-section-nav__label">{item.shortLabel||item.label}</span>
           {showDescriptions&&item.description?<span className="management-section-nav__description">{item.description}</span>:null}
         </button>;
