@@ -303,7 +303,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       ...category,uid:category.uid||category.id,title:category.name,label:category.name,
       family:dimensionForKind(category.kind),type:category.type||category.kind,
       works:total,activePeriods,
-      durationDays:category.durationDays,
+      durationDays:category.durationDays,periodCount:category.periodCount,
       dateAnchorCount:category.dateAnchorCount,
       pointCount:category.pointCount,
       pathCount:category.pathCount,
@@ -316,6 +316,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const metricDefinitions=[
     {key:'works',label:'作品數',unit:'篇'},
     {key:'durationDays',label:'時間跨度',unit:'日'},
+    {key:'periodCount',label:'時期數',unit:'個'},
     {key:'dateAnchorCount',label:'日期定錨數',unit:'個'},
     {key:'pointCount',label:'Point 數',unit:'個'},
     {key:'pathCount',label:'Path 數',unit:'條'},
