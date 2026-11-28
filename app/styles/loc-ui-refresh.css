@@ -554,6 +554,19 @@
   background:var(--loc-list-row-even);
 }
 .loc-trace-territory-events>li:nth-child(even){background:var(--loc-list-row-odd)}
+.loc-trace-territory-visit-heading{display:flex;align-items:center;justify-content:space-between;gap:.65rem;margin:.65rem 0 .2rem}
+.loc-trace-territory-visit-heading>div{display:grid;gap:.15rem}
+.loc-trace-territory-day{display:flex;width:100%;align-items:center;justify-content:space-between;gap:.5rem;
+  padding:.4rem .6rem;border:0;background:transparent;color:var(--loc-text);font:inherit;text-align:start;cursor:pointer}
+.loc-trace-territory-events>li:has(.loc-trace-territory-day[aria-pressed="true"]){
+  border-inline-start-color:var(--loc-accent);background:var(--loc-accent-surface-strong)
+}
+.loc-trace-territory-day-detail{min-width:0;margin-block-start:.6rem}
+.loc-trace-strategy-header{display:flex;align-items:end;justify-content:space-between;gap:1rem;
+  margin:0 0 .8rem;padding:0 0 .7rem;border-block-end:1px solid var(--loc-accent-border-soft)}
+.loc-trace-strategy-header h2{margin:.1rem 0;font-size:clamp(1.2rem,2vw,1.55rem);color:var(--loc-heading)}
+.loc-trace-strategy-header__choice{display:grid;gap:.25rem;min-width:min(15rem,100%);color:var(--loc-muted);font-size:.8rem}
+.loc-trace-strategy-header__choice select{width:100%}
 .loc-trace-territory-inner-affairs{border-top:1px solid var(--loc-line);padding-top:.4rem;min-width:0}
 .loc-trace-territory-inner-affairs>summary{
   padding:.5rem .25rem;cursor:pointer;font-weight:750;color:var(--loc-heading);
@@ -564,6 +577,8 @@
 @media(max-width:680px){
   .loc-trace-strategy-tabs{gap:.3rem}
   .loc-trace-strategy-tabs>.loc-button{font-size:.81rem;padding-inline:.2rem;min-height:46px}
+  .loc-trace-strategy-header{align-items:stretch;flex-direction:column;gap:.45rem}
+  .loc-trace-strategy-header__choice{min-width:0}
   .loc-trace-territory-dossier{padding:.65rem}
   /* Preserve the lower-right "年度全版圖" return button. The dossier is
      above it in stacking order, so they must not occupy the same bottom lane. */
