@@ -567,7 +567,9 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
     <h3>關鍵詞分佈統計</h3>
     <div className="scope-stat-controls">
       <label><span>顯示內容</span>
-        <select className="scope-select" value={shown} onChange={event=>{setShown(event.target.value);setPage(1);}}>
+        <select className="scope-select" value={shown} onChange={event=>{
+          setShown(event.target.value);setPage(1);setChartIntent('ranking');setSelectedKey('');
+        }}>
           <option value="group">{t('uiExtra.statisticsView.classRuneTitle')}</option>
           <option value="item">{t('uiExtra.statisticsView.runeRankTitle')}</option>
           <option value="both">群組＋項目（同圖）</option>
