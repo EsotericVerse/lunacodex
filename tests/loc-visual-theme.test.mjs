@@ -74,7 +74,7 @@ test('published palettes store only the ten canonical color tokens',async()=>{
   assert.deepEqual(THEME_TOKEN_KEYS,canonicalThemeTokens);
   for(let id=1;id<=8;id++){
     const css=await themeSource('public/themes/theme-'+id+'.css');
-    const tokens=[...css.matchAll(/^\\s*(--loc-[\\w-]+)\\s*:/gm)].map(match=>match[1]);
+    const tokens=[...css.matchAll(/^\s*(--loc-[\w-]+)\s*:/gm)].map(match=>match[1]);
     assert.deepEqual(tokens,canonicalThemeTokens,'theme-'+id+' should publish only canonical palette colors');
   }
 });
@@ -82,29 +82,29 @@ test('published palettes store only the ten canonical color tokens',async()=>{
 test('each Theme defines all five visual dimensions for runtime and local preview',async()=>{
   const css=await themeSource('app/styles/theme-visual-system.css');
   for(let id=1;id<=8;id++){
-    assert.match(css,new RegExp(':root\\\\[data-theme-id="theme-'+id+'"\\\\]'));
-    assert.match(css,new RegExp('\\\\.admin-theme-local-preview\\\\[data-theme-id="theme-'+id+'"\\\\]'));
+    assert.ok(css.includes(':root[data-theme-id="theme-'+id+'"]'));
+    assert.ok(css.includes('.admin-theme-local-preview[data-theme-id="theme-'+id+'"]'));
   }
   for(const token of [
     '--loc-material-radius','--loc-material-edge-style',
     '--loc-theme-divider-style','--loc-font-heading',
     '--loc-theme-atmosphere','--loc-theme-bubble-radius'
   ])assert.ok(css.includes(token),'missing visual dimension token '+token);
-  assert.match(css,/body\\.loc-app-shell :is\\(/);
+  assert.ok(css.includes('body.loc-app-shell :is('));
 });
 
 test('Theme Editor keeps Day/Dark fixed and previews the complete visual system',async()=>{
   const editor=await themeSource('app/loc/views/admin-panels/ThemeEditor.jsx');
-  assert.doesNotMatch(editor,/function setScheme|setScheme\\(/);
-  assert.match(editor,/scheme:THEME_SLOTS\\.find\\(slot=>slot\\.id===themeId\\)\\?\\.scheme/);
-  assert.match(editor,/data-theme-id=\\{themeId\\}/);
-  assert.match(editor,/admin-theme-preview-dimensions/);
-  assert.match(editor,/明暗系列/);
+  assert.doesNotMatch(editor,/function setScheme|setScheme\(/);
+  assert.ok(editor.includes("scheme:THEME_SLOTS.find(slot=>slot.id===themeId)?.scheme||'light'"));
+  assert.ok(editor.includes('data-theme-id={themeId}'));
+  assert.ok(editor.includes('admin-theme-preview-dimensions'));
+  assert.ok(editor.includes('明暗系列'));
 });
 
 test('public Theme publication rejects any change to the fixed Day/Dark grouping',async()=>{
   const publisher=await themeSource('scripts/generate-public-blocks.mjs');
-  assert.match(publisher,/THEME_SCHEME_BY_ID=Object\\.freeze\\(\\{1:'dark',2:'light',3:'light',4:'dark',5:'light',6:'dark',7:'light',8:'dark'\\}\\)/);
-  assert.match(publisher,/must retain its fixed/);
-  assert.match(publisher,/const publishedTheme=/);
+  assert.ok(publisher.includes("const THEME_SCHEME_BY_ID=Object.freeze({1:'dark',2:'light',3:'light',4:'dark',5:'light',6:'dark',7:'light',8:'dark'});"));
+  assert.ok(publisher.includes('must retain its fixed'));
+  assert.ok(publisher.includes('const publishedTheme='));
 });
