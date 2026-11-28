@@ -313,15 +313,15 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   }).filter(row=>row.works>0);
   const metricDefinitions=[
     {key:'works',label:'作品數',unit:'篇'},
-    {key:'activePeriods',label:'活躍區間數',unit:'個'},
     {key:'durationDays',label:'時間跨度',unit:'日'},
     {key:'dateAnchorCount',label:'日期定錨數',unit:'個'},
     {key:'pointCount',label:'Point 數',unit:'個'},
     {key:'pathCount',label:'Path 數',unit:'條'},
+    {key:'patternCount',label:'Pattern 數',unit:'個'},
     {key:'childCount',label:'直接子節點數',unit:'個'},
     {key:'descendantCount',label:'下層節點數',unit:'個'},
     {key:'fromCount',label:'From 來源數',unit:'個'},
-    {key:'patternCount',label:'Pattern 數',unit:'個'}
+    {key:'activePeriods',label:'活躍區間數',unit:'個'}
   ];
   const metricOptions=metricDefinitions.filter(metric=>
     chartMetricRows.length>=2&&chartMetricRows.every(row=>
@@ -497,37 +497,55 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
         {chartIntentOptions.length>1?<div className="scope-stat-controls">
           <label><span>分析意圖</span>
             <select className="scope-select" value={effectiveChartIntent} onChange={event=>{
-              setChartIntent(event.target.value);setSelectedPeriodKey('');
-              if(event.target.value==='compare')setSelectedCategoryKey('');
+              setChartIntent(event.target.value);setSelectedPeriodKey('');setSelectedCategoryKey('');
             }}>
-              <option value="trend">看趨勢</option>
-              <option value="compare">比大小</option>
+              {chartIntentOptions.map(value=><option key={value} value={value}>
+                {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
+              </option>)}
             </select>
           </label>
+          {['compare','ranking','distribution','composition'].includes(effectiveChartIntent)&&metricOptions.length>1
+            ?<label><span>分析數值</span>
+              <select className="scope-select" value={effectiveMetricKey}
+                onChange={event=>setCompareMetricKey(event.target.value)}>
+                {metricOptions.map(metric=><option key={metric.key} value={metric.key}>
+                  {metric.label}（{metric.unit}）
+                </option>)}
+              </select>
+            </label>:null}
           {selectedCategory?<button type="button" className="loc-button loc-button--small"
             onClick={()=>{setSelectedCategoryKey('');setChartIntent('compare');setSelectedPeriodKey('');}}>
             返回比較
           </button>:null}
-          {effectiveChartIntent==='trend'?<label className="scope-setting-toggle">
-            <input type="checkbox" checked={foldBlank} onChange={e=>setFoldBlank(e.target.checked)}/> {l.foldEmptyTime}
-          </label>:null}
+          {['trend','compositionTrend'].includes(effectiveChartIntent)
+            ?<label className="scope-setting-toggle">
+              <input type="checkbox" checked={foldBlank} onChange={e=>setFoldBlank(e.target.checked)}/> {l.foldEmptyTime}
+            </label>:null}
         </div>:null}
         {selectedKeywordItems&&keywordItems.isPending?<p className="scope-status" role="status">正在讀取關鍵詞項目的每日統計…</p>:null}
         {selectedKeywordItems&&keywordItems.error?<p role="alert" className="scope-status scope-error">{String(keywordItems.error?.message||keywordItems.error)}</p>:null}
         {enough&&(!selectedKeywordItems||keywordItems.isSuccess)?<div>
           <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange} range={range} idPrefix="scope-self-stat">
             <StatisticsMultiChart intent={effectiveChartIntent}
-              rows={effectiveChartIntent==='compare'?[]:calculated.chart}
-              series={effectiveChartIntent==='compare'?[]:visibleSeries}
-              distribution={distribution}
-              foldBlank={effectiveChartIntent==='trend'&&foldBlank} height={410}
-              activeCategoryKey={selectedCategoryKey}
-              onCategoryClick={effectiveChartIntent==='compare'?selectComparisonCategory:null}
+              rows={['trend','compositionTrend'].includes(effectiveChartIntent)
+                ?calculated.chart:[]}
+              series={['trend','compositionTrend'].includes(effectiveChartIntent)
+                ?visibleSeries:[]}
+              distribution={distribution} values={values}
+              records={chartMetricRows} recordFields={recordFields}
+              mutuallyExclusive={exclusive} seriesExclusive={exclusive}
+              attainmentValue={calculated.days} targetValue={rangeDays}
+              attainmentLabel="共同活躍日涵蓋率" attainmentTargetLabel="選取範圍日數"
+              foldBlank={['trend','compositionTrend'].includes(effectiveChartIntent)&&foldBlank}
+              height={410} activeCategoryKey={selectedCategoryKey}
+              onCategoryClick={['compare','ranking','composition'].includes(effectiveChartIntent)
+                ?selectComparisonCategory:null}
               selectedPeriodKey={selectedPeriodKey}
-              onPeriodClick={effectiveChartIntent==='trend'
+              onPeriodClick={['trend','compositionTrend'].includes(effectiveChartIntent)
                 ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>
           </StatisticsChartFrame>
-          {selectedPoint?<section className="scope-self-intersection-selected" aria-live="polite">
+          {selectedPoint&&['trend','compositionTrend'].includes(effectiveChartIntent)
+            ?<section className="scope-self-intersection-selected" aria-live="polite">
             <header className="statistics-dashboard__panel-heading">
               <h4>{selectedPoint.period} · 選取時段</h4>
               <button type="button" className="loc-button loc-button--small"
@@ -540,7 +558,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
               </div>)}
             </div>
           </section>:null}
-          <p className="scope-status">交錯以「同日活躍」計算；時間為 Era／Period、空間為 Trace／Path、關鍵詞為 Group／Item、來源為 Galaxy／Domain。父子節點各自統計，不將同篇作品重複加進同一項；同日出現不代表同篇文章交集。</p>
+          <p className="scope-status">交錯以「同日活躍」計算。TLucus 使用 Era／Period 與時間跨度；LLucus 使用 Trace／Path 與 Point 數；KLucus 使用 Group／Item 與 Pattern 數；SLucus 使用 Universe／Galaxy／Domain／From 與階層數量。父子節點各自統計，不把重疊的父子總數相加成獨立作品數；同日出現不代表同篇文章交集。</p>
           <StatisticsDetails>{()=><>
           <div className="scope-ranking">
             <div><strong>{l.activeDays}</strong><span>{calculated.days.toLocaleString(locale)}{l.dayUnit}</span></div>
