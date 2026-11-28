@@ -283,7 +283,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   useEffect(()=>setSelectedCategoryKey(''),[categoryKey]);
   const distribution=calculated.totals.map((item,index)=>({
     key:categories[index]?.id||String(index),name:item.name,value:item.value
-  }));
+  })).filter(item=>item.value>0);
   const visibleSeries=selectedCategoryKey
     ?series.filter(field=>field.key===selectedCategoryKey):series;
   const chartIntentOptions=distribution.length?['trend','compare']:['trend'];
@@ -411,7 +411,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
             </section>;
           })}
         </div>
-        <div className="scope-stat-controls">
+        {chartIntentOptions.length>1?<div className="scope-stat-controls">
           <label><span>分析意圖</span>
             <select className="scope-select" value={effectiveChartIntent} onChange={event=>{
               setChartIntent(event.target.value);setSelectedPeriodKey('');
@@ -428,7 +428,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
           {effectiveChartIntent==='trend'?<label className="scope-setting-toggle">
             <input type="checkbox" checked={foldBlank} onChange={e=>setFoldBlank(e.target.checked)}/> {l.foldEmptyTime}
           </label>:null}
-        </div>
+        </div>:null}
         {selectedKeywordItems&&keywordItems.isPending?<p className="scope-status" role="status">正在讀取關鍵詞項目的每日統計…</p>:null}
         {selectedKeywordItems&&keywordItems.error?<p role="alert" className="scope-status scope-error">{String(keywordItems.error?.message||keywordItems.error)}</p>:null}
         {enough&&(!selectedKeywordItems||keywordItems.isSuccess)?<div>
