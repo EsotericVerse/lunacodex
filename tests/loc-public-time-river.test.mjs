@@ -22,8 +22,10 @@ test('Scope TimeLucus river paints Era rows from the bounded date window',()=>{
     startDate:'2026-01-01',endDate:'2026-12-31'
   });
   assert.deepEqual(river.groups.map(row=>row.id),[
-    'era:ERAAAAAA','time-undefined'
+    'era:ERAAAAAA','era:ERBBBBBB','time-undefined'
   ]);
+  assert.equal(river.groups.find(row=>row.id==='era:ERBBBBBB').collapsible,false,
+    'an Era without points in the current window remains visible but has no empty disclosure action');
   assert.ok(river.items.some(row=>row.entry_type==='era'&&row.group_key==='era:ERAAAAAA'));
   assert.equal(river.items.some(row=>row.uid==='DATE0003'),false);
   assert.deepEqual(river.items.filter(row=>row.group_key==='time-undefined')
