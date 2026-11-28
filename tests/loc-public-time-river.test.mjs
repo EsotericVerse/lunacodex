@@ -67,9 +67,17 @@ test('Scope Culture restores two independent rivers and the suggested-Lucus lane
   assert.match(page,/items=\{densityRiver\.items\} extraGroups=\{densityRiver\.groups\}/);
   assert.doesNotMatch(page,/unifiedRiver|scope-culture-unified-river/);
   assert.match(page,/dateStart:start,dateEnd:end/);
+  assert.match(page,/buildLocEraIndex\(indexedRows\)/);
+  assert.match(page,/onEraNavigate=/);
+  assert.match(page,/eraNavigationDisabled=/);
+  assert.match(page,/locEraWindows\(era\)/);
+  assert.match(page,/activeRangeWindows/);
   assert.match(page,/groups:\[\.\.\.base\.groups,candidateLane\]/);
   assert.doesNotMatch(page,/selectedPeriodUid\)return;/);
   assert.match(page,/scopeId==='loc'\?<LocGroupCultureReader\/>:<ScopeCulturePublicReader\/>/);
   const groupReader=await source('app/loc/views/LocGroupCultureReader.jsx');
   assert.match(groupReader,/CultureTimeline/);
+  const action=await source('app/loc/actions/culture/queries.mjs');
+  assert.match(action,/params\.get\('ranges'\)/);
+  assert.match(action,/for\(const window of windows\)/);
 });
