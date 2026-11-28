@@ -157,7 +157,7 @@ export default function StatisticsInsightsPanel({
       strokeWidth={3} dot={rows.length<=32} cursor={onPeriodClick?'pointer':undefined}
       isAnimationActive={!reduceMotion&&rows.length<=600} animationDuration={480} animationEasing="ease-out"/>
     :<Bar dataKey="value" name="作品數" fill={visualColor(0)} maxBarSize={44}
-      cursor={onPeriodClick?'pointer':undefined}/>
+      cursor={onPeriodClick?'pointer':undefined}/>;
   // Preserve the established Dashboard composition: a main chart and a
   // separate Insights rail. PELT adds analytical meaning, not a new layout.
   return <div className="statistics-dashboard__workspace" aria-label="作品總數 Dashboard">
@@ -171,7 +171,7 @@ export default function StatisticsInsightsPanel({
       <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange}
         range={range} idPrefix={idPrefix}>
     {rows.length?<div className="statistics-dashboard__trend-plot"
-      role="group" aria-label="總數、平均、中位數與變化點折線圖">
+      role="group" aria-label="總數、平均、中位數與變化點趨勢圖">
       <ResponsiveContainer width="100%" height="100%">
         <TrendChart data={rows.map(row=>({period:row.period,value:Number(row.total)||0,
           start_date:row.start_date,end_date:row.end_date}))}
