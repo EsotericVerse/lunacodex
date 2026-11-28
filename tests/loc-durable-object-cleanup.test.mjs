@@ -9,6 +9,7 @@ test('LOC no longer exports or binds the legacy LocCompute Durable Object',async
   const config=await read('wrangler.jsonc');
   await assert.rejects(access(new URL('../workers/loc-compute.mjs',import.meta.url)));
   assert.doesNotMatch(worker,/LocCompute|loc-compute/);
-  assert.doesNotMatch(config,/durable_objects\\s*:/);
-  assert.match(config,/\\{\\s*"tag":"loc-compute-v1","new_sqlite_classes":\\["LocCompute"\\]\\s*\\},\\s*\\{\\s*"tag":"loc-compute-v2","deleted_classes":\\["LocCompute"\\]\\s*\\}/);
+  assert.ok(!config.includes('"durable_objects"'));
+  assert.ok(config.includes('"tag":"loc-compute-v1","new_sqlite_classes":["LocCompute"]'));
+  assert.ok(config.includes('"tag":"loc-compute-v2","deleted_classes":["LocCompute"]'));
 });
