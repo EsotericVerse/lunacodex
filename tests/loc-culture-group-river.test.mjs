@@ -63,6 +63,11 @@ test('LOC density aggregation merges same-day sources across member Scopes',()=>
   ]);
 });
 
+test('LOC Group Culture membership excludes the independent LRS framework',async()=>{
+  const action=await readFile(new URL('../app/loc/actions/culture/queries.mjs',import.meta.url),'utf8');
+  assert.match(action,/row\?\.scope_id!=='lrunes'/);
+});
+
 test('LOC Group Culture reads use date-window predicates and one SQL source aggregate',async()=>{
   const action=await readFile(new URL('../app/loc/actions/culture/queries.mjs',import.meta.url),'utf8');
   const time=action.slice(action.indexOf('export async function queryLocCultureTimeRiver'),
