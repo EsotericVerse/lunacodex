@@ -238,10 +238,20 @@ export function recordScatterPair(records=[],fields=[],xKey='',yKey=''){
   return null;
 }
 
-export function compositionPercentages(distribution=[]){
-  const rows=normalizeDistribution(distribution);
+export function compositionPercentages(distribution=[],maxVisible=7){
+  const rows=normalizeDistribution(distribution)
+    .sort((a,b)=>b.value-a.value||a.name.localeCompare(b.name));
   const total=rows.reduce((sum,row)=>sum+row.value,0);
-  return rows.map(row=>({...row,percent:total>0?row.value/total*100:0}));
+  const limit=Math.max(2,Math.min(12,Math.trunc(Number(maxVisible)||7)));
+  const visible=rows.slice(0,limit);
+  const hidden=rows.slice(limit);
+  const fields=[...visible];
+  if(hidden.length)fields.push({
+    key:'__composition_other',name:'其他',
+    value:hidden.reduce((sum,row)=>sum+row.value,0),
+    aggregated:true,sourceKeys:hidden.map(row=>row.key),items:hidden
+  });
+  return fields.map(row=>({...row,percent:total>0?row.value/total*100:0}));
 }
 
 // Keep the 100% denominator across every source category. To prevent a long
