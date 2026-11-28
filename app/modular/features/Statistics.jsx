@@ -5,7 +5,6 @@ import UiText,{useUiText} from '../../i18n/UiText';
 
 import {useEffect,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
-import {LOC_MOTION} from '../motion-tokens.mjs';
 import dynamic from 'next/dynamic';
 import {useRouter,useSearchParams} from 'next/navigation';
 import {useAsyncResource,useResourceCache,prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
@@ -24,7 +23,7 @@ import {assignedSource} from '../../loc/statistics/member-intersection-model.mjs
 import {groupedSourceOutline} from '../../loc/source/outline-options.mjs';
 import {administrativeSourceTrend} from '../../loc/statistics/admin-source.mjs';
 import {usePassiveSessionAccount} from '../../loc/auth/use-account';
-import {STAT_VISUAL_TYPES,semanticStatisticChartTypes,chartTypeGroups,preferredStatisticChartType} from '../modules/statistics/statistics-time-zoom.mjs';
+import {availableStatisticIntents,STATISTIC_INTENTS} from '../modules/statistics/statistics-time-zoom.mjs';
 const StatisticsMultiChart=dynamic(()=>import('../modules/statistics/StatisticsMultiChart'),{loading:()=>null});
 const Rune66Summary=dynamic(()=>import('../modules/statistics/StatisticsMultiChart').then(m=>m.Rune66Summary),{loading:()=>null});
 const KeywordPatternSummary=dynamic(()=>import('../modules/statistics/KeywordPatternSummary'),{loading:()=>null});
@@ -40,7 +39,6 @@ import ActivityMotion from '../ActivityMotion';
 import {statisticsZoomWindow} from '../modules/statistics/statistics-time-zoom.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../loc/preferences/default-year-window.mjs';
 
-const CHART_TYPES=STAT_VISUAL_TYPES;
 const STAT_TYPES=['total','source','keywords','place'];
 const STAT_TYPE_KEYS=Object.freeze({
   total:'statistics.totalSource',
@@ -190,7 +188,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const categoryChart=rankingType==='place';
   const deviceTimeUnit=useDefaultTimeUnit();
   const defaultTimeUnit=deviceTimeUnit;
-  const [chartType,setChartType]=useState('auto');
+  const [chartIntent,setChartIntent]=useState('auto');
   const [zoomLevel,setZoomLevel]=useState(0);
   const [foldBlank,setFoldBlank]=useState(true);
   // Leave potentially expensive keyword aggregation OFF until explicitly chosen.
@@ -203,6 +201,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     setSourceGroup(requested==='source'?String(navigation.source||''):'');
     setCategoryChoice('');
     setLinkedPeriod(null);
+    setChartIntent('auto');
   },[scopeId,navigation.statTab,requested,navigation.source]);
   // The current full calendar year is the initial Statistics window, even when
   // Era records exist. A saved Era is selected only by an explicit UI action.
@@ -499,16 +498,48 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     startDate:queryRange.startDate,endDate:observedEnd
   };
   const displaySummary=placeChart?categorySummary:sourceSummary;
-  const chartPurpose=totalChart?'total':sourceChart?'source':categoryChart?'place':'total';
-  const optionsForCurrent=semanticStatisticChartTypes({
-    purpose:chartPurpose,rows:basicTrend,series:basicSeries,distribution:basicDistribution,
-    totalKey:totalChart?'total':''
-  });
-  const effectiveChartType=preferredStatisticChartType({
-    purpose:chartPurpose,available:optionsForCurrent,requested:chartType
-  });
-  const chartGroups=chartTypeGroups(optionsForCurrent,totalChart
-    ?['line','composed','bar']:categoryChart?['bar','line','area']:['line','stacked','pie']);
+  const sourceIntentDistribution=useMemo(()=>basicDistribution.map((row,index)=>({
+    key:String(basicSeries[index]?.key||'').replace(/^category_/,'')||String(row.name||row.term||''),
+    name:String(row.name||row.term||''),
+    value:Number(row.value??row.item_count)||0
+  })).filter(row=>row.name&&row.value>0),[basicDistribution,basicSeries]);
+  const intentDistribution=sourceChart
+    ?(linkedPeriod?sourceCategoryDistribution:sourceIntentDistribution):placeDistribution;
+  const intentOptions=useMemo(()=>availableStatisticIntents({
+    rows:chartTrend,series:basicSeries,distribution:intentDistribution,
+    values:totalChart?chartTrend.filter(row=>!row.partial).map(row=>({
+      uid:row.period,label:row.period,period:row.period,
+      start_date:row.start_date,end_date:row.end_date,value:Number(row.total)||0
+    })):[],
+    totalKey:totalChart?'total':'',
+    mutuallyExclusive:sourceChart,seriesExclusive:sourceChart
+  }),[chartTrend,basicSeries,intentDistribution,totalChart,sourceChart]);
+  const defaultChartIntent=sourceChart&&intentOptions.includes('compositionTrend')
+    ?'compositionTrend':'trend';
+  const effectiveIntent=intentOptions.includes(chartIntent)?chartIntent:defaultChartIntent;
+  const distributionIntent=['compare','composition','ranking','distribution'].includes(effectiveIntent);
+  const mainChartRows=distributionIntent?[]:chartTrend;
+  const mainChartSeries=distributionIntent?[]:basicSeries;
+  const mainChartDistribution=distributionIntent?intentDistribution:[];
+  const selectSourceCategory=key=>{
+    const code=String(key||'').replace(/^category_/,'');
+    if(!code)return;
+    setSourceGroup(current=>current===code?'':code);
+    setChartIntent('trend');
+  };
+  const selectPlaceCategory=key=>{
+    const term=String(key||'').trim();
+    if(!term)return;
+    setCategoryChoice(current=>current===term?'':term);
+    setChartIntent('trend');
+  };
+  const selectChartSeries=key=>{
+    if(sourceChart)selectSourceCategory(key);
+    else if(placeChart){
+      const term=basicSeries.find(field=>field.key===key)?.label;
+      if(term)selectPlaceCategory(term);
+    }
+  };
   const styleRange=useMemo(()=>({
     startDate:queryRange.startDate||'',
     endDate:queryRange.endDate||''
@@ -616,15 +647,18 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {periodQuery.error?<span className="scope-status scope-error">
         時期範圍無法載入，仍可使用自選時間：{featureDataErrorMessage(periodQuery.error,UI_COPY)}
       </span>:null}
-      {(sourceChart||placeChart)?<><label><span>{UI_COPY.statistics.chart}</span><select className="scope-select" value={effectiveChartType} onChange={event=>{prepareTransientResourceAction('chart');setChartType(event.target.value);}}>
-        {chartGroups.primary.length?<optgroup label={t('uiExtra.statisticsView.chartPrimary')}>
-  {chartGroups.primary.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-</optgroup>:null}
-{chartGroups.advanced.length?<optgroup label={t('uiExtra.statisticsView.chartAdvanced')}>
-  {chartGroups.advanced.map(([value,label])=><option key={value} value={value}>{t(label)}</option>)}
-</optgroup>:null}{!optionsForCurrent.length?<option value="line"><UiText id="uiExtra.statisticsView.noVisual"/></option>:null}
-      </select></label>
-      {!['pie','radar','radial','treemap','scatter'].includes(effectiveChartType)?<label className="scope-setting-toggle">
+      {(totalChart||sourceChart||placeChart)&&intentOptions.length>1?<><label>
+        <span>分析意圖</span>
+        <select className="scope-select" value={effectiveIntent} onChange={event=>{
+          prepareTransientResourceAction('chart');
+          setChartIntent(event.target.value);
+        }}>
+          {intentOptions.map(value=><option key={value} value={value}>
+            {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
+          </option>)}
+        </select>
+      </label>
+      {!distributionIntent?<label className="scope-setting-toggle">
         <input type="checkbox" checked={foldBlank} onChange={event=>setFoldBlank(event.target.checked)}/> <UiText id="uiExtra.statisticsView.foldBlank"/>
       </label>:null}
       </>:null}
@@ -650,7 +684,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {featureDataErrorMessage(totalDaily.error,UI_COPY)}
     </p>:null}
     {showTotalOverview? <>
-      <StatisticsInsightsPanel rows={chartTrend} range={queryRange}
+      <StatisticsInsightsPanel rows={chartTrend} range={queryRange} intent={effectiveIntent}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
         idPrefix="scope-stat" showMethodologyNote={scopeId!=='lo3rwang'}
         onPeriodClick={onSelectChartPeriod} selectedPeriodKey={linkedPeriod?.period}
@@ -658,7 +692,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
           role="region" aria-label="所選時間的來源分類"
           initial={reduceMotion?false:{opacity:0,y:10,scale:.985}}
           animate={{opacity:1,y:0,scale:1}}
-          transition={{duration:reduceMotion?0:LOC_MOTION.standard,ease:LOC_MOTION.ease}}>
+          transition={{duration:reduceMotion?0:.24,ease:'easeOut'}}>
           <header className="statistics-dashboard__panel-heading">
             <h3>{linkedPeriod.label} · 來源分布</h3>
             <button type="button" className="loc-button loc-button--small"
@@ -675,9 +709,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             </p>:null}
           {!linkedSourceOverview.isPending&&!sourceCatalog.isPending
             &&!linkedSourceOverview.error&&!sourceCatalog.error
-            ?linkedSourceDistribution.length?<StatisticsMultiChart type="bar" barLayout="vertical"
+            ?linkedSourceDistribution.length?<StatisticsMultiChart intent="composition"
+              mutuallyExclusive distribution={linkedSourceDistribution}
               height={Math.max(280,Math.min(12,linkedSourceDistribution.length)*34+70)}
-              distribution={linkedSourceDistribution}
               onCategoryClick={key=>router.push(featureNavigationHref(scopeId,'statics',{
                 ...navigation,rankingType:'source',source:String(key||''),
                 from:linkedPeriod.startDate,to:linkedPeriod.endDate
@@ -709,15 +743,21 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             <p>{displaySummary.startDate&&displaySummary.endDate?displaySummary.startDate+' ～ '+displaySummary.endDate:''}</p>
           </header>
           <StatisticsChartFrame level={zoomLevel} onChange={setZoomLevel} range={queryRange} idPrefix="scope-stat">
-            <StatisticsMultiChart key={rankingType+':'+effectiveChartType} type={effectiveChartType} rows={chartTrend}
-              series={basicSeries} distribution={basicDistribution}
+            <StatisticsMultiChart key={rankingType+':'+effectiveIntent} intent={effectiveIntent}
+              rows={mainChartRows} series={mainChartSeries} distribution={mainChartDistribution}
+              mutuallyExclusive={sourceChart} seriesExclusive={sourceChart}
               totalKey={rankingType==='total'?'total':''}
-              foldBlank={foldBlank} height={420} onPeriodClick={onSelectChartPeriod}
+              foldBlank={foldBlank} height={420}
+              onPeriodClick={distributionIntent?null:onSelectChartPeriod}
+              onCategoryClick={distributionIntent
+                ?(key=>sourceChart?selectSourceCategory(key):selectPlaceCategory(key)):null}
+              onSeriesClick={!distributionIntent?selectChartSeries:null}
+              activeCategoryKey={sourceChart?activeSourceCategoryKeys:selectedCategory?.term||''}
               selectedPeriodKey={linkedPeriod?.period}/>
           </StatisticsChartFrame>
         </section>
         <div className="statistics-dashboard__analysis-stack">
-          <section className="statistics-dashboard__panel statistics-dashboard__panel--distribution"
+          {!distributionIntent?<section className="statistics-dashboard__panel statistics-dashboard__panel--distribution"
             aria-label={t('uiExtra.statisticsView.dashboardDistributionTitle')}>
             <header className="statistics-dashboard__panel-heading">
               <h3>{placeChart?'地點分布':t('uiExtra.statisticsView.dashboardDistributionTitle')}</h3>
@@ -731,16 +771,22 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
             </p>
             {sourceChart?sourceCategoryDistribution.length?<StatisticsMultiChart
               key={'source-related:'+linkedPeriod?.startDate+':'+linkedPeriod?.endDate}
-              type="bar" barLayout="vertical" height={Math.max(280,Math.min(12,sourceCategoryDistribution.length)*34+75)}
+              intent="composition" mutuallyExclusive height={Math.max(280,Math.min(12,sourceCategoryDistribution.length)*34+75)}
               distribution={sourceCategoryDistribution} activeCategoryKey={activeSourceCategoryKeys}
               onCategoryClick={key=>setSourceGroup(current=>current===String(key||'')?'':String(key||''))}/>
               :<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>
-              :placeDistribution.length?<StatisticsMultiChart type="bar" barLayout="vertical"
+              :placeDistribution.length?<StatisticsMultiChart intent="ranking"
                 height={Math.max(280,Math.min(12,placeDistribution.length)*34+75)}
                 distribution={placeDistribution} activeCategoryKey={selectedCategory?.term||''}
                 onCategoryClick={key=>setCategoryChoice(current=>current===String(key||'')?'':String(key||''))}/>
                 :<p className="scope-status">{t('uiExtra.statisticsView.dashboardEmpty')}</p>}
-          </section>
+          </section>:<section className="statistics-dashboard__panel statistics-dashboard__panel--distribution"
+            aria-label="分類連動提示">
+            <header className="statistics-dashboard__panel-heading">
+              <h3>{sourceChart?'來源比較':'地點比較'}</h3>
+            </header>
+            <p className="scope-status">點選圖表中的分類，切換至該分類的時間趨勢；再次選取可清除篩選。</p>
+          </section>}
           <StatisticsInsightsRail rows={insightRows}
             title={sourceChart?'來源趨勢分析':'地點趨勢分析'}
             measureLabel={sourceChart?'來源作品':'地點作品'}

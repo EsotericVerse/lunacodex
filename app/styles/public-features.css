@@ -871,3 +871,7 @@
 @media(max-width:640px){
   .scope-source-tree-picker{max-height:18rem}
 }
+
+[data-public-feature="statics"] .statistics-dashboard__trend-plot[data-intent="distribution"]{
+  height:auto;min-height:360px;
+}
