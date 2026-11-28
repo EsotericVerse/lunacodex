@@ -397,7 +397,7 @@ export default function StatisticsMultiChart({
         fades the stable-size chart surface when its visualization type changes.
         No overlapping ResponsiveContainers or layout measurements. */}
     <motion.div key={actual} className="scope-multichart-motion-surface"
-      data-linkable={periodInteractive||onCategoryClick||onDatumClick?'true':undefined}
+      data-linkable={periodInteractive||onCategoryClick||onSeriesClick||onDatumClick?'true':undefined}
       initial={reduceMotion?false:{opacity:0,y:6}}
       animate={{opacity:1,y:0}}
       transition={{duration:reduceMotion?0:.22,ease:'easeOut'}}
