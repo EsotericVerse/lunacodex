@@ -1,6 +1,7 @@
 // Fixed Lucus feature model for Time, Space and Source UIs.
 // This is not Search: only an exact published Scope + model family is allowed.
 import {z} from 'zod';
+import {sql} from 'kysely';
 import {MAX_ROWS,TIME_LUCUS_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
@@ -15,6 +16,8 @@ const schema=z.object({
   mode:z.enum(['public','editor']).default('public'),
   types:z.array(z.string()).min(1).max(12).optional(),
   uids:z.array(UID).min(1).max(100).optional(),
+  dateStart:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateEnd:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   cursor:UID.optional(),offset:z.number().int().min(0).max(10000).optional(),
   limit:z.number().int().min(1).max(TIME_LUCUS_MAX_PAGE_ROWS).optional(),
   order:z.enum(['uid','title','createtime']).optional(),
@@ -22,6 +25,10 @@ const schema=z.object({
   result:z.enum(['rows','count']).default('rows'),includeTotal:z.boolean().optional(),
   // The page name belongs to Blocks, not the Lucus search API.
 }).strict();
+function validIsoDate(value){
+  const date=new Date(value+'T00:00:00Z');
+  return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value;
+}
 export function parseLucusFeatureQuery(body){
   const parsed=schema.safeParse(body);
   if(!parsed.success)throw Object.assign(Error('Invalid Lucus feature model'),{httpStatus:400});
@@ -31,6 +38,10 @@ export function parseLucusFeatureQuery(body){
   if(!scopes.has(value.scope)||value.scope==='admin'||
     (value.family==='source')!==(value.scope==='loc')||!Array.isArray(allowed)||
     value.types?.some(type=>!allowed.includes(type))||
+    (value.dateStart===undefined)!==(value.dateEnd===undefined)||
+    (value.dateStart!==undefined&&(value.family!=='time'||
+      !(value.types||allowed).includes('date')||value.dateStart>value.dateEnd||
+      !validIsoDate(value.dateStart)||!validIsoDate(value.dateEnd)))||
     value.uids&&value.cursor||value.cursor&&value.offset!==undefined||
     value.uids&&value.uids.length>100||
     value.cursor&&value.order&&value.order!=='uid'||
@@ -43,12 +54,27 @@ export function parseLucusFeatureQuery(body){
     limit:value.result==='count'?null:(value.limit??MAX_ROWS),
     order:value.order||'uid'};
 }
-export async function executeLucusFeatureQuery(db,model){
+function dateAttributeExpression(engine){
+  const attr=sql.ref('attr');
+  if(engine==='postgres')return sql`(${attr}->>'date')`;
+  if(engine==='mysql')return sql`JSON_UNQUOTE(JSON_EXTRACT(${attr}, '$.date'))`;
+  if(engine==='mssql')return sql`JSON_VALUE(${attr}, '$.date')`;
+  throw Error('Unsupported Lucus SQL dialect');
+}
+export async function executeLucusFeatureQuery(db,model,port={}){
   const table=model.family==='source'
     ?scopeRelationName('loc','lucus'):
       scopeRelationName(model.scope,'lucus');
   let query=db.selectFrom(table).where('type','in',model.types);
   if(model.mode==='public')query=query.where('invisible','=',false);
+  // Keep Era/Period metadata, but materialize DateLucus only inside the
+  // requested window. This is one bounded TimeLucus read, not an all-history scan.
+  if(model.dateStart){
+    const date=dateAttributeExpression(port.engine);
+    query=query.where(sql`(${sql.ref('type')} <> 'date' or (
+      ${date} >= ${model.dateStart} and ${date} <= ${model.dateEnd}
+    ))`);
+  }
   if(model.uids)query=query.where('uid','in',model.uids);
   if(model.cursor)query=query.where('uid','>',model.cursor);
   if(model.result==='count'){
