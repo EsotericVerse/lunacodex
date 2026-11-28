@@ -160,7 +160,7 @@ export function availableStatisticChartTypes({rows=[],series=[],distribution=[],
     if(type==='pie'||type==='treemap')return hasMix;
     if(type==='stacked')return compare&&time.length>=2;
     if(type==='composed')return time.length>=3&&new Set(time.map(row=>totalValue(row,fields,totalKey))).size>1;
-    if(type==='scatter')return Boolean(scatterPair(time,fields));
+    if(type==='scatter')return false; // Relationship charts require one raw record per point.
     if(type==='radar')return Boolean(radarPeriodComparison(time,fields));
     if(type==='radial')return Boolean(activePeriodCoverage(time,fields));
     return false;
@@ -182,7 +182,7 @@ export const STATISTIC_CHART_PURPOSES=Object.freeze({
   // Keyword hits can overlap, so stacking misstates their sum.
   keyword:Object.freeze(['bar','line','area']),
   // Different comparison lanes are not additive partitions.
-  comparison:Object.freeze(['line','bar','scatter'])
+  comparison:Object.freeze(['line','bar'])
 });
 
 // Decide the default by the question the statistic answers, not by the
@@ -283,7 +283,7 @@ export function normalizeFunnelStages(stages=[]){
 }
 
 export function resolveStatisticIntent({
-  intent='trend',rows=[],series=[],distribution=[],mutuallyExclusive=false,
+  intent='trend',rows=[],series=[],distribution=[],mutuallyExclusive=false,seriesExclusive=false,
   records=[],recordFields=[],values=[],targetValue=null,attainmentValue=null,stages=[]
 }={}){
   const time=Array.isArray(rows)?rows:[];
@@ -306,7 +306,7 @@ export function resolveStatisticIntent({
     intent,available:true,type:'composition',dataMode:'distribution',
     barLayout:'vertical',normalization:'percent'
   }:unavailable;
-  if(intent==='compositionTrend')return mutuallyExclusive&&time.length>0&&fields.length>=2?{
+  if(intent==='compositionTrend')return (seriesExclusive||mutuallyExclusive)&&time.length>0&&fields.length>=2?{
     intent,available:true,type:'compositionTrend',dataMode:'time',
     barLayout:'horizontal',normalization:'percent'
   }:unavailable;
