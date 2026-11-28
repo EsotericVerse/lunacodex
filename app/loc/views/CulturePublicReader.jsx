@@ -13,7 +13,6 @@ import {scopeHref} from '../../modular/routing/scope-registry';
 import {publicCultureSourceModel} from '../culture/public-source-river.mjs';
 import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../preferences/default-year-window.mjs';
-import {LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import {readLucusFeature,readAllLucusFeature} from '../model/feature-query-client.mjs';
 import {buildPublicTimeLucusRiver} from '../culture/public-time-river.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
@@ -197,8 +196,8 @@ function ScopeCulturePublicReader(){
     setActiveTimeRows(NO_ITEMS);setSelectedPeriodUid('');setSelectedPeriodRange(null);
     setExpandedEras([]);setCustomTimeRows(NO_ITEMS);setHierarchyError('');
     const request=++hierarchySequence.current;
-    // First paint needs only the small top-level Era list. Periods and date
-    // lucus are fetched after the visitor chooses their parent.
+    // Initial TimeLucus projection is bounded by the default year. Era/Period
+    // metadata stays available for navigation; DateLucus rows do not scan history.
     // One bounded TimeLucus read: keep all Era/Period metadata, but only
     // DateLucus points inside the initial year. The source-density query below
     // is the second large read; neither river needs an all-history date scan.
@@ -313,13 +312,12 @@ function ScopeCulturePublicReader(){
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
   },[scopeId,densityMode]);
-  // The default Year view never fetches historical date lucus. Selecting an
-  // Era loads its Period choices; selecting a Period loads only its linked
-  // Date lucus, which are nested in that Period lane.
+  // The first river is a bounded TimeLucus snapshot. Selecting an older Era
+  // still loads its Period and linked DateLucus on demand for that interval.
   const lucusRiver=useMemo(()=>buildPublicTimeLucusRiver(timeRowsForRiver,{
     startDate:timeRiverStart,endDate:timeRiverEnd,
     expandedEras
-  }),[timeRowsForRiver,timeRiverStart,timeRiverEnd,activeTimeRows.length,selectedEra,expandedEras]);
+  }),[timeRowsForRiver,timeRiverStart,timeRiverEnd,expandedEras]);
   const existingLucusDates=useMemo(()=>timeRowsForRiver
     .filter(row=>row.type==='date')
     .map(row=>datePart(attributes(row).date)).filter(Boolean),[timeRowsForRiver]);
@@ -520,7 +518,7 @@ function ScopeCulturePublicReader(){
         <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
         <span>正在載入時間定錨…</span>
       </div>:null}
-      <section className='scope-card scope-culture-classification-river scope-public-culture-panel scope-culture-unified-panel'>
+      <section className='scope-card scope-culture-classification-river scope-public-culture-panel scope-culture-dual-panel'>
         <div className='scope-culture-river-toolbar'><h3>文化時間長河</h3></div>
         <div className='scope-culture-river-selectors'>
           <label>時間範圍／時代
