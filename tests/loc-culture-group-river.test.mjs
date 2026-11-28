@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {
   buildLocEraIndex,buildLocEraRiver,locEraWindows,mergeLocCultureDensityRows
 } from '../app/loc/culture/loc-group-river.mjs';
@@ -58,4 +59,30 @@ test('LOC density aggregation merges same-day sources across member Scopes',()=>
     {day:'2026-01-01',site:'Facebook',item_count:7},
     {day:'2026-01-02',site:'Threads',item_count:2}
   ]);
+});
+
+test('LOC Group Culture reads use date-window predicates and one SQL source aggregate',async()=>{
+  const action=await readFile(new URL('../app/loc/actions/culture/queries.mjs',import.meta.url),'utf8');
+  const time=action.slice(action.indexOf('export async function queryLocCultureTimeRiver'),
+    action.indexOf('export async function queryLocCultureDensity'));
+  const density=action.slice(action.indexOf('export async function queryLocCultureDensity'),
+    action.indexOf('export async function queryCulture(args'));
+  assert.match(time,/t\.type in \('era','period'\)/);
+  assert.match(time,/t\.uid in \(\$\{endpoints\}\)/);
+  assert.match(time,/timeDatePredicate\(port\.engine,windows,'t'\)/);
+  assert.match(density,/g\.date is not null and \$\{datePredicate\}/);
+  assert.match(density,/group by scope_id,day,site/);
+  assert.doesNotMatch(density,/mapBounded|selectScopeDailyCounts/);
+});
+
+test('LOC public Culture uses the merged double river and era navigation without chart remount',async()=>{
+  const reader=await readFile(new URL('../app/loc/views/CulturePublicReader.jsx',import.meta.url),'utf8');
+  const locReader=await readFile(new URL('../app/loc/views/LocGroupCultureReader.jsx',import.meta.url),'utf8');
+  const timeline=await readFile(new URL('../app/modular/modules/culture-timeline/CultureTimeline.jsx',import.meta.url),'utf8');
+  assert.match(reader,/scopeId==='loc'\?\<LocGroupCultureReader\/>/);
+  assert.match(locReader,/heightVariant='double'/);
+  assert.match(locReader,/onEraNavigate=/);
+  assert.match(locReader,/Promise\.all\(\[\s*queryLocCultureTimeRiver/);
+  assert.match(timeline,/heightVariant==='double'\?null:windowStart/);
+  assert.match(timeline,/Culture Era viewport update failed/);
 });
