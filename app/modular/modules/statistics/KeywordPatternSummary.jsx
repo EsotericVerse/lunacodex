@@ -92,7 +92,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     </section>:null}
     <div className="scope-ranking">
       {shown.map(row=><div key={row.key}
-        role="button" tabIndex={0}
+        role="button" tabIndex={0} style={{cursor:'pointer'}}
         aria-pressed={selectedKey===String(row.key)}
         data-selected={selectedKey===String(row.key)?'true':undefined}
         onClick={()=>setSelectedKey(current=>current===String(row.key)?'':String(row.key))}
