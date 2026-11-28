@@ -1,11 +1,11 @@
-import {content_filter,keywordScanText} from './content-filter.mjs';
+import {content_filter} from './content-filter.mjs';
 import {keywordDiscoveryText} from './discovery-text-filter.mjs';
 import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 
 // The shared content projection remains unchanged for Item rule parsing.
 // Only the suggestion scanner applies punctuation and stop-word filtering.
 export const readableKeywordContent=content_filter;
-const HAN=/^\\p{Script=Han}+$/u;
+const HAN=/^\p{Script=Han}+$/u;
 const normalize=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase();
 
 const DISCOVERY_STOP_WORDS=new Set([
@@ -76,7 +76,7 @@ export function createNewKeywordDiscovery(rows=[]){
     let record=totals.get(key);
     if(!record){
       const sample=body.slice(Math.max(0,position-28),
-        Math.min(body.length,position+length+32)).replace(/\\s+/gu,' ').trim();
+        Math.min(body.length,position+length+32)).replace(/\s+/gu,' ').trim();
       record={word:key,documents:0,occurrences:0,sample};
       totals.set(key,record);
     }
