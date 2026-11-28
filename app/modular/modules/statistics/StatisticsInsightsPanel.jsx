@@ -1,7 +1,8 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
-import {useReducedMotion} from 'motion/react';
+import {motion,useReducedMotion} from 'motion/react';
+import {AnimatedNumber} from './StatisticsDashboardKpis';
 import {
   CartesianGrid,Line,LineChart,ReferenceDot,ReferenceLine,
   ResponsiveContainer,Tooltip,XAxis,YAxis
@@ -61,6 +62,11 @@ function useStatisticsInsightData(rows){
 
 function StatisticsInsightsRailContent({analysis,showMethodologyNote=true,methodologyNote='統計起始只載入總數；選取時段後才載入來源分布。',title='Trend Outlook',measureLabel='作品',children=null}){
   const {hasPartial,stats,pending,workerError,insight,ranked}=analysis;
+  const reduceMotion=useReducedMotion();
+  const summaryText=pending
+    ?'已完成 '+stats.total.toLocaleString()+' 篇的完整時段統計；正在計算變化點…'
+    :workerError?'變化點分析未完成；平均、中位數和原始圖表仍可使用。'
+      :insightText(insight,measureLabel);
   const [topCount,setTopCount]=useState(5);
   const activeCount=Math.min(10,stats.entries.length);
   const upCount=Math.min(topCount,activeCount);
@@ -83,9 +89,12 @@ function StatisticsInsightsRailContent({analysis,showMethodologyNote=true,method
       <div role="status" aria-live="polite"
         className="scope-status statistics-dashboard__pelt-summary">
         <strong>ByPELT · </strong>
-        <span>{pending?'已完成 '+stats.total.toLocaleString()+' 篇的完整時段統計；正在計算變化點…'
-          :workerError?'變化點分析未完成；平均、中位數和原始圖表仍可使用。'
-          :insightText(insight,measureLabel)}</span>
+        <motion.span key={summaryText}
+          initial={reduceMotion?false:{opacity:0,y:4}}
+          animate={{opacity:1,y:0}}
+          transition={reduceMotion?{duration:0}:{duration:.18,ease:'easeOut'}}>
+          {summaryText}
+        </motion.span>
       </div>
     </header>
     {children}
@@ -93,8 +102,9 @@ function StatisticsInsightsRailContent({analysis,showMethodologyNote=true,method
       <div className="statistics-dashboard__insight-metrics" aria-label="極值與典型值">
         {metric.map(item=><div key={item.key} className="statistics-dashboard__kpi" style={{borderInlineStart:'3px solid '+item.color}}>
           <span className="statistics-dashboard__kpi-label">{item.label}</span>
-          <strong className="statistics-dashboard__kpi-value">
-            {item.value===undefined?'—':amount(item.value)}
+          <strong className="statistics-dashboard__kpi-value"
+            aria-label={item.value===undefined?'無資料':amount(item.value)}>
+            {item.value===undefined?'—':<AnimatedNumber value={amount(item.value)}/>}
           </strong>
           {item.period?<span className="scope-status">{item.period}</span>:null}
         </div>)}
