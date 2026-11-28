@@ -82,12 +82,21 @@ export function timeIntersectionMetrics(lucus=[]){
     }
     return metric('era',row,{
       windows,children:references,durationDays:windowDays(windows),
-      periodCount:references.length,
+      periodCount:references.length,childCount:references.length,
       dateAnchorCount:periods.filter(period=>references.includes(period.uid))
         .reduce((sum,period)=>sum+period.dateAnchorCount,0)
     });
   });
-  return [...eras,...periods];
+  const parentsByPeriod=new Map();
+  for(const era of eras)for(const uid of era.children||[]){
+    const parents=parentsByPeriod.get(uid)||[];
+    parents.push(era.uid);parentsByPeriod.set(uid,parents);
+  }
+  return [...eras,...periods.map(period=>{
+    const parents=parentsByPeriod.get(period.uid)||[];
+    return {...period,parentUid:parents.length===1?parents[0]:null,parentUids:parents,
+      childCount:period.dateAnchorCount};
+  })];
 }
 
 export function spaceIntersectionMetrics(lucus=[]){
@@ -104,8 +113,8 @@ export function spaceIntersectionMetrics(lucus=[]){
     const parents=parentTraces.get(String(row.uid))||[];
     return metric('path',row,{
       points:new Set(points),pointCount:new Set(points).size,
-      pathCount:1,parentUid:parents.length===1?parents[0]:null,
-      parentUids:parents
+      pathCount:1,childCount:points.size,
+      parentUid:parents.length===1?parents[0]:null,parentUids:parents
     });
   });
   const byPath=new Map(paths.map(row=>[row.uid,row.points]));
@@ -116,7 +125,7 @@ export function spaceIntersectionMetrics(lucus=[]){
       for(const point of byPath.get(uid)||[])points.add(point);
     const children=refIds(data.path);
     return metric('trace',row,{
-      points,children,pointCount:points.size,pathCount:children.length
+      points,children,pointCount:points.size,pathCount:children.length,childCount:children.length
     });
   });
   return [...traces,...paths];
