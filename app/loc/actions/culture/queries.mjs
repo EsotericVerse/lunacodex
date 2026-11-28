@@ -87,7 +87,7 @@ function periodEndpointUidQuery(engine,table){
 // LOC's Group Culture uses one fixed SQL projection across its published
 // member Scopes. Index mode returns all Era/Period metadata, only linked Date
 // endpoints, and Date rows inside the requested windows. Range mode returns
-// only Date rows for the selected Era's Scope and exact Period windows.
+// only Date rows from every member Scope inside the selected Era's exact windows.
 export async function queryLocCultureTimeRiver(args={}){
   if(!exactKeys(args,['mode','scope','ranges'])||
     !['index','range'].includes(args.mode))
@@ -95,10 +95,7 @@ export async function queryLocCultureTimeRiver(args={}){
   const windows=dateWindows(args.ranges);
   const members=locCultureMemberScopes();
   if(!members.length)return {data:{rows:[]},count:null};
-  const selected=args.mode==='range'?id(args.scope):'';
-  if(selected&&!members.includes(selected))
-    throw Object.assign(Error('Culture Scope is not a LOC Group member'),{httpStatus:404});
-  const scopes=args.mode==='index'?members:[selected];
+  const scopes=members;
   return withPublicLocRead({scope:'loc'},async(db,port)=>{
     const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
     const visible=port.engine==='mssql'?sql`t.invisible=0`:sql`t.invisible=false`;
