@@ -507,8 +507,9 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     ?(linkedPeriod?sourceCategoryDistribution:sourceIntentDistribution):placeDistribution;
   const intentOptions=useMemo(()=>availableStatisticIntents({
     rows:chartTrend,series:basicSeries,distribution:intentDistribution,
+    totalKey:totalChart?'total':'',
     mutuallyExclusive:sourceChart,seriesExclusive:sourceChart
-  }),[chartTrend,basicSeries,intentDistribution,sourceChart]);
+  }),[chartTrend,basicSeries,intentDistribution,totalChart,sourceChart]);
   const defaultChartIntent=sourceChart&&intentOptions.includes('compositionTrend')
     ?'compositionTrend':'trend';
   const effectiveIntent=intentOptions.includes(chartIntent)?chartIntent:defaultChartIntent;
@@ -642,7 +643,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {periodQuery.error?<span className="scope-status scope-error">
         時期範圍無法載入，仍可使用自選時間：{featureDataErrorMessage(periodQuery.error,UI_COPY)}
       </span>:null}
-      {(sourceChart||placeChart)&&intentOptions.length>1?<><label>
+      {(totalChart||sourceChart||placeChart)&&intentOptions.length>1?<><label>
         <span>分析意圖</span>
         <select className="scope-select" value={effectiveIntent} onChange={event=>{
           prepareTransientResourceAction('chart');
@@ -679,7 +680,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
       {featureDataErrorMessage(totalDaily.error,UI_COPY)}
     </p>:null}
     {showTotalOverview? <>
-      <StatisticsInsightsPanel rows={chartTrend} range={queryRange}
+      <StatisticsInsightsPanel rows={chartTrend} range={queryRange} intent={effectiveIntent}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
         idPrefix="scope-stat" showMethodologyNote={scopeId!=='lo3rwang'}
         onPeriodClick={onSelectChartPeriod} selectedPeriodKey={linkedPeriod?.period}
