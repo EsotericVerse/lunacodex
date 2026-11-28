@@ -1,19 +1,13 @@
-import {content_filter,keywordScanText} from './content-filter.mjs';
+import {content_filter} from './content-filter.mjs';
+import {keywordDiscoveryText,isKeywordDiscoveryStopWord,isKeywordDiscoveryWord,
+  normalizeKeywordDiscoveryToken} from './discovery-filter.mjs';
 import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 
-// Discovery only observes literal text. It never ranks a word by presumed
-// meaning, language, length, frequency threshold or publication period.
-// Structural markup is removed by the shared scan projection.
+// Discovery uses its own lexical filter. The shared content projection remains
+// unchanged for Item literal matching and NOR/AND/TO/NAME rule parsing.
 export const readableKeywordContent=content_filter;
 const HAN=/^\p{Script=Han}+$/u;
-const VISIBLE=/[\p{L}\p{N}\p{P}\p{S}]/u;
-const normalize=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase();
-
-function admissibleNormalized(value){
-  // The existing Pattern title is at most 256 characters. This is a storage
-  // contract, not a statistical cutoff; punctuation is valid literal text.
-  return value.length>0&&value.length<=256&&VISIBLE.test(value);
-}
+const normalize=normalizeKeywordDiscoveryToken;
 
 export function existingKeywordSet(rows=[]){
   const found=new Set();
@@ -49,7 +43,7 @@ export function createNewKeywordDiscovery(rows=[]){
   function normalizedCandidate(term){
     if(tokenCache.has(term))return tokenCache.get(term);
     const normalized=normalize(term);
-    const key=admissibleNormalized(normalized)&&!existing.has(normalized)
+    const key=isKeywordDiscoveryWord(normalized)&&!existing.has(normalized)
       ?normalized:null;
     if(tokenCache.size>=TOKEN_CACHE_LIMIT)tokenCache.clear();
     tokenCache.set(term,key);
@@ -74,44 +68,28 @@ export function createNewKeywordDiscovery(rows=[]){
   function consume(batch=[]){
     for(const row of batch){
       read++;
-      const body=keywordScanText(row);
-      if(!body.trim())continue;
+      const body=keywordDiscoveryText(row);
+      if(!body)continue;
       withContent++;
       const seen=new Set();
-      let prev=null,prev2=null;
       for(const piece of segmenter.segment(body)){
         const token=String(piece.segment||'').trim();
-        if(!token)continue;
-        const isHan=HAN.test(token);
-        // A question mark, other punctuation or symbol is valid literal
-        // evidence, even when Intl.Segmenter reports isWordLike=false.
-        if(piece.isWordLike||VISIBLE.test(token)){
+        if(!token||!HAN.test(token)||isKeywordDiscoveryStopWord(token))continue;
+        // Keep only complete segmented words; do not create overlapping substrings
+        // or concatenate adjacent words into artificial compound candidates.
+        if(isKeywordDiscoveryWord(token))
           add(token,seen,body,piece.index,token.length);
-          if(prev&&prev.end===piece.index&&prev.han&&isHan){
-            const pair=prev.token+token;
-            add(pair,seen,body,prev.start,pair.length);
-            if(prev2&&prev2.han&&prev2.end===prev.start){
-              const triple=prev2.token+pair;
-              add(triple,seen,body,prev2.start,triple.length);
-            }
-          }
-          prev2=prev;
-          prev={token,start:piece.index,
-            end:piece.index+piece.segment.length,han:isHan};
-        }else{
-          prev=null;prev2=null;
-        }
       }
     }
     return {read,withContent,limited:false,candidateCount:totals.size,existingCount:existing.size};
   }
   function finish(){
-    // Counts are observed facts, not preference weights. All candidates are
-    // returned; the UI paginates without dropping long-tail or rare terms.
+    // Counts are observed facts, not preference weights. All admissible
+    // candidates are returned; the UI paginates without dropping rare terms.
     const candidates=[...totals.values()]
       .sort((a,b)=>b.documents-a.documents||
         b.occurrences-a.occurrences||a.word.localeCompare(b.word))
-      .map(term=>({...term,language:HAN.test(term.word)?'zh':'other'}));
+      .map(term=>({...term,language:'zh'}));
     return {read,withContent,limited:false,existingCount:existing.size,
       candidates};
   }

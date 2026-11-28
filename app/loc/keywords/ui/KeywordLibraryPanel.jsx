@@ -13,6 +13,7 @@ import FlowProgress from '../../../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from '../class-state.mjs';
 import {classSkipArticleWords} from '../class-exceptions.mjs';
 import {existingKeywordSet,createDiscoveryKnownMatcher} from '../discovery.mjs';
+import {isKeywordDiscoveryWord} from '../discovery-filter.mjs';
 
 const LazyKeywordNetworkEditor=lazy(()=>import('./KeywordNetworkEditor'));
 function KeywordNetworkEditor(props){return <Suspense fallback={null}><LazyKeywordNetworkEditor {...props}/></Suspense>;}
@@ -66,6 +67,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const [progress,setProgress]=useState(null);
   const [discovery,setDiscovery]=useState(null);
   const [discoveryPage,setDiscoveryPage]=useState(1);
+  const [discoveryLength,setDiscoveryLength]=useState(2);
   const [discoveryProgress,setDiscoveryProgress]=useState(null);
   const [discoveryBusy,setDiscoveryBusy]=useState(false);
   const discoveryAbort=useRef(null);
@@ -616,12 +618,19 @@ export default function KeywordLibraryPanel({scopeId,account}){
   const selectedClass=activeClass;
   const allClassNodes=[...tree.index.values()].filter(x=>x.type==='class');
   const knownTerms=existingKeywordSet(workspace==='analysis'&&discovery?rows:[]);
-  const suggestedCandidates=(workspace==='analysis'?discovery?.candidates||[]:[]).filter(item=>
-    !knownTerms.has(String(item.word||'').normalize('NFKC').trim().toLocaleLowerCase()));
+  const suggestedCandidates=(workspace==='analysis'?discovery?.candidates||[]:[]).filter(item=>{
+    const word=String(item.word||'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
+    return isKeywordDiscoveryWord(word)&&!knownTerms.has(word);
+  });
+  const suggestionLengthCounts=[2,3,4].map(length=>({
+    length,count:suggestedCandidates.filter(item=>Array.from(String(item.word||'')).length===length).length
+  }));
+  const lengthCandidates=suggestedCandidates.filter(item=>
+    Array.from(String(item.word||'')).length===discoveryLength);
   const suggestionPageSize=20;
-  const suggestionPages=Math.max(1,Math.ceil(suggestedCandidates.length/suggestionPageSize));
+  const suggestionPages=Math.max(1,Math.ceil(lengthCandidates.length/suggestionPageSize));
   const currentSuggestionPage=Math.min(discoveryPage,suggestionPages);
-  const visibleSuggestions=suggestedCandidates.slice(
+  const visibleSuggestions=lengthCandidates.slice(
     (currentSuggestionPage-1)*suggestionPageSize,currentSuggestionPage*suggestionPageSize)
     .map(term=>({...term,knownParts:knownSuggestionMatcher?.(term.word)||[]}));
   // Keep vis-network's data stable while typing in the adjacent inspector.
@@ -905,7 +914,14 @@ export default function KeywordLibraryPanel({scopeId,account}){
           </p>}
         </details>
         {suggestedCandidates.length?<div>
-          <ol className="scope-keyword-discovery-results" start={(currentSuggestionPage-1)*suggestionPageSize+1}>
+          <div className="scope-preview-links" role="group" aria-label="依詞長篩選候選詞">
+            {suggestionLengthCounts.map(({length,count})=><button key={length} type="button"
+              className="loc-button" aria-pressed={discoveryLength===length}
+              onClick={()=>{setDiscoveryLength(length);setDiscoveryPage(1);}}>
+              {length===2?'兩字詞':length===3?'三字詞':'四字詞'}（{count.toLocaleString()}）
+            </button>)}
+          </div>
+          {lengthCandidates.length?<ol className="scope-keyword-discovery-results" start={(currentSuggestionPage-1)*suggestionPageSize+1}>
             {visibleSuggestions.map(term=><li key={term.word}>
               <strong>{term.word}</strong>
               {!discovery.cachedOnly?<span className="scope-status"> · {Number(term.documents||0).toLocaleString()} 篇</span>:null}
@@ -918,8 +934,8 @@ export default function KeywordLibraryPanel({scopeId,account}){
                 {term.sample?<p className="scope-status">{term.sample}</p>:null}
               </details>:null}
             </li>)}
-          </ol>
-          {suggestionPages>1?<div className="scope-preview-links" role="navigation" aria-label="建議關鍵詞分頁">
+          </ol>:<p className="scope-status">這個詞長目前沒有符合條件的候選詞。</p>}
+          {lengthCandidates.length&&suggestionPages>1?<div className="scope-preview-links" role="navigation" aria-label="建議關鍵詞分頁">
             <button type="button" className="loc-button" disabled={currentSuggestionPage===1}
               onClick={()=>setDiscoveryPage(page=>Math.max(1,page-1))}>上一頁</button>
             <span className="scope-status">第 {currentSuggestionPage} / {suggestionPages} 頁 · 每頁 {suggestionPageSize} 筆</span>
