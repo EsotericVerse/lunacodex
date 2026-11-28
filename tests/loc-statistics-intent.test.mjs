@@ -37,15 +37,17 @@ test('comparison switches from columns to sorted horizontal bars after six categ
 });
 
 test('time comparisons use columns through six periods and horizontal bars after six',()=>{
+  const totals=count=>Array.from({length:count},(_,index)=>({
+    period:'p'+index,total:index+1
+  }));
   assert.equal(resolveStatisticIntent({
-    intent:'compare',rows:rows(6),totalKey:'total'
+    intent:'compare',rows:totals(6),totalKey:'total'
   }).barLayout,'horizontal');
   assert.equal(resolveStatisticIntent({
-    intent:'compare',rows:rows(7),totalKey:'total'
+    intent:'compare',rows:totals(7),totalKey:'total'
   }).barLayout,'vertical');
   assert.equal(resolveStatisticIntent({
-    intent:'compare',rows:[{period:'p1',total:1},{period:'p2',total:4}],
-    totalKey:'total'
+    intent:'compare',rows:totals(2),totalKey:'total'
   }).dataMode,'time-comparison');
 });
 
