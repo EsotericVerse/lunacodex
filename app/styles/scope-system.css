@@ -1030,6 +1030,9 @@
 
 .scope-culture-river-toolbar{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin:.4rem 0 .6rem}
 .scope-culture-river-toolbar h3{margin:0 .5rem 0 0}
+.scope-culture-river-era-caption{display:flex;flex-direction:column;gap:.12rem;margin-left:auto;min-width:0;text-align:right}
+.scope-culture-river-era-caption strong{color:var(--loc-heading);font-weight:750}
+.scope-culture-river-era-caption span{color:var(--loc-muted);font-size:.78rem}
 .scope-culture-river-selectors{display:flex;align-items:center;gap:.65rem;flex-wrap:wrap}
 .scope-culture-time-picker{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;min-width:0}
 .scope-culture-time-picker label{min-width:0}

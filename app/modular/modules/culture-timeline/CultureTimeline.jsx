@@ -281,6 +281,8 @@ export default function CultureTimeline({
   boundaryStart='',
   boundaryEnd='',
   onBoundaryNavigate=null,
+  onEraNavigate=null,
+  eraNavigationDisabled=null,
   fixedMin='',
   fixedMax='',
   hiddenDates=EMPTY_HIDDEN_DATES,
@@ -328,6 +330,7 @@ export default function CultureTimeline({
   const onGroupSelectRef=useRef(onGroupSelect);
   const onTimeClickRef=useRef(onTimeClick);
   const onBoundaryNavigateRef=useRef(onBoundaryNavigate);
+  const onEraNavigateRef=useRef(onEraNavigate);
   const onAddRef=useRef(onAdd);
   const onMoveRef=useRef(onMove);
   const onUpdateRef=useRef(onUpdate);
@@ -382,7 +385,7 @@ export default function CultureTimeline({
   }:null;
   // Keep all camera geometry inside vis-timeline, not Motion; animation applies
   // only to explicit navigation, never to dragging, date edits, or first paint.
-  const cameraAnimation=reduceMotion?false:{duration:240,easingFunction:'easeInOutQuad'};
+  const cameraAnimation=useMemo(()=>reduceMotion?false:{duration:240,easingFunction:'easeInOutQuad'},[reduceMotion]);
   const hasTimeKinds=mode==='overview'&&rows.some(row=>String(row.group||'').startsWith('kind:'));
   // Trace expand/collapse updates datasets in place to preserve pan, zoom
   // and touch position exactly like the lower numeric river.
@@ -434,6 +437,7 @@ export default function CultureTimeline({
   useEffect(()=>{onGroupSelectRef.current=onGroupSelect},[onGroupSelect]);
   useEffect(()=>{onTimeClickRef.current=onTimeClick},[onTimeClick]);
   useEffect(()=>{onBoundaryNavigateRef.current=onBoundaryNavigate},[onBoundaryNavigate]);
+  useEffect(()=>{onEraNavigateRef.current=onEraNavigate},[onEraNavigate]);
   useEffect(()=>{onAddRef.current=onAdd},[onAdd]);
   useEffect(()=>{onMoveRef.current=onMove},[onMove]);
   useEffect(()=>{onUpdateRef.current=onUpdate},[onUpdate]);
@@ -635,8 +639,29 @@ export default function CultureTimeline({
     hasTimeKinds,preserveTimelineInstance?null:timelineMinHeight,
     preserveTimelineInstance?null:timelineMaxHeight,
     Boolean(rows.length||editable||extraGroups.length),
-    heightVariant,mode,naturalSourceHeight,stackItems,readOnlyViewport,windowStart,windowEnd,boundaryStart,boundaryEnd,fixedMin,fixedMax,
+    heightVariant,mode,naturalSourceHeight,stackItems,readOnlyViewport,
+    heightVariant==='double'?null:windowStart,heightVariant==='double'?null:windowEnd,
+    boundaryStart,boundaryEnd,fixedMin,fixedMax,
     preserveTimelineInstance?null:hiddenDates,editable,locale,labels,timelineLocale,defaultTimeUnit]);
+
+  // The merged Era + source river keeps one vis-timeline instance while
+  // its selected Era changes. Move the shared camera in place instead of
+  // tearing down the canvas and reconnecting both river layers.
+  useEffect(()=>{
+    if(heightVariant!=='double'||!ready||!windowStart||!windowEnd)return;
+    const timeline=timelineRef.current;
+    if(!timeline)return;
+    const start=Date.parse(windowStart),end=Date.parse(windowEnd);
+    if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return;
+    try{
+      const current=timeline.getWindow();
+      if(current?.start instanceof Date&&current?.end instanceof Date&&
+        current.start.getTime()===start&&current.end.getTime()===end)return;
+      timeline.setWindow(windowStart,windowEnd,{animation:cameraAnimation});
+    }catch(error){
+      console.error('Culture Era viewport update failed',error);
+    }
+  },[heightVariant,ready,windowStart,windowEnd,cameraAnimation]);
 
   // When a group opens, mutate existing datasets instead of destroying and
   // recreating vis-timeline. Preserve camera zoom, pan and touch scroll.
@@ -826,13 +851,21 @@ export default function CultureTimeline({
     onSelectRef.current?.(row);
   }
 
-  if(!rows.length&&!editable&&!extraGroups.length)return <div className='scope-period-timeline-wrap scope-period-timeline-empty'><div className='scope-period-timeline scope-period-timeline-empty-line' role='region' aria-label={t('時間長河')}/><p><FieldText text={mode==='overview'?'尚未設定時期，目前以「所有」總覽顯示。':'目前時期尚無可顯示的時間資料。'}/></p></div>;
+  if(!rows.length&&!editable&&!extraGroups.length&&!onEraNavigate)return <div className='scope-period-timeline-wrap scope-period-timeline-empty'><div className='scope-period-timeline scope-period-timeline-empty-line' role='region' aria-label={t('時間長河')}/><p><FieldText text={mode==='overview'?'尚未設定時期，目前以「所有」總覽顯示。':'目前時期尚無可顯示的時間資料。'}/></p></div>;
 
   const showTraceRecovery=mode==='trace'&&extraGroups.length>0&&(chartError||!tracePainted);
   return <div className='scope-period-timeline-wrap'>
     {!readOnlyViewport?<div className='scope-timeline-controls' role='group' aria-label={t('時間長河操作')}>
-      <button type='button' className='loc-button' aria-label={t('往較早時間移動')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('earlier')}>←</button>
-      <button type='button' className='loc-button' aria-label={t('往較晚時間移動')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('later')}>→</button>
+      <button type='button' className='loc-button'
+        aria-label={onEraNavigate?'往較早時代移動':t('往較早時間移動')}
+        disabled={onEraNavigate?Boolean(eraNavigationDisabled?.previous):!ready&&!(chartError&&mode==='trace')}
+        onClick={()=>onEraNavigateRef.current
+          ?onEraNavigateRef.current('previous'):changeWindow('earlier')}>←</button>
+      <button type='button' className='loc-button'
+        aria-label={onEraNavigate?'往較新時代移動':t('往較晚時間移動')}
+        disabled={onEraNavigate?Boolean(eraNavigationDisabled?.next):!ready&&!(chartError&&mode==='trace')}
+        onClick={()=>onEraNavigateRef.current
+          ?onEraNavigateRef.current('next'):changeWindow('later')}>→</button>
       <button type='button' className='loc-button' aria-label={t('放大時間長河')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('zoom-in')}>＋</button>
       <button type='button' className='loc-button' aria-label={t('縮小時間長河')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('zoom-out')}>－</button>
       <button type='button' className='loc-button' aria-label={t('重置時間長河視野')} disabled={!ready&&!(chartError&&mode==='trace')} onClick={()=>changeWindow('reset')}><FieldText text="重置"/></button>
