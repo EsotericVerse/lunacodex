@@ -9,7 +9,7 @@ import {ProtectedManagementSlot} from '../management/ManagementAccess';
 import ManagementSectionNav,{ManagementSectionTransition,useManagementSection} from '../../modular/ManagementSectionNav';
 import PanelLoading from '../ui/PanelLoading';
 import {recoverChunkOnce} from '../ui/chunk-recovery.mjs';
-import {PLACE_OPTIONS} from '../trace/PlaceManagement';
+import {PLACE_OPTIONS} from '../trace/space-management-options.mjs';
 
 const UnifiedSpatialManagement=dynamic(()=>import('../trace/UnifiedSpatialManagement').catch(recoverChunkOnce),{loading:PanelLoading});
 const PlaceManagement=dynamic(()=>import('../trace/PlaceManagement').catch(recoverChunkOnce),{loading:PanelLoading});
