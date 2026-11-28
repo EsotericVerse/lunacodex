@@ -122,7 +122,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null,route
   };
   const ready=totalsQuery.data!==undefined;
   const totalArticles=regions.reduce((sum,place)=>sum+place.total,0);
-  return <div ref={rootRef} className="loc-trace-territory" aria-label="年度文章地點戰略版圖">
+  return <div ref={rootRef} className="loc-trace-territory" aria-label="年度文章地點與路徑地形圖">
     <TraceMap key="territory" publicTrace territoryMode territoryYear={year} onReady={onMapReady}
       spatialData={mapData} selectedRouteUid={selectedRouteUid}
       lineOnlySavedGraph={Boolean(selectedRouteUid)} showLucusSearch={false}
