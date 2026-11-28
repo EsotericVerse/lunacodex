@@ -147,7 +147,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
           {key:'scopes',label:'所屬 Scope 數',value:scopeIds.length.toLocaleString()},
           {key:'active',label:'活躍時段',value:trendData.filter(row=>Number(row.total)>0).length.toLocaleString()}
         ]}/>
-      <div className="scope-stat-controls">
+      {chartIntentOptions.length>1?<div className="scope-stat-controls">
         <label><span>分析意圖</span>
           <select className="scope-select" value={effectiveChartIntent} onChange={event=>{
             setChartIntent(event.target.value);setSelectedPeriodKey('');
@@ -157,7 +157,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
             </option>)}
           </select>
         </label>
-      </div>
+      </div>:null}
       <StatisticsInsightsPanel rows={insightRows} range={zoomRange} intent={effectiveChartIntent}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
         idPrefix="loc-stat" selectedPeriodKey={selectedPeriodKey}
