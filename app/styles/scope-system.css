@@ -1259,3 +1259,24 @@
   outline:2px solid var(--loc-accent);
   outline-offset:2px;z-index:2;
 }
+
+.scope-ranking>div[data-selected="true"]{
+  padding:.35rem .5rem;
+  border-radius:8px;
+  background:var(--loc-panel-2);
+  outline:1px solid var(--loc-accent);
+}
+.scope-ranking>div[role="button"]{cursor:pointer}
+.scope-ranking>div[role="button"]:focus-visible{
+  outline:2px solid var(--loc-accent);
+  outline-offset:2px;
+}
+.scope-self-intersection-selected{
+  display:grid;
+  gap:.65rem;
+  margin:1rem 0;
+  padding:.8rem;
+  border:var(--scope-border);
+  border-radius:12px;
+  background:var(--loc-panel);
+}
