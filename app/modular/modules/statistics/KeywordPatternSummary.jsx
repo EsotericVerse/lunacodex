@@ -8,6 +8,7 @@ import StatisticsMultiChart from './StatisticsMultiChart';
 export default function KeywordPatternSummary({scopeId='',classUid='',range={}}) {
   const [level,setLevel]=useState('item');
   const [selectedKey,setSelectedKey]=useState('');
+  const [intent,setIntent]=useState('ranking');
   const summary=useAsyncResource({
     queryKey:['statistics-keyword-pattern-ratios',scopeId,classUid,range.startDate,range.endDate],
     enabled:Boolean(scopeId&&classUid),
@@ -42,6 +43,11 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
   const distribution=shown.filter(row=>row.count>0).map(row=>({
     key:row.key,name:row.label,value:row.count
   }));
+  const metricValues=ranked.filter(row=>Number(row.count)>0).map(row=>({
+    uid:row.key,label:row.label,value:Number(row.count)||0,
+    ratio:Number(row.ratio)||0,level
+  }));
+  const selectedRow=ranked.find(row=>String(row.key)===selectedKey)||null;
   const missing=Array.isArray(data.missing_patterns)?data.missing_patterns:[];
   return <section className="scope-card scope-stat-section">
     <h3>詞級命中與比率</h3>
@@ -49,19 +55,53 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     <label>
       <span>統計層級</span>
       <select className="scope-select" value={level}
-        onChange={event=>{setLevel(event.target.value);setSelectedKey('');}}>
+        onChange={event=>{setLevel(event.target.value);setSelectedKey('');setIntent('ranking');}}>
         <option value="group">Group</option>
         <option value="item">Item</option>
         <option value="word">單詞</option>
       </select>
     </label>
-    {distribution.length?<StatisticsMultiChart intent="ranking" distribution={distribution}
+    <div className="scope-stat-controls">
+      <label><span>分析意圖</span>
+        <select className="scope-select" value={intent} onChange={event=>{
+          setIntent(event.target.value);setSelectedKey('');
+        }}>
+          <option value="ranking">看排名</option>
+          {metricValues.length>1?<option value="distribution">看分布</option>:null}
+        </select>
+      </label>
+    </div>
+    {intent==='ranking'&&distribution.length?<StatisticsMultiChart intent="ranking" distribution={distribution}
       activeCategoryKey={selectedKey}
       onCategoryClick={key=>setSelectedKey(current=>current===String(key||'')?'':String(key||''))}
-      height={Math.max(300,Math.min(800,distribution.length*34+90))}/>:
-      <p className="scope-status">尚無詞級命中紀錄。</p>}
+      height={Math.max(300,Math.min(800,distribution.length*34+90)}/>:
+      intent==='distribution'&&metricValues.length>1?<StatisticsMultiChart intent="distribution"
+        values={metricValues} height={380}/>:
+      <p className="scope-status">尚無足夠的詞級命中紀錄。</p>}
+    {selectedRow?<section className="scope-self-intersection-selected" aria-live="polite">
+      <header className="statistics-dashboard__panel-heading">
+        <h4>{selectedRow.label}</h4>
+        <button type="button" className="loc-button loc-button--small"
+          onClick={()=>setSelectedKey('')}>清除選取</button>
+      </header>
+      <div className="scope-ranking">
+        <div><strong>命中數</strong><span>{Number(selectedRow.count||0).toLocaleString()}</span></div>
+        <div><strong>比率</strong><span>{Number(selectedRow.ratio||0).toFixed(1)}%</span></div>
+        <div><strong>統計層級</strong><span>{level}</span></div>
+      </div>
+    </section>:null}
     <div className="scope-ranking">
-      {shown.map(row=><div key={row.key} data-selected={selectedKey===String(row.key)?'true':undefined}>
+      {shown.map(row=><div key={row.key}
+        role="button" tabIndex={0}
+        aria-pressed={selectedKey===String(row.key)}
+        data-selected={selectedKey===String(row.key)?'true':undefined}
+        onClick={()=>setSelectedKey(current=>current===String(row.key)?'':String(row.key))}
+        onKeyDown={event=>{
+          if(event.key==='Enter'||event.key===' '){
+            event.preventDefault();
+            setSelectedKey(current=>current===String(row.key)?'':String(row.key));
+          }
+        }}>
         <strong>{row.label}</strong>
         <span>{Number(row.count||0).toLocaleString()} 次 · {Number(row.ratio||0).toFixed(1)}%</span>
       </div>)}
