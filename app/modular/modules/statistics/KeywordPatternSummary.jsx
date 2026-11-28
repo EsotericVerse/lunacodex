@@ -88,8 +88,8 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
         <option value="word">單詞</option>
       </select>
     </label>
-    <div className="scope-stat-controls">
-      <label><span>分析意圖</span>
+    {chartIntentOptions.length>0?<div className="scope-stat-controls">
+      {chartIntentOptions.length>1?<label><span>分析意圖</span>
         <select className="scope-select" value={effectiveIntent} onChange={event=>{
           setIntent(event.target.value);setSelectedKey('');
         }}>
@@ -97,7 +97,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
             {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
           </option>)}
         </select>
-      </label>
+      </label>:null}
       {metricOptions.length>1&&['ranking','distribution'].includes(effectiveIntent)
         ?<label><span>分析數值</span>
           <select className="scope-select" value={effectiveMetricKey}
@@ -107,7 +107,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
             </option>)}
           </select>
         </label>:null}
-    </div>
+    </div>:null}
     {['ranking','distribution','composition'].includes(effectiveIntent)&&distribution.length
       ?<StatisticsMultiChart intent={effectiveIntent}
         distribution={effectiveIntent==='composition'?compositionDistribution:distribution}
