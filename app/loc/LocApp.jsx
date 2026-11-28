@@ -125,7 +125,7 @@ function FeatureGate({scopeId,scopeMeta=null,view,children}){
   return children;
 }
 
-export default function LocApp({forcedView='home',forcedSection=null,forcedScope=null}){
+export default function LocApp({forcedView='home',forcedSection=null,forcedScope=null,initialData=null}){
   useUiSection('uiExtra.feature');
   const t=useUiText();
   const runtime=useScopeRuntime();
@@ -186,7 +186,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     :forcedView==='manage'&&(forcedSection==='traceMap'||scopeId==='loc')?'trace':'manage';
   const managementPage=<ActiveView section={forcedSection} scopeId={scopeId}
     scopeGroup={scopeMeta?.featureScope||scopeMeta?.registry?.parent_scope_id||
-      (scopeMeta?.aggregateChildren?scopeId:null)}/>;
+      (scopeMeta?.aggregateChildren?scopeId:null)} initialData={initialData}/>;
   return <ManagementHeroContext.Provider value={forcedSection==='timeManage'?'timeManage':forcedView}>
   <div className="loc-next-main" data-loc-scope={scopeId} data-loc-view={forcedView}
     role={forcedView==='home'&&['loc','lo3rwang','lrunes'].includes(scopeId)?'main':undefined}>
