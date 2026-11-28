@@ -61,7 +61,11 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const [selected,setSelected]=useState([]);
   const [laneKinds,setLaneKinds]=useState([]);
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
-  useEffect(()=>setSelectedPeriodKey(''),[scope?.id,range?.startDate,range?.endDate]);
+  const [chartIntent,setChartIntent]=useState('trend');
+  const [selectedCategoryKey,setSelectedCategoryKey]=useState('');
+  useEffect(()=>{
+    setSelectedPeriodKey('');setSelectedCategoryKey('');setChartIntent('trend');
+  },[scope?.id,range?.startDate,range?.endDate]);
   const [foldBlank,setFoldBlank]=useState(true);
   const start=dateOnly(range?.startDate),end=dateOnly(range?.endDate);
   const valid=Boolean(scope?.id&&scope.galaxy&&scope.lucus&&start&&end&&start<=end);
@@ -275,8 +279,24 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   },[hierarchyCounts,categories.map(c=>c.id).join(String.fromCharCode(0)),
     start,end,unit,valid,keywords.data,keywordItems.data,selectedKeywordItems]);
   const series=categories.map(c=>({key:c.id,label:c.name}));
+  const categoryKey=categories.map(category=>category.id).join('|');
+  useEffect(()=>setSelectedCategoryKey(''),[categoryKey]);
+  const distribution=calculated.totals.map((item,index)=>({
+    key:categories[index]?.id||String(index),name:item.name,value:item.value
+  }));
+  const visibleSeries=selectedCategoryKey
+    ?series.filter(field=>field.key===selectedCategoryKey):series;
+  const chartIntentOptions=distribution.length?['trend','compare']:['trend'];
+  const effectiveChartIntent=chartIntentOptions.includes(chartIntent)?chartIntent:'trend';
+  const selectedCategory=categories.find(category=>category.id===selectedCategoryKey)||null;
   const enough=maximumLanes>=2&&categories.length===lanes;
   const selectedPoint=calculated.chart.find(row=>row.period===selectedPeriodKey)||null;
+  const selectedPointCategories=selectedCategory?[selectedCategory]:categories;
+  const selectComparisonCategory=key=>{
+    setSelectedCategoryKey(String(key||''));
+    setChartIntent('trend');
+    setSelectedPeriodKey('');
+  };
 
   return <section className="scope-stat-section scope-self-intersection" aria-label={t('uiExtra.statisticsView.selfIntersectionTitle')}>
     <h3><UiText id="uiExtra.statisticsView.selfIntersectionTitle"/></h3>
@@ -392,17 +412,37 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
           })}
         </div>
         <div className="scope-stat-controls">
-          <span className="scope-status">依時間點數自動選擇直條圖或折線圖</span>
-          <label className="scope-setting-toggle"><input type="checkbox" checked={foldBlank} onChange={e=>setFoldBlank(e.target.checked)}/> {l.foldEmptyTime}</label>
+          <label><span>分析意圖</span>
+            <select className="scope-select" value={effectiveChartIntent} onChange={event=>{
+              setChartIntent(event.target.value);setSelectedPeriodKey('');
+              if(event.target.value==='compare')setSelectedCategoryKey('');
+            }}>
+              <option value="trend">看趨勢</option>
+              <option value="compare">比大小</option>
+            </select>
+          </label>
+          {selectedCategory?<button type="button" className="loc-button loc-button--small"
+            onClick={()=>{setSelectedCategoryKey('');setChartIntent('compare');setSelectedPeriodKey('');}}>
+            返回比較
+          </button>:null}
+          {effectiveChartIntent==='trend'?<label className="scope-setting-toggle">
+            <input type="checkbox" checked={foldBlank} onChange={e=>setFoldBlank(e.target.checked)}/> {l.foldEmptyTime}
+          </label>:null}
         </div>
         {selectedKeywordItems&&keywordItems.isPending?<p className="scope-status" role="status">正在讀取關鍵詞項目的每日統計…</p>:null}
         {selectedKeywordItems&&keywordItems.error?<p role="alert" className="scope-status scope-error">{String(keywordItems.error?.message||keywordItems.error)}</p>:null}
         {enough&&(!selectedKeywordItems||keywordItems.isSuccess)?<div>
           <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange} range={range} idPrefix="scope-self-stat">
-            <StatisticsMultiChart intent="trend" rows={calculated.chart} series={series}
-              distribution={calculated.totals} foldBlank={foldBlank} height={410}
+            <StatisticsMultiChart intent={effectiveChartIntent}
+              rows={effectiveChartIntent==='compare'?[]:calculated.chart}
+              series={effectiveChartIntent==='compare'?[]:visibleSeries}
+              distribution={distribution}
+              foldBlank={effectiveChartIntent==='trend'&&foldBlank} height={410}
+              activeCategoryKey={selectedCategoryKey}
+              onCategoryClick={effectiveChartIntent==='compare'?selectComparisonCategory:null}
               selectedPeriodKey={selectedPeriodKey}
-              onPeriodClick={row=>setSelectedPeriodKey(String(row?.period||''))}/>
+              onPeriodClick={effectiveChartIntent==='trend'
+                ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>
           </StatisticsChartFrame>
           {selectedPoint?<section className="scope-self-intersection-selected" aria-live="polite">
             <header className="statistics-dashboard__panel-heading">
@@ -411,7 +451,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
                 onClick={()=>setSelectedPeriodKey('')}>清除選取</button>
             </header>
             <div className="scope-ranking">
-              {categories.map(category=><div key={category.id}>
+              {selectedPointCategories.map(category=><div key={category.id}>
                 <strong>{category.name}</strong>
                 <span>{Number(selectedPoint[category.id]||0).toLocaleString(locale)}{l.recordUnit}</span>
               </div>)}
