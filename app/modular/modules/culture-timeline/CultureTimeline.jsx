@@ -306,7 +306,10 @@ export default function CultureTimeline({
   onLucusClose=null,
   // Management editor must never leave a covering animation layer over vis.
   unfoldCurtain=true,
-  onFirstPaint=null
+  onFirstPaint=null,
+  // The compact management Era list can opt into the same real-range
+  // background bands used by the public Culture river.
+  paintEraBackground=false
 }){
   useUiSection('uiExtra.cultureTimeline');
   const {locale,copy}=useUiLocale();
@@ -367,11 +370,11 @@ export default function CultureTimeline({
   // Background items are paint-only; they never enter selection, group
   // hierarchy, fallback records or editing. Use the same Era palette on both rivers.
   const paintRows=useMemo(()=>{
-    if(editable||compactHierarchy)return rows;
+    if(editable||(compactHierarchy&&!paintEraBackground))return rows;
     const source=mode==='trace'?visibleItems:eraRanges;
     if(!source.length)return rows;
     return paintCultureRows(rows,cultureEraVisuals(source));
-  },[rows,visibleItems,eraRanges,mode,editable,compactHierarchy]);
+  },[rows,visibleItems,eraRanges,mode,editable,compactHierarchy,paintEraBackground]);
   // The chart-error fallback list is not used during a healthy render.
   // Avoid cloning and sorting thousands of buckets on every period switch.
   const fallbackRows=useMemo(()=>chartError
