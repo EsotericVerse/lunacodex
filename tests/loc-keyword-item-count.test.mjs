@@ -172,7 +172,7 @@ test('keyword discovery keeps only 2–4 character Han words and filters noise',
   const discovery=createNewKeywordDiscovery([]);
   discovery.consume([
     {uid:'GALA0001',title:'月光',content:'我很好？作者來自於台灣！你我他'},
-    {uid:'GALA0002',title:'標題',content:'月光與星火；等等。'}
+    {uid:'GALA0002',title:'標題',content:'月光與星火；等等。一見鍾情'}
   ]);
   const results=discovery.finish();
   const words=new Set(results.candidates.map(row=>row.word));
@@ -181,6 +181,10 @@ test('keyword discovery keeps only 2–4 character Han words and filters noise',
   assert.ok(words.has('很好'));
   assert.ok(words.has('台灣'));
   assert.ok(words.has('星火'));
+  assert.ok(words.has('一見鍾情'));
+  assert.ok(!words.has('月光星火'));
+  assert.ok(!words.has('很好作者'));
+  assert.ok(!words.has('見鍾情'));
   for(const excluded of ['我','我很','你我他','作者','來自於','等等','?','!','？','！','；'])
     assert.ok(!words.has(excluded),'unexpected discovery candidate: '+excluded);
   assert.ok(results.candidates.every(row=>{
