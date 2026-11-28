@@ -83,31 +83,6 @@ function periodEndpointUidQuery(engine,table){
     where p.type='period' and p.invisible=0`;
   throw Error('Unsupported Culture SQL dialect');
 }
-  if(!exactKeys(args,['p_scope_id','p_view','p_start','p_end','p_options'])||
-    args.p_view!=='culture_list'||!exactKeys(args.p_options||{},['site','offset']))
-    throw Error('Invalid Culture list request');
-  const scope=id(args.p_scope_id),start=date(args.p_start),end=date(args.p_end);
-  const site=String(args.p_options?.site||'').trim();
-  const offset=Number(args.p_options?.offset||0);
-  if(!start||!end||start>end||!site||site.length>120||
-    !Number.isSafeInteger(offset)||offset<0||offset>100000)
-    throw Error('Invalid Culture list selection');
-  return withPublicLocRead({scope},async(db,port)=>{
-    const rows=await db.selectFrom(relation(scope,'galaxy',port))
-      .select(galaxyReadColumns('GalaxyList'))
-      .where('date','>=',start).where('date','<=',end)
-      .where('site','=',site).where('culture','=',true)
-      .orderBy('createtime','desc').orderBy('uid','asc')
-      .limit(100).offset(offset).execute();
-    const projected=rows.map(row=>row.list===false
-      ?{hidden:true,title:'本文已隱藏',list:false}
-      :{uid:String(row.uid),date:row.date instanceof Date
-        ?row.date.toISOString().slice(0,10):String(row.date||'').slice(0,10),
-        title:String(row.title||''),list:true,hidden:false});
-    return {data:{rows:projected,hasMore:rows.length===100,
-      nextCursor:rows.length===100?{offset:offset+rows.length}:null},count:null};
-  });
-}
 
 export async function queryCultureContent(searchParams){
   const params=new URLSearchParams(String(searchParams||''));
