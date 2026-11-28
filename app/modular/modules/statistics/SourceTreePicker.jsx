@@ -8,12 +8,13 @@ import {sourceIntersectionOutline} from '../../../loc/statistics/source-tree-mea
 // selectable. A one-child parent is never flattened into a child label.
 export default function SourceTreePicker({
   metrics=[],value='',takenIds=new Set(),onChange,label='來源',
-  // The general Source selector may allow all four levels. Intersection
-  // displays Universe headings and Galaxy/Domain choices, with no From rows.
+  // The general Source selector and the four-Lucus intersection can expose
+  // all four saved levels. An explicit two-level list remains available to
+  // older callers that intentionally request the compact Galaxy/Domain view.
   selectableTypes=null
 }){
-  // In intersections Universe is a heading; only Galaxy and Domain are
-  // choices. From participates in the rollup, but is not rendered here.
+  // The compact grouped view is opt-in. The full intersection passes no
+  // selectableTypes filter, so Universe, Galaxy, Domain and From are choices.
   const groupedIntersection=Array.isArray(selectableTypes)&&selectableTypes.length===2&&
     ['galaxy','domain'].every(type=>selectableTypes.includes(type));
   const sourceGroups=useMemo(()=>groupedIntersection
