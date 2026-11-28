@@ -98,8 +98,10 @@ export function buildLocEraRiver(rows=[],eraKey='',windows=[]){
   const periodIds=new Set(era.lucus_ids.map(text));
   const periods=normalized.filter(row=>row.scope_id===scope&&
     row.entry_type==='period'&&periodIds.has(text(row.uid)));
-  const dates=normalized.filter(row=>row.scope_id===scope&&row.entry_type==='lucus'&&
+  const dates=normalized.filter(row=>row.entry_type==='lucus'&&
     validWindows.some(window=>row.start_date>=window.startDate&&row.start_date<=window.endDate));
+  const selectedScopeDates=dates.filter(row=>row.scope_id===scope);
+  const otherScopeDates=dates.filter(row=>row.scope_id!==scope);
   const groups=[{id:eraGroup,label:era.title,order:0,
     className:'scope-culture-layer-era'}],items=[];
   const eraRanges=clipRanges(era.ranges,validWindows);
@@ -123,7 +125,7 @@ export function buildLocEraRiver(rows=[],eraKey='',windows=[]){
       start_date:range.start_date,
       ...(range.end_date>range.start_date?{end_date:range.end_date}:{})
     });
-    for(const point of dates){
+    for(const point of selectedScopeDates){
       if(!timePeriodContainsDate(period,point.start_date))continue;
       assigned.add(text(point.uid));
       items.push({id:periodGroup+':'+point.uid,entry_type:'lucus',uid:text(point.uid),
@@ -132,7 +134,7 @@ export function buildLocEraRiver(rows=[],eraKey='',windows=[]){
         start_date:point.start_date,class_name:'scope-time-original-lucus'});
     }
   }
-  const unassigned=dates.filter(point=>!assigned.has(text(point.uid)));
+  const unassigned=selectedScopeDates.filter(point=>!assigned.has(text(point.uid)));
   if(unassigned.length){
     const group='loc-era-unassigned:'+scope+':'+eraUid;
     groups.push({id:group,label:'未歸屬定錨點',order:groups.length,
@@ -142,6 +144,24 @@ export function buildLocEraRiver(rows=[],eraKey='',windows=[]){
       group_key:group,group_label:'未歸屬定錨點',group_order:groups.length-1,
       title:point.title||point.start_date,display_label:'◆',
       start_date:point.start_date,class_name:'scope-time-original-lucus'
+    });
+  }
+  const otherByScope=new Map();
+  for(const point of otherScopeDates){
+    if(!otherByScope.has(point.scope_id))otherByScope.set(point.scope_id,[]);
+    otherByScope.get(point.scope_id).push(point);
+  }
+  for(const [otherScope,points] of [...otherByScope].sort(([a],[b])=>a.localeCompare(b))){
+    const group='loc-scope-lucus:'+otherScope;
+    const order=groups.length;
+    groups.push({id:group,label:otherScope+' · 時間定錨',order,
+      className:'scope-culture-layer-period'});
+    for(const point of points)items.push({
+      id:group+':'+point.uid,entry_type:'lucus',uid:text(point.uid),
+      scope_id:otherScope,group_key:group,group_label:otherScope+' · 時間定錨',
+      group_order:order,title:point.title||point.start_date,
+      display_label:'◆',start_date:point.start_date,
+      class_name:'scope-time-original-lucus'
     });
   }
   return {items,groups,era};
