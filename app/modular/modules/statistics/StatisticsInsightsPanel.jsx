@@ -4,7 +4,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {AnimatedNumber} from './StatisticsDashboardKpis';
 import {
-  CartesianGrid,Line,LineChart,ReferenceDot,ReferenceLine,
+  Bar,BarChart,CartesianGrid,Line,LineChart,ReferenceDot,ReferenceLine,
   ResponsiveContainer,Tooltip,XAxis,YAxis
 } from 'recharts';
 import {explainPeltChange,rankInsightPeriods,totalPeriodStats} from './statistics-insights.mjs';
@@ -151,6 +151,13 @@ export default function StatisticsInsightsPanel({
   const reduceMotion=useReducedMotion();
   const analysis=useStatisticsInsightData(rows);
   const {stats,insight}=analysis;
+  const TrendChart=rows.length>=6?LineChart:BarChart;
+  const trendMark=rows.length>=6
+    ?<Line type="linear" dataKey="value" name="作品數" stroke={visualColor(0)}
+      strokeWidth={3} dot={rows.length<=32} cursor={onPeriodClick?'pointer':undefined}
+      isAnimationActive={!reduceMotion&&rows.length<=600} animationDuration={480} animationEasing="ease-out"/>
+    :<Bar dataKey="value" name="作品數" fill={visualColor(0)} maxBarSize={44}
+      cursor={onPeriodClick?'pointer':undefined}/>
   // Preserve the established Dashboard composition: a main chart and a
   // separate Insights rail. PELT adds analytical meaning, not a new layout.
   return <div className="statistics-dashboard__workspace" aria-label="作品總數 Dashboard">
@@ -166,7 +173,7 @@ export default function StatisticsInsightsPanel({
     {rows.length?<div className="statistics-dashboard__trend-plot"
       role="group" aria-label="總數、平均、中位數與變化點折線圖">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={rows.map(row=>({period:row.period,value:Number(row.total)||0,
+        <TrendChart data={rows.map(row=>({period:row.period,value:Number(row.total)||0,
           start_date:row.start_date,end_date:row.end_date}))}
           onClick={onPeriodClick?event=>{
             const index=Number(event?.activeTooltipIndex);
@@ -192,16 +199,14 @@ export default function StatisticsInsightsPanel({
           {insight.detected&&insight.boundary?<ReferenceLine
             x={insight.boundary} stroke={visualColor(6)} strokeWidth={2}
             strokeDasharray="3 4"/>:null}
-          <Line type="linear" dataKey="value" name="作品數" stroke={visualColor(0)}
-            strokeWidth={3} dot={rows.length<=32} cursor={onPeriodClick?'pointer':undefined}
-            isAnimationActive={!reduceMotion&&rows.length<=600} animationDuration={480} animationEasing="ease-out"/>
+          {trendMark}
           {stats.maximum?<ReferenceDot x={stats.maximum.period} y={stats.maximum.value}
             r={6} fill={visualColor(2)} stroke="var(--loc-panel)"
             label={{value:'最高',position:'top',fill:'var(--loc-text)',fontSize:11}}/>:null}
           {stats.minimum?<ReferenceDot x={stats.minimum.period} y={stats.minimum.value}
             r={6} fill={visualColor(4)} stroke="var(--loc-panel)"
             label={{value:'最低',position:'bottom',fill:'var(--loc-text)',fontSize:11}}/>:null}
-        </LineChart>
+        </TrendChart>
       </ResponsiveContainer>
     </div>:<p className="scope-status">所選時期沒有可分析的作品總數。</p>}
       </StatisticsChartFrame>
