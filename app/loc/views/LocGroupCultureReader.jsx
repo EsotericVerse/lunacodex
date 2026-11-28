@@ -232,7 +232,7 @@ export default function LocGroupCultureReader(){
         stackItems
         windowStart={bounds.start}
         windowEnd={bounds.end}
-        onEraNavigate={direction=>void navigateEra(direction)}
+        onEraNavigate={eras.length?direction=>void navigateEra(direction):null}
         eraNavigationDisabled={{
           previous:pending||!eras.length||activeEraIndex>=eras.length-1,
           next:pending||activeEraIndex<=0
