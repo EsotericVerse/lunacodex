@@ -14,6 +14,8 @@ import {publishPublicFiles} from './publish-public-files.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const validScope=/^[a-z][a-z0-9]{0,14}$/;
+// The eight published identities are fixed: four light Day themes and four deep-dark themes.
+const THEME_SCHEME_BY_ID=Object.freeze({1:'dark',2:'light',3:'light',4:'dark',5:'light',6:'dark',7:'light',8:'dark'});
 const encode=value=>JSON.stringify(value).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
 // Publication is an explicit local operator command using the configured DB URI.
 // It does not expose a public query endpoint or use a browser SQL gateway.
@@ -59,6 +61,8 @@ if(themes.length!==8)throw Error('Cannot publish eight complete LOC Themes');
 const palettes=themes.map(theme=>{
   const id=Number(theme.theme_id);
   if(!Number.isInteger(id)||id<1||id>8)throw Error('Invalid Theme ID');
+  if(theme.scheme!==THEME_SCHEME_BY_ID[id])
+    throw Error('Theme '+id+' must retain its fixed '+THEME_SCHEME_BY_ID[id]+' Day/Dark scheme');
   const declarations=THEME_TOKEN_KEYS.map(key=>{
     const value=String(theme[key.slice(2).replaceAll('-','_')]??'').trim();
     if(!value||/[;{}<>\\]/.test(value)||/url\s*\(|@import|!important/i.test(value)||/[\x00-\x1f]/.test(value))
