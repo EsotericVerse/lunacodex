@@ -22,6 +22,7 @@ const CultureTimeline=dynamic(()=>import('../../modular/modules/culture-timeline
   </div>
 });
 const EMPTY=Object.freeze([]);
+const NO_FOCUS=Object.freeze({});
 const YEAR_WINDOWS=Object.freeze([Object.freeze({
   startDate:DEFAULT_YEAR_WINDOW.startDate,endDate:DEFAULT_YEAR_WINDOW.endDate
 })]);
@@ -35,7 +36,7 @@ function mergeTimeRows(indexRows=[],rangeRows=[]){
   const rows=new Map();
   for(const row of [...indexRows,...rangeRows]){
     const key=String(row.scope_id||'')+':'+String(row.uid||'');
-    if(key!==' :')rows.set(key,row);
+    if(key!==':')rows.set(key,row);
   }
   return [...rows.values()];
 }
@@ -54,7 +55,10 @@ export default function LocGroupCultureReader(){
   const sequence=useRef(0);
   const mounted=useRef(true);
 
-  useEffect(()=>()=>{mounted.current=false;sequence.current++;},[]);
+  useEffect(()=>{
+    mounted.current=true;
+    return()=>{mounted.current=false;sequence.current++;};
+  },[]);
 
   const eras=useMemo(()=>buildLocEraIndex(indexRows),[indexRows]);
   const activeEra=eras.find(row=>row.key===activeEraKey)||eras[0]||null;
