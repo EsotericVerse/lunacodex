@@ -18,6 +18,7 @@ export default function FlowProgress({
   const reduceMotion=useReducedMotion();
   const count=safeCount(completed),all=safeCount(total);
   const known=all>0;
+  const complete=Boolean(resultComplete||(known&&count>=all));
   const fraction=known?Math.min(1,count/all):0;
   const currentStage=String(stage||'處理中');
   const key=resultKey||currentStage;
@@ -29,13 +30,13 @@ export default function FlowProgress({
     if(clock.current.key!==key)clock.current={key,started:now};
     const values=JSON.parse(metricJson);
     setSnapshot(previous=>selectProgressResult(previous,{key,values,completed:count,total:all,
-      elapsed:now-clock.current.started,complete:resultComplete||(known&&count>=all)}));
+      elapsed:now-clock.current.started,complete}));
   },[key,metricJson,count,all,known,resultComplete]);
   const visible=snapshot?.key===key?snapshot:null;
   return <div className={'loc-flow-progress loc-flow-progress--'+
-      (kind==='keywords'?'keywords':'import')} data-motion-state={resultComplete?'success':'running'}>
+      (kind==='keywords'?'keywords':'import')} data-motion-state={complete?'success':'running'}>
     <div className="loc-flow-progress__header">
-      {resultComplete?<ActivityMotion state="success"/>:<span className="loc-flow-progress__beacon" aria-hidden="true">
+      {complete?<ActivityMotion state="success"/>:<span className="loc-flow-progress__beacon" aria-hidden="true">
         <span/><span/><span/>
       </span>}
       <div className="loc-flow-progress__heading">
@@ -64,7 +65,7 @@ export default function FlowProgress({
       aria-valuenow={known?Math.min(count,all):undefined}>
       <span className="loc-flow-progress__river-fill"
         style={known?{transform:'scaleX('+fraction+')'}:undefined}/>
-      {!resultComplete?<span className="loc-flow-progress__river-glint" aria-hidden="true"/>:null}
+      {!complete?<span className="loc-flow-progress__river-glint" aria-hidden="true"/>:null}
     </div>
     {visible?.values.length?<div className="loc-flow-progress__results" role="status" aria-live="polite">
       <small>{visible.complete?'本階段成果':'階段性成果（尚未完成）'}</small>
