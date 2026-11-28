@@ -13,7 +13,7 @@ export async function queryLucusFeature(body){
       view:operation.family,mode:'published-js'}};
   }
   const read=async(db,port)=>({
-    data:await executeLucusFeatureQuery(db,operation),
+    data:await executeLucusFeatureQuery(db,operation,port),
     query:{requestedBy:'lucus',scope,model:'lucus-feature',
       view:operation.view||operation.family,mode:operation.mode}
   });
