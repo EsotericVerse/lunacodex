@@ -77,8 +77,10 @@ test('LOC Group Culture reads use date-window predicates and one SQL source aggr
   assert.match(time,/t\.type in \('era','period'\)/);
   assert.match(time,/t\.uid in \(\$\{endpoints\}\)/);
   assert.match(time,/timeDatePredicate\(port\.engine,windows,'t'\)/);
-  assert.match(density,/g\.date is not null and \$\{datePredicate\}/);
+  assert.match(density,/g\.date is not null and g\.site is not null/);
+  assert.match(density,/lower\(g\.site\) not in \(\$\{privateSites\}\)/);
   assert.match(density,/group by scope_id,day,site/);
+  assert.match(action,/PUBLIC_GALAXY_PRIVATE_SITES/);
   assert.doesNotMatch(density,/mapBounded|selectScopeDailyCounts/);
 });
 
