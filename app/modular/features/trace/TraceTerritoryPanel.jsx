@@ -1,6 +1,7 @@
 'use client';
 import {useMemo,useRef,useState} from 'react';
 import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
+import {LOC_MOTION} from '../../motion-tokens.mjs';
 import {visualKeyColor,TERRITORY_STOPS,territoryLegendColor} from '../../visual-palette.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
@@ -194,7 +195,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null,route
               initial={reduceMotion?false:{opacity:0,y:7}}
               animate={{opacity:1,y:0}}
               exit={reduceMotion?{opacity:0}:{opacity:0,y:-4}}
-              transition={reduceMotion?{duration:0}:{duration:.2,ease:'easeOut'}}>
+              transition={reduceMotion?{duration:0}:{duration:LOC_MOTION.feedback,ease:'easeOut'}}>
               <TracePlaceResults
                 key={keyOf(selected)+':'+year+':'+selectedVisitDay}
                 place={selected.point||{uid:selected.uid,title:selected.title,
