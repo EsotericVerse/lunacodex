@@ -393,7 +393,7 @@ export function resolveStatisticIntent({
   }
   if(intent==='funnel'){
     const normalized=normalizeFunnelStages(stages);
-    return normalized.length>=2?{
+    return normalized.length>=2&&normalized[0].value>0?{
       intent,available:true,type:'funnel',dataMode:'stages',stages:normalized
     }:unavailable;
   }
