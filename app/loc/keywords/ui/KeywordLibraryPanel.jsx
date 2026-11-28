@@ -7,8 +7,8 @@ import {useEditDock} from '../../../modular/edit-dock';
 import {dbAuthRelation,dbAuthClient,resetKeywordClassification,updateRows,transactionWrites,prepareKeywordLibraryWrite,writeKeywordLibraryItem,copyKeywordLibraryClass} from '../../db/db-client.mjs';
 import {indexKeywordTree,descendantsOfKeyword} from '../tree.mjs';
 import {allocateLucusUid} from '../../model/uid.js';
-import ManagementNetworkNav from '../../../modular/ManagementNetworkNav';
-import {ManagementSectionTransition} from '../../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition} from '../../../modular/ManagementSectionNav';
+import ManagementSectionNav,{ManagementSectionTransition} from '../../../modular/ManagementSectionNav';
 import ActivityMotion from '../../../modular/ActivityMotion';
 import FlowProgress from '../../../modular/FlowProgress';
 import {keywordClassState,invalidateKeywordClass} from '../class-state.mjs';
@@ -669,7 +669,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
         </div>
       </div>:null;
   return <div className="scope-keyword-management loc-keyword-management-layout">
-    <ManagementNetworkNav id="scope-keyword-sections" title="關鍵詞管理" hideHeading
+    <ManagementSectionNav id="scope-keyword-sections" title="關鍵詞管理" hideHeading
       panelId="scope-keyword-workspace" items={workspaceOptions}
       value={workspace} onChange={next=>{
         if(workspace==='analysis'&&next!=='analysis'){
