@@ -325,6 +325,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
       articleTimeContext(current,day).catch(()=>({lucus:[],periods:[],eras:[]})),
     articleStatisticsContext(current,day)
   ]);
+  if(signal?.aborted){const error=new Error('The operation was aborted');error.name='AbortError';throw error;}
   // Existing 2026 records sometimes stored card spreads on non-rune media.
   // Expose them as a read-only rune media view until the verified data backfill;
   // do not modify or duplicate any Galaxy article in a read request.
