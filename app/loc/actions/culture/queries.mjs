@@ -196,12 +196,22 @@ export async function queryCultureContent(searchParams){
   const params=new URLSearchParams(String(searchParams||''));
   const kind=params.get('kind'),scope=id(params.get('scope'));
   const keys=[...params.keys()];
-  if(keys.some(key=>!['kind','scope','start','end'].includes(key))||
+  if(keys.some(key=>!['kind','scope','start','end','ranges'].includes(key))||
     !['culture_lucus','culture_density'].includes(kind))
     throw Error('Invalid Culture query');
   const start=date(params.get('start')),end=date(params.get('end'));
-  if(kind==='culture_density'&&(!start||!end||start>end)||
-    kind==='culture_lucus'&&(start||end))
+  const rangeText=params.get('ranges');
+  let windows=[];
+  if(rangeText!==null){
+    let parsed;
+    try{parsed=JSON.parse(rangeText);}catch{throw Error('Invalid Culture time windows');}
+    windows=dateWindows(parsed);
+  }else if(start&&end&&start<=end){
+    windows=[{startDate:start,endDate:end}];
+  }
+  if(Boolean(start)!==Boolean(end)||start&&end&&start>end||
+    kind==='culture_density'&&!windows.length||
+    kind==='culture_lucus'&&(start||end||rangeText!==null))
     throw Error('Invalid Culture query range');
   return withPublicLocRead({scope},async(db,port)=>{
     if(kind==='culture_lucus'){
@@ -219,20 +229,22 @@ export async function queryCultureContent(searchParams){
       .where('culture','=',true).where('date','>=',rangeStart)
       .where('date','<=',rangeEnd).where('date','is not',null);
     const grouped=new Map();
-    await readDateRangeAggregates({start,end,
-      query:({start:rangeStart,end:rangeEnd})=>build(rangeStart,rangeEnd)
-        .select(['date','site'])
-        .select(eb=>eb.fn.countAll().as('item_count'))
-        .groupBy(['date','site']).execute(),
-      consume:rows=>{
-        for(const row of rows){
-          const day=row.date instanceof Date?row.date.toISOString().slice(0,10):
-            String(row.date||'').slice(0,10);
-          const site=String(row.site||''),key=JSON.stringify([day,site]);
-          grouped.set(key,(grouped.get(key)||0)+Number(row.item_count||0));
+    for(const window of windows){
+      await readDateRangeAggregates({start:window.startDate,end:window.endDate,
+        query:({start:rangeStart,end:rangeEnd})=>build(rangeStart,rangeEnd)
+          .select(['date','site'])
+          .select(eb=>eb.fn.countAll().as('item_count'))
+          .groupBy(['date','site']).execute(),
+        consume:rows=>{
+          for(const row of rows){
+            const day=row.date instanceof Date?row.date.toISOString().slice(0,10):
+              String(row.date||'').slice(0,10);
+            const site=String(row.site||''),key=JSON.stringify([day,site]);
+            grouped.set(key,(grouped.get(key)||0)+Number(row.item_count||0));
+          }
         }
-      }
-    });
+      });
+    }
     const data=[...grouped].map(([key,item_count])=>{
       const [day,site]=JSON.parse(key);
       return {day,site,item_count};
