@@ -3,7 +3,6 @@ import handler from '../.open-next/worker.js';
 import {serveHeroAsset} from '../app/loc/blocks/hero-assets.mjs';
 import {HERO_SOURCE_HASHES} from './hero-source-manifest.generated.mjs';
 export * from '../.open-next/worker.js';
-export {LocCompute} from './loc-compute.mjs';
 
 export default {
   ...handler,
