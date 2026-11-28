@@ -315,7 +315,7 @@ function AppShellInner({children,runtime}){
   const canWarmFeatureIndexes=Boolean(featureIndexScope&&
     !['local','admin'].includes(featureIndexScope));
   // These are the light navigation indexes only. Era links load their related
-  // period/date anchors by UID; the Trace index lists saved route/trace maps,
+  // period/date lucus by UID; the Trace index lists saved route/trace maps,
   // never all historical places or article bodies.
   useAsyncResource({
     queryKey:['culture-time-periods',featureIndexScope],
