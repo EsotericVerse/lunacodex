@@ -28,7 +28,7 @@ test('LOC Era index keeps historical Eras even when their Date anchors are outsi
   assert.equal(eras.find(row=>row.title==='早期時代').end_date,'2002-12-31');
 });
 
-test('one selected Era renders only its own Period and in-window Date anchors',()=>{
+test('one selected Era renders its Period and aligns in-window Date anchors from all Scopes',()=>{
   const eras=buildLocEraIndex(rows);
   const selected=eras.find(row=>row.title==='早期時代');
   const windows=locEraWindows(selected);
