@@ -80,6 +80,11 @@ test('composition normalizes every category to an exact 100 percent total',()=>{
   const rows=compositionPercentages(distribution(4));
   assert.equal(Math.round(rows.reduce((sum,row)=>sum+row.percent,0)*100)/100,100);
   assert.ok(rows.every(row=>row.percent>0));
+  const grouped=compositionPercentages(distribution(10),7);
+  assert.equal(grouped.length,8);
+  assert.equal(grouped.at(-1).aggregated,true);
+  assert.equal(grouped.at(-1).items.length,3);
+  assert.equal(Math.round(grouped.reduce((sum,row)=>sum+row.percent,0)*100)/100,100);
 });
 
 test('composition over time keeps a 100 percent denominator and groups overflow into Other',()=>{
