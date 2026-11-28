@@ -89,9 +89,9 @@ export default function StatisticsMultiChart({
   const categories=useMemo(()=>normalizeDistribution(distribution,time,fields),[distribution,time,fields]);
   const intentConfig=useMemo(()=>intent==='legacy'?null:resolveStatisticIntent({
     intent,rows:time,series:fields,distribution:categories,mutuallyExclusive,seriesExclusive,
-    records,recordFields,values,targetValue,attainmentValue,stages:funnelStages
+    records,recordFields,values,targetValue,attainmentValue,stages:funnelStages,totalKey
   }),[intent,time,fields,categories,mutuallyExclusive,records,recordFields,values,
-    targetValue,attainmentValue,funnelStages,seriesExclusive]);
+    targetValue,attainmentValue,funnelStages,seriesExclusive,totalKey]);
   const usable=availableStatisticChartTypes({rows:time,series:fields,distribution:categories,totalKey});
   const actual=intentConfig
     ?(intentConfig.available?intentConfig.type:'')
@@ -178,7 +178,7 @@ export default function StatisticsMultiChart({
     !isDistribution&&intent!=='relationship');
   const handleChartClick=event=>{
     const row=event?.activePayload?.find(entry=>entry?.payload)?.payload;
-    if(row&&periodInteractive){
+    if(row&&!row.folded&&periodInteractive){
       onPeriodClick?.(row);
       onDatumClick?.({intent,kind:'period',...row});
     }
@@ -407,6 +407,9 @@ export default function StatisticsMultiChart({
         :cloneElement(chart,{responsive:true,style:{width:'100%',height:'100%'},
           ...(periodInteractive?{onClick:handleChartClick}:{})})}
     </motion.div>
+    {intent==='relationship'?<p className="scope-status" role="note">
+      每個點代表一筆紀錄；散布圖呈現數值關聯，不代表因果關係。
+    </p>:null}
     {foldBlank&&gaps.length?<p className="scope-status" role="note">
       {t('uiExtra.chartLabels.gapLabel')}{gaps.map(g=>g.start+'～'+g.end+'（'+(g.days||g.buckets)+' '+(g.days?units.dayUnit:units.periodUnit)+'）').join(t('uiExtra.chartLabels.gapSeparator'))}
     </p>:null}
