@@ -44,9 +44,6 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
       })));
   const ranked=[...rows].sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label));
   const shown=ranked.slice(0,30);
-  const distribution=shown.filter(row=>row.count>0).map(row=>({
-    key:row.key,name:row.label,value:row.count
-  }));
   const metricValues=ranked.filter(row=>Number(row.count)>0).map(row=>({
     uid:row.key,label:row.label,value:Number(row[metricKey])||0,
     count:Number(row.count)||0,documents:Number(row.documents)||0,
@@ -84,7 +81,7 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     <label>
       <span>統計層級</span>
       <select className="scope-select" value={level}
-        onChange={event=>{setLevel(event.target.value);setSelectedKey('');setIntent('ranking');}}>
+        onChange={event=>{setLevel(event.target.value);setSelectedKey('');setIntent('ranking');setMetricKey('count');}}>
         <option value="group">Group</option>
         <option value="item">Item</option>
         <option value="word">單詞</option>
@@ -92,21 +89,36 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     </label>
     <div className="scope-stat-controls">
       <label><span>分析意圖</span>
-        <select className="scope-select" value={intent} onChange={event=>{
+        <select className="scope-select" value={effectiveIntent} onChange={event=>{
           setIntent(event.target.value);setSelectedKey('');
         }}>
-          <option value="ranking">看排名</option>
-          {metricValues.length>1?<option value="distribution">看分布</option>:null}
+          {chartIntentOptions.map(value=><option key={value} value={value}>
+            {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
+          </option>)}
         </select>
       </label>
+      {metricOptions.length>1&&['ranking','distribution'].includes(effectiveIntent)
+        ?<label><span>分析數值</span>
+          <select className="scope-select" value={effectiveMetricKey}
+            onChange={event=>setMetricKey(event.target.value)}>
+            {metricOptions.map(option=><option key={option.key} value={option.key}>
+              {option.label}（{option.unit}）
+            </option>)}
+          </select>
+        </label>:null}
     </div>
-    {intent==='ranking'&&distribution.length?<StatisticsMultiChart intent="ranking" distribution={distribution}
-      activeCategoryKey={selectedKey}
-      onCategoryClick={key=>setSelectedKey(current=>current===String(key||'')?'':String(key||''))}
-      height={Math.max(300,Math.min(800,distribution.length*34+90))}/>:
-      intent==='distribution'&&metricValues.length>1?<StatisticsMultiChart intent="distribution"
-        values={metricValues} height={380}/>:
-      <p className="scope-status">尚無足夠的詞級命中紀錄。</p>}
+    {['ranking','distribution','composition'].includes(effectiveIntent)&&distribution.length
+      ?<StatisticsMultiChart intent={effectiveIntent}
+        distribution={effectiveIntent==='composition'?compositionDistribution:distribution}
+        mutuallyExclusive={level==='group'} activeCategoryKey={selectedKey}
+        onCategoryClick={key=>setSelectedKey(current=>current===String(key||'')?'':String(key||''))}
+        height={Math.max(300,Math.min(800,distribution.length*34+90))}/>
+      :effectiveIntent==='relationship'&&metricValues.length>1
+        ?<StatisticsMultiChart intent="relationship" records={metricValues}
+          recordFields={recordFields} recordLabel={level==='word'?'Pattern 項目':'關鍵詞項目'}
+          relationshipNote="每個點代表一個 Group、Item 或 Pattern；比較命中次數與涉及作品數，不代表因果關係。"
+          height={380}/>
+        :<p className="scope-status">尚無足夠的詞級命中紀錄。</p>}
     {selectedRow?<section className="scope-self-intersection-selected" aria-live="polite">
       <header className="statistics-dashboard__panel-heading">
         <h4>{selectedRow.label}</h4>
