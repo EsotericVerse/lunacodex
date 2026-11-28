@@ -16,8 +16,8 @@ export const LOC_MANAGEMENT_ROUTE_TABLE=Object.freeze({
   }),
   user:Object.freeze({
     culture:'culture',
-    statics:'statics',
     trace:'trace',
+    statics:'statics',
     search:'search'
   })
 });
