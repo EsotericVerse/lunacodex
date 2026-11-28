@@ -128,8 +128,9 @@ export default function StatisticsMultiChart({
     [foldBlank,actual,time,foldSeries,timeFields,locale]);
   const margin={top:16,right:18,bottom:44,left:0};
   const axes=(<><CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
-    <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end"
-      height={64} interval="preserveStartEnd" stroke={GRID}/>
+    <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}}
+      angle={display.length>=6?-20:0} textAnchor="end"
+      height={display.length>=6?64:36} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
     {selectedPeriodKey?<ReferenceLine x={selectedPeriodKey} stroke={CHART_ACCENT}
       strokeWidth={2.5} strokeDasharray="5 3"
@@ -304,8 +305,9 @@ export default function StatisticsMultiChart({
   </BarChart>;
   else if(actual==='compositionTrend')chart=<BarChart data={compositionTrend.rows} margin={margin}>
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
-    <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end"
-      height={64} interval="preserveStartEnd" stroke={GRID}/>
+    <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}}
+      angle={display.length>=6?-20:0} textAnchor="end"
+      height={display.length>=6?64:36} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis type="number" domain={[0,100]} tickFormatter={value=>Math.round(Number(value))+'%'}
       tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
     <Tooltip content={<ThemedChartTooltip suffix="%"/>}/>
