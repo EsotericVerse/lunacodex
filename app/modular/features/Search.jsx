@@ -361,7 +361,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     matchedQueryRef.current||results.length||fullTextKey||error||
     status&&status!==UI_COPY.search.start
   );
-  const publicStatusIsActionable=Boolean(error)||status==='搜尋中請稍後'||status==='已取消搜尋。'||
+  const publicStatusIsActionable=Boolean(error)||status==='搜尋中請稍後'||status==='已取消搜尋。'||status==='已取消讀取文章。'||
     status===UI_COPY.search.empty||status===UI_COPY.search.failed||
     status===UI_COPY.search.relationFailed;
   const pageSize=DEFAULT_LIST_BATCH_SIZE;
@@ -455,11 +455,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // needs a collection label, and only it can optionally name a chosen Scope.
   const collectionLabel=scopeId==='loc'?UI_COPY.search.allContent:'';
 
-  async function loadGalaxyDetail(result){
+  async function loadGalaxyDetail(result,signal=null){
     const scopeData=scopeById.get(result.scopeId);
     if(!scopeData)throw new Error(UI_COPY.search.fullTextNotFound);
     const id=result.editResourceId||result.resourceId;
-    return selectGalaxyIdentity(scopeData,id,{includeHidden:canManageSearchScope(account,result.scopeId),dbId:result.dbId||'',federated:result.federated===true});
+    return selectGalaxyIdentity(scopeData,id,{includeHidden:canManageSearchScope(account,result.scopeId),dbId:result.dbId||'',federated:result.federated===true,signal});
   }
 
   async function executeSearch(rawQuery,cursor=null,{append=false,browse=false,overrideOptions=null}={}){
@@ -638,6 +638,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     const controller=abortRef.current;
     if(!controller||controller.signal.aborted)return;
     const wasLoadingMore=loadingMore;
+    const wasReadingArticle=fullTextLoading;
     controller.abort();
     abortRef.current=null;
     searchId.current++;
@@ -648,7 +649,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(wasLoadingMore)setLoadMoreError('已取消載入更多文章。');
     else{
       setError('');
-      setStatus('已取消搜尋。');
+      setStatus(wasReadingArticle?'已取消讀取文章。':'已取消搜尋。');
     }
   }
 
@@ -759,6 +760,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     if(!managementMode&&fullTextKey===result.key&&!fullTextError)return;
     const request=++detailEpoch.current;
     if(managementMode&&fullTextKey===result.key){
+      abortRef.current?.abort();abortRef.current=null;
+      setSearchInFlight(false);
       setFullTextLoading(false);
       setFullTextKey('');
       setFullText('');
@@ -767,6 +770,8 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       return;
     }
     if(result.resourceType!=='galaxy'||!result.editableTable)return;
+    const controller=beginRequest();
+    setSearchInFlight(true);
     setReaderResult(result);
     setFullTextKey(result.key);
     setFullText('');
@@ -774,17 +779,21 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     setFullTextError('');
     setFullTextLoading(true);
     try{
-      const fullRow=await loadGalaxyDetail(result);
-      if(request!==detailEpoch.current)return;
+      const fullRow=await loadGalaxyDetail(result,controller.signal);
+      if(controller.signal.aborted||request!==detailEpoch.current)return;
       if(!fullRow)throw new Error(UI_COPY.search.fullTextNotFound);
       setFullText(workDisplayText(fullRow.content||''));
       setFullTextRow(fullRow);
       setReaderResult({...toResult(fullRow,fullRow.site||result.source,result.scopeId),key:result.key});
     }catch(exception){
-      if(request===detailEpoch.current)
+      if(request===detailEpoch.current&&!controller.signal.aborted)
         setFullTextError(String(exception?.message||exception||UI_COPY.search.fullTextFailed));
     }finally{
-      if(request===detailEpoch.current)setFullTextLoading(false);
+      if(request===detailEpoch.current){
+        setFullTextLoading(false);
+        setSearchInFlight(false);
+        if(abortRef.current===controller)abortRef.current=null;
+      }
     }
   }
 
@@ -1507,7 +1516,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     {status&&(!managementMode||status!==UI_COPY.search.start)&&
       (managementMode||!publicResultsMode||publicStatusIsActionable)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'||status===UI_COPY.search.loadingRelation?<ActivityMotion/>:
       error||status===UI_COPY.search.failed||status===UI_COPY.search.relationFailed?<ActivityMotion state="error"/>:
-      status==='已取消搜尋。'?<ActivityMotion state="cancelled"/>:
+      status==='已取消搜尋。'||status==='已取消讀取文章。'?<ActivityMotion state="cancelled"/>:
       status===UI_COPY.search.empty?<ActivityMotion state="empty"/>:
       status===UI_COPY.search.start?null:results.length>0?<ActivityMotion state="success"/>:null} {status}
       {searchInFlight?<button type="button" className="loc-button" onClick={cancelSearch}>取消</button>:null}</p>:null}
