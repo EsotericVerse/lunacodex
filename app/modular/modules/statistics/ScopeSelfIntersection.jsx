@@ -340,8 +340,6 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     metric:effectiveMetricKey
   })).filter(row=>Number.isFinite(row.value));
   const recordFields=metricOptions.map(metric=>metric);
-  const selectedSeries=selectedCategoryKey
-    ?series.filter(field=>field.key===selectedCategoryKey):series;
   const selectedCategory=categories.find(category=>category.id===selectedCategoryKey)||null;
   const exclusive=areLucusMetricsMutuallyExclusive(categories);
   const chartIntentOptions=availableStatisticIntents({
