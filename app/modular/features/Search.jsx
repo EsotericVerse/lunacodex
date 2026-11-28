@@ -545,7 +545,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     try{
       // Public Search never performs a preference write or a private read.
       // Signed management actions remain available only on management routes.
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       const patternIndexPromise=!managementMode&&q&&!options.browse?loadPublicPatternIndex():Promise.resolve(EMPTY_SEARCH_PATTERN_INDEX);
       // The category is a semantic database filter, not a literal
       // site. Fetch the same cached taxonomy before searching.
@@ -555,7 +555,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           queryFn:selectSourceTaxonomy,
         })
         :null;
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       // Search is one request: return title and date only. Article details load on entry.
       // A search-only manager grant must use signed, scoped Kysely instead of
       // bypassing visibility via the anonymous public SELECT transport.
@@ -570,11 +570,11 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         startDate:options.startDate,endDate:options.endDate,browse:options.browse,
         managementOnly:managementMode,sortDirection:options.sortDirection,signal
       });
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       const patternIndex=await patternIndexPromise;
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       const searchRows=search.rows||[];
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
 
 
       if(!append)matchedQueryRef.current=q;
@@ -697,7 +697,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         });
         if(detail){detailScope=scopeData.id;break;}
       }
-      if(id!==searchId.current)return;
+      if(id!==searchId.current||controller.signal.aborted)return;
       if(!detail)throw new Error(UI_COPY.search.notFound);
       const result=toResult({...detail,resolved_links:detail.links||[]},detail.site||UI_COPY.search.displaySource,detailScope);
       setResults([result]);
