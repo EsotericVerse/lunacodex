@@ -61,7 +61,7 @@ export default function LocGroupCultureReader(){
   },[]);
 
   const eras=useMemo(()=>buildLocEraIndex(indexRows),[indexRows]);
-  const activeEra=eras.find(row=>row.key===activeEraKey)||eras[0]||null;
+  const activeEra=activeEraKey?eras.find(row=>row.key===activeEraKey)||null:null;
   const activeEraIndex=activeEra?eras.findIndex(row=>row.key===activeEra.key):-1;
   const bounds=useMemo(()=>rangeBounds(rangeWindows),[rangeWindows]);
   const timeRiver=useMemo(()=>buildLocEraRiver(
@@ -204,7 +204,9 @@ export default function LocGroupCultureReader(){
       </div>:null}
       {pending&&canRender?<p className='scope-status' role='status' aria-live='polite'>
         正在切換時代；目前河道保持顯示。</p>:null}
-      {!pending&&!error&&!activeEra?<p className='scope-status'>目前尚未建立可顯示的時代定錨。</p>:null}
+      {!pending&&!error&&!activeEra?<p className='scope-status'>{eras.length
+        ?'目前顯示近一年；可使用河道左側箭頭回溯較早時代。'
+        :'目前尚未建立可顯示的時代定錨。'}</p>:null}
       {taxonomy&&canRender?<div className='scope-culture-layer-legend' role='group' aria-label='時間與文章密度圖例'>
         <div className='scope-culture-layer-legend__time'>
           <span><i className='is-era' aria-hidden='true'/>時代</span>
