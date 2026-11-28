@@ -517,7 +517,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
   const defaultChartIntent=sourceChart&&intentOptions.includes('compositionTrend')
     ?'compositionTrend':'trend';
   const effectiveIntent=intentOptions.includes(chartIntent)?chartIntent:defaultChartIntent;
-  const distributionIntent=['compare','composition','ranking'].includes(effectiveIntent);
+  const distributionIntent=['compare','composition','ranking','distribution'].includes(effectiveIntent);
   const mainChartRows=distributionIntent?[]:chartTrend;
   const mainChartSeries=distributionIntent?[]:basicSeries;
   const mainChartDistribution=distributionIntent?intentDistribution:[];
