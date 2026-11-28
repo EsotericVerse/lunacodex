@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {loadStatisticsPageInitialData}
   from '../app/loc/statistics/page-bootstrap.mjs';
 
@@ -55,4 +56,16 @@ test('failed RSC prefetch falls back to the existing client Server Action path',
     query:async()=>{throw new Error('database temporarily unavailable');}
   });
   assert.equal(result,null);
+});
+
+test('Statistics App Router pages run the initial Server Action at request time, not build prerender time',async()=>{
+  const paths=[
+    '../app/statics/page.jsx',
+    '../app/lo3rwang/statics/page.jsx',
+    '../app/lrunes/statics/page.jsx',
+    '../app/scope-shell/statics/page.jsx'
+  ];
+  const pages=await Promise.all(paths.map(path=>
+    readFile(new URL(path,import.meta.url),'utf8')));
+  for(const page of pages)assert.match(page,/export const dynamic='force-dynamic';/);
 });
