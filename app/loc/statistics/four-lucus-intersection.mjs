@@ -113,7 +113,7 @@ export function spaceIntersectionMetrics(lucus=[]){
     const parents=parentTraces.get(String(row.uid))||[];
     return metric('path',row,{
       points:new Set(points),pointCount:new Set(points).size,
-      pathCount:1,childCount:points.size,
+      pathCount:1,childCount:points.length,
       parentUid:parents.length===1?parents[0]:null,parentUids:parents
     });
   });
