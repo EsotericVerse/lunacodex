@@ -514,7 +514,21 @@ function keywordGroupTrend(classifications=[],groups=[],bucket='month'){
     const key=bucket==='day'?day:bucket==='year'?day.slice(0,4):bucket==='week'
       ?(()=>{const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10);})()
       :day.slice(0,7);
-    if(!dates.has(key))dates.set(key,{period:key});
+    if(!dates.has(key)){
+      let startDate=key,endDate=key;
+      if(bucket==='year'){
+        startDate=key+'-01-01';endDate=key+'-12-31';
+      }else if(bucket==='month'){
+        startDate=key+'-01';
+        endDate=new Date(Date.UTC(Number(key.slice(0,4)),Number(key.slice(5,7)),0))
+          .toISOString().slice(0,10);
+      }else if(bucket==='week'){
+        const end=new Date(key+'T00:00:00Z');
+        end.setUTCDate(end.getUTCDate()+6);
+        endDate=end.toISOString().slice(0,10);
+      }
+      dates.set(key,{period:key,start_date:startDate,end_date:endDate});
+    }
     const result=dates.get(key);
     result['class_'+id]=(result['class_'+id]||0)+count;
   }
@@ -537,6 +551,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   const [shown,setShown]=useState('group');
   const [chartIntent,setChartIntent]=useState('ranking');
   const [selectedKey,setSelectedKey]=useState('');
+  const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
   const data=analysis||{};
   const meta=data.keywordMeta||{};
   const className=String(meta.class_name||'').trim();
@@ -641,6 +656,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
   const chooseKeywordCategory=key=>{
     const value=String(key||'');
     setSelectedKey(current=>current===value?'':value);
+    setSelectedPeriodKey('');
     if(shown==='group'&&classRows.some(row=>String(row.group_uid)===value))
       setChartIntent('trend');
   };
@@ -653,7 +669,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
     <div className="scope-stat-controls">
       <label><span>顯示內容</span>
         <select className="scope-select" value={shown} onChange={event=>{
-          setShown(event.target.value);setPage(1);setChartIntent('ranking');setSelectedKey('');
+          setShown(event.target.value);setPage(1);setChartIntent('ranking');setSelectedKey('');setSelectedPeriodKey('');
         }}>
           <option value="group">{t('uiExtra.statisticsView.classRuneTitle')}</option>
           <option value="item">{t('uiExtra.statisticsView.runeRankTitle')}</option>
@@ -662,7 +678,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
       </label>
       {intentOptions.length>1?<label><span>分析意圖</span>
         <select className="scope-select" value={effectiveIntent} onChange={event=>{
-          setChartIntent(event.target.value);
+          setChartIntent(event.target.value);setSelectedPeriodKey('');
           if(event.target.value==='ranking')setSelectedKey('');
         }}>
           {intentOptions.map(value=><option key={value} value={value}>
@@ -671,7 +687,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
         </select>
       </label>:null}
       {effectiveIntent==='trend'?<button type="button" className="loc-button loc-button--small"
-        onClick={()=>{setChartIntent('ranking');setSelectedKey('');}}>返回排名</button>:null}
+        onClick={()=>{setChartIntent('ranking');setSelectedKey('');setSelectedPeriodKey('');}}>返回排名</button>:null}
     </div>
     {shown==='both'&&groupCatalog.isPending?<p className="scope-status" role="status">正在載入關鍵詞項目的 Class 歸屬…</p>:null}
     {shown==='both'&&groupCatalog.error?<p className="scope-status scope-error" role="alert">群組對應讀取失敗：{String(groupCatalog.error?.message||groupCatalog.error)}</p>:null}
@@ -680,8 +696,25 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
         intent={mixedHierarchy?'legacy':effectiveIntent}
         type="bar" rows={trendRows} series={series} distribution={distribution}
         barLayout="vertical" height={Math.max(340,Math.min(24,distribution.length)*36+85)}
-        activeCategoryKey={selectedKey} onCategoryClick={chooseKeywordCategory}/>:
+        activeCategoryKey={selectedKey} onCategoryClick={chooseKeywordCategory}
+        selectedPeriodKey={selectedPeriodKey}
+        onPeriodClick={effectiveIntent==='trend'
+          ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>:
         <p className="scope-status">{t('uiExtra.statisticsView.noVisual')}</p>}
+    {selectedPeriodKey&&effectiveIntent==='trend'?<section
+      className="scope-self-intersection-selected" aria-live="polite">
+      <header className="statistics-dashboard__panel-heading">
+        <h4>{selectedPeriodKey} · 關鍵詞趨勢明細</h4>
+        <button type="button" className="loc-button loc-button--small"
+          onClick={()=>setSelectedPeriodKey('')}>清除選取</button>
+      </header>
+      <div className="scope-ranking">
+        {series.map(field=><div key={field.key}>
+          <strong>{field.label}</strong>
+          <span>{Number(trend.find(row=>row.period===selectedPeriodKey)?.[field.key]||0).toLocaleString()}</span>
+        </div>)}
+      </div>
+    </section>:null}
     {selectedKey?<p className="scope-status" role="status">
       已選擇：{distribution.find(item=>String(item.key)===selectedKey)?.name||selectedKey}
     </p>:null}
