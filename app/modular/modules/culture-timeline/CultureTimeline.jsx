@@ -385,7 +385,7 @@ export default function CultureTimeline({
   }:null;
   // Keep all camera geometry inside vis-timeline, not Motion; animation applies
   // only to explicit navigation, never to dragging, date edits, or first paint.
-  const cameraAnimation=reduceMotion?false:{duration:240,easingFunction:'easeInOutQuad'};
+  const cameraAnimation=useMemo(()=>reduceMotion?false:{duration:240,easingFunction:'easeInOutQuad'},[reduceMotion]);
   const hasTimeKinds=mode==='overview'&&rows.some(row=>String(row.group||'').startsWith('kind:'));
   // Trace expand/collapse updates datasets in place to preserve pan, zoom
   // and touch position exactly like the lower numeric river.
@@ -655,7 +655,8 @@ export default function CultureTimeline({
     if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return;
     try{
       const current=timeline.getWindow();
-      if(current.start.getTime()===start&&current.end.getTime()===end)return;
+      if(current?.start instanceof Date&&current?.end instanceof Date&&
+        current.start.getTime()===start&&current.end.getTime()===end)return;
       timeline.setWindow(windowStart,windowEnd,{animation:cameraAnimation});
     }catch(error){
       console.error('Culture Era viewport update failed',error);
