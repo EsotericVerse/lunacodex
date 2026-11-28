@@ -74,7 +74,7 @@
   --loc-material-surface:color-mix(in srgb,var(--loc-panel) 94%,var(--loc-accent) 6%);
   --loc-material-shadow:inset 0 1px 0 var(--loc-line-faint),0 16px 42px rgba(0,0,0,.28);
   --loc-material-shadow-hover:inset 0 1px 0 var(--loc-line-soft),0 20px 48px rgba(0,0,0,.34);
-  --loc-theme-divider-style:solid;--loc-theme-control-radius:10px;
+  --loc-theme-divider-style:groove;--loc-theme-control-radius:10px;
   --loc-theme-bubble-radius:18px 18px 18px 6px;
   --loc-theme-bubble-edge:color-mix(in srgb,var(--loc-gold) 34%,var(--loc-line));
   --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-accent) 12%);
@@ -127,7 +127,8 @@
   --loc-material-surface:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-panel-2) 8%);
   --loc-material-shadow:0 16px 38px rgba(0,0,0,.27),inset 0 1px 0 rgba(183,215,193,.08);
   --loc-material-shadow-hover:0 20px 44px rgba(0,0,0,.34),inset 0 1px 0 rgba(183,215,193,.12);
-  --loc-theme-divider-style:solid;--loc-theme-control-radius:14px;
+  --loc-theme-divider-style:dotted;--loc-theme-control-radius:14px;
+  --loc-theme-bubble-border-style:dotted;
   --loc-theme-bubble-radius:20px 12px 20px 8px;
   --loc-theme-bubble-edge:color-mix(in srgb,var(--loc-gold) 30%,var(--loc-line));
   --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 90%,var(--loc-accent) 10%);
@@ -145,7 +146,7 @@
   --loc-material-shadow:0 8px 22px rgba(114,90,15,.11);
   --loc-material-shadow-hover:0 12px 28px rgba(114,90,15,.15);
   --loc-theme-divider-style:double;--loc-theme-divider-width:2px;--loc-theme-control-radius:6px;
-  --loc-theme-bubble-radius:8px;--loc-theme-bubble-edge:var(--loc-gold-border-soft);
+  --loc-theme-bubble-radius:8px;--loc-theme-bubble-border-style:double;--loc-theme-bubble-edge:var(--loc-gold-border-soft);
   --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 92%,var(--loc-gold) 8%);
   --loc-theme-bubble-shadow:inset 0 1px 0 rgba(255,255,255,.7);
   --loc-theme-atmosphere:radial-gradient(ellipse at 90% 0%,color-mix(in srgb,var(--loc-gold) 12%,transparent),transparent 48%),linear-gradient(180deg,color-mix(in srgb,var(--loc-panel) 94%,var(--loc-gold) 6%),transparent 52%);
@@ -196,7 +197,7 @@
   --loc-material-shadow:0 14px 34px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.035);
   --loc-material-shadow-hover:0 18px 40px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.055);
   --loc-theme-divider-style:dashed;--loc-theme-control-radius:10px 4px 12px 5px;
-  --loc-theme-bubble-radius:14px 6px 16px 8px;
+  --loc-theme-bubble-radius:14px 6px 16px 8px;--loc-theme-bubble-border-style:dashed;
   --loc-theme-bubble-edge:var(--loc-accent-border-soft);
   --loc-theme-bubble-surface:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-accent) 12%);
   --loc-theme-bubble-shadow:inset 0 1px 0 rgba(255,255,255,.045);
