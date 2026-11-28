@@ -1,6 +1,7 @@
 'use client';
 
 import {motion,useReducedMotion} from 'motion/react';
+import {LOC_MOTION} from './motion-tokens.mjs';
 
 // Visual feedback only. Real status, counts and completion are owned by each
 // feature's existing request/worker state. No clock, polling or fake progress.
@@ -14,7 +15,7 @@ export default function ActivityMotion({kind='hourglass',state='running'}){
       data-motion-state={state} aria-hidden="true"
       initial={reduceMotion?false:{opacity:.5,scale:.85}}
       animate={{opacity:1,scale:1}}
-      transition={{duration:reduceMotion?0:.18,ease:'easeOut'}}>
+      transition={{duration:reduceMotion?0:LOC_MOTION.feedback,ease:'easeOut'}}>
       {marks[state]||marks.pending}
     </motion.span>;
   }
