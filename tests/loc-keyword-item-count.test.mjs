@@ -182,7 +182,7 @@ test('keyword discovery keeps only 2–4 character Han words and filters noise',
   assert.ok(words.has('台灣'));
   assert.ok(words.has('星火'));
   for(const excluded of ['我','我很','作者','來自於','等等','?','!','？','！','；'])
-    assert.ok(!words.has(excluded),\`unexpected discovery candidate: \${excluded}\`);
+    assert.ok(!words.has(excluded),'unexpected discovery candidate: '+excluded);
   assert.ok(results.candidates.every(row=>{
     const length=Array.from(row.word).length;
     return length>=2&&length<=4&&/^\p{Script=Han}+$/u.test(row.word);
