@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {buildTraceTerritoryRouteModel} from '../app/modular/features/trace/trace-territory-overlay.mjs';
+import {LOC_MOTION} from '../app/modular/motion-tokens.mjs';
 
 const root=new URL('../',import.meta.url);
 const source=async path=>readFile(new URL(path,root),'utf8');
@@ -87,4 +88,23 @@ test('LOC Trace combines annual terrain with the selected saved route in one map
   assert.match(panel,/routeOverlay\?\.maps/);
   assert.match(panel,/selectedRouteUid=\{selectedRouteUid\}/);
   assert.match(map,/lineOnlySavedGraph/);
+});
+
+test('React Motion timing follows the published LOC timing scale',async()=>{
+  assert.deepEqual(
+    {fast:LOC_MOTION.fast,feedback:LOC_MOTION.feedback,standard:LOC_MOTION.standard,
+      emphasis:LOC_MOTION.emphasis,arrival:LOC_MOTION.arrival},
+    {fast:.16,feedback:.18,standard:.28,emphasis:.52,arrival:.9}
+  );
+  const css=await source('app/styles/loc-expressive-ui.css');
+  assert.match(css,/--loc-motion-fast:160ms/);
+  assert.match(css,/--loc-motion-standard:280ms/);
+  assert.match(css,/--loc-motion-emphasis:520ms/);
+});
+
+test('Management graph uses vis-network and reads all colors from active theme tokens',async()=>{
+  const graph=await source('app/modular/ManagementVisNetwork.jsx');
+  assert.match(graph,/import\('vis-network\/esnext'\)/);
+  assert.match(graph,/--loc-accent/);
+  assert.doesNotMatch(graph,/#(?:[0-9a-f]{3,8})\b|rgba\(/i);
 });
