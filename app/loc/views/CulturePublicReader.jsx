@@ -15,6 +15,7 @@ import {readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../preferences/default-year-window.mjs';
 import {readLucusFeature,readAllLucusFeature} from '../model/feature-query-client.mjs';
 import {buildPublicTimeLucusRiver} from '../culture/public-time-river.mjs';
+import {buildLocEraIndex,locEraWindows} from '../culture/loc-group-river.mjs';
 import {useRiverDensityAnalysis} from '../../modular/modules/culture-timeline/use-river-density-analysis';
 import {prepareTransientResourceAction} from '../../../packages/zenstack/client-queries';
 import ActivityMotion from '../../modular/ActivityMotion';
@@ -47,6 +48,24 @@ function attributes(row){
 }
 const linkedUids=(row,key)=>[...new Set(list(attributes(row)[key])
   .map(value=>String(value||'').trim()).filter(value=>/^[A-Za-z0-9]{8}$/.test(value)))];
+function mergeTimeRows(...collections){
+  const rows=new Map();
+  for(const row of collections.flat()){
+    const uid=String(row?.uid||'').trim();
+    if(uid)rows.set(uid,row);
+  }
+  return [...rows.values()];
+}
+function rangeBounds(windows=[]){
+  const starts=windows.map(row=>row.startDate).filter(Boolean).sort();
+  const ends=windows.map(row=>row.endDate).filter(Boolean).sort();
+  return {start:starts[0]||'',end:ends.at(-1)||''};
+}
+function dateInsideWindows(value,windows=[]){
+  const day=datePart(value);
+  return validDateKey(day)&&windows.some(range=>
+    day>=range.startDate&&day<=range.endDate);
+}
 async function readTimeLucusByUid(scopeId,type,uids,isCurrent=()=>true){
   const unique=[...new Set(uids)].filter(uid=>/^[A-Za-z0-9]{8}$/.test(String(uid)));
   const rows=[];
@@ -98,11 +117,12 @@ function keywordSourceModel(rows,expanded,start,end){
   }
   return {groups,items,sites};
 }
-async function queryCultureData(scope,kind,start,end,signal=null){
+async function queryCultureData(scope,kind,start,end,signal=null,ranges=null){
   signal?.throwIfAborted?.();
   const params=new URLSearchParams({kind,scope});
   if(start)params.set('start',start);
   if(end)params.set('end',end);
+  if(Array.isArray(ranges)&&ranges.length)params.set('ranges',JSON.stringify(ranges));
   const {data}=await queryCultureContent(params.toString());
   signal?.throwIfAborted?.();
   return Array.isArray(data)?data:[];
@@ -168,10 +188,26 @@ function ScopeCulturePublicReader(){
     densityPeriod==='year'?end:selectedPeriodRange?.end||'';
   const validRange=/^\d{4}-\d{2}-\d{2}$/.test(rangeStart)&&
     /^\d{4}-\d{2}-\d{2}$/.test(rangeEnd)&&rangeStart<=rangeEnd;
-  const densityKey=[scopeId,rangeStart,rangeEnd].join('|');
+  const activeEraIndex=useMemo(()=>{
+    const selected=eraChoices.findIndex(row=>String(row.uid)===densityPeriod);
+    if(selected>=0)return selected;
+    const targetStart=densityPeriod==='custom'?customStart:start;
+    const targetEnd=densityPeriod==='custom'?customEnd:end;
+    if(!validDateKey(targetStart)||!validDateKey(targetEnd)||targetStart>targetEnd)return -1;
+    return eraChoices.findIndex(era=>locEraWindows(era).some(window=>
+      window.startDate<=targetEnd&&window.endDate>=targetStart));
+  },[eraChoices,densityPeriod,customStart,customEnd,start,end]);
+  const activeRangeWindows=useMemo(()=>{
+    const saved=list(selectedPeriodRange?.windows).filter(range=>
+      validDateKey(range?.startDate)&&validDateKey(range?.endDate)&&
+      range.startDate<=range.endDate);
+    return saved.length?saved:validRange?[{startDate:rangeStart,endDate:rangeEnd}]:[];
+  },[selectedPeriodRange,rangeStart,rangeEnd,validRange]);
+  const rangeSignature=JSON.stringify(activeRangeWindows);
+  const densityKey=[scopeId,rangeStart,rangeEnd,rangeSignature].join('|');
   const sourceDensityPending=densityMode==='source'&&validRange&&
     (densityLoading||densityReadyKey!==densityKey);
-  const keywordDensityKey=[scopeId,keywordClass,rangeStart,rangeEnd].join('|');
+  const keywordDensityKey=[scopeId,keywordClass,rangeStart,rangeEnd,rangeSignature].join('|');
   const keywordDensityPending=densityMode==='keyword'&&Boolean(keywordClass)&&
     (keywordLoading||keywordReadyKey!==keywordDensityKey);
   const riverPending=sourceDensityPending||keywordDensityPending;
@@ -202,10 +238,23 @@ function ScopeCulturePublicReader(){
     // is the second large read; neither river needs an all-history date scan.
     readAllLucusFeature({scope:scopeId,family:'time',types:['era','period','date'],
       dateStart:start,dateEnd:end})
-      .then(rows=>{if(!cancelled){
-        setTimeIndexRows(rows);setEraChoices(rows.filter(row=>row.type==='era'));
+      .then(async rows=>{
+        if(cancelled)return;
+        const scopedRows=rows.map(row=>({...row,scope_id:scopeId}));
+        // Era ordering needs only each Period's real endpoint DateLucus UIDs;
+        // the full historical DateLucus corpus is never scanned at first paint.
+        const endpointUids=[...new Set(scopedRows
+          .filter(row=>row.type==='period')
+          .flatMap(row=>linkedUids(row,'uid').slice(0,2)))];
+        const endpointRows=await readTimeLucusByUid(scopeId,'date',endpointUids,
+          ()=>!cancelled);
+        if(cancelled)return;
+        const indexedRows=mergeTimeRows(scopedRows,
+          endpointRows.map(row=>({...row,scope_id:scopeId})));
+        setTimeIndexRows(indexedRows);
+        setEraChoices(buildLocEraIndex(indexedRows));
         setLoading(false);
-      }})
+      })
       .catch(reason=>{if(!cancelled){
         setHierarchyError(String(reason?.message||reason));setLoading(false);
       }});
@@ -244,10 +293,12 @@ function ScopeCulturePublicReader(){
     if(!validRange||densityMode!=='source')
       return()=>{active=false;controller.abort();
         if(densityAbortRef.current===controller)densityAbortRef.current=null;};
-    queryCultureData(scopeId,'culture_density',rangeStart,rangeEnd,controller.signal)
+    queryCultureData(scopeId,'culture_density',rangeStart,rangeEnd,
+      controller.signal,activeRangeWindows)
       .then(rows=>{
         if(!active||controller.signal.aborted)return;
-        setDaily(rows);setDensityReadyKey(densityKey);
+        setDaily(rows.filter(row=>dateInsideWindows(row.day,activeRangeWindows)));
+        setDensityReadyKey(densityKey);
       })
       .catch(error=>{
         if(!active||controller.signal.aborted||error?.name==='AbortError')return;
@@ -256,7 +307,7 @@ function ScopeCulturePublicReader(){
       .finally(()=>{if(active)setDensityLoading(false);});
     return()=>{active=false;controller.abort();
       if(densityAbortRef.current===controller)densityAbortRef.current=null;};
-  },[scopeId,rangeStart,rangeEnd,validRange,densityMode]);
+  },[scopeId,rangeStart,rangeEnd,rangeSignature,validRange,densityMode]);
   useEffect(()=>{
     // Release old class snapshots when switching tabs, subjects or dates.
     if(densityMode!=='keyword'||!keywordClass){
@@ -281,7 +332,7 @@ function ScopeCulturePublicReader(){
         })));
         const names=new Map(groups.map(row=>[String(row.uid),String(row.name||row.uid)]));
         setKeywordDaily((data?.daily||[])
-          .filter(row=>row.kind==='class_day')
+          .filter(row=>row.kind==='class_day'&&dateInsideWindows(row.day,activeRangeWindows))
           .map(row=>({day:row.day,site:names.get(String(row.group_uid))||'',
             item_count:Number(row.document_count)||0}))
           .filter(row=>row.site));
@@ -294,7 +345,7 @@ function ScopeCulturePublicReader(){
       })
       .finally(()=>{if(active)setKeywordLoading(false);});
     return()=>{active=false;controller.abort();};
-  },[scopeId,densityMode,keywordClass,rangeStart,rangeEnd]);
+  },[scopeId,densityMode,keywordClass,rangeStart,rangeEnd,rangeSignature]);
   useEffect(()=>{
     if(densityMode!=='keyword'){
       setKeywordClasses(NO_ITEMS);setClassesLoading(false);
@@ -376,34 +427,56 @@ function ScopeCulturePublicReader(){
     densityAbortRef.current?.abort();
     prepareTransientResourceAction('period');
     resetArticles();setDaily(NO_ITEMS);setKeywordDaily(NO_ITEMS);
-    setDensityReadyKey('');setExpandedSources([]);setLucusSuggestionsOpen(false);
+    setDensityReadyKey('');setKeywordReadyKey('');
+    setExpandedSources([]);setLucusSuggestionsOpen(false);
     setFocusedSuggestionDate('');setHierarchyError('');setDensityPeriod(value);
     setPeriodChoices(NO_ITEMS);setSelectedPeriodUid('');setSelectedPeriodRange(null);
     setActiveTimeRows(NO_ITEMS);setExpandedEras(value==='year'||value==='custom'?[]:[value]);
     setPeriodsLoading(false);setPeriodDatesLoading(false);
     if(value==='year'||value==='custom'){
       hierarchySequence.current++;
-      setPeriodsLoading(false);setPeriodDatesLoading(false);
       return;
     }
     const era=eraChoices.find(row=>String(row.uid)===value);
     if(!era)return;
     const request=++hierarchySequence.current;
     const periodUids=linkedUids(era,'period');
-    if(!periodUids.length){setPeriodsLoading(false);return;}
+    if(!periodUids.length){
+      setHierarchyError('此時代沒有可用的期間定錨點。');
+      return;
+    }
     setPeriodsLoading(true);
     try{
-      const rows=await readTimeLucusByUid(scopeId,'period',periodUids,
+      const periods=await readTimeLucusByUid(scopeId,'period',periodUids,
         ()=>request===hierarchySequence.current);
       if(request!==hierarchySequence.current)return;
       const order=new Map(periodUids.map((uid,index)=>[uid,index]));
-      setPeriodChoices(rows.sort((a,b)=>(order.get(String(a.uid))??Infinity)-
-        (order.get(String(b.uid))??Infinity)));
+      const orderedPeriods=periods.sort((a,b)=>(order.get(String(a.uid))??Infinity)-
+        (order.get(String(b.uid))??Infinity));
+      setPeriodsLoading(false);
+      setPeriodDatesLoading(true);
+      const dateUids=orderedPeriods.flatMap(period=>linkedUids(period,'uid'));
+      const dates=await readTimeLucusByUid(scopeId,'date',dateUids,
+        ()=>request===hierarchySequence.current);
+      if(request!==hierarchySequence.current)return;
+      const validDates=dates.map(row=>({...row,date:datePart(attributes(row).date)}))
+        .filter(row=>validDateKey(row.date));
+      const windows=locEraWindows(era);
+      const bounds=rangeBounds(windows);
+      setPeriodChoices(orderedPeriods);
+      setSelectedPeriodRange(bounds.start&&bounds.end?{...bounds,windows}:null);
+      setActiveTimeRows(mergeTimeRows([era],orderedPeriods,validDates));
+      setExpandedEras([String(era.uid)]);
+      if(!bounds.start||!bounds.end)
+        setHierarchyError('此時代尚未連結有效的時間定錨點。');
     }catch(reason){
       if(request===hierarchySequence.current)
         setHierarchyError(String(reason?.message||reason));
     }finally{
-      if(request===hierarchySequence.current)setPeriodsLoading(false);
+      if(request===hierarchySequence.current){
+        setPeriodsLoading(false);
+        setPeriodDatesLoading(false);
+      }
     }
   };
   const choosePeriod=async value=>{
@@ -429,8 +502,10 @@ function ScopeCulturePublicReader(){
         .map(datePart).filter(validDateKey);
       const days=[...validDates.map(row=>row.date),...inlineDates].sort();
       const startDate=days[0]||'',endDate=days.at(-1)||'';
-      setSelectedPeriodRange(startDate&&endDate?{start:startDate,end:endDate}:null);
-      setActiveTimeRows([era,period,...validDates]);
+      const windows=startDate&&endDate?[{startDate,endDate}]:[];
+      setSelectedPeriodRange(startDate&&endDate
+        ?{start:startDate,end:endDate,windows}:null);
+      setActiveTimeRows(mergeTimeRows([era,period],validDates));
       setExpandedEras([String(era.uid)]);
       if(!startDate)setHierarchyError('此期間尚未連結有效的時間定錨點。');
     }catch(reason){
@@ -439,6 +514,20 @@ function ScopeCulturePublicReader(){
     }finally{
       if(request===hierarchySequence.current)setPeriodDatesLoading(false);
     }
+  };
+  const navigateEra=direction=>{
+    if(loading||periodsLoading||periodDatesLoading||riverPending||!eraChoices.length)return;
+    const nextIndex=activeEraIndex<0
+      ?(direction==='previous'?0:-1)
+      :direction==='previous'?activeEraIndex+1:activeEraIndex-1;
+    if(nextIndex<0||nextIndex>=eraChoices.length)return;
+    void chooseEra(String(eraChoices[nextIndex].uid));
+  };
+  const eraNavigationDisabled={
+    previous:loading||periodsLoading||periodDatesLoading||riverPending
+      ||!eraChoices.length||activeEraIndex>=eraChoices.length-1,
+    next:loading||periodsLoading||periodDatesLoading||riverPending
+      ||activeEraIndex<=0
   };
   const fetchArticles=async({offset=0,site=selectedSite,sites=selectedSites}={})=>{
     if(!scope||!site||densityMode!=='source'||!validRange)return;
@@ -565,7 +654,7 @@ function ScopeCulturePublicReader(){
         {selectedEra&&!periodsLoading&&!periodChoices.length&&!hierarchyError
           ?<p className='scope-status'>此時代目前沒有可選的期間。</p>:null}
         {selectedEra&&periodChoices.length&&!selectedPeriodUid&&!periodsLoading
-          ?<p className='scope-status'>選擇期間後，才載入該期間的定錨點與文章統計。</p>:null}
+          ?<p className='scope-status'>目前顯示整個時代；選擇期間可進一步縮小範圍。</p>:null}
         {densityPeriod==='custom'&&!validRange?<p className='scope-status scope-error' role='alert'>請選擇有效的起訖日期。</p>:null}
         {selectedPeriodUid&&!validRange&&!periodDatesLoading
           ?<p className='scope-status'>此期間沒有可用的日期範圍。</p>:null}
@@ -629,6 +718,8 @@ function ScopeCulturePublicReader(){
               heightVariant='double' naturalSourceHeight
               windowStart={rangeStart} windowEnd={rangeEnd}
               fixedMin={rangeStart} fixedMax={rangeEnd}
+              onEraNavigate={eraChoices.length?direction=>navigateEra(direction):null}
+              eraNavigationDisabled={eraNavigationDisabled}
               lucusInsight={selectedSuggestion?{
                 date:selectedSuggestion.date,before:selectedSuggestion.beforeCount,
                 after:selectedSuggestion.afterCount,reason:(selectedSuggestion.analysis||[]).join(' ')
