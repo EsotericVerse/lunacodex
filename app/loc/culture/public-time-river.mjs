@@ -87,6 +87,11 @@ export function buildPublicTimeLucusRiver(rows=[],{
         ...(range.end>range.start?{end_date:range.end}:{})});
     }
 
+    for(const periodModel of model.periodModels)
+      for(const point of periodModel.points){
+        const uid=text(point.uid);
+        if(uid)assignedDates.add(uid);
+      }
     if(!expanded)continue;
     for(const [periodOrder,periodModel] of model.periodModels.entries()){
       const period=periodModel.row,periodUid=text(period.uid);
