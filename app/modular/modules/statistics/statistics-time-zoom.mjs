@@ -374,8 +374,10 @@ export function resolveStatisticIntent({
     return pair?{intent,available:true,type:'scatter',dataMode:'records',pair}:unavailable;
   }
   if(intent==='distribution'){
-    const bins=histogramBins(values);
-    return bins.length?{intent,available:true,type:'histogram',dataMode:'bins',bins}:unavailable;
+    const observations=Array.isArray(values)?values:[];
+    const bins=histogramBins(observations);
+    return observations.length>=2&&bins.length
+      ?{intent,available:true,type:'histogram',dataMode:'bins',bins}:unavailable;
   }
   if(intent==='ranking')return categories.length?{
     intent,available:true,type:'bar',dataMode:'distribution',
