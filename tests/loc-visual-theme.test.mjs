@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {THEME_TOKEN_KEYS} from '../app/modular/theme-registry.js';
-import {mergeThemeSlot} from '../app/loc/preferences/theme-data.js';
 import {PUBLISHED_THEME_META} from '../app/modular/published-theme-meta.js';
 import {visualColor,visualKeyColor,territoryColors,TERRITORY_STOPS,territoryLegendColor,territoryColorExpression} from '../app/modular/visual-palette.mjs';
 import {cultureEraVisuals,paintCultureRows,eraVisualGradient} from '../app/modular/modules/culture-timeline/era-visuals.mjs';
@@ -71,9 +70,13 @@ test('LOC keeps the original four Day and four Dark Theme identities',()=>{
   ]);
 });
 
-test('Theme Editor cannot change a Theme identity between Day and Dark',()=>{
-  assert.equal(mergeThemeSlot('theme-2',{scheme:'dark'}).scheme,'light');
-  assert.equal(mergeThemeSlot('theme-4',{scheme:'light'}).scheme,'dark');
+test('Theme Editor cannot change a Theme identity between Day and Dark',async()=>{
+  const themeData=await themeSource('app/loc/preferences/theme-data.js');
+  const editor=await themeSource('app/loc/views/admin-panels/ThemeEditor.jsx');
+  assert.ok(themeData.includes('scheme:base.scheme,'));
+  assert.ok(!themeData.includes("scheme:override?.scheme"));
+  assert.ok(editor.includes("scheme:THEME_SLOTS.find(slot=>slot.id===themeId)?.scheme||'light'"));
+  assert.ok(!editor.includes('function setScheme'));
 });
 
 test('published palettes and JSON snapshots store only the ten canonical color tokens',async()=>{
