@@ -10,6 +10,8 @@ import {MAX_ROWS,TIME_LUCUS_MAX_PAGE_ROWS}
   from '../../query/query-batch-size.mjs';
 import {readDateRangeAggregates}
   from '../../query/date-range-aggregate.mjs';
+import {PUBLIC_GALAXY_PRIVATE_SITES}
+  from '../../model/galaxy-feature-queries.mjs';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../../modular/published-site-bootstrap.js';
 
 const DAY=/^\d{4}-\d{2}-\d{2}$/;
@@ -144,6 +146,7 @@ export async function queryLocCultureDensity(args={}){
   return withPublicLocRead({scope:'loc'},async(db,port)=>{
     const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
     const cultureEnabled=port.engine==='mssql'?sql`g.culture=1`:sql`g.culture=true`;
+    const privateSites=sql.join(PUBLIC_GALAXY_PRIVATE_SITES.map(site=>sql`${site}`),sql`, `);
     const branches=members.map(scope=>{
       const relation=sql.ref(portableRelation(scope+'_galaxy',port.engine,namespace));
       const datePredicate=sql`(${sql.join(windows.map(range=>
@@ -151,7 +154,8 @@ export async function queryLocCultureDensity(args={}){
       ),sql` or `)})`;
       return sql`select ${scope} as scope_id,g.date as day,g.site
         from ${relation} as g
-        where ${cultureEnabled} and g.date is not null and ${datePredicate}`;
+        where ${cultureEnabled} and g.date is not null and g.site is not null
+          and lower(g.site) not in (${privateSites}) and ${datePredicate}`;
     });
     const result=await sql`select scope_id,day,site,count(*) as item_count
       from (${sql.join(branches,sql` union all `)}) as loc_culture_rows
