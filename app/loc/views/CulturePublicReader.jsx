@@ -318,8 +318,7 @@ function ScopeCulturePublicReader(){
   // Date lucus, which are nested in that Period lane.
   const lucusRiver=useMemo(()=>buildPublicTimeLucusRiver(timeRowsForRiver,{
     startDate:timeRiverStart,endDate:timeRiverEnd,
-    expandedEras:activeTimeRows.length&&selectedEra
-      ?[String(selectedEra.uid),...expandedEras]:expandedEras
+    expandedEras
   }),[timeRowsForRiver,timeRiverStart,timeRiverEnd,activeTimeRows.length,selectedEra,expandedEras]);
   const existingLucusDates=useMemo(()=>timeRowsForRiver
     .filter(row=>row.type==='date')
@@ -591,63 +590,85 @@ function ScopeCulturePublicReader(){
             <CulturePeriodStatistics type='line' rows={periodStatisticsRows}
               series={[{key:'total',label:'文章篇數'}]} height={240}/>
           </section>:null}
-        {!loading&&!riverPending&&validRange&&(densityMode!=='source'||(!catalogLoading&&!catalogError))?
-          <div className='scope-culture-double-river scope-public-culture-river scope-culture-unified-river'>
-        <div className='scope-culture-layer-legend' role='group' aria-label='時間與文章密度圖例'>
-          <div className='scope-culture-layer-legend__time'>
-            <span><i className='is-era' aria-hidden='true'/>時代</span>
-            <span><i className='is-period' aria-hidden='true'/>期間</span>
-            <span><i className='is-lucus' aria-hidden='true'/>時間定錨</span>
-          </div>
-          <div className='scope-culture-layer-legend__density' aria-label='單日文章數密度'>
-            {TERRITORY_STOPS.map(([minimum],index)=>{
-              const maximum=TERRITORY_STOPS[index+1]?.[0];
-              const label=minimum===0?'1–2':maximum?`${minimum}–${maximum-1}`:`${minimum}+`;
-              return <span key={minimum}><i style={{background:territoryLegendColor(index)}} aria-hidden='true'/>{label} 篇</span>;
-            })}
-          </div>
-        </div>
-        <CultureTimeline items={unifiedRiver.items} eraRanges={lucusRiver.items}
-          extraGroups={unifiedRiver.groups} focus={NO_FOCUS} mode='source'
-          heightVariant='double' naturalSourceHeight stackItems
-          windowStart={rangeStart}
-          windowEnd={rangeEnd}
-          lucusInsight={selectedSuggestion?{
-            date:selectedSuggestion.date,before:selectedSuggestion.beforeCount,
-            after:selectedSuggestion.afterCount,reason:(selectedSuggestion.analysis||[]).join(' ')
-          }:null}
-          lucusLabels={{date:'建議日期',before:'前三日作品',after:'後三日作品',
-            reason:'分析依據',close:'關閉'}}
-          onLucusClose={()=>setFocusedSuggestionDate('')}
-          onSelect={row=>{
-            if(row?.entryType==='virtual_lucus')
-              setFocusedSuggestionDate(String(row.start||'').slice(0,10));
-          }}
-          onGroupToggle={group=>{
-            const name=String(group);
-            if(name==='root:lucus-suggestions'){
-              if(!selectedPeriodUid)return;
-              setLucusSuggestionsOpen(open=>!open);
-              setFocusedSuggestionDate('');
-              return;
-            }
-            if(densityMode==='source'&&name.startsWith('dual:source:')){
-              // Any saved ancestor may open the next UID level. Daily buckets
-              // are already in memory; no article query is made on toggle.
-              const uid=name.slice('dual:source:'.length);
-              startSourceExpansion(()=>setExpandedSources(old=>old.includes(uid)?old.filter(x=>x!==uid):[...old,uid]));
-            }else if(densityMode==='keyword'&&name.startsWith('root:')){
-              const id=name.slice(5);
-              startSourceExpansion(()=>setExpandedSources(old=>old.includes(id)?old.filter(x=>x!==id):[...old,id]));
-            }
-          }}
-          onGroupSelect={group=>{
-            const name=String(group);
-            if(!name.startsWith('dual:source:')||densityMode!=='source')return;
-            const category=densityRiver.sites.find(item=>item.key===name);
-            if(category)openArticles(category.site,category.key,category.sites);
-          }}/>
-        </div>:null}
+        {!loading&&!hierarchyError&&lucusRiver.groups.length?
+          <section className='scope-culture-structure-river scope-public-culture-panel'
+            aria-label='時間定錨河道'>
+            <div className='scope-culture-structure-toolbar'>
+              <h3>時間定錨</h3>
+              <span className='scope-status'>{timeRiverStart} ～ {timeRiverEnd}</span>
+            </div>
+            <div className='scope-culture-layer-legend' role='group' aria-label='時間定錨圖例'>
+              <div className='scope-culture-layer-legend__time'>
+                <span><i className='is-era' aria-hidden='true'/>時代</span>
+                <span><i className='is-period' aria-hidden='true'/>期間</span>
+                <span><i className='is-lucus' aria-hidden='true'/>時間定錨</span>
+              </div>
+            </div>
+            <CultureTimeline items={lucusRiver.items} extraGroups={lucusRiver.groups}
+              focus={NO_FOCUS} mode='trace'
+              windowStart={timeRiverStart} windowEnd={timeRiverEnd}
+              fixedMin={timeRiverStart} fixedMax={timeRiverEnd}
+              onGroupToggle={group=>{
+                const name=String(group);
+                if(!name.startsWith('era:'))return;
+                const uid=name.slice(4);
+                setExpandedEras(old=>old.includes(uid)
+                  ?old.filter(value=>value!==uid):[...old,uid]);
+              }}/>
+          </section>
+          :!loading&&!hierarchyError?<p className='scope-status'>目前沒有時間定錨。</p>:null}
+        {!riverPending&&validRange&&(densityMode!=='source'||(!catalogLoading&&!catalogError))?
+          <section className='scope-culture-double-river scope-public-culture-river'
+            aria-label='文章來源密度河道'>
+            <div className='scope-culture-layer-legend' role='group' aria-label='文章密度圖例'>
+              <div className='scope-culture-layer-legend__density' aria-label='單日文章數密度'>
+                {TERRITORY_STOPS.map(([minimum],index)=>{
+                  const maximum=TERRITORY_STOPS[index+1]?.[0];
+                  const label=minimum===0?'1–2':maximum?`${minimum}–${maximum-1}`:`${minimum}+`;
+                  return <span key={minimum}><i style={{background:territoryLegendColor(index)}} aria-hidden='true'/>{label} 篇</span>;
+                })}
+              </div>
+            </div>
+            <CultureTimeline items={densityRiver.items} extraGroups={densityRiver.groups}
+              focus={NO_FOCUS} mode='source'
+              heightVariant='double' naturalSourceHeight
+              windowStart={rangeStart} windowEnd={rangeEnd}
+              fixedMin={rangeStart} fixedMax={rangeEnd}
+              lucusInsight={selectedSuggestion?{
+                date:selectedSuggestion.date,before:selectedSuggestion.beforeCount,
+                after:selectedSuggestion.afterCount,reason:(selectedSuggestion.analysis||[]).join(' ')
+              }:null}
+              lucusLabels={{date:'建議日期',before:'前三日作品',after:'後三日作品',
+                reason:'分析依據',close:'關閉'}}
+              onLucusClose={()=>setFocusedSuggestionDate('')}
+              onSelect={row=>{
+                if(row?.entryType==='virtual_lucus')
+                  setFocusedSuggestionDate(String(row.start||'').slice(0,10));
+              }}
+              onGroupToggle={group=>{
+                const name=String(group);
+                if(name==='root:lucus-suggestions'){
+                  setLucusSuggestionsOpen(open=>!open);
+                  setFocusedSuggestionDate('');
+                  return;
+                }
+                if(densityMode==='source'&&name.startsWith('dual:source:')){
+                  const uid=name.slice('dual:source:'.length);
+                  startSourceExpansion(()=>setExpandedSources(old=>
+                    old.includes(uid)?old.filter(value=>value!==uid):[...old,uid]));
+                }else if(densityMode==='keyword'&&name.startsWith('root:')){
+                  const id=name.slice(5);
+                  startSourceExpansion(()=>setExpandedSources(old=>
+                    old.includes(id)?old.filter(value=>value!==id):[...old,id]));
+                }
+              }}
+              onGroupSelect={group=>{
+                const name=String(group);
+                if(!name.startsWith('dual:source:')||densityMode!=='source')return;
+                const category=densityRiver.sites.find(item=>item.key===name);
+                if(category)openArticles(category.site,category.key,category.sites);
+              }}/>
+          </section>:null}
         {sourceExpansionPending?<div className='scope-culture-density-loading' role='status'
           aria-live='polite' aria-busy='true'>
           <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
