@@ -253,8 +253,9 @@ export default function StatisticsMultiChart({
     ['項目',selectedDatum.title||selectedDatum.recordId],
     ...(selectedDatum.family?[['Lucus',selectedDatum.family]]:[]),
     ...(selectedDatum.type?[['層級',selectedDatum.type]]:[]),
-    ['日期',selectedDatum.date||'—'],['來源',selectedDatum.source||'—'],
-    ['地點',selectedDatum.place||'—']
+    ...(selectedDatum.date?[['日期',selectedDatum.date]]:[]),
+    ...(selectedDatum.source?[['來源',selectedDatum.source]]:[]),
+    ...(selectedDatum.place?[['地點',selectedDatum.place]]:[])
   ]:selectedDatum?.kind==='bin'?[
     ['區間',selectedDatum.name],['下界',selectedDatum.from],
     ['上界',selectedDatum.to],['筆數',selectedDatum.count]
@@ -772,7 +773,7 @@ export function Rune66Summary({analysis,range={},scopeId=''}){
         activeCategoryKey={selectedKey}
         onCategoryClick={['ranking','compare','composition'].includes(effectiveIntent)
           ?chooseKeywordCategory:null}
-        rankingOffset={offset} selectedPeriodKey={selectedPeriodKey}
+        rankingOffset={shown==='item'?offset:0} selectedPeriodKey={selectedPeriodKey}
         onPeriodClick={['trend','compositionTrend','distribution'].includes(effectiveIntent)
           ?row=>setSelectedPeriodKey(String(row?.period||'')):null}/>:
         <p className="scope-status">{t('uiExtra.statisticsView.noVisual')}</p>}
