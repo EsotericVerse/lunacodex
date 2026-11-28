@@ -9,7 +9,7 @@ import UiText,{useUiText} from '../../../i18n/UiText';
 import {defaultScopeData} from '../../../loc/scope/scope-data';
 import {featureNavigationHref} from '../../routing/feature-navigation';
 import {featureDataErrorMessage} from '../../feature-data-state';
-import {statisticsZoomWindow} from './statistics-time-zoom.mjs';
+import {availableStatisticIntents,STATISTIC_INTENTS,statisticsZoomWindow} from './statistics-time-zoom.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';
 import StatisticsDetails from './StatisticsDetails';
 import StatisticsDashboardKpis from './StatisticsDashboardKpis';
@@ -27,6 +27,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
   const router=useRouter();
   const [zoomLevel,setZoomLevel]=useState(0);
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
+  const [chartIntent,setChartIntent]=useState('trend');
   // Persist intersection selections while the range-specific query remounts.
   const [memberLaneCount,setMemberLaneCount]=useState(2);
   const [memberChoices,setMemberChoices]=useState([]);
@@ -41,7 +42,7 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
       fullHistory:false,canZoomOut:false,canZoomIn:true}:base;
   },[zoomLevel,endDate,knownEarliest]);
   const {startDate,endDate:rangeEndDate,bucket}=zoomRange;
-  useEffect(()=>setSelectedPeriodKey(''),[startDate,rangeEndDate]);
+  useEffect(()=>{setSelectedPeriodKey('');setChartIntent('trend');},[startDate,rangeEndDate]);
   const observedEnd=rangeEndDate<taipeiDateKey()?rangeEndDate:taipeiDateKey();
   const locQuery=useAsyncResource(startDate&&observedEnd&&startDate<=observedEnd
     ?['loc-statistics',startDate,observedEnd]:null,async()=>{
@@ -106,6 +107,10 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
     period:row.period,total:row.total,partial:row.partial,
     start_date:row.start_date,end_date:row.end_date
   })),[trendData]);
+  const chartIntentOptions=useMemo(()=>availableStatisticIntents({
+    rows:insightRows,totalKey:'total'
+  }),[insightRows]);
+  const effectiveChartIntent=chartIntentOptions.includes(chartIntent)?chartIntent:'trend';
   const selectedBucket=trendData.find(row=>row.period===selectedPeriodKey)||null;
   const selectedScopeTotals=useMemo(()=>{
     if(!selectedBucket)return [];
@@ -142,7 +147,18 @@ export default function ScopeGroupStatistics({taipeiDateKey,trendBucket,loadGala
           {key:'scopes',label:'所屬 Scope 數',value:scopeIds.length.toLocaleString()},
           {key:'active',label:'活躍時段',value:trendData.filter(row=>Number(row.total)>0).length.toLocaleString()}
         ]}/>
-      <StatisticsInsightsPanel rows={insightRows} range={zoomRange}
+      <div className="scope-stat-controls">
+        <label><span>分析意圖</span>
+          <select className="scope-select" value={effectiveChartIntent} onChange={event=>{
+            setChartIntent(event.target.value);setSelectedPeriodKey('');
+          }}>
+            {chartIntentOptions.map(value=><option key={value} value={value}>
+              {STATISTIC_INTENTS.find(([id])=>id===value)?.[1]||value}
+            </option>)}
+          </select>
+        </label>
+      </div>
+      <StatisticsInsightsPanel rows={insightRows} range={zoomRange} intent={effectiveChartIntent}
         zoomLevel={zoomLevel} onZoomLevelChange={setZoomLevel}
         idPrefix="loc-stat" selectedPeriodKey={selectedPeriodKey}
         onPeriodClick={row=>setSelectedPeriodKey(String(row?.period||''))}/>
