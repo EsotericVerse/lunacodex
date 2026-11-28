@@ -134,6 +134,32 @@ export function spaceIntersectionMetrics(lucus=[]){
 // Reuse the existing Source tree engine: its from-alias mapping and UID
 // rollups are shared by the interactive tree and by this comparison, rather
 // than creating a competing taxonomy/SQL statistics pipeline.
+export function areLucusMetricsMutuallyExclusive(metrics=[]){
+  const rows=Array.isArray(metrics)?metrics:[];
+  if(rows.length<2)return false;
+  const first=rows[0];
+  if(!rows.every(row=>row?.kind===first.kind&&
+    row?.type===first.type&&
+    String(row?.parentUid||'')===String(first?.parentUid||'')))return false;
+  if(first.kind==='keyword_group')return true;
+  if(first.kind==='source_tree')return true;
+  if(first.kind==='period'||first.kind==='era'){
+    for(let i=0;i<rows.length;i++)for(let j=i+1;j<rows.length;j++)
+      for(const a of rows[i].windows||[])for(const b of rows[j].windows||[])
+        if(a.startDate<=b.endDate&&b.startDate<=a.endDate)return false;
+    return true;
+  }
+  if(first.kind==='path'||first.kind==='trace'){
+    const seen=new Set();
+    for(const row of rows)for(const point of row.points||[]){
+      if(seen.has(point))return false;
+      seen.add(point);
+    }
+    return true;
+  }
+  return false;
+}
+
 export function sourceIntersectionMetrics(taxonomy={}){
   return sourceStatisticsTree([],taxonomy).metrics;
 }
