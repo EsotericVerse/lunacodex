@@ -7,6 +7,7 @@ import StatisticsMultiChart from './StatisticsMultiChart';
 // No article rescan and no Lucus count is involved in this view.
 export default function KeywordPatternSummary({scopeId='',classUid='',range={}}) {
   const [level,setLevel]=useState('item');
+  const [selectedKey,setSelectedKey]=useState('');
   const summary=useAsyncResource({
     queryKey:['statistics-keyword-pattern-ratios',scopeId,classUid,range.startDate,range.endDate],
     enabled:Boolean(scopeId&&classUid),
@@ -48,17 +49,19 @@ export default function KeywordPatternSummary({scopeId='',classUid='',range={}})
     <label>
       <span>統計層級</span>
       <select className="scope-select" value={level}
-        onChange={event=>setLevel(event.target.value)}>
+        onChange={event=>{setLevel(event.target.value);setSelectedKey('');}}>
         <option value="group">Group</option>
         <option value="item">Item</option>
         <option value="word">單詞</option>
       </select>
     </label>
-    {distribution.length?<StatisticsMultiChart type="bar" distribution={distribution}
-      barLayout="vertical" height={Math.max(300,Math.min(800,distribution.length*34+90))}/>:
+    {distribution.length?<StatisticsMultiChart intent="ranking" distribution={distribution}
+      activeCategoryKey={selectedKey}
+      onCategoryClick={key=>setSelectedKey(current=>current===String(key||'')?'':String(key||''))}
+      height={Math.max(300,Math.min(800,distribution.length*34+90))}/>:
       <p className="scope-status">尚無詞級命中紀錄。</p>}
     <div className="scope-ranking">
-      {shown.map(row=><div key={row.key}>
+      {shown.map(row=><div key={row.key} data-selected={selectedKey===String(row.key)?'true':undefined}>
         <strong>{row.label}</strong>
         <span>{Number(row.count||0).toLocaleString()} 次 · {Number(row.ratio||0).toFixed(1)}%</span>
       </div>)}
