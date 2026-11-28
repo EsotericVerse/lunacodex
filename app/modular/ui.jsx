@@ -119,7 +119,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
       const original={opacity:element.style.opacity,transform:element.style.transform};
       const restore=()=>Object.assign(element.style,original);
       const control=animate(element,{opacity:[.65,1],...direction},
-        {duration:LOC_MOTION.standard,delay:index*.045,ease:'easeOut',onComplete:restore});
+        {duration:LOC_MOTION.standard,delay:index*.045,ease:LOC_MOTION.ease,onComplete:restore});
       return ()=>{control.stop();restore();};
     });
     return ()=>controls.forEach(stop=>stop());
