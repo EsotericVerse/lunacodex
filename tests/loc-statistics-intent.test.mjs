@@ -29,6 +29,9 @@ test('comparison switches from columns to sorted horizontal bars after six categ
     intent:'compare',distribution:distribution(7)
   }).barLayout,'vertical');
   assert.equal(resolveStatisticIntent({
+    intent:'compare',distribution:distribution(6)
+  }).sort,undefined);
+  assert.equal(resolveStatisticIntent({
     intent:'compare',distribution:distribution(7)
   }).sort,'desc');
 });
