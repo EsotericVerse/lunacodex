@@ -8,7 +8,7 @@ import {spaceGraphGeojson} from './space-graph-geojson.mjs';
 import {spaceCoordinates} from './space-graph.mjs';
 import 'maplibre-gl/dist/maplibre-gl.css';
 // Coordinates stay in the browser-only example module. These labels identify
-// the same public sample anchors in each language; not Galaxy places.
+// the same public sample lucus in each language; not Galaxy places.
 const DEMO_PLACES=[
   {id:'banqiao',name:'板橋車站'},
   {id:'fuzhong',name:'府中站'},
@@ -53,17 +53,17 @@ const STRINGS={
     }
   },
   en:{
-    label:'Geographic traces demonstration',eyebrow:'Traces · Spatial anchors',title:'Places and routes',
+    label:'Geographic traces demonstration',eyebrow:'Traces · Spatial lucus',title:'Places and routes',
     intro:'Map demonstration with sample locations around Banqiao. These are not your Galaxy check-ins.',
-    controls:'Map controls',all:'All anchors',examples:'Show sample places',expandMap:'Expand map',collapseMap:'Collapse map',mobileGestureHint:'One finger scrolls the page; two fingers move or zoom the map.',resizeHint:'On desktop, drag the bottom-right corner to resize the map.',hide:'Hide route',show:'Plan sample road route',busy:'Planning route…',
+    controls:'Map controls',all:'All lucus',examples:'Show sample places',expandMap:'Expand map',collapseMap:'Collapse map',mobileGestureHint:'One finger scrolls the page; two fingers move or zoom the map.',resizeHint:'On desktop, drag the bottom-right corner to resize the map.',hide:'Hide route',show:'Plan sample road route',busy:'Planning route…',
     map:'Interactive tiltable map of Banqiao',
-    note:'Purple 3D pillars represent sample anchors, not buildings or data volume. The line is a proposed road route, not a recorded trip. Tiles: OpenFreeMap / OpenStreetMap; example route: public OSRM test server.',
+    note:'Purple 3D pillars represent sample lucus, not buildings or data volume. The line is a proposed road route, not a recorded trip. Tiles: OpenFreeMap / OpenStreetMap; example route: public OSRM test server.',
     status:{
-      loading:'Starting the map…',ready:'3D sample anchors are visible at real-world locations; their heights and coordinates are illustrative.',
+      loading:'Starting the map…',ready:'3D sample lucus are visible at real-world locations; their heights and coordinates are illustrative.',
       mapError:'Map tiles may be unavailable. Check your network connection.',
       moduleError:'MapLibre could not load. Check your network.',
       initError:'Unable to start the 3D map. Check WebGL support and connectivity.',
-      routeHidden:'Route hidden; sample anchors remain.',
+      routeHidden:'Route hidden; sample lucus remain.',
       routeLoading:'Finding a sample road route…',
       routeReady:'The orange line is a suggested road route, not a recorded journey.',
       routeError:'Road routing is currently unavailable. No invented road was drawn.',
@@ -90,7 +90,7 @@ const STRINGS={
   }
 };
 
-export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,routeOnly=false,showAnchorSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026,onReady=null}){
+export default function TraceMap({onLocationPick=null,onLucusSelect=null,onRouteSelect=null,selectedRouteUid='',focusLocation=null,spatialData=null,placeDayRows=null,mapOnly=false,hideRoutePicker=false,publicTrace=false,routeOnly=false,showLucusSearch=true,floatingControls=null,children=null,annualGauges=[],annualGaugeOn=false,annualGaugeBusy=false,annualGaugeError=false,onAnnualGaugeToggle=null,onAnnualGaugeVisibleChange=null,territoryMode=false,territoryYear=2026,onReady=null}){
   const reduceMotion=useReducedMotion();
   const {locale}=useUiLocale();
   const copy=STRINGS[locale]||STRINGS['zh-Hant'];
@@ -101,27 +101,27 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   const resizeStartRef=useRef(null);
   const locationPickRef=useRef(onLocationPick);
   locationPickRef.current=onLocationPick;
-  const anchorSelectRef=useRef(onAnchorSelect);
-  anchorSelectRef.current=onAnchorSelect;
+  const lucusSelectRef=useRef(onLucusSelect);
+  lucusSelectRef.current=onLucusSelect;
   const gaugeVisibleRef=useRef(onAnnualGaugeVisibleChange);
   gaugeVisibleRef.current=onAnnualGaugeVisibleChange;
   const selectingLocation=typeof onLocationPick==='function';
-  const [anchorQuery,setAnchorQuery]=useState('');
-  const [anchorUid,setAnchorUid]=useState('');
-  const savedAnchors=spatialData?.anchors||[];
+  const [lucusQuery,setLucusQuery]=useState('');
+  const [lucusUid,setLucusUid]=useState('');
+  const savedLucus=spatialData?.lucus||[];
   const savedMaps=spatialData?.maps||[];
-  // Use the current Scope's already loaded anchors: no county restriction,
+  // Use the current Scope's already loaded lucus: no county restriction,
   // geocoding request or eager cross-Scope query on every typed character.
-  const anchorMatches=useMemo(()=>{
-    const q=anchorQuery.trim().normalize('NFKC').toLocaleLowerCase();
+  const lucusMatches=useMemo(()=>{
+    const q=lucusQuery.trim().normalize('NFKC').toLocaleLowerCase();
     if(!q)return [];
-    return savedAnchors.filter(lucus=>
+    return savedLucus.filter(lucus=>
       String(lucus.title||'').normalize('NFKC').toLocaleLowerCase().includes(q))
       .slice(0,12);
-  },[spatialData?.anchors,anchorQuery]);
+  },[spatialData?.lucus,lucusQuery]);
   useEffect(()=>{
-    setAnchorQuery('');setAnchorUid('');
-  },[spatialData?.anchors]);
+    setLucusQuery('');setLucusUid('');
+  },[spatialData?.lucus]);
   const autoOverviewScopeRef=useRef('');
   const lastTerritoryYearRef=useRef(territoryYear);
   const [ready,setReady]=useState(false);
@@ -140,13 +140,13 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     let instance=null;
     try{
       instance=createTraceMap(containerRef.current,{
-        anchors:routeOnly?[]:spatialData?.anchors||[],
-        showAnchorPopup:!publicTrace,
+        lucus:routeOnly?[]:spatialData?.lucus||[],
+        showLucusPopup:!publicTrace,
         territoryMode,
         reduceMotion,
         onGaugeVisibilityChange:visible=>{if(active)gaugeVisibleRef.current?.(visible);},
         onSelect:id=>{if(active)setSelected(id);},
-        onAnchorSelect:!selectingLocation?lucus=>{if(active)anchorSelectRef.current?.(lucus);}:null,
+        onLucusSelect:!selectingLocation?lucus=>{if(active)lucusSelectRef.current?.(lucus);}:null,
         onLocationPick:selectingLocation?coords=>{if(active)locationPickRef.current?.(coords);}:null,
         onStatus:code=>{
           if(!active)return;
@@ -190,14 +190,14 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
   useEffect(()=>{
     // Keep the coordinates in memory for saved-line projection, but hide
     // individual place markers from the LOC preview map.
-    mapRef.current?.setAnchors(routeOnly?[]:spatialData?.anchors||[]);
+    mapRef.current?.setLucus(routeOnly?[]:spatialData?.lucus||[]);
     const selectedMap=(spatialData?.maps||[]).find(map=>
       String(map.uid||map.id)===selectedRouteUid)||null;
     mapRef.current?.setSavedRoute(selectedMap);
     // An area is a saved set of routes, not a single joined queue.
     // Only explicit saved segments survive the geographic projection.
     const graph=selectedMap?spaceGraphGeojson(selectedMap,[
-      ...(spatialData?.anchors||[]),...(spatialData?.maps||[])
+      ...(spatialData?.lucus||[]),...(spatialData?.maps||[])
     ],{scopeId:selectedMap.source_scope||selectedMap.scope_id}):null;
     // Only line geometry is meaningful on LOC's routes-only map. Excluding
     // route-stop points prevents creating a second dense place marker layer.
@@ -209,7 +209,7 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     if(ready&&focusLocation)mapRef.current?.focusCoordinates(focusLocation);
   },[ready,focusLocation]);
   // The annual article map starts at the same Banqiao Station origin as the
-  // terrain map. Loading async yearly anchors must never override that camera.
+  // terrain map. Loading async yearly lucus must never override that camera.
   // Changing years intentionally starts a fresh view at the same origin.
   useEffect(()=>{
     if(!ready||!territoryMode)return;
@@ -217,16 +217,16 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     lastTerritoryYearRef.current=territoryYear;
     mapRef.current?.goOrigin();
   },[ready,territoryMode,territoryYear]);
-  // Route maps retain their existing one-time 'all anchors' framing. Only
+  // Route maps retain their existing one-time 'all lucus' framing. Only
   // the annual territory's implicit overview is disabled; its explicit
   // '年度全版圖' button is still available when requested by the viewer.
   useEffect(()=>{
-    if(!ready||routeOnly||territoryMode||selectedRouteUid||!spatialData?.anchors?.length)return;
-    const scope=spatialData.anchors[0].source_scope||'';
+    if(!ready||routeOnly||territoryMode||selectedRouteUid||!spatialData?.lucus?.length)return;
+    const scope=spatialData.lucus[0].source_scope||'';
     if(autoOverviewScopeRef.current===scope)return;
     autoOverviewScopeRef.current=scope;
     mapRef.current?.overview();
-  },[ready,selectedRouteUid,spatialData?.anchors,territoryMode,routeOnly]);
+  },[ready,selectedRouteUid,spatialData?.lucus,territoryMode,routeOnly]);
   // The visible resize grip lives outside MapLibre's canvas and controls, so
   // its pointer events do not conflict with map pan/rotate or attribution.
   function resizeFrame(width,height){
@@ -274,32 +274,32 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
     }
   }
 
-  const anchorSearch=!selectingLocation?<div className="loc-trace-hierarchy" role="group" aria-label="空間定錨點自動完成搜尋">
+  const lucusSearch=!selectingLocation?<div className="loc-trace-hierarchy" role="group" aria-label="空間定錨點自動完成搜尋">
       <label>空間定錨點
-        <input type="search" value={anchorQuery} className="scope-select"
+        <input type="search" value={lucusQuery} className="scope-select"
           placeholder="輸入地點名稱，不限縣市"
-          onChange={event=>{setAnchorQuery(event.target.value);setAnchorUid('');}}
+          onChange={event=>{setLucusQuery(event.target.value);setLucusUid('');}}
           autoComplete="off" aria-label="搜尋空間定錨點"/>
       </label>
-      {anchorQuery.trim()?<div className="loc-trace-quick-results" role="group"
+      {lucusQuery.trim()?<div className="loc-trace-quick-results" role="group"
         aria-label="符合的空間定錨點">
-        {anchorMatches.map(lucus=><button type="button" className="loc-button"
-          aria-pressed={anchorUid===String(lucus.uid||lucus.id)}
+        {lucusMatches.map(lucus=><button type="button" className="loc-button"
+          aria-pressed={lucusUid===String(lucus.uid||lucus.id)}
           key={(lucus.source_scope||'')+':'+(lucus.uid||lucus.id)}
           onClick={()=>{
-            setAnchorUid(String(lucus.uid||lucus.id));
-            setAnchorQuery(String(lucus.title||''));
+            setLucusUid(String(lucus.uid||lucus.id));
+            setLucusQuery(String(lucus.title||''));
             const coordinates=spaceCoordinates(lucus);
             if(coordinates)mapRef.current?.focusCoordinates({
               longitude:coordinates[0],latitude:coordinates[1],name:lucus.title
             });
-            onAnchorSelect?.(lucus);
+            onLucusSelect?.(lucus);
           }}>
           {lucus.title}
           {!spaceCoordinates(lucus)?'（待補地圖座標）':''}
         </button>)}
-        {!anchorMatches.length?<p className="scope-status">目前載入的地點沒有符合項目。</p>:null}
-        {anchorMatches.length===12?<p className="scope-status">顯示前 12 筆，可繼續輸入縮小範圍。</p>:null}
+        {!lucusMatches.length?<p className="scope-status">目前載入的地點沒有符合項目。</p>:null}
+        {lucusMatches.length===12?<p className="scope-status">顯示前 12 筆，可繼續輸入縮小範圍。</p>:null}
       </div>:null}
       <p className="scope-status">不限縣市；選取地點可查看文章。有真實座標才定位，沒有座標仍保留地點。</p>
     </div>:null;
@@ -314,12 +314,12 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
         locale==='en'?'Click any map location or a sample station to fill in coordinates automatically.':
         locale==='ja'?'地図上の位置または駅の例をクリックすると、座標を自動入力します。':
         '直接點地圖選取空間定錨點，或點下方車站快捷位置；經緯度會自動填入。'
-      ):(onAnchorSelect&&spatialData?.anchors?.length?
+      ):(onLucusSelect&&spatialData?.lucus?.length?
         '搜尋空間定錨點，或選擇已儲存的路線／痕跡；地圖顯示已核對的座標與路線，下方可查看文章報表。':
         spatialData===null?'正在取得空間定錨點資料；如有錯誤請查看上方訊息。':
         '目前沒有已儲存的空間定錨點；可在管理頁建立。')}</p>
     </header>:null}
-    {!publicTrace?anchorSearch:null}
+    {!publicTrace?lucusSearch:null}
     {!publicTrace&&!selectingLocation&&!hideRoutePicker&&savedMaps.length?<div className="loc-trace-saved-route-picker">
       <label>痕跡圖（已儲存路線）
         <select className="scope-select" value={selectedRouteUid}
@@ -329,14 +329,14 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
           }}>
           <option value="">不顯示路線</option>
           {savedMaps.map(route=><option key={route.uid} value={route.uid}>
-            {route.title}（{route.trace_type==='trace'?'痕跡 '+route.anchor_list.length+' 段':'路線 '+route.anchor_list.length+' 站'}）</option>)}
+            {route.title}（{route.trace_type==='trace'?'痕跡 '+route.lucus_list.length+' 段':'路線 '+route.lucus_list.length+' 站'}）</option>)}
         </select>
       </label>
       <p className="scope-status">路線依 Queue 順序連線；痕跡各段獨立顯示，不要求連續，也不代表實際道路。</p>
     </div>:null}
     {!publicTrace?<div className="loc-trace-controls" role="group" aria-label={copy.controls}>
       <button type="button" className="loc-button" onClick={()=>{mapRef.current?.overview();setSelected('');}} disabled={!ready}>
-        {spatialData?.anchors?.some(lucus=>lucus.trace_type==='space_anchor'&&Boolean(spaceCoordinates(lucus)))
+        {spatialData?.lucus?.some(lucus=>lucus.trace_type==='space_lucus'&&Boolean(spaceCoordinates(lucus)))
           ?copy.all:(selectingLocation?copy.examples:copy.all)}
       </button>
       {selectingLocation?<>{DEMO_PLACES.map(place=><button key={place.id} type="button" aria-pressed={selected===place.id}
@@ -358,9 +358,9 @@ export default function TraceMap({onLocationPick=null,onAnchorSelect=null,onRout
           {annualGaugeOn&&annualGaugeError?<span className="scope-status scope-error" role="alert">年度統計暫時無法顯示</span>:null}
         </div>:null}
         {floatingControls}
-        {showAnchorSearch?<details className="loc-trace-float-search">
+        {showLucusSearch?<details className="loc-trace-float-search">
           <summary>搜尋地點</summary>
-          {anchorSearch}
+          {lucusSearch}
           <button type="button" className="loc-button" disabled={!ready}
             onClick={()=>mapRef.current?.overview()}>全部定錨點</button>
         </details>:null}

@@ -19,7 +19,7 @@ const LOC_LIST_TYPES=Object.freeze(['index','governance']);
 const blockRelation=(name,engine,namespace)=>engine==='postgres'
   ?'silver.'+name:portableRelation(name,engine,namespace);
 
-async function readLocBlockAnchors(db,types,{engine='postgres',namespace='silver'}={}){
+async function readLocBlockLucus(db,types,{engine='postgres',namespace='silver'}={}){
   return db.selectFrom(blockRelation(scopeTableName('loc','lucus'),engine,namespace))
     .select(LOC_BLOCK_LUCUS_FIELDS)
     .where('type','in',types).where('invisible','=',false)
@@ -32,7 +32,7 @@ export async function block_list(db,scopeValue,options={}){
   if(!page)throw Object.assign(new Error('Invalid public Scope Block page'),{httpStatus:400});
   if(scope==='loc'){
     if(page!=='index')throw Object.assign(new Error('Invalid LOC public Block page'),{httpStatus:400});
-    const rows=await readLocBlockAnchors(db,LOC_LIST_TYPES,options);
+    const rows=await readLocBlockLucus(db,LOC_LIST_TYPES,options);
     return rows.map(locLucusToBlock)
       .sort((a,b)=>a.page_name.localeCompare(b.page_name)||
         a.block_order-b.block_order);
@@ -48,7 +48,7 @@ export async function hero_block(db,specificValue,options={}){
   if(!types.length||types.length>2||new Set(types).size!==types.length||
     types.some(type=>!isLocBlockPage(type)||LOC_LIST_TYPES.includes(type)))
     throw Object.assign(new Error('Invalid specific Hero type'),{httpStatus:400});
-  const rows=await readLocBlockAnchors(db,types,options);
+  const rows=await readLocBlockLucus(db,types,options);
   return rows.map(locLucusToBlock).sort((a,b)=>
     types.indexOf(a.page_name)-types.indexOf(b.page_name)||
     a.block_order-b.block_order);

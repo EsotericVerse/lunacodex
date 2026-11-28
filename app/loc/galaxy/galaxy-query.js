@@ -20,15 +20,15 @@ import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
 const galaxyUidReadWithPolicyColumns=()=>unique([
-  ...galaxyUidReadColumns(),...galaxyReadColumns('GalaxyAttr'),
+  ...galaxyUidReadColumns(),...galaxyReadColumns('GalaxyReadLucus'),
   // media_link is a physical Galaxy URL[]; select it explicitly when showing
-  // article links, never treat it as a semantic ZModel Anchor relation.
+  // article links, never treat it as a semantic ZModel Lucus relation.
   'media_link'
 ]);
 const articlePermissionFilter=(_scope,name)=>({
   column:name,operator:'eq',value:true
 });
-// Search is a GalaxyAttr flag, but keeping this named predicate explicit makes
+// Search is a GalaxyReadLucus flag, but keeping this named predicate explicit makes
 // the policy boundary visible at every search call site.
 const searchPermissionFilter=()=>({column:'search',operator:'eq',value:true});
 
@@ -125,7 +125,7 @@ async function scopeDailyCounts(current,range){
 }
 
 // One database-side daily GROUP BY over Galaxy.site, including multimedia
-// publishing platforms. There is no separate MediaAnchor counting stream.
+// publishing platforms. There is no separate Galaxy counting stream.
 export async function selectScopeDailyCounts(scope,{
   startDate='',endDate='',includeUndated=false,requireAggregate=false
 }={}){
@@ -176,7 +176,7 @@ export async function selectSourceDaily(scope,{startDate='',endDate=''}={}){
 }
 
 // Galaxy.media_link already carries public URLs. It must not trigger any
-// MediaAnchor UID lookup just to show an external link.
+// Galaxy UID lookup just to show an external link.
 function mediaUrlsOf(value){
   return [...new Set((Array.isArray(value)?value:[])
     .map(item=>String(item||'').trim()).filter(url=>/^https?:\/\//i.test(url)))];
@@ -248,19 +248,19 @@ async function articleTimeRows(scope){
   return promise;
 }
 async function articleTimeContext(scope,day){
-  if(!day||!scope.time)return {anchors:[],periods:[],eras:[]};
+  if(!day||!scope.time)return {lucus:[],periods:[],eras:[]};
   const rows=await articleTimeRows(scope);
   const matches=row=>timePeriodContainsDate(row,day);
   const labels=items=>items.map(item=>({uid:String(item.uid),title:String(item.title||'')}));
-  const dateAnchors=rows.filter(row=>row.entry_type==='lucus');
-  const anchors=dateAnchors.filter(row=>String(row.address||'').slice(0,10)===day);
+  const dateLucus=rows.filter(row=>row.entry_type==='lucus');
+  const lucus=dateLucus.filter(row=>String(row.address||'').slice(0,10)===day);
   let anniversarySuggestions=[];
-  if(!anchors.length){
-    try{anniversarySuggestions=anniversarySuggestionsForDate(day,dateAnchors,{birthday:scope.birthday});}
+  if(!lucus.length){
+    try{anniversarySuggestions=anniversarySuggestionsForDate(day,dateLucus,{birthday:scope.birthday});}
     catch{/* Anniversary hints must not hide the article Time context. */}
   }
   return {
-    anchors:labels(anchors),
+    lucus:labels(lucus),
     periods:labels(rows.filter(row=>row.entry_type==='period'&&matches(row))),
     eras:labels(rows.filter(row=>row.entry_type==='era'&&matches(row))),
     anniversarySuggestions
@@ -271,7 +271,7 @@ async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
     return {place:null,routes:[],traces:[]};
     // LOC's four legacy relations were consolidated into _lucus. The shared
     // Trace reader projects native attr.point/attr.path without relying on
-    // removed trace_type, anchor_list or route_list physical columns.
+    // removed trace_type, lucus_list or route_list physical columns.
     const [pointPage,maps]=await Promise.all([
       readLucusFeature({scope:scope.id,family:'space',
         types:['point'],uids:[placeId],limit:1},{editor:authenticated})
@@ -281,11 +281,11 @@ async function articleSpaceContext(scope,placeId,{authenticated=false}={}){
     const place=pointPage.rows[0]||null;
     if(!place)return {place:null,routes:[],traces:[]};
     const contains=(uids,uid)=>Array.isArray(uids)&&uids.includes(uid);
-    const routes=maps.filter(row=>row.trace_type==='path'&&contains(row.anchor_list,placeId))
+    const routes=maps.filter(row=>row.trace_type==='path'&&contains(row.lucus_list,placeId))
       .map(({uid,title})=>({uid,title})).slice(0,100);
     const routeUids=new Set(routes.map(row=>row.uid));
     const traces=maps.filter(row=>row.trace_type==='trace'&&(
-      contains(row.anchor_list,placeId)||
+      contains(row.lucus_list,placeId)||
       (row.route_list?.routes||[]).some(uid=>routeUids.has(uid))
     )).map(({uid,title})=>({uid,title})).slice(0,100);
     return {place:{uid:place.uid,title:place.title},routes,traces};
@@ -319,8 +319,8 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
     relatedArticleTitlesFor(current,row,{includeHidden,dbId:federated?dbId:''}).catch(()=>({})),
     federated?Promise.resolve({place:null,routes:[],traces:[]}):
       articleSpaceContext(current,placeId,{authenticated:includeHidden}).catch(()=>({place:null,routes:[],traces:[]})),
-    federated?Promise.resolve({anchors:[],periods:[],eras:[]}):
-      articleTimeContext(current,day).catch(()=>({anchors:[],periods:[],eras:[]})),
+    federated?Promise.resolve({lucus:[],periods:[],eras:[]}):
+      articleTimeContext(current,day).catch(()=>({lucus:[],periods:[],eras:[]})),
     articleStatisticsContext(current,day)
   ]);
   // Existing 2026 records sometimes stored card spreads on non-rune media.
@@ -336,7 +336,7 @@ export async function selectGalaxyIdentity(scope,uid,{includeHidden=false,dbId='
 }
 
 function recordFor(row,source,providerId,scope,table){
-  return {row:{...row,scope_id:row?.scope_id||scope.id,__table:table,__media_lucus_table:scope.lucus},source,providerId};
+  return {row:{...row,scope_id:row?.scope_id||scope.id,__table:table},source,providerId};
 }
 
 // Search selections use the same enabled categories and alias assignments as
@@ -483,7 +483,7 @@ export async function searchGalaxyRows(scopes,query,{
     })]
     :genericScopeProviders(scope));
   // Search is article-led: one Galaxy.content provider per Scope, with
-  // Anchor relationships available only after choosing an article.
+  // Lucus relationships available only after choosing an article.
   const providers=scopeProviders.flat();
   // Preserve the same provider ordering and stage cursor while overlapping
   // only the expensive no-match path. One first-Scope hit still costs ONE query.

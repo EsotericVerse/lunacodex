@@ -1,6 +1,6 @@
 import {LUCUS_TYPE_GROUPS,indexZModelLucusHierarchy} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 
-// Public SiteAnchor projection. The ZModel graph owns parent/child semantics.
+// Public SiteLucus projection. The ZModel graph owns parent/child semantics.
 const norm=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
 export function sourceSiteKeyForLabel(value){
  const s=norm(value);return s==='其他'||s==='others'?'others':s.match(/[a-z][a-z0-9_-]{2,}$/)?.[0]||s;
@@ -10,12 +10,12 @@ export function sourceLabelMatchesSite(site,label){
  return Boolean(a&&b&&(a===b||sourceSiteKeyForLabel(b)===a));
 }
 // CURRENT Site Tree Model: typed From/Domain/Galaxy/Universe payloads compose
-// under SiteAnchor; lucus-hierarchy.mjs validates real attr.uid child edges.
+// under SiteLucus; lucus-hierarchy.mjs validates real attr.uid child edges.
 // Source taxonomy aliases and flat UI choices are projections of the one
 // canonical tree; never infer parenthood from titles or create another tree.
-// The source taxonomy is the existing LocAnchor ZModel, not a second
-// media/platform registry. Anchor attr.uid is the only hierarchy link.
-// SiteAnchor: from = one platform; domain = platform collection; galaxy = group; universe = all.
+// The source taxonomy is the existing LocLucus ZModel, not a second
+// media/platform registry. Lucus attr.uid is the only hierarchy link.
+// SiteLucus: from = one platform; domain = platform collection; galaxy = group; universe = all.
 // Example: Meta (domain) > Facebook/Threads/Instagram (from); CMS/Article/Stream (galaxy).
 // Example taxonomy (labels only; no automatic DB rewrite):
 // Words > CMS > Meta > Facebook/Threads/Instagram; CMS > X > X Twitter.
@@ -25,7 +25,7 @@ export function sourceLabelMatchesSite(site,label){
 // PastBy > SeeYou > Closed > kkcity/無名wretch/MSN; NowON > ptt/pixnet.
 // Source labels are not durable keys: Vocus supersedes "方格子vocus" only
 // when source records are explicitly edited; never rewrite Galaxy.site on import.
-// SiteAnchor from/domain/galaxy/universe is a real UID-linked hierarchy; flat UI is only presentation.
+// SiteLucus from/domain/galaxy/universe is a real UID-linked hierarchy; flat UI is only presentation.
 // Never derive parenthood from matching display titles.
 const SOURCE_LEVELS=Object.freeze([...LUCUS_TYPE_GROUPS.source].reverse());
 const sourceRoot=title=>{
@@ -34,7 +34,7 @@ const sourceRoot=title=>{
     label==='pastby'?'custom':'system';
 };
 
-/** Pure projection of the published SiteAnchor JS snapshot for Culture/Statistics.
+/** Pure projection of the published SiteLucus JS snapshot for Culture/Statistics.
  * Publication reads silver.loc_lucus explicitly; feature reads stay in JS.
  * This creates no foreign keys, aliases, extra tables, or article-side changes.
  */
@@ -107,13 +107,13 @@ export function sourceTaxonomyFromLucus(rows=[],{includeHidden=false}={}){
 }
 
 // Read-only import audit: a Galaxy.site literal can be associated with a
-// published SiteAnchor only when its alias has exactly one saved UID.
+// published SiteLucus only when its alias has exactly one saved UID.
 // A missing/ambiguous alias is never turned into a new Source node or a
 // Galaxy.site rewrite; the original platform value remains authoritative.
 export function auditImportedSourceSites(sites=[],taxonomy={}){
   if(!Array.isArray(sites)||!Array.isArray(taxonomy?.aliases)||
      !Array.isArray(taxonomy?.conflicts))
-    throw new TypeError('Invalid SiteAnchor import audit');
+    throw new TypeError('Invalid SiteLucus import audit');
   const available=new Map(taxonomy.aliases.map(row=>[norm(row.source_key),row.category_code]));
   const ambiguous=new Map(taxonomy.conflicts.map(row=>[norm(row.alias),row.saved_uids]));
   const resolved=[],unmatched=[],conflicts=[];
@@ -125,7 +125,7 @@ export function auditImportedSourceSites(sites=[],taxonomy={}){
     if(ambiguous.has(key)){
       conflicts.push({type:'source',site,alias:key,saved_uids:[...ambiguous.get(key)]});
     }else if(available.has(key)){
-      resolved.push({site,anchor_uid:available.get(key)});
+      resolved.push({site,lucus_uid:available.get(key)});
     }else unmatched.push(site);
   }
   return {resolved,unmatched,conflicts};

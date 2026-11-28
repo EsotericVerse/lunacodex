@@ -8,7 +8,7 @@ export function canonicalImportSourceName(value,system=[],personal=[]){
   const key=name.toLocaleLowerCase();
   const match=names=>(Array.isArray(names)?names:[]).find(label=>String(label).trim().toLocaleLowerCase()===key);
   // A known external source has a stable display label, but this does NOT
-  // create or grant a SiteAnchor. Unknown categories remain Others.
+  // create or grant a SiteLucus. Unknown categories remain Others.
   return match(system)||match(personal)||sourceImportModel(name)?.label||'Others';
 }
 export function inferImportSourceFromFilename(fileName=''){

@@ -86,7 +86,7 @@ export function itemKeywordSuggestions(items=[],query=''){
   return [...map.values()].sort((a,b)=>a.pattern.localeCompare(b.pattern));
 }
 export function createItemCountAccumulator(items=[],groups=[],resume=null,{minChars=0,patterns=[]}={}){
-  // Pattern is an existing typed Anchor UID, never a synthetic word string.
+  // Pattern is an existing typed Lucus UID, never a synthetic word string.
   // One Pattern can be referenced by several Items, but receives one count
   // for each literal occurrence in an eligible Galaxy article.
   const patternByUid=new Map();

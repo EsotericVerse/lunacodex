@@ -226,7 +226,7 @@
   line-height:1.85;
   overflow-wrap:anywhere;
 }
-/* Trace: map takes priority; the anchored article/report panel uses the same
+/* Trace: map takes priority; the lucused article/report panel uses the same
    public article shell without changing map interactions or floating geometry. */
 [data-public-feature="trace"] .loc-trace-panel{
   min-width:0;

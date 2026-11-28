@@ -88,7 +88,7 @@ export function normalizeImportMedia(value,{title='',createtime=null,location=''
           :(typeof description==='string'?description.trim():JSON.stringify(description));
         return normalized||null;
       })(),
-      // Article-led LOC: media Anchor creation reference follows the source
+      // Article-led LOC: media Lucus creation reference follows the source
       // article's exact createtime. A media-only import uses its own stamp.
       createtime:parseImportCreatedTime(createtime)||
         parseImportCreatedTime(source.createtime??source.created_at??

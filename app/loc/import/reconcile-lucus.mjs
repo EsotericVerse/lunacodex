@@ -1,13 +1,13 @@
 import {MAX_ROWS} from '../query/query-batch-size.mjs';
-import {prepareImportPlaceAnchors,importedPlaceId} from './place-anchors.mjs';
-import {prepareImportTimeAnchors} from './time-anchors.mjs';
-import {readImportPointDateAnchors} from './lucus-read.mjs';
+import {prepareImportPlaceLucus,importedPlaceId} from './place-lucus.mjs';
+import {prepareImportTimeLucus} from './time-lucus.mjs';
+import {readImportPointDateLucus} from './lucus-read.mjs';
 import {planImportPointUidLink} from './uid-delta.mjs';
-import {queryImportAnchorArticlesPage} from '../actions/import/queries.mjs';
+import {queryImportLucusArticlesPage} from '../actions/import/queries.mjs';
 
 // Repair location/date links for articles already in Galaxy, without replaying
 // an archive, creating duplicate posts, or touching unrelated article fields.
-export async function reconcileExistingImportAnchors({
+export async function reconcileExistingImportLucus({
   scopeId,galaxy,timeTable,relation,updateImportRows,onProgress,pageSize=MAX_ROWS
 }={}){
   const scope=String(scopeId||'').trim();
@@ -19,7 +19,7 @@ export async function reconcileExistingImportAnchors({
   const candidates=[];
   let afterUid=null;
   for(;;){
-    const {data}=await queryImportAnchorArticlesPage({p_scope_id:scope,
+    const {data}=await queryImportLucusArticlesPage({p_scope_id:scope,
       p_after_uid:afterUid,p_limit:pageSize});
     const page=data||[];
     if(!Array.isArray(page)||page.length>pageSize)
@@ -42,16 +42,16 @@ export async function reconcileExistingImportAnchors({
   const needingPlace=candidates.filter(row=>!String(row.place_id||'').trim());
   const savedPointUids=[...new Set(candidates.map(row=>row.place_id).filter(uid=>
     typeof uid==='string'&&/^[A-Za-z0-9]{8}$/.test(uid)))];
-  const anchorSnapshot=await readImportPointDateAnchors({
+  const lucusSnapshot=await readImportPointDateLucus({
     scopeId:scope,pageSize,onProgress,
     ...(needingPlace.length?{}:{pointUids:savedPointUids})
   });
-  const places=await prepareImportPlaceAnchors(needingPlace,{
-    scopeId:scope,relation,createMissing:true,scanExistingOnEmpty:true,onProgress,anchorSnapshot
+  const places=await prepareImportPlaceLucus(needingPlace,{
+    scopeId:scope,relation,createMissing:true,scanExistingOnEmpty:true,onProgress,lucusSnapshot
   });
-  const dates=await prepareImportTimeAnchors(candidates,{
+  const dates=await prepareImportTimeLucus(candidates,{
     scopeId:scope,timeTable,relation,
-    includeUnifiedUidPool:true,onProgress,anchorSnapshot
+    includeUnifiedUidPool:true,onProgress,lucusSnapshot
   });
   let linked=0,unmatched=0,updates=[];
   async function flush(){

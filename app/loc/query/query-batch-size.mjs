@@ -15,7 +15,7 @@ export const SQL_BATCH_POLICY=Object.freeze({
   articleUidRows:100,
   heavyStartRows:256,
   heavyMaxRows:SQL_WORKLOAD_POLICY.chunkRows,
-  timeAnchorMaxRows:SQL_WORKLOAD_POLICY.chunkRows,
+  timeLucusMaxRows:SQL_WORKLOAD_POLICY.chunkRows,
   keywordDiscoveryMaxRows:SQL_WORKLOAD_POLICY.chunkRows,
   keywordDiscoveryTargetBytes:2*1024*1024,
   textTargetChars:1024*1024,
@@ -23,8 +23,8 @@ export const SQL_BATCH_POLICY=Object.freeze({
   keywordWorkerTargetBytes:256*1024,
   importWriteTargetBytes:480000,
   nativeWriteMaxBytes:700000,
-  timeAnchorTargetBytes:2*1024*1024,
-  timeAnchorEditorMaxBytes:32*1024*1024
+  timeLucusTargetBytes:2*1024*1024,
+  timeLucusEditorMaxBytes:32*1024*1024
 });
 export const MAX_ROWS=SQL_BATCH_POLICY.returnRows;
 export const NORMAL_QUERY_ROWS=SQL_BATCH_POLICY.returnRows;
@@ -32,7 +32,7 @@ export const DB_QUERY_BATCH_SIZE=SQL_BATCH_POLICY.sqlChunkRows;
 export const ARTICLE_UID_PAGE_ROWS=SQL_BATCH_POLICY.articleUidRows;
 export const HEAVY_INITIAL_ROWS=SQL_BATCH_POLICY.heavyStartRows;
 export const HEAVY_QUERY_ROWS=SQL_BATCH_POLICY.heavyMaxRows;
-export const TIME_ANCHOR_MAX_PAGE_ROWS=SQL_BATCH_POLICY.timeAnchorMaxRows;
+export const TIME_LUCUS_MAX_PAGE_ROWS=SQL_BATCH_POLICY.timeLucusMaxRows;
 export const KEYWORD_DISCOVERY_MAX_ROWS=SQL_BATCH_POLICY.keywordDiscoveryMaxRows;
 export const KEYWORD_DISCOVERY_TARGET_BYTES=SQL_BATCH_POLICY.keywordDiscoveryTargetBytes;
 export const TEXT_SCAN_TARGET_CHARS=SQL_BATCH_POLICY.textTargetChars;
@@ -40,8 +40,8 @@ export const KEYWORD_WORKER_TARGET_CHARS=SQL_BATCH_POLICY.keywordWorkerTargetCha
 export const KEYWORD_WORKER_TARGET_BYTES=SQL_BATCH_POLICY.keywordWorkerTargetBytes;
 export const IMPORT_WRITE_TARGET_BYTES=SQL_BATCH_POLICY.importWriteTargetBytes;
 export const NATIVE_WRITE_MAX_BYTES=SQL_BATCH_POLICY.nativeWriteMaxBytes;
-export const TIME_ANCHOR_TARGET_BYTES=SQL_BATCH_POLICY.timeAnchorTargetBytes;
-export const TIME_ANCHOR_EDITOR_MAX_BYTES=SQL_BATCH_POLICY.timeAnchorEditorMaxBytes;
+export const TIME_LUCUS_TARGET_BYTES=SQL_BATCH_POLICY.timeLucusTargetBytes;
+export const TIME_LUCUS_EDITOR_MAX_BYTES=SQL_BATCH_POLICY.timeLucusEditorMaxBytes;
 export const clampRows=(n,min,max)=>Math.max(min,Math.min(max,n));
 
 // Prepare bounded SQL JSON recordsets without opening a second transaction.

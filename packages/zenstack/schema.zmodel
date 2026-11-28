@@ -1,18 +1,18 @@
 // LOC fixed physical schema — read-only model snapshot of PostgreSQL silver + api tables.
 // No migrations are generated/applied from this file. No SQL procedures are required.
-// MODEL-OF-MODELS: physical model = stored columns; typed payload = Anchor.attr
+// MODEL-OF-MODELS: physical model = stored columns; typed payload = Lucus.attr
 // shape; composite Time/Location/Media/Keyword/Site = models of those models.
 // Tree/graph relations are validated in lucus-hierarchy.mjs using saved UIDs.
 // Neither a composite model nor a Tree Model creates a SQL table, FK or migration.
 // Kysely executes scoped SQL; ZModel/ZenStack validates shape and policy boundaries.
-// Additional product features reuse the existing Anchor.attr JSON payload.
+// Additional product features reuse the existing Lucus.attr JSON payload.
 // Portable MySQL / SQL Server / SQLite query construction remains in Kysely adapters.
 // SQL-nullable array columns cannot be modeled as nullable lists in ZModel V3;
 // their null-preserving read/write behavior must stay on the Kysely path.
 // LOC Auth's delegated principal must be verified by the trusted server before DB access.
 // The public control-plane and presentation models use ZenStack PolicyPlugin
 // for SELECT; Blocks are included so Hero/home reads stay on the typed path.
-// dynamic Scope Galaxy/Anchor row visibility remains in delegated Kysely + RLS.
+// dynamic Scope Galaxy/Lucus row visibility remains in delegated Kysely + RLS.
 
 datasource db {
     provider = "postgresql"
@@ -46,7 +46,7 @@ type LocFederatedRef {
     uid        String
 }
 
-// Typed relationship output over *already authorized and scoped* Anchor rows.
+// Typed relationship output over *already authorized and scoped* Lucus rows.
 // Link resolution never grants write access or implies a cross-database FK.
 type LOCLucus {
     family   LOCLucusFamily
@@ -65,21 +65,20 @@ enum LOCLucusFamily {
     search
 }
 
-// Persisted Anchor discriminators. The SQL row remains one portable storage
+// Persisted Lucus discriminators. The SQL row remains one portable storage
 // envelope; these values select the semantic ZModel payload below. Their
 // article-side carrier mapping is date/createtime, location/place_id,
 // media_link, keyword and site respectively; no extra relation is created.
 // IMPORTANT: Galaxy.site is a source name; Galaxy.site_id is the ORIGINAL
 // platform's post/media ID (arbitrary text), NEVER a silver.loc_lucus.uid.
 // Galaxy.uid is the LOC article UID. silver.loc_lucus.attr.uid contains only
-// eight-character Source Anchor child UIDs for the four-level source tree.
+// eight-character Source Lucus child UIDs for the four-level source tree.
 // Galaxy.media_link is an array of actual media URL strings, NOT media IDs,
-// Anchor UID references, or a new MLucus relation. Galaxy.url is the
+// Lucus UID references, or a new Lucus relation. Galaxy.url is the
 // article/source permalink; do not conflate it with media_link.
-// Physical type is singular image/rune/suno; semantic MLucus fields may be plural.
 // "anniversary" (also misspelled "aniversary" in old notes) is virtual, not a stored type.
 // External CMS / conversation SOURCE ZModels. Nonpersistent projections only.
-// The source field inventory and declarative Galaxy/Anchor field paths are
+// The source field inventory and declarative Galaxy/Lucus field paths are
 // shared with LAS/MCP from import-source-models.mjs; no extra SQL relations.
 // No source-platform role or @@allow grants a LOC capability.
 type WordPressPost {
@@ -300,10 +299,6 @@ enum LocLucusType {
     point
     path
     trace
-    image
-    video
-    rune
-    suno
     pattern
     item
     group
@@ -315,9 +310,9 @@ enum LocLucusType {
     universe
 }
 
-// Semantic ZModel payloads for Anchor.attr. These are nonphysical value types:
+// Semantic ZModel payloads for Lucus.attr. These are nonphysical value types:
 // they do not create tables and are validated through @zenstackhq/zod against
-// the existing Anchor row. Anniversary remains a derived suggestion.
+// the existing Lucus row. Anniversary remains a derived suggestion.
 type DateLucus {
     date String
 }
@@ -342,22 +337,6 @@ type TraceLucus {
     point String[]?
     path String[]?
 }
-type ImageLucus {
-    url String?
-    date String?
-}
-type VideoLucus {
-    url String?
-    date String?
-}
-type RuneLucus {
-    url String?
-    date String?
-}
-type SunoLucus {
-    url String?
-    date String?
-}
 type ItemLucus {
     keyword String[]?
     uid String[]?
@@ -381,22 +360,22 @@ type FromLucus {
     // The existing physical From.attr.uid is []; From is terminal, never
     // another parent. The shared UID graph and typed validator enforce this.
     uid String[]?
-    // Per-Scope cached article totals, independent of physical Anchor.num.
+    // Per-Scope cached article totals, independent of physical Lucus.num.
     counts Json?
 }
 type DomainLucus {
     uid String[]?
-    // Per-Scope cached article totals, independent of physical Anchor.num.
+    // Per-Scope cached article totals, independent of physical Lucus.num.
     counts Json?
 }
 type GalaxyLucus {
     uid String[]?
-    // Per-Scope cached article totals, independent of physical Anchor.num.
+    // Per-Scope cached article totals, independent of physical Lucus.num.
     counts Json?
 }
 type UniverseLucus {
     uid String[]?
-    // Per-Scope cached article totals, independent of physical Anchor.num.
+    // Per-Scope cached article totals, independent of physical Lucus.num.
     counts Json?
 }
 type AnniversarySuggestion {
@@ -422,16 +401,10 @@ type LLucus {
     path PathLucus?
     trace TraceLucus?
 }
-type MLucus {
-    images ImageLucus?
-    video VideoLucus?
-    suno SunoLucus?
-    runes RuneLucus?
-}
 // Keyword hierarchy: category > class > group > item > pattern.
-// Class is the subject; Group groups Items; Item links Pattern Anchor UIDs.
-// Pattern is a vocabulary-only Anchor; title stores its literal and physical
-// Anchor.num stores the analyzed occurrence count. No article UID postings.
+// Class is the subject; Group groups Items; Item links Pattern Lucus UIDs.
+// Pattern is a vocabulary-only Lucus; title stores its literal and physical
+// Lucus.num stores the analyzed occurrence count. No article UID postings.
 type KLucus {
     pattern Json?
     item ItemLucus?
@@ -440,7 +413,7 @@ type KLucus {
     category CategoryLucus?
 }
 // Site hierarchy: universe (all) > galaxy (group) > domain (collection) > from (one site).
-// Hierarchy links in attr.uid always refer to Anchor UIDs, not Galaxy article UIDs.
+// Hierarchy links in attr.uid always refer to Lucus UIDs, not Galaxy article UIDs.
 type SLucus {
     // Hierarchy: Universe -> Galaxy -> Domain -> From (one Galaxy.site).
     // Each subtype still occupies one existing silver.loc_lucus row.
@@ -451,7 +424,7 @@ type SLucus {
 }
 
 // The 66-card rune catalogue is a separate semantic projection. Its physical
-// source remains the existing silver.runes model; it is not an Anchor subtype.
+// source remains the existing silver.runes model; it is not an Lucus subtype.
 type LRunes66 {
     rune_id Int
     rune_name String?
@@ -480,15 +453,15 @@ type LRunes66 {
     class_enable Boolean?
 }
 
-// Galaxy Model-of-Models: Attr/UidRelation/UidAnchor are reusable value types;
+// Galaxy Model-of-Models: Attr/UidRelation/UidLucus are reusable value types;
 // GalaxyList/UidRead compose them for on-demand projections of the SAME row.
 // These are neither separate SQL relations nor additional full-content indexes.
 // Small composable Galaxy value types over one physical <scope>_galaxy row.
 // This is a semantic projection, NOT SQL JOINs or separate tables.
 // SQL-nullable array columns stay on the portable Kysely transport.
 // Eight independent physical Galaxy feature switches: true=enabled, false=excluded.
-// These are NOT Anchor.invisible (true=hidden) or LOC Auth authorization grants.
-type GalaxyAttr {
+// These are NOT Lucus.invisible (true=hidden) or LOC Auth authorization grants.
+type GalaxyReadLucus {
     statics Boolean?
     culture Boolean?
     search Boolean?
@@ -504,14 +477,14 @@ type GalaxyUidRelation {
     target_id String[]?
     ref_id String?
 }
-// Place/time/site are already indexed in these physical Galaxy fields. Media URL values are not Anchor references.
+// Place/time/site are already indexed in these physical Galaxy fields. Media URL values are not Lucus references.
 type GalaxyUidLucus {
     place_id String?
     location String?
     date DateTime?
     site String?
 }
-// GalaxyList reads uid/title/createtime/date/site plus nested GalaxyAttr.
+// GalaxyList reads uid/title/createtime/date/site plus nested GalaxyReadLucus.
 // Level 2: the light article list reuses the small feature-flags brick.
 type GalaxyList {
     uid String
@@ -519,7 +492,7 @@ type GalaxyList {
     createtime DateTime?
     date DateTime?
     site String?
-    attr GalaxyAttr?
+    attr GalaxyReadLucus?
 }
 // GalaxyUidRead adds content/url and the relation + lucus context only on demand.
 // Level 3: article details compose relationship + lucus context on demand.
@@ -613,7 +586,7 @@ model Lo3rwang {
     @@allow('read', true)
 }
 
-// LOC-wide Source Anchors. Only loc_lucus.attr.uid stores Source Anchor child
+// LOC-wide Source Lucus. Only loc_lucus.attr.uid stores Source Lucus child
 // UIDs (Universe > Galaxy > Domain > From); never derive these relationships
 // from Galaxy.site_id, which is the original platform's post/media identifier.
 // attr.counts stores per-Scope cached article counts.
@@ -676,7 +649,7 @@ model Lo3rwangGalaxy {
     // site: literal source/platform name, not the native post identifier.
     site                         String?     @db.Text
     place_id                     String?     @db.Char(8)
-    // media_link: real media URL strings (not Anchor UIDs or media IDs).
+    // media_link: real media URL strings (not Lucus UIDs or media IDs).
     // url above is the article permalink; media_link may hold multiple URLs.
     media_link                   String[]    @db.VarChar
     date                         DateTime?   @db.Date
@@ -808,7 +781,7 @@ model LrunesGalaxy {
     // site: literal source/platform name, not the native post identifier.
     site                         String?     @db.Text
     place_id                     String?     @db.Char(8)
-    // media_link: real media URL strings (not Anchor UIDs or media IDs).
+    // media_link: real media URL strings (not Lucus UIDs or media IDs).
     // url above is the article permalink; media_link may hold multiple URLs.
     media_link                   String[]    @db.VarChar
     date                         DateTime?   @db.Date

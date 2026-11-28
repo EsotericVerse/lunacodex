@@ -1,4 +1,4 @@
-// Captioned images and videos become Galaxy content, not media Anchors.
+// Captioned images and videos become Galaxy content, not media Lucus.
 // Structural parents represent actual platform media posts but are not user prose.
 import {JSONPath} from 'jsonpath-plus';
 import {archiveGalaxyRow,platformLabel} from './galaxy-row.mjs';

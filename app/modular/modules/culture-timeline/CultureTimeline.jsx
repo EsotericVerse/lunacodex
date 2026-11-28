@@ -60,7 +60,7 @@ function timelineRows(items,labelOf,focus,labels={}){
     if(!end&&openEnd&&domainEnd>Date.parse(start))end=new Date(domainEnd).toISOString().slice(0,10);
     const candidateValues=[
       item?.era_id,item?.period_id,item?.version,item?.id,item?.period,item?.name,item?.title,
-      item?.anchor_id,item?.anchor_role,item?.anchor_type
+      item?.lucus_id,item?.lucus_role,item?.lucus_type
     ].filter(Boolean).map(String);
     const focused=focusTerms.some(term=>candidateValues.includes(term));
     const group=item?.group_key||item?.group_label||item?.scope_id||'';
@@ -86,10 +86,10 @@ function timelineRows(items,labelOf,focus,labels={}){
       id:String(item?.id||item?.entry_id||item?.era_id||item?.period_id||item?.version||index),
       content:labelOf(item,index),
       title:[
-        item?.title,item?.description,item?.milestone,item?.anchor_role,item?.anchor_type,
+        item?.title,item?.description,item?.milestone,item?.lucus_role,item?.lucus_type,
         openStart?labels.openStart:'',openEnd?labels.openEnd:'',
         
-        item?.is_primary_anchor?labels.primaryAnchor:'',item?.is_rc_zone?labels.rcZone:''
+        item?.is_primary_lucus?labels.primaryLucus:'',item?.is_rc_zone?labels.rcZone:''
       ].filter(Boolean).join(' · '),
       start,
       recordId:String(item?.uid||item?.recordId||''),
@@ -164,7 +164,7 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
             action.className='scope-river-group-action'+(extra.selectable?' scope-river-group-action--expandable':'');
             const button=document.createElement('button');
             button.type='button';button.className='scope-river-group-button';
-            // SiteAnchor depth is visible even if a parent has one child.
+            // SiteLucus depth is visible even if a parent has one child.
             // Indentation is local to the Source river's extraGroups only.
             if(depth>0)button.style.paddingInlineStart=depth*1.1+'rem';
             button.textContent=(extra.expanded?'−  ':'＋  ')+label;
@@ -205,7 +205,7 @@ function makeTimelineGroups(rows,extraGroups,hasTimeKinds,editable,labels,onGrou
  * Date hierarchy. If the vis canvas has no measurable labels or items,
  * recover with an independently rendered time-axis instead of a blank panel.
  */
-function TimeAnchorRecovery({rows,groups,windowStart,windowEnd,onToggle,onSelect}){
+function TimeLucusRecovery({rows,groups,windowStart,windowEnd,onToggle,onSelect}){
   const ordered=[...groups].sort((a,b)=>(Number(a.order)||0)-(Number(b.order)||0));
   const grouped=new Map();
   for(const item of rows){
@@ -290,7 +290,7 @@ export default function CultureTimeline({
   // with a viewport cap; group count must never determine its container size.
   naturalSourceHeight=false,
   // Combined Culture layers may contain overlapping Era/Period intervals and
-  // same-day anchors. Stacking is opt-in so other source timelines stay dense.
+  // same-day lucus. Stacking is opt-in so other source timelines stay dense.
   stackItems=false,
   // The management-only Era browser has a bounded viewport. The whole
   // historical graph remains in memory, but only the chosen branch opens.
@@ -299,9 +299,9 @@ export default function CultureTimeline({
   readOnlyViewport=false,
   onGroupToggle=null,
   onGroupSelect=null,
-  anchorInsight=null,
-  anchorLabels=null,
-  onAnchorClose=null,
+  lucusInsight=null,
+  lucusLabels=null,
+  onLucusClose=null,
   // Management editor must never leave a covering animation layer over vis.
   unfoldCurtain=true,
   onFirstPaint=null
@@ -781,12 +781,12 @@ export default function CultureTimeline({
   // One noninteractive time marker extends across every visible group.
   useEffect(()=>{
     const timeline=timelineRef.current;
-    if(!ready||!timeline||!anchorInsight?.date)return;
+    if(!ready||!timeline||!lucusInsight?.date)return;
     const markerId='culture-candidate-focus';
-    try{timeline.addCustomTime(new Date(anchorInsight.date+'T12:00:00'),markerId);}
+    try{timeline.addCustomTime(new Date(lucusInsight.date+'T12:00:00'),markerId);}
     catch{return;}
     return()=>{try{timeline.removeCustomTime(markerId);}catch{/* Already destroyed. */}};
-  },[ready,anchorInsight?.date]);
+  },[ready,lucusInsight?.date]);
 
   // Explicit alternatives to gestures, available on touch, mouse, and keyboard.
   function changeWindow(action){
@@ -869,7 +869,7 @@ export default function CultureTimeline({
           aria-hidden='true' initial={{scaleX:1}} animate={{scaleX:0}}
           transition={{duration:.55,ease:[.22,.8,.2,1]}}/>:null}
       </div>
-      {showTraceRecovery?<TimeAnchorRecovery rows={rows} groups={extraGroups}
+      {showTraceRecovery?<TimeLucusRecovery rows={rows} groups={extraGroups}
         windowStart={recoveryWindow?.start||windowStart}
         windowEnd={recoveryWindow?.end||windowEnd}
         onToggle={groupId=>onGroupToggleRef.current?.(groupId)}
@@ -893,15 +893,15 @@ export default function CultureTimeline({
       </AnimatePresence>,document.body
     ):null}
     <AnimatePresence initial={false}>
-      {anchorInsight?<motion.aside key={anchorInsight.date}
+      {lucusInsight?<motion.aside key={lucusInsight.date}
         className='scope-candidate-insight' role='status' aria-live='polite'
         initial={reduceMotion?false:{opacity:0,y:8}}
         animate={{opacity:1,y:0}} exit={reduceMotion?{opacity:0}:{opacity:0,y:-6}}
         transition={{duration:reduceMotion?0:.23,ease:'easeOut'}}>
-        <button className='scope-candidate-insight-close' type='button' onClick={onAnchorClose} aria-label={anchorLabels?.close||'Close'}>×</button>
-        <strong>{anchorLabels?.date||'Date'}：{anchorInsight.date}</strong>
-        <div>{anchorLabels?.before||'Before'}：{anchorInsight.before.toLocaleString(locale)} · {anchorLabels?.after||'After'}：{anchorInsight.after.toLocaleString(locale)}</div>
-        {anchorInsight.reason?<p>{anchorLabels?.reason||'Reason'}：{anchorInsight.reason}</p>:null}
+        <button className='scope-candidate-insight-close' type='button' onClick={onLucusClose} aria-label={lucusLabels?.close||'Close'}>×</button>
+        <strong>{lucusLabels?.date||'Date'}：{lucusInsight.date}</strong>
+        <div>{lucusLabels?.before||'Before'}：{lucusInsight.before.toLocaleString(locale)} · {lucusLabels?.after||'After'}：{lucusInsight.after.toLocaleString(locale)}</div>
+        {lucusInsight.reason?<p>{lucusLabels?.reason||'Reason'}：{lucusInsight.reason}</p>:null}
       </motion.aside>:null}
     </AnimatePresence>
     {chartError&&mode!=='trace'?<ol className='scope-list'>

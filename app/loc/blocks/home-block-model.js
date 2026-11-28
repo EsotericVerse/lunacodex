@@ -155,9 +155,9 @@ export const FEATURE_HERO_IDS=Object.freeze(Object.keys(FEATURE_HERO_ORDER));
 // Each route owns one Hero row that stores its copy and image together. Keep
 // these page names aligned with LOC_MANAGEMENT_ROUTE_TABLE and the SQL rows.
 export const MANAGEMENT_HERO_SLOTS=Object.freeze([
-  {key:'time',label:'時間定錨',audience:'scope',featureId:'culture',page:'TimeAnchor',englishTitle:'Time Anchor'},
+  {key:'time',label:'時間定錨',audience:'scope',featureId:'culture',page:'TimeLucus',englishTitle:'Time Lucus'},
   {key:'keywords',label:'關鍵詞',audience:'scope',featureId:'statics',page:'Groupkeyword',englishTitle:'Keywords'},
-  {key:'spatial',label:'空間定錨',audience:'scope',featureId:'trace',page:'SpaceAnchor',englishTitle:'Space Anchor'},
+  {key:'spatial',label:'空間定錨',audience:'scope',featureId:'trace',page:'SpaceLucus',englishTitle:'Space Lucus'},
   {key:'advanced',label:'文章管理',audience:'scope',featureId:'search',page:'GroupArticle',englishTitle:'Article Management'},
   {key:'system',label:'系統管理',audience:'loc',page:'group_admin',englishTitle:'Administration'},
   {key:'members',label:'群組管理',audience:'loc',page:'GalaxyManage',englishTitle:'Group Management'},
@@ -185,9 +185,9 @@ const MANAGEMENT_HERO_DEFAULT_IMAGES=Object.freeze({
   articles:'LOC-search.jpg'
 });
 const MANAGEMENT_HERO_COPY=Object.freeze({
-  TimeAnchor:{eyebrow:'Time Anchor',title:'時間定錨'},
+  TimeLucus:{eyebrow:'Time Lucus',title:'時間定錨'},
   ScopeKeyword:{eyebrow:'Keywords',title:'關鍵詞'},
-  SpaceAnchor:{eyebrow:'Space Anchor',title:'空間定錨'},
+  SpaceLucus:{eyebrow:'Space Lucus',title:'空間定錨'},
   ScopeArticle:{eyebrow:'Article Management',title:'文章管理'},
   group_admin:{eyebrow:'Administration',title:'系統管理'},
   GalaxyManage:{eyebrow:'Group Management',title:'群組管理'},
@@ -204,7 +204,7 @@ export function featureHeroDefaultImage(featureId){
   return heroImageUrl(file);
 }
 export function managementHeroImagePage(slot){
-  // The Hero image and its copy are fields on the same LOC Anchor row.
+  // The Hero image and its copy are fields on the same LOC Lucus row.
   return slot?.page||'group_admin';
 }
 export function managementHeroDefaultImage(slot){
@@ -230,7 +230,7 @@ export function defaultHeroCopyForPage(pageName='index'){
 const normalizeHeroToken=value=>String(value||'').toLowerCase().replace(/[\s_-]+/g,'');
 const internalHeroTokens=new Set([
   ...Object.keys(MANAGEMENT_HERO_COPY),
-  'TimeAnchor','ScopeKeyword','SpaceAnchor','ScopeArticle','GalaxyManage',
+  'TimeLucus','ScopeKeyword','SpaceLucus','ScopeArticle','GalaxyManage',
   'Groupkeyword','GroupArticle',
   ...[...Object.values(FEATURE_HERO_DEFAULT_IMAGES),
     ...Object.values(MANAGEMENT_HERO_DEFAULT_IMAGES)].flatMap(file=>[

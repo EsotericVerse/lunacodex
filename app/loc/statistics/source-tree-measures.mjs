@@ -59,7 +59,7 @@ export function sourceStatisticsTree(rows=[],taxonomy={}){
 // Intersection navigation starts at each Universe heading, then exposes only
 // Galaxy and Domain. From nodes stay inside metricIdsForSite rollups, never
 // appear as selectable or displayed rows in this two-level chooser.
-// Follow persisted Anchor parent UIDs, never guess a path from source names.
+// Follow persisted Lucus parent UIDs, never guess a path from source names.
 export function sourceIntersectionOutline(metrics=[]){
   const nodes=(Array.isArray(metrics)?metrics:[])
     .filter(node=>node?.kind==='source_tree');
@@ -80,7 +80,7 @@ export function sourceIntersectionOutline(metrics=[]){
       domains:[]
     }));
   // An absent Universe or Galaxy is NOT a reason to drop its child. Keep
-  // separate unmatched-level sections, without manufacturing an Anchor UID.
+  // separate unmatched-level sections, without manufacturing an Lucus UID.
   const orphanGalaxies=nodes.filter(node=>node.type==='galaxy'&&
     node.path?.length===1).map(withDomains);
   const orphanDomains=nodes.filter(node=>node.type==='domain'&&

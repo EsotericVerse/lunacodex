@@ -1,7 +1,7 @@
 'use server';
 
 import {withPublicLocRead} from '../read-context.mjs';
-import {accessibleKeywordAnchors} from '../../keywords/lucus-search.mjs';
+import {accessibleKeywordLucus} from '../../keywords/lucus-search.mjs';
 import {mapBounded} from '../../query/bounded-parallel.mjs';
 import {portableRelation} from '../../providers/sql-engine-ports.mjs';
 import {PUBLIC_GALAXY_PRIVATE_SITES} from '../../model/galaxy-feature-queries.mjs';
@@ -21,7 +21,7 @@ const chunks=(values,size)=>{
 
 async function readScopePatterns(db,port,scopeId){
   const namespace=port.namespace||(port.engine==='postgres'?'silver':'dbo');
-  const visibility=await accessibleKeywordAnchors(db,scopeId,false,{engine:port.engine,namespace});
+  const visibility=await accessibleKeywordLucus(db,scopeId,false,{engine:port.engine,namespace});
   if(!visibility.published||!visibility.patterns.size)return {patterns:[],featuredArticles:[]};
   const lucus=portableRelation(scopeTableName(scopeId,'lucus'),port.engine,namespace),patterns=[];
   for(const ids of chunks([...visibility.patterns],512)){

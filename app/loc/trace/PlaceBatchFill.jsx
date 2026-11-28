@@ -26,7 +26,7 @@ function sampleRows(preview){
     seen.add(row.uid);return true;
   }).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
 }
-export default function PlaceBatchFill({scopeId,anchors=[]}){
+export default function PlaceBatchFill({scopeId,lucus=[]}){
   const cache=useResourceCache();
   const [startDate,setStartDate]=useState('');
   const [endDate,setEndDate]=useState('');
@@ -38,12 +38,12 @@ export default function PlaceBatchFill({scopeId,anchors=[]}){
   const revision=useRef(0);
   const scope=useMemo(()=>defaultScopeData(scopeId),[scopeId]);
   // Old schema.lucus(..., {op:'suggestions'}) is not implemented by the
-  // current Kysely client. Reuse the authorized PointAnchor list supplied by
+  // current Kysely client. Reuse the authorized PointLucus list supplied by
   // the combined management page instead of calling that removed endpoint.
   const periods=useAsyncResource(['place-batch-time',scopeId],
     ()=>selectCultureTimeRows(scope),{enabled:Boolean(scope?.lucus),revalidateOnFocus:false,revalidateOnReconnect:false});
   const choices=(periods.data||[]).filter(row=>['period','event'].includes(row.entry_type)&&validDate(String(row.start_date||'')));
-  const locations=[...new Set((anchors||[])
+  const locations=[...new Set((lucus||[])
     .filter(row=>row.source_scope===scopeId)
     .flatMap(row=>[
       String(row.title||'').trim(),

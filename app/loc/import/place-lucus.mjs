@@ -22,12 +22,12 @@ const spatialKey=(name,coordinates)=>coordinates?'coordinate:'+coordinates:'name
 export const importPlaceNameKey=nameKey;
 
 // One reusable in-memory index for a trusted, Scope-filtered Point result set.
-// This is a semantic lookup, not a new database PK or a second Anchor table.
+// This is a semantic lookup, not a new database PK or a second Lucus table.
 export function createImportPlaceIndex(){
   const existingByCoordinate=new Map(),existingByName=new Map();
   const knownPointUids=new Set(),candidatePlaces=[];
   const accept=lucus=>{
-    if(lucus?.type!=='point')throw Error('Point Anchor 索引型別不符');
+    if(lucus?.type!=='point')throw Error('Point Lucus 索引型別不符');
     const name=nameKey(lucus?.title),uid=String(lucus?.uid||'');
     if(!VALID_UID.test(uid))return;
     const coordinates=importGeoKey(lucus?.attr);
@@ -81,31 +81,31 @@ function incomingLocations(records){
   }
   return {names,missing};
 }
-export async function prepareImportPlaceAnchors(records,{
-  scopeId,relation,pageSize=MAX_ROWS,allowMissing=false,createMissing=true,scanExistingOnEmpty=false,onProgress,anchorSnapshot=null
+export async function prepareImportPlaceLucus(records,{
+  scopeId,relation,pageSize=MAX_ROWS,allowMissing=false,createMissing=true,scanExistingOnEmpty=false,onProgress,lucusSnapshot=null
 }={}){
   const {names,missing}=incomingLocations(records);
   const byCoordinate=new Map(),byName=new Map();
   const unavailable=()=>{
     // Even when every imported article already has place_id, return the
     // shared UID index so verified links can be retained without a name scan.
-    const indexed=anchorSnapshot?.scopeId===scopeId?anchorSnapshot.place:null;
+    const indexed=lucusSnapshot?.scopeId===scopeId?lucusSnapshot.place:null;
     return {byCoordinate,byName,created:0,reused:0,conflicts:[],nameCandidates:[],
       skipped:missing+names.size,unmatchedCoordinates:names.size,
-      ...(indexed?{knownPointUids:indexed.knownPointUids,table:anchorSnapshot.table}:{})};
+      ...(indexed?{knownPointUids:indexed.knownPointUids,table:lucusSnapshot.table}:{})};
   };
   if((!names.size&&!scanExistingOnEmpty)||scopeId==='local'||scopeId==='loc'||!scopeId)
     return unavailable();
   if(!/^[a-z][a-z0-9]{0,14}$/.test(scopeId))throw Error('空間定錨 Scope 無效');
   if(typeof relation!=='function')throw Error('空間定錨資料庫不存在');
   const table='silver.'+scopeTableName(scopeId,'lucus');
-  if(anchorSnapshot&&
-      (anchorSnapshot.scopeId!==scopeId||anchorSnapshot.table!==table||
-       typeof anchorSnapshot.place?.accept!=='function'))
+  if(lucusSnapshot&&
+      (lucusSnapshot.scopeId!==scopeId||lucusSnapshot.table!==table||
+       typeof lucusSnapshot.place?.accept!=='function'))
     throw Error('空間定錨共用索引 Scope 不符');
-  if(!anchorSnapshot)
+  if(!lucusSnapshot)
     throw Error('空間定錨讀取必須先取得匯入專用授權快照');
-  const index=anchorSnapshot.place;
+  const index=lucusSnapshot.place;
   const {existingByCoordinate,existingByName,knownPointUids}=index;
   // One compiled multi-name scan for ambiguous name-only imports. A name
   // overlap is reported after import, NOT used to repoint a saved UID or to

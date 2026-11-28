@@ -52,7 +52,7 @@
     },
     "search": {
       "title": "搜尋",
-      "subtitle": "輸入關鍵字，從文字、作品、多媒體與符文中找到相關內容。",
+      "subtitle": "輸入關鍵字，從文章與作品找到相關內容。",
       "description": "搜尋結果會保留原本的來源與關係，方便回到完整內容或延伸查看前後脈絡。"
     },
     "admin": {
@@ -78,7 +78,7 @@
       "statics": "用圖表查看作品數量、來源比例與時間變化。",
       "culture": "把作品放回時間順序，觀察不同時期的累積與變化。",
       "trace": "查看與整理各 Scope 的資料脈絡。",
-      "search": "從關鍵字找到月典中的文字、作品、多媒體與相關內容。"
+      "search": "從關鍵字找到月典中的文章、作品與相關內容。"
     },
     "author": {
       "label": "作者簡介",
@@ -351,12 +351,12 @@
       "keywordClass": "關鍵詞組",
       "expandToCompareWorkVolumeChanges": "需要時再展開比對作品量變化（候選日期，非正式定錨點）",
       "reloadWorks": "重新讀取作品",
-      "invalidAnchorDate": "定錨點日期無效。",
-      "moveAnchorFailed": "定錨點日期調整失敗。",
+      "invalidLucusDate": "定錨點日期無效。",
+      "moveLucusFailed": "定錨點日期調整失敗。",
       "deleteFailed": "刪除失敗。",
       "personalTimelineSuffix": " · 個人時間長河",
       "intersectionEnd": "。",
-      "candidateAnchor": "建議定錨",
+      "candidateLucus": "建議定錨",
       "candidateTitle": "建議定錨 {date}｜時代位置 {position}%｜前 3 日 {before} 項 ({beforeRatio}%)／後 3 日 {after} 項 ({afterRatio}%)｜{analysis}",
       "sourceUnresolved": "資料來源未解析",
       "workNotFound": "找不到這筆作品。",

@@ -1,4 +1,4 @@
-// Generic JSON file decoding only. CMS field mapping and Galaxy/Anchor writes
+// Generic JSON file decoding only. CMS field mapping and Galaxy/Lucus writes
 // remain in their existing modules; this worker owns no database or auth APIs.
 // The parent terminates this worker after success, error, or cancellation.
 import {parseUniversalImportFile} from './universal-file.mjs';

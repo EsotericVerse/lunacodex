@@ -1,4 +1,4 @@
-import {TIME_ANCHOR_MAX_PAGE_ROWS,planJsonRecordsetBatches} from '../query/query-batch-size.mjs';
+import {TIME_LUCUS_MAX_PAGE_ROWS,planJsonRecordsetBatches} from '../query/query-batch-size.mjs';
 import {readAdaptiveSqlPages} from '../query/adaptive-sql-read.mjs';
 // CURRENT management pipeline: verified LOC Web grant -> pure ZModel/row
 // preflight -> Kysely transaction -> Scope authorization and atomic SQL.
@@ -24,7 +24,8 @@ import {buildKyselyUpsertQuery,planKyselyUpsertBatches}
   from './kysely-runtime.mjs';
 import {saveTracePageInTransaction} from './kysely-trace-page.mjs';
 import {allocateLucusUid} from '../model/uid.js';
-import {LUCUS_TYPE_GROUPS,PERSISTED_LUCUS_TYPES,mediaLucusProjection,lucusUidListCount}
+import {publicMediaUrl as publicMediaLink} from '../media/media-galaxy.mjs';
+import {PERSISTED_LUCUS_TYPES,lucusUidListCount}
   from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import * as z from 'zod';
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
@@ -53,7 +54,7 @@ function tableName(value){
   if(!match)reject('Invalid managed relation');
   return match[1];
 }
-// Galaxy.media_link is the stored external URL list, never an Anchor UID list.
+// Galaxy.media_link is the stored external URL list, never an Lucus UID list.
 // Validate even privileged raw managed writes, not only import/UI callers.
 function validateGalaxyMediaLinks(table,operation,rows,values){
   if(!isScopeTableKind(table,'galaxy'))return;
@@ -250,27 +251,27 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
   // do not traverse those same row keys again in the generic SQL guard.
   const galaxyValidated=assertZModelGalaxyManagedValues(
     namespace+'.'+table,operation,modelValues);
-  const anchorBlockValidated=!galaxyValidated&&assertZModelLucusBlockManagedValues(
+  const lucusBlockValidated=!galaxyValidated&&assertZModelLucusBlockManagedValues(
     namespace+'.'+table,operation,modelValues);
   verifyModeledSqlFields({
     schema:namespace,table,
-    values:galaxyValidated||anchorBlockValidated?null:modelValues,filters
+    values:galaxyValidated||lucusBlockValidated?null:modelValues,filters
   });
-  // Physical Anchor.num follows the typed UID list, not a caller-supplied
+  // Physical Lucus.num follows the typed UID list, not a caller-supplied
   // Keyword count or LOC Block order. Derive it inside the same transaction.
   const isLucus=Boolean(modelNameForSql('silver',table)?.endsWith('Lucus'));
   if(isLucus&&['insert','upsert'].includes(operation)){
     for(const row of rows){
       if(row.attr!==undefined){
-        if(!row.type)reject('Anchor type required for UID count');
+        if(!row.type)reject('Lucus type required for UID count');
         row.num=lucusUidListCount(row.type,row.attr);
-      }else if(Object.hasOwn(row,'num'))reject('Anchor.num requires attr');
+      }else if(Object.hasOwn(row,'num'))reject('Lucus.num requires attr');
     }
   }
   // Fail fast without occupying a SQL connection for invalid identifiers.
   if(isLucus&&operation==='update'&&Object.hasOwn(values,'num')&&
     !Object.hasOwn(values,'attr')&&!Object.hasOwn(values,'type'))
-    reject('Anchor.num cannot be changed independently');
+    reject('Lucus.num cannot be changed independently');
   if(operation==='update'){
     const keys=managedPrimaryKeyColumns(table,modelName);
     if(keys.some(key=>Object.hasOwn(values,key)))
@@ -279,10 +280,10 @@ export function prepareManagedKyselyWrite(body,{modelName=''}={}){
   if(operation==='append_media_link'&&(
     !isScopeTableKind(table,'galaxy')||
     !values||typeof values!=='object'||Array.isArray(values)||
-    Object.keys(values).sort().join(',')!=='article_uid,media_uid'||
-    !UID.test(values.article_uid)||!UID.test(values.media_uid)||
+    Object.keys(values).sort().join(',')!=='article_uid,url'||
+    !UID.test(values.article_uid)||!publicMediaLink(values.url)||
     payload.p_filters!==undefined&&payload.p_filters?.length))
-    reject('Invalid LOC MediaAnchor link operation');
+    reject('Invalid LOC media URL link operation');
   if(['insert','upsert'].includes(operation))payload.p_rows=rows;
   if(operation==='update')payload.p_values=values;
   const relation=table==='manage'?'api.manage':'silver.'+table;
@@ -314,24 +315,16 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
     reject('Invalid fixed LOC model for management write',403);
   await authorizeRelation(trx,table,operation,values,filters,rows);
   if(operation==='append_media_link'){
-    // A purpose-only Galaxy/MediaAnchor link, not arbitrary SQL mutation.
-    // The Anchor INSERT and this row-locked append belong to the same
-    // existing Kysely transaction and cannot overwrite concurrent links.
-    const scope=table.slice(0,-7),galaxy='silver.'+table;
-    const linked=await trx.selectFrom(managedScopeRelation(scope,'lucus'))
-      .select(['uid','attr']).where('uid','=',values.media_uid)
-      .where('type','in',LUCUS_TYPE_GROUPS.media).executeTakeFirst();
-    if(!linked)reject('MediaAnchor was not inserted in this Scope',409);
-    const url=String(linked.attr?.url||'').trim();
-    if(!/^https?:\/\//i.test(url))
-      reject('Only public MediaAnchor URLs may be linked to Galaxy.media_link',400);
+    // Row-locked URL append; no Lucus lookup or media-specific ZModel.
+    const galaxy='silver.'+table;
+    const url=publicMediaLink(values.url);
+    if(!url)reject('Only public media URLs may be linked to Galaxy.media_link',400);
     const article=await trx.selectFrom(galaxy).select(['url','media_link'])
       .where('uid','=',values.article_uid).forUpdate().executeTakeFirst();
     if(!article)reject('Linked Galaxy article does not exist',409);
     const prior=Array.isArray(article.media_link)?article.media_link:[];
     if(prior.includes(url)||url===String(article.url||'').trim())return {data:{count:0}};
-    // The article is row-locked within the same transaction that inserts the
-    // MediaAnchor. Galaxy.media_link is a URL[]; Anchor UIDs never enter it.
+    // The article is row-locked within the same publishing transaction.
     const next=[...prior,url];
     const updated=await trx.updateTable(galaxy)
       .set({media_link:next}).where('uid','=',values.article_uid)
@@ -348,7 +341,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
       const nextTypes=targets.map(row=>values.type||row.type);
       if(Object.hasOwn(values,'title')&&targets.some(row=>row.type==='pattern')&&
          !targets.every(row=>row.type==='pattern'))
-        reject('Anchor title update cannot mix Patterns and other types');
+        reject('Lucus title update cannot mix Patterns and other types');
       if(nextTypes.length&&nextTypes.every(type=>type==='pattern')){
         // Pattern.num stores literal occurrences. Keep it for metadata edits,
         // but clear it when the Pattern title or discriminator changes.
@@ -360,7 +353,7 @@ export async function executeManagedKyselyWrite(trx,body,{modelName='',prepared=
           lucusUidListCount(nextTypes[index],
             Object.hasOwn(values,'attr')?values.attr:row.attr));
         if(new Set(sizes).size>1)
-          reject('Anchor update spans different UID-list sizes');
+          reject('Lucus update spans different UID-list sizes');
         if(sizes.length)values.num=sizes[0];
       }
     }
@@ -508,7 +501,7 @@ const ACTIONS=new Set(['update_group_member_name',
   'refresh_scope_search_summary','merge_scope_trace_place_names','import_shared_keyword_class',
   'provision_scope','manage_scope_registry','delete_scope',
   'save_scope_trace_edit']);
-// Source existence is a bounded per-Scope Galaxy projection, not a SiteAnchor
+// Source existence is a bounded per-Scope Galaxy projection, not a SiteLucus
 // title lookup. It never resolves or mutates Source hierarchy UIDs.
 // A Search-only, read-only action behind the verified LOC Web Session.
 // No browser SELECT may bypass the feature-owned Galaxy search/list actions.
@@ -715,10 +708,10 @@ export async function readImportOccupiedTimes(trx,args={}){
 
 export async function readImportLucusPage(trx,args={},port={}){
   const parsed=lucusImportPageArgsSchema.safeParse(args);
-  if(!parsed.success)reject('Invalid Zod Anchor import page request');
+  if(!parsed.success)reject('Invalid Zod Lucus import page request');
   const {p_scope_id:scope,p_types:types,p_after_uid:after,p_limit:limit}=parsed.data;
   if(scope==='local'||!await canLocAccess(trx,'scope',scope))
-    reject('Anchor import Scope access denied',403);
+    reject('Lucus import Scope access denied',403);
   const table=port.engine?portableRelation(scopeTableName(scope,'lucus'),port.engine,port.namespace):managedScopeRelation(scope,'lucus');
   let query=trx.selectFrom(table)
     .select(LUCUS_IMPORT_PAGE_COLUMNS).where('type','in',types)
@@ -726,37 +719,32 @@ export async function readImportLucusPage(trx,args={},port={}){
   if(after)query=query.where('uid','>',after);
   const rows=await query.execute();
   if(rows.some(row=>!types.includes(String(row.type))))
-    reject('Anchor import query returned an unexpected ZModel type');
+    reject('Lucus import query returned an unexpected ZModel type');
   assertZModelSelectRows((port.namespace||'silver')+'.'+table.split('.').at(-1),LUCUS_IMPORT_PAGE_COLUMNS,rows);
   return {data:rows,count:rows.length};
 }
 
 export async function readImportMediaCandidates(trx,args={},port={}){
   const parsed=mediaImportCandidateArgsSchema.safeParse(args);
-  if(!parsed.success)reject('Invalid Zod MediaAnchor candidate request');
+  if(!parsed.success)reject('Invalid media Galaxy candidate request');
   const {p_scope_id:scope,p_uids:uids,p_urls:urls,
     p_after_uid:after,p_limit:limit}=parsed.data;
   if(scope==='local'||!await canLocAccess(trx,'scope',scope))
-    reject('MediaAnchor import access denied',403);
+    reject('Media import access denied',403);
   if(!uids.length&&!urls.length)return {data:[],count:0};
   const conditions=[];
   if(uids.length)conditions.push(eb=>eb('uid','in',uids));
-  if(urls.length)conditions.push(eb=>sql`(attr->>'url') in
-    (${sql.join(urls.map(url=>sql`${url}`))})`);
-  const table=port.engine?portableRelation(scopeTableName(scope,'lucus'),port.engine,port.namespace):managedScopeRelation(scope,'lucus');
+  if(urls.length)conditions.push(eb=>eb('url','in',urls));
+  const table=port.engine?portableRelation(scopeTableName(scope,'galaxy'),port.engine,port.namespace):managedScopeRelation(scope,'galaxy');
   let query=trx.selectFrom(table)
     .select(MEDIA_IMPORT_CANDIDATE_COLUMNS)
-    .where('type','in',LUCUS_TYPE_GROUPS.media)
     .where(eb=>eb.or(conditions.map(condition=>condition(eb))))
     .orderBy('uid','asc').limit(limit);
   if(after)query=query.where('uid','>',after);
   const matches=await query.execute();
-  assertZModelSelectRows((port.namespace||'silver')+'.'+table.split('.').at(-1),MEDIA_IMPORT_CANDIDATE_COLUMNS,matches);
-  if(matches.some(row=>!LUCUS_TYPE_GROUPS.media.includes(row.type)))
-    reject('MediaAnchor lookup returned a non-media type');
-  return {data:matches.map(mediaLucusProjection),count:matches.length};
+  return {data:matches,count:matches.length};
 }
-// Use the same 19 ZModel Anchor discriminator values; no shadow model or table.
+// Use the same 19 ZModel Lucus discriminator values; no shadow model or table.
 const LUCUS_IMPORT_PAGE_COLUMNS=Object.freeze([
   'uid','type','title','description','attr','createtime'
 ]);
@@ -770,7 +758,7 @@ const mediaImportCandidateArgsSchema=z.strictObject({
   p_limit:z.number().int().min(1).max(200).default(200)
 });
 const MEDIA_IMPORT_CANDIDATE_COLUMNS=Object.freeze([
-  'uid','type','title','description','attr','createtime','invisible'
+  'uid','url','site','source_id','title','content','createtime'
 ]);
 const lucusImportPageArgsSchema=z.strictObject({
   p_scope_id:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
@@ -778,7 +766,7 @@ const lucusImportPageArgsSchema=z.strictObject({
     .max(PERSISTED_LUCUS_TYPES.length)
     .refine(values=>new Set(values).size===values.length),
   p_after_uid:z.string().regex(UID).nullable().optional(),
-  p_limit:z.number().int().min(1).max(TIME_ANCHOR_MAX_PAGE_ROWS)
+  p_limit:z.number().int().min(1).max(TIME_LUCUS_MAX_PAGE_ROWS)
 });
 function validScope(value){
   const id=String(value||'').trim().toLowerCase();
@@ -869,7 +857,7 @@ export async function keywordPatternStatistics(trx,args){
     ...itemKeywordStatistics(items,groups,totals)};
 }
 
-// Suggestions come from Pattern Anchor titles linked to authored Items.
+// Suggestions come from Pattern Lucus titles linked to authored Items.
 export async function suggestSearchPatterns(trx,args){
   const requested=args.p_scope_ids;
   const query=String(args.p_query??'').normalize('NFKC').trim().toLocaleLowerCase('zh-Hant');
@@ -1006,7 +994,7 @@ export async function executeManagedKyselyAction(trx,body,claims={}){
   const pageField=loc?'type':'page_name',orderField='block_order';
   await sql`select pg_advisory_xact_lock(hashtext(${scope}),hashtext(${page}))`.execute(trx);
   if(loc){
-    // Swap only attr.order in the exact locked LOC page, never Anchor.num.
+    // Swap only attr.order in the exact locked LOC page, never Lucus.num.
     const nodes=await trx.selectFrom(relation).select(['uid','attr'])
       .where('type','=',page).forUpdate().execute();
     const orderOf=row=>{
@@ -1335,7 +1323,7 @@ async function importSharedKeywordClass(trx,args){
         .returning('uid').executeTakeFirst();
       if(inserted?.uid===uid)return uid;
     }
-    reject('Cannot allocate unique Anchor UID');
+    reject('Cannot allocate unique Lucus UID');
   };
   const readChild=async(uid,type)=>{
     const row=await trx.selectFrom(source)

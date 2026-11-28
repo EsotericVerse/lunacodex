@@ -176,7 +176,7 @@ export default function LocApp({forcedView='home',forcedSection=null,forcedScope
     (forcedView==='culture'&&forcedSection==='timeManage');
   // Management is LOC Web business UI, not LOC Auth account administration.
 // Group: system/group/keywords/articles; Scope: time/keywords/space/articles;
-// Scope: time anchors/keywords/space anchors/articles; actual grants remain server-owned.
+// Scope: time lucus/keywords/space lucus/articles; actual grants remain server-owned.
 // This is the Group's Article Management, not System Admin. A user's
   // admin role grants access but must not change the destination/level.
   const managementLevel=scopeMeta?.aggregateChildren?'group':'scope';

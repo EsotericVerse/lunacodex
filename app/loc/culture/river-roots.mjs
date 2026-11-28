@@ -1,5 +1,5 @@
 // Compact first view of article sources. The sole classification hierarchy is
-// the LOC-wide SiteAnchor tree in silver.loc_lucus; all counts come from
+// the LOC-wide SiteLucus tree in silver.loc_lucus; all counts come from
 // the actual Galaxy.site daily aggregate, including Suno/Spotify/Youtube.
 import {assignedSource} from '../statistics/member-intersection-model.mjs';
 
@@ -38,7 +38,7 @@ export function summarizeCultureRiverRoots(rows=[],taxonomy={}){
 }
 
 // The collapsed source river is a total by Galaxy.site, not a separate
-// MediaAnchor or media_type summary. There is no second source taxonomy.
+// Galaxy 媒體作品 or media_type summary. There is no second source taxonomy.
 export function buildCultureRiverRootTotals({text=[]}={},taxonomy={}){
   const groups=new Map();
   for(const row of text){

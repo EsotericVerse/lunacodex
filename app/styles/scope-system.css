@@ -493,7 +493,7 @@
 /* vis-timeline retains its own layout; a compositor-only curtain creates the
    first-paint river expansion after its real on-mount readiness event. */
 .scope-river-reveal-shell{position:relative;min-width:0;max-width:100%}
-/* Display the already-authorized TimeAnchor hierarchy at the first paint.
+/* Display the already-authorized TimeLucus hierarchy at the first paint.
    Keep vis mounted behind it to measure and finish rendering; never hide it
    via display/visibility/opacity, which prevents vis from measuring itself. */
 .scope-trace-progressive-shell{position:relative;min-width:0;width:100%}

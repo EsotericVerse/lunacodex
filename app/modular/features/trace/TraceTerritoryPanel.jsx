@@ -5,8 +5,8 @@ import {visualKeyColor,TERRITORY_STOPS,territoryLegendColor} from '../../visual-
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {mapBounded} from '../../../loc/query/bounded-parallel.mjs';
-import {readCurrentTraceAnchors,readPublishedTraceSourceScopes} from './trace-data';
-import {territoryYearWindow,territoryRegions,territoryPointReadPlan,territoryWithAnchors} from './trace-territory.mjs';
+import {readCurrentTraceLucus,readPublishedTraceSourceScopes} from './trace-data';
+import {territoryYearWindow,territoryRegions,territoryPointReadPlan,territoryWithLucus} from './trace-territory.mjs';
 import {DEFAULT_YEAR_WINDOW} from '../../../loc/preferences/default-year-window.mjs';
 
 const TraceMap=dynamic(()=>import('./TraceMap'),{ssr:false});
@@ -74,17 +74,17 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
       ...pointGroups.map(group=>group.scope+':'+group.ids.join(','))],
     enabled:totalsQuery.data!==undefined&&pointGroups.length>0,
     queryFn:async()=>(await mapBounded(pointGroups,group=>
-      readCurrentTraceAnchors(group.scope,group.ids))).flat(),
+      readCurrentTraceLucus(group.scope,group.ids))).flat(),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const countries=useMemo(()=>territoryWithAnchors(regions,[
+  const countries=useMemo(()=>territoryWithLucus(regions,[
     ...pointPlan.points,...(pointsQuery.data||[])
   ]),[regions,pointPlan,pointsQuery.data]);
   const cutoff=display==='timeline'?dateFromStep(year,step):period.endDate;
   const active=useMemo(()=>countries.filter(place=>place.firstDay<=cutoff),[countries,cutoff]);
   const activeByKey=useMemo(()=>new Map(active.map(place=>[place.source_scope+':'+place.uid,place])),[active]);
   const mapped=useMemo(()=>active.filter(place=>hasCoordinates(place.point)),[active]);
-  const mapData=useMemo(()=>({anchors:mapped.map(place=>({
+  const mapData=useMemo(()=>({lucus:mapped.map(place=>({
     ...place.point,territory_total:place.total,territory_source:place.sources[0]?.name||''
   })),maps:[]}),[mapped]);
   const chosen=countries.find(place=>place.source_scope+':'+place.uid===selectedKey)||null;
@@ -105,8 +105,8 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
   const totalArticles=regions.reduce((sum,place)=>sum+place.total,0);
   return <div ref={rootRef} className="loc-trace-territory" aria-label="年度文章地點戰略版圖">
     <TraceMap key="territory" publicTrace territoryMode territoryYear={year} onReady={onMapReady}
-      spatialData={mapData} selectedRouteUid="" showAnchorSearch={false}
-      onAnchorSelect={selectPlace}
+      spatialData={mapData} selectedRouteUid="" showLucusSearch={false}
+      onLucusSelect={selectPlace}
       floatingControls={<div className="loc-trace-territory-toolbar">
         <label>年度
           <select className="scope-select" value={year} onChange={event=>{
@@ -178,8 +178,8 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
               <TracePlaceResults
                 key={keyOf(selected)+':'+year+':'+selectedVisitDay}
                 place={selected.point||{uid:selected.uid,title:selected.title,
-                  trace_type:'space_anchor',source_scope:selected.source_scope}}
-                anchors={mapData.anchors} maps={[]}
+                  trace_type:'space_lucus',source_scope:selected.source_scope}}
+                lucus={mapData.lucus} maps={[]}
                 scopeId={selected.source_scope} tab="articles" allPlacedArticles
                 dateRange={{startDate:selectedVisitDay,endDate:selectedVisitDay}}
                 timeMode="none" defaultSort="desc"/>

@@ -439,7 +439,7 @@ export async function handleNativeLocOperation(request,env={},{
         for(const [index,payload] of operations.entries()){
           if(payload.p_operation==='append_media_link'&&(
             selected.engine!=='postgres'||host!==WEB_HOST))
-            throw refusal('MediaAnchor link is LOC Web PostgreSQL-only',403);
+            throw refusal('Galaxy 媒體作品 link is LOC Web PostgreSQL-only',403);
           const fixed=['api.manage','silver.loc'].includes(payload.p_table);
           const action={kind:'managed-write',payload};
           let output;

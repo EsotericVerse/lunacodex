@@ -1,4 +1,4 @@
-// Public, typed SiteAnchor source reader for Culture/Statistics and management.
+// Public, typed SiteLucus source reader for Culture/Statistics and management.
 // The fixed ZModel catalogue is published into the resident JavaScript bundle;
 // feature reads must never open a SQL connection or depend on Cloudflare ASSETS.
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
@@ -12,11 +12,11 @@ export const SITE_LUCUS_READ_MODE='published-js';
 const readPublished=()=>{
   const rows=PUBLISHED_SITE_BOOTSTRAP.site_lucus;
   if(!Array.isArray(rows)||!rows.length)
-    throw new Error('LOC SiteAnchor JS 發布資料缺失；請執行 sync:public 並檢查產生檔。');
+    throw new Error('LOC SiteLucus JS 發布資料缺失；請執行 sync:public 並檢查產生檔。');
   const allowed=new Set(LUCUS_TYPE_GROUPS.source);
   const visible=rows.filter(row=>allowed.has(row?.type)&&row?.invisible!==true);
   if(!visible.length)
-    throw new Error('LOC SiteAnchor JS 發布資料沒有可用的公開節點。');
+    throw new Error('LOC SiteLucus JS 發布資料沒有可用的公開節點。');
   return visible;
 };
 

@@ -1,6 +1,6 @@
 // Shared, deterministic own-Scope intersection model.
 // Galaxy.site is the sole article-source dimension.
-// No independent MediaAnchor statistics dimension.
+// No independent Galaxy 媒體作品 statistics dimension.
 const DAY_RE=/^\d{4}-\d{2}-\d{2}$/;
 
 export const OWN_STAT_DIMENSIONS=Object.freeze([

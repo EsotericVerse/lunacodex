@@ -184,7 +184,7 @@ export function prepareTransientResourceAction(action,{queryKeys=[]}={}){
     return {priority,pressure,released:true};
   }
   // Large period switches always retire only the outgoing period's query
-  // families; separately mounted identity, time anchors and other panels
+  // families; separately mounted identity, time lucus and other panels
   // must remain available. Their hooks also dispose data on key change.
   if(priority>=3){
     for(const prefix of queryKeys)

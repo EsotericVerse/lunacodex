@@ -5,7 +5,7 @@ import {galaxyReadColumns} from '../../../../packages/zenstack/galaxy-read-model
 import {LUCUS_TYPE_GROUPS} from '../../../../packages/zenstack/lucus-hierarchy.mjs';
 import {assertZModelLucusFeatureRows,assertZModelSelectRows}
   from '../../../../packages/zenstack/import-validation.mjs';
-import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS}
+import {MAX_ROWS,TIME_LUCUS_MAX_PAGE_ROWS}
   from '../../query/query-batch-size.mjs';
 import {readDateRangeAggregates}
   from '../../query/date-range-aggregate.mjs';
@@ -65,14 +65,14 @@ export async function queryCultureContent(searchParams){
   const kind=params.get('kind'),scope=id(params.get('scope'));
   const keys=[...params.keys()];
   if(keys.some(key=>!['kind','scope','start','end'].includes(key))||
-    !['culture_anchors','culture_density'].includes(kind))
+    !['culture_lucus','culture_density'].includes(kind))
     throw Error('Invalid Culture query');
   const start=date(params.get('start')),end=date(params.get('end'));
   if(kind==='culture_density'&&(!start||!end||start>end)||
-    kind==='culture_anchors'&&(start||end))
+    kind==='culture_lucus'&&(start||end))
     throw Error('Invalid Culture query range');
   return withPublicLocRead({scope},async(db,port)=>{
-    if(kind==='culture_anchors'){
+    if(kind==='culture_lucus'){
       const table=relation(scope,'lucus',port);
       const rows=await db.selectFrom(table).select(['uid','type','title','attr'])
         .where('type','in',LUCUS_TYPE_GROUPS.time)
@@ -109,13 +109,13 @@ export async function queryCultureContent(searchParams){
   });
 }
 
-export async function queryTimeAnchors({scope:scopeValue,mode='public',
+export async function queryTimeLucus({scope:scopeValue,mode='public',
   cursor='',limit=MAX_ROWS}={}){
   const scope=id(scopeValue);
   if(!['public','editor'].includes(mode)||typeof cursor!=='string'||
     cursor&&!UID.test(cursor)||!Number.isSafeInteger(limit)||limit<1||
-    limit>TIME_ANCHOR_MAX_PAGE_ROWS)
-    throw Error('Invalid TimeAnchor page');
+    limit>TIME_LUCUS_MAX_PAGE_ROWS)
+    throw Error('Invalid TimeLucus page');
   const read=async(db,port)=>{
       let query=db.selectFrom(relation(scope,'lucus',port))
         .select(['uid','type','title','description','attr','invisible'])

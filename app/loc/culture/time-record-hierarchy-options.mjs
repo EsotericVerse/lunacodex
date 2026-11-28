@@ -1,12 +1,12 @@
-// Presentation-only tree over already authorized TimeAnchor rows.
-// Era.attr.period → Period.attr.uid → DateAnchor. Exact UID relations only;
+// Presentation-only tree over already authorized TimeLucus rows.
+// Era.attr.period → Period.attr.uid → DateLucus. Exact UID relations only;
 // never attach a Date to an unrelated Period by overlapping calendar dates.
 // Display old-to-new, based on the earliest saved date in each branch.
 // Missing dates sort last; equal start dates use the saved UID as a stable tie.
 const id=row=>String(row?.uid||'').trim();
 const kind=row=>row?.type==='date'?'lucus':row?.type;
 const links=(row,key)=>{
-  const source=Array.isArray(row?.anchor_ids)?row.anchor_ids:row?.attr?.[key];
+  const source=Array.isArray(row?.lucus_ids)?row.lucus_ids:row?.attr?.[key];
   return Array.isArray(source)?[...new Set(source.map(String).filter(Boolean))]:[];
 };
 const day=value=>{

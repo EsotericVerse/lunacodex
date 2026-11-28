@@ -4,7 +4,7 @@ import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import StatisticsMultiChart from './StatisticsMultiChart';
 
 // All Item/word ratios are composed from existing loc_search_pattern rows.
-// No article rescan and no Anchor count is involved in this view.
+// No article rescan and no Lucus count is involved in this view.
 export default function KeywordPatternSummary({scopeId='',classUid='',range={}}) {
   const [level,setLevel]=useState('item');
   const summary=useAsyncResource({

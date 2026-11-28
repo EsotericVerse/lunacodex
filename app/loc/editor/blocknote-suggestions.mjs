@@ -1,4 +1,4 @@
-// Type-scoped, bounded autocomplete for existing LOC Anchor and published Pattern data.
+// Type-scoped, bounded autocomplete for existing LOC Lucus and published Pattern data.
 // No database reads or writes: callers supply rows already authorized for their Scope.
 import {z} from 'zod';
 
@@ -26,10 +26,10 @@ export function blockNoteSuggestionItems(kind,rows=[],query='',limit=24){
   for(const row of rows){
     const source=typeof row==='string'?{type:'pattern',title:row}:row;
     if(!source||typeof source!=='object')continue;
-    // Legacy time storage uses "anchor"; its *suggestion* is a date.
-    // Spatial legacy rows use "space_anchor"; never rewrite stored values.
+    // Legacy time storage uses "lucus"; its *suggestion* is a date.
+    // Spatial legacy rows use "space_lucus"; never rewrite stored values.
     const rawType=source.type||source.trace_type;
-    const type=rawType==='anchor'?'date':rawType==='space_anchor'?'point':rawType;
+    const type=rawType==='lucus'?'date':rawType==='space_lucus'?'point':rawType;
     if(!allowed.has(type))continue;
     const parsed=CANDIDATE.safeParse({
       type,title:source.title??source.name,

@@ -21,7 +21,7 @@ import {featureNavigationHref} from './routing/feature-navigation';
 import {scopeHref} from './routing/scope-registry';
 // Shared display stays light: mount the editor only on pages that need it.
 const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
-const ArticleTimeAnchorAction=dynamic(()=>import('./ArticleTimeAnchorAction'),{loading:()=>null});
+const ArticleTimeLucusAction=dynamic(()=>import('./ArticleTimeLucusAction'),{loading:()=>null});
 
 export const ManagementHeroContext=createContext('');
 
@@ -207,7 +207,7 @@ function ArticleRelationNavigation({
   const {scopeId:currentScopeId}=useScopeRuntime();
   const scope=articleScopeId||currentScopeId;
   const day=String(articleDate||'').slice(0,10);
-  const [addedAnchor,setAddedAnchor]=useState(null);
+  const [addedLucus,setAddedLucus]=useState(null);
   const timeHref=(item,kind)=>featureNavigationHref(scope,'culture',{
     from:day,to:day,...(kind==='lucus'?{lucus:item.uid}:{period:item.uid})
   });
@@ -274,11 +274,11 @@ function ArticleRelationNavigation({
   const runeMedia=mediaItems.filter((_,index)=>String(relatedMedia[index]?.type||'').toLowerCase()==='rune');
   const time=relatedTime||{},space=relatedSpace||{};
   const dateValid=/^\d{4}-\d{2}-\d{2}$/.test(day);
-  const activeAnchors=Array.isArray(time.anchors)?[...time.anchors]:[];
-  if(addedAnchor?.scope===scope&&addedAnchor?.day===day&&
-    !activeAnchors.some(item=>item.uid===addedAnchor.lucus.uid))activeAnchors.push(addedAnchor.lucus);
-  const timeAnchors=named(activeAnchors,item=>timeHref(item,'lucus'));
-  const anniversarySuggestions=activeAnchors.length?[]:
+  const activeLucus=Array.isArray(time.lucus)?[...time.lucus]:[];
+  if(addedLucus?.scope===scope&&addedLucus?.day===day&&
+    !activeLucus.some(item=>item.uid===addedLucus.lucus.uid))activeLucus.push(addedLucus.lucus);
+  const timeLucus=named(activeLucus,item=>timeHref(item,'lucus'));
+  const anniversarySuggestions=activeLucus.length?[]:
     (Array.isArray(time.anniversarySuggestions)?time.anniversarySuggestions:[]);
   const periods=named(time.periods,item=>timeHref(item,'period'));
   const eras=named(time.eras,item=>timeHref(item,'period'));
@@ -287,7 +287,7 @@ function ArticleRelationNavigation({
   const routes=named(space.routes,item=>traceLink(item,'map'));
   const traces=named(space.traces,item=>traceLink(item,'map'));
   const timeRows=[];
-  if(timeAnchors.length)timeRows.push(row('定錨',timeAnchors));
+  if(timeLucus.length)timeRows.push(row('定錨',timeLucus));
   else if(dateValid)timeRows.push(row('日期',<ScopeLink className="scope-article-context-link"
     href={featureNavigationHref(scope,'culture',{from:day,to:day})}>{day} · 查看時間長河</ScopeLink>));
   if(periods.length)timeRows.push(row('期間',periods));
@@ -295,11 +295,11 @@ function ArticleRelationNavigation({
   if(anniversarySuggestions.length)timeRows.push(row('週年建議',<span className="scope-status">
     {anniversarySuggestions[0].title} · 可新增週年定錨
   </span>));
-  if(dateValid&&scope!=='loc'&&scope!=='local')timeRows.push(row('新增定錨',<ArticleTimeAnchorAction
+  if(dateValid&&scope!=='loc'&&scope!=='local')timeRows.push(row('新增定錨',<ArticleTimeLucusAction
     scopeId={scope} date={day} articleCreateTime={articleCreateTime}
     suggestions={anniversarySuggestions}
     label={anniversarySuggestions.length?'新增週年定錨':'新增時間定錨'}
-    onCreated={lucus=>setAddedAnchor({scope,day,lucus})}/>));
+    onCreated={lucus=>setAddedLucus({scope,day,lucus})}/>));
   const spaceRows=[];
   if(places.length)spaceRows.push(row('地點',places));
   else if(String(locationName||'').trim())spaceRows.push(row('文章地點',String(locationName).trim()));

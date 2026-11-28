@@ -3,20 +3,20 @@ import {spaceCoordinates} from './space-graph.mjs';
 // Address evidence is stronger than geographic proximity; proximity alone never merges.
 const REGIONS=Object.freeze(['基隆市','臺北市','新北市','桃園市','新竹市','新竹縣','苗栗縣','臺中市','彰化縣','南投縣','雲林縣','嘉義市','嘉義縣','臺南市','高雄市','屏東縣','宜蘭縣','花蓮縣','臺東縣','澎湖縣','金門縣','連江縣']);
 const TAIWAN_ALIASES=Object.freeze({'台北市':'臺北市','台中市':'臺中市','台南市':'臺南市','台東縣':'臺東縣'});
-export function normalizeAnchorAddress(value){
+export function normalizeLucusAddress(value){
   return String(value||'').trim().replace(/臺/g,'台').replace(/[，,．.。；;\s　]/g,'').toLowerCase();
 }
-export function anchorAddress(lucus){
+export function lucusAddress(lucus){
   // Prefer the structured field. Legacy approved descriptions still provide
   // evidence until their contents have been individually reviewed.
   if(String(lucus?.postal_address||'').trim())return String(lucus.postal_address).trim();
   const text=typeof lucus?.description==='string'?lucus.description:String(lucus?.description?.text||'');
   return (text.match(/地址[：:]\s*([^。；;\n]+)/)?.[1]||'').trim();
 }
-export function countyOfAnchor(lucus){
+export function countyOfLucus(lucus){
   const title=String(lucus?.title||'');
   const note=typeof lucus?.description==='string'?lucus.description:String(lucus?.description?.text||'');
-  const address=anchorAddress(lucus);
+  const address=lucusAddress(lucus);
   const text=address+' '+title+' '+note;
   const found=text.match(/(基隆市|臺北市|台北市|新北市|桃園市|新竹市|新竹縣|苗栗縣|臺中市|台中市|彰化縣|南投縣|雲林縣|嘉義市|嘉義縣|臺南市|台南市|高雄市|屏東縣|宜蘭縣|花蓮縣|臺東縣|台東縣|澎湖縣|金門縣|連江縣)/);
   if(found)return TAIWAN_ALIASES[found[1]]||found[1];
@@ -32,10 +32,10 @@ export function countyOfAnchor(lucus){
   for(const [pattern,county] of hints){if(pattern.test(title+' '+note))return county;}
   return /(?:國外|海外)/.test(text)?'國外':'待確認縣市';
 }
-export function groupAnchorsByCounty(anchors){
+export function groupLucusByCounty(lucus){
   const groups=new Map();
-  for(const lucus of anchors||[]){
-    const county=countyOfAnchor(lucus);
+  for(const lucus of lucus||[]){
+    const county=countyOfLucus(lucus);
     if(!groups.has(county))groups.set(county,[]);
     groups.get(county).push(lucus);
   }
@@ -52,11 +52,11 @@ function distance(a,b){
 }
 // Shared matching rule for organizer, pre-insert checks and bulk audits.
 // radius_m is a search radius, NOT proof that two businesses are identical.
-function compareAnchorPair(a,b){
+function compareLucusPair(a,b){
   if(a.source_scope!==b.source_scope)return null;
-  const aa=anchorAddress(a),ba=anchorAddress(b);
+  const aa=lucusAddress(a),ba=lucusAddress(b);
   const floorConflict=false;
-  const match=aa&&ba&&normalizeAnchorAddress(aa)===normalizeAnchorAddress(ba);
+  const match=aa&&ba&&normalizeLucusAddress(aa)===normalizeLucusAddress(ba);
   const both=Boolean(aa&&ba);
   const valid=Boolean(spaceCoordinates(a)&&spaceCoordinates(b));
   const meters=valid?distance(a,b):null;
@@ -73,18 +73,18 @@ function compareAnchorPair(a,b){
     // business. An lucus UID is never automatically folded into another.
     safeReuse:false};
 }
-export function findAnchorWriteMatches(lucus,existing=[]){
-  const incoming={...lucus,uid:'__incoming__',trace_type:'space_anchor'};
+export function findLucusWriteMatches(lucus,existing=[]){
+  const incoming={...lucus,uid:'__incoming__',trace_type:'space_lucus'};
   return (Array.isArray(existing)?existing:[])
-    .filter(row=>row?.trace_type==='space_anchor')
-    .map(row=>compareAnchorPair(incoming,row))
+    .filter(row=>row?.trace_type==='space_lucus')
+    .map(row=>compareLucusPair(incoming,row))
     .filter(Boolean);
 }
-export function organizeAnchorCandidates(anchors){
-  const list=(anchors||[]).filter(a=>a.trace_type==='space_anchor');
+export function organizeLucusCandidates(lucus){
+  const list=(lucus||[]).filter(a=>a.trace_type==='space_lucus');
   const results=[];
   for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++){
-    const candidate=compareAnchorPair(list[i],list[j]);
+    const candidate=compareLucusPair(list[i],list[j]);
     if(candidate)results.push(candidate);
   }
   return results.sort((a,b)=>{
@@ -96,9 +96,9 @@ export function organizeAnchorCandidates(anchors){
 // Review candidates, not place identity. O(n) grouping replaces the
 // pairwise O(n²) UI for the same recorded GPS position. A shared GPS
 // never authorizes a merge: different shops/floors remain separate UIDs.
-export function organizeAnchorCoordinateGroups(anchors=[]){
+export function organizeLucusCoordinateGroups(lucus=[]){
   const byPosition=new Map();
-  for(const lucus of anchors){
+  for(const lucus of lucus){
     if(lucus?.trace_type!=='lucus')continue;
     const lat=lucus.latitude,lng=lucus.longitude;
     if(lat==null||lng==null||String(lat).trim()===''||String(lng).trim()==='')continue;
@@ -107,11 +107,11 @@ export function organizeAnchorCoordinateGroups(anchors=[]){
     const position=Number(lat).toFixed(6)+','+Number(lng).toFixed(6);
     const key=scope+':'+position;
     let group=byPosition.get(key);
-    if(!group){group={key,scope,position,anchors:[],uids:new Set()};byPosition.set(key,group);}
-    if(!group.uids.has(lucus.uid)){group.anchors.push(lucus);group.uids.add(lucus.uid);}
+    if(!group){group={key,scope,position,lucus:[],uids:new Set()};byPosition.set(key,group);}
+    if(!group.uids.has(lucus.uid)){group.lucus.push(lucus);group.uids.add(lucus.uid);}
   }
-  return [...byPosition.values()].filter(group=>group.anchors.length>1)
-    .map(({uids,...group})=>({...group,anchors:group.anchors.sort((a,b)=>
+  return [...byPosition.values()].filter(group=>group.lucus.length>1)
+    .map(({uids,...group})=>({...group,lucus:group.lucus.sort((a,b)=>
       String(a.title||'').localeCompare(String(b.title||''),'zh-Hant'))}))
-    .sort((a,b)=>b.anchors.length-a.anchors.length||a.key.localeCompare(b.key));
+    .sort((a,b)=>b.lucus.length-a.lucus.length||a.key.localeCompare(b.key));
 }

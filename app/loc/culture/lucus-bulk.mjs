@@ -29,16 +29,16 @@ export function planAnniversaryDates({originDate,title,startYear,endYear,firstAn
 export function collectTimeDates(start,end,rows=[]){
  const first=parse(start)?.iso,last=parse(end||start)?.iso;
  if(!first||!last||last<first)return [];
- return rows.filter(row=>(row.type==='anchor'||row.type==='lucus'||row.type==='date')&&
+ return rows.filter(row=>(row.type==='lucus'||row.type==='lucus'||row.type==='date')&&
    parse(row.address||row.attr?.date)?.iso>=first&&
    parse(row.address||row.attr?.date)?.iso<=last)
    .sort((a,b)=>iso(a.address||a.attr?.date).localeCompare(iso(b.address||b.attr?.date)));
 }
-export function collectEraPeriods(periodIds,periods=[],anchors=[]){
- const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
+export function collectEraPeriods(periodIds,periods=[],lucus=[]){
+ const byUid=new Map(lucus.map(row=>[String(row.uid),row]));
  const target=periods.filter(row=>periodIds.includes(row.uid));
  const bounds=row=>{
-   const ids=Array.isArray(row.anchor_ids)?row.anchor_ids:[];
+   const ids=Array.isArray(row.lucus_ids)?row.lucus_ids:[];
    const dates=ids.map(uid=>parse(byUid.get(uid)?.address)?.iso).filter(Boolean).sort();
    return dates.length?[dates[0],dates.at(-1)]:null;
  };

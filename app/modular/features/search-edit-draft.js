@@ -2,7 +2,6 @@
 // an article or media entry for editing (dynamic import in Search.jsx), so the
 // plain search page never ships this code.
 import {plainTextToBlocks} from '../../loc/editor/blocknote-content.mjs';
-import {canonicalMediaLucusType} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 
 function nullableText(value){
   const text=String(value??'').trim();
@@ -57,38 +56,6 @@ function galaxyDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
   };
 }
 
-function mediaDraftFromRow(row={},fallbackTitle='',plainTextToBlocks){
-  const attrs={
-    uid:String(row.uid||''), title:String(row.title||''),
-    type:String(row.type||''),
-    url:String(row.url||''),description:String(row.description||''),
-    createtime:datetimeLocalValue(row.createtime)
-  };
-  return {title:String(row.title??fallbackTitle??''),originalTitle:String(row.title??fallbackTitle??''),
-    body:'',bodyHtml:'',bodyBlocks:plainTextToBlocks(''),editorKey:String(row.uid||''),
-    attrs,originalAttrs:{...attrs},
-    originalMediaAttr:row.attr&&typeof row.attr==='object'?{...row.attr}:{}};
-}
-function changedMediaAttributes(draft,t){
-  const current=draft?.attrs||{},initial=draft?.originalAttrs||{},changed={};
-  if(current.type!==initial.type)
-    changed.type=canonicalMediaLucusType(current.type,current.url);
-  if(current.description!==initial.description)
-    changed.description=nullableText(current.description);
-  const dateChanged=current.createtime!==initial.createtime;
-  if(dateChanged)changed.createtime=isoOrNull(current.createtime,t);
-  if(current.url!==initial.url||dateChanged){
-    const attr={...(draft.originalMediaAttr||{})};
-    const url=nullableText(current.url);
-    if(url)attr.url=url;else delete attr.url;
-    if(dateChanged){
-      if(changed.createtime)attr.date=changed.createtime.slice(0,10);
-      else delete attr.date;
-    }
-    changed.attr=attr;
-  }
-  return changed;
-}
 function changedGalaxyAttributes(draft,t){
   const current=draft?.attrs||{},initial=draft?.originalAttrs||{};
   const changed={};
@@ -111,16 +78,12 @@ function changedGalaxyAttributes(draft,t){
 
 export class SearchEditDraft{
   static nullableText(value){return nullableText(value);}
-  // Builds the editable draft for a Galaxy article or MediaAnchor row.
+  // Builds the editable draft for a Galaxy work.
   static fromRow(resourceType,row,fallbackTitle=''){
-    return resourceType==='galaxy'
-      ?galaxyDraftFromRow(row,fallbackTitle,plainTextToBlocks)
-      :mediaDraftFromRow(row,fallbackTitle,plainTextToBlocks);
+    return galaxyDraftFromRow(row,fallbackTitle,plainTextToBlocks);
   }
   // Only the attributes the author actually changed; throws a localized error on invalid input.
   static changedAttributes(resourceType,draft,t){
-    return resourceType==='galaxy'
-      ?changedGalaxyAttributes(draft,t )
-      :changedMediaAttributes(draft,t);
+    return changedGalaxyAttributes(draft,t);
   }
 }

@@ -36,13 +36,12 @@ import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names
 import {queryGalaxyLocationBatchPreview} from '../../loc/actions/trace/management-queries.mjs';
 import {locGlobalUid} from '../../../packages/zenstack/global-identity.mjs';
 import {galaxyReadColumnsFor} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {MEDIA_LUCUS_COLUMNS,mediaLucusProjection,LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import {galaxyAble} from '../../loc/model/galaxy-able.mjs';
 import {searchGalaxyRows,selectGalaxyContent,selectGalaxyIdentity} from '../../loc/galaxy/galaxy-query';
 import {readPublicSourceTaxonomy as selectSourceTaxonomy} from '../../loc/source/catalog-public.mjs';
 import {defaultScopeData,selectLocSearchScopes,selectScopeRegistry,revalidateServerMetadata} from '../../loc/scope/scope-data';
 
-import {MEDIA_FALLBACK_TITLE,WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayText} from '../work-display-model';
+import {WORK_FALLBACK_TITLE,workDisplayHeading,workDisplayText} from '../work-display-model';
 import {requireGalaxyContent,resolveGalaxyTitle,assertPlainGalaxyAttributes} from '../../loc/content/content-policy';
 import {DEFAULT_LIST_BATCH_SIZE} from '../../loc/db/db-contract.mjs';
 import {applyFilters,isAbortError,selectRows} from '../../loc/db/db-query.mjs';
@@ -55,15 +54,12 @@ const LazyTraceBlocks=lazy(()=>import('./TraceBlocks'));
 function TraceBlocks(props){return <Suspense fallback={null}><LazyTraceBlocks {...props}/></Suspense>;}
 
 
-const MEDIA_EDITOR_COLUMNS=MEDIA_LUCUS_COLUMNS;
 const EMPTY_SEARCH_PATTERN_INDEX=Object.freeze({patterns:[],featuredArticles:[]});
-const MEDIA_ATTR_ORDER=['uid','type','url','description','createtime'];
-const MEDIA_ATTR_FIELDS=MEDIA_ATTR_ORDER.map(key=>({key,readOnly:key==='uid',kind:key==='createtime'?'date':'text'}));
 
-const GALAXY_EDITOR_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
+const GALAXY_EDITOR_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead','GalaxyReadLucus')
   .concat(['UpdateTime','site_id']).filter((column,index,columns)=>columns.indexOf(column)===index).join(',');
 
-const GALAXY_ATTR_ORDER=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
+const GALAXY_ATTR_ORDER=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyReadLucus')
   .concat(['UpdateTime','site_id'])
   .filter((key,index,keys)=>keys.indexOf(key)===index));
 const GALAXY_ATTR_FIELDS=Object.freeze(GALAXY_ATTR_ORDER.map(key=>({
@@ -90,13 +86,7 @@ async function selectPublicEditableRow(table,idColumn,id,columns,{authenticated=
       view:'detail',uids:[String(id)]},{editor:true});
     return rows[0]||null;
   }
-  const lucus=scopeTableDescriptor(relation);
-  if(lucus?.kind==='lucus'&&lucus.scope!=='local'){
-    const {rows}=await readLucusFeature({scope:lucus.scope,
-      family:'media',uids:[String(id)],limit:1},{editor:true});
-    return rows[0]||null;
-  }
-  if(!['local_galaxy','local_lucus'].includes(relation))
+  if(!['local_galaxy'].includes(relation))
     throw Error('Unsupported LOC editor relation');
   const {rows=[]}=await selectRows(table,{columns,
     filters:[{column:'uid',operator:'eq',value:String(id)}],
@@ -121,14 +111,13 @@ function highlightSearchText(text='',query=''){
 
 
 function toResult(row,source,scopeId,copy=UI_COPY){
-  // Results are Galaxy articles. Anchor data is only available via a
+  // Results are Galaxy articles. Lucus data is only available via a
   // selected article's existing time/space/keyword/media relationships.
-  const isMedia=Boolean(row.uid&&row.record_type==='media_anchor');
-  const isGalaxy=Boolean(row.uid)&&!isMedia;
+  const isGalaxy=Boolean(row.uid);
   const explicitTitle=workDisplayText(row.title||row.name||row.display_title||row.label||row.rune_name||row.song_id||row.id||'').trim();
-  const fallbackTitle=isMedia?MEDIA_FALLBACK_TITLE:WORK_FALLBACK_TITLE;
-  const title=(isGalaxy||isMedia)
-    ?workDisplayHeading(row,{media:isMedia,fallback:fallbackTitle,limit:80})
+  const fallbackTitle=WORK_FALLBACK_TITLE;
+  const title=isGalaxy
+    ?workDisplayHeading(row,{fallback:fallbackTitle,limit:80})
     :(explicitTitle||fallbackTitle);
   const displaySource=isGalaxy&&row.site?String(row.site):source;
   const identity=row.uid||row.song_id||row.rune_id||row.record_id||row.resource_id||row.id;
@@ -139,14 +128,14 @@ function toResult(row,source,scopeId,copy=UI_COPY){
     /^[a-z][a-z0-9]{0,14}$/.test(scope)&&
     /^[A-Za-z0-9]{8}$/.test(String(row.uid||''))
     ?locGlobalUid({databaseId:dbId,scopeId:scope,uid:row.uid}):'';
-  const resourceType=isGalaxy?'galaxy':isMedia?'media_anchor':'';
+  const resourceType=isGalaxy?'galaxy':'';
   const resourceId=row.uid||'';
   const editableTable=resourceType?String(row.__table||''):'';
   const editableIdColumn=resourceType
     ?(resourceType==='galaxy'?'uid':'uid')
     :'';
   const editResourceId=resourceId;
-  const editableField=resourceType==='galaxy'?'content':resourceType==='media_anchor'?'description':'';
+  const editableField=resourceType==='galaxy'?'content':'';
   const isScopeCard=Boolean(row.scope_card);
   const href=isScopeCard?scopeHref(scope):
     isGalaxy&&row.extract!==true?'':(row.url||row.href||row.suno_url||'');
@@ -183,9 +172,8 @@ function toResult(row,source,scopeId,copy=UI_COPY){
       ?'style-tag:'+String(title).normalize('NFKC').trim().toLocaleLowerCase('zh-Hant')
       :(resourceType==='galaxy'&&resourceId
       ?'galaxy:'+(globalUid||scope+':'+dbId+':'+resourceId)
-      :(resourceType==='media_anchor'&&resourceId?'media:'+scope+':'+dbId+':'+resourceId:
-        'result:'+scope+':'+dbId+':'+(identity||title))),
-    links:isGalaxy&&row.extract!==true?[]:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:resourceType==='media_anchor'?copy.search.mediaLink:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
+      :'result:'+scope+':'+dbId+':'+(identity||title)),
+    links:isGalaxy&&row.extract!==true?[]:uniqueExternalLinks([...(href?[{id:resourceType||'primary',href,label:copy.search.externalLink}]:[]),...(Array.isArray(row.resolved_links)?row.resolved_links:[])]),
     destinations:[]
   };
 }
@@ -333,7 +321,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   const detailEpoch=useRef(0);
   const searchId=useRef(0);
   const lastTextSearchAt=useRef(0);
-  // Anchors the status/results block so a fresh search can scroll the
+  // Lucus the status/results block so a fresh search can scroll the
   // results into view instead of leaving the viewport on the search form.
   const resultsRef=useRef(null);
   const scrollPending=useRef(false);
@@ -697,30 +685,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
     }
   }
 
+  // Older ?media= links address Galaxy media works by their UID.
   async function executeMediaIdentity(rawMediaId){
-    detailEpoch.current++;
-    const mediaId=String(rawMediaId||'').trim(),id=++searchId.current;
-    beginRequest();
-    setError('');setStatus('');setResults([]);setEditDraft(null);setEditingKey('');setAuthorizedEditingKey('');
-    setHasMore(false);setNextCursor(null);setFullText('');setFullTextRow(null);
-    try{
-      if(!/^[A-Za-z0-9]{8}$/.test(mediaId))throw new Error(t('uiExtra.searchUI.invalidMediaId'));
-      const mediaScopeId=managementMode&&scopeId==='loc'?String(searchParams?.get('scope')||'').trim():scopeId;
-      if(!managementMode||!mediaScopeId||!canManageSearchScope(account,mediaScopeId))throw new Error(t('uiExtra.searchUI.mediaManageDenied'));
-      const scopeData=account.scopeDataFor(mediaScopeId)||defaultScopeData(mediaScopeId);
-      if(!scopeData?.lucus)throw new Error(UI_COPY.search.notFound);
-      const stored=await selectPublicEditableRow(scopeData.lucus,'uid',mediaId,MEDIA_EDITOR_COLUMNS,{authenticated:true});
-      const row=stored&&LUCUS_TYPE_GROUPS.media.includes(stored.type)?mediaLucusProjection(stored,{includeAttr:true}):null;
-      if(id!==searchId.current)return;
-      if(!row)throw new Error(UI_COPY.search.notFound);
-      const item=toResult({...row,record_type:'media_anchor',scope_id:mediaScopeId,__table:scopeData.lucus},'MediaAnchor',mediaScopeId);
-      const {SearchEditDraft}=await import('./search-edit-draft');
-      setResults([item]);setEditingKey(item.key);setEditDraft(SearchEditDraft.fromRow('media',row,item.title));
-      // The direct media editor has already checked the current Scope grant
-      // above; it does not pass through startEditing(), so establish the same
-      // per-record authorization key before rendering Save/Delete actions.
-      setAuthorizedEditingKey(item.key);
-    }catch(exception){if(id===searchId.current)setError(String(exception?.message||exception||UI_COPY.search.editLoadFailed))}
+    const id=String(rawMediaId||'').trim();
+    if(!/^[A-Za-z0-9]{8}$/.test(id)){
+      setError(t('uiExtra.searchUI.invalidMediaId'));return;
+    }
+    await executeIdentity(id);
   }
 
   useEffect(()=>{
@@ -813,16 +784,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         result.editableTable,
         result.editableIdColumn,
         result.editResourceId||result.resourceId,
-        result.resourceType==='galaxy'
-          ?(result.scopeId==='local'
-            ?'uid,title,content,createtime,location,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able'
-            :GALAXY_EDITOR_COLUMNS)
-          :MEDIA_EDITOR_COLUMNS,
-        {authenticated:result.resourceType==='galaxy'||result.resourceType==='media_anchor'}
+        result.scopeId==='local'
+          ?'uid,title,content,createtime,location,UpdateTime,url,source_id,target_id,ref_id,site,media_link,able'
+          :GALAXY_EDITOR_COLUMNS,
+        {authenticated:true}
       );
       if(!fullRow)throw new Error(UI_COPY.search.editNotFound);
-      const typedRow=result.resourceType==='media_anchor'?
-        (LUCUS_TYPE_GROUPS.media.includes(fullRow.type)?mediaLucusProjection(fullRow,{includeAttr:true}):null):fullRow;
+      const typedRow=fullRow;
       if(!typedRow)throw new Error(UI_COPY.search.editNotFound);
       const {SearchEditDraft}=await import('./search-edit-draft');
       editTargetRef.current=result;
@@ -841,30 +809,18 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       throw Error('搜尋編輯未取得授權');
     if(!editDraft||!result?.editableTable||!result.editableField||editBusy)
       throw Error('搜尋編輯資料尚未就緒');
-      const isGalaxy=result.resourceType==='galaxy';
       const {SearchEditDraft}=await import('./search-edit-draft');
-      const {blocksToPlainText}=isGalaxy?await import('../../loc/editor/blocknote-content.mjs'):{blocksToPlainText:null};
-      const body=isGalaxy?await requireGalaxyContent(editDraft.bodyHtml??blocksToPlainText(editDraft.bodyBlocks)):'';
-      const nextTitle=isGalaxy?resolveGalaxyTitle(editDraft.title,blocksToPlainText(editDraft.bodyHtml??editDraft.bodyBlocks)):SearchEditDraft.nullableText(editDraft.title);
+      const {blocksToPlainText}=await import('../../loc/editor/blocknote-content.mjs');
+      const body=await requireGalaxyContent(editDraft.bodyHtml??blocksToPlainText(editDraft.bodyBlocks));
+      const nextTitle=resolveGalaxyTitle(editDraft.title,blocksToPlainText(editDraft.bodyHtml??editDraft.bodyBlocks));
       const titleChanged=editDraft.title!==editDraft.originalTitle;
-      let contentPatch;
-      if(isGalaxy){
-        const rawEdits=Object.fromEntries(Object.entries(editDraft.attrs||{})
-          .filter(([key,value])=>JSON.stringify(value)!==JSON.stringify(editDraft.originalAttrs?.[key])));
-        assertPlainGalaxyAttributes({...rawEdits,...(titleChanged?{title:editDraft.title}:{})});
-        const attrs=SearchEditDraft.changedAttributes('galaxy',editDraft,t);
-        assertPlainGalaxyAttributes({...attrs,...(titleChanged?{title:nextTitle}:{})});
-        contentPatch={...(titleChanged?{title:nextTitle}:{}),content:body,UpdateTime:new Date().toISOString(),...attrs};
-      }else{
-        const attrs=SearchEditDraft.changedAttributes('media',editDraft,t);
-        // MediaAnchor attr is validated by the existing ZModel/Zod boundary,
-        // not the Galaxy attribute guard.
-        contentPatch={...(titleChanged?{title:nextTitle}:{}),...attrs};
-        if(!Object.keys(contentPatch).length)
-          return {operations:[],
-            afterCommit:()=>{if(!managementMode){setEditingKey('');setEditDraft(null);}}};
-      }
-
+      const rawEdits=Object.fromEntries(Object.entries(editDraft.attrs||{})
+        .filter(([key,value])=>JSON.stringify(value)!==JSON.stringify(editDraft.originalAttrs?.[key])));
+      assertPlainGalaxyAttributes({...rawEdits,...(titleChanged?{title:editDraft.title}:{})});
+      const attrs=SearchEditDraft.changedAttributes('galaxy',editDraft,t);
+      assertPlainGalaxyAttributes({...attrs,...(titleChanged?{title:nextTitle}:{})});
+      const contentPatch={...(titleChanged?{title:nextTitle}:{}),content:body,
+        UpdateTime:new Date().toISOString(),...attrs};
       return {
         operations:[{p_table:result.editableTable,p_operation:'update',
           p_values:contentPatch,
@@ -873,20 +829,17 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         afterCommit:()=>{
       setResults(current=>current.map(item=>{
         if(item.key!==result.key)return item;
-        const updatedUrl=Object.hasOwn(contentPatch,'attr')?contentPatch.attr?.url:item.editRow?.url;
-        const links=!isGalaxy&&Object.hasOwn(contentPatch,'attr')?uniqueExternalLinks(updatedUrl?[{id:'media-url',href:updatedUrl,label:UI_COPY.search.mediaLink}]:[]):item.links;
-        return {...item,title:nextTitle||item.title,snippet:isGalaxy?'':item.snippet,links,
-          editRow:{...(item.editRow||{}),title:nextTitle,...contentPatch,
-            ...(!isGalaxy&&Object.hasOwn(contentPatch,'attr')?{url:contentPatch.attr?.url||null}:{})}};
+        return {...item,title:nextTitle||item.title,snippet:'',
+          editRow:{...(item.editRow||{}),title:nextTitle,...contentPatch}};
       }));
-      if(isGalaxy&&fullTextKey===result.key){
+      if(fullTextKey===result.key){
         setFullText(body);
         setFullTextRow(current=>({...current,...contentPatch,uid:current?.uid||result.editResourceId||result.resourceId}));
       }
       if(managementMode){
         setEditDraft(current=>current?{
           ...current,originalTitle:nextTitle,
-          ...(isGalaxy?{body,bodyHtml:body}:{}),
+          body,bodyHtml:body,
           originalAttrs:{...current.attrs}
         }:current);
       }else{
@@ -1222,14 +1175,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         const rowScopeData=account.scopeDataFor(row.scopeId)||defaultScopeData(row.scopeId);
         const editableTable=row.editableTable||(
           row.resourceType==='galaxy'?rowScopeData?.galaxy:
-          row.resourceType==='media_anchor'?rowScopeData?.lucus:''
+          ''
         );
         const editTarget={
           ...row,
           editableTable,
-          editableIdColumn:row.editableIdColumn||(row.resourceType==='galaxy'?'uid':row.resourceType==='media_anchor'?'uid':''),
+          editableIdColumn:row.editableIdColumn||(row.resourceType==='galaxy'?'uid':''),
           editResourceId:row.editResourceId||row.resourceId,
-          editableField:row.editableField||(row.resourceType==='galaxy'?'content':row.resourceType==='media_anchor'?'description':'')
+          editableField:row.editableField||(row.resourceType==='galaxy'?'content':'')
         };
         // Page blocks have no Galaxy attributes. Article editing and typed
         // metadata are available only to authorized Scope managers; guest
@@ -1302,9 +1255,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           editError={editError}
           showInlineEditorActions={!editDock?.active}
           showHidden={privateResultMode}
-          attributeFields={managementMode&&editable?(row.resourceType==='galaxy'?GALAXY_ATTR_FIELDS:row.resourceType==='media_anchor'?MEDIA_ATTR_FIELDS:null):null}
+          attributeFields={managementMode&&editable?GALAXY_ATTR_FIELDS:null}
           mediaScopeId={editable&&row.resourceType==='galaxy'?row.scopeId:''}
-          attributeTitle={row.resourceType==='media_anchor'?t('uiExtra.searchUI.mediaAttributes'):t('uiExtra.searchUI.attributeTitle')}
+          attributeTitle={t('uiExtra.searchUI.attributeTitle')}
           showBodyEditor={row.resourceType==='galaxy'}
           styleTag={row.styleTagMatch||row.featured}
           styleTagKicker={row.featured?'特徵頁':row.styleTagMatch?<UiText id="uiExtra.searchUI.styleRecommendations"/>:null}

@@ -2,7 +2,7 @@ import {KEYWORD_SCAN_START_ROWS,KEYWORD_SCAN_CHECKPOINT_ROWS}
   from './item-count-analysis.mjs';
 import {sql} from 'kysely';
 // LOC Keyword patterns are the only literal match source. Item.attr.uid links
-// Pattern Anchors; Pattern.num stores occurrences while Item/Group.attr.total
+// Pattern Lucus; Pattern.num stores occurrences while Item/Group.attr.total
 // retains class-level aggregate totals. Class completion remains in keyword_meta.
 import {parseRuneKeywordRuleSentence} from '../model/rune-keyword-rules.mjs';
 import {analyzeItemKeywordCounts,readItemKeywordProjection,
@@ -70,7 +70,7 @@ const KEYWORD_REQUEST_BUDGET_MS=15000;
 
 const removeLegacyKeywordHitCache=value=>{
   const {uidlists,articles,hits,total,...links}=value||{};
-  // Keep Item.attr.uid: these are Pattern Anchor IDs, not article postings.
+  // Keep Item.attr.uid: these are Pattern Lucus IDs, not article postings.
   return links;
 };
 const cleanItemAttr=(value,patternUids)=>{
@@ -132,7 +132,7 @@ const validateKeywordFilters=({start='',end='',source=''})=>{
 
 // Fixed, owner-only Keyword editor snapshot. No browser-selected SQL relation,
 // projection, filter or unrestricted SELECT. Each page uses bounded direct
-// SELECTs; the physical Anchor model is unchanged.
+// SELECTs; the physical Lucus model is unchanged.
 export async function readKeywordWorkspace(db,scope,{cursor='',limit=250}={}){
   checkScope(scope);
   if(cursor&&!UID.test(cursor))fail('Invalid Keyword editor cursor',400);
@@ -364,9 +364,9 @@ async function lockedKeywordMetadata(trx,scope,classUid,expectedEpoch){
 }
 
 // Item and Group retain their small class-level aggregate counters in attr.
-// Pattern occurrence counts live on the existing Pattern Anchor's num column.
+// Pattern occurrence counts live on the existing Pattern Lucus's num column.
 // This is not a second keyword index or a public SQL request surface.
-// Pure and testable: distinct physical Anchor PKs, not occurrences of the
+// Pure and testable: distinct physical Lucus PKs, not occurrences of the
 // same Item under several Keyword Groups, determine UPDATE row cardinality.
 export function planKeywordTotalWrites(updates){
   if(!Array.isArray(updates))fail('Invalid Keyword aggregate counts');
@@ -379,7 +379,7 @@ export function planKeywordTotalWrites(updates){
     const value={...(row.type?{type:row.type}:{}),total:row.total};
     if(byUid.has(row.uid)&&(byUid.get(row.uid).type!==value.type||
        byUid.get(row.uid).total!==value.total))
-      fail('Conflicting Keyword counts for one Anchor UID',409);
+      fail('Conflicting Keyword counts for one Lucus UID',409);
     byUid.set(row.uid,value);
   }
   return [...byUid].map(([uid,value])=>({uid,...value}));
@@ -445,7 +445,7 @@ async function persistItemCounts(trx,scope,classUid,tree,counts,attemptId='',exp
   await writeKeywordTotals(trx,scope,updates);
   const now=new Date().toISOString();
   const {pattern_index_version,pattern_scans,scan_progress,...rest}=old;
-  // Pattern counters belong to their existing Anchor rows, not a duplicate
+  // Pattern counters belong to their existing Lucus rows, not a duplicate
   // finished-Class cache inside Scope keyword_meta.
   const {itemCounts,groupCounts,patternCounts,...smallCounts}=counts;
   const completed=completeKeywordClass(rest,classUid,{
@@ -712,7 +712,7 @@ async function invalidateKeywordTreeClass(trx,scope,classUid){
       updated_at:new Date().toISOString()}).where('id','=',scope).execute();
 }
 
-// The Item editor's single authorized transaction saves Pattern Anchor rows,
+// The Item editor's single authorized transaction saves Pattern Lucus rows,
 // maintains Group membership and stores only Pattern UIDs on the Item.
 export async function saveKeywordItem(db,scope,values,{
   authorizeTransaction=()=>{}
@@ -806,7 +806,7 @@ export async function deleteKeywordItem(db,scope,itemUid,{authorizeTransaction=(
       ...removeLegacyKeywordHitCache(attr(parent)),uid:children(parent).filter(uid=>uid!==itemUid)
     })}).where('uid','=',parent.uid).execute();
     await trx.deleteFrom(table).where('uid','=',itemUid).where('type','=','item').execute();
-    // Pattern anchors have their own lifetime. They may be linked from many
+    // Pattern lucus have their own lifetime. They may be linked from many
     // Items/classes and remain valid vocabulary even after one Item is removed.
     await invalidateKeywordTreeClass(trx,scope,classUid);
     return {uid:itemUid,removed:0};

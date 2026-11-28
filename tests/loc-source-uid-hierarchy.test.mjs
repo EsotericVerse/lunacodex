@@ -10,11 +10,11 @@ import {parseLucusFeatureQuery} from '../app/loc/model/lucus-feature-queries.mjs
 
 {
 const catalog=sourceTaxonomyFromLucus(SOURCE_LUCUS_FIXTURE);
-test('SiteAnchor reads are global loc_lucus queries, never Scope Anchor queries',()=>{
+test('SiteLucus reads are global loc_lucus queries, never Scope Lucus queries',()=>{
   const request={kind:'query',operation:'lucus-feature',scope:'loc',family:'source'};
   assert.equal(parseLucusFeatureQuery(request).scope,'loc');
   assert.throws(()=>parseLucusFeatureQuery({...request,scope:'lo3rwang'}),
-    /Invalid Anchor feature selection/);
+    /Invalid Lucus feature selection/);
 });
 const byTitle=new Map(catalog.tree.map(row=>[row.title,row]));
 const sample=[

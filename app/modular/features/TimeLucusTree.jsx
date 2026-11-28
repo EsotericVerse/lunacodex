@@ -2,14 +2,14 @@
 
 import {useMemo} from 'react';
 import {timeRecordHierarchy} from '../../loc/culture/time-record-hierarchy-options.mjs';
-import AnchorManagementNavigator from '../AnchorManagementNavigator';
+import LucusManagementNavigator from '../LucusManagementNavigator';
 
 const uid=row=>String(row?.uid||'');
 const title=row=>String(row?.title||row?.uid||'未命名紀錄');
 const date=row=>String(row?.address||row?.attr?.date||'').slice(0,10);
 const dateLabel=row=>[date(row),title(row)].filter(Boolean).join('｜');
 
-export default function TimeAnchorTree({
+export default function TimeLucusTree({
   rows=[],value='',disabled=false,onSelect,onCreate,children=null
 }){
   const hierarchy=useMemo(()=>timeRecordHierarchy(rows),[rows]);
@@ -77,7 +77,7 @@ export default function TimeAnchorTree({
   const selectedPrimary=selectedEra?uid(selectedEra.row):
     unclassifiedSelected?'__unclassified__':(!selectedRow?uid(hierarchy.eras[0]?.row):'');
   const create=type=>()=>onCreate?.(type);
-  return <AnchorManagementNavigator
+  return <LucusManagementNavigator
     className="loc-time-lucus-tree"
     label="時間定錨階層管理"
     searchLabel="搜尋時代、期間與時間定錨"
@@ -108,5 +108,5 @@ export default function TimeAnchorTree({
     detailEmpty="選擇期間後顯示日期定錨點"
     disabled={disabled}>
     {children}
-  </AnchorManagementNavigator>;
+  </LucusManagementNavigator>;
 }

@@ -69,7 +69,7 @@ test('native target UID ARRAY update retains every old-value CAS predicate',()=>
   assert.ok(compiled.parameters.some(v=>Array.isArray(v)&&v.length===3),
     JSON.stringify({sql:compiled.sql,parameters:compiled.parameters}));
 });
-test('row-specific Anchor JSON CASE preserves num and full original attr CAS',()=>{
+test('row-specific Lucus JSON CASE preserves num and full original attr CAS',()=>{
   const db=new Kysely({dialect:new PostgresDialect({pool:{
     connect:async()=>{throw Error('compile-only');}
   }})});

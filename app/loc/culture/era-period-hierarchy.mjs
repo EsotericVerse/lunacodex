@@ -9,7 +9,7 @@ export function cultureEraPeriodHierarchy(eras=[],timelineItems=[],scope=''){
   const groups=(Array.isArray(eras)?eras:[]).filter(row=>!scope||row?.scope_id===scope)
     .map(era=>{
       const seen=new Set(),children=[];
-      for(const ref of era.anchor_ids||[]){
+      for(const ref of era.lucus_ids||[]){
         const key=String(ref||'').trim();
         if(seen.has(key))continue;
         seen.add(key);

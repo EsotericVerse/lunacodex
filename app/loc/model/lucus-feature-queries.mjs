@@ -1,51 +1,43 @@
-// Fixed Anchor feature model for Time, Space, Source and Media UIs.
+// Fixed Lucus feature model for Time, Space and Source UIs.
 // This is not Search: only an exact published Scope + model family is allowed.
 import {z} from 'zod';
-import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
+import {MAX_ROWS,TIME_LUCUS_MAX_PAGE_ROWS} from '../query/query-batch-size.mjs';
 import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
 import {scopeRelationName} from '../../../packages/zenstack/scope-table-names.mjs';
 import {assertZModelLucusFeatureRows} from '../../../packages/zenstack/import-validation.mjs';
 const scopes=new Set(SCOPE_ROUTE_INDEX.filter(x=>x.active!==false).map(x=>x.scope_id));
 const UID=z.string().regex(/^[A-Za-z0-9]{8}$/);
-const DAY=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-function calendarDate(value){return !Number.isNaN(Date.parse(value+'T00:00:00Z'))&&
-  new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;}
 const schema=z.object({
   kind:z.literal('query'),operation:z.literal('lucus-feature'),
   scope:z.string().regex(/^[a-z][a-z0-9]{0,14}$/),
-  family:z.enum(['time','space','source','media']),
+  family:z.enum(['time','space','source']),
   mode:z.enum(['public','editor']).default('public'),
   types:z.array(z.string()).min(1).max(12).optional(),
   uids:z.array(UID).min(1).max(100).optional(),
   cursor:UID.optional(),offset:z.number().int().min(0).max(10000).optional(),
-  limit:z.number().int().min(1).max(TIME_ANCHOR_MAX_PAGE_ROWS).optional(),
+  limit:z.number().int().min(1).max(TIME_LUCUS_MAX_PAGE_ROWS).optional(),
   order:z.enum(['uid','title','createtime']).optional(),
   sortDirection:z.enum(['asc','desc']).optional(),
-  startDate:DAY.optional(),endDate:DAY.optional(),
   result:z.enum(['rows','count']).default('rows'),includeTotal:z.boolean().optional(),
-  // The page name belongs to Blocks, not the Anchor search API.
+  // The page name belongs to Blocks, not the Lucus search API.
 }).strict();
 export function parseLucusFeatureQuery(body){
   const parsed=schema.safeParse(body);
-  if(!parsed.success)throw Object.assign(Error('Invalid Anchor feature model'),{httpStatus:400});
+  if(!parsed.success)throw Object.assign(Error('Invalid Lucus feature model'),{httpStatus:400});
   const value=parsed.data,allowed=LUCUS_TYPE_GROUPS[value.family];
-  // The entire SiteAnchor taxonomy exists ONLY in silver.loc_lucus.
+  // The entire SiteLucus taxonomy exists ONLY in silver.loc_lucus.
   // Source is never a family within an author's private <scope>_lucus.
   if(!scopes.has(value.scope)||value.scope==='admin'||
     (value.family==='source')!==(value.scope==='loc')||!Array.isArray(allowed)||
     value.types?.some(type=>!allowed.includes(type))||
     value.uids&&value.cursor||value.cursor&&value.offset!==undefined||
     value.uids&&value.uids.length>100||
-    value.startDate&&!calendarDate(value.startDate)||
-    value.endDate&&!calendarDate(value.endDate)||
-    value.startDate&&value.endDate&&value.startDate>value.endDate||
-    (value.startDate||value.endDate)&&value.family!=='media'||
     value.cursor&&value.order&&value.order!=='uid'||
     value.cursor&&value.sortDirection==='desc'||
     value.result==='count'&&(value.cursor||value.offset!==undefined||
       value.includeTotal!==undefined))
-    throw Object.assign(Error('Invalid Anchor feature selection'),{httpStatus:400});
+    throw Object.assign(Error('Invalid Lucus feature selection'),{httpStatus:400});
   return {...value,types:value.types||allowed,
     // COUNT queries have no SQL LIMIT; only row projections have page bounds.
     limit:value.result==='count'?null:(value.limit??MAX_ROWS),
@@ -59,10 +51,6 @@ export async function executeLucusFeatureQuery(db,model){
   if(model.mode==='public')query=query.where('invisible','=',false);
   if(model.uids)query=query.where('uid','in',model.uids);
   if(model.cursor)query=query.where('uid','>',model.cursor);
-  // MediaAnchor time windows use the existing physical createtime. The bounds
-  // are Taipei calendar days, not an additional time/lucus mapping table.
-  if(model.startDate)query=query.where('createtime','>=',model.startDate+'T00:00:00+08:00');
-  if(model.endDate)query=query.where('createtime','<=',model.endDate+'T23:59:59.999+08:00');
   if(model.result==='count'){
     const row=await query.select(eb=>eb.fn.countAll().as('total')).executeTakeFirst();
     return {total:Number(row?.total||0)};
@@ -74,7 +62,7 @@ export async function executeLucusFeatureQuery(db,model){
       .executeTakeFirst())?.total||0):null;
   const direction=model.sortDirection||'asc';
   if(model.cursor&&(model.order!=='uid'||direction!=='asc'))
-    throw Object.assign(Error('Anchor cursor requires ascending UID'),{httpStatus:400});
+    throw Object.assign(Error('Lucus cursor requires ascending UID'),{httpStatus:400});
   let page=query.select([
     'uid','type','title','description','attr','invisible','createtime'
   ]).orderBy(model.order,direction);

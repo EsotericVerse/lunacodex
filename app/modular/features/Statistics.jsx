@@ -222,7 +222,7 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     // Updating React state inside onFocus can close a browser's open select.
     enabled:scopeId!=='local'&&scopeId!=='loc'&&Boolean(targetScopes[0]),
     queryFn:async()=>{
-      // Period anchors remain on the independently working direct reader.
+      // Period lucus remain on the independently working direct reader.
       // ISR never becomes a required path when an endpoint is not available.
       const {selectScopeCultureEraIndex}=await import('../../loc/culture/query');
       return selectScopeCultureEraIndex(scopeId);
@@ -360,8 +360,8 @@ function ScopeStatisticsResults({scopeId,navigation,types}){
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  // One public model read of the existing 30 LocAnchor source nodes.
-  // The native provider uses the fixed ZenStack LocAnchor model. Do not fall
+  // One public model read of the existing 30 LocLucus source nodes.
+  // The native provider uses the fixed ZenStack LocLucus model. Do not fall
   // back to a local source list, a hardcoded category snapshot or media tree.
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['loc-zmodel-source-taxonomy'],

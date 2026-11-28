@@ -4,7 +4,7 @@
 // Each feature flag: true = enabled/eligible; false = excluded. Never invert it.
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
-export const GALAXY_ABLE_KEYS=Object.freeze(galaxyReadColumns('GalaxyAttr'));
+export const GALAXY_ABLE_KEYS=Object.freeze(galaxyReadColumns('GalaxyReadLucus'));
 export const GALAXY_ABLE_COLUMNS=GALAXY_ABLE_KEYS.join(',');
 function booleanOrUndefined(raw){
   if(typeof raw==='boolean')return raw;
@@ -13,7 +13,7 @@ function booleanOrUndefined(raw){
   return undefined;
 }
 // New Galaxy records retain the existing publishing defaults. The columns
-// themselves are always the eight fields of the frozen GalaxyAttr ZModel.
+// themselves are always the eight fields of the frozen GalaxyReadLucus ZModel.
 const DEFAULT_GALAXY_ATTR=Object.freeze(Object.fromEntries(
   GALAXY_ABLE_KEYS.map(key=>[key,true])));
 export function privateGalaxySource(row={}){
@@ -44,7 +44,7 @@ export function prepareGalaxyInsertRows(table,rows=[]){
   return rows.map(row=>{
     if(['able','searchable','statistics_able','keywords','game']
       .some(key=>Object.hasOwn(row,key)))
-      throw new Error('Retired Galaxy fields are not part of the GalaxyAttr ZModel');
+      throw new Error('Retired Galaxy fields are not part of the GalaxyReadLucus ZModel');
     return {...row,...galaxyAble(row)};
   });
 }
@@ -53,7 +53,7 @@ export function prepareGalaxyUpdateValues(table,values){
   // A partial edit touches only ZModel fields explicitly supplied by the caller.
   if(['able','searchable','statistics_able','keywords','game']
     .some(key=>Object.hasOwn(values||{},key)))
-    throw new Error('Retired Galaxy fields are not part of the GalaxyAttr ZModel');
+    throw new Error('Retired Galaxy fields are not part of the GalaxyReadLucus ZModel');
   const updated={...(values||{})};
   for(const key of GALAXY_ABLE_KEYS){
     if(Object.hasOwn(updated,key)){

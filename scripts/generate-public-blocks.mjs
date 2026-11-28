@@ -1,4 +1,4 @@
-// Explicit publication for routing/feature metadata, Themes and SiteAnchor JS.
+// Explicit publication for routing/feature metadata, Themes and SiteLucus JS.
 // Mutable page copy and authored Blocks are R2/SQL runtime data and do not
 // require a generated release file, deployment or build-time database access.
 import path from 'node:path';
@@ -68,7 +68,7 @@ const palettes=themes.map(theme=>{
   return {id,css:':root[data-theme-id="theme-'+id+'"][data-theme]{\n  color-scheme:'+(theme.scheme==='dark'?'dark':'light')+';\n'+declarations.join('\n')+'\n}'};
 });
 const themeMeta=themes.map(t=>({theme_id:t.theme_id,theme_name:t.theme_name,theme_order:t.theme_order}));
-// Publish every visible SiteAnchor UID (Universe/Galaxy/Domain/From) into the
+// Publish every visible SiteLucus UID (Universe/Galaxy/Domain/From) into the
 // resident JS snapshot. This SQL read runs only during explicit sync:public;
 // pages and feature requests consume the generated module without SQL.
 const siteLucusTable=scopeTableName('loc','lucus',scopeTables.loc);
@@ -78,8 +78,8 @@ const siteLucus=await db.selectFrom(table(siteLucusTable))
   .where('invisible','=',false)
   .orderBy('uid','asc')
   .execute();
-if(!siteLucus.length)throw new Error('Cannot publish an empty SiteAnchor catalogue');
-// Only routing/authority snapshots, Theme data and immutable SiteAnchor JS
+if(!siteLucus.length)throw new Error('Cannot publish an empty SiteLucus catalogue');
+// Only routing/authority snapshots, Theme data and immutable SiteLucus JS
 // belong in the release bundle. Mutable page copy and Home Blocks are served
 // through the private R2 binding with a fixed SQL fallback at runtime.
 const bootstrap={scope_id:'loc',page_name:'index',

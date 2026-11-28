@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import {spaceRecordHierarchy} from '../app/loc/trace/space-record-hierarchy.mjs';
 
 const scope='lo3rwang';
-const point=(uid)=>({uid,title:uid,source_scope:scope,trace_type:'space_anchor'});
+const point=(uid)=>({uid,title:uid,source_scope:scope,trace_type:'space_lucus'});
 const path=(uid,items)=>({uid,title:uid,source_scope:scope,trace_type:'path',
-  anchor_list:items,route_list:{routes:[]}});
+  lucus_list:items,route_list:{routes:[]}});
 const trace=(uid,routes,items=[])=>({uid,title:uid,source_scope:scope,
-  trace_type:'trace',anchor_list:items,route_list:{routes,segments:[]}});
+  trace_type:'trace',lucus_list:items,route_list:{routes,segments:[]}});
 
 test('Scope boundary and invalid references cannot connect spatial branches',()=>{
-  const spatial={anchors:[point('POINT001'),{
+  const spatial={lucus:[point('POINT001'),{
     ...point('POINT002'),source_scope:'other_scope'}],
     maps:[trace('TRACE001',['PATH0001']),{
       ...path('PATH0001',['POINT002']),source_scope:'other_scope'}]};

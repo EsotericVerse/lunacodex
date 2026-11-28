@@ -10,7 +10,7 @@ import {CAPTURE_FROM_SITES,CAPTURE_LOOKUP_SITES} from '../../app/loc/source/site
 const UID=/^[0-9A-Za-z]{8}$/;
 const SITE_ID=/^gl:[a-f0-9]{64}$/;
 const SOURCE=/^https?:\/\//i;
-const FLAGS=galaxyReadColumns('GalaxyAttr');
+const FLAGS=galaxyReadColumns('GalaxyReadLucus');
 const REQUIRED_FIELDS=['uid','title','content','site','site_id','url','createtime','UpdateTime',...FLAGS];
 const LOOKUP_FIELDS=['uid','content','site_id','site'];
 const cache=new Map();

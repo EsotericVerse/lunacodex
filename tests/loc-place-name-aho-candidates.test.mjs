@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {matchPlaceNameCandidates,placeCandidateKey}
   from '../app/loc/trace/place-name-candidates.mjs';
-import {createImportPlaceIndex,prepareImportPlaceAnchors}
-  from '../app/loc/import/place-anchors.mjs';
+import {createImportPlaceIndex,prepareImportPlaceLucus}
+  from '../app/loc/import/place-lucus.mjs';
 
 test('Aho place candidates find both substring directions and a stored alias in one batch',()=>{
   assert.equal(placeCandidateKey('臺北 車站'),placeCandidateKey('台北車站'));
@@ -33,10 +33,10 @@ test('import reports name-only overlaps but keeps exact UID/coordinate keys auth
   const place=createImportPlaceIndex();
   place.accept({uid:'AAAA0001',type:'point',title:'台北車站地下街',
     attr:{location:['台北地下街']}});
-  const snapshot={scopeId:'sample',table:'silver.sample_anchor',place};
+  const snapshot={scopeId:'sample',table:'silver.sample_lucus',place};
   const options={scopeId:'sample',relation:()=>{throw Error('no extra SQL expected');},
-    createMissing:false,anchorSnapshot:snapshot};
-  const advisory=await prepareImportPlaceAnchors([
+    createMissing:false,lucusSnapshot:snapshot};
+  const advisory=await prepareImportPlaceLucus([
     {location:'台北車站',createtime:'2026-11-01T00:00:00Z'}
   ],options);
   assert.equal(advisory.reused,0);
@@ -44,14 +44,14 @@ test('import reports name-only overlaps but keeps exact UID/coordinate keys auth
   assert.equal(advisory.byName.has('台北車站'),false);
   assert.deepEqual(advisory.nameCandidates.map(item=>item.saved_uids),[['AAAA0001']]);
   assert.equal(advisory.knownPointUids.has('AAAA0001'),true);
-  const exact=await prepareImportPlaceAnchors([{location:'台北車站地下街'}],options);
+  const exact=await prepareImportPlaceLucus([{location:'台北車站地下街'}],options);
   assert.equal(exact.reused,1);
   assert.equal(exact.byName.get('台北車站地下街'),'AAAA0001');
   assert.deepEqual(exact.nameCandidates,[]);
 });
 
 test('name candidates are review-only, not import identity or automatic Trace rename',()=>{
-  const importer=readFileSync(new URL('../app/loc/import/place-anchors.mjs',import.meta.url),'utf8');
+  const importer=readFileSync(new URL('../app/loc/import/place-lucus.mjs',import.meta.url),'utf8');
   const panel=readFileSync(new URL('../app/loc/import/ManagementImportPanel.jsx',import.meta.url),'utf8');
   const organizer=readFileSync(new URL('../app/loc/trace/Organizer.jsx',import.meta.url),'utf8');
   assert.match(importer,/nameCandidates/);

@@ -12,23 +12,23 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
     import('../model/feature-query-client.mjs')
   ]);
   const scope=defaultScopeData(scopeId);
-  if(!scope)return {rows:[],anchors:[]};
+  if(!scope)return {rows:[],lucus:[]};
   if(scopeId!=='local'&&!Capacitor.isNativePlatform()){
     const {data}=await queryTrace({
       p_scope_id:scopeId,p_view:'trace_places',
       p_start:startDate||null,p_end:endDate||null,p_options:{}
     });
     if(!Array.isArray(data))throw new Error('Invalid Trace place summary result');
-    let anchors=[];
+    let lucus=[];
     if(['lo3rwang','lrunes'].includes(scopeId)){
-      // Query the physical Anchor directly. Legacy *_trace views are retired.
+      // Query the physical Lucus directly. Legacy *_trace views are retired.
       const rows=await readAllLucusFeature({
         scope:scopeId,family:'space',types:['point']
       });
-      anchors=rows.map(row=>({uid:row.uid,title:row.title}))
+      lucus=rows.map(row=>({uid:row.uid,title:row.title}))
         .sort((a,b)=>String(a.title).localeCompare(String(b.title)));
     }
-    return {rows:data,anchors};
+    return {rows:data,lucus};
   }
   const filters=[
     {column:'trace',operator:'eq',value:'true'},
@@ -53,6 +53,6 @@ export async function readPlaceSummary(scopeId,{startDate='',endDate=''}={}){
       const [day,category]=key.split('\u0000');
       return {day,category,item_count};
     }),
-    anchors:[]
+    lucus:[]
   };
 }

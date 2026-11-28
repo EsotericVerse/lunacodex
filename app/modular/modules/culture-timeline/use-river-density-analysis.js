@@ -8,7 +8,7 @@ const EMPTY_ANALYSIS=Object.freeze({
 
 // PELT can be expensive across multi-year daily buckets. Never run it during
 // React render or on the browser's main thread.
-export function useRiverDensityAnalysis(rows,anchorDates,enabled){
+export function useRiverDensityAnalysis(rows,lucusDates,enabled){
   const [settled,setSettled]=useState(null);
   useEffect(()=>{
     if(!enabled||!rows?.length){
@@ -24,24 +24,24 @@ export function useRiverDensityAnalysis(rows,anchorDates,enabled){
       worker.onmessage=event=>{
         if(!active)return;
         const {result,error}=event.data||{};
-        setSettled({rows,anchorDates,
+        setSettled({rows,lucusDates,
           analysis:error?{...EMPTY_ANALYSIS,error:'時間密度變化點分析失敗，河道仍可使用。'}:result||EMPTY_ANALYSIS
         });
         worker.terminate();
       };
       worker.onerror=()=>{
-        if(active)setSettled({rows,anchorDates,
+        if(active)setSettled({rows,lucusDates,
           analysis:{...EMPTY_ANALYSIS,error:'背景時間密度分析無法啟動，河道仍可使用。'}});
         worker.terminate();
       };
-      worker.postMessage({rows,anchorDates});
+      worker.postMessage({rows,lucusDates});
     }catch{
-      if(active)setSettled({rows,anchorDates,
+      if(active)setSettled({rows,lucusDates,
         analysis:{...EMPTY_ANALYSIS,error:'此瀏覽器無法執行背景時間密度分析。'}});
     }
     return ()=>{active=false;worker?.terminate();};
-  },[rows,anchorDates,enabled]);
+  },[rows,lucusDates,enabled]);
 
-  return enabled&&settled?.rows===rows&&settled?.anchorDates===anchorDates
+  return enabled&&settled?.rows===rows&&settled?.lucusDates===lucusDates
     ?settled.analysis:EMPTY_ANALYSIS;
 }

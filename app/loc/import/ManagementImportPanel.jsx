@@ -14,7 +14,7 @@ import {canonicalImportSourceName,inferImportSourceFromFilename} from '../source
 import {Capacitor} from '@capacitor/core';
 import {defaultScopeData} from '../scope/scope-data';
 import {createUid8} from '../model/uid';
-import {mediaLucusRecord,mediaLucusProjection,canonicalMediaLucusType,MEDIA_LUCUS_COLUMNS,LUCUS_TYPE_GROUPS} from '../../../packages/zenstack/lucus-hierarchy.mjs';
+import {mediaGalaxyRow,mediaKind,publicMediaUrl} from '../media/media-galaxy.mjs';
 import {createImportProgressStore} from './progress-store.mjs';
 import {readImportCheckpoint,writeImportCheckpoint,clearImportCheckpoint} from './checkpoint.mjs';
 import {remapArchiveArticleUids} from './random-uids.mjs';
@@ -26,12 +26,12 @@ import {facebookPostPlace} from '../archive/geo-objects.mjs';
 import {dedupeIncomingImport,matchExistingImportBySiteId,matchExistingImportByCreatedAt,isUnchangedImportBeforeWrite,insertImportBatches} from './duplicate-check.mjs';
 import {importTimeRangeWindow,filterImportAnalysisByTime} from './time-range.mjs';
 import {finalizeImportCreatedTimes,importCalendarDay} from './unique-createtime.mjs';
-import {prepareImportPlaceAnchors,importedPlaceId} from './place-anchors.mjs';
-import {prepareImportTimeAnchors} from './time-anchors.mjs';
-import {readImportPointDateAnchors} from './lucus-read.mjs';
+import {prepareImportPlaceLucus,importedPlaceId} from './place-lucus.mjs';
+import {prepareImportTimeLucus} from './time-lucus.mjs';
+import {readImportPointDateLucus} from './lucus-read.mjs';
 import {readPublicSourceLucus,readPublicSourceTaxonomy} from '../source/catalog-public.mjs';
 import {auditImportedSourceSites} from '../source/classification.mjs';
-import {reconcileExistingImportAnchors} from './reconcile-anchors.mjs';
+import {reconcileExistingImportLucus} from './reconcile-lucus.mjs';
 import {extractImportCoordinates,importGeoKey,importMapUrlCoordinates} from './geocoordinates.mjs';
 import {isPublicArchiveRecord,filterStandalonePublicRows,assertStandaloneImportDestination} from '../archive/import-safety.mjs';
 import {createArchiveEvidenceCollector,prepareArchiveMedia,isArchiveMediaUrl,auditArchiveUrlAttributes} from '../archive/media-evidence.mjs';
@@ -54,9 +54,9 @@ import {queryImportSitePresence,queryImportSiteIdCandidates,
   from '../actions/import/queries.mjs';
 import {importSourceCategories} from './source-categories.mjs';
 const EMPTY_IMPORT_ANALYSIS=Object.freeze({valid:[],normalized:[],mediaOnly:[],invalid:[],warnings:[]});
-// Imported Anchor keys are semantic matches, not UNIQUE constraints.
+// Imported Lucus keys are semantic matches, not UNIQUE constraints.
 // Report unresolved duplicate UIDs without choosing an arbitrary winner.
-function importAnchorConflictSummary(...results){
+function importLucusConflictSummary(...results){
   const conflicts=results.flatMap(result=>Array.isArray(result?.conflicts)?result.conflicts:[]);
   const nameCandidates=results.flatMap(result=>
     Array.isArray(result?.nameCandidates)?result.nameCandidates:[]);
@@ -67,7 +67,7 @@ function importAnchorConflictSummary(...results){
         '媒體 '+String(row.type||'')+' '+String(row.url||row.uid||'未提供網址'))+
     (row.saved_uids?.length?'，候選 UID '+row.saved_uids.slice(0,5).join(',')+
       (row.saved_uids.length>5?'…':''):'，缺少唯一識別'));
-  const conflictText=conflicts.length?'；Anchor 比對衝突 '+conflicts.length.toLocaleString()+
+  const conflictText=conflicts.length?'；Lucus 比對衝突 '+conflicts.length.toLocaleString()+
     ' 組，已保留待人工核對：'+sample.join('、')+
     (conflicts.length>5?' 等':'')+'。':'';
   const candidateText=nameCandidates.length?'；地點名稱包含候選 '+nameCandidates.length.toLocaleString()+
@@ -99,7 +99,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
       ' 與資料 object_type 所屬的 '+detected.label+' 不一致，請重新選擇。'};
   const sourceModel=sourceImportModel(source,row);
   // A recognized object_type is authoritative over a misleading filename;
-  // no SiteAnchor record, UID or permission is synthesized.
+  // no SiteLucus record, UID or permission is synthesized.
   const selectedSource=sourceModel?.label||source;
   const value=field=>mappedImportValue(row,field,fieldMap,sourceModel||selectedSource);
   const isFacebook=String(selectedSource||'').trim().toLowerCase()==='facebook';
@@ -168,10 +168,10 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     });
     mediaRefs=[...new Set(mediaRefs)];
     // Unsupported document/object types must not abort an otherwise valid
-    // article halfway through MediaAnchor writes. Report them in the preview.
+    // article halfway through Galaxy 媒體作品 writes. Report them in the preview.
     const rejected=new Set();
     mediaRecords=mediaRecords.filter(record=>{
-      try{canonicalMediaLucusType(record.media_type,record.url);return true;}
+      try{mediaKind(record.media_type,record.url);return true;}
       catch{rejected.add(String(record.media_type||'unknown'));return false;}
     });
     if(rejected.size)mediaWarning='附件型別不支援，已略過：'+[...rejected].join('、');
@@ -183,7 +183,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     });
   }catch(error){return {record:null,error:String(error.message||error)}}
   if(!content){
-    // Pages containing images but no authored text belong to MediaAnchor,
+    // Pages containing images but no authored text belong to Galaxy 媒體作品,
     // not a fabricated Galaxy article. Keep only real accessible URLs.
     const independent=mediaRecords.filter(record=>Boolean(record.url))
       .map(({__article_uid:unused,...media})=>({...media,location:null}));
@@ -192,7 +192,7 @@ function normalizeJsonImportEntry(entry,source,fieldMap={},t,manualModel=false){
     const type=String(value('media_type')||(runeResultText?'rune':'')).trim();
     const url=String(value('url')||'').trim();
     if(type){
-      try{canonicalMediaLucusType(type,url);}catch(error){
+      try{mediaKind(type,url);}catch(error){
         return {record:null,error:'來源只有媒體物件，但型別不支援：'+type+
           '。'+String(error?.message||error)};
       }
@@ -360,7 +360,7 @@ async function readImportIdentityCandidates({scopeId,site,action,keys,onPage}={}
 // Shared idempotent media attachment write for standard file imports.
 // All records are bound by original article UID; no full-table scan or recursive discovery.
 async function readImportMediaCandidates(scopeId,uids=[],urls=[],message='媒體讀取失敗'){
-  // MediaAnchor UID is exact PK data; never normalize a malformed ID.
+  // Galaxy 媒體作品 UID is exact PK data; never normalize a malformed ID.
   const ids=[...new Set(uids.map(value=>String(value??'')).filter(Boolean))];
   // Media URL identity is literal: whitespace is significant.
   const links=[...new Set(urls.map(value=>String(value??'')).filter(Boolean))];
@@ -375,16 +375,15 @@ async function readImportMediaCandidates(scopeId,uids=[],urls=[],message='媒體
       const {data}=await queryImportMediaCandidates({p_scope_id:scopeId,
         p_uids:uidBatch,p_urls:urlBatch,p_after_uid:afterUid,p_limit:pageSize});
       if(!Array.isArray(data)||data.length>pageSize)
-        throw new Error('MediaAnchor lookup response invalid');
+        throw new Error('Galaxy 媒體作品 lookup response invalid');
       for(const row of data){
         const uid=String(row?.uid||'');
-        if(!/^[A-Za-z0-9]{8}$/.test(uid)||seenBatch.has(uid)||
-            !LUCUS_TYPE_GROUPS.media.includes(row?.type))
-          throw new Error('MediaAnchor lookup contains duplicate or invalid UID/type');
+        if(!/^[A-Za-z0-9]{8}$/.test(uid)||seenBatch.has(uid))
+          throw new Error('媒體作品查詢傳回重複或無效的 UID');
         seenBatch.add(uid);
         const previous=out.get(uid);
         if(previous&&JSON.stringify(previous)!==JSON.stringify(row))
-          throw new Error('MediaAnchor candidate changed across import pages; retry safely');
+          throw new Error('Galaxy 媒體作品 candidate changed across import pages; retry safely');
         out.set(uid,row);
         afterUid=uid;
       }
@@ -398,136 +397,83 @@ async function readImportMediaCandidates(scopeId,uids=[],urls=[],message='媒體
 
 // Existing import idempotency is preserved with one authorized, bounded
 // Kysely lookup for UID and attr.url candidates; no Galaxy Media table.
-async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],knownArticleIds=new Map(),scopeId,galaxy,mediaLucus,t,onProgress}={}){
-      // Media-only imports and embedded media use the one typed MediaAnchor table.
-      // Attach only to article UIDs established by the import plan.
-      const originalPlans=normalized.flatMap(item=>{
-        const sourceUid=item.record?.uid;
-        const owner=knownArticleIds.get(sourceUid);
-        return (owner?(item.mediaRecords||[]):[]).map(record=>({...record,__article_uid:owner}));
+async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],knownArticleIds=new Map(),scopeId,galaxy,sourceSite,t,onProgress}={}){
+      const plans=normalized.flatMap(item=>{
+        const owner=knownArticleIds.get(item.record?.uid);
+        return owner?(item.mediaRecords||[]).map(record=>({...record,__article_uid:owner})):[];
       }).concat(mediaOnly);
-      // One legacy rune_references field becomes its own runes media record.
-      // Keep the original media record, URL, title and description unchanged.
-      // Never duplicate the article in Galaxy just to store a card spread.
-      const plans=originalPlans.flatMap(source=>{
-        const {rune_references,media_type:legacyType,...rest}=source;
-        const record={...rest,type:canonicalMediaLucusType(source.type||legacyType,source.url)};
-        if(rune_references==null||rune_references===''||
-            JSON.stringify(rune_references)==='[]'||JSON.stringify(rune_references)==='{}')
-          return [record];
-        const content=runeDrawText(rune_references);
-        if(record.type==='rune'){
-          return [{...record,title:record.title||'抽牌結果',description:runeDrawText(record.description)||content}];
-        }
-        if(!record.__article_uid)throw new Error('抽牌結果必須對應 Galaxy 文章 UID');
-        return [record,{
-          __article_uid:record.__article_uid,type:'rune',title:'抽牌結果',
-          url:null,description:content,createtime:record.createtime,location:record.location
-        }];
-      });
-      onProgress?.({stage:'核對既有媒體',completed:0,total:0});
-      const explicitIds=[...new Set([...plans.map(record=>record.uid).filter(Boolean),...normalized.flatMap(item=>item.mediaRefs||[])])];
-      const candidateUrls=[...new Set(plans.map(row=>row.url).filter(Boolean))];
-      // One bounded UID-or-URL candidate query per chunk; avoid scanning
-      // the same MediaAnchor twice during a single import plan.
-      const existingMedia=await readImportMediaCandidates(scopeId,
-        explicitIds,candidateUrls,t('uiExtra.importUI.mediaIdCompareFailed'));
-      const mediaKey=row=>{
-        const url=String(row.url??'');
-        return url?JSON.stringify([url,String(row.type??'')])
-          :(row.uid?'id:'+row.uid:null);
-      };
-      const byKey=new Map(),ambiguousMediaKeys=new Map();
-      const byId=new Map(existingMedia.map(row=>[String(row.uid),row]));
-      for(const row of existingMedia){
-        const key=mediaKey(row);
-        if(!key)continue;
-        if(ambiguousMediaKeys.has(key)){
-          ambiguousMediaKeys.get(key).add(String(row.uid));
-        }else if(byKey.has(key)&&String(byKey.get(key).uid)!==String(row.uid)){
-          ambiguousMediaKeys.set(key,new Set([String(byKey.get(key).uid),String(row.uid)]));
-          byKey.delete(key);
-        }else byKey.set(key,row);
-      }
-      const mediaConflicts=[],reportedMediaConflicts=new Set();
-      const reportMediaConflict=(key,record,uids)=>{
-        if(reportedMediaConflicts.has(key))return;
-        reportedMediaConflicts.add(key);
-        mediaConflicts.push({type:record.type||null,url:record.url||null,
-          uid:record.uid||null,saved_uids:[...uids].sort()});
-      };
-      // URL-less media stay standalone; no inferred article UID relationship.
-      const createMedia=[],pendingMediaUids=new Set(),related=new Map(),seenMedia=new Set(),resolvedIds=new Map();
-      const mediaSizer=createImportBatchSizer();
-      let created=0;
-      const flushNewMedia=async()=>{
-        if(!createMedia.length)return;
-        const count=createMedia.length,started=Date.now();
-        const characters=createMedia.reduce((sum,row)=>sum+JSON.stringify(row).length,0);
-        // Size the exact MediaAnchor rows sent to the writer, not their
-        // larger pre-normalization envelopes with different physical fields.
-        const prepared=createMedia.map(mediaLucusRecord);
-        await writeImportBatches(prepared,{
-          writeBatch:batch=>insertImportRows(mediaLucus,batch),
-          onProgress:p=>onProgress?.({stage:'新增媒體紀錄',completed:created+p.completed,total:created+count})
-        });
-        created+=count;
-        createMedia.length=0;
-        pendingMediaUids.clear();
-        mediaSizer.observe(count,Date.now()-started,characters);
-      };
-      function attach(uid,url){
-        const mediaUrl=String(url||'').trim();
-        if(!uid||!/^https?:\/\//i.test(mediaUrl))return;
+      const ids=[...new Set([...plans.map(row=>row.uid).filter(Boolean),
+        ...normalized.flatMap(item=>item.mediaRefs||[])])];
+      const urls=[...new Set(plans.map(row=>publicMediaUrl(row.url)).filter(Boolean))];
+      onProgress?.({stage:'核對既有媒體',completed:0,total:ids.length+urls.length});
+      const existing=await readImportMediaCandidates(scopeId,ids,urls,
+        t('uiExtra.importUI.mediaIdCompareFailed'));
+      const byId=new Map(existing.map(row=>[String(row.uid),row]));
+      const related=new Map(),resolvedIds=new Map(),createMedia=[],seen=new Set();
+      const conflicts=[];
+      const attach=(uid,url)=>{
+        const link=publicMediaUrl(url);
+        if(!uid||!link)return;
         if(!related.has(uid))related.set(uid,new Set());
-        related.get(uid).add(mediaUrl);
-      }
+        related.get(uid).add(link);
+      };
       for(const item of normalized){
-        const uid=knownArticleIds.get(item.record?.uid);
-        for(const mediaId of item.mediaRefs||[]){
-          const saved=byId.get(mediaId);
-          if(!saved)throw new Error(t('uiExtra.importUI.missingMediaReference',{id:mediaId}));
-          if(saved.url)attach(uid,saved.url);
+        const owner=knownArticleIds.get(item.record?.uid);
+        for(const id of item.mediaRefs||[]){
+          const saved=byId.get(String(id));
+          if(!saved)throw Error(t('uiExtra.importUI.missingMediaReference',{id}));
+          attach(owner,saved.url);
         }
       }
       for(const raw of plans){
         const owner=String(raw.__article_uid||'').trim();
-        const record={...raw};delete record.__article_uid;
-        if(String(record.location||'').trim()&&!owner)
-          throw new Error('未連結文章的媒體地點無法儲存到 MediaAnchor；請先建立文章／LocationAnchor。');
-        const key=mediaKey(record);
-        // UID is authoritative if it exists; URL+type or article evidence
-        // cannot select one among several persisted MediaAnchor UIDs.
-        const exact=record.uid?byId.get(String(record.uid)):null;
-        if(!exact&&key&&ambiguousMediaKeys.has(key)){
-          reportMediaConflict('url:'+key,record,ambiguousMediaKeys.get(key));
+        const url=raw.url?publicMediaUrl(raw.url):'';
+        if(raw.url&&!url)throw Error('匯入媒體網址無效');
+        const type=mediaKind(raw.type||raw.media_type,url);
+        const uid=String(raw.uid||'').trim();
+        const exact=uid?byId.get(uid):null;
+        if(exact){
+          if(url&&exact.url&&publicMediaUrl(exact.url)!==url)
+            throw Error('媒體 UID 已存在，但網址不同：'+uid);
+          resolvedIds.set(uid,uid);attach(owner,exact.url);continue;
+        }
+        const key=JSON.stringify([owner,url,type]);
+        if(seen.has(key))continue;
+        seen.add(key);
+        const same=existing.filter(row=>row.url&&publicMediaUrl(row.url)===url&&
+          String(row.site||'')===String(raw.site||sourceSite||'')&&
+          String(row.source_id||'')===owner);
+        if(url&&same.length===1){
+          if(uid)resolvedIds.set(uid,String(same[0].uid));
+          attach(owner,url);continue;
+        }
+        if(same.length>1){
+          conflicts.push({type,url,uid:uid||null,saved_uids:same.map(row=>row.uid)});
           continue;
         }
-        const known=exact||(key?byKey.get(key):null);
-        if(known){
-          if(record.uid&&String(known.type||'')!==String(record.type||''))
-            throw new Error('媒體 UID 已存在，但媒體類型不同：'+record.uid);
-          if(record.uid&&known.url&&record.url&&String(known.url)!==String(record.url))
-            throw new Error('媒體 UID 已存在，但網址不同：'+record.uid);
-          // Existing media keep their saved url; the url is only written on insert.
-          if(record.uid)resolvedIds.set(String(record.uid),String(known.uid));
-          if(known.url)attach(owner,known.url);continue;
-        }
-        if(key&&seenMedia.has(key))continue;
-        if(key)seenMedia.add(key);
-        const mediaId=record.uid||createUid8();
-        if(!mediaId)throw new Error(t('uiExtra.importUI.mediaUuidUnavailable'));
-        record.uid=mediaId;
-        createMedia.push(record);pendingMediaUids.add(String(mediaId));
-        if(key)byKey.set(key,record);byId.set(mediaId,record);
-        if(record.url)attach(owner,record.url);
-        if(createMedia.length>=mediaSizer.size)await flushNewMedia();
+        const mediaUid=uid||createUid8();
+        if(!mediaUid)throw Error(t('uiExtra.importUI.mediaUuidUnavailable'));
+        const description=raw.rune_references
+          ?[raw.description,runeDrawText(raw.rune_references)].filter(Boolean).join('\n')
+          :raw.description;
+        const row=mediaGalaxyRow({uid:mediaUid,url,title:raw.title,site:raw.site||sourceSite,
+          description,createtime:raw.createtime,source_id:owner||null});
+        createMedia.push(row);byId.set(mediaUid,row);
+        if(uid)resolvedIds.set(uid,mediaUid);
+        attach(owner,url);
       }
-      await flushNewMedia();
+      let created=0;
+      await writeImportBatches(createMedia,{
+        writeBatch:batch=>insertImportRows(galaxy,batch),
+        onProgress:p=>onProgress?.({stage:'新增媒體作品',completed:p.completed,total:createMedia.length})
+      });
+      created=createMedia.length;
+      const savedArticleIds=new Set(knownArticleIds.values());
       for(const link of extraLinks){
-        const uid=knownArticleIds.get(String(link.uid||'').trim());
-        const mediaId=resolvedIds.get(String(link.media_uid||''))||String(link.media_uid||'');
-        if(uid&&byId.get(mediaId)?.url)attach(uid,byId.get(mediaId).url);
+        const original=String(link.uid||'').trim();
+        const owner=knownArticleIds.get(original)||(savedArticleIds.has(original)?original:'');
+        const id=resolvedIds.get(String(link.media_uid||''))||String(link.media_uid||'');
+        attach(owner,link.url||byId.get(id)?.url);
       }
       let connected=0,checkedLinks=0;
       const linkedUids=[...related.keys()];
@@ -568,7 +514,7 @@ async function syncImportedMedia({normalized=[],mediaOnly=[],extraLinks=[],known
       }
       await flushMediaLinks();
 
-  return {created,connected,resolvedIds,conflicts:mediaConflicts};
+  return {created,connected,resolvedIds,conflicts};
 }
 
 
@@ -678,16 +624,16 @@ function UniversalImport({scopeId,format,onFormatChange}) {
   const [timeRange,setTimeRange]=useState('all');
   const timeWindow=useMemo(()=>importTimeRangeWindow(timeRange),[timeRange,fileName]);
   const sourceCategoriesEnabled=!nativeLocal&&Boolean(account.user)&&account.canLocAccessSync('scope',scopeId);
-  // Import source choices come from the fixed resident SiteAnchor JS snapshot;
+  // Import source choices come from the fixed resident SiteLucus JS snapshot;
   // imported rows never trigger a live SQL taxonomy read.
-  const sourceAnchorResource=useAsyncResource(['loc-source-lucus'],async()=>{
+  const sourceLucusResource=useAsyncResource(['loc-source-lucus'],async()=>{
     const nodes=await readPublicSourceLucus();
     return {categories:nodes.filter(row=>row.type==='from').map(row=>row.title),
       aliases:[],groups:[],nodes};
   },{enabled:sourceCategoriesEnabled});
   const sourceCategories=useMemo(()=>{
-    return importSourceCategories(sourceCategoriesEnabled,sourceAnchorResource.data);
-  },[sourceCategoriesEnabled,sourceAnchorResource.data]);
+    return importSourceCategories(sourceCategoriesEnabled,sourceLucusResource.data);
+  },[sourceCategoriesEnabled,sourceLucusResource.data]);
   const sourceOptions=[...new Set([...sourceCategories.system,...sourceCategories.personal,...IMPORT_SOURCE_MODEL_LABELS])];
   const canonicalSource=value=>canonicalImportSourceName(value,sourceCategories.system,sourceCategories.personal);
   const [importLocale,setImportLocale]=useState('zh-Hant');
@@ -1140,29 +1086,29 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     clearDecodedFile();
     setStatus('請為下一個檔案選擇匯入來源，再進行解析。');
   }
-  const canRestoreAnchors=scopeId!=='local'&&scopeId!=='loc'&&(
+  const canRestoreLucus=scopeId!=='local'&&scopeId!=='loc'&&(
     eligibleGeoRecords.length>0||
     analyzed.valid.some(record=>Boolean(record.location||record.__importPlaceName))
   );
   async function saveGeoPlaces(){
-    if(busy||!canRestoreAnchors||rows.length||archiveEvidence.length)return;
+    if(busy||!canRestoreLucus||rows.length||archiveEvidence.length)return;
     const candidates=eligibleGeoRecords;
     if(!candidates.length)return;
     if(!window.confirm('將原始打卡地名及日期匯入空間與時間定錨（已存在的沿用；不新增文章）。確定執行？'))return;
     setBusy(true);setStatus('');setProgress({stage:'核對原始打卡地點',completed:0,total:0,percent:null});
     try{
-      const anchorSnapshot=await readImportPointDateAnchors({
+      const lucusSnapshot=await readImportPointDateLucus({
         scopeId,
         onProgress:p=>setProgress({stage:p.phase,completed:p.completed,total:0,percent:null})
       });
-      const result=await prepareImportPlaceAnchors(candidates,{
-        scopeId,relation:dbAuthRelation,createMissing:true,anchorSnapshot,
+      const result=await prepareImportPlaceLucus(candidates,{
+        scopeId,relation:dbAuthRelation,createMissing:true,lucusSnapshot,
         onProgress:p=>setProgress({stage:p.phase,completed:p.completed,total:p.total||0,
           percent:p.total?Math.round(100*p.completed/p.total):null})
       });
-      const dates=await prepareImportTimeAnchors(candidates,{
+      const dates=await prepareImportTimeLucus(candidates,{
         scopeId,timeTable:account.scopeDataFor(scopeId)?.time,relation:dbAuthRelation,
-        anchorSnapshot,includeUnifiedUidPool:true,
+        lucusSnapshot,includeUnifiedUidPool:true,
         onProgress:p=>setProgress({stage:p.phase,completed:p.completed,total:p.total||0,
           percent:p.total?Math.round(100*p.completed/p.total):null})
       });
@@ -1170,11 +1116,11 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         '、沿用 '+result.reused.toLocaleString()+'；日期定錨新增 '+
         dates.created.toLocaleString()+'、沿用 '+dates.reused.toLocaleString()+
         '。沒有新增 Galaxy 文章；缺少原始座標的地點不會捏造座標。'+
-        importAnchorConflictSummary(result,dates));
+        importLucusConflictSummary(result,dates));
     }catch(error){setStatus('Trace 地點儲存失敗：'+String(error?.message||error));}
     finally{setBusy(false);setProgress(null);}
   }
-  async function restoreExistingAnchors(){
+  async function restoreExistingLucus(){
     if(busy||nativeLocal||scopeId==='loc')return;
     if(!window.confirm('補齊既有文章的空間定錨、日期定錨與地點關聯；不新增或刪除文章、不覆寫原始建立時間。確定執行？'))return;
     setBusy(true);setStatus('');
@@ -1186,7 +1132,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
     try{
       const scope=account.scopeDataFor(scopeId);
       if(!scope?.galaxy||!scope?.time)throw Error('資料範圍尚未載入');
-      const result=await reconcileExistingImportAnchors({
+      const result=await reconcileExistingImportLucus({
         scopeId,galaxy:scope.galaxy,timeTable:scope.time,relation:dbAuthRelation,
         updateImportRows,onProgress:show
       });
@@ -1195,7 +1141,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         '；日期定錨新增 '+result.dates.created.toLocaleString()+'、沿用 '+
         result.dates.reused.toLocaleString()+'；文章地點關聯補齊 '+
         result.linked.toLocaleString()+'，未能確定地點 '+result.unmatched.toLocaleString()+' 筆。'+
-        importAnchorConflictSummary(result.places,result.dates));
+        importLucusConflictSummary(result.places,result.dates));
     }catch(error){
       setStatus('既有打卡定錨修復失敗；已完成的部分可能已寫入，重新執行會沿用既有資料。原始錯誤：'+String(error?.message||error));
     }finally{setProgress(null);setBusy(false);}
@@ -1252,8 +1198,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         });
       }
       const scope=nativeLocal?defaultScopeData('local'):account.scopeDataFor(scopeId);
-      const galaxy=scope?.galaxy,mediaLucus=scope?.lucus;
-      if(!galaxy||!mediaLucus)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
+      const galaxy=scope?.galaxy;
+      if(!galaxy)throw new Error(t('uiExtra.importUI.scopeUnresolved'));
       // First narrow all database comparisons to the source site, then timestamp.
       // Check each site's existing data ONCE before creating a comparison pool.
       // If site is empty, the complete file stays in INSERT mode regardless
@@ -1273,7 +1219,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       };
       const distinctSites=[...new Set(analyzed.valid.map(row=>String(row.site||'').trim()))];
       // Import source presence is a business-data question on Galaxy.site,
-      // not a SiteAnchor title JOIN. Batch bounded exact site keys through
+      // not a SiteLucus title JOIN. Batch bounded exact site keys through
       // its feature-owned Server Action instead of issuing one request per
       // platform through a generic database adapter.
       if(!nativeLocal){
@@ -1534,7 +1480,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // Before changing any stored nonempty UID, ask PostgreSQL only whether
       // that exact eight-character PK still exists. An existing PK always
       // wins over a coincidental incoming archive UID alias. No Galaxy body,
-      // Anchor model, title, location, site or semantic comparison is loaded.
+      // Lucus model, title, location, site or semantic comparison is loaded.
       const possiblyRebound=new Set();
       const collectStoredUid=value=>{
         if(typeof value!=='string'||!/^[A-Za-z0-9]{8}$/.test(value))return;
@@ -1592,46 +1538,46 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // Importing an original check-in also restores its spatial lucus.
       // The Timeline importer remains supplemental and does not run here.
       showProgress('準備空間定錨');
-      const geoAnchorRecords=eligibleGeoRecords;
+      const geoLucusRecords=eligibleGeoRecords;
       // Reimports must also repair the existing row's location and exact
       // Galaxy.date, even when the incoming duplicate has no place metadata.
-      const anchorRecords=unique.map(record=>{
+      const lucusRecords=unique.map(record=>{
         const saved=existingBySiteId.get(record.uid);
         return {...record,
           location:record.location||saved?.location||null,
           date:saved?.date||record.date||null
         };
       });
-      const placeRecordByUid=new Map(anchorRecords.map(row=>[String(row.uid),row]));
+      const placeRecordByUid=new Map(lucusRecords.map(row=>[String(row.uid),row]));
       // A previously linked Point is still a valid UID visit even when its
       // original Galaxy.location is blank. Date titles still require an
       // actual place label in importCheckinDayEntries, as before.
-      const checkinAnchorRecords=anchorRecords.filter(record=>
+      const checkinLucusRecords=lucusRecords.filter(record=>
         Boolean(record.location||record.__importPlaceName||
           existingBySiteId.get(record.uid)?.place_id));
       // UID wins over location text: an existing place_id must not trigger
       // a name/coordinate re-scan of every Point in the Scope. Resolve saved
       // PKs directly while reading Date rows only when no new place is needed.
-      const newPlaceCandidates=anchorRecords.filter(record=>
+      const newPlaceCandidates=lucusRecords.filter(record=>
         !String(existingBySiteId.get(record.uid)?.place_id||'')&&
         Boolean(record.location||record.__importPlaceName));
-      const needsPointDiscovery=Boolean(newPlaceCandidates.length||geoAnchorRecords.length);
+      const needsPointDiscovery=Boolean(newPlaceCandidates.length||geoLucusRecords.length);
       const savedPointUids=[...new Set(unique.map(row=>
         existingBySiteId.get(row.uid)?.place_id).filter(uid=>
           typeof uid==='string'&&/^[A-Za-z0-9]{8}$/.test(uid)))];
-      const anchorSnapshot=!nativeLocal&&scopeId!=='loc'&&
-        (checkinAnchorRecords.length||geoAnchorRecords.length)
-        ?await readImportPointDateAnchors({scopeId,
+      const lucusSnapshot=!nativeLocal&&scopeId!=='loc'&&
+        (checkinLucusRecords.length||geoLucusRecords.length)
+        ?await readImportPointDateLucus({scopeId,
           ...(needsPointDiscovery?{}:{pointUids:savedPointUids}),
           onProgress:p=>showProgress(p.phase,p.completed,p.total||0)})
         :null;
-      const placeAnchors=await prepareImportPlaceAnchors([...newPlaceCandidates,...geoAnchorRecords],{
-        scopeId,relation:dbAuthRelation,createMissing:true,anchorSnapshot,
+      const placeLucus=await prepareImportPlaceLucus([...newPlaceCandidates,...geoLucusRecords],{
+        scopeId,relation:dbAuthRelation,createMissing:true,lucusSnapshot,
         onProgress:p=>showProgress(p.phase,p.completed,p.total||0)
       });
-      const timeAnchors=await prepareImportTimeAnchors([...checkinAnchorRecords,...geoAnchorRecords],{
+      const timeLucus=await prepareImportTimeLucus([...checkinLucusRecords,...geoLucusRecords],{
         scopeId,timeTable:scope?.time,relation:dbAuthRelation,
-        anchorSnapshot,includeUnifiedUidPool:true,
+        lucusSnapshot,includeUnifiedUidPool:true,
         onProgress:p=>showProgress(p.phase,p.completed,p.total||0)
       });
       const knownArticleIds=new Map();
@@ -1677,7 +1623,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         if(!String(existing.site_id||'').trim()&&String(record.site_id||'').trim())changes.site_id=record.site_id;
         if(!String(existing.url||'').trim()&&String(record.url||'').trim())changes.url=record.url;
         const placeRecord=placeRecordByUid.get(String(record.uid))||record;
-        const restoredPlace=importedPlaceId({incoming:placeRecord,existing,byName:placeAnchors.byName,byCoordinate:placeAnchors.byCoordinate});
+        const restoredPlace=importedPlaceId({incoming:placeRecord,existing,byName:placeLucus.byName,byCoordinate:placeLucus.byCoordinate});
         // Immer compares only 8-char UID references. Emit exactly the PK
         // fields changed by this row, then pass them to existing Kysely writer.
         Object.assign(changes,uidUpdatesByImportUid.get(record.uid)||{},
@@ -1687,8 +1633,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         // no title/name/coordinate lookup is necessary for a saved link.
         const storedPointUid=String(existing.place_id||'');
         const savedPointExists=storedPointUid&&
-          anchorSnapshot?.place?.knownPointUids.has(storedPointUid);
-        if(storedPointUid&&anchorSnapshot&&!savedPointExists)
+          lucusSnapshot?.place?.knownPointUids.has(storedPointUid);
+        if(storedPointUid&&lucusSnapshot&&!savedPointExists)
           missingPointUids.add(storedPointUid);
         if(Object.keys(changes).length){
           const update={uid:String(existing.uid),...changes};
@@ -1716,8 +1662,8 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       // Sampling and final write use exactly the same Galaxy shape, so
       // a direct 4096-row decision is based on the bytes actually transmitted.
       const prepareArticleForWrite=record=>{
-        const placeUid=importedPlaceId({incoming:record,byName:placeAnchors.byName,
-          byCoordinate:placeAnchors.byCoordinate});
+        const placeUid=importedPlaceId({incoming:record,byName:placeLucus.byName,
+          byCoordinate:placeLucus.byCoordinate});
         const {__importCoordinates:unusedCoordinates,
           __importPlaceName:unusedPlaceName,__importPlaceAddress:unusedPlaceAddress,
           __importPlaceUrl:unusedPlaceUrl,__importCheckin:unusedCheckin,
@@ -1793,7 +1739,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           {...record,__article_uid:knownArticleIds.get(owner)||null,
             createtime:record.createtime||articleTimes.get(owner)||null}:record;
       });
-      const visualType=row=>canonicalMediaLucusType(row.type||row.media_type,row.url);
+      const visualType=row=>mediaKind(row.type||row.media_type,row.url);
       const isVisual=row=>['image','video'].includes(visualType(row));
       const visualRecords=[
         ...analyzed.normalized.flatMap(item=>(item.mediaRecords||[]).filter(isVisual)),
@@ -1814,9 +1760,12 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         normalized:analyzed.normalized.map(item=>({
           ...item,mediaRecords:(item.mediaRecords||[]).filter(row=>!isVisual(row))
         })),
-        mediaOnly:[...safeMediaOnly,...canonicalArchiveMedia].filter(row=>!isVisual(row)),
-        extraLinks:archivePlan.mediaLinks,
-        knownArticleIds,scopeId,galaxy,mediaLucus,t,
+        mediaOnly:[...safeMediaOnly,...canonicalArchiveMedia]
+          .filter(row=>!isVisual(row)||!row.__article_uid),
+        extraLinks:[...archivePlan.mediaLinks,...visualRecords
+          .filter(row=>Boolean(row.__article_uid&&row.url))
+          .map(row=>({uid:row.__article_uid,url:row.url}))],
+        knownArticleIds,scopeId,galaxy,sourceSite:selectedSource,t,
         onProgress:p=>showProgress(p.stage,p.completed,p.total||0)
       });
       // Media and article stages are both confirmed, but cleanup still waits
@@ -1866,18 +1815,18 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           keywordReviewText='；本次關鍵詞文字核對未完成，文章匯入結果不受影響。';
         }
       }
-      // SiteAnchor is the global silver.loc_lucus source taxonomy, NOT an
+      // SiteLucus is the global silver.loc_lucus source taxonomy, NOT an
       // article foreign key or a second publisher identity. Audit the source
       // labels once after successful writes; ambiguity is informational and
       // never rewrites Galaxy.site or triggers a second import attempt.
       let sourceAudit={conflicts:[]},sourceAuditWarning='';
       if(!nativeLocal&&distinctSites.length){
         try{
-          showProgress('核對 SiteAnchor 來源歧義');
+          showProgress('核對 SiteLucus 來源歧義');
           sourceAudit=auditImportedSourceSites(distinctSites,
             await readPublicSourceTaxonomy());
         }catch{
-          sourceAuditWarning='；SiteAnchor 來源分類核對未完成，原始文章與匯入結果不受影響。';
+          sourceAuditWarning='；SiteLucus 來源分類核對未完成，原始文章與匯入結果不受影響。';
         }
       }
       const skipped=analyzed.invalid.length+analyzed.skippedByRange+
@@ -1888,7 +1837,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
         images.existing.toLocaleString()+' 筆'+
         (images.conflicts?'，重複關聯待確認 '+images.conflicts.toLocaleString()+' 筆':'')+'。'+
         (result.conflicts?'；UID 衝突未建立文章／媒體關聯 '+result.conflicts.toLocaleString()+' 筆。':'')+
-        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeAnchors.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeAnchors.created.toLocaleString()+' 筆，新增日期定錨 '+timeAnchors.created.toLocaleString()+' 筆，沿用日期定錨 '+timeAnchors.reused.toLocaleString()+' 筆，未匹配地點 '+placeAnchors.unmatchedCoordinates.toLocaleString()+' 組。' +importAnchorConflictSummary(placeAnchors,timeAnchors,mediaSummary,sourceAudit)+sourceAuditWarning+keywordReviewText+
+        '；已更新既有文章 '+updated.toLocaleString()+' 筆，沿用空間定錨點 '+placeLucus.reused.toLocaleString()+' 筆，新增空間定錨點 '+placeLucus.created.toLocaleString()+' 筆，新增日期定錨 '+timeLucus.created.toLocaleString()+' 筆，沿用日期定錨 '+timeLucus.reused.toLocaleString()+' 筆，未匹配地點 '+placeLucus.unmatchedCoordinates.toLocaleString()+' 組。' +importLucusConflictSummary(placeLucus,timeLucus,mediaSummary,sourceAudit)+sourceAuditWarning+keywordReviewText+
         (missingPointUids.size?'；發現 '+missingPointUids.size.toLocaleString()+' 個既有 place_id 在 Point UID 索引中不存在，未依 location 重建或改指向其他地點。UID：'+[...missingPointUids].slice(0,5).join(',')+(missingPointUids.size>5?' 等':'')+'。':'')+
         (ambiguousGroups.length?'；來源文章 ID 或發文時間對應多篇既有文章，無法唯一比對而暫不匯入 '+
           ambiguousGroups.length.toLocaleString()+' 筆（其他文章繼續處理）。待確認：'+
@@ -2041,7 +1990,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       <summary>既有地點與日期定錨修復</summary>
       <div className="scope-import-maintenance-content">
         <p className="scope-status">已匯入文章若有地點，可補齊空間與日期定錨、文章地點關聯，以 place_id 保留已知 Point 關聯，不依 location 文字重配既有 UID。原始文章及其 createtime 保留在 Galaxy；不新增文章或覆寫 Point。</p>
-        <button type="button" className="loc-button" disabled={busy} onClick={restoreExistingAnchors}>
+        <button type="button" className="loc-button" disabled={busy} onClick={restoreExistingLucus}>
           {busy?'正在檢查地點關聯…':'補齊既有文章的地點與日期定錨'}
         </button>
       </div>
@@ -2101,7 +2050,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
       {archiveSummary.urlAudit.truncated?' 有 '+archiveSummary.urlAudit.truncated.toLocaleString()+' 筆超過掃描上限；數量為下限。':''}
     </p>:null}
     {archiveSummary?<p className="scope-status">文章原始網址 {Number(archiveSummary.articleWithUrl||0).toLocaleString()}／{rows.length.toLocaleString()} 篇；未取得網址的文章不會以 ZIP uri、媒體連結或來源 ID 偽造文章 URL。</p>:null}
-    {archiveSummary?<p className="scope-status">已清點 {archiveSummary.mediaFiles.toLocaleString()} 個 ZIP 媒體檔；符合文章關聯的媒體候選 {archiveSummary.mediaImportable.toLocaleString()} 筆（有公開網址 {archiveSummary.mediaWithUrl.toLocaleString()} 筆、無公開網址但已確認 ZIP 檔案 {archiveSummary.mediaZipLinked.toLocaleString()} 筆），未匹配或不支援的 ZIP 媒體約 {archiveSummary.mediaZipNotLinked.toLocaleString()} 筆。依目前時間範圍可建立 {eligibleArchiveMediaPlan.media.length.toLocaleString()} 筆媒體紀錄。僅 ZIP 附件會建立 UID 及文章 media_link，URL 保留空值；不會上傳圖片或影片檔案，也不會用 ZIP 路徑冒充播放網址。</p>:null}
+    {archiveSummary?<p className="scope-status">已清點 {archiveSummary.mediaFiles.toLocaleString()} 個 ZIP 媒體檔；符合文章關聯的媒體候選 {archiveSummary.mediaImportable.toLocaleString()} 筆（有公開網址 {archiveSummary.mediaWithUrl.toLocaleString()} 筆、無公開網址但已確認 ZIP 檔案 {archiveSummary.mediaZipLinked.toLocaleString()} 筆），未匹配或不支援的 ZIP 媒體約 {archiveSummary.mediaZipNotLinked.toLocaleString()} 筆。依目前時間範圍可建立 {eligibleArchiveMediaPlan.media.length.toLocaleString()} 筆來源紀錄。文章 media_link 只儲存公開網址；沒有公開網址的 ZIP 附件不會寫入 media_link，也不會用 ZIP 路徑冒充播放網址。本次不會上傳圖片或影片檔案。</p>:null}
     </details>:null}
     {archiveSummary&&(
       (archiveDetection?.fileInventory&&archiveDetection.fileInventory.jsonFiles!==archiveSummary.jsonFilesSeen)||
@@ -2117,7 +2066,7 @@ function UniversalImport({scopeId,format,onFormatChange}) {
           {place.placeUrl?' · '+place.placeUrl:''}</li>)}</ul>:null}
       {archiveSummary.geoPlaceObjects>geoPlaceCandidates.length?<p className="scope-status">來源地點事件多於合併後的地點候選；預覽僅顯示前 {geoPlaceCandidates.length.toLocaleString()} 筆。</p>:null}
     </section>:null}
-    {canRestoreAnchors?<section className="scope-import-preview" aria-label="打卡定錨匯入">
+    {canRestoreLucus?<section className="scope-import-preview" aria-label="打卡定錨匯入">
       <p className="scope-status">將自動建立缺少的空間定錨與日期定錨；已有日期沿用。缺少經緯度仍保留原始地名，不推測座標。</p>
       {!rows.length&&!archiveEvidence.length?<button type="button" className="loc-button primary"
         disabled={busy||!eligibleGeoRecords.length} onClick={saveGeoPlaces}>

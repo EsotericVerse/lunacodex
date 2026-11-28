@@ -11,9 +11,9 @@ import {queryGalaxyDuplicates} from '../actions/galaxy/management-queries.mjs';
 import {queryStatics,queryStaticsContent} from '../actions/statics/queries.mjs';
 import {scopeTableDescriptor,scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
-// Database contract transports physical Galaxy/Anchor rows. Keyword Tree
+// Database contract transports physical Galaxy/Lucus rows. Keyword Tree
 // adapters may expose legacy lists for editor compatibility; new persistent
-// relationships are child Anchor UIDs; Pattern stores no article postings.
+// relationships are child Lucus UIDs; Pattern stores no article postings.
 // Do not revive retired Item/Group hit caches or build separate Keyword tables.
 // Keyword read, write and reset use the shared MaxRows.
 export {MAX_ROWS as KEYWORD_CLASSIFICATION_BATCH_SIZE,MAX_ROWS as KEYWORD_CLASSIFICATION_WRITE_BATCH_SIZE,MAX_ROWS as KEYWORD_CLASSIFICATION_WRITE_PAUSE_INTERVAL};
@@ -21,7 +21,7 @@ export const KEYWORD_CLASSIFICATION_WRITE_COOLDOWN_MS=1000;
 
 // The existing management-write boundary enforces Galaxy metadata rules
 // consistently for publisher, search, culture and import paths.
-// MediaAnchor and Blocks are typed separately from Galaxy records.
+// Galaxy 媒體作品 and Blocks are typed separately from Galaxy records.
 function validateGalaxyWrite(table,values){
   if(scopeTableDescriptor(String(table||'').split('.').at(-1))?.kind!=='galaxy')return values;
   const {content:body,...attributes}=values||{};
@@ -296,7 +296,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
 
   async function readOwnedKeywordNodes(table){
     const scope=String(table||'').match(/^silver\.([a-z][a-z0-9]{0,14})_[a-z][a-z0-9_]*$/)?.[1];
-    if(!scope)throw Error('KeywordAnchor Scope is invalid');
+    if(!scope)throw Error('KeywordLucus Scope is invalid');
     const {queryKeywordNodesForCopy}=await import('../actions/keywords/queries.mjs');
     const rows=[];
     let after=null;
@@ -305,12 +305,12 @@ export function createDatabaseClient({publicClient,authClient,auth}){
         p_after_uid:after,p_limit:MAX_ROWS});
       const page=result?.data;
       if(!Array.isArray(page)||page.length>MAX_ROWS)
-        throw Error('KeywordAnchor query returned an invalid page');
+        throw Error('KeywordLucus query returned an invalid page');
       rows.push(...page);
       if(page.length<MAX_ROWS)break;
       const next=String(page.at(-1)?.uid||'');
       if(!/^[A-Za-z0-9]{8}$/.test(next)||next===after)
-        throw Error('KeywordAnchor query cursor did not advance');
+        throw Error('KeywordLucus query cursor did not advance');
       after=next;
     }
     return rows;
@@ -444,7 +444,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     preflightWrite(table);
     const op=String(operation||'').toLowerCase();
     if(!['insert','update','delete'].includes(op))
-      throw Error('Invalid KeywordAnchor operation');
+      throw Error('Invalid KeywordLucus operation');
     const {normalizeKeywordTreeRow}=await import('../keywords/tree.mjs');
     const v=normalizeKeywordTreeRow(node);
     const field=v.type==='item'?'keyword':'uid';
@@ -470,7 +470,7 @@ export function createDatabaseClient({publicClient,authClient,auth}){
   }
   async function writeKeywordLibraryItem(scopeId,operation,node={}){
     const write=await prepareKeywordLibraryWrite(scopeId,operation,node);
-    // The same single-transaction writer as other management Anchors.
+    // The same single-transaction writer as other management Lucus.
     await transactionWrites([write]);
     return {uid:node.uid,count:1};
   }
@@ -490,8 +490,8 @@ export function createDatabaseClient({publicClient,authClient,auth}){
     const category=categoryUid?tree.index.get(categoryUid):null;
     const descendants=descendantsOfKeyword(data,original.uid);
     const occupied=[...tree.index.keys()],mapping=new Map();
-    // Native Anchor UIDs are cryptographically random Base62. Do not scan
-    // and sort every Anchor just to allocate new UIDs; the database PK is the
+    // Native Lucus UIDs are cryptographically random Base62. Do not scan
+    // and sort every Lucus just to allocate new UIDs; the database PK is the
     // authoritative collision check and this batch owns its allocated set.
     for(const node of descendants){
       const uid=allocateLucusUid(new Set(occupied));

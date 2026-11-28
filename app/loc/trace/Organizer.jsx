@@ -4,7 +4,7 @@ import {readTracePoint} from '../../loc/actions/trace/direct-query.mjs';
 import {useEffect,useMemo,useState} from 'react';
 import {dbAuthClient} from '../db/db-client.mjs';
 import {reviewPlaceNameGroups,compactPlaceName} from '../../modular/features/trace/trace-place-names.mjs';
-import {renameTraceAnchorTitles} from '../../modular/features/trace/trace-data';
+import {renameTraceLucusTitles} from '../../modular/features/trace/trace-data';
 import {matchPlaceNameCandidates,placeCandidateKey} from './place-name-candidates.mjs';
 
 const canonical=items=>[...items].sort((a,b)=>
@@ -12,19 +12,19 @@ const canonical=items=>[...items].sort((a,b)=>
   String(a.title||'').localeCompare(String(b.title||''),'zh-Hant'))[0];
 
 export default function TraceOrganizer({scopeId,spatial,reload}){
-  const anchors=useMemo(()=>(spatial.anchors||[]).filter(item=>
-    item.trace_type==='space_anchor'&&item.source_scope===scopeId),[spatial.anchors,scopeId]);
-  const {automatic,uncertain}=useMemo(()=>reviewPlaceNameGroups(anchors),[anchors]);
+  const lucus=useMemo(()=>(spatial.lucus||[]).filter(item=>
+    item.trace_type==='space_lucus'&&item.source_scope===scopeId),[spatial.lucus,scopeId]);
+  const {automatic,uncertain}=useMemo(()=>reviewPlaceNameGroups(lucus),[lucus]);
   // Read-only name-overlap suggestions use the same compiled matcher as
   // import reviews. They never enter the automatic/bulk rename selection.
   const nameOverlapPairs=useMemo(()=>{
-    const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
+    const byUid=new Map(lucus.map(row=>[String(row.uid),row]));
     const matches=matchPlaceNameCandidates(
-      anchors.map(row=>({key:String(row.uid),name:row.title})),
-      anchors.map(row=>({uid:row.uid,title:row.title,aliases:row.attr?.location})),
+      lucus.map(row=>({key:String(row.uid),name:row.title})),
+      lucus.map(row=>({uid:row.uid,title:row.title,aliases:row.attr?.location})),
       {maxCandidates:16});
     const pairs=[],seen=new Set();
-    for(const row of anchors){
+    for(const row of lucus){
       for(const candidate of matches.get(String(row.uid))||[]){
         const other=byUid.get(candidate.uid);
         if(!other||other.uid===row.uid||
@@ -46,7 +46,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
     }
     return pairs.sort((a,b)=>Number(b.sameCoordinates)-Number(a.sameCoordinates)||
       a.key.localeCompare(b.key));
-  },[anchors]);
+  },[lucus]);
   const [dismissed,setDismissed]=useState([]);
   const [keepers,setKeepers]=useState({});
   useEffect(()=>{
@@ -72,7 +72,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   const [aliases,setAliases]=useState([]);
   const [newAlias,setNewAlias]=useState('');
   const ownPlaces=scopeId!=='loc';
-  const place=anchors.find(item=>item.uid===selectedUid);
+  const place=lucus.find(item=>item.uid===selectedUid);
   useEffect(()=>{
     let live=true;
     if(!selectedUid||scopeId==='loc'){setAliases([]);return;}
@@ -90,7 +90,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
     const list=[...new Set([...aliases,newAlias.trim()].filter(Boolean))];
     setBusy(true);setError(false);setNotice('');
     try{
-      // The existing authorized action updates PointAnchor.attr.location atomically.
+      // The existing authorized action updates PointLucus.attr.location atomically.
       const {data:written,error:saveError}=await dbAuthClient.schema('silver')
         .managedAction('save_scope_trace_place_names',{p_scope_id:scopeId,p_uid:selectedUid,
           p_names:[...new Set([...list,place?.title].filter(Boolean))]});
@@ -126,7 +126,7 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
     const change=[...new Set(uids)].filter(uid=>uid!==keep.uid&&
       group.items.some(item=>item.uid===uid&&item.title!==keep.title));
     if(!change.length)return 0;
-    return renameTraceAnchorTitles({scopeId,uids:change,title:keep.title});
+    return renameTraceLucusTitles({scopeId,uids:change,title:keep.title});
   };
   const saveChecked=async group=>{
     if(busy||!ownPlaces)return;
@@ -169,13 +169,13 @@ export default function TraceOrganizer({scopeId,spatial,reload}){
   const matches=useMemo(()=>{
     const q=compactPlaceName(placeName);
     if(!q)return [];
-    return anchors.filter(item=>compactPlaceName(item.title).includes(q)).slice(0,30);
-  },[anchors,placeName]);
+    return lucus.filter(item=>compactPlaceName(item.title).includes(q)).slice(0,30);
+  },[lucus,placeName]);
   return <section className="loc-card scope-feature-card" aria-label="地點管理及名稱整理">
     <h3>地點管理 · 名稱整理</h3>
     <p className="scope-status">先搜尋並選擇要維護的地點；下方的自動候選可批次整理同座標的名稱。只修改名稱，不會合併或刪除文章、UID 與路線。</p>
     <div className="scope-stat-controls" role="status">
-      <span>目前地點：{anchors.length}</span>
+      <span>目前地點：{lucus.length}</span>
       <span>完整名稱排列候選：{automatic.length} 組</span>
       <span>需要確認：{uncertain.length} 組</span>
     </div>

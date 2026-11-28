@@ -1,4 +1,4 @@
-// Images and videos with authored text become Galaxy content, never MediaAnchors.
+// Images and videos with authored text become Galaxy content, never Galaxy 媒體作品.
 const UID=/^[A-Za-z0-9]{8}$/;
 export function publicVisualUrl(value=''){
   const text=String(value??'').trim();

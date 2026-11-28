@@ -1,4 +1,4 @@
-// Source river structure is the LOC-wide, UID-linked SiteAnchor tree.
+// Source river structure is the LOC-wide, UID-linked SiteLucus tree.
 // Universe -> Galaxy -> Domain -> From. Never flatten the tree by platform,
 // merge a single child into its parent, or infer a parent from a site string.
 // Only the article totals come from Scope-specific Galaxy.site counts.

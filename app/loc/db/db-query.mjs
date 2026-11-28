@@ -232,7 +232,7 @@ export async function selectRows(table,{
     },{source,authenticated,signal,expectedDbId});
     return {rows:data||[],count:total,dataSource:__dataSource};
   };
-  // Only anonymous ZModel Anchor/Blocks reads share complete results.
+  // Only anonymous ZModel Lucus/Blocks reads share complete results.
   // Galaxy, authenticated rows, qualified DB reads and cancellable searches
   // never enter this cache. A backup response is not retained as primary.
   if(authenticated||signal||expectedDbId||/^silver\.local(?:_[a-z0-9_]+)?$/.test(table))return request();

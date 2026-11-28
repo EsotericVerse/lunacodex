@@ -49,8 +49,8 @@ function Pane({
   </section>;
 }
 
-/** Shared two-column / three-level navigator for LOC's authored Anchor trees. */
-export default function AnchorManagementNavigator({
+/** Shared two-column / three-level navigator for LOC's authored Lucus trees. */
+export default function LucusManagementNavigator({
   label='定錨管理',className='',searchLabel='搜尋分類與定錨資料',
   searchPlaceholder='依名稱、日期或地址搜尋',
   primaryTitle='第一層',primaryItems=[],selectedPrimary='',onSelectPrimary,

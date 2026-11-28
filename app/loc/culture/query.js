@@ -1,6 +1,6 @@
 'use client';
 
-import {TIME_ANCHOR_MAX_PAGE_ROWS,TIME_ANCHOR_TARGET_BYTES,TIME_ANCHOR_EDITOR_MAX_BYTES,ARTICLE_UID_PAGE_ROWS} from '../query/query-batch-size.mjs';
+import {TIME_LUCUS_MAX_PAGE_ROWS,TIME_LUCUS_TARGET_BYTES,TIME_LUCUS_EDITOR_MAX_BYTES,ARTICLE_UID_PAGE_ROWS} from '../query/query-batch-size.mjs';
 
 
 
@@ -14,26 +14,25 @@ import {selectScopeGroupMemberIds,defaultScopeData} from '../scope/scope-data';
 import {PUBLISHED_SITE_BOOTSTRAP} from '../../modular/published-site-bootstrap.js';
 import {resolveTimeSegments,resolveTimeTrace,timePeriodSortDate,timeDateWindows,timePeriodContainsDate,intersectTimeDateWindows} from './time-lucus-ranges.mjs';
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
-import {LUCUS_TYPE_GROUPS,MEDIA_LUCUS_COLUMNS,mediaLucusProjection} from '../../../packages/zenstack/lucus-hierarchy.mjs';
-import {readTimeAnchorQuery,readAllTimeAnchorQueries} from './time-lucus-query.mjs';
+import {readTimeLucusQuery,readAllTimeLucusQueries} from './time-lucus-query.mjs';
 import {readGalaxyFeature} from '../galaxy/feature-query-client.mjs';
 import {readLucusFeature,readAllLucusFeature} from '../model/feature-query-client.mjs';
 import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names.mjs';
 
 
 
-// TimeAnchor date/period/era is read independently from SiteAnchor; UI windows do not limit historical anchors.
+// TimeLucus date/period/era is read independently from SiteLucus; UI windows do not limit historical lucus.
 // Culture density counts the full selected interval, not a 100-row article-list page.
-// TimeAnchor: one physical _lucus relation. Legacy UI presentation keys are
+// TimeLucus: one physical _lucus relation. Legacy UI presentation keys are
 // derived in memory; no _time table, RPC or compatibility writer is consulted.
 const TIME_COLUMNS='uid,type,title,description,attr';
-function projectTimeAnchor(row){
+function projectTimeLucus(row){
   const attr=row?.attr&&typeof row.attr==='object'&&!Array.isArray(row.attr)
     ?row.attr:typeof row?.attr==='string'?JSON.parse(row.attr):{};
   const type=String(row?.type||'');
   return {...row,type:type==='date'?'lucus':type,
     address:type==='date'?String(attr.date||'').slice(0,10):null,
-    anchor_ids:type==='era'?(Array.isArray(attr.period)?attr.period:[]):
+    lucus_ids:type==='era'?(Array.isArray(attr.period)?attr.period:[]):
       type==='period'?(Array.isArray(attr.uid)?attr.uid:[]):[],
   };
 }
@@ -47,30 +46,30 @@ function previousDay(value){
 }
 export async function selectCultureTimeRows(scope,birthday=''){
   const scopeId=scopeIdOf(scope?.id);
-  // TimeAnchor is stored exclusively in the physical ZModel Anchor relation.
+  // TimeLucus is stored exclusively in the physical ZModel Lucus relation.
   const table=String(scope?.lucus||'');
   if(!scopeId||!table)throw new Error('Scope data 未解析');
-  // Collect every Time Anchor/period/era. Internal transport pagination does
+  // Collect every Time Lucus/period/era. Internal transport pagination does
   // not cap the historical timeline or borrow the old Data API Max Rows limit.
-  const rows=(await readAllTimeAnchorQueries(scopeId)).map(projectTimeAnchor);
+  const rows=(await readAllTimeLucusQueries(scopeId)).map(projectTimeLucus);
   return projectScopeTimeRecords(scopeId,rows);
 }
 
-// Public and protected editor reads must project the SAME typed Time Anchors.
+// Public and protected editor reads must project the SAME typed Time Lucus.
 // The editor already has all records; reuse them, never issue a second SQL read.
 export function projectScopeTimeRecords(scopeId,rows=[]){
-  const anchors=rows.filter(row=>row.type==='lucus');
-  const byUid=new Map(anchors.map(row=>[String(row.uid),row]));
+  const lucus=rows.filter(row=>row.type==='lucus');
+  const byUid=new Map(lucus.map(row=>[String(row.uid),row]));
   const normalize=(row,type,eventMap)=>{
     const id=String(row.uid||'');
     const ranges=type==='lucus'?[{
       index:0,start_date:timeDate(row),end_date:timeDate(row),
-      start_anchor_id:id,end_anchor_id:null,anchor_ids:[id],point:true,invalid:false
+      start_lucus_id:id,end_lucus_id:null,lucus_ids:[id],point:true,invalid:false
     }]:type==='era'
-      ?resolveTimeTrace(row.anchor_ids,eventMap).ranges
-      :resolveTimeSegments(row.anchor_ids,byUid,{period:false});
+      ?resolveTimeTrace(row.lucus_ids,eventMap).ranges
+      :resolveTimeSegments(row.lucus_ids,byUid,{period:false});
     const invalidTraceLinks=type==='era'
-      ?resolveTimeTrace(row.anchor_ids,eventMap).invalidLinks:[];
+      ?resolveTimeTrace(row.lucus_ids,eventMap).invalidLinks:[];
     const dated=ranges.filter(range=>range.start_date).sort((a,b)=>
       a.start_date.localeCompare(b.start_date)||a.index-b.index);
     const first=dated[0],last=dated.at(-1);
@@ -84,18 +83,18 @@ export function projectScopeTimeRecords(scopeId,rows=[]){
       title:row.title||id,summary:row.description||'',
       era_id:type==='era'?id:null,period:type==='era'?id:null,
       entry_name:type==='era'?String(row.title||'').replace(/^P\d+\s*[｜|]\s*/,''):null,
-      anchor_id:type==='lucus'?id:null,
-      anchor_ids:type==='lucus'?[]:(Array.isArray(row.anchor_ids)?row.anchor_ids:[]),
+      lucus_id:type==='lucus'?id:null,
+      lucus_ids:type==='lucus'?[]:(Array.isArray(row.lucus_ids)?row.lucus_ids:[]),
       ranges,
-      start_anchor_id:first?.start_anchor_id||null,
-      end_anchor_id:last?.end_anchor_id||null,
+      start_lucus_id:first?.start_lucus_id||null,
+      end_lucus_id:last?.end_lucus_id||null,
       event_id:type==='period'?id:null,
       open_start:false,open_end:openEnd,
       start_date:first?.start_date||null,
       end_date:finalDate,
-      invalid_anchor_links:[
+      invalid_lucus_links:[
         ...invalidTraceLinks,
-        ...ranges.filter(range=>range.invalid).flatMap(range=>range.missing_anchor_ids||[])
+        ...ranges.filter(range=>range.invalid).flatMap(range=>range.missing_lucus_ids||[])
       ]};
   };
   const events=rows.filter(row=>row.type==='period')
@@ -103,7 +102,7 @@ export function projectScopeTimeRecords(scopeId,rows=[]){
   const byEventUid=new Map(events.map(row=>[String(row.uid),row]));
   const periods=rows.filter(row=>row.type==='era')
     .map(row=>normalize(row,'era',byEventUid));
-  return [...anchors.map(row=>normalize(row,'lucus',new Map())),
+  return [...lucus.map(row=>normalize(row,'lucus',new Map())),
     ...periods,...events];
 }
 
@@ -233,17 +232,17 @@ function periodRows(rows){
     title:row.title||row.entry_key,description:row.summary||'',
     start_date:row.start_date||null,end_date:row.end_date||null,
     ranges:row.ranges||[],
-    anchor_id:row.anchor_id||null,start_anchor_id:row.start_anchor_id||null,
-    end_anchor_id:row.end_anchor_id||null,
-    anchor_ids:Array.isArray(row.anchor_ids)?row.anchor_ids:[],
+    lucus_id:row.lucus_id||null,start_lucus_id:row.start_lucus_id||null,
+    end_lucus_id:row.end_lucus_id||null,
+    lucus_ids:Array.isArray(row.lucus_ids)?row.lucus_ids:[],
     open_start:Boolean(row.open_start),open_end:Boolean(row.open_end),
-    invalid_anchor_links:row.invalid_anchor_links||[]
+    invalid_lucus_links:row.invalid_lucus_links||[]
   })).sort((a,b)=>
     timePeriodSortDate(a).localeCompare(timePeriodSortDate(b)));
 }
 function timelineItems(rows,{includeScope=false}={}){
   const all=Array.isArray(rows)?rows:[];
-  const anchors=new Map(all.filter(row=>row.entry_type==='lucus').map(row=>[row.scope_id+':'+row.anchor_id,row]));
+  const lucus=new Map(all.filter(row=>row.entry_type==='lucus').map(row=>[row.scope_id+':'+row.lucus_id,row]));
   return all.filter(row=>['lucus','period','era'].includes(row.entry_type))
     .flatMap(row=>{
       const slices=row.entry_type==='lucus'?[row]:row.ranges?.length?row.ranges:[row];
@@ -256,7 +255,7 @@ function timelineItems(rows,{includeScope=false}={}){
           entry_id:scopeId+':'+row.entry_key+':'+index,
           segment_index:index,start_date:start,end_date:end,date:start||end,
           open_end:range.open_end??row.open_end,
-          invalid_anchor_links:range.missing_anchor_ids||[],
+          invalid_lucus_links:range.missing_lucus_ids||[],
           display_label:row.title,description:row.summary,
           group_key:includeScope?scopeId+':'+row.entry_type:'kind:'+row.entry_type,
           group_label:includeScope?scopeId+' · '+kindLabel:kindLabel,
@@ -290,7 +289,7 @@ function cultureParts(scopeContext,runtimeId){
     date:row.start_date||null,
     start_date:row.start_date||null,
     end_date:row.end_date||null,
-    anchor_ids:Array.isArray(row.anchor_ids)?row.anchor_ids:[],
+    lucus_ids:Array.isArray(row.lucus_ids)?row.lucus_ids:[],
     visibility:'public'
   }));
   const trajectories=normalizedContext.filter(row=>row.entry_type==='lucus').map(row=>({
@@ -302,7 +301,7 @@ function cultureParts(scopeContext,runtimeId){
     start_date:row.start_date||null,
     date:row.start_date||null,
     end_date:row.end_date||null,
-    anchor_id:row.anchor_id||null,
+    lucus_id:row.lucus_id||null,
   }));
   const styleComments=[];
   return {normalizedContext,periods,eras,events,trajectories,styleComments};
@@ -310,7 +309,7 @@ function cultureParts(scopeContext,runtimeId){
 
 // Only the explicitly opened LOC second river reads per-day article/media counts.
 // Aggregate Sources only from Galaxy.site; the Multimedia Universe is part
-// of the same LocAnchor taxonomy, never a second Galaxy Media source stream.
+// of the same LocLucus taxonomy, never a second Galaxy Media source stream.
 export async function selectLocCultureDensity({
   scopes=[],intersectionWindows=[],intersectionStart='',intersectionEnd='',
   startDate='',endDate='',onCheckpoint=null,signal=null
@@ -352,8 +351,8 @@ export async function selectLocCultureDensity({
 
 
 const MANAGED_TIME_COLUMNS='uid,type,title,description,attr,invisible';
-const MAX_MANAGED_TIME_BYTES=TIME_ANCHOR_EDITOR_MAX_BYTES;
-const TARGET_MANAGED_TIME_PAGE_BYTES=TIME_ANCHOR_TARGET_BYTES;
+const MAX_MANAGED_TIME_BYTES=TIME_LUCUS_EDITOR_MAX_BYTES;
+const TARGET_MANAGED_TIME_PAGE_BYTES=TIME_LUCUS_TARGET_BYTES;
 // Read the complete historical set once for BOTH the editor and TimeRiver.
 // A one-year camera is only a viewport, never a SQL date filter. This is a
 // single authorized read flow with bounded transport pages, no extra COUNT.
@@ -366,8 +365,8 @@ async function readManagedTimeRecords(table,{signal=null}={}){
   let averageBytes=0,totalBytes=0;
   for(;;){
     if(signal?.aborted){const error=new Error('Time read cancelled');error.name='AbortError';throw error;}
-    const result=await readTimeAnchorQuery(scope,{
-      mode:'editor',cursor:afterUid,limit:Math.min(TIME_ANCHOR_MAX_PAGE_ROWS,pageRows),signal
+    const result=await readTimeLucusQuery(scope,{
+      mode:'editor',cursor:afterUid,limit:Math.min(TIME_LUCUS_MAX_PAGE_ROWS,pageRows),signal
     });
     const rows=result.rows;
     if(!Array.isArray(rows)||rows.length>pageRows)
@@ -381,16 +380,16 @@ async function readManagedTimeRecords(table,{signal=null}={}){
       pageBytes+=bytes;totalBytes+=bytes;
       if(totalBytes>MAX_MANAGED_TIME_BYTES)
         throw Error('時間紀錄超出編輯器記憶體預算，未載入不完整清單');
-      collected.push(projectTimeAnchor(row));
+      collected.push(projectTimeLucus(row));
     }
     if(!result.nextCursor)return collected;
     if(result.nextCursor===afterUid||!rows.length)
-      throw Error('Invalid TimeAnchor query continuation');
+      throw Error('Invalid TimeLucus query continuation');
     afterUid=result.nextCursor;
     const measured=pageBytes/Math.max(1,rows.length);
     averageBytes=averageBytes===0||measured>averageBytes
       ?measured:averageBytes*.7+measured*.3;
-    pageRows=Math.max(1,Math.min(TIME_ANCHOR_MAX_PAGE_ROWS,pageRows*2,
+    pageRows=Math.max(1,Math.min(TIME_LUCUS_MAX_PAGE_ROWS,pageRows*2,
       Math.floor(TARGET_MANAGED_TIME_PAGE_BYTES/Math.max(128,averageBytes))));
   }
 }
@@ -466,9 +465,9 @@ export async function selectScopeCultureData(scopeId){
   };
 }
 
-// A small public navigation index: only Era rows and the Period/Date anchors
+// A small public navigation index: only Era rows and the Period/Date lucus
 // they reference are fetched. Statistics and the global shell can warm the
-// era selector without loading every unrelated TimeAnchor record.
+// era selector without loading every unrelated TimeLucus record.
 export async function selectScopeCultureEraIndex(scopeId){
   const id=scopeIdOf(scopeId);
   if(!id||id==='loc'||id==='local')return [];
@@ -491,7 +490,7 @@ export async function selectScopeCultureEraIndex(scopeId){
     for(let offset=0;offset<uids.length;offset+=100){
       const chunk=uids.slice(offset,offset+100);
       const result=await readLucusFeature({scope:id,family:'time',types:[type],uids:chunk,limit:chunk.length});
-      if(!Array.isArray(result?.rows))throw new Error('Invalid TimeAnchor index response');
+      if(!Array.isArray(result?.rows))throw new Error('Invalid TimeLucus index response');
       pages.push(...result.rows);
     }
     return pages;
@@ -499,7 +498,7 @@ export async function selectScopeCultureEraIndex(scopeId){
   const periods=await loadUids('period',periodUids);
   const dateUids=unique(periods.flatMap(row=>Array.isArray(attrOf(row).uid)?attrOf(row).uid:[]));
   const dates=await loadUids('date',dateUids);
-  const projected=projectScopeTimeRecords(id,[...dates,...periods,...eras].map(projectTimeAnchor));
+  const projected=projectScopeTimeRecords(id,[...dates,...periods,...eras].map(projectTimeLucus));
   return cultureParts(projected,id).eras;
 }
 
@@ -763,108 +762,37 @@ export async function selectScopePeriodWorkIndex(scope,{startDate='',endDate=nul
     ...dateFilters(startDate,endDate,scope.id==='local'?'createtime':'date'),
     ...(rawSources.length?[{column:'site',operator:'in',value:rawSources}]:[])
   ]);
-  const selectedMedia=rawMedia.filter(type=>LUCUS_TYPE_GROUPS.media.includes(type));
-  const mediaFilters=[
-    ...dateFilters(startDate,endDate),
-    {column:'type',operator:'in',value:selectedMedia},
-    {column:'invisible',operator:'eq',value:false}
-  ];
-
-  // A normal work list is a Galaxy article list, never a merged media feed.
-  // Only an explicitly selected media type opens the separate media lane.
-  const includeGalaxy=rawSources.length>0||rawMedia.length===0&&(!sourceName||rawSources.length>0);
-  const includeMedia=selectedMedia.length>0;
-  // The first bounded page can return exact counts with its own SELECT.
-  // Keep both totals in the cursor so subsequent pages never repeat COUNTs.
-  const hasCursorCounts=Number.isSafeInteger(cursor?.galaxyCount)&&Number.isSafeInteger(cursor?.mediaCount);
-  const [galaxyResult,mediaResult]=await Promise.all([
-    !includeGalaxy?Promise.resolve({rows:[],count:0}):
-      scopeId==='local'?selectRows(scope.galaxy,{
-        columns:galaxyReadColumns('GalaxyList').join(','),
-        filters:galaxyFilters,
-        orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
-        limit:pageSize,offset:galaxyOffset,maxLimit:pageSize,
-        count:hasCursorCounts?null:'exact'
-      }):readGalaxyFeature({
-        feature:articlePermission,scope:scopeId,
-        startDate:startDate||undefined,endDate:endDate||undefined,
-        sources:rawSources.length?rawSources.filter(Boolean):undefined,
-        result:'articles',orderByDate:true,sortDirection:ascending?'asc':'desc',
-        limit:pageSize,offset:galaxyOffset,includeTotal:!hasCursorCounts
-      }).then(response=>({...response.data,count:response.data.totalCount})),
-    !includeMedia?Promise.resolve({rows:[],count:0}):
-      scopeId==='local'?selectRows(scope.lucus,{
-        columns:'uid,createtime',filters:mediaFilters,
-        orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
-        limit:pageSize,offset:mediaOffset,maxLimit:pageSize,
-        count:hasCursorCounts?null:'exact'
-      }):readLucusFeature({
-        scope:scopeId,family:'media',types:selectedMedia,
-        startDate:startDate||undefined,endDate:endDate||undefined,
-        order:'createtime',sortDirection:ascending?'asc':'desc',
-        limit:pageSize,offset:mediaOffset,includeTotal:!hasCursorCounts
-      }).then(data=>({...data,count:data.totalCount}))
-  ]);
-  // Each feature query returns its own exact total with the first page.
-  // A missing total is a route contract error; never issue a second generic
-  // SELECT through a shared client as a fallback.
-  const readCount=(result,kind)=>{
-    const value=Number(result?.count);
-    if(!Number.isSafeInteger(value)||value<0)
-      throw new Error('Culture '+kind+' query did not return its page total');
-    return value;
-  };
-  const galaxyCount=!includeGalaxy?0:hasCursorCounts?cursor.galaxyCount:
-    readCount(galaxyResult,'Galaxy');
-  const mediaCount=!includeMedia?0:hasCursorCounts?cursor.mediaCount:
-    readCount(mediaResult,'Anchor');
-
-  const galaxyRows=(galaxyResult.rows||[]).map(row=>({
-    key:'galaxy:'+row.uid,
-    entry_type:'work',
-    entry_id:String(row.uid||''),
-    uid:String(row.uid||''),
-    title:String(row.title||''),
-    createtime:row.createtime
+  // Media works and articles share Galaxy; their platform is Galaxy.site.
+  // Keep the historic cursor shape for callers already holding a page cursor.
+  const sources=[...new Set([...rawSources,...rawMedia])];
+  const hasCursorCounts=Number.isSafeInteger(cursor?.galaxyCount);
+  const result=scopeId==='local'?await selectRows(scope.galaxy,{
+    columns:galaxyReadColumns('GalaxyList').join(','),
+    filters:publicContentFilters([
+      {column:articlePermission,operator:'eq',value:'true'},
+      ...dateFilters(startDate,endDate,scope.id==='local'?'createtime':'date'),
+      ...(sources.length?[{column:'site',operator:'in',value:sources}]:[])
+    ]),
+    orders:[{column:'createtime',ascending},{column:'uid',ascending:true}],
+    limit:pageSize,offset:galaxyOffset,maxLimit:pageSize,
+    count:hasCursorCounts?null:'exact'
+  }):await readGalaxyFeature({
+    feature:articlePermission,scope:scopeId,
+    startDate:startDate||undefined,endDate:endDate||undefined,
+    sources:sources.length?sources:undefined,
+    result:'articles',orderByDate:true,sortDirection:ascending?'asc':'desc',
+    limit:pageSize,offset:galaxyOffset,includeTotal:!hasCursorCounts
+  }).then(response=>({...response.data,count:response.data.totalCount}));
+  const count=hasCursorCounts?cursor.galaxyCount:Number(result.count);
+  if(!Number.isSafeInteger(count)||count<0)
+    throw Error('Culture Galaxy query did not return its page total');
+  const rows=(result.rows||[]).map(row=>({
+    key:'galaxy:'+row.uid,entry_type:'work',entry_id:String(row.uid||''),
+    uid:String(row.uid||''),title:String(row.title||''),createtime:row.createtime
   })).filter(row=>row.entry_id);
-  const mediaRows=(mediaResult.rows||[]).map(row=>({
-    key:'media:'+row.uid,
-    entry_type:'media_metadata',
-    entry_id:String(row.uid||''),
-    uid:String(row.uid||''),
-    createtime:row.createtime
-  })).filter(row=>row.entry_id);
-
-  const rows=[];
-  let galaxyIndex=0;
-  let mediaIndex=0;
-  while(rows.length<pageSize&&(galaxyIndex<galaxyRows.length||mediaIndex<mediaRows.length)){
-    const galaxyRow=galaxyRows[galaxyIndex];
-    const mediaRow=mediaRows[mediaIndex];
-    const dateOrder=galaxyRow&&mediaRow
-      ?String(galaxyRow.createtime||'').localeCompare(String(mediaRow.createtime||'')):0;
-    const idOrder=galaxyRow&&mediaRow
-      ?String(galaxyRow.entry_id).localeCompare(String(mediaRow.entry_id)):0;
-    if(!mediaRow||(galaxyRow&&(ascending?dateOrder<0||dateOrder===0&&idOrder<=0
-      :dateOrder>0||dateOrder===0&&idOrder>=0))){
-      rows.push(galaxyRow);
-      galaxyIndex+=1;
-    }else{
-      rows.push(mediaRow);
-      mediaIndex+=1;
-    }
-  }
-
-  return {
-    rows,
-    totalCount:Number(galaxyCount||0)+Number(mediaCount||0),
-    nextCursor:{
-      galaxyOffset:galaxyOffset+galaxyIndex,
-      mediaOffset:mediaOffset+mediaIndex,
-      galaxyCount:Number(galaxyCount)||0,
-      mediaCount:Number(mediaCount)||0
-    }
-  };
+  return {rows,totalCount:count,nextCursor:{
+    galaxyOffset:galaxyOffset+rows.length,mediaOffset:0,galaxyCount:count,mediaCount:0
+  }};
 }
 
 export async function selectScopePeriodWorkDetails(scope,{items=[]}={}){
@@ -874,18 +802,6 @@ export async function selectScopePeriodWorkDetails(scope,{items=[]}={}){
   if(!source.length)return {rows:[],hasMore:false};
   // The article rows already came from the time-filtered, bounded index page.
   // Do not SELECT those article UIDs again just to obtain the title.
-  const mediaIds=[...new Set(source.filter(row=>row?.entry_type==='media_metadata')
-    .map(row=>String(row?.uid||row?.entry_id||'').trim()).filter(Boolean))];
-  const mediaResult=!mediaIds.length?{rows:[]}:
-    scopeId==='local'?await selectRows(scope.lucus,{
-      columns:MEDIA_LUCUS_COLUMNS,
-      filters:[{column:'uid',operator:'in',value:mediaIds},
-        {column:'type',operator:'in',value:LUCUS_TYPE_GROUPS.media},
-        {column:'invisible',operator:'eq',value:false}],
-      limit:mediaIds.length
-    }):await readLucusFeature({
-      scope:scopeId,family:'media',uids:mediaIds,limit:mediaIds.length
-    });
   const galaxyById=new Map(source.filter(row=>row.entry_type==='work').map(row=>[String(row.uid),{
     key:'galaxy:'+row.uid,
     uid:row.uid,
@@ -900,32 +816,5 @@ export async function selectScopePeriodWorkDetails(scope,{items=[]}={}){
     scope_id:scopeId,
     links:[]
   }]));
-  const mediaById=new Map((mediaResult.rows||[]).map(mediaLucusProjection).map(row=>{
-    return [String(row.uid),{
-    ...row,
-    key:'media:'+row.uid,
-    record_type:'media_anchor',
-    site:String(row.type||''),
-    entry_id:row.uid,
-    entry_type:'media_metadata',
-    start_date:row.createtime,
-    date:row.createtime,
-    display_date:CultureTimelineModel.formatCultureDateTime(row.createtime),
-    title:CultureTimelineModel.decodeCultureText(row.title||'').trim()||row.type||'多媒體',
-    description:'',
-    media_metadata_text:'',
-    group_label:String(row.type||''),
-    scope_id:scopeId,
-    links:row.url&&/^https?:\/\//i.test(String(row.url))
-      ?[{id:'media:'+String(row.uid),href:row.url,label:'媒體連結'}]
-      :[]
-  }];
-  }));
-
-  return {
-    rows:source.map(row=>row.entry_type==='work'
-      ?galaxyById.get(String(row.uid||row.entry_id))
-      :mediaById.get(String(row.uid||row.entry_id))
-    ).filter(Boolean)
-  };
+  return {rows:source.map(row=>galaxyById.get(String(row.uid||row.entry_id))).filter(Boolean)};
 }

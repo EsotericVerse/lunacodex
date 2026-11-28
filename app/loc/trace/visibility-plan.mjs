@@ -13,8 +13,8 @@ export function planTraceVisibilityUids({maps=[],selectedUids=[],mode='self'}={}
      selected.some(uid=>!byId.has(uid)))throw Error('批次清單包含不存在的路線或痕跡圖');
   const targets=new Set(selected);
   const routes=new Set();
-  const addAnchors=row=>{
-    for(const id of normalizeIds(row.anchor_list))targets.add(id);
+  const addLucus=row=>{
+    for(const id of normalizeIds(row.lucus_list))targets.add(id);
   };
   if(mode!=='self'){
     for(const uid of selected){
@@ -30,8 +30,8 @@ export function planTraceVisibilityUids({maps=[],selectedUids=[],mode='self'}={}
     }
   }
   if(mode==='all'){
-    for(const uid of selected)addAnchors(byId.get(uid));
-    for(const uid of routes)addAnchors(byId.get(uid));
+    for(const uid of selected)addLucus(byId.get(uid));
+    for(const uid of routes)addLucus(byId.get(uid));
   }
   return [...targets];
 }

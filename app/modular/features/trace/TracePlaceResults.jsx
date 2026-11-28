@@ -7,7 +7,6 @@ import {timeUnitBucket} from '../../../loc/preferences/default-time-unit.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncInfiniteResource,useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {readGalaxyFeature} from '../../../loc/galaxy/feature-query-client.mjs';
-import {readLucusFeature} from '../../../loc/model/feature-query-client.mjs';
 import {traceArticleIdFilters,groupedTraceDays} from './trace-panel-filters.mjs';
 import {nearestTracePlaceIds} from '../../../loc/preferences/loc-feature-preferences.mjs';
 import {defaultScopeData} from '../../../loc/scope/scope-data';
@@ -17,7 +16,6 @@ import {galaxyIdentityHref,galaxyRelationLinks,featureNavigationHref} from '../.
 import {selectGalaxyIdentity} from '../../../loc/galaxy/galaxy-query';
 import {ArticleSortSelect,IncrementalList,WorkFullText} from '../../ui';
 import {galaxyReadColumnsFor} from '../../../../packages/zenstack/galaxy-read-models.mjs';
-import {LUCUS_TYPE_GROUPS} from '../../../../packages/zenstack/lucus-hierarchy.mjs';
 
 const CultureTimeline=dynamic(()=>import('../../modules/culture-timeline/CultureTimeline'),{loading:()=> <p className="scope-status">正在開啟時間長河…</p>});
 const StatisticsMultiChart=dynamic(()=>import('../../modules/statistics/StatisticsMultiChart'),{loading:()=> <p className="scope-status">正在開啟統計圖…</p>});
@@ -69,7 +67,7 @@ function TraceArticleChoice({row,selected=false,onSelect}){
   </button>;
 }
 
-export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId='',period=null,
+export default function TracePlaceResults({place=null,lucus=[],maps=[],scopeId='',period=null,
   tab='articles',sourceName='',mediaType='',dateRange=null,timeMode='none',defaultSort='desc',allPlacedArticles=false,
   onDailyRows=null}){
   const reduceMotion=useReducedMotion();
@@ -85,9 +83,9 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   const isMap=place?.trace_type==='path'||place?.trace_type==='trace';
   const targetScope=String(place?.source_scope||scopeId||'').trim();
   const scope=useMemo(()=>defaultScopeData(targetScope),[targetScope]);
-  const placeIds=useMemo(()=>traceArticleIds(place,[...anchors,...maps]),[place,anchors,maps]);
-  const nearestPlaceIds=useMemo(()=>nearestTracePlaceIds(placeIds,anchors,place),[placeIds,anchors,place]);
-  const placeLabels=useMemo(()=>traceArticleLabels(place,[...anchors,...maps]),[place,anchors,maps]);
+  const placeIds=useMemo(()=>traceArticleIds(place,[...lucus,...maps]),[place,lucus,maps]);
+  const nearestPlaceIds=useMemo(()=>nearestTracePlaceIds(placeIds,lucus,place),[placeIds,lucus,place]);
+  const placeLabels=useMemo(()=>traceArticleLabels(place,[...lucus,...maps]),[place,lucus,maps]);
   const placesKey=placeIds.join('|');
   const activeRange=selectedTimeRange||dateRange;
   const startDate=selectedVisitDay||(
@@ -167,43 +165,9 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
   // Media filtering is an explicitly requested, bounded two-stage lookup:
   // one page of media UIDs by type, then one page of Galaxy article headers.
   // Crucially, NO article list SELECT projects media_link or article content.
-  const mediaFiltered=useAsyncInfiniteResource({
-    queryKey:['trace-media-filter-v3',targetScope,placesKey,startDate,endDate,
-      sourceFilter,selectedMediaType,sort],
-    enabled:enabled&&Boolean(selectedMediaType)&&Boolean(scope?.lucus),
-    initialPageParam:{mediaOffset:0,articleOffset:0},
-    getNextPageParam:page=>page.nextCursor||undefined,
-    queryFn:async({pageParam,signal})=>{
-      const mediaOffset=Number(pageParam?.mediaOffset)||0;
-      const articleOffset=Number(pageParam?.articleOffset)||0;
-      const mediaLimit=80;
-      if(!LUCUS_TYPE_GROUPS.media.includes(selectedMediaType))
-        return {rows:[],nextCursor:null};
-      const {rows:mediaPage}=await readLucusFeature({
-        scope:targetScope,family:'media',types:[selectedMediaType],
-        limit:mediaLimit,offset:mediaOffset
-      },{signal});
-      // Galaxy.media_link stores URLs, not MediaAnchor UIDs.
-      const mediaUrls=[...new Set(mediaPage.map(row=>String(row.attr?.url||'').trim())
-        .filter(url=>/^https?:\/\//i.test(url)))];
-      if(!mediaUrls.length)return {rows:[],nextCursor:
-        mediaPage.length===mediaLimit?{mediaOffset:mediaOffset+mediaLimit,articleOffset:0}:null};
-      const {data}=await readGalaxyFeature({
-        feature:'trace',scope:targetScope,placeIds,
-        startDate:startDate||undefined,endDate:endDate||undefined,
-        sources:sourceFilter?[sourceFilter]:undefined,
-        mediaUrls,result:'articles',limit:PAGE_SIZE,offset:articleOffset,
-        sortDirection:sort==='asc'?'asc':'desc',signal
-      });
-      const rows=data.rows||[];
-      const moreInMediaPage=data.hasMore===true;
-      const nextCursor=moreInMediaPage
-        ?{mediaOffset,articleOffset:articleOffset+rows.length}
-        :(mediaPage.length===mediaLimit?{mediaOffset:mediaOffset+mediaLimit,articleOffset:0}:null);
-      return {rows,nextCursor};
-    },
-    revalidateOnFocus:false,revalidateOnReconnect:false
-  });
+  // Media works are Galaxy rows; platform selection uses the source tree.
+  const mediaFiltered={data:null,isPending:false,error:null,hasNextPage:false,
+    isFetchingNextPage:false,fetchNextPage:()=>{}};
   const mediaRows=useMemo(()=>{
     const byUid=new Map();
     for(const page of mediaFiltered.data?.pages||[]){
@@ -373,7 +337,7 @@ export default function TracePlaceResults({place=null,anchors=[],maps=[],scopeId
     <header className="loc-trace-works-title">
       <div><p className="loc-eyebrow">{tab==='timeline'?'地點時間':'文章報表'}</p>
         <h2>{tab==='timeline'?'地點關聯日期':'文章列表／時間長河／統計圖'}</h2></div>
-      <span className="scope-status">{isMap?(place.trace_type==='trace'?'痕跡線段 '+place.anchor_list.length+' 段 · ':'路線 '+place.anchor_list.length+' 站 · '):''}
+      <span className="scope-status">{isMap?(place.trace_type==='trace'?'痕跡線段 '+place.lucus_list.length+' 段 · ':'路線 '+place.lucus_list.length+' 站 · '):''}
         {!enabled?'沒有可對應的打卡地點'
           :tab==='articles'?(listTotal==null?'按需載入中…':'已載入 '+listTotal+' 篇符合條件的文章')
           :(summary.data?verified.total+' 篇符合條件的打卡文章':'數值圖表')}

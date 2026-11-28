@@ -2,7 +2,7 @@
 import {useEffect} from 'react';
 
 // Static-export-friendly aliases for bookmarks created by the old menu.
-// Keep non-section context parameters such as scopeid and anchorDate intact.
+// Keep non-section context parameters such as scopeid and lucusDate intact.
 export default function LegacyManagementRedirect({target='trace',label='空間定錨管理'}){
   const isGroup=target==='group';
   const fallback=isGroup?'/manage/':'/trace/manage/';

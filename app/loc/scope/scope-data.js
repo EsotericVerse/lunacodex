@@ -34,7 +34,7 @@ function buildScopeData(row,id){
     role:String(row?.manage_role||'').trim(),
     birthday:String(row?.birthday||PUBLISHED_SITE_BOOTSTRAP.scope_birthdays?.[id]||'').slice(0,10)||null,
     galaxy,
-    // TLucus, LLucus, MLucus, KLucus, and SLucus remain typed projections
+    // TLucus, LLucus, KLucus, and SLucus remain typed projections
     // over one configured physical Scope Lucus relation.
     lucus,
     time:lucus,
@@ -244,7 +244,7 @@ async function nativePublicContent(kind,scope,feature=''){
   if(feature)params.set('feature',feature);
   const payload=kind==='config'||kind==='block_list'||kind==='hero_block'
     ?await queryBlockContent(params.toString())
-    :kind==='culture_anchors'||kind==='culture_density'
+    :kind==='culture_lucus'||kind==='culture_density'
       ?await queryCultureContent(params.toString())
       :await queryStaticsContent(params.toString());
   return payload.data;
@@ -264,7 +264,7 @@ export function selectScopeConfig(scopeId){
 }
 
 
-// Presentation Blocks and public Anchor projections share the same physical
+// Presentation Blocks and public Lucus projections share the same physical
 // ZModel-backed read cache. LOC's Blocks are typed rows in silver.loc_lucus.
 // This is NOT a SQL idx/index, IndexedDB or a second Cache Storage layer.
 const blockRelation=id=>id==='loc'

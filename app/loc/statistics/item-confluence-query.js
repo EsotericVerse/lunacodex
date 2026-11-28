@@ -26,6 +26,6 @@ export async function selectLocItemDailySeries({scope,lane,startDate,endDate,kno
   if(!range.valid)throw new Error(range.reason);
   const spec=validateItemLane(lane,knownScopes);
   if(!spec.valid||spec.scopeId!==scope?.id)throw new Error(spec.reason||'Scope 與河道不符。');
-  // One Kysely aggregate is the only LOC Galaxy/MediaAnchor lane pipeline.
+  // One Kysely aggregate is the only LOC Galaxy/Galaxy 媒體作品 lane pipeline.
   return selectLaneDailyGrouped({scope,spec,range});
 }

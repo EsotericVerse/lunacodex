@@ -50,7 +50,7 @@ export default function PlaceManagement({scopeId,section='organize',initialOpera
         {spatial&&operation==='names'?<TraceManagement scopeId={scopeId}
           mode="cleanup" spatialData={spatial} reloadSpatial={()=>query.mutate()}/>:null}
         {spatial&&operation==='quickFill'?<PlaceBatchFill scopeId={scopeId}
-          anchors={spatial.anchors}/>:null}
+          lucus={spatial.lucus}/>:null}
       </>:null}
       {section==='timeline'?<TimelinePlaceManager scopeId={scopeId}/>:null}
       </ManagementSectionTransition>

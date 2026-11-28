@@ -6,7 +6,7 @@ const FEATURE_READ_ACTIONS=new Set([
   'suggest_search_patterns','search_galaxy_private',
   'preview_galaxy_place_fill','preview_galaxy_location_batch',
   'preview_galaxy_visibility',
-  'media_anchor_candidates','anchor_import_page','import_site_presence',
+  'media_galaxy_candidates','lucus_import_page','import_site_presence',
   'import_site_id_candidates','import_created_at_candidates',
   'import_occupied_createtimes'
 ]);

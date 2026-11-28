@@ -22,7 +22,7 @@ export const GALAXY_FEATURE_MODELS=Object.freeze({
 });
 const published=new Set(SCOPE_ROUTE_INDEX.filter(row=>row.active!==false&&
   row.scope_id!=='loc'&&row.scope_id!=='admin').map(row=>row.scope_id));
-const featureFields=new Set(galaxyReadColumns('GalaxyAttr'));
+const featureFields=new Set(galaxyReadColumns('GalaxyReadLucus'));
 if(Object.values(GALAXY_FEATURE_MODELS).some(model=>!featureFields.has(model.flag)))
   throw Error('Missing physical Galaxy ZModel feature flag');
 
@@ -249,7 +249,7 @@ export async function executeGalaxyFeatureQuery(db,model){
       .sort((a,b)=>a.source.localeCompare(b.source))};
   }
   if(model.result==='articles'){
-    // Fixed GalaxyList and UID Anchor projection; article CONTENT is never
+    // Fixed GalaxyList and UID Lucus projection; article CONTENT is never
     // returned by list readers. Include a separate COUNT statement only when
     // explicitly requested by an existing Culture/Statistics list.
     const total=model.includeTotal

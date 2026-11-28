@@ -20,7 +20,7 @@
 /* The old standalone tree frame is retired; the shared navigator owns the scroll regions. */
 .loc-lucus-management.loc-time-lucus-tree{max-height:none;overflow:visible;border:0;padding:0;background:transparent;}
 
-/* Anchor management: one narrow left rail and a two-stage right workspace. */
+/* Lucus management: one narrow left rail and a two-stage right workspace. */
 .loc-lucus-management{
   display:grid;
   gap:clamp(.55rem,1.2vw,.9rem);

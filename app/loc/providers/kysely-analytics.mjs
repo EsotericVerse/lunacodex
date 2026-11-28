@@ -154,7 +154,7 @@ export async function keywordCatalog(trx,scope,lucus,requested,role,
     const item=byItem.get(uid),itemAttr=attr(item),linked=children(item)
       .map(patternUid=>String(byPattern.get(patternUid)?.title||''));
     // Keep old Items readable until their next explicit reset converts the
-    // retired implicit title and attr.keyword values into Pattern Anchors.
+    // retired implicit title and attr.keyword values into Pattern Lucus.
     const keywords=Object.hasOwn(itemAttr,'keyword')
       ?[String(item.title||''),...(Array.isArray(itemAttr.keyword)?itemAttr.keyword:[]),
         ...linked]:linked;
