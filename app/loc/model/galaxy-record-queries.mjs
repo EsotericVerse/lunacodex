@@ -27,7 +27,7 @@ const PRIVATE_SITES=['github','messenger','chatgpt','claude','gemini',
 export async function executeGalaxyRecordQuery(db,body){
   const columns=body.view==='list'
     ?galaxyReadColumnsFor('GalaxyList')
-    :[...new Set([...galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr'),
+    :[...new Set([...galaxyReadColumnsFor('GalaxyUidRead','GalaxyReadLucus'),
       'media_link','site_id'])];
   let query=db.selectFrom('silver.'+scopeTableName(body.scope,'galaxy'))
     .select(columns).where('uid','in',body.uids);

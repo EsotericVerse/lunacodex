@@ -25,8 +25,6 @@ const CultureTimeline=dynamic(()=>import('../modules/culture-timeline/CultureTim
   loading:()=> <CultureTimeLoading label='正在準備時間長河…'/>
 });
 import {CultureTimelineModel} from '../modules/culture-timeline/culture-timeline-model';
-import {TERRITORY_STOPS,territoryLegendColor} from '../visual-palette.mjs';
-import {eraVisualGradient} from '../modules/culture-timeline/era-visuals.mjs';
 import {useRiverDensityAnalysis} from '../modules/culture-timeline/use-river-density-analysis';
 import {structurePeriodPreference} from '../../loc/culture/period-navigation.mjs';
 import {buildEraRiver,nextEditorEraExpansion} from '../../loc/culture/time-trace-river.mjs';
@@ -70,7 +68,9 @@ const EMPTY_RIVER_FOCUS=Object.freeze({});
 const EMPTY_CULTURE_GROUPS=Object.freeze([]);
 function emptyRiverLabel(){return '';}
 function classificationRiverLabel(item){
-  return item?.entry_type==='virtual_lucus'?(item.display_label||'◇'):'';
+  if(item?.entry_type==='virtual_lucus')return item.display_label||'◇';
+  if(item?.entry_type==='lucus')return item.display_label||'●';
+  return '';
 }
 function labelOf(item,index,periodName=UI_COPY.format.period(index+1)){
   return item?.display_label||item?.name||item?.title||item?.period||periodName;
@@ -151,58 +151,6 @@ function nextRiverDay(value){
   date.setUTCDate(date.getUTCDate()+1);
   return date.toISOString().slice(0,10);
 }
-// Paint the collapsed source overview from the numeric totals already in memory.
-// vis-timeline is mounted only after a category is expanded, not for three
-// full-window total bars that do not require virtualized time-axis layout.
-function CultureSourceRootSummary({items,groups,eraRanges,windowStart,windowEnd,onGroupToggle,onGroupSelect}){
-  const backgroundImage=useMemo(()=>eraVisualGradient(eraRanges,windowStart,windowEnd),[eraRanges,windowStart,windowEnd]);
-  const totals=items.filter(item=>item.entry_type==='source_total');
-  const byGroup=new Map(totals.map(item=>[item.group_key,item]));
-  const largest=Math.max(1,...totals.map(item=>Number(item.item_count)||0));
-  return <div className='scope-period-timeline-wrap'>
-    <div className='scope-period-timeline' role='region' aria-label='作品分類總量時間長河'
-      style={{minHeight:0,overflow:'visible',padding:'.65rem',background:'linear-gradient(135deg,color-mix(in srgb,var(--loc-accent) 10%,var(--loc-panel)),color-mix(in srgb,var(--loc-gold) 8%,var(--loc-panel-2)))'}}>
-      <div style={{display:'grid',gridTemplateColumns:'clamp(108px,23vw,248px) minmax(0,1fr) auto',gap:'.4rem .55rem',alignItems:'center'}}>
-        <span className='scope-status'>分類總量</span>
-        <div style={{display:'flex',justifyContent:'space-between',gap:'.5rem',fontSize:'.8rem',color:'var(--loc-muted)',backgroundImage,borderRadius:'.2rem',padding:'0 .25rem'}}>
-          <time>{windowStart}</time><time>{windowEnd}</time>
-        </div>
-        <span aria-hidden='true'/>
-        {groups.map(group=>{
-          const row=byGroup.get(group.id);
-          const candidate=group.id==='dual:source:candidates';
-          if(!row&&!candidate)return null;
-          const count=Number(row?.item_count)||0;
-          let densityColorIndex=0;
-          for(let stop=0;stop<TERRITORY_STOPS.length;stop++)
-            if(count>=TERRITORY_STOPS[stop][0])densityColorIndex=stop;
-          const action=group.collapsible?()=>onGroupToggle?.(group.id)
-            :group.selectable?()=>onGroupSelect?.(group.id):null;
-          return <div key={group.id} className={row?'scope-dual-river-root':'scope-candidate-lane'} style={{display:'contents'}}>
-            <div style={{minWidth:0}}>
-              {action?<button type='button' className='scope-river-group-button'
-                aria-expanded={group.collapsible?Boolean(group.expanded):undefined} onClick={action}>
-                {group.collapsible?'＋  ':''}{group.label}
-              </button>:<span>{group.label}</span>}
-            </div>
-            <div style={{minWidth:0,minHeight:candidate?32:40,display:'flex',alignItems:'center',padding:'.35rem .45rem',
-              border:'1px solid var(--loc-line)',borderRadius:'.5rem',backgroundColor:'var(--loc-panel-2)',backgroundImage}}
-              role={row?'img':undefined} aria-label={row?group.label+'，'+count+'筆':''}>
-              {row?<div style={{width:'100%',height:Math.max(11,Math.round(11+19*count/largest)),
-                borderRadius:'999px',background:territoryLegendColor(densityColorIndex),
-                opacity:Math.max(.65,Math.min(1,count/largest)),boxShadow:'0 0 6px var(--loc-accent-border)'}}/>:null}
-            </div>
-            <div className='scope-culture-source-open-cell'>
-              {group.selectable?<button type='button' className='scope-river-article-open'
-                title={'開啟'+group.label+'文章列表'} aria-label={'開啟'+group.label+'文章列表'}
-                onClick={()=>onGroupSelect?.(group.id)}>⌄</button>:null}
-            </div>
-          </div>;
-        })}
-      </div>
-    </div>
-  </div>;
-}
 function dayKeyFromTimelineValue(value){
   const date=value instanceof Date?value:new Date(value);
   if(Number.isNaN(date.getTime()))return '';
@@ -261,7 +209,6 @@ export default function Culture(){
   });
 
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('year');
-  const [structureWindowKey,setStructureWindowKey]=useState('');
   const [expandedEraIds,setExpandedEraIds]=useState([]);
   const [expandedEditorEraIds,setExpandedEditorEraIds]=useState([]);
   // Mount the historical river before the large management list/editor.
@@ -349,7 +296,6 @@ export default function Culture(){
     setOpenCultureRoots([]);
     setSelectedRiverGroup('');
     setFocusedLucusDate('');
-    setStructureWindowKey('');
   },[scopeId]);
   const isAggregateScope=Boolean(scope?.aggregateChildren);
   // LOC's first Time River never queries per-day article/media density.
@@ -424,14 +370,13 @@ export default function Culture(){
   // Use the nearest saved trace until the selected period is settled.
   const selectedWindowStart=String(selectedWorkPeriod?.start_date||'');
   const selectedWindowEnd=String(selectedWorkPeriod?.end_date||new Date().toISOString().slice(0,10));
-  // The lower Culture panel shares one selected interval across the source
-  // classification river, keyword-density river, suggestions, and work list.
-  // The upper Time structure river keeps its own period navigation.
-  // Events are part of the selected Period window, never a selector mode.
+  // The integrated Culture timeline shares one interval across time hierarchy,
+  // article density, keyword density, suggestions, and the work list.
   const keywordPeriod=keywordPeriodKey==='year'?defaultYearPeriod:
     keywordPeriodKey==='all'?allTimePeriod
     :keywordPeriodKey==='latest'?(closestPeriod||selectedWorkPeriod||allTimePeriod)
     :keywordPeriodKey==='current'?(selectedWorkPeriod||allTimePeriod)
+    :activeSecondEra&&periodKey(activeSecondEra.era)===keywordPeriodKey?activeSecondEra.era
     :activeSecondPeriods.find(period=>periodKey(period)===keywordPeriodKey)
       ||primaryPeriods.find(period=>periodKey(period)===keywordPeriodKey)||closestPeriod||selectedWorkPeriod;
   const keywordWindowStart=keywordPeriodKey==='custom'
@@ -480,7 +425,6 @@ export default function Culture(){
     if(matched){
       appliedDateNavigationRef.current=navigationKey;
       setSelectedPeriodKey(periodKey(matched));
-      setStructureWindowKey(periodKey(matched));
       setKeywordEraKey(periodKey(matched));
       setKeywordPeriodKey(periodKey(matched));
     }
@@ -748,13 +692,10 @@ export default function Culture(){
   const timelineItems=useMemo(()=>
     (query.data?.timelineItems||[]).filter(item=>isAggregateScope||item.scope_id===scopeId)
   ,[query.data,scopeId]);
-  // Keep the time traces in their saved chronological order. The first view
-  // shows every trace, not only the last-selected trace at the top.
-  const activeStructureKey=structureWindowKey==='all'||!structureWindowKey?'all'
-    :primaryPeriods.some(item=>periodKey(item)===structureWindowKey)
-      ?structureWindowKey:'all';
+  // The initial hierarchy paints only Era rows. Period and date rows appear
+  // after the visitor opens that Era and then one of its Periods.
   const eraRiver=useMemo(()=>{
-    const classified=buildEraRiver(timelineItems,expandedEraIds,{scopeId});
+    const classified=buildEraRiver(timelineItems,expandedEraIds,{editorOnly:true,scopeId});
     return classified;
   },[timelineItems,expandedEraIds,scopeId]);
   const editorEraRiver=useMemo(()=>
@@ -766,15 +707,26 @@ export default function Culture(){
     nextEditorEraExpansion(current,groupId));
   const toggleTimeTrace=groupId=>{
     const open=!expandedEraIds.includes(groupId);
-    setExpandedEraIds(current=>
-      current.includes(groupId)?current.filter(id=>id!==groupId):[...current,groupId]);
-    if(open&&groupId.startsWith('trace:')){
-      const trace=primaryPeriods.find(period=>
-        'trace:'+String(period.scope_id||scopeId)+':'+periodKey(period)===groupId);
-      if(trace)setStructureWindowKey(periodKey(trace));
+    setExpandedEraIds(current=>nextEditorEraExpansion(current,groupId));
+    if(open&&groupId.startsWith('time-undefined:')){
+      setKeywordEraKey('__unassigned__');setKeywordPeriodKey('all');setSelectedPeriodKey('all');
+    }else if(open&&groupId.includes(':period:')){
+      const prefix='trace:'+scopeId+':';
+      const path=groupId.startsWith(prefix)?groupId.slice(prefix.length):'';
+      const marker=path.indexOf(':period:');
+      if(marker>0){
+        const eraKey=path.slice(0,marker),periodUid=path.slice(marker+8);
+        setKeywordEraKey(eraKey);setKeywordPeriodKey(periodUid);setSelectedPeriodKey(periodUid);
+      }
+    }else if(open&&groupId.startsWith('trace:')){
+      const trace=secondRiverHierarchy.groups.find(({era})=>
+        'trace:'+String(era.scope_id||scopeId)+':'+periodKey(era)===groupId)?.era;
+      if(trace){
+        const key=periodKey(trace);
+        setKeywordEraKey(key);setKeywordPeriodKey(key);setSelectedPeriodKey(key);
+      }
     }
   };
-  const currentStructurePeriod=primaryPeriods.find(item=>periodKey(item)===activeStructureKey)||null;
   // The "all eras" camera includes actual saved history, not just the
   // latest year, so valid older time ranges cannot render off-screen.
   const structureDateBounds=useMemo(()=>{
@@ -788,13 +740,6 @@ export default function Culture(){
   // Management displays the same complete historical Time graph as Culture;
   // the current calendar year is not a filter or the initial editor camera.
   const editorRiverWindow=structureDateBounds;
-  const currentStructureStart=activeStructureKey==='all'?structureDateBounds.start
-    :String(currentStructurePeriod?.start_date||'').slice(0,10);
-  // A trace stops at its final real lucus; no virtual today endpoint.
-  const lastLucusDate=String(structurePreference.lastLucus?.start_date||'').slice(0,10);
-  const savedTraceEnd=String(currentStructurePeriod?.end_date||'').slice(0,10);
-  const currentStructureEnd=activeStructureKey==='all'?structureDateBounds.end
-    :structureWindowKey===''&&lastLucusDate>savedTraceEnd?lastLucusDate:savedTraceEnd;
   // Keep the first river grouped by era UID. A selected trace changes
   // only the camera viewport, never the saved lucus/event/trace graph.
   const lucusRecords=useMemo(()=>timelineItems
@@ -1147,6 +1092,56 @@ export default function Culture(){
     }
     return {items,groups,hasSourceData:activeRoots.size>0};
   },[sourceTaxonomy,groupedSources,secondRiverBuckets,openCultureRoots,sourceSnapshotQuery.data,virtualLucusItems,showKeywordRiver,keywordDrillItems,keywordGroupOptions,l,locale,classificationWindowStart,classificationWindowEnd,styleFilter,densityInputBuckets,lucusSuggestOpen]);
+  const integratedCultureRiver=useMemo(()=>{
+    const timeEra=activeSecondEra?.era||
+      (keywordEraKey==='latest'?closestPeriod:null);
+    const timePeriod=activeSecondPeriods.find(row=>periodKey(row)===keywordPeriodKey)||null;
+    const eraUid=String(timeEra?.uid||'');
+    const periodUid=String(timePeriod?.uid||'');
+    const eraGroupId=eraUid?'trace:'+String(timeEra.scope_id||scopeId)+':'+eraUid:'';
+    const periodGroupId=periodUid?eraGroupId+':period:'+periodUid:'';
+    const exactRanges=(classificationPeriodRanges||[]).filter(range=>
+      /^\d{4}-\d{2}-\d{2}$/.test(String(range?.start_date||'').slice(0,10)));
+    const overlaps=(row,range)=>{
+      const from=String(row?.start_date||'').slice(0,10);
+      const until=String(row?.end_date||row?.start_date||'').slice(0,10);
+      return from&&until&&from<=range.end&&until>=range.start;
+    };
+    const visibleInSelectedWindow=row=>exactRanges.length
+      ?exactRanges.some(range=>overlaps(row,{
+        start:String(range.start_date).slice(0,10),
+        end:String(range.end_date||range.start_date).slice(0,10)
+      }))
+      :overlaps(row,{start:classificationWindowStart,end:classificationWindowEnd});
+    const timeGroups=eraRiver.groups.filter(group=>{
+      if(keywordEraKey==='__unassigned__')return group.id.startsWith('time-undefined:');
+      if(eraGroupId){
+        if(group.id===eraGroupId)return true;
+        if(periodGroupId)return group.id===periodGroupId||group.id===periodGroupId+':dates';
+        return group.id.startsWith(eraGroupId+':period:');
+      }
+      return true;
+    }).map((group,index)=>({
+      ...group,order:index,
+      className:[group.className,'scope-culture-time-lane'].filter(Boolean).join(' ')
+    }));
+    const timeItems=eraRiver.items.filter(item=>{
+      if(!visibleInSelectedWindow(item))return false;
+      if(keywordEraKey==='__unassigned__')return item.group_key?.startsWith('time-undefined:');
+      if(eraUid&&String(item.uid||'')!==eraUid&&String(item.era_uid||'')!==eraUid)return false;
+      if(periodUid&&item.entry_type!=='era'&&String(item.period_uid||'')!==periodUid)return false;
+      return true;
+    });
+    const sourceGroups=usesSourceRiver?cultureRiver.groups:[];
+    const sourceItems=usesSourceRiver?cultureRiver.items:[];
+    const groups=[...timeGroups,...sourceGroups.map((group,index)=>({
+      ...group,order:100000+index,
+      className:[group.className,'scope-culture-source-lane'].filter(Boolean).join(' ')
+    }))];
+    return {groups,items:[...timeItems,...sourceItems],hasTimeGroups:timeGroups.length>0};
+  },[activeSecondEra,activeSecondPeriods,keywordEraKey,keywordPeriodKey,closestPeriod,
+    scopeId,classificationPeriodRanges,classificationWindowStart,classificationWindowEnd,
+    eraRiver,cultureRiver,usesSourceRiver]);
   const focusedCandidate=riverAnalysis.suggestions.find(item=>item.date===focusedLucusDate);
   const lucusInsight=focusedCandidate?{
     date:focusedCandidate.date,before:Number(focusedCandidate.beforeCount)||0,
@@ -1520,56 +1515,13 @@ export default function Culture(){
 
 
             </>:<>
-              <section className='scope-card scope-culture-structure-river'>
-                <div className='scope-culture-structure-toolbar'>
-                  <h3>{l.timeTrace}</h3>
-                  <label><span>{l.timeTrace}</span>
-                    <select className='scope-select' aria-label='第一條河道時代選擇'
-                      value={activeStructureKey} onChange={event=>{
-                         prepareTransientResourceAction('period',{queryKeys:[
-                           ['culture-article-list',classificationScope],
-                           ['culture-river-root',classificationScope]
-                         ]});
-                         setWorksOpen(false);setSelectedTimelineInfo(null);
-                         setStructureWindowKey(event.target.value);
-                         setSelectedPeriodKey(event.target.value);
-                       }}>
-                      <option value='all'>{l.allTimeTraces}</option>
-                      {primaryPeriods.map(item=><option key={periodKey(item)} value={periodKey(item)}>{localizedLabelOf(item,0)}</option>)}
-                        </select>
-                  </label>
-                </div>
-                {eraRiver.groups.length&&!eraRiver.items.length?<p className='scope-status' role='status'>
-                  時代與定錨紀錄已載入，但沒有有效日期可繪製；請檢查時代、期間與定錨點的連結。
-                </p>:null}
-                {eraRiver.groups.length?<CultureTimeline
-                  items={eraRiver.items}
-                  extraGroups={eraRiver.groups}
-                  labelOf={localizedLabelOf}
-                  focus={navigation}
-                  mode='trace'
-                  onGroupToggle={toggleTimeTrace}
-                  windowStart={currentStructureStart}
-                  windowEnd={currentStructureEnd}
-                  onSelect={item=>{
-                    setSelectedTimelineInfo(item||null);
-                  }}
-                  editable={false}
-                />:<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>}
-                {selectedTimelineInfo?<div className='scope-card scope-culture-timeline-selection' role='status'>
-                  <strong>{selectedTimelineInfo.raw?.title||selectedTimelineInfo.content||selectedTimelineInfo.raw?.display_label||selectedTimelineInfo.title||translateUiField(locale,'時間長河紀錄')}</strong>
-                  <p className='scope-status'>{String(selectedTimelineInfo.start||'').slice(0,10)}{selectedTimelineInfo.end?' ～ '+String(selectedTimelineInfo.end).slice(0,10):''}</p>
-                  {selectedTimelineInfo.title?<p>{selectedTimelineInfo.title}</p>:null}
-                </div>:null}
-              </section>
-
-              {(selectedWorkPeriod||!primaryPeriods.length)?<section className='scope-card scope-culture-classification-river'>
+              <section className='scope-card scope-culture-classification-river'>
                 <div className='scope-culture-river-toolbar'>
-                  <h3>{UI_COPY.culture.classificationRiver}｜{classificationPeriodLabel}</h3>
+                  <h3>時間與作品｜{classificationPeriodLabel}</h3>
                   <div className='scope-culture-river-selectors'>
                     <div className='scope-culture-time-picker'>
                       <label><span>時代</span>
-                        <select className='scope-select' aria-label='第二條河道時代選擇'
+                        <select className='scope-select' aria-label='選擇時代'
                           value={keywordEraKey} onChange={event=>{
                             const next=event.target.value;
                             if(next==='custom'){
@@ -1583,6 +1535,7 @@ export default function Culture(){
                             setWorksOpen(false);
                             setKeywordEraKey(next);
                             setKeywordPeriodKey(next==='__unassigned__'?'all':next);
+                            setSelectedPeriodKey(next);
                           }}>
                           <option value='year'>{DEFAULT_YEAR_WINDOW.label}</option>
                           <option value='latest'>{primaryPeriods.length?l.recentTimeTrace:'未設定時代'}</option>
@@ -1597,7 +1550,7 @@ export default function Culture(){
                       </label>
                       {activeSecondEra||keywordEraKey==='__unassigned__'?<label>
                         <span>期間</span>
-                        <select className='scope-select' aria-label='第二條河道期間選擇'
+                        <select className='scope-select' aria-label='選擇期間'
                           value={activeSecondPeriods.some(row=>periodKey(row)===keywordPeriodKey)
                             ?keywordPeriodKey:'__era__'}
                           onChange={event=>{
@@ -1606,9 +1559,11 @@ export default function Culture(){
                               ['culture-river-root',classificationScope]
                             ]});
                             setWorksOpen(false);
-                            setKeywordPeriodKey(event.target.value==='__era__'
+                            const nextPeriod=event.target.value==='__era__'
                               ?(activeSecondEra?periodKey(activeSecondEra.era):'all')
-                              :event.target.value);
+                              :event.target.value;
+                            setKeywordPeriodKey(nextPeriod);
+                            setSelectedPeriodKey(nextPeriod);
                           }}>
                           <option value='__era__'>{activeSecondEra?'整個時代':'全部未歸屬期間'}</option>
                           {activeSecondPeriods.map(period=><option key={periodKey(period)}
@@ -1675,7 +1630,7 @@ export default function Culture(){
                   {riverAnalysis.error?<span className='scope-status scope-error' role='status'>{riverAnalysis.error}</span>:null}
                 </div>
                 {styleFilter==='rune66'?<section className='scope-culture-style-filter'>
-                  <p className='loc-eyebrow'>下半河道｜關鍵詞：{String(styleQuery.data?.keywordMeta?.class_name||selectedKeywordClass?.name||'尚未設定')}</p>
+                  <p className='loc-eyebrow'>關鍵詞｜{String(styleQuery.data?.keywordMeta?.class_name||selectedKeywordClass?.name||'尚未設定')}</p>
                   {availableKeywordClasses.length>0?<label className='scope-culture-keyword-class-picker'>
                     <span>關鍵字群組</span>
                     <select className='scope-select' aria-label='關鍵字群組'
@@ -1774,39 +1729,31 @@ export default function Culture(){
                   &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)
                   &&!cultureRiver.hasSourceData
                   ?<div className='scope-card scope-status scope-culture-no-data' role='status'>{l.noDataInPeriod}</div>:null}
-                {/* Never mount vis-timeline over an empty/pending source snapshot:
-                    on first entry it otherwise creates an unready chart and then
-                    replaces its DOM while groups and density analysis arrive. */}
-                {usesSourceRiver&&classificationWindowValid&&!(stagedSourceRiver?sourceRootQuery.error:sourceSnapshotQuery.error)
-                  &&(stagedSourceRiver?sourceRootQuery.data:sourceSnapshotQuery.data)&&cultureRiver.hasSourceData
-                  ?<div className='scope-culture-double-river'>
-                  {styleFilter==='none'&&openCultureRoots.length===0
-                    &&cultureRiver.items.every(item=>item.entry_type==='source_total')
-                    ?<CultureSourceRootSummary
-                      eraRanges={eraRiver.items}
-                      items={cultureRiver.items}
-                      groups={cultureRiver.groups}
-                      windowStart={classificationWindowStart}
-                      windowEnd={classificationWindowEnd}
-                      onGroupToggle={toggleCultureRiverGroup}
-                      onGroupSelect={selectCultureRiverGroup}
-                    />:<CultureTimeline
-                    items={cultureRiver.items}
-                    eraRanges={eraRiver.items}
-                    extraGroups={cultureRiver.groups}
-                    onGroupToggle={toggleCultureRiverGroup}
-                    onGroupSelect={selectCultureRiverGroup}
+                {classificationWindowValid&&(integratedCultureRiver.items.length||integratedCultureRiver.groups.length)
+                  ?<div className='scope-culture-double-river scope-culture-integrated-river'
+                    aria-label='時代、期間、定錨點與作品來源密度時間長河'>
+                    <CultureTimeline
+                    items={integratedCultureRiver.items}
+                    extraGroups={integratedCultureRiver.groups}
+                    onGroupToggle={id=>id.startsWith('dual:')
+                      ?toggleCultureRiverGroup(id):toggleTimeTrace(id)}
+                    onGroupSelect={id=>id.startsWith('dual:')?selectCultureRiverGroup(id):null}
                     lucusInsight={lucusInsight}
                     lucusLabels={{date:l.candidateDate,before:l.candidateBefore,after:l.candidateAfter,reason:l.candidateReason,close:l.candidateClose}}
                     onLucusClose={()=>setFocusedLucusDate('')}
                     heightVariant='double'
                     labelOf={classificationRiverLabel}
-                    focus={EMPTY_RIVER_FOCUS}
-                    mode='source'
+                    focus={navigation}
+                    mode='trace'
                     windowStart={classificationWindowStart}
                     windowEnd={classificationWindowEnd}
                     hiddenDates={riverAnalysis.hiddenDates}
                     onSelect={item=>{
+                      if(['era','period','lucus'].includes(item?.entryType)){
+                        setSelectedTimelineInfo(item||null);
+                        return;
+                      }
+                      setSelectedTimelineInfo(null);
                       if(item?.entryType==='virtual_lucus'){
                         const date=String(item?.start||'').slice(0,10);
                         setFocusedLucusDate(date);
@@ -1832,8 +1779,12 @@ export default function Culture(){
                         setSelectedRiverGroup('');
                         setSelectedCategory(key);
                       }
-                    }}
-                  />}
+                    }}/>
+                    {selectedTimelineInfo?<div className='scope-card scope-culture-timeline-selection' role='status'>
+                      <strong>{selectedTimelineInfo.raw?.title||selectedTimelineInfo.content||selectedTimelineInfo.raw?.display_label||selectedTimelineInfo.title||translateUiField(locale,'時間長河紀錄')}</strong>
+                      <p className='scope-status'>{String(selectedTimelineInfo.start||'').slice(0,10)}{selectedTimelineInfo.end?' ～ '+String(selectedTimelineInfo.end).slice(0,10):''}</p>
+                      {selectedTimelineInfo.title?<p>{selectedTimelineInfo.title}</p>:null}
+                    </div>:null}
                   {showKeywordRiver&&keywordDrillGroup?<section className='scope-culture-rune-list'
                     role='region' aria-label={(styleQuery.data?.keywordMeta?.classes?.[keywordDrillGroup]||'符文群組')+'符文列表'}>
                     <header>
@@ -1917,7 +1868,7 @@ export default function Culture(){
                   {!periodWorksPage.loading&&!periodWorksPage.error&&!visibleWorkRows.length?<p className='scope-status'>{UI_COPY.uiExtra.dataErrors.empty}</p>:null}
                   </>:null}
                 </details>:null}
-              </section>:null}
+              </section>
             </>}
       </>:null}
       </>}

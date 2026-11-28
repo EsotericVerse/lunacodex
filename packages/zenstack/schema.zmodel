@@ -461,7 +461,7 @@ type LRunes66 {
 // SQL-nullable array columns stay on the portable Kysely transport.
 // Eight independent physical Galaxy feature switches: true=enabled, false=excluded.
 // These are NOT Lucus.invisible (true=hidden) or LOC Auth authorization grants.
-type GalaxyAttr {
+type GalaxyReadLucus {
     statics Boolean?
     culture Boolean?
     search Boolean?
@@ -484,7 +484,7 @@ type GalaxyUidLucus {
     date DateTime?
     site String?
 }
-// GalaxyList reads uid/title/createtime/date/site plus nested GalaxyAttr.
+// GalaxyList reads uid/title/createtime/date/site plus nested GalaxyReadLucus.
 // Level 2: the light article list reuses the small feature-flags brick.
 type GalaxyList {
     uid String
@@ -492,7 +492,7 @@ type GalaxyList {
     createtime DateTime?
     date DateTime?
     site String?
-    attr GalaxyAttr?
+    attr GalaxyReadLucus?
 }
 // GalaxyUidRead adds content/url and the relation + lucus context only on demand.
 // Level 3: article details compose relationship + lucus context on demand.

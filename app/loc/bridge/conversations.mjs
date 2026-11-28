@@ -8,7 +8,7 @@ import {scopeTableName} from '../../../packages/zenstack/scope-table-names.mjs';
 
 const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
-const FLAGS=galaxyReadColumns('GalaxyAttr');
+const FLAGS=galaxyReadColumns('GalaxyReadLucus');
 const ALPHABET='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 const MAX_CONTENT=2_000_000;
 function fail(message,httpStatus=400){

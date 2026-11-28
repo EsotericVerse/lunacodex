@@ -56,10 +56,10 @@ function TraceBlocks(props){return <Suspense fallback={null}><LazyTraceBlocks {.
 
 const EMPTY_SEARCH_PATTERN_INDEX=Object.freeze({patterns:[],featuredArticles:[]});
 
-const GALAXY_EDITOR_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
+const GALAXY_EDITOR_COLUMNS=galaxyReadColumnsFor('GalaxyUidRead','GalaxyReadLucus')
   .concat(['UpdateTime','site_id']).filter((column,index,columns)=>columns.indexOf(column)===index).join(',');
 
-const GALAXY_ATTR_ORDER=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyAttr')
+const GALAXY_ATTR_ORDER=Object.freeze(galaxyReadColumnsFor('GalaxyUidRead','GalaxyReadLucus')
   .concat(['UpdateTime','site_id'])
   .filter((key,index,keys)=>keys.indexOf(key)===index));
 const GALAXY_ATTR_FIELDS=Object.freeze(GALAXY_ATTR_ORDER.map(key=>({
@@ -354,6 +354,14 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   },[results,status,error,reduceMotion]);
   const loadMoreInFlight=useRef(false);
   const matchedQueryRef=useRef('');
+  const publicResultsMode=!managementMode&&Boolean(
+    searchParams?.get('q')||searchParams?.get('place')||browseResults||
+    matchedQueryRef.current||results.length||fullTextKey||error||
+    status&&status!==UI_COPY.search.start
+  );
+  const publicStatusIsActionable=Boolean(error)||status==='搜尋中請稍後'||
+    status===UI_COPY.search.empty||status===UI_COPY.search.failed||
+    status===UI_COPY.search.relationFailed;
   const pageSize=DEFAULT_LIST_BATCH_SIZE;
   // LOC searches across every active, search-enabled public content tree.
   // The Scope registry is an internal query input, never a public search filter.
@@ -1328,7 +1336,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
             onChange={event=>updateSearchFilter(setEndDate,event.target.value)}/></label>
       </div>
     </section>:null}
-    {!managementMode?<section className="scope-search-workspace" aria-label={t('uiExtra.searchUI.searchWorkspace')}>
+    {!managementMode?<section className="scope-search-workspace" data-search-stage={publicResultsMode?'results':'home'} aria-label={t('uiExtra.searchUI.searchWorkspace')}>
       <form className="scope-search-form" onSubmit={runSearch}>
         {!managementMode?<label htmlFor="scope-search-query">{UI_COPY.search.textPromptLabel}</label>:null}
         {searchInput('scope-search-query','搜尋文章標題或內容')}
@@ -1343,25 +1351,18 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           }}>瀏覽文章列表（不需輸入關鍵詞）</button>:null}
         <button type="button" className="loc-button" onClick={clearSearchFilters}>{t('uiExtra.searchUI.clearAll')}</button>
       </form>
-      <button type="button" className="loc-button scope-search-popular-toggle"
+      {!publicResultsMode?<button type="button" className="loc-button scope-search-popular-toggle"
         aria-expanded={searchPopularOpen} aria-controls="scope-search-suggestions"
         onClick={()=>setSearchPopularOpen(open=>!open)}>
         {searchPopularOpen?'收起建議搜尋':'顯示建議搜尋'}
-      </button>
-      <div id="scope-search-suggestions" className="scope-search-suggestions"
+      </button>:null}
+      {!publicResultsMode?<div id="scope-search-suggestions" className="scope-search-suggestions"
         role="group" aria-label="建議搜尋前10項" hidden={!searchPopularOpen}>
         <span className="scope-status">建議搜尋（最多 10 項）</span>
         <div className="scope-search-active-filters">
           {suggestedTerms.map(term=><button key={term} type="button" className="loc-button"
             onClick={()=>{setQuery(term);setSearchPopularOpen(false);followSearchSuggestion(term);}}>{term}</button>)}
           {!suggestedTerms.length?<span className="scope-status">目前沒有已發布的搜尋建議。</span>:null}
-        </div>
-      </div>
-      {!managementMode&&results.length>0&&matchedQueryRef.current?<div className="scope-search-suggestions" aria-label="延伸搜尋">
-        <span className="scope-status">延伸搜尋（保留原本的時間範圍）</span>
-        <div className="scope-search-active-filters">
-          <button type="button" className="loc-button"
-            onClick={()=>{setAdvancedOpen(true);setAdvancedTab('time');}}>限定時間</button>
         </div>
       </div>:null}
       {managementMode?<div className="scope-search-place-mode" role="group" aria-label="搜尋範圍">
@@ -1392,7 +1393,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
         </select>
         {scopesQuery.isError?<span role="alert" className="scope-status scope-error">{t('uiExtra.searchUI.scopeUnavailable')}</span>:null}
       </div>:null}
-      <div className="scope-search-advanced" ref={advancedRef}>
+      {publicResultsMode?null:<div className="scope-search-advanced" ref={advancedRef}>
         <button type="button" className="scope-search-advanced-toggle" aria-expanded={advancedOpen} aria-controls="scope-search-filter-panel" onClick={()=>setAdvancedOpen(value=>!value)}>
           <span><strong>{t('uiExtra.searchUI.advancedFilters')}</strong>{!managementMode?<small>{t('uiExtra.searchUI.advancedHelp')}</small>:null}</span>
           <span aria-hidden="true">{advancedOpen?'▴':'▾'}</span>
@@ -1444,9 +1445,9 @@ export default function Search({managementMode:legacyManagementRoute=false}){
               <input id="scope-search-end-date" type="date" min={startDate||undefined} value={endDate} onChange={event=>{updateSearchFilter(setEndDate,event.target.value);}}/></label>
           </div>:null}
         </div>:null}
-      </div>
-    {!managementMode&&!results.length&&!fullTextKey?<SearchSummary scopeIds={summaryScopeIds}/>:null}
-    {!managementMode&&!results.length&&!fullTextKey?<section className="scope-search-reference-editor" aria-label="搜尋建議">
+      </div>}
+    {!publicResultsMode?<SearchSummary scopeIds={summaryScopeIds}/>:null}
+    {!publicResultsMode?<section className="scope-search-reference-editor" aria-label="搜尋建議">
       <h2>搜尋建議</h2>
       <ScopeEditableBlocks
         scopeId={scopeId}
@@ -1469,11 +1470,12 @@ export default function Search({managementMode:legacyManagementRoute=false}){
       aria-hidden="true" initial={reduceMotion?false:{opacity:0,scaleX:.25}}
       animate={reduceMotion?{opacity:0}:{opacity:[0,1,0],scaleX:[.25,1,1]}}
       transition={{duration:reduceMotion?0:.9,times:[0,.26,1],ease:'easeOut'}}/>:null}
-    {status&&(!managementMode||status!==UI_COPY.search.start)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'||status===UI_COPY.search.loadingRelation?<ActivityMotion/>:
+    {status&&(!managementMode||status!==UI_COPY.search.start)&&
+      (managementMode||!publicResultsMode||publicStatusIsActionable)?<p className="scope-status" role="status" aria-live="polite">{status==='搜尋中請稍後'||status===UI_COPY.search.loadingRelation?<ActivityMotion/>:
       error||status===UI_COPY.search.failed||status===UI_COPY.search.relationFailed?<ActivityMotion state="error"/>:
       status===UI_COPY.search.empty?<ActivityMotion state="empty"/>:
       status===UI_COPY.search.start?null:results.length>0?<ActivityMotion state="success"/>:null} {status}</p>:null}
-    {!managementMode&&results.length>0&&!browseResults&&matchedQueryRef.current?<section className="scope-search-next-step"
+    {!managementMode&&!publicResultsMode&&results.length>0&&!browseResults&&matchedQueryRef.current?<section className="scope-search-next-step"
       aria-label={t('uiExtra.searchUI.followupSearch')}>
       <p className="scope-status">{t('uiExtra.searchUI.followupSearch')}</p>
       <div className="scope-search-place-mode">
@@ -1524,7 +1526,7 @@ export default function Search({managementMode:legacyManagementRoute=false}){
           onClick={()=>void toggleFullText(row)}>
           {row.featured?<span className="loc-search-featured-badge">特徵頁 · {row.featuredPatternTitle}</span>:null}
           <strong>{row.list===false&&!privateResultMode?'（使用者隱藏）':row.title}</strong>
-          <small>{[scopeLabel(row.scopeId),String(row.date||'').slice(0,10)].filter(Boolean).join(' · ')}</small>
+          <small>{[scopeId==='loc'?scopeLabel(row.scopeId):'',String(row.date||'').slice(0,10)].filter(Boolean).join(' · ')}</small>
         </button>}
     />
     </div>
@@ -1547,13 +1549,13 @@ export default function Search({managementMode:legacyManagementRoute=false}){
   // A user opting in from ordinary Search still needs a standalone page shell.
   if(managementMode)return <FeaturePage featureId="search">{pageContent}</FeaturePage>;
   return <FeaturePage featureId="search">
-    <div className="scope-search-view-labels" role="group" aria-label={UI_COPY.features.search.title+' / '+UI_COPY.features.trace.detailsLabel}>
+    {!publicResultsMode||publicView==='trace'?<div className="scope-search-view-labels" role="group" aria-label={UI_COPY.features.search.title+' / '+UI_COPY.features.trace.detailsLabel}>
       <button type="button" aria-pressed={publicView==='search'}
         onClick={()=>setPublicView('search')}>{UI_COPY.features.search.title}</button>
       <span aria-hidden="true">/</span>
       <button type="button" aria-pressed={publicView==='trace'}
         onClick={()=>setPublicView('trace')}>{UI_COPY.features.trace.detailsLabel}</button>
-    </div>
+    </div>:null}
     <div className="scope-search-view-panel" role="region"
       aria-label={publicView==='search'?UI_COPY.features.search.title:UI_COPY.features.trace.detailsLabel}>
       {publicView==='search'?pageContent:<TraceBlocks scopeId={scopeId}/>}

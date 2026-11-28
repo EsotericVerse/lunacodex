@@ -1,4 +1,4 @@
-// Model-of-Models: GalaxyAttr/UidRelation/UidLucus are reusable typed bricks;
+// Model-of-Models: GalaxyReadLucus/UidRelation/UidLucus are reusable typed bricks;
 // GalaxyList/UidRead compose them without separate database rows.
 // Composable Galaxy ZModel value types over ONE physical <scope>_galaxy row.
 // The semantic shape is nested; the SQL transport remains a portable, flat,
@@ -9,9 +9,9 @@ const required=type=>Object.freeze({type});
 // Small bricks own their fields once. Composite bricks refer to them by type,
 // rather than copying eight flags or UID relation/lucus fields into every view.
 export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
-  // GalaxyAttr is eight flat physical flags: statics,culture,search,trace,list,keyword,extract,others.
+  // GalaxyReadLucus is eight flat physical flags: statics,culture,search,trace,list,keyword,extract,others.
 // true = included for that feature; false = excluded; not the Lucus.invisible flag.
-  GalaxyAttr:Object.freeze({
+  GalaxyReadLucus:Object.freeze({
     statics:optional('Boolean'),culture:optional('Boolean'),search:optional('Boolean'),
     trace:optional('Boolean'),list:optional('Boolean'),keyword:optional('Boolean'),
     extract:optional('Boolean'),others:optional('Boolean')
@@ -26,11 +26,11 @@ export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
     place_id:optional('String'),
     location:optional('String'),date:optional('DateTime'),site:optional('String')
   }),
-  // GalaxyList: uid/title/createtime/date/site plus the nested GalaxyAttr flags.
+  // GalaxyList: uid/title/createtime/date/site plus the nested GalaxyReadLucus flags.
   GalaxyList:Object.freeze({
     uid:required('String'),title:optional('String'),
     createtime:optional('DateTime'),date:optional('DateTime'),
-    site:optional('String'),attr:optional('GalaxyAttr')
+    site:optional('String'),attr:optional('GalaxyReadLucus')
   }),
   // GalaxyUidRead: uid/title/content/createtime/url plus UID relation/lucus projections.
   GalaxyUidRead:Object.freeze({
@@ -65,7 +65,7 @@ export const GALAXY_READ_MODEL_COLUMNS=Object.freeze(Object.fromEntries(
   ])
 ));
 
-// GalaxyList.attr denotes a nested *semantic* GalaxyAttr projection, not a
+// GalaxyList.attr denotes a nested *semantic* GalaxyReadLucus projection, not a
 // second physical JSON attr field; SQL SELECTs remain flattened on demand.
 // Existing callers keep receiving the same physical column list, including
 // their original ordering, even though semantic fields now compose by type.

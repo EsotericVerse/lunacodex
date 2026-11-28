@@ -20,7 +20,7 @@ import {scopeTableDescriptor} from '../../../packages/zenstack/scope-table-names
 import {galaxyReadColumns} from '../../../packages/zenstack/galaxy-read-models.mjs';
 const galaxyUidReadColumns=()=>galaxyReadColumns('GalaxyUidRead');
 const galaxyUidReadWithPolicyColumns=()=>unique([
-  ...galaxyUidReadColumns(),...galaxyReadColumns('GalaxyAttr'),
+  ...galaxyUidReadColumns(),...galaxyReadColumns('GalaxyReadLucus'),
   // media_link is a physical Galaxy URL[]; select it explicitly when showing
   // article links, never treat it as a semantic ZModel Lucus relation.
   'media_link'
@@ -28,7 +28,7 @@ const galaxyUidReadWithPolicyColumns=()=>unique([
 const articlePermissionFilter=(_scope,name)=>({
   column:name,operator:'eq',value:true
 });
-// Search is a GalaxyAttr flag, but keeping this named predicate explicit makes
+// Search is a GalaxyReadLucus flag, but keeping this named predicate explicit makes
 // the policy boundary visible at every search call site.
 const searchPermissionFilter=()=>({column:'search',operator:'eq',value:true});
 

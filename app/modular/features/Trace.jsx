@@ -325,16 +325,17 @@ function ScopeTrace({scopeId='lo3rwang'}){
     </div>:null}
   </>;
   return <FeaturePage featureId="trace">
-    <nav className="loc-trace-strategy-tabs" aria-label="痕跡地圖類型">
-      <button type="button" className="loc-button" aria-pressed={mapMode==='territory'}
-        onClick={()=>setMapMode('territory')}>年度文章地點圖{mapMode==='territory'?<motion.span
-          className="loc-trace-strategy-tabs__indicator" layoutId={'trace-mode-'+scopeId}
-          transition={reduceMotion?{duration:0}:{type:'spring',duration:.26,bounce:.1}} aria-hidden="true"/>:null}</button>
-      <button type="button" className="loc-button" aria-pressed={mapMode==='routes'}
-        onClick={()=>setMapMode('routes')}>路徑痕跡圖{mapMode==='routes'?<motion.span
-          className="loc-trace-strategy-tabs__indicator" layoutId={'trace-mode-'+scopeId}
-          transition={reduceMotion?{duration:0}:{type:'spring',duration:.26,bounce:.1}} aria-hidden="true"/>:null}</button>
-    </nav>
+    <header className="loc-trace-strategy-header">
+      <div><p className="loc-eyebrow">地形檔案 · {scopeId}</p>
+        <h2>痕跡圖</h2></div>
+      <label className="loc-trace-strategy-header__choice"><span>地圖內容</span>
+        <select className="scope-select" aria-label="地圖內容" value={mapMode}
+          onChange={event=>setMapMode(event.target.value)}>
+          <option value="territory">年度文章與到訪時間</option>
+          <option value="routes">路徑與痕跡</option>
+        </select>
+      </label>
+    </header>
     {/* Keep exactly one WebGL canvas: the map owns its dimensions and Motion
         unfolds two paper leaves above it, never transforms the canvas. */}
     <div key={mapMode} className="loc-trace-map-transition" data-map-mode={mapMode}>

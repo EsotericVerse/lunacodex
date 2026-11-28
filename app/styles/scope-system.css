@@ -1038,6 +1038,34 @@
 .scope-culture-river-selectors select{max-width:min(260px,45vw)}
 .scope-culture-double-river .vis-label.scope-dual-river-root{background:color-mix(in srgb,var(--loc-panel-2) 80%,var(--loc-accent) 8%);font-weight:700}
 .scope-culture-double-river .vis-label.scope-dual-river-child .vis-inner{padding-left:1.4rem}
+.scope-culture-integrated-river .vis-label.scope-culture-time-lane.scope-time-trace-parent{
+  background:color-mix(in srgb,var(--loc-accent) 13%,var(--loc-panel));
+  color:var(--loc-heading);font-weight:750
+}
+.scope-culture-integrated-river .vis-label.scope-culture-time-lane.scope-time-trace-child{
+  background:color-mix(in srgb,var(--loc-panel-2) 83%,var(--loc-accent) 10%);
+  color:var(--loc-text)
+}
+.scope-culture-integrated-river .vis-label.scope-culture-time-lane.scope-time-anchor-parent{
+  background:color-mix(in srgb,var(--loc-panel-2) 74%,var(--loc-gold) 13%);
+  color:var(--loc-heading)
+}
+.scope-culture-integrated-river .vis-label.scope-culture-source-lane.scope-dual-river-root{
+  border-inline-start:2px solid var(--loc-gold);
+  background:color-mix(in srgb,var(--loc-panel-2) 88%,var(--loc-gold) 9%)
+}
+.scope-culture-integrated-river .vis-label.scope-culture-source-lane.scope-dual-river-child{
+  background:color-mix(in srgb,var(--loc-panel) 88%,var(--loc-accent) 6%)
+}
+.scope-culture-integrated-river .scope-time-original-anchor{
+  border-color:var(--loc-gold);background:var(--loc-gold);color:var(--loc-bg)
+}
+.scope-culture-integrated-river .scope-era-background{
+  opacity:.1
+}
+.scope-culture-integrated-river .scope-period-timeline .vis-time-axis{
+  border-color:var(--loc-accent-border-soft)
+}
 .scope-culture-double-river .scope-river-group-button{appearance:none;border:0;background:none;color:inherit;cursor:pointer;text-align:left;font:inherit;font-weight:inherit;width:100%;padding:.35rem .1rem;white-space:normal;overflow-wrap:anywhere}
 .scope-culture-double-river .scope-river-group-button:focus-visible{outline:2px solid var(--loc-accent);outline-offset:-2px;border-radius:3px}
 

@@ -15,7 +15,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
 const BATCH=/^[0-9a-f]{64}$/;
 
-const FLAGS=galaxyReadColumns('GalaxyAttr');
+const FLAGS=galaxyReadColumns('GalaxyReadLucus');
 function reject(message,status=400){throw Object.assign(new Error(message),{httpStatus:status});}
 function affected(result){
   const item=Array.isArray(result)?result[0]:result;

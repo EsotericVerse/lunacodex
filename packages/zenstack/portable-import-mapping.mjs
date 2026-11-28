@@ -20,7 +20,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 const LOOKUP_FIELDS=Object.freeze(['uid','content','site_id','site']);
 const CORE_FIELDS=Object.freeze(['uid','title','content','site','site_id',
   'url','createtime','UpdateTime']);
-const IMPORT_FIELDS=Object.freeze([...CORE_FIELDS,...galaxyReadColumns('GalaxyAttr')]);
+const IMPORT_FIELDS=Object.freeze([...CORE_FIELDS,...galaxyReadColumns('GalaxyReadLucus')]);
 
 /**
  * Bind a trusted database target to the existing frozen Galaxy ZModel.
@@ -44,7 +44,7 @@ export function portableGalaxyImportMapping({scopeId,engine='postgres',namespace
     if(!field||field.array||field.name!==key)
       throw new TypeError('LOC Galaxy ZModel import mapping missing: '+key);
   }
-  for(const key of galaxyReadColumns('GalaxyAttr')){
+  for(const key of galaxyReadColumns('GalaxyReadLucus')){
     if(fields[key].type!=='Boolean')
       throw new TypeError('LOC Galaxy ZModel import flag mismatch: '+key);
   }

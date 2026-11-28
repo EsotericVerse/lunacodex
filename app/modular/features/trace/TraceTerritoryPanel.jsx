@@ -1,5 +1,6 @@
 'use client';
 import {useMemo,useRef,useState} from 'react';
+import {AnimatePresence,motion,useReducedMotion} from 'motion/react';
 import {visualKeyColor,TERRITORY_STOPS,territoryLegendColor} from '../../visual-palette.mjs';
 import dynamic from 'next/dynamic';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
@@ -23,11 +24,13 @@ const hasCoordinates=point=>point&&point.longitude!=null&&point.latitude!=null&&
 
 export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
   const [year,setYear]=useState(currentYear);
-  const [display,setDisplay]=useState('sources');
+  const [display,setDisplay]=useState('timeline');
   const [step,setStep]=useState(1000);
   const [selectedKey,setSelectedKey]=useState('');
+  const [selectedVisitDay,setSelectedVisitDay]=useState('');
   const [search,setSearch]=useState('');
   const [registerOpen,setRegisterOpen]=useState(false);
+  const reduceMotion=useReducedMotion();
   const rootRef=useRef(null);
   const period=territoryYearWindow(year);
   const scopeQuery=useAsyncResource({
@@ -87,7 +90,10 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
   const chosen=countries.find(place=>place.source_scope+':'+place.uid===selectedKey)||null;
   const selected=chosen&&activeByKey.has(selectedKey)?chosen:null;
   const keyOf=place=>place.source_scope+':'+place.uid;
-  const selectPlace=place=>{setSelectedKey(keyOf(place));};
+  const selectPlace=place=>{
+    setSelectedKey(keyOf(place));
+    setSelectedVisitDay('');
+  };
   const openFromRegister=place=>{
     selectPlace(place);
     rootRef.current?.querySelector('.loc-trace-map-shell')?.scrollIntoView({
@@ -104,15 +110,15 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
       floatingControls={<div className="loc-trace-territory-toolbar">
         <label>年度
           <select className="scope-select" value={year} onChange={event=>{
-            setYear(Number(event.target.value));setStep(1000);setSelectedKey('');
+            setYear(Number(event.target.value));setStep(1000);setSelectedKey('');setSelectedVisitDay('');
           }}>{years.map(value=><option value={value} key={value}>{value} 年</option>)}</select>
         </label>
-        <div role="group" aria-label="年度戰略檢視">
-          <button type="button" className="loc-button" aria-pressed={display==='sources'}
-            onClick={()=>setDisplay('sources')}>來源勢力</button>
-          <button type="button" className="loc-button" aria-pressed={display==='timeline'}
-            onClick={()=>setDisplay('timeline')}>時間推進</button>
-        </div>
+        <label>據點資訊
+          <select className="scope-select" value={display} onChange={event=>setDisplay(event.target.value)}>
+            <option value="timeline">到訪時間</option>
+            <option value="sources">文章來源</option>
+          </select>
+        </label>
         <span className="scope-status">{period.startDate} ～ {period.endDate}</span>
         {display==='timeline'?<label className="loc-trace-territory-time">
           <span>文章日期推進至 {cutoff}</span>
@@ -131,7 +137,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
           <div><span className="loc-trace-territory-eyebrow">據點內政 · {year}</span>
             <strong>{selected.title}</strong></div>
           <button type="button" className="loc-button" aria-label="關閉據點內政"
-            onClick={()=>setSelectedKey('')}>×</button>
+            onClick={()=>{setSelectedKey('');setSelectedVisitDay('');}}>×</button>
         </header>
         <div className="loc-trace-territory-stats">
           <span>年度文章 <strong>{selected.total}</strong></span>
@@ -146,21 +152,40 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
               <span style={{width:source.percent+'%',background:visualKeyColor(source.name)}}/>
             </div>
           </div>)}
-        </div>:<ol className="loc-trace-territory-events" aria-label="文章日期序列">
-          {selected.timeline.filter(row=>row.day<=cutoff).map(row=><li key={row.day}>
-            <time dateTime={row.day}>{row.day}</time><span>{row.count} 篇</span>
-          </li>)}
-        </ol>}
-        <details className="loc-trace-territory-inner-affairs" open>
-          <summary>內政 · 本年度相關文章</summary>
-          <TracePlaceResults
-            key={keyOf(selected)+':'+year}
-            place={selected.point||{uid:selected.uid,title:selected.title,
-              trace_type:'space_lucus',source_scope:selected.source_scope}}
-            lucus={mapData.lucus} maps={[]}
-            scopeId={selected.source_scope} tab="articles" allPlacedArticles
-            dateRange={period} timeMode="none" defaultSort="desc"/>
-        </details>
+        </div>:<>
+          <div className="loc-trace-territory-visit-heading">
+            <div><span className="loc-trace-territory-eyebrow">行程紀錄 · {year}</span>
+              <strong>{selectedVisitDay||'選擇到訪日期'}</strong></div>
+            {selectedVisitDay?<button type="button" className="loc-button"
+              onClick={()=>setSelectedVisitDay('')}>返回日期列表</button>:null}
+          </div>
+          <ol className="loc-trace-territory-events" aria-label="文章日期序列">
+            {selected.timeline.filter(row=>row.day<=cutoff).map(row=><motion.li layout={!reduceMotion} key={row.day}>
+              <button type="button" className="loc-trace-territory-day"
+                aria-pressed={selectedVisitDay===row.day}
+                onClick={()=>setSelectedVisitDay(row.day)}>
+                <time dateTime={row.day}>{row.day}</time><span>{row.count} 篇</span>
+              </button>
+            </motion.li>)}
+          </ol>
+          <AnimatePresence mode="wait" initial={false}>
+            {selectedVisitDay?<motion.div key={selectedVisitDay}
+              className="loc-trace-territory-day-detail"
+              initial={reduceMotion?false:{opacity:0,y:7}}
+              animate={{opacity:1,y:0}}
+              exit={reduceMotion?{opacity:0}:{opacity:0,y:-4}}
+              transition={reduceMotion?{duration:0}:{duration:.2,ease:'easeOut'}}>
+              <TracePlaceResults
+                key={keyOf(selected)+':'+year+':'+selectedVisitDay}
+                place={selected.point||{uid:selected.uid,title:selected.title,
+                  trace_type:'space_lucus',source_scope:selected.source_scope}}
+                lucus={mapData.lucus} maps={[]}
+                scopeId={selected.source_scope} tab="articles" allPlacedArticles
+                dateRange={{startDate:selectedVisitDay,endDate:selectedVisitDay}}
+                timeMode="none" defaultSort="desc"/>
+            </motion.div>:null}
+          </AnimatePresence>
+        </>}
         <p className="scope-status">依文章日期排序，不代表實際抵達或行軍路線。</p>
       </section>:null}
 
