@@ -22,7 +22,10 @@ const hasCoordinates=point=>point&&point.longitude!=null&&point.latitude!=null&&
   Number.isFinite(Number(point.longitude))&&Number.isFinite(Number(point.latitude))&&
   Math.abs(Number(point.longitude))<=180&&Math.abs(Number(point.latitude))<=90;
 
-export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
+const EMPTY_ROUTE_MAPS=Object.freeze([]);
+const EMPTY_ROUTE_POINTS=Object.freeze([]);
+
+export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null,routeOverlay=null}){
   const [year,setYear]=useState(currentYear);
   const [display,setDisplay]=useState('timeline');
   const [step,setStep]=useState(1000);
@@ -84,9 +87,24 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
   const active=useMemo(()=>countries.filter(place=>place.firstDay<=cutoff),[countries,cutoff]);
   const activeByKey=useMemo(()=>new Map(active.map(place=>[place.source_scope+':'+place.uid,place])),[active]);
   const mapped=useMemo(()=>active.filter(place=>hasCoordinates(place.point)),[active]);
-  const mapData=useMemo(()=>({lucus:mapped.map(place=>({
-    ...place.point,territory_total:place.total,territory_source:place.sources[0]?.name||''
-  })),maps:[]}),[mapped]);
+  const routeMaps=Array.isArray(routeOverlay?.maps)?routeOverlay.maps:EMPTY_ROUTE_MAPS;
+  const routePoints=Array.isArray(routeOverlay?.points)?routeOverlay.points:EMPTY_ROUTE_POINTS;
+  const routeLucus=useMemo(()=>{
+    const byKey=new Map();
+    for(const point of routePoints){
+      const key=String(point?.source_scope||'')+':'+String(point?.uid||'');
+      if(point?.uid)byKey.set(key,point);
+    }
+    for(const place of mapped){
+      const point={...place.point,territory_total:place.total,
+        territory_source:place.sources[0]?.name||''};
+      const key=String(point.source_scope||'')+':'+String(point.uid||'');
+      byKey.set(key,{...byKey.get(key),...point});
+    }
+    return [...byKey.values()];
+  },[mapped,routePoints]);
+  const mapData=useMemo(()=>({lucus:routeLucus,maps:routeMaps}),[routeLucus,routeMaps]);
+  const selectedRouteUid=String(routeOverlay?.selectedRouteUid||'');
   const chosen=countries.find(place=>place.source_scope+':'+place.uid===selectedKey)||null;
   const selected=chosen&&activeByKey.has(selectedKey)?chosen:null;
   const keyOf=place=>place.source_scope+':'+place.uid;
@@ -105,7 +123,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
   const totalArticles=regions.reduce((sum,place)=>sum+place.total,0);
   return <div ref={rootRef} className="loc-trace-territory" aria-label="年度文章地點戰略版圖">
     <TraceMap key="territory" publicTrace territoryMode territoryYear={year} onReady={onMapReady}
-      spatialData={mapData} selectedRouteUid="" showLucusSearch={false}
+      spatialData={mapData} selectedRouteUid={selectedRouteUid} showLucusSearch={false}
       onLucusSelect={selectPlace}
       floatingControls={<div className="loc-trace-territory-toolbar">
         <label>年度
@@ -120,6 +138,7 @@ export default function TraceTerritoryPanel({scopeId='loc',onMapReady=null}){
           </select>
         </label>
         <span className="scope-status">{period.startDate} ～ {period.endDate}</span>
+        {routeOverlay?.controls||null}
         {display==='timeline'?<label className="loc-trace-territory-time">
           <span>文章日期推進至 {cutoff}</span>
           <input type="range" min="0" max="1000" step="1" value={step}
