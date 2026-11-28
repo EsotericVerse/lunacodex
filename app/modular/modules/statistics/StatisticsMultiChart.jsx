@@ -23,7 +23,7 @@ const CHART_GRID='var(--loc-line)';
 const GRID='var(--loc-line)',TEXT='var(--loc-text)',DAY=86400000;
 const color=i=>themedDataColor(baseColor(i));
 const pointColor=i=>themedDataColor(basePointColor(i));
-function ThemedChartTooltip({active,payload=[],label,suffix=''}){
+function ThemedChartTooltip({active,payload=[],label,suffix='',multiplier=1}){
   if(!active||!payload.length)return null;
   const entries=payload.filter(entry=>entry?.value!==undefined&&entry?.value!==null);
   if(!entries.length)return null;
@@ -34,7 +34,7 @@ function ThemedChartTooltip({active,payload=[],label,suffix=''}){
       key={String(entry.dataKey||entry.name||index)}
       style={{'--chart-tip-color':entry.color||entry.fill||pointColor(index)}}>
       <span>{entry.name||entry.dataKey||'數值'}</span>
-      <b>{typeof entry.value==='number'?entry.value.toLocaleString()+suffix:String(entry.value)}</b>
+      <b>{typeof entry.value==='number'?(entry.value*multiplier).toLocaleString(undefined,{maximumFractionDigits:1})+suffix:String(entry.value)}</b>
     </div>)}
   </div>;
 }
@@ -88,10 +88,10 @@ export default function StatisticsMultiChart({
   const fields=useMemo(()=>nonemptySeries(time,series),[time,series]);
   const categories=useMemo(()=>normalizeDistribution(distribution,time,fields),[distribution,time,fields]);
   const intentConfig=useMemo(()=>intent==='legacy'?null:resolveStatisticIntent({
-    intent,rows:time,series:fields,distribution:categories,mutuallyExclusive,
+    intent,rows:time,series:fields,distribution:categories,mutuallyExclusive,seriesExclusive,
     records,recordFields,values,targetValue,attainmentValue,stages:funnelStages
   }),[intent,time,fields,categories,mutuallyExclusive,records,recordFields,values,
-    targetValue,attainmentValue,funnelStages]);
+    targetValue,attainmentValue,funnelStages,seriesExclusive]);
   const usable=availableStatisticChartTypes({rows:time,series:fields,distribution:categories,totalKey});
   const actual=intentConfig
     ?(intentConfig.available?intentConfig.type:'')
@@ -175,7 +175,7 @@ export default function StatisticsMultiChart({
   };
   const periodInteractive=Boolean(onPeriodClick&&
     ['line','bar','area','stacked','composed','compositionTrend','scatter'].includes(actual)&&
-    !(isDistribution&&barLayout==='vertical')&&intent!=='relationship');
+    !isDistribution&&intent!=='relationship');
   const handleChartClick=event=>{
     const row=event?.activePayload?.find(entry=>entry?.payload)?.payload;
     if(row&&periodInteractive){
@@ -222,7 +222,7 @@ export default function StatisticsMultiChart({
     <XAxis type="number" domain={[0,1]} tickFormatter={value=>Math.round(Number(value)*100)+'%'}
       tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
     <YAxis dataKey="period" type="category" width={72} tick={{fill:TEXT,fontSize:11}} stroke={GRID}/>
-    <Tooltip content={<ThemedChartTooltip/>} formatter={value=>(Number(value)*100).toFixed(1)+'%'}/>
+    <Tooltip content={<ThemedChartTooltip multiplier={100} suffix="%"/>}/>
     <Legend wrapperStyle={{fontSize:11}}/>
     {compositionFields.map((item,index)=><Bar key={item.key} {...animation}
       dataKey={item.dataKey} name={item.name} stackId="composition" fill={color(index)}
@@ -291,8 +291,7 @@ export default function StatisticsMultiChart({
   </BarChart>;
   else if(actual==='funnel'&&funnel.length)chart=<FunnelChart>
     <Tooltip content={<ThemedChartTooltip/>}/>
-    <Funnel {...animation} dataKey="value" nameKey="name" data={funnel}
-      isAnimationActive={animateData}>
+    <Funnel {...animation} dataKey="value" nameKey="name" data={funnel}>
       {funnel.map((stage,index)=><Cell key={stage.key} fill={color(index)}
         onClick={()=>onDatumClick?.({intent,kind:'stage',...stage})}/>)}
       <LabelList dataKey="name" position="right" content={props=>{
@@ -402,7 +401,7 @@ export default function StatisticsMultiChart({
       initial={reduceMotion?false:{opacity:0,y:6}}
       animate={{opacity:1,y:0}}
       transition={{duration:reduceMotion?0:.22,ease:'easeOut'}}
-      style={{height:height}}>
+      style={{height:barLayout==='vertical'?height:`min(${height}px, max(300px, 85vw))`}}>
       {usesResponsiveContainer
         ?<ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
         :cloneElement(chart,{responsive:true,style:{width:'100%',height:'100%'},
