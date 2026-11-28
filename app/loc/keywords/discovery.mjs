@@ -72,35 +72,13 @@ export function createNewKeywordDiscovery(rows=[]){
       if(!body)continue;
       withContent++;
       const seen=new Set();
-      let previous=null;
       for(const piece of segmenter.segment(body)){
         const token=String(piece.segment||'').trim();
-        if(!token)continue;
-        const isHan=HAN.test(token);
-        if(!isHan||isKeywordDiscoveryStopWord(token)){
-          previous=null;
-          continue;
-        }
-        const chars=Array.from(token);
-        if(chars.length>=2&&chars.length<=4)
+        if(!token||!HAN.test(token)||isKeywordDiscoveryStopWord(token))continue;
+        // Keep only complete segmented words; do not create overlapping substrings
+        // or concatenate adjacent words into artificial compound candidates.
+        if(isKeywordDiscoveryWord(token))
           add(token,seen,body,piece.index,token.length);
-        else if(chars.length>4){
-          // A long Segmenter token may contain several independently useful
-          // 2–4 character terms. Never emit the full long token.
-          for(let size=2;size<=4;size++){
-            for(let start=0;start+size<=chars.length;start++){
-              const candidate=chars.slice(start,start+size).join('');
-              add(candidate,seen,body,piece.index+start,candidate.length);
-            }
-          }
-        }
-        if(previous&&previous.end===piece.index){
-          const combined=previous.token+token;
-          const length=Array.from(combined).length;
-          if(length>=2&&length<=4)
-            add(combined,seen,body,previous.start,combined.length);
-        }
-        previous={token,start:piece.index,end:piece.index+piece.segment.length};
       }
     }
     return {read,withContent,limited:false,candidateCount:totals.size,existingCount:existing.size};
