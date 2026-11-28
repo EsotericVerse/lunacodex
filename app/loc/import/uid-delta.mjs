@@ -20,7 +20,7 @@ function changedFields(next,patches){
 
 // Resolve only verified in-file aliases and saved Galaxy primary keys.
 // Cycles and conflicting aliases are rejected; never guess identity from
-// a title, date, content, URL or Anchor hierarchy.
+// a title, date, content, URL or Lucus hierarchy.
 export function createImportUidResolver(aliases=new Map(),existingByUid=new Map()){
   if(!(aliases instanceof Map)||!(existingByUid instanceof Map))
     throw new TypeError('匯入 UID 對應表必須是 Map');
@@ -127,8 +127,8 @@ export function planImportPointUidLink(previousUid,nextUid){
     patches:[{op:'replace',path:['place_id'],value:id}]};
 }
 
-// Galaxy.media_link is a URL list, not MediaAnchor foreign keys.
-// Only attach actual HTTPS/HTTP public links. The Anchor UID remains its
+// Galaxy.media_link is a URL list, not Galaxy 媒體作品 foreign keys.
+// Only attach actual HTTPS/HTTP public links. The Lucus UID remains its
 // separate, typed record identity and is never written to the Galaxy array.
 export function planImportMediaUrlLinks(prior=[],additions=[],articleUrl=null){
   if(!Array.isArray(prior))throw new TypeError('媒體 URL 清單不是陣列');

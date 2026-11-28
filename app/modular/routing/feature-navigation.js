@@ -69,12 +69,6 @@ export function galaxyIdentityHref(scopeId,uid){
   return featureNavigationHref(targetScope,'search',{identity:id});
 }
 
-export function mediaAnchorHref(scopeId,mediaId){
-  const id=valueOf(mediaId);
-  if(!id)return '';
-  return featureNavigationHref(String(scopeId||'').trim(),'search',{media:id});
-}
-
 export function galaxyRelationLinks(scopeId,row={}){
   const links=[];
   const titles=row.relation_titles||{};

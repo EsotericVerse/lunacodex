@@ -8,13 +8,13 @@ const ids=list=>Array.isArray(list)?[...new Set(list.flat(Infinity).map(String).
 
 export function spaceRecordHierarchy(spatial={},scopeId=''){
   const belongs=row=>!scopeId||row?.source_scope===scopeId;
-  const points=(spatial.anchors||[]).filter(row=>belongs(row)&&uid(row));
+  const points=(spatial.lucus||[]).filter(row=>belongs(row)&&uid(row));
   const maps=(spatial.maps||[]).filter(belongs);
   const byPoint=new Map(points.map(row=>[uid(row),row]));
   const referenced=new Set();
   const resolvePoints=keys=>ids(keys).map(key=>byPoint.get(key)).filter(Boolean);
   const pathBranch=path=>{
-    const members=resolvePoints(path.anchor_list);
+    const members=resolvePoints(path.lucus_list);
     members.forEach(row=>referenced.add(uid(row)));
     return {row:path,points:members};
   };
@@ -24,7 +24,7 @@ export function spaceRecordHierarchy(spatial={},scopeId=''){
     const included=new Set(paths.flatMap(path=>path.points.map(uid)));
     // Trace.attr.point represents its own direct line segments, not every
     // Point in an included Path. Show only direct, nonduplicate members here.
-    const directPoints=resolvePoints(group.trace.anchor_list)
+    const directPoints=resolvePoints(group.trace.lucus_list)
       .filter(row=>!included.has(uid(row)));
     directPoints.forEach(row=>referenced.add(uid(row)));
     return {row:group.trace,paths,directPoints};

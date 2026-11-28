@@ -44,10 +44,10 @@ function attributes(row){
   }
   return row?.attr||{};
 }
-function anchorModel(rows,start,end,expanded){
-  // TimeAnchor links form a directed graph, not a single-parent tree:
+function lucusModel(rows,start,end,expanded){
+  // TimeLucus links form a directed graph, not a single-parent tree:
   // the same date can legitimately belong to multiple periods/eras.
-  // Use the frozen ZModel TimeAnchor discriminator and resolve its UID edges
+  // Use the frozen ZModel TimeLucus discriminator and resolve its UID edges
   // directly; the tree-only hierarchy index rejects these valid shared dates.
   const all=list(rows).filter(row=>LUCUS_TYPE_GROUPS.time.includes(row.type));
   const byUid=new Map(all.filter(row=>/^[A-Za-z0-9]{8}$/.test(String(row.uid||'')))
@@ -59,13 +59,13 @@ function anchorModel(rows,start,end,expanded){
   const periodRange=row=>{
     const attr=attributes(row);
     const from=list(attr.date||attr.dates).map(datePart).filter(validDateKey);
-    const links=list(attr.uid||attr.anchors).map(uid=>byUid.get(String(uid)))
+    const links=list(attr.uid||attr.lucus).map(uid=>byUid.get(String(uid)))
       .filter(Boolean).map(item=>datePart(attributes(item).date)).filter(validDateKey);
     const allDates=[...from,...links].sort();
     return {start:allDates[0]||'',end:allDates[allDates.length-1]||''};
   };
-  // The transport may return TimeAnchor rows by UID. Era/Period group
-  // positions instead follow the earliest genuine linked DateAnchor.
+  // The transport may return TimeLucus rows by UID. Era/Period group
+  // positions instead follow the earliest genuine linked DateLucus.
   // UIDs are stable tie-breakers only, never chronological indicators.
   const eraStart=era=>{
     const attr=attributes(era);
@@ -88,7 +88,7 @@ function anchorModel(rows,start,end,expanded){
   const items=[],eraRanges=[];
   for(const period of periods){
     const periodUid=String(period.uid),attr=attributes(period);
-    const linkedDateUids=list(attr.uid||attr.anchors).map(String);
+    const linkedDateUids=list(attr.uid||attr.lucus).map(String);
     const linkedDates=linkedDateUids.map(uid=>datesByUid.get(uid)).filter(Boolean);
     const inlineDates=list(attr.date||attr.dates).map(value=>({date:datePart(value)}))
       .filter(row=>validDateKey(row.date));
@@ -130,7 +130,7 @@ function anchorModel(rows,start,end,expanded){
 }
 const linkedUids=(row,key)=>[...new Set(list(attributes(row)[key])
   .map(value=>String(value||'').trim()).filter(value=>/^[A-Za-z0-9]{8}$/.test(value)))];
-async function readTimeAnchorsByUid(scopeId,type,uids,isCurrent=()=>true){
+async function readTimeLucusByUid(scopeId,type,uids,isCurrent=()=>true){
   const unique=[...new Set(uids)].filter(uid=>/^[A-Za-z0-9]{8}$/.test(String(uid)));
   const rows=[];
   for(let offset=0;offset<unique.length;offset+=100){
@@ -142,10 +142,10 @@ async function readTimeAnchorsByUid(scopeId,type,uids,isCurrent=()=>true){
   }
   return rows;
 }
-// Source tree groups use the same LocAnchor UID hierarchy as the management
+// Source tree groups use the same LocLucus UID hierarchy as the management
 // editor and Statistics. Multimedia is a Universe, not a media-type pipeline.
 // Keyword density has its own two-level Class/Group display. Source mode
-// alone uses the full four-level published SiteAnchor hierarchy.
+// alone uses the full four-level published SiteLucus hierarchy.
 function keywordSourceModel(rows,expanded,start,end){
   const bySite=new Map(),totals=new Map();
   let max=1;
@@ -224,7 +224,7 @@ export default function CulturePublicReader(){
   const [catalogError,setCatalogError]=useState('');
   const [loading,setLoading]=useState(true);
   const [expandedSources,setExpandedSources]=useState([]);
-  const [anchorSuggestionsOpen,setAnchorSuggestionsOpen]=useState(false);
+  const [lucusSuggestionsOpen,setLucusSuggestionsOpen]=useState(false);
   const [focusedSuggestionDate,setFocusedSuggestionDate]=useState('');
   const [selectedSite,setSelectedSite]=useState('');
   const [selectedSites,setSelectedSites]=useState(NO_ITEMS);
@@ -272,7 +272,7 @@ export default function CulturePublicReader(){
     setHierarchyError('');
     const request=++hierarchySequence.current;
     // First paint needs only the small top-level Era list. Periods and date
-    // anchors are fetched after the visitor chooses their parent.
+    // lucus are fetched after the visitor chooses their parent.
     readAllLucusFeature({scope:scopeId,family:'time',types:['era']})
       .then(rows=>{if(!cancelled&&request===hierarchySequence.current){
         setEraChoices(rows);setLoading(false);
@@ -367,14 +367,14 @@ export default function CulturePublicReader(){
       .finally(()=>{if(active)setClassesLoading(false);});
     return()=>{active=false;};
   },[scopeId,densityMode]);
-  // The default Year view never fetches historical date anchors. Selecting an
+  // The default Year view never fetches historical date lucus. Selecting an
   // Era loads its Period choices; selecting a Period loads only its linked
-  // Date anchors, which are nested in that Period lane.
-  const anchorRiver=useMemo(()=>activeTimeRows.length&&validRange
-    ?anchorModel(activeTimeRows,rangeStart,rangeEnd,selectedEra?[String(selectedEra.uid)]:[])
+  // Date lucus, which are nested in that Period lane.
+  const lucusRiver=useMemo(()=>activeTimeRows.length&&validRange
+    ?lucusModel(activeTimeRows,rangeStart,rangeEnd,selectedEra?[String(selectedEra.uid)]:[])
     :{items:[],groups:[]},
   [activeTimeRows,validRange,rangeStart,rangeEnd,selectedEra]);
-  const existingAnchorDates=useMemo(()=>activeTimeRows
+  const existingLucusDates=useMemo(()=>activeTimeRows
     .filter(row=>row.type==='date')
     .map(row=>datePart(attributes(row).date)).filter(Boolean),[activeTimeRows]);
   const candidateDensityRows=densityMode==='keyword'?keywordDaily:daily;
@@ -392,7 +392,7 @@ export default function CulturePublicReader(){
   // Run Karaul/PELT only when the visitor opens the permanent suggestion
   // lane. Reuse the daily rows already fetched for the second river.
   const suggestionAnalysis=useRiverDensityAnalysis(candidateDensityRows,
-    existingAnchorDates,anchorSuggestionsOpen&&Boolean(selectedPeriodUid)&&validRange&&candidateDensityRows.length>0);
+    existingLucusDates,lucusSuggestionsOpen&&Boolean(selectedPeriodUid)&&validRange&&candidateDensityRows.length>0);
   const selectedSuggestion=suggestionAnalysis.suggestions.find(
     item=>item.date===focusedSuggestionDate)||null;
   const densityRiver=useMemo(()=>{
@@ -401,35 +401,35 @@ export default function CulturePublicReader(){
       :catalog?publicCultureSourceModel(daily,catalog,expandedSources,rangeStart,rangeEnd)
         :{items:[],groups:[],sites:[]};
     const candidateLane={
-      id:'root:lucus-suggestions',label:anchorSuggestionsOpen
+      id:'root:lucus-suggestions',label:lucusSuggestionsOpen
         ?'建議定錨點（'+suggestionAnalysis.suggestions.length+'）':'建議定錨點',
       order:9999,className:'scope-candidate-lane',
-      collapsible:true,expanded:anchorSuggestionsOpen
+      collapsible:true,expanded:lucusSuggestionsOpen
     };
-    const candidates=anchorSuggestionsOpen?suggestionAnalysis.suggestions.map(item=>({
-      id:'suggested-lucus:'+item.date,entry_type:'virtual_anchor',
+    const candidates=lucusSuggestionsOpen?suggestionAnalysis.suggestions.map(item=>({
+      id:'suggested-lucus:'+item.date,entry_type:'virtual_lucus',
       group_key:candidateLane.id,group_label:'建議定錨點',group_order:9999,
       start_date:item.date,display_label:'◇',title:
         item.date+' · 前 3 日 '+item.beforeCount+' 篇／後 3 日 '+item.afterCount+' 篇 · '+
         (item.analysis||[]).join(' '),
       class_name:'scope-virtual-lucus',
-      virtual_anchor:item
+      virtual_lucus:item
     })):[];
     return {...base,groups:selectedPeriodUid?[...base.groups,candidateLane]:base.groups,
       items:[...base.items,...(selectedPeriodUid?candidates:[])]};
   },[densityMode,keywordDaily,daily,catalog,expandedSources,rangeStart,rangeEnd,
-    anchorSuggestionsOpen,suggestionAnalysis.suggestions,selectedPeriodUid]);
+    lucusSuggestionsOpen,suggestionAnalysis.suggestions,selectedPeriodUid]);
   const unifiedRiver=useMemo(()=>{
-    const sourceOrder=anchorRiver.groups.length+2;
-    const groups=[...anchorRiver.groups,...densityRiver.groups.map((group,index)=>({
+    const sourceOrder=lucusRiver.groups.length+2;
+    const groups=[...lucusRiver.groups,...densityRiver.groups.map((group,index)=>({
       ...group,order:sourceOrder+(Number.isFinite(Number(group.order))?Number(group.order):index),
       className:[group.className,'scope-culture-source-layer'].filter(Boolean).join(' ')
     }))];
     const sourceItems=densityRiver.items.map(item=>({
       ...item,group_order:sourceOrder+(Number(item.group_order)||0)
     }));
-    return {groups,items:[...anchorRiver.items,...sourceItems]};
-  },[anchorRiver,densityRiver]);
+    return {groups,items:[...lucusRiver.items,...sourceItems]};
+  },[lucusRiver,densityRiver]);
   useEffect(()=>{
     // Never keep a date selected when it is no longer a candidate.
     if(focusedSuggestionDate&&!suggestionAnalysis.suggestions.some(
@@ -446,7 +446,7 @@ export default function CulturePublicReader(){
     densityAbortRef.current?.abort();
     prepareTransientResourceAction('period');
     resetArticles();setDaily(NO_ITEMS);setKeywordDaily(NO_ITEMS);
-    setDensityReadyKey('');setExpandedSources([]);setAnchorSuggestionsOpen(false);
+    setDensityReadyKey('');setExpandedSources([]);setLucusSuggestionsOpen(false);
     setFocusedSuggestionDate('');setHierarchyError('');setDensityPeriod(value);
     setPeriodChoices(NO_ITEMS);setSelectedPeriodUid('');setSelectedPeriodRange(null);
     setActiveTimeRows(NO_ITEMS);
@@ -463,7 +463,7 @@ export default function CulturePublicReader(){
     if(!periodUids.length){setPeriodsLoading(false);return;}
     setPeriodsLoading(true);
     try{
-      const rows=await readTimeAnchorsByUid(scopeId,'period',periodUids,
+      const rows=await readTimeLucusByUid(scopeId,'period',periodUids,
         ()=>request===hierarchySequence.current);
       if(request!==hierarchySequence.current)return;
       const order=new Map(periodUids.map((uid,index)=>[uid,index]));
@@ -480,7 +480,7 @@ export default function CulturePublicReader(){
     densityAbortRef.current?.abort();
     prepareTransientResourceAction('period');
     resetArticles();setDaily(NO_ITEMS);setKeywordDaily(NO_ITEMS);
-    setDensityReadyKey('');setExpandedSources([]);setAnchorSuggestionsOpen(false);
+    setDensityReadyKey('');setExpandedSources([]);setLucusSuggestionsOpen(false);
     setFocusedSuggestionDate('');setHierarchyError('');setSelectedPeriodUid(value);
     setPeriodsLoading(false);
     setSelectedPeriodRange(null);setActiveTimeRows(NO_ITEMS);
@@ -490,7 +490,7 @@ export default function CulturePublicReader(){
     const request=++hierarchySequence.current;
     setPeriodDatesLoading(true);
     try{
-      const dates=await readTimeAnchorsByUid(scopeId,'date',linkedUids(period,'uid'),
+      const dates=await readTimeLucusByUid(scopeId,'date',linkedUids(period,'uid'),
         ()=>request===hierarchySequence.current);
       if(request!==hierarchySequence.current)return;
       const validDates=dates.map(row=>({...row,date:datePart(attributes(row).date)}))
@@ -556,7 +556,7 @@ export default function CulturePublicReader(){
     setSelectedSite('');setSelectedSites(NO_ITEMS);setSelectedCategoryKey('');
     setFullUid('');setFullText('');setFullDetail(null);setFullError('');
     setExpandedSources([]);
-    setAnchorSuggestionsOpen(false);setFocusedSuggestionDate('');
+    setLucusSuggestionsOpen(false);setFocusedSuggestionDate('');
   },[scopeId,rangeStart,rangeEnd,densityMode,keywordClass]);
   const changeArticlePage=nextOffset=>{
     if(!articlesOpen||!selectedSite||articlesLoading)return;
@@ -670,27 +670,27 @@ export default function CulturePublicReader(){
             })}
           </div>
         </div>
-        <CultureTimeline items={unifiedRiver.items} eraRanges={anchorRiver.items}
+        <CultureTimeline items={unifiedRiver.items} eraRanges={lucusRiver.items}
           extraGroups={unifiedRiver.groups} focus={NO_FOCUS} mode='source'
           heightVariant='double' naturalSourceHeight stackItems
           windowStart={rangeStart}
           windowEnd={rangeEnd}
-          anchorInsight={selectedSuggestion?{
+          lucusInsight={selectedSuggestion?{
             date:selectedSuggestion.date,before:selectedSuggestion.beforeCount,
             after:selectedSuggestion.afterCount,reason:(selectedSuggestion.analysis||[]).join(' ')
           }:null}
-          anchorLabels={{date:'建議日期',before:'前三日作品',after:'後三日作品',
+          lucusLabels={{date:'建議日期',before:'前三日作品',after:'後三日作品',
             reason:'分析依據',close:'關閉'}}
-          onAnchorClose={()=>setFocusedSuggestionDate('')}
+          onLucusClose={()=>setFocusedSuggestionDate('')}
           onSelect={row=>{
-            if(row?.entryType==='virtual_anchor')
+            if(row?.entryType==='virtual_lucus')
               setFocusedSuggestionDate(String(row.start||'').slice(0,10));
           }}
           onGroupToggle={group=>{
             const name=String(group);
             if(name==='root:lucus-suggestions'){
               if(!selectedPeriodUid)return;
-              setAnchorSuggestionsOpen(open=>!open);
+              setLucusSuggestionsOpen(open=>!open);
               setFocusedSuggestionDate('');
               return;
             }
@@ -716,7 +716,7 @@ export default function CulturePublicReader(){
           <span className='scope-culture-density-loading__bar' aria-hidden='true'/>
           <span>正在整理來源分類… <ActivityMotion kind='numbers'/></span>
         </div>:null}
-        {!riverPending&&anchorSuggestionsOpen?<div id='public-culture-lucus-analysis'
+        {!riverPending&&lucusSuggestionsOpen?<div id='public-culture-lucus-analysis'
           className='scope-culture-lucus-actions' role='region'
           aria-label='建議定錨點分析'>
           {suggestionAnalysis.error?<p className='scope-status scope-error' role='alert'>
@@ -724,7 +724,7 @@ export default function CulturePublicReader(){
           {selectedSuggestion?<div className='scope-culture-lucus-selection' role='status'>
             <strong>已選取建議日期：{selectedSuggestion.date}</strong>
             <ScopeLink href={scopeHref(scopeId,
-              'culture/manage?edit=1&anchorDate='+encodeURIComponent(selectedSuggestion.date))}>
+              'culture/manage?edit=1&lucusDate='+encodeURIComponent(selectedSuggestion.date))}>
               將此日期帶入時間定錨編輯
             </ScopeLink>
             <span className='scope-status'>確認名稱及日期後，再按儲存才會建立。</span>
@@ -738,7 +738,7 @@ export default function CulturePublicReader(){
                 {item.date} · 前三日 {item.beforeCount} 篇／後三日 {item.afterCount} 篇
               </button>
               <ScopeLink href={scopeHref(scopeId,
-                'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date))}>
+                'culture/manage?edit=1&lucusDate='+encodeURIComponent(item.date))}>
                 前往時間編輯
               </ScopeLink>
             </div>)}

@@ -68,7 +68,7 @@ test('the routing table resolves to the exact LOC and Scope Hero artwork',async(
 
 test('Hero copy follows the requested management and public route labels',()=>{
   const titles={
-    TimeAnchor:'時間定錨',Groupkeyword:'關鍵詞',SpaceAnchor:'空間定錨',
+    TimeLucus:'時間定錨',Groupkeyword:'關鍵詞',SpaceLucus:'空間定錨',
     GroupArticle:'文章管理',group_admin:'系統管理',GalaxyManage:'群組管理',
     group_culture:'文化',group_statics:'統計',group_trace:'痕跡',
     group_search:'搜尋',group_setting:'個人設定'
@@ -79,11 +79,11 @@ test('Hero copy follows the requested management and public route labels',()=>{
 
 test('known cross-assigned artwork and internal Hero identifiers resolve to their route labels',()=>{
   assert.equal(heroImageUrlForPage({block_image:JSON.stringify({source:'custom',
-    url:'https://loc.lo3rwang.cc/pics/scope-culture.jpg'})},'loc','SpaceAnchor')
+    url:'https://loc.lo3rwang.cc/pics/scope-culture.jpg'})},'loc','SpaceLucus')
     .split('/').pop(),'LOC-gn.jpg');
   assert.equal(normalizeHeroCopyValue('Groupkeyword','title','ScopeKeyword'),'關鍵詞');
   assert.equal(normalizeHeroCopyValue('group_admin','title','group_admin'),'系統管理');
-  assert.equal(normalizeHeroCopyValue('TimeAnchor','title','LOC-culture.jpg'),'時間定錨');
+  assert.equal(normalizeHeroCopyValue('TimeLucus','title','LOC-culture.jpg'),'時間定錨');
   assert.equal(heroImageUrlForPage({block_image:JSON.stringify({source:'none',url:''})},
     'loc','group_trace').split('/').pop(),'scope-gn.jpg');
   const hero=sharedFeatureHeroFor([{block_order:1,block_eyebrow:'group_culture',
@@ -147,11 +147,11 @@ test('LOC governance copy is stored as governance while other Scope pages keep t
   assert.equal(scopeBlockStoragePage('lo3rwang','trace'),'trace');
   assert.equal(scopeBlockStoragePage('loc','search'),'search');
   for(const page of ['group_admin','GalaxyManage','Groupkeyword','GroupArticle',
-    'TimeAnchor','ScopeKeyword','SpaceAnchor','ScopeArticle'])
+    'TimeLucus','ScopeKeyword','SpaceLucus','ScopeArticle'])
     assert.equal(scopeBlockStoragePage('loc',page),page);
 });
 
-test('public SiteAnchor is available from resident publication without a SQL read',async()=>{
+test('public SiteLucus is available from resident publication without a SQL read',async()=>{
   assert.equal(SITE_LUCUS_READ_MODE,'published-js');
   assert.equal(PUBLISHED_SITE_BOOTSTRAP.site_lucus.length,36);
   assert.equal((await readPublicSourceLucus()).length,36);
@@ -170,7 +170,7 @@ test('public SiteAnchor is available from resident publication without a SQL rea
     (await readPublicSourceLucus()).filter(row=>row.type==='from').length);
 });
 
-test('Trace source options use the published SiteAnchor tree and retain the Galaxy.site value',async()=>{
+test('Trace source options use the published SiteLucus tree and retain the Galaxy.site value',async()=>{
   const taxonomy=await readPublicSourceTaxonomy();
   const options=traceSourceOptions(taxonomy);
   const expected=taxonomy.categories.filter(row=>['domain','from'].includes(row.type));
@@ -195,18 +195,18 @@ test('Group and Scope management routes share the mapped Hero rows',()=>{
   assert.deepEqual(group.map(slot=>slot.key),['system','members','locKeywords','articles']);
   assert.deepEqual(group.map(slot=>slot.page),['group_admin','GalaxyManage','Groupkeyword','GroupArticle']);
   assert.deepEqual(scope.map(slot=>slot.key),['time','keywords','spatial','advanced']);
-  assert.deepEqual(scope.map(slot=>slot.page),['TimeAnchor','Groupkeyword','SpaceAnchor','GroupArticle']);
+  assert.deepEqual(scope.map(slot=>slot.page),['TimeLucus','Groupkeyword','SpaceLucus','GroupArticle']);
   assert.equal(group.some(slot=>/time|space|trace/i.test(slot.key+' '+slot.page)),false);
   assert.equal(managementHeroSlot('keywordManage','loc')?.page,'Groupkeyword');
   assert.equal(managementHeroSlot('sourceManage','loc')?.page,'GalaxyManage');
-  assert.equal(managementHeroSlot('manage','loc')?.page,'SpaceAnchor');
-  assert.equal(managementHeroSlot('timeManage','loc')?.page,'TimeAnchor');
+  assert.equal(managementHeroSlot('manage','loc')?.page,'SpaceLucus');
+  assert.equal(managementHeroSlot('timeManage','loc')?.page,'TimeLucus');
   assert.equal(managementHeroSlot('keywordManage','loc')?.page,'Groupkeyword');
   assert.equal(managementHeroSlot('searchManage','loc')?.page,'GroupArticle');
   assert.equal(managementHeroSlot('keywords','lo3rwang')?.page,'Groupkeyword');
-  assert.equal(managementHeroSlot('manage','lo3rwang')?.page,'SpaceAnchor');
+  assert.equal(managementHeroSlot('manage','lo3rwang')?.page,'SpaceLucus');
   assert.equal(managementHeroSlot('searchManage','lo3rwang')?.page,'GroupArticle');
-  assert.equal(managementHeroSlot('timeManage','lo3rwang')?.page,'TimeAnchor');
+  assert.equal(managementHeroSlot('timeManage','lo3rwang')?.page,'TimeLucus');
 });
 
 test('admin Hero editor shows one management row followed by its public feature Hero',async()=>{
@@ -261,7 +261,7 @@ test('block editing reads authoritative SQL and reports denied write permissions
   assert.match(editor,/selectLiveScopeBlocks\(scopeId,pageName\)/);
   assert.match(editor,/blockWritePermissionKey\(error,scopeId,pageName\)/);
   assert.match(displayReader,/queryBlocks\('block_list'/);
-  assert.equal(blockWritePermissionKey({status:403},'loc','TimeAnchor'),'globalPermissionDenied');
+  assert.equal(blockWritePermissionKey({status:403},'loc','TimeLucus'),'globalPermissionDenied');
   assert.equal(blockWritePermissionKey({status:403},'lo3rwang','culture'),'editPermissionDenied');
-  assert.equal(blockWritePermissionKey({status:401},'loc','TimeAnchor'),'');
+  assert.equal(blockWritePermissionKey({status:401},'loc','TimeLucus'),'');
 });

@@ -2,7 +2,7 @@
 // No legacy SECURITY DEFINER functions, RLS policies, schema migration,
 // second connection, or client-selected SQL identifiers.
 // Transactional PostgreSQL DDL creates the same four physical Scope models
-// already expected by Galaxy/Anchor/Blocks/Config. Only server-side actions
+// already expected by Galaxy/Lucus/Blocks/Config. Only server-side actions
 // with global:manage may reach these functions.
 import {sql} from 'kysely';
 import {canLocAccess} from './loc-authorization.mjs';

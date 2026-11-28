@@ -101,8 +101,8 @@ export function decodeCultureText(value){
 }
 
 /**
- * Snap native vis-timeline range manipulation back to canonical Time anchors.
- * Era/period dates are derived from anchor_ids[], never stored as independent dates.
+ * Snap native vis-timeline range manipulation back to canonical Time lucus.
+ * Era/period dates are derived from lucus_ids[], never stored as independent dates.
  */
 function dateKey(value){
   const date=value instanceof Date?value:new Date(value);
@@ -113,39 +113,39 @@ function previousDay(date){
   parsed.setUTCDate(parsed.getUTCDate()-1);
   return parsed.toISOString().slice(0,10);
 }
-function anchorEntries(items){
+function lucusEntries(items){
   return (Array.isArray(items)?items:[])
     .filter(item=>item?.entry_type==='lucus'&&item?.uid&&item?.start_date)
     .map(item=>({id:String(item.uid),day:dateKey(item.start_date)}))
     .filter(item=>item.day)
     .sort((a,b)=>a.day.localeCompare(b.day)||a.id.localeCompare(b.id));
 }
-function nearestAnchor(target,anchors,mode,periodEndExclusive=false){
+function nearestLucus(target,lucus,mode,periodEndExclusive=false){
   const score=item=>Math.abs(Date.parse((mode==='end'&&periodEndExclusive?previousDay(item.day):item.day)+'T00:00:00Z')-Date.parse(target+'T00:00:00Z'));
-  return [...anchors].sort((a,b)=>score(a)-score(b)||a.day.localeCompare(b.day)||a.id.localeCompare(b.id))[0]||null;
+  return [...lucus].sort((a,b)=>score(a)-score(b)||a.day.localeCompare(b.day)||a.id.localeCompare(b.id))[0]||null;
 }
-export function snapTimelineRangeToAnchors(item,row,timeRows=[]){
+export function snapTimelineRangeToLucus(item,row,timeRows=[]){
   if(!['era','period'].includes(row?.entryType))throw new Error('只有時期／事件可以調整範圍。');
-  const segments=decodeTimeSegments(row?.raw?.anchor_ids);
+  const segments=decodeTimeSegments(row?.raw?.lucus_ids);
   // A multi-interval period must be edited as separate intervals, never by
   // dragging one joined envelope across a gap.
   if(segments.length!==1)throw new Error('多段時期請在時期編輯器調整個別區間。');
   const original=segments[0];
   if(!original.start||!original.end||original.end==='0')
     throw new Error('單點／開放時期請在時期編輯器調整定錨點。');
-  const anchors=anchorEntries(timeRows);
-  const byId=new Map(anchors.map(lucus=>[lucus.id,lucus]));
+  const lucus=lucusEntries(timeRows);
+  const byId=new Map(lucus.map(lucus=>[lucus.id,lucus]));
   const oldStart=byId.get(original.start),oldEnd=byId.get(original.end);
   if(!oldStart||!oldEnd)throw new Error('起訖定錨點不存在，請修正失效連線。');
   const requestedStart=dateKey(item?.start),requestedEnd=dateKey(item?.end);
   if(!requestedStart||!requestedEnd)throw new Error('無法解析時間軸的新範圍。');
-  const nextStart=requestedStart===oldStart.day?oldStart:nearestAnchor(requestedStart,anchors,'start');
+  const nextStart=requestedStart===oldStart.day?oldStart:nearestLucus(requestedStart,lucus,'start');
   const nextEnd=requestedEnd===(row.entryType==='era'?previousDay(oldEnd.day):oldEnd.day)?
-    oldEnd:nearestAnchor(requestedEnd,anchors,'end',row.entryType==='era');
+    oldEnd:nearestLucus(requestedEnd,lucus,'end',row.entryType==='era');
   if(!nextStart||!nextEnd||nextStart.id===nextEnd.id||nextStart.day>=nextEnd.day)
     throw new Error('必須選擇依日期先後的兩個不同定錨點。');
   const token=encodeTimeSegment(nextStart.id,nextEnd.id);
-  return {anchor_ids:[token],changed:token!==original.raw,
+  return {lucus_ids:[token],changed:token!==original.raw,
     item:{...item,start:nextStart.day,end:row.entryType==='era'?
       previousDay(nextEnd.day):nextEnd.day}};
 }
@@ -153,5 +153,5 @@ export function snapTimelineRangeToAnchors(item,row,timeRows=[]){
 /** Compose culture date/display utilities and canonical Time-lucus range behavior. */
 export const CultureTimelineModel=Object.freeze({
   densityStyleForCount,densityStyleForRatio,formatCultureDateTime,decodeCultureText,
-  snapTimelineRangeToAnchors
+  snapTimelineRangeToLucus
 });

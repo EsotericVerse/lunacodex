@@ -1,9 +1,9 @@
-// PARTIALLY IMPLEMENTED TimeAnchor feature: computes anniversary suggestions
-// from existing date anchors/Scope birthday; Culture can display/apply them.
-// "anniversary"/historical "aniversary" is virtual, not a persisted Anchor.type.
+// PARTIALLY IMPLEMENTED TimeLucus feature: computes anniversary suggestions
+// from existing date lucus/Scope birthday; Culture can display/apply them.
+// "anniversary"/historical "aniversary" is virtual, not a persisted Lucus.type.
 // Applying a suggestion uses the existing date-lucus editing flow, NOT a new
 // Anniversary SQL table or an instruction to remove the working feature.
-// Annual dates are derived from existing Time anchors and the Scope birthday.
+// Annual dates are derived from existing Time lucus and the Scope birthday.
 // A proposal is virtual until the reader explicitly saves it, or an authorized
 // import matches that calendar day. This module never writes to the database.
 const parseDay=value=>{
@@ -16,9 +16,9 @@ const parseDay=value=>{
     return null;
   return {day,year,month,date,monthDay:day.slice(5)};
 };
-export function createAnniversaryLookup(anchors=[],{birthday=''}={}){
+export function createAnniversaryLookup(lucus=[],{birthday=''}={}){
   const exactDays=new Set(),byMonthDay=new Map();
-  for(const item of Array.isArray(anchors)?anchors:[]){
+  for(const item of Array.isArray(lucus)?lucus:[]){
     if(item?.type!=='lucus'&&item?.entry_type!=='lucus')continue;
     const source=parseDay(item.address);
     if(!source)continue;
@@ -50,6 +50,6 @@ export function createAnniversaryLookup(anchors=[],{birthday=''}={}){
       a.sourceDate.localeCompare(b.sourceDate)).slice(0,20);
   };
 }
-export function anniversarySuggestionsForDate(date,anchors=[],options={}){
-  return createAnniversaryLookup(anchors,options)(date);
+export function anniversarySuggestionsForDate(date,lucus=[],options={}){
+  return createAnniversaryLookup(lucus,options)(date);
 }

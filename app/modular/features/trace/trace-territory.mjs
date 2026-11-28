@@ -62,7 +62,7 @@ export function territoryPointReadPlan(rows=[],regions=[]){
     const asCoordinate=value=>value==null||String(value).trim()===''?null:
       Number.isFinite(Number(value))?Number(value):null;
     points.set(key,{
-      uid:id,source_scope:scope,trace_type:'space_anchor',
+      uid:id,source_scope:scope,trace_type:'space_lucus',
       title:String(row.point_title||'').trim()||'地點 '+id,
       longitude:asCoordinate(row.point_longitude),
       latitude:asCoordinate(row.point_latitude)
@@ -75,8 +75,8 @@ export function territoryPointReadPlan(rows=[],regions=[]){
   };
 }
 
-export function territoryWithAnchors(regions=[],anchors=[]){
-  const byId=new Map(anchors.map(point=>[point.source_scope+':'+point.uid,point]));
+export function territoryWithLucus(regions=[],lucus=[]){
+  const byId=new Map(lucus.map(point=>[point.source_scope+':'+point.uid,point]));
   return regions.map(place=>{
     const point=byId.get(place.source_scope+':'+place.uid);
     return {...place,title:point?.title||'地點 '+place.uid,

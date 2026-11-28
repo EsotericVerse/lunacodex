@@ -4,7 +4,7 @@
 // A consumer explicitly opens one branch; unresolved UID edges stay unresolved.
 import {composeGalaxyRead} from './galaxy-read-models.mjs';
 const UID=/^[A-Za-z0-9]{8}$/;
-const GROUPS=Object.freeze(['relation','media','space','time','source']);
+const GROUPS=Object.freeze(['relation','space','time','source']);
 const asUid=v=>UID.test(String(v??'').trim())?String(v).trim():'';
 const dateOf=v=>{
   if(v instanceof Date)return Number.isNaN(v.valueOf())?'':v.toISOString().slice(0,10);
@@ -16,17 +16,17 @@ const add=(array,seen,edge)=>{
   if(seen.has(key))return;
   seen.add(key);array.push(Object.freeze(edge));
 };
-export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={},federated=false}={}){
+export function galaxyInterNetEdges(row={}, {place=null,relatedTitles={},federated=false}={}){
   const shape=composeGalaxyRead('GalaxyUidRead',row);
   const origin=asUid(shape.uid);
   if(!origin)throw new Error('Galaxy Inter-Net requires a real Galaxy UID');
   const relation=shape.relation||{};
   const lucus=shape.lucus||{};
-  const output={relation:[],media:[],space:[],time:[],source:[]};
+  const output={relation:[],space:[],time:[],source:[]};
   const seen=new Set();
   const put=(group,field,value,{kind='galaxy',label='',resolved=null}={})=>{
     if(!GROUPS.includes(group))throw Error('Unknown Inter-Net branch');
-    if(kind==='galaxy'||kind==='media'||kind==='point'){
+    if(kind==='galaxy'||kind==='point'){
       value=asUid(value);
       if(!value||value===origin)return;
     }else if(kind==='date')value=dateOf(value);
@@ -39,12 +39,12 @@ export function galaxyInterNetEdges(row={}, {media=[],place=null,relatedTitles={
   put('relation','ref_id',relation.ref_id,{label:relatedTitles?.[relation.ref_id]||''});
   for(const target of Array.isArray(relation.target_id)?relation.target_id:[])
     put('relation','target_id',target,{label:relatedTitles?.[target]||''});
-  // Galaxy media_link stores public URLs, never MediaAnchor UID references.
+  // Galaxy media_link stores public URLs, never Galaxy 媒體作品 UID references.
   // Source links render directly without a second relation lookup.
   for(const value of !federated&&Array.isArray(row.media_link)?row.media_link:[]){
     const url=String(value||'').trim();
     if(/^https?:\/\//i.test(url))
-      put('media','media_link',url,{kind:'url',label:url,resolved:true});
+      put('source','media_link',url,{kind:'url',label:url,resolved:true});
   }
   if(!federated)put('space','place_id',lucus.place_id,{kind:'point',
     label:place?.uid===lucus.place_id?place?.title||place?.location||'':'',

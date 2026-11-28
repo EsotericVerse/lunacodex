@@ -1,6 +1,6 @@
 /**
  * Lucus = Lucas + Locus = Lucus: the author's special Latin concept for a
- * light-based spacetime anchor, imagined as the sacred grove atop Universe
+ * light-based spacetime lucus, imagined as the sacred grove atop Universe
  * Tree. The particle-level Lucus architecture and Galaxy -> Universe ->
  * Universe Tree transformations are future design, not implemented here.
  *

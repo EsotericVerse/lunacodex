@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {anchorInterNetChildren,sourceInterNetSelection} from '../../packages/zenstack/lucus-inter-net.mjs';
+import {lucusInterNetChildren,sourceInterNetSelection} from '../../packages/zenstack/lucus-inter-net.mjs';
 import {featureNavigationHref} from './routing/feature-navigation';
 
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -24,7 +24,7 @@ function SourceNode({row,indexed,selectedPath,depth=0}){
   </li>;
 }
 
-function SourceAnchorBranch({site}){
+function SourceLucusBranch({site}){
   const [state,setState]=useState({status:'loading'});
   useEffect(()=>{
     let active=true;
@@ -36,8 +36,8 @@ function SourceAnchorBranch({site}){
   },[site]);
   if(state.status==='loading')return <p className="scope-status" role="status">讀取來源分類…</p>;
   if(state.status==='error')return <p role="alert">來源分類讀取失敗。</p>;
-  if(state.status==='unmatched')return <p className="scope-status">此來源尚未對應公開的 Source Anchor，保留原始 site：{site}</p>;
-  if(state.status==='ambiguous')return <p className="scope-status">來源對應多個 Anchor，無法在未確認前選擇節點。</p>;
+  if(state.status==='unmatched')return <p className="scope-status">此來源尚未對應公開的 Source Lucus，保留原始 site：{site}</p>;
+  if(state.status==='ambiguous')return <p className="scope-status">來源對應多個 Lucus，無法在未確認前選擇節點。</p>;
   const indexed=new Map();
   for(const node of state.tree){
     if(!node.parentUid)continue;
@@ -55,7 +55,7 @@ function SourceAnchorBranch({site}){
   </div>;
 }
 
-function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
+function TypedLucusNode({scopeId,family,node,depth=0,ancestors=[]}){
   const [state,setState]=useState({status:'unread',row:null,children:[]});
   const pending=useRef(false),controller=useRef(null);
   useEffect(()=>()=>controller.current?.abort(),[]);
@@ -70,13 +70,13 @@ function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
       const {readLucusFeature}=await import('../loc/model/feature-query-client.mjs');
       if(abort.signal.aborted)return;
       const {rows=[]}=await readLucusFeature({
-        scope:scopeId,family,types:[node.type==='space_anchor'?'point':node.type],
+        scope:scopeId,family,types:[node.type==='space_lucus'?'point':node.type],
         uids:[node.uid],limit:1
       },{signal:abort.signal});
       if(abort.signal.aborted)return;
       const row=rows[0];
       if(!row){setState({status:'missing',row:null,children:[]});return;}
-      const children=anchorInterNetChildren(row,family)
+      const children=lucusInterNetChildren(row,family)
         .filter(child=>!ancestors.includes(child.uid)&&child.uid!==node.uid)
         .slice(0,100);
       setState({status:'ready',row,children});
@@ -102,7 +102,7 @@ function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
         {dateHref?<a href={dateHref}>查看這一天的文化時間長河</a>:null}
         {pointHref?<a href={pointHref}>在痕跡地圖查看地點</a>:null}
         {state.children.length?<ul className="loc-inter-net__lucus-tree">
-          {state.children.map(child=><TypedAnchorNode
+          {state.children.map(child=><TypedLucusNode
             key={child.uid} scopeId={scopeId} family={family} depth={depth+1}
             node={child} ancestors={[...ancestors,node.uid]}/>)}
         </ul>:<small>此節點沒有可再展開的子關聯</small>}
@@ -111,17 +111,17 @@ function TypedAnchorNode({scopeId,family,node,depth=0,ancestors=[]}){
   </li>;
 }
 
-export default function GalaxyAnchorInterNet({family,scopeId,row}){
+export default function GalaxyLucusInterNet({family,scopeId,row}){
   if(family==='source')return row?.site?
-    <SourceAnchorBranch site={String(row.site)}/>:null;
+    <SourceLucusBranch site={String(row.site)}/>:null;
   if(row?.inter_net_federated)return null;
-  const anchors=family==='time'
-    ?[['era',row?.related_time?.eras],['period',row?.related_time?.periods],['date',row?.related_time?.anchors]]
+  const lucus=family==='time'
+    ?[['era',row?.related_time?.eras],['period',row?.related_time?.periods],['date',row?.related_time?.lucus]]
     :family==='space'
       ?[['trace',row?.related_space?.traces],['path',row?.related_space?.routes],['point',row?.related_space?.place?[row.related_space.place]:[]]]
       :[];
   const seen=new Set(),nodes=[];
-  for(const [type,entries] of anchors){
+  for(const [type,entries] of lucus){
     for(const entry of Array.isArray(entries)?entries:[]){
       if(!UID.test(String(entry?.uid||''))||seen.has(entry.uid))continue;
       seen.add(entry.uid);
@@ -129,10 +129,10 @@ export default function GalaxyAnchorInterNet({family,scopeId,row}){
     }
   }
   return nodes.length?<div className="loc-inter-net__lucus-detail">
-    <small>沿已確認的 Anchor UID 逐節點展開；每次只讀取所選節點。</small>
+    <small>沿已確認的 Lucus UID 逐節點展開；每次只讀取所選節點。</small>
     <ul className="loc-inter-net__lucus-tree">
-      {nodes.slice(0,100).map(node=><TypedAnchorNode key={node.uid}
+      {nodes.slice(0,100).map(node=><TypedLucusNode key={node.uid}
         scopeId={scopeId} family={family} node={node}/>)}
     </ul>
-  </div>:<p className="scope-status">目前沒有可展開的公開 Anchor。</p>;
+  </div>:<p className="scope-status">目前沒有可展開的公開 Lucus。</p>;
 }

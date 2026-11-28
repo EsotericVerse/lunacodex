@@ -1,5 +1,5 @@
 import {allocateLucusUid} from '../model/uid.js';
-// Canonical TimeAnchor graph:
+// Canonical TimeLucus graph:
 // date.attr.date -> period.attr.uid [startUID, optional endUID]
 // -> era.attr.period [period UID, ...].
 // A missing endpoint leaves a genuine surviving point; no '0' or now() lucus.
@@ -8,10 +8,10 @@ const dateOf=value=>{
   const date=String(value||'').slice(0,10);
   return /^\d{4}-\d{2}-\d{2}$/.test(date)?date:'';
 };
-// Read canonical TimeAnchor date.attr.date first. Some existing presentation
+// Read canonical TimeLucus date.attr.date first. Some existing presentation
 // readers still supply the flattened address field; both represent the same
 // underlying date and must resolve to identical ranges without another SELECT.
-function timeAnchorDay(row){
+function timeLucusDay(row){
   let attr=row?.attr;
   if(typeof attr==='string'){
     try{attr=JSON.parse(attr);}catch{attr=null;}
@@ -20,7 +20,7 @@ function timeAnchorDay(row){
     ?dateOf(attr.date):'';
   return typed||dateOf(row?.address);
 }
-// The persisted Time range is a derived projection, never a replacement for anchor_ids.
+// The persisted Time range is a derived projection, never a replacement for lucus_ids.
 export function isTimeUid(value){return UID.test(String(value||''));}
 export function allocateTimeUid(rows=[]){
   const occupied=new Set((Array.isArray(rows)?rows:[]).map(row=>String(row?.uid||'')));
@@ -45,24 +45,24 @@ export function previousTimeDay(value){
   const date=new Date(day+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-1);
   return date.toISOString().slice(0,10);
 }
-export function resolveTimeSegments(anchorIds,anchors){
-  const known=anchors instanceof Map?anchors:new Map((Array.isArray(anchors)?anchors:[])
+export function resolveTimeSegments(lucusIds,lucus){
+  const known=lucus instanceof Map?lucus:new Map((Array.isArray(lucus)?lucus:[])
     .map(row=>[String(row.uid||''),row]));
-  return decodeTimeSegments(anchorIds).map((ids,index)=>{
+  return decodeTimeSegments(lucusIds).map((ids,index)=>{
     const first=known.get(ids.start),last=ids.end?known.get(ids.end):null;
-    const a=timeAnchorDay(first),b=timeAnchorDay(last);
+    const a=timeLucusDay(first),b=timeLucusDay(last);
     const missing=[ids.start,...(ids.end?[ids.end]:[])]
       .filter(uid=>!known.has(uid));
     const reversed=Boolean(a&&b&&b<a);
     const point=!a||!b;
     const start=point?a||b:a;
     const end=point?start:b;
-    return {index,anchor_ids:[ids.start,...(ids.end?[ids.end]:[])],
-      start_anchor_id:ids.start||null,end_anchor_id:ids.end||null,
+    return {index,lucus_ids:[ids.start,...(ids.end?[ids.end]:[])],
+      start_lucus_id:ids.start||null,end_lucus_id:ids.end||null,
       start_date:start||null,end_date:end||null,
       invalid:Boolean(ids.malformed||missing.length||reversed),
       point:point||a===b,open_end:false,
-      missing_anchor_ids:missing};
+      missing_lucus_ids:missing};
   });
 }
 export function timeSegmentContainsDate(range,day){

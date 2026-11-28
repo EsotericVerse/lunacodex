@@ -147,7 +147,7 @@ function uidRepairConditions(eb,items,table,serialize){
     })
   ])));
 }
-// CASE values are different for each PK, including Anchor JSON and num.
+// CASE values are different for each PK, including Lucus JSON and num.
 // Existing engine serializers provide JSON text or PostgreSQL JSONB casts.
 // Every PK also carries its OWN old-value predicate for CAS.
 export function buildUidCaseRepairQuery(db,table,items,serialize=values=>values){
@@ -166,7 +166,7 @@ export function buildUidCaseRepairQuery(db,table,items,serialize=values=>values)
     .where(eb=>uidRepairConditions(eb,items,table,serialize));
   if(items[0].type){
     if(items.some(item=>item.type!==items[0].type))
-      throw new TypeError('Mixed UID repair Anchor types');
+      throw new TypeError('Mixed UID repair Lucus types');
     query=query.where('type','=',items[0].type);
   }
   return query;

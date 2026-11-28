@@ -13,7 +13,6 @@ import {ProtectedManagementSlot} from '../management/ManagementAccess';
 
 const ScopeEditableBlocks=dynamic(()=>import('../blocks/ScopeEditableBlocks').catch(recoverChunkOnce),{loading:()=>null});
 const ManagementArticlePublisher=dynamic(()=>import('../management/ManagementArticlePublisher').catch(recoverChunkOnce),{loading:()=>null});
-const ManagementMediaWorkspace=dynamic(()=>import('../media/ManagementMediaWorkspace').catch(recoverChunkOnce),{loading:()=>null});
 const ManagementContentTarget=dynamic(()=>import('../management/ManagementContentTarget').catch(recoverChunkOnce),{loading:()=>null});
 const ManagementImportPanel=dynamic(()=>import('../import/ManagementImportPanel').catch(recoverChunkOnce),{loading:()=>null});
 const ScopeSettingsPanel=dynamic(()=>import('../scope/ScopeSettingsPanel').catch(recoverChunkOnce),{loading:()=>null});
@@ -31,7 +30,6 @@ export const ARTICLE_CONTROL_SECTIONS=Object.freeze([
 // It must not gain an arbitrary Scope's article or classification editor.
 const LOC_OPTIONS=Object.freeze([
   {value:'publish',label:'文章管理',shortLabel:'文章'},
-  {value:'media',label:'發表多媒體',shortLabel:'媒體'},
   {value:'trace',label:'治理原則',shortLabel:'治理原則'},
   {value:'import',label:'匯入',shortLabel:'匯入'}
 ]);
@@ -61,16 +59,7 @@ export default function SearchManagement(){
         aria-labelledby="management-search-sections-selected-title">
         <ManagementSectionTransition value={activeSection}>
         <ProtectedManagementSlot>
-        {!isLocAdmin&&activeSection==='publish'?<div className="article-control-stacked">
-          <section aria-labelledby="article-control-article-heading">
-            <h3 id="article-control-article-heading">發表／編輯文章</h3>
-            <ManagementArticlePublisher scopeId={scopeId}/>
-          </section>
-          <section aria-labelledby="article-control-media-heading">
-            <h3 id="article-control-media-heading">發表多媒體</h3>
-            <ManagementMediaWorkspace scopeId={scopeId}/>
-          </section>
-        </div>:null}
+        {!isLocAdmin&&activeSection==='publish'?<ManagementArticlePublisher scopeId={scopeId}/>:null}
 
         {!isLocAdmin&&activeSection==='blocks'?<div className="article-control-stacked">
           <ScopeSettingsPanel key={scopeId+'-theme'} scopeId={scopeId}/>
@@ -98,8 +87,6 @@ export default function SearchManagement(){
           ?<ScopeGroupAccessPanel groupId={scopeId}/>:null}
         {isLocAdmin&&activeSection==='publish'
           ?<ManagementContentTarget scopeId={scopeId} mode="article" globalAdmin/>:null}
-        {isLocAdmin&&activeSection==='media'
-          ?<ManagementContentTarget scopeId={scopeId} mode="media" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='import'
           ?<ManagementContentTarget scopeId={scopeId} mode="import" globalAdmin/>:null}
         {isLocAdmin&&activeSection==='trace'?<ScopeEditableBlocks key={scopeId+'-trace'}

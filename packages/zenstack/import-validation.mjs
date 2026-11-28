@@ -47,25 +47,25 @@ const validators=new Map();
 const selectValidators=new Map();
 const scopedGalaxy=table=>scopeTableDescriptor(String(table||'').split('.').at(-1))?.kind==='galaxy';
 const char8Uid=/^[A-Za-z0-9]{8}$/;
-// Anchor.attr validation derives from ZModel. Pattern.num is authoritative for
+// Lucus.attr validation derives from ZModel. Pattern.num is authoritative for
 // analyzed occurrences; the validator tolerates legacy attr.total on input so
 // existing import documents can be handled while LOC writes only empty attr.
-const anchorTypeGroups=Object.fromEntries(Object.entries(LUCUS_TYPE_GROUPS)
+const lucusTypeGroups=Object.fromEntries(Object.entries(LUCUS_TYPE_GROUPS)
   .flatMap(([group,types])=>types.map(type=>[type,group])));
-const anchorPayloadValidators=new Map(PERSISTED_LUCUS_TYPES.map(type=>{
-  const group=anchorTypeGroups[type];
+const lucusPayloadValidators=new Map(PERSISTED_LUCUS_TYPES.map(type=>{
+  const group=lucusTypeGroups[type];
   if(!group||!LUCUS_TYPE_GROUP_FIELDS[type]||!LUCUS_GROUP_MODEL_NAMES[group])
-    throw new Error('LOC Anchor ZModel group mapping missing: '+type);
+    throw new Error('LOC Lucus ZModel group mapping missing: '+type);
   return [type,{field:LUCUS_TYPE_GROUP_FIELDS[type],
     validator:modelFactory.makeTypeSchema(LUCUS_GROUP_MODEL_NAMES[group])}];
 }));
 
-function validateAnchorPayload(type,attr){
-  const entry=anchorPayloadValidators.get(String(type||''));
+function validateLucusPayload(type,attr){
+  const entry=lucusPayloadValidators.get(String(type||''));
   if(!entry||attr===undefined)return;
   if(type==='pattern'){
     // Legacy attr.total is input compatibility only. Article UIDs/postings
-    // remain forbidden; new LOC writes store the count in Anchor.num.
+    // remain forbidden; new LOC writes store the count in Lucus.num.
     if(!attr||typeof attr!=='object'||Array.isArray(attr)||
         Object.keys(attr).some(key=>key!=='total')||
         Object.hasOwn(attr,'total')&&
@@ -84,34 +84,34 @@ function validateAnchorPayload(type,attr){
       const location=attr.location;
       if(location!==null&&typeof location!=='string'&&
          (!Array.isArray(location)||location.some(label=>typeof label!=='string')))
-        throw new TypeError('LOC PointAnchor location must be text or text aliases');
+        throw new TypeError('LOC PointLucus location must be text or text aliases');
     }
-    // Per-Scope counts are cached statistics, not the physical Anchor.num.
+    // Per-Scope counts are cached statistics, not the physical Lucus.num.
     if(LUCUS_TYPE_GROUPS.source.includes(type)&&attr&&typeof attr==='object'&&
        Object.hasOwn(attr,'counts')){
       const counts=attr.counts;
       if(!counts||typeof counts!=='object'||Array.isArray(counts)||
          Object.values(counts).some(n=>!Number.isSafeInteger(n)||n<0))
-        throw new TypeError('LOC SiteAnchor counts must contain nonnegative integers');
+        throw new TypeError('LOC SiteLucus counts must contain nonnegative integers');
     }
     return;
   }
   const issue=parsed.error.issues[0];
   const field=issue?.path?.join('.')||'(attr)';
-  throw new TypeError('LOC Anchor ZModel payload 驗證失敗：'+field+
+  throw new TypeError('LOC Lucus ZModel payload 驗證失敗：'+field+
     ' — '+(issue?.message||'invalid value'));
 }
 
-// Fixed, named Anchor read Transactions use the same per-discriminator
+// Fixed, named Lucus read Transactions use the same per-discriminator
 // ZModel payload validation as writes. Never invent a second attr schema or
 // expose an unverified arbitrary JSON payload to a feature consumer.
 export function assertZModelLucusFeatureRows(rows=[]){
-  if(!Array.isArray(rows))throw new TypeError('Invalid Anchor feature rows');
+  if(!Array.isArray(rows))throw new TypeError('Invalid Lucus feature rows');
   for(const row of rows){
     if(!row||typeof row!=='object'||Array.isArray(row))
-      throw new TypeError('Invalid Anchor feature row');
+      throw new TypeError('Invalid Lucus feature row');
     const attr=typeof row.attr==='string'?JSON.parse(row.attr):row.attr;
-    validateAnchorPayload(row.type,attr);
+    validateLucusPayload(row.type,attr);
   }
   return rows;
 }
@@ -277,8 +277,8 @@ export function assertZModelGalaxyManagedValues(table,operation,values){
   return true;
 }
 
-// Share the very same ZModel-derived strict shapes with existing Anchor and
-// Block management writes. LOC-wide source Anchors use the fixed contract;
+// Share the very same ZModel-derived strict shapes with existing Lucus and
+// Block management writes. LOC-wide source Lucus use the fixed contract;
 // independently named external relations are not silently mapped.
 export function assertZModelLucusBlockManagedValues(table,operation,values){
   if(!['insert','upsert','update'].includes(operation))return false;
@@ -308,7 +308,7 @@ export function assertZModelLucusBlockManagedValues(table,operation,values){
     // omit `type` cannot be checked without a database read, so they retain
     // the existing partial-write contract and are validated on the next full
     // typed write.
-    if(model.endsWith('Lucus'))validateAnchorPayload(row?.type,row?.attr);
+    if(model.endsWith('Lucus'))validateLucusPayload(row?.type,row?.attr);
   }
   return true;
 }

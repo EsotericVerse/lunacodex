@@ -17,7 +17,7 @@ export async function queryLucusFeature(body){
     query:{requestedBy:'lucus',scope,model:'lucus-feature',
       view:operation.view||operation.family,mode:operation.mode}
   });
-  // Public SiteAnchor taxonomy reads the fixed ZModel projection without
+  // Public SiteLucus taxonomy reads the fixed ZModel projection without
   // requiring a website session. Keep editor reads behind LOC permissions.
   if(operation.mode==='public')
     return withPublicLocRead({scope},read);

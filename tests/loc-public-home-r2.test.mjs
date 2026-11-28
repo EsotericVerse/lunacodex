@@ -44,7 +44,7 @@ function fakeBucket(){
   };
 }
 
-test('R2 object paths keep public blocks separate from SiteAnchor taxonomy',()=>{
+test('R2 object paths keep public blocks separate from SiteLucus taxonomy',()=>{
   assert.equal(publicScopeBlocksKey('loc','index'),PUBLIC_LOC_HOME_BLOCKS_KEY);
   assert.equal(publicScopeBlocksKey('loc','governance'),PUBLIC_LOC_HOME_BLOCKS_KEY);
   assert.equal(publicScopeBlocksKey('loc','scope_culture'),
@@ -108,7 +108,7 @@ test('legacy R2 move can finish when a concurrent writer already stored the same
   assert.equal(bucket.values.get(newKey),'same content');
 });
 
-test('release JS keeps routing and SiteAnchor but contains no mutable homepage copy',()=>{
+test('release JS keeps routing and SiteLucus but contains no mutable homepage copy',()=>{
   assert.equal(Object.hasOwn(PUBLISHED_SITE_BOOTSTRAP,'page_copy'),false);
   assert.equal(Object.hasOwn(PUBLISHED_SITE_BOOTSTRAP,'blocks'),false);
   assert.ok(PUBLISHED_SITE_BOOTSTRAP.site_lucus.length>0);

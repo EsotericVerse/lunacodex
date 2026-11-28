@@ -31,7 +31,7 @@ export function planImportPointCreate({uid,title,description,coordinates=null,cr
 export function planImportDateCreate({uid,date,title,description,createtime=null}={}){
   checkedUid(uid);
   if(typeof date!=='string'||!DAY.test(date))
-    throw Error('Date Anchor 日期識別無效');
+    throw Error('Date Lucus 日期識別無效');
   const row={uid,type:'date',attr:{date},invisible:false,title,description};
   if(createtime)row.createtime=createtime;
   return {row,patches:[]};
@@ -43,9 +43,9 @@ export function planImportDateCreate({uid,date,title,description,createtime=null
 export function planImportDateTitleDelta(existing,entry,day){
   checkedUid(existing?.uid);
   if(typeof day!=='string'||!DAY.test(day))
-    throw Error('Date Anchor 日期識別無效');
+    throw Error('Date Lucus 日期識別無效');
   if(!existing||existing.type&&existing.type!=='date')
-    throw Error('Date Anchor 型別無效');
+    throw Error('Date Lucus 型別無效');
   if((existing.title??null)!==day||String(existing.description||'').trim()||
       !entry||entry.title===day)return {changes:{},patches:[]};
   const changes={},patches=[];

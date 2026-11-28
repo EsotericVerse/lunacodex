@@ -2,13 +2,13 @@
 
 import {useMemo} from 'react';
 import {spaceRecordHierarchy} from './space-record-hierarchy.mjs';
-import AnchorManagementNavigator from '../../modular/AnchorManagementNavigator';
+import LucusManagementNavigator from '../../modular/LucusManagementNavigator';
 
 const uid=row=>String(row?.uid||'');
 const name=row=>String(row?.title||row?.uid||'未命名紀錄');
 const pointLabel=row=>[name(row),row?.postal_address||''].filter(Boolean).join('｜');
 
-export default function SpaceAnchorTree({
+export default function SpaceLucusTree({
   spatial,scopeId,value='',disabled=false,onSelect,onCreate,children=null,
   className='loc-unified-spatial-manager'
 }){
@@ -83,7 +83,7 @@ export default function SpaceAnchorTree({
   const selectedPrimary=selectedTrace?uid(selectedTrace.row):
     unclassifiedSelected?'__unclassified__':(!selectedType?uid(hierarchy.traces[0]?.row):'');
   const create=type=>()=>onCreate?.(type);
-  return <AnchorManagementNavigator
+  return <LucusManagementNavigator
     className={['loc-space-lucus-tree',className].filter(Boolean).join(' ')}
     label="空間定錨階層管理"
     searchLabel="搜尋痕跡、路徑與地點"
@@ -116,5 +116,5 @@ export default function SpaceAnchorTree({
     detailEmpty="選擇路徑後顯示所屬地點"
     disabled={disabled}>
     {children}
-  </AnchorManagementNavigator>;
+  </LucusManagementNavigator>;
 }

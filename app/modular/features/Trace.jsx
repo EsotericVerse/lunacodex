@@ -24,11 +24,11 @@ import {
 } from './trace/trace-route-preference.mjs';
 import {
   TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceMemberUids,
-  readTraceMapIndex,readCurrentTraceAnchors
+  readTraceMapIndex,readCurrentTraceLucus
 } from './trace/trace-data';
 
 // A Current route loads only its members. Without a saved route, show the
-// Scope's saved anchors automatically.
+// Scope's saved lucus automatically.
 const TraceMap=dynamic(()=>import('./trace/TraceMap'),{
   ssr:false,
   loading:()=> <p className="scope-status" role="status"><UiText id="uiExtra.traceUI.loadingMap"/></p>
@@ -75,9 +75,8 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const [customStart,setCustomStart]=useState('');
   const [customEnd,setCustomEnd]=useState('');
   const [sourceDraft,setSourceDraft]=useState('');
-  const [sourceAnchorUid,setSourceAnchorUid]=useState('');
+  const [sourceLucusUid,setSourceLucusUid]=useState('');
   const [customSourceName,setCustomSourceName]=useState('');
-  const [mediaType,setMediaType]=useState('');
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['trace-site-lucus-source-taxonomy-v1'],
     enabled:Boolean(reportTab)&&supported,
@@ -89,7 +88,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
   });
   const sourceOptions=useMemo(()=>traceSourceOptions(sourceTaxonomyQuery.data),
     [sourceTaxonomyQuery.data]);
-  const selectedSourceOption=sourceOptions.find(row=>row.uid===sourceAnchorUid);
+  const selectedSourceOption=sourceOptions.find(row=>row.uid===sourceLucusUid);
   const sourceName=selectedSourceOption?.value||customSourceName;
   const dateRange=useMemo(()=>traceWindow(timeWindow,new Date(),
     {start:customStart,end:customEnd}),[timeWindow,customStart,customEnd]);
@@ -117,7 +116,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
     enabled:isLoc&&supported&&mapMode==='routes'&&traceIndex.data!==undefined,
     // Cross-Scope intersections remain bounded even when members grow.
     queryFn:async()=>(await mapBounded(locPointGroups,group=>
-      readCurrentTraceAnchors(group.scope,group.ids))).flat(),
+      readCurrentTraceLucus(group.scope,group.ids))).flat(),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const locSharedPoints=useMemo(()=>clusterLocSharedPoints(locPointsQuery.data||[],50),[locPointsQuery.data]);
@@ -142,7 +141,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
   const deepLinkedPlace=useAsyncResource({
     queryKey:['trace-open-place',periodScopeId,selectedPlaceUid],
     enabled:supported&&mapMode==='routes'&&Boolean(selectedPlaceUid)&&TRACE_SCOPES.includes(periodScopeId)&&periodScopeId!=='loc',
-    queryFn:async()=>(await readCurrentTraceAnchors(periodScopeId,[selectedPlaceUid]))[0]||null,
+    queryFn:async()=>(await readCurrentTraceLucus(periodScopeId,[selectedPlaceUid]))[0]||null,
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
   // An explicit article-to-place URL is a requested drill-down. Open the
@@ -173,7 +172,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
     const found=maps.find(row=>String(row.uid)===selectedMapUid);
     if(found)setCurrentTraceChoice(isLoc?found.source_scope+':'+found.uid:found.uid);
   },[selectedMapUid,allMaps,scopeId,isLoc]);
-  // Never auto-select the legacy All Anchors mode from stored preferences.
+  // Never auto-select the legacy All Lucus mode from stored preferences.
   // The initial viewport is only the selected saved route.
   const chooseCurrentTrace=value=>{
     setSelectedPlace(null);
@@ -192,39 +191,39 @@ function ScopeTrace({scopeId='lo3rwang'}){
   // Phase 2: cache the current route's 2–80 sites by its membership revision.
   // Repeated visits have their own timestamps; a multi-day trip does not imply
   // that any one stop was occupied for its entire duration.
-  const anchorsQuery=useAsyncResource({
+  const lucusQuery=useAsyncResource({
     queryKey:currentMap
-      ?traceCurrentKey(periodScopeId,{...currentMap,anchor_list:members},{nativeOnly:periodScopeId==='loc'})
+      ?traceCurrentKey(periodScopeId,{...currentMap,lucus_list:members},{nativeOnly:periodScopeId==='loc'})
       :['trace-no-selected-route',periodScopeId],
     enabled:!isLoc&&supported&&mapMode==='routes'&&routeListOpen&&traceIndex.data!==undefined&&Boolean(currentMap),
-    queryFn:()=>readCurrentTraceAnchors(periodScopeId,members,
+    queryFn:()=>readCurrentTraceLucus(periodScopeId,members,
       {nativeOnly:periodScopeId==='loc'}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const spatialData=useMemo(()=>{
     if(!routeListOpen||traceIndex.data===undefined)return null;
-    if(isLoc)return locPointsQuery.data===undefined?null:{anchors:locSharedPoints,maps:[]};
-    if(!currentMap)return {anchors:[],maps:[]};
-    if(anchorsQuery.data===undefined)return null;
-    return {anchors:anchorsQuery.data,maps:[currentMap,...linkedRoutes]};
-  },[routeListOpen,traceIndex.data,anchorsQuery.data,currentMap,linkedRoutes,isLoc,locPointsQuery.data,locSharedPoints]);
+    if(isLoc)return locPointsQuery.data===undefined?null:{lucus:locSharedPoints,maps:[]};
+    if(!currentMap)return {lucus:[],maps:[]};
+    if(lucusQuery.data===undefined)return null;
+    return {lucus:lucusQuery.data,maps:[currentMap,...linkedRoutes]};
+  },[routeListOpen,traceIndex.data,lucusQuery.data,currentMap,linkedRoutes,isLoc,locPointsQuery.data,locSharedPoints]);
 
-  const demoRoute=useMemo(()=>traceDemoRoute(demoStopIds,spatialData?.anchors||[],periodScopeId),
-    [demoStopIds,spatialData?.anchors,periodScopeId]);
+  const demoRoute=useMemo(()=>traceDemoRoute(demoStopIds,spatialData?.lucus||[],periodScopeId),
+    [demoStopIds,spatialData?.lucus,periodScopeId]);
   const linkedSpatialData=useMemo(()=>{
     const lucus=deepLinkedPlace.data;
-    if(!spatialData||!lucus?.uid||spatialData.anchors.some(item=>item.uid===lucus.uid))return spatialData;
+    if(!spatialData||!lucus?.uid||spatialData.lucus.some(item=>item.uid===lucus.uid))return spatialData;
     // A direct ?place= link draws the point on the map without opening a
     // report. LOC's strictly capped preview keeps only referenced points.
-    return isLoc?spatialData:{...spatialData,anchors:[...spatialData.anchors,lucus]};
+    return isLoc?spatialData:{...spatialData,lucus:[...spatialData.lucus,lucus]};
   },[spatialData,deepLinkedPlace.data,isLoc]);
   const demoSpatialData=useMemo(()=>twoPointDemo&&linkedSpatialData
-    ?{anchors:linkedSpatialData.anchors,maps:demoRoute?[demoRoute]:[]}
+    ?{lucus:linkedSpatialData.lucus,maps:demoRoute?[demoRoute]:[]}
     :linkedSpatialData,[twoPointDemo,linkedSpatialData,demoRoute]);
   // Aggregate only loaded map pins. No per-pin lookup and no periodic refresh.
   const annualWindow=useMemo(()=>traceWindow('year',new Date()),[]);
-  const annualGroups=useMemo(()=>annualGaugeGroups(demoSpatialData?.anchors||[],TRACE_SCOPES),
-    [demoSpatialData?.anchors]);
+  const annualGroups=useMemo(()=>annualGaugeGroups(demoSpatialData?.lucus||[],TRACE_SCOPES),
+    [demoSpatialData?.lucus]);
   const annualSummary=useAsyncResource({
     queryKey:['trace-annual-place-days-v1',annualWindow.startDate,annualWindow.endDate,
       ...annualGroups.map(group=>group.scope+':'+group.ids.join(','))],
@@ -242,19 +241,19 @@ function ScopeTrace({scopeId='lo3rwang'}){
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const annualGauges=useMemo(()=>annualGaugeOn&&annualSummary.data
-    ?annualGaugeValues(demoSpatialData?.anchors||[],annualGroups,annualSummary.data,
+    ?annualGaugeValues(demoSpatialData?.lucus||[],annualGroups,annualSummary.data,
       annualWindow.startDate,annualWindow.endDate)
-    :[],[annualGaugeOn,annualSummary.data,demoSpatialData?.anchors,annualGroups,annualWindow]);
+    :[],[annualGaugeOn,annualSummary.data,demoSpatialData?.lucus,annualGroups,annualWindow]);
 
-  const chooseMapAnchor=lucus=>{
+  const chooseMapLucus=lucus=>{
     if(!twoPointDemo){choosePlace(lucus);return;}
     setDemoStopIds(ids=>pickTraceDemoStop(ids,lucus,periodScopeId));
   };
   const selectedAvailable=selectedPlace&&(
     selectedPlace.uid===deepLinkedPlace.data?.uid
-    ||(selectedPlace.trace_type!=='space_anchor'
+    ||(selectedPlace.trace_type!=='space_lucus'
       ?spatialData?.maps.some(row=>row.uid===selectedPlace.uid&&row.source_scope===selectedPlace.source_scope)
-      :spatialData?.anchors.some(row=>row.uid===selectedPlace.uid&&row.source_scope===selectedPlace.source_scope))
+      :spatialData?.lucus.some(row=>row.uid===selectedPlace.uid&&row.source_scope===selectedPlace.source_scope))
   );
   const reportPlace=twoPointDemo?null:(selectedAvailable?selectedPlace:null);
   const reportAnnual=reportPlace?annualGauges.find(row=>
@@ -303,21 +302,21 @@ function ScopeTrace({scopeId='lo3rwang'}){
         </div>
       </details>:null}
     </div>
-    {supported&&(traceIndex.isPending||(isLoc?locPointsQuery.isPending:anchorsQuery.isPending))?<p className="scope-status" role="status" aria-live="polite"><ActivityMotion/> 找尋痕跡中請稍後</p>:null}
+    {supported&&(traceIndex.isPending||(isLoc?locPointsQuery.isPending:lucusQuery.isPending))?<p className="scope-status" role="status" aria-live="polite"><ActivityMotion/> 找尋痕跡中請稍後</p>:null}
     {supported&&traceIndex.error?<p className="scope-status scope-error" role="alert">
       {t("mapsError")}{String(traceIndex.error.message||traceIndex.error)}
     </p>:null}
-    {supported&&(isLoc?locPointsQuery.error:anchorsQuery.error)?<p className="scope-status scope-error" role="alert">
-      {t("anchorsError")}{String((isLoc?locPointsQuery.error:anchorsQuery.error)?.message||'')}
+    {supported&&(isLoc?locPointsQuery.error:lucusQuery.error)?<p className="scope-status scope-error" role="alert">
+      {t("lucusError")}{String((isLoc?locPointsQuery.error:lucusQuery.error)?.message||'')}
     </p>:null}
     {supported&&!isLoc&&!traceIndex.isPending&&!traceIndex.error&&!maps.length?<p className="scope-status">
-      {t('noMapsOrAnchors')}
+      {t('noMapsOrLucus')}
     </p>:null}
 
     {twoPointDemo?<div className="loc-trace-demo-message" role="group" aria-label={t("demoTitle")}>
       <p className="scope-status" role="status" aria-live="polite">
-        {demoRoute?t('selectedTwo')+demoStopIds.map(uid=>spatialData?.anchors.find(row=>row.uid===uid)?.title||uid).join(' → ')+t('demoPreviewOnly'):
-          demoStopIds.length===1?t('selectedStart')+(spatialData?.anchors.find(row=>row.uid===demoStopIds[0])?.title||demoStopIds[0])+t('selectSecond'):
+        {demoRoute?t('selectedTwo')+demoStopIds.map(uid=>spatialData?.lucus.find(row=>row.uid===uid)?.title||uid).join(' → ')+t('demoPreviewOnly'):
+          demoStopIds.length===1?t('selectedStart')+(spatialData?.lucus.find(row=>row.uid===demoStopIds[0])?.title||demoStopIds[0])+t('selectSecond'):
           t('demoHelp')}
       </p>
       <button className="loc-button" type="button" onClick={()=>setDemoStopIds([])} disabled={!demoStopIds.length}>
@@ -351,7 +350,7 @@ function ScopeTrace({scopeId='lo3rwang'}){
        onAnnualGaugeVisibleChange={setAnnualGaugeDetailVisible}
       focusLocation={selectedPlace||deepLinkedPlace.data||null} hideRoutePicker
       selectedRouteUid={isLoc?'':twoPointDemo?(demoRoute?.uid||''):(currentMap?.uid||'')}
-      showAnchorSearch={!isLoc} onAnchorSelect={chooseMapAnchor}/>
+      showLucusSearch={!isLoc} onLucusSelect={chooseMapLucus}/>
       {reportPlace?<section className="loc-trace-place-report" role="region"
         aria-label={t('placeContent')+reportPlace.title}>
         <div className="loc-trace-float-heading">
@@ -387,9 +386,9 @@ function ScopeTrace({scopeId='lo3rwang'}){
           <label>{t("endDate")}<input type="date" value={customEnd} onChange={event=>setCustomEnd(event.target.value)}/></label>
         </>:null}
         <label>{t("sourceCategory")}
-          <select className="scope-select" value={sourceAnchorUid}
+          <select className="scope-select" value={sourceLucusUid}
             onChange={event=>{
-              setSourceAnchorUid(event.target.value);
+              setSourceLucusUid(event.target.value);
               setCustomSourceName('');
               setSourceDraft('');
             }}>
@@ -398,12 +397,12 @@ function ScopeTrace({scopeId='lo3rwang'}){
           </select>
         </label>
         {sourceTaxonomyQuery.isPending?
-          <p className="scope-status" role="status">正在讀取 SiteAnchor 來源定錨…</p>:null}
+          <p className="scope-status" role="status">正在讀取 SiteLucus 來源定錨…</p>:null}
         {sourceTaxonomyQuery.error?
           <p className="scope-status" role="status">來源定錨暫時無法讀取，仍可使用自訂來源文字。</p>:null}
         <form onSubmit={event=>{
           event.preventDefault();
-          setSourceAnchorUid('');
+          setSourceLucusUid('');
           setCustomSourceName(sourceDraft.trim());
         }}>
           <label>自訂來源文字
@@ -412,25 +411,15 @@ function ScopeTrace({scopeId='lo3rwang'}){
           </label>
           <button type="submit" className="loc-button">{t("applySource")}</button>
           {sourceName?<button type="button" className="loc-button"
-            onClick={()=>{setSourceAnchorUid('');setCustomSourceName('');setSourceDraft('');}}>
+            onClick={()=>{setSourceLucusUid('');setCustomSourceName('');setSourceDraft('');}}>
             {t("clearSource")}</button>:null}
         </form>
-        <label>{t("mediaType")}
-          <select className="scope-select" value={mediaType}
-            onChange={event=>setMediaType(event.target.value)}>
-            <option value="">{t("allMedia")}</option>
-            <option value="suno">{t("music")}</option>
-            <option value="image">{t("image")}</option>
-            <option value="video">{t("video")}</option>
-            <option value="rune">{t("runeDraw")}</option>
-          </select>
-        </label>
         <p className="scope-status">{t("settingsIntro")} {timeWindow==='year'?DEFAULT_YEAR_WINDOW.label:timeWindow==='3m'?t('lastThreeMonths'):timeWindow==='all'?t('allTime'):t('currentTime')}。</p>
         </div>
         </details>:null}
         {reportTab?<TracePlaceResults key={reportPlace.source_scope+':'+reportPlace.uid} place={reportPlace}
-          anchors={spatialData?.anchors||[]} maps={spatialData?.maps||[]} scopeId={reportScopeId}
-          tab={reportTab} sourceName={sourceName} mediaType={mediaType} dateRange={dateRange}
+          lucus={spatialData?.lucus||[]} maps={spatialData?.maps||[]} scopeId={reportScopeId}
+          tab={reportTab} sourceName={sourceName} dateRange={dateRange}
           timeMode='none' defaultSort='desc' onDailyRows={setPlaceDayRows}/>:null}
 
       </section>:null}

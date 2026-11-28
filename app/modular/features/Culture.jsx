@@ -70,7 +70,7 @@ const EMPTY_RIVER_FOCUS=Object.freeze({});
 const EMPTY_CULTURE_GROUPS=Object.freeze([]);
 function emptyRiverLabel(){return '';}
 function classificationRiverLabel(item){
-  return item?.entry_type==='virtual_anchor'?(item.display_label||'◇'):'';
+  return item?.entry_type==='virtual_lucus'?(item.display_label||'◇'):'';
 }
 function labelOf(item,index,periodName=UI_COPY.format.period(index+1)){
   return item?.display_label||item?.name||item?.title||item?.period||periodName;
@@ -265,11 +265,11 @@ export default function Culture(){
   const [expandedEraIds,setExpandedEraIds]=useState([]);
   const [expandedEditorEraIds,setExpandedEditorEraIds]=useState([]);
   // Mount the historical river before the large management list/editor.
-  // Both consume one authorized TimeAnchor snapshot; no extra SQL fetch.
+  // Both consume one authorized TimeLucus snapshot; no extra SQL fetch.
   const [timeRiverFirstPaint,setTimeRiverFirstPaint]=useState(false);
   const [timeEditorFrameReady,setTimeEditorFrameReady]=useState(false);
   useEffect(()=>{setTimeRiverFirstPaint(false)},[scopeId,isTimeEditingView]);
-  // Never make TimeAnchor editing depend exclusively on a vis-timeline paint
+  // Never make TimeLucus editing depend exclusively on a vis-timeline paint
   // callback: a ready DataSet can have no visible bars or zero-size panels.
   // Give the real first river two paint frames, then release the editor even
   // if vis is still recovering; this cannot deadlock on missing callbacks.
@@ -295,7 +295,7 @@ export default function Culture(){
   const [articleSort,setArticleSort]=useState('desc');
   // Keyword Class is optional; ordinary Time River views must not scan the whole article corpus.
   const [styleFilter,setStyleFilter]=useState('none');
-  // Media sites are already included in the unified SiteAnchor source river.
+  // Media sites are already included in the unified SiteLucus source river.
   // Only geography and keywords use independent presentation dimensions.
   const usesSourceRiver=styleFilter!=='trace';
   const [selectedKeywordClassUid,setSelectedKeywordClassUid]=useState('');
@@ -305,16 +305,16 @@ export default function Culture(){
   const [keywordEraKey,setKeywordEraKey]=useState('year');
   const [keywordCustomStart,setKeywordCustomStart]=useState('');
   const [keywordCustomEnd,setKeywordCustomEnd]=useState('');
-  const [selectedVirtualAnchorDates,setSelectedVirtualAnchorDates]=useState([]);
-  const [focusedAnchorDate,setFocusedAnchorDate]=useState('');
+  const [selectedVirtualLucusDates,setSelectedVirtualLucusDates]=useState([]);
+  const [focusedLucusDate,setFocusedLucusDate]=useState('');
   const [openCultureRoots,setOpenCultureRoots]=useState([]);
-  // Anchor suggestions never compute just because a lane's daily data
+  // Lucus suggestions never compute just because a lane's daily data
   // arrived -- that would auto-run the PELT worker as a side effect of
   // expanding a source lane. They only compute once the user explicitly
-  // opens the "建議定錨點" panel itself; see anchorSuggestOpen below.
-  const [anchorSuggestOpen,setAnchorSuggestOpen]=useState(false);
+  // opens the "建議定錨點" panel itself; see lucusSuggestOpen below.
+  const [lucusSuggestOpen,setLucusSuggestOpen]=useState(false);
   const [selectedRiverGroup,setSelectedRiverGroup]=useState('');
-  const [creatingSuggestedAnchors,setCreatingSuggestedAnchors]=useState(false);
+  const [creatingSuggestedLucus,setCreatingSuggestedLucus]=useState(false);
   const workScrollRef=useRef(null);
   const [fullTextKey,setFullTextKey]=useState('');
   const [fullText,setFullText]=useState('');
@@ -348,7 +348,7 @@ export default function Culture(){
     setKeywordCustomEnd('');
     setOpenCultureRoots([]);
     setSelectedRiverGroup('');
-    setFocusedAnchorDate('');
+    setFocusedLucusDate('');
     setStructureWindowKey('');
   },[scopeId]);
   const isAggregateScope=Boolean(scope?.aggregateChildren);
@@ -486,8 +486,8 @@ export default function Culture(){
     }
   },[scopeId,isAggregateScope,requestedWindowStart,requestedWindowEnd,requestedPeriodUid,primaryPeriods]);
 
-  // One public LocAnchor ZModel read, shared in meaning with Statistics.
-  // The persisted SiteAnchor hierarchy (attr.uid) is the only source tree.
+  // One public LocLucus ZModel read, shared in meaning with Statistics.
+  // The persisted SiteLucus hierarchy (attr.uid) is the only source tree.
   const sourceTaxonomyQuery=useAsyncResource({
     queryKey:['loc-zmodel-source-taxonomy'],
     enabled:!isTimeEditingView&&!isAggregateScope&&!isLocItemView
@@ -509,7 +509,7 @@ export default function Culture(){
   // Retrieve one bounded daily aggregate per selected period. Reuse it when
   // expanding a group, so a UI interaction never starts a second SQL job.
   const sourceRootQuery=useAsyncResource({
-    queryKey:['culture-period-roots','v5-zmodel-anchors',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
+    queryKey:['culture-period-roots','v5-zmodel-lucus',classificationScope,classificationWindowStart,classificationWindowEnd,periodRangeSignature],
     enabled:!isTimeEditingView&&stagedSourceRiver&&usesSourceRiver&&!isLocItemView
       &&Boolean(scopeData)&&classificationWindowValid,
     queryFn:async()=>{
@@ -791,13 +791,13 @@ export default function Culture(){
   const currentStructureStart=activeStructureKey==='all'?structureDateBounds.start
     :String(currentStructurePeriod?.start_date||'').slice(0,10);
   // A trace stops at its final real lucus; no virtual today endpoint.
-  const lastAnchorDate=String(structurePreference.lastAnchor?.start_date||'').slice(0,10);
+  const lastLucusDate=String(structurePreference.lastLucus?.start_date||'').slice(0,10);
   const savedTraceEnd=String(currentStructurePeriod?.end_date||'').slice(0,10);
   const currentStructureEnd=activeStructureKey==='all'?structureDateBounds.end
-    :structureWindowKey===''&&lastAnchorDate>savedTraceEnd?lastAnchorDate:savedTraceEnd;
+    :structureWindowKey===''&&lastLucusDate>savedTraceEnd?lastLucusDate:savedTraceEnd;
   // Keep the first river grouped by era UID. A selected trace changes
   // only the camera viewport, never the saved lucus/event/trace graph.
-  const anchorRecords=useMemo(()=>timelineItems
+  const lucusRecords=useMemo(()=>timelineItems
     .filter(item=>item.entry_type==='lucus'&&item.uid)
     .sort((a,b)=>String(a.start_date||'').localeCompare(String(b.start_date||''))||String(a.display_label||'').localeCompare(String(b.display_label||''))),[timelineItems]);
   const locScopeIntervalItems=useMemo(()=>query.data?.scopeTimeRanges||[],[query.data]);
@@ -957,18 +957,18 @@ export default function Culture(){
   }
   async function moveTimelineRecord(item,row){
     // Dates on Time periods/events are derived exclusively from existing
-    // anchor_ids. Only a real lucus point can be moved on the river.
+    // lucus_ids. Only a real lucus point can be moved on the river.
     if(row?.entryType!=='lucus'||!row.recordId||!scopeData?.time)return null;
     try{
       // Scope permissions are enforced by the database write RPC.
       const date=dayKeyFromTimelineValue(item?.start);
-      if(!date)throw new Error(l.invalidAnchorDate);
+      if(!date)throw new Error(l.invalidLucusDate);
       await updateRows(scopeData.time,{address:date},{filters:[{column:'uid',operator:'eq',value:row.recordId}]});
       await refreshTimelineData();
       setEditError('');
       return {...item,start:date};
     }catch(error){
-      setEditError(error?.message||l.moveAnchorFailed);
+      setEditError(error?.message||l.moveLucusFailed);
       return null;
     }
   }
@@ -995,16 +995,16 @@ export default function Culture(){
   ).filter(item=>!keywordDrillSource||String(item.category||'')===keywordDrillSource),
   [sourceSnapshotQuery.data,keywordDrillSource]);
   const secondRiverBuckets=classificationBuckets; // Daily river; no stored personal unit.
-  // Anchor-suggestion density analysis only has data once a lane is expanded
+  // Lucus-suggestion density analysis only has data once a lane is expanded
   // (secondRiverBuckets is empty until then): suggestions are never computed
   // just from opening the Culture page.
   const densityInputBuckets=classificationBuckets;
   // Close the panel again whenever the underlying daily data changes (a
   // different lane expanded, the period changed) so a stale, already-open
   // panel doesn't silently keep showing suggestions for the old data.
-  useEffect(()=>{setAnchorSuggestOpen(false)},[densityInputBuckets]);
+  useEffect(()=>{setLucusSuggestOpen(false)},[densityInputBuckets]);
 
-  const existingAnchorDates=useMemo(()=>
+  const existingLucusDates=useMemo(()=>
     timelineItems
       .filter(item=>String(item?.entry_type||'')==='lucus')
       .map(item=>String(item?.start_date||item?.date||'').slice(0,10))
@@ -1012,16 +1012,16 @@ export default function Culture(){
   ,[timelineItems]);
   // Render the selected period immediately. Multi-year PELT executes in a
   // worker, so change-point suggestions cannot freeze the Time River.
-  const riverAnalysis=useRiverDensityAnalysis(densityInputBuckets,existingAnchorDates,
-    anchorSuggestOpen&&!isAggregateScope&&!isLocItemView&&usesSourceRiver&&Boolean(densityInputBuckets.length));
-  const styleRiverAnalysis=useRiverDensityAnalysis(keywordDrillItems,existingAnchorDates,
-    anchorSuggestOpen&&styleFilter==='rune66'&&Boolean(keywordDrillItems.length));
+  const riverAnalysis=useRiverDensityAnalysis(densityInputBuckets,existingLucusDates,
+    lucusSuggestOpen&&!isAggregateScope&&!isLocItemView&&usesSourceRiver&&Boolean(densityInputBuckets.length));
+  const styleRiverAnalysis=useRiverDensityAnalysis(keywordDrillItems,existingLucusDates,
+    lucusSuggestOpen&&styleFilter==='rune66'&&Boolean(keywordDrillItems.length));
   // LOC's single source river has no automatic lucus suggestion/PELT worker.
   const locRiverAnalysis=useRiverDensityAnalysis(locCombinedSourceRiverItems,EMPTY_CULTURE_GROUPS,false);
-  const virtualAnchorItems=useMemo(()=>{
+  const virtualLucusItems=useMemo(()=>{
     const total=Math.max(1,Number(riverAnalysis.totalCount)||0);
     return riverAnalysis.suggestions.map(item=>{
-      const selected=selectedVirtualAnchorDates.includes(item.date);
+      const selected=selectedVirtualLucusDates.includes(item.date);
       const beforeCount=Number(item.beforeCount||0);
       const afterCount=Number(item.afterCount||0);
       const strength=Math.min(1,Math.abs(Number(item.afterMean||0)-Number(item.beforeMean||0))/Math.max(1,Number(item.afterMean||0),Number(item.beforeMean||0)));
@@ -1029,18 +1029,18 @@ export default function Culture(){
       return {
         id:'virtual-lucus:'+item.date,
         entry_id:'virtual-lucus:'+item.date,
-        entry_type:'virtual_anchor',
+        entry_type:'virtual_lucus',
         start_date:item.date,
         title:formatCultureUi(l.candidateTitle,{date:item.date,position:(position*100).toFixed(1),before:beforeCount.toLocaleString(locale),beforeRatio:((beforeCount/total)*100).toFixed(1),after:afterCount.toLocaleString(locale),afterRatio:((afterCount/total)*100).toFixed(1),analysis:(item.analysis||[]).join(' ')}),
         display_label:'◇',
-        group_label:l.candidateAnchor,
+        group_label:l.candidateLucus,
         item_count:0,
         className:'scope-virtual-lucus'+(selected?' is-selected':''),
         style:'--virtual-lucus-strength:'+strength+';',
-        virtual_anchor:{...item,position_ratio:position,before_ratio:beforeCount/total,after_ratio:afterCount/total,strength_ratio:strength}
+        virtual_lucus:{...item,position_ratio:position,before_ratio:beforeCount/total,after_ratio:afterCount/total,strength_ratio:strength}
       };
     });
-  },[riverAnalysis.suggestions,riverAnalysis.totalCount,selectedVirtualAnchorDates,classificationWindowStart,classificationWindowEnd,l,locale]);
+  },[riverAnalysis.suggestions,riverAnalysis.totalCount,selectedVirtualLucusDates,classificationWindowStart,classificationWindowEnd,l,locale]);
   // The source river renders the *actual* four-level loc_lucus UID tree.
   // A single child still occupies its own row; no Universe/Galaxy/Domain/From
   // level is silently flattened into a site name.
@@ -1104,7 +1104,7 @@ export default function Culture(){
     // daily data to potentially analyze, even before anyone has clicked it.
     // Only its *content* (the computed candidate markers) is deferred: the
     // lane itself is just collapsible like any other lane, and clicking it
-    // (via onGroupToggle) is what sets anchorSuggestOpen and starts the
+    // (via onGroupToggle) is what sets lucusSuggestOpen and starts the
     // PELT worker -- never pushing/popping the lane's existence itself.
     // Visible whenever the second river itself has any lanes at all --
     // exactly the same condition the source-category lanes above use
@@ -1116,13 +1116,13 @@ export default function Culture(){
       // lane itself, except when there is nothing to analyze yet because no
       // category has been expanded (no daily data exists at all), where we
       // say so instead of implying a computation is silently running.
-      const anchorLaneWaitingForExpansion=anchorSuggestOpen&&!virtualAnchorItems.length&&!densityInputBuckets.length;
-      const anchorLaneLoading=anchorSuggestOpen&&!virtualAnchorItems.length&&densityInputBuckets.length>0;
+      const lucusLaneWaitingForExpansion=lucusSuggestOpen&&!virtualLucusItems.length&&!densityInputBuckets.length;
+      const lucusLaneLoading=lucusSuggestOpen&&!virtualLucusItems.length&&densityInputBuckets.length>0;
       groups.push({id:'dual:source:candidates',
-        label:anchorLaneLoading?l.candidateLaneLoading:anchorLaneWaitingForExpansion?l.candidateLaneNeedsExpansion:l.candidateLane,
-        order:900,className:'scope-candidate-lane',collapsible:true,expanded:anchorSuggestOpen});
-      if(virtualAnchorItems.length)
-        items.push(...virtualAnchorItems.map(item=>({...item,group_key:'dual:source:candidates',group_label:l.candidateLane,group_order:900})));
+        label:lucusLaneLoading?l.candidateLaneLoading:lucusLaneWaitingForExpansion?l.candidateLaneNeedsExpansion:l.candidateLane,
+        order:900,className:'scope-candidate-lane',collapsible:true,expanded:lucusSuggestOpen});
+      if(virtualLucusItems.length)
+        items.push(...virtualLucusItems.map(item=>({...item,group_key:'dual:source:candidates',group_label:l.candidateLane,group_order:900})));
     }
     if(showKeywordRiver){
       items.push(...keywordDrillItems.map((item,index)=>({
@@ -1146,20 +1146,20 @@ export default function Culture(){
       }
     }
     return {items,groups,hasSourceData:activeRoots.size>0};
-  },[sourceTaxonomy,groupedSources,secondRiverBuckets,openCultureRoots,sourceSnapshotQuery.data,virtualAnchorItems,showKeywordRiver,keywordDrillItems,keywordGroupOptions,l,locale,classificationWindowStart,classificationWindowEnd,styleFilter,densityInputBuckets,anchorSuggestOpen]);
-  const focusedCandidate=riverAnalysis.suggestions.find(item=>item.date===focusedAnchorDate);
-  const anchorInsight=focusedCandidate?{
+  },[sourceTaxonomy,groupedSources,secondRiverBuckets,openCultureRoots,sourceSnapshotQuery.data,virtualLucusItems,showKeywordRiver,keywordDrillItems,keywordGroupOptions,l,locale,classificationWindowStart,classificationWindowEnd,styleFilter,densityInputBuckets,lucusSuggestOpen]);
+  const focusedCandidate=riverAnalysis.suggestions.find(item=>item.date===focusedLucusDate);
+  const lucusInsight=focusedCandidate?{
     date:focusedCandidate.date,before:Number(focusedCandidate.beforeCount)||0,
     after:Number(focusedCandidate.afterCount)||0,reason:(focusedCandidate.analysis||[]).join(' ')
   }:null;
   useEffect(()=>{
-    setSelectedVirtualAnchorDates(current=>current.filter(date=>riverAnalysis.suggestions.some(item=>item.date===date)));
-    setFocusedAnchorDate(current=>riverAnalysis.suggestions.some(item=>item.date===current)?current:'');
+    setSelectedVirtualLucusDates(current=>current.filter(date=>riverAnalysis.suggestions.some(item=>item.date===date)));
+    setFocusedLucusDate(current=>riverAnalysis.suggestions.some(item=>item.date===current)?current:'');
   },[scopeId,classificationWindowStart,classificationWindowEnd,riverAnalysis.suggestions]);
 
   const toggleCultureRiverGroup=id=>{
     if(id==='dual:source:candidates'){
-      setAnchorSuggestOpen(current=>!current);
+      setLucusSuggestOpen(current=>!current);
       return;
     }
     if(id.startsWith('dual:keyword:')){
@@ -1170,7 +1170,7 @@ export default function Culture(){
     }
     if(!id.startsWith('dual:source:'))return;
     const uid=id.slice('dual:source:'.length);
-    // Only a saved SiteAnchor UID with actual children can be expanded.
+    // Only a saved SiteLucus UID with actual children can be expanded.
     if(!(sourceTaxonomy?.tree||[]).some(node=>node.uid===uid))return;
     setOpenCultureRoots(current=>current.includes(uid)
       ?current.filter(value=>value!==uid):[...current,uid]);
@@ -1182,18 +1182,18 @@ export default function Culture(){
     setSelectedCategory('');
     setWorksOpen(true);
   };
-  const toggleVirtualAnchor=date=>{
-    setSelectedVirtualAnchorDates(current=>current.includes(date)?current.filter(item=>item!==date):[...current,date].sort());
+  const toggleVirtualLucus=date=>{
+    setSelectedVirtualLucusDates(current=>current.includes(date)?current.filter(item=>item!==date):[...current,date].sort());
   };
 
-  async function createSelectedSuggestedAnchors(){
-    if(!canUseScopeEditor||creatingSuggestedAnchors||!scopeData?.time)return;
+  async function createSelectedSuggestedLucus(){
+    if(!canUseScopeEditor||creatingSuggestedLucus||!scopeData?.time)return;
     const suggestedDates=new Set(riverAnalysis.suggestions.map(item=>item.date));
-    const existingDates=new Set(existingAnchorDates);
-    const dates=[...new Set(selectedVirtualAnchorDates)]
+    const existingDates=new Set(existingLucusDates);
+    const dates=[...new Set(selectedVirtualLucusDates)]
       .filter(date=>/^\d{4}-\d{2}-\d{2}$/.test(date)&&suggestedDates.has(date)&&!existingDates.has(date));
     if(!dates.length){setEditError('目前沒有可新增的建議定錨點。');return;}
-    setCreatingSuggestedAnchors(true);setEditError('');
+    setCreatingSuggestedLucus(true);setEditError('');
     try{
       // Only this explicitly requested bulk write needs the extra foreground
       // authorization check. The database RPC remains the final guard.
@@ -1203,13 +1203,13 @@ export default function Culture(){
       const payload=dates.map(date=>{
         const uid=allocateTimeUid([...used].map(uid=>({uid})));
         used.add(uid);
-        return {uid,type:'lucus',title:'建議定錨 '+date,description:null,address:date,anchor_ids:null};
+        return {uid,type:'lucus',title:'建議定錨 '+date,description:null,address:date,lucus_ids:null};
       });
       await insertRows(scopeData.time,payload);
-      setSelectedVirtualAnchorDates([]);
+      setSelectedVirtualLucusDates([]);
       await refreshTimelineData();
     }catch(error){setEditError(String(error?.message||error));}
-    finally{setCreatingSuggestedAnchors(false);}
+    finally{setCreatingSuggestedLucus(false);}
   }
 
   async function startEditingWork(work){
@@ -1387,7 +1387,7 @@ export default function Culture(){
                 timeError={query.error}
                 birthday={scopeData?.birthday||''}
                 selectedRecordId={selectedTimelineRecordId}
-                suggestedAnchorDate={selectedTimelineDate}
+                suggestedLucusDate={selectedTimelineDate}
                 suggestedRecordType={suggestedRecordType}
                 defaultRecordType='lucus'
                 suggestedRequestNonce={suggestedRequestNonce}
@@ -1404,7 +1404,7 @@ export default function Culture(){
   }
 
   // LOC Culture is a fixed one-year overview of member Scopes.
-  // All detailed TimeAnchor rivers and article browsing live inside each Scope.
+  // All detailed TimeLucus rivers and article browsing live inside each Scope.
   if(scopeId==='loc'&&!isTimeEditingView)return <FeaturePage featureId="culture">
     <section className='loc-card scope-feature-card scope-feature-card-wide'>
       {query.isPending||Boolean(query.data?.scopes?.length)&&locDensityQuery.isPending
@@ -1626,7 +1626,7 @@ export default function Culture(){
                             ?sourceStyleOptions.find(item=>'source:'+item.key===next):null;
                           if(choice){
                             // Sources use the existing numeric Source River. Never
-                            // misinterpret an Anchor From as a Keyword Class UID.
+                            // misinterpret an Lucus From as a Keyword Class UID.
                             setStyleFilter('none');
                             setSelectedRiverGroup(choice.key);
                             setSelectedCategory('');
@@ -1702,11 +1702,11 @@ export default function Culture(){
                     <summary>風格密度建議定錨點：{styleRiverAnalysis.suggestions.length} 個（點開查看）</summary>
                     {styleRiverAnalysis.suggestions.length?<div className='scope-culture-lucus-choices'>
                       {styleRiverAnalysis.suggestions.map(item=>{
-                        // Deep-link straight to the protected TimeAnchor
+                        // Deep-link straight to the protected TimeLucus
                         // editor, not the public Culture view (?edit=1 alone
                         // does not authorize or mount that editor).
                         const href=scopeHref(scopeId,
-                          'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date));
+                          'culture/manage?edit=1&lucusDate='+encodeURIComponent(item.date));
                         return <div key={item.date} className='scope-status'>
                           <strong>{item.date}</strong>
                           <span>｜前 3 日 {Number(item.beforeCount||0).toLocaleString(locale)} 次／後 3 日 {Number(item.afterCount||0).toLocaleString(locale)} 次</span>
@@ -1739,17 +1739,17 @@ export default function Culture(){
                  {usesSourceRiver&&stagedSourceRiver&&openCultureRoots.length>0
                    &&sourceSnapshotQuery.isPending
                    ?<p className='scope-status' role='status'>正在展開河道的細部分布…</p>:null}
-                 {/* Anchor suggestions never compute on their own just because a lane's
+                 {/* Lucus suggestions never compute on their own just because a lane's
                      daily data arrived -- the PELT worker only runs once the user
                      explicitly clicks open the "建議定錨點" lane itself on the chart
                      above (see the dual:source:candidates group / onGroupToggle).
                      This panel is just the detail view for an already-opened lane. */}
-                 {usesSourceRiver&&!riverRangeLoading&&anchorSuggestOpen?<div className='scope-culture-lucus-actions'>
+                 {usesSourceRiver&&!riverRangeLoading&&lucusSuggestOpen?<div className='scope-culture-lucus-actions'>
                   {riverAnalysis.suggestions.length>0?<>
                     <span>{formatCultureUi(l.candidateSummary,{count:riverAnalysis.suggestions.length})}</span>
-                    {canUseScopeEditor?<button type='button' className='loc-button' disabled={creatingSuggestedAnchors||!selectedVirtualAnchorDates.length}
-                      onClick={createSelectedSuggestedAnchors}>
-                      {creatingSuggestedAnchors?'正在新增…':'新增選取的建議定錨點（'+selectedVirtualAnchorDates.length+'）'}
+                    {canUseScopeEditor?<button type='button' className='loc-button' disabled={creatingSuggestedLucus||!selectedVirtualLucusDates.length}
+                      onClick={createSelectedSuggestedLucus}>
+                      {creatingSuggestedLucus?'正在新增…':'新增選取的建議定錨點（'+selectedVirtualLucusDates.length+'）'}
                     </button>:null}
                     {editError?<p className='scope-status scope-error' role='alert'>{editError}</p>:null}
                     <details className='scope-culture-lucus-picker' open>
@@ -1757,10 +1757,10 @@ export default function Culture(){
                       <div className='scope-culture-lucus-choices'>
                         {riverAnalysis.suggestions.map(item=>{
                           const href=scopeHref(scopeId,
-                            'culture/manage?edit=1&anchorDate='+encodeURIComponent(item.date));
+                            'culture/manage?edit=1&lucusDate='+encodeURIComponent(item.date));
                           return <div key={item.date} className='scope-status'>
-                            {canUseScopeEditor?<label><input type='checkbox' checked={selectedVirtualAnchorDates.includes(item.date)}
-                              onChange={()=>toggleVirtualAnchor(item.date)}/>
+                            {canUseScopeEditor?<label><input type='checkbox' checked={selectedVirtualLucusDates.includes(item.date)}
+                              onChange={()=>toggleVirtualLucus(item.date)}/>
                               {formatCultureUi(l.candidateComparison,{date:item.date,before:Number(item.beforeCount||0).toLocaleString(locale),after:Number(item.afterCount||0).toLocaleString(locale),analysis:(item.analysis||[]).join(' ')})}
                             </label>:<span>{formatCultureUi(l.candidateComparison,{date:item.date,before:Number(item.beforeCount||0).toLocaleString(locale),after:Number(item.afterCount||0).toLocaleString(locale),analysis:(item.analysis||[]).join(' ')})}</span>}
                             {canUseScopeEditor?<ScopeLink href={href}>前往時間編輯</ScopeLink>:null}
@@ -1796,9 +1796,9 @@ export default function Culture(){
                     extraGroups={cultureRiver.groups}
                     onGroupToggle={toggleCultureRiverGroup}
                     onGroupSelect={selectCultureRiverGroup}
-                    anchorInsight={anchorInsight}
-                    anchorLabels={{date:l.candidateDate,before:l.candidateBefore,after:l.candidateAfter,reason:l.candidateReason,close:l.candidateClose}}
-                    onAnchorClose={()=>setFocusedAnchorDate('')}
+                    lucusInsight={lucusInsight}
+                    lucusLabels={{date:l.candidateDate,before:l.candidateBefore,after:l.candidateAfter,reason:l.candidateReason,close:l.candidateClose}}
+                    onLucusClose={()=>setFocusedLucusDate('')}
                     heightVariant='double'
                     labelOf={classificationRiverLabel}
                     focus={EMPTY_RIVER_FOCUS}
@@ -1807,10 +1807,10 @@ export default function Culture(){
                     windowEnd={classificationWindowEnd}
                     hiddenDates={riverAnalysis.hiddenDates}
                     onSelect={item=>{
-                      if(item?.entryType==='virtual_anchor'){
+                      if(item?.entryType==='virtual_lucus'){
                         const date=String(item?.start||'').slice(0,10);
-                        setFocusedAnchorDate(date);
-                        toggleVirtualAnchor(date);
+                        setFocusedLucusDate(date);
+                        toggleVirtualLucus(date);
                         return;
                       }
                       if(item?.entryType==='keyword_density'){

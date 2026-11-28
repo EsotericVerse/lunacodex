@@ -44,9 +44,9 @@ export function traceHomeMapChoices(maps=[],display='lucus'){
   if(display==='lucus')return [];
   return maps.filter(row=>row.trace_type===display);
 }
-export function nearestTracePlaceIds(placeIds=[],anchors=[],selection=null){
-  const byId=new Map(anchors.map(a=>[String(a.uid||''),a]));
-  const source=selection?.trace_type==='space_anchor'?selection:byId.get(placeIds[0]);
+export function nearestTracePlaceIds(placeIds=[],lucus=[],selection=null){
+  const byId=new Map(lucus.map(a=>[String(a.uid||''),a]));
+  const source=selection?.trace_type==='space_lucus'?selection:byId.get(placeIds[0]);
   const coords=row=>{
     const lng=Number(row?.longitude),lat=Number(row?.latitude);
     return row?.longitude!=null&&row?.latitude!=null&&Number.isFinite(lng)&&Number.isFinite(lat)

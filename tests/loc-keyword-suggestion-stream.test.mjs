@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {suggestKeywordPatterns} from '../app/loc/keywords/sql-service.mjs';
 
-function anchorDatabase(rows){
+function lucusDatabase(rows){
   const calls=[];
   return {calls,db:{selectFrom(table){
     assert.equal(table,'silver.lo3rwang_lucus');
@@ -36,7 +36,7 @@ test('keyword suggestions stream Item links and Pattern rows through bounded key
     uid:'ITEM'+String(i).padStart(4,'0'),type:'item',
     attr:JSON.stringify({uid:i===0?['PATT1040','PATT1041']:[]})
   }));
-  const {db,calls}=anchorDatabase([...items,...patterns]);
+  const {db,calls}=lucusDatabase([...items,...patterns]);
   const result=await suggestKeywordPatterns(db,['lo3rwang'],'月',{
     ownerScopes:new Set(['lo3rwang'])
   });

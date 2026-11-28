@@ -11,8 +11,8 @@ import {SCOPE_ROUTE_INDEX} from '../../modular/routing/scope-route-index.js';
 import {useEditDock,useEditDockForm} from '../../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {
-  TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceAllAnchorsKey,
-  traceMemberUids,readTraceMapIndex,readCurrentTraceAnchors,readAllTraceAnchors,
+  TRACE_SCOPES,traceMapIndexKey,traceCurrentKey,traceAllLucusKey,
+  traceMemberUids,readTraceMapIndex,readCurrentTraceLucus,readAllTraceLucus,
   addTraceMap,updateTraceMap,deleteTraceMap,updateTraceVisibilityBulk
 } from '../../modular/features/trace/trace-data';
 import {
@@ -48,7 +48,7 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
   const [spool,setSpool]=useState([]);
   const [queue,setQueue]=useState([]);
   const [pairs,setPairs]=useState([]);
-  const [selectedAnchor,setSelectedAnchor]=useState(null);
+  const [selectedLucus,setSelectedLucus]=useState(null);
   const [selectedStop,setSelectedStop]=useState('');
   const [from,setFrom]=useState('');
   const [to,setTo]=useState('');
@@ -129,29 +129,29 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
   const currentMemberUids=current
     ?[...new Set([...traceMemberUids(current),...currentRouteMembers.flatMap(traceMemberUids)])]
     :[];
-  const fetchedAnchorIndex=useAsyncResource({
-    queryKey:traceAllAnchorsKey(owner,{nativeOnly:owner==='loc',includeHidden:own}),
+  const fetchedLucusIndex=useAsyncResource({
+    queryKey:traceAllLucusKey(owner,{nativeOnly:owner==='loc',includeHidden:own}),
     enabled:editorOpen&&!treeMode,
-    queryFn:()=>readAllTraceAnchors(owner,{nativeOnly:owner==='loc',includeHidden:own}),
+    queryFn:()=>readAllTraceLucus(owner,{nativeOnly:owner==='loc',includeHidden:own}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const anchorIndex=treeMode?{data:spatialData?.anchors||[],isPending:false,error:null}:fetchedAnchorIndex;
-  const currentAnchors=useAsyncResource({
-    queryKey:current?traceCurrentKey(owner,{...current,anchor_list:currentMemberUids},{nativeOnly:owner==='loc',includeHidden:own}):null,
+  const lucusIndex=treeMode?{data:spatialData?.lucus||[],isPending:false,error:null}:fetchedLucusIndex;
+  const currentLucus=useAsyncResource({
+    queryKey:current?traceCurrentKey(owner,{...current,lucus_list:currentMemberUids},{nativeOnly:owner==='loc',includeHidden:own}):null,
     enabled:Boolean(current)&&!editorOpen&&!treeMode,
-    queryFn:()=>readCurrentTraceAnchors(owner,currentMemberUids,{nativeOnly:owner==='loc',includeHidden:own}),
+    queryFn:()=>readCurrentTraceLucus(owner,currentMemberUids,{nativeOnly:owner==='loc',includeHidden:own}),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const allAnchors=anchorIndex.data||[];
+  const allLucus=lucusIndex.data||[];
   const suggestionRows=useMemo(()=>[
-    ...(anchorIndex.data||[]).map(row=>({...row,type:'point'})),
+    ...(lucusIndex.data||[]).map(row=>({...row,type:'point'})),
     ...(index.data||[]).filter(row=>row.source_scope===owner)
       .map(row=>({...row,type:row.trace_type}))
-  ],[anchorIndex.data,index.data,owner]);
-  const anchorMap=useMemo(()=>new Map(allAnchors.map(a=>[a.uid,a])),[allAnchors]);
-  const options=useMemo(()=>allAnchors.map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[allAnchors]);
-  const poolOptions=useMemo(()=>spool.map(uid=>anchorMap.get(uid))
-    .filter(Boolean).map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[spool,anchorMap]);
+  ],[lucusIndex.data,index.data,owner]);
+  const lucusMap=useMemo(()=>new Map(allLucus.map(a=>[a.uid,a])),[allLucus]);
+  const options=useMemo(()=>allLucus.map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[allLucus]);
+  const poolOptions=useMemo(()=>spool.map(uid=>lucusMap.get(uid))
+    .filter(Boolean).map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[spool,lucusMap]);
   const availableRoadOptions=poolOptions.filter(item=>!queue.includes(item.value));
   const originalRow=records.find(row=>row.uid===editingUid);
   const originalSpool=originalRow?traceMemberUids(originalRow):[];
@@ -160,7 +160,7 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
       description!==String(originalRow.description||'')||
       invisible!==Boolean(originalRow.invisible)||
       JSON.stringify(routeUids)!==JSON.stringify(originalRow.route_list?.routes||[])||
-      JSON.stringify(queue)!==JSON.stringify(originalRow.trace_type==='path'?originalRow.anchor_list:[])||
+      JSON.stringify(queue)!==JSON.stringify(originalRow.trace_type==='path'?originalRow.lucus_list:[])||
       JSON.stringify(pairs)!==JSON.stringify(originalRow.trace_type==='trace'?(originalRow.route_list?.segments||[]):[])||
       JSON.stringify(spool)!==JSON.stringify(originalSpool)
     :Boolean(title||description||spool.length||queue.length||pairs.length||routeUids.length||invisible);
@@ -170,13 +170,13 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
   const preview=editorOpen
     ?(chosenIds.length>=2||type==='trace'&&routeUids.length>0
       ?{uid:editingUid||'EDIT',trace_type:type,source_scope:owner,
-        title:title||'地圖預覽',anchor_list:type==='path'?queue:unique(pairs.flat()),route_list:{routes:routeUids,segments:type==='trace'?pairs:[]}}
+        title:title||'地圖預覽',lucus_list:type==='path'?queue:unique(pairs.flat()),route_list:{routes:routeUids,segments:type==='trace'?pairs:[]}}
       :null)
     :current;
-  const previewAnchors=treeMode?(spatialData?.anchors||[]).filter(row=>currentMemberUids.includes(row.uid)):(currentAnchors.data||[]);
+  const previewLucus=treeMode?(spatialData?.lucus||[]).filter(row=>currentMemberUids.includes(row.uid)):(currentLucus.data||[]);
   const clear=()=>{
     setEditingUid('');setTitle('');setDescription('');setSpool([]);setQueue([]);setPairs([]);
-    setFrom('');setTo('');setMapStart('');setSelectedStop('');setSelectedAnchor(null);setSavedReceipt(null);
+    setFrom('');setTo('');setMapStart('');setSelectedStop('');setSelectedLucus(null);setSavedReceipt(null);
     setInvisible(false);setRouteUids([]);
   };
   const allowLeave=()=>!incomplete||window.confirm('尚未儲存，確定放棄修改？');
@@ -194,7 +194,7 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
     clear();setEditorOpen(true);setEditingUid(row.uid);setType(row.trace_type);
     setTitle(row.title);setDescription(row.description||'');
     setInvisible(Boolean(row.invisible));setRouteUids(row.route_list?.routes||[]);
-    setQueue(row.trace_type==='path'?[...row.anchor_list]:[]);
+    setQueue(row.trace_type==='path'?[...row.lucus_list]:[]);
     setPairs(row.trace_type==='trace'?(row.route_list?.segments||[]).map(pair=>[...pair]):[]);
     setSpool(traceMemberUids(row));setSelectedUid(row.uid);setShowMap(true);
   };
@@ -223,9 +223,9 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
     if(row&&(mode==='all'||row.trace_type===mode)){openedFromUrl.current=token;openEdit(row);}
   },[params,index.data,owner,own]);
   const addToSpool=()=>{
-    const uid=selectedAnchor?.value;
-    if(!uid||!anchorMap.has(uid)||spool.includes(uid))return;
-    setSpool(items=>[...items,uid]);setSelectedAnchor(null);
+    const uid=selectedLucus?.value;
+    if(!uid||!lucusMap.has(uid)||spool.includes(uid))return;
+    setSpool(items=>[...items,uid]);setSelectedLucus(null);
   };
   const removeFromSpool=uid=>{
     setSpool(items=>items.filter(id=>id!==uid));
@@ -249,9 +249,9 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
     if(pairs.some(pair=>pair[0]===from&&pair[1]===to))return;
     setPairs(items=>[...items,[from,to]]);setFrom('');setTo('');
   };
-  const addMapSelectedAnchor=lucus=>{
+  const addMapSelectedLucus=lucus=>{
     const uid=String(lucus?.uid||'');
-    if(busy||!own||!editorOpen||!anchorMap.has(uid))return;
+    if(busy||!own||!editorOpen||!lucusMap.has(uid))return;
     setSpool(items=>items.includes(uid)?items:[...items,uid]);
     if(type==='path'){
       setQueue(items=>items.includes(uid)||items.length>=MAX_ROAD?items:[...items,uid]);
@@ -278,9 +278,9 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
         throw Error('路線至少兩站，依先後順序建立');
       if(type==='trace'&&(!(pairs.length||routeUids.length)||pairs.length>MAX_LINES||pairs.some(pair=>!validPair(pair))))
         throw Error('痕跡圖必須至少有一條有效的起點與終點線段');
-      if(chosenIds.some(uid=>!anchorMap.has(uid)))throw Error('候選地點中有尚未載入的地點');
+      if(chosenIds.some(uid=>!lucusMap.has(uid)))throw Error('候選地點中有尚未載入的地點');
       const input={scopeId:owner,type,title,description,invisible,routeUids:type==='trace'?routeUids:[],
-        anchorUids:type==='path'?queue:pairs,anchors:allAnchors};
+        lucusUids:type==='path'?queue:pairs,lucus:allLucus};
       let receipt=savedReceipt;
       if(receipt&&(receipt.type!==type||receipt.editingUid!==editingUid))
         throw Error('上一筆儲存尚未確認，不會再次新增');
@@ -293,10 +293,10 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
       const updated=await index.mutate();
       const saved=(updated||[]).find(row=>row.uid===receipt.uid&&row.source_scope===owner);
       if(!saved||saved.title!==title.trim()||saved.trace_type!==type
-        ||JSON.stringify(saved.anchor_list)!==JSON.stringify(type==='path'?input.anchorUids:unique(input.anchorUids.flat()))
+        ||JSON.stringify(saved.lucus_list)!==JSON.stringify(type==='path'?input.lucusUids:unique(input.lucusUids.flat()))
         ||Boolean(saved.invisible)!==invisible
         ||JSON.stringify(saved.route_list?.routes||[])!==JSON.stringify(input.routeUids)
-        ||JSON.stringify(saved.route_list?.segments||[])!==JSON.stringify(type==='trace'?input.anchorUids:[]))
+        ||JSON.stringify(saved.route_list?.segments||[])!==JSON.stringify(type==='trace'?input.lucusUids:[]))
         throw Error('資料庫已回應寫入，但重讀尚未一致；保留草稿，按儲存只重新檢查');
       const uid=receipt.uid;
       clear();setSelectedUid(uid);setEditorOpen(false);setShowMap(true);
@@ -391,7 +391,7 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
         <button type="button" className="loc-trace-saved-map-summary"
           onClick={()=>{if(allowLeave()){setSelectedUid(row.uid);setShowMap(true);setEditorOpen(false);clear();}}}>
           <span>{row.trace_type==='trace'?'痕跡圖｜':'路線圖｜'}{row.title}{Boolean(row.invisible)?'（已設定隱藏）':''}</span>
-          <span className="scope-status">{row.trace_type==='path'?'路線 · '+row.anchor_list.length+' 站':'痕跡 · '+(row.route_list?.segments?.length||0)+' 段'}</span>
+          <span className="scope-status">{row.trace_type==='path'?'路線 · '+row.lucus_list.length+' 站':'痕跡 · '+(row.route_list?.segments?.length||0)+' 段'}</span>
         </button>
         {current?.uid===row.uid?<div className="scope-stat-controls">
           <button type="button" className="loc-button" disabled={!own||busy} onClick={()=>openEdit(row)}>編輯</button>
@@ -428,11 +428,11 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
         <button type="button" className="loc-button" disabled={busy} onClick={()=>setShowMap(value=>!value)}>
           {showMap?'收起地圖選點':'展開地圖選點'}
         </button>
-        <span className="scope-status">{type==='path'?'點選地圖上的地點，依序加入路線。':'先點起點，再點終點，即建立一段痕跡連線。'}{mapStart?' 已選起點：'+(anchorMap.get(mapStart)?.title||mapStart):''}</span>
+        <span className="scope-status">{type==='path'?'點選地圖上的地點，依序加入路線。':'先點起點，再點終點，即建立一段痕跡連線。'}{mapStart?' 已選起點：'+(lucusMap.get(mapStart)?.title||mapStart):''}</span>
       </div>
-      {showMap?<TraceMap spatialData={{anchors:allAnchors,maps:preview?[preview,...records.filter(row=>routeUids.includes(row.uid))]:[]}}
+      {showMap?<TraceMap spatialData={{lucus:allLucus,maps:preview?[preview,...records.filter(row=>routeUids.includes(row.uid))]:[]}}
         selectedRouteUid={preview?.uid||''} hideRoutePicker
-        onAnchorSelect={addMapSelectedAnchor}/>:null}
+        onLucusSelect={addMapSelectedLucus}/>:null}
       {type==='trace'?<details className="scope-card">
         <summary>第二層：所屬路線圖（{routeUids.length} 條）</summary>
         <p className="scope-status">由此指定空間痕跡圖包含哪些路線圖；連線關聯只用來組成痕跡圖，不影響其他紀錄的隱藏設定。</p>
@@ -443,24 +443,24 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
         </label>)}
       </details>:null}
       <h4>選擇地點</h4>
-      {anchorIndex.isPending?<p className="scope-status">正在載入本 Scope 的地點標題…</p>:null}
-      {anchorIndex.error?<p role="alert" className="scope-error">{String(anchorIndex.error.message||anchorIndex.error)}</p>:null}
+      {lucusIndex.isPending?<p className="scope-status">正在載入本 Scope 的地點標題…</p>:null}
+      {lucusIndex.error?<p role="alert" className="scope-error">{String(lucusIndex.error.message||lucusIndex.error)}</p>:null}
       <div className="loc-trace-route-pickers">
         <div className="loc-trace-route-autocomplete">
           <label htmlFor="trace-spool-title-search">搜尋地點標題</label>
           <ScopeOptionPicker id="trace-spool-title-search"
             options={options.filter(opt=>!spool.includes(opt.value))}
-            value={selectedAnchor?.value||''}
-            onChange={id=>setSelectedAnchor(options.find(option=>option.value===id)||null)}
-            disabled={busy||anchorIndex.isPending} resetKey={owner}
+            value={selectedLucus?.value||''}
+            onChange={id=>setSelectedLucus(options.find(option=>option.value===id)||null)}
+            disabled={busy||lucusIndex.isPending} resetKey={owner}
             placeholder="選擇已授權地點"
             noOptionsMessage="沒有符合地點"/>
         </div>
-        <button className="loc-button" type="button" disabled={!selectedAnchor||busy} onClick={addToSpool}>＋ 加入候選地點</button>
+        <button className="loc-button" type="button" disabled={!selectedLucus||busy} onClick={addToSpool}>＋ 加入候選地點</button>
       </div>
       <div className="loc-trace-selection-order">
         {spool.map(uid=><div key={uid} className="loc-trace-route-queue-actions">
-          <span>{anchorMap.get(uid)?.title||uid} · {uid}</span>
+          <span>{lucusMap.get(uid)?.title||uid} · {uid}</span>
           <button type="button" className="loc-button" disabled={busy} onClick={()=>removeFromSpool(uid)}>移除</button>
         </div>)}
       </div>
@@ -475,7 +475,7 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
             disabled={busy||!availableRoadOptions.some(option=>option.value===selectedStop)}>＋ 加入路線</button>
         </div>
         <ol className="loc-trace-selection-order">{queue.map((uid,i)=><li key={uid}>
-          <span>{anchorMap.get(uid)?.title||uid}</span>
+          <span>{lucusMap.get(uid)?.title||uid}</span>
           <div className="loc-trace-route-queue-actions">
             <button type="button" className="loc-button" onClick={()=>shift(i,-1)} disabled={busy||i===0}>↑</button>
             <button type="button" className="loc-button" onClick={()=>shift(i,1)} disabled={busy||i===queue.length-1}>↓</button>
@@ -500,13 +500,13 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
             onClick={addPair}>＋ 加入線段</button>
         </div>
         <div className="loc-trace-selection-order">{pairs.map((pair,i)=><div key={pair.join(':')+':'+i}>
-          {anchorMap.get(pair[0])?.title||pair[0]} — {anchorMap.get(pair[1])?.title||pair[1]}
+          {lucusMap.get(pair[0])?.title||pair[0]} — {lucusMap.get(pair[1])?.title||pair[1]}
           <button type="button" className="loc-button" disabled={busy}
             onClick={()=>setPairs(items=>items.filter((_,j)=>j!==i))}>移除</button>
         </div>)}</div>
       </>}
       <div className="scope-stat-controls">
-        {!inDock?<button className="loc-button primary" type="submit" disabled={busy||!own||anchorIndex.isPending||Boolean(anchorIndex.error)||!title.trim()||
+        {!inDock?<button className="loc-button primary" type="submit" disabled={busy||!own||lucusIndex.isPending||Boolean(lucusIndex.error)||!title.trim()||
           (type==='path'?queue.length<2:!(pairs.length||routeUids.length))}>
           {busy?'儲存中…':'儲存'+(type==='path'?'路線圖':'痕跡圖')}
         </button>:null}
@@ -514,7 +514,7 @@ export default function TraceRouteManager({scopeId,mode='all',treeMode=false,sel
           onClick={()=>{if(allowLeave()){clear();setEditorOpen(false);}}}>取消</button>:null}
       </div>
     </form>:null}
-    {!treeMode&&!editorOpen&&showMap&&preview?<TraceMap spatialData={{anchors:previewAnchors,maps:[preview,...currentRouteMembers]}}
+    {!treeMode&&!editorOpen&&showMap&&preview?<TraceMap spatialData={{lucus:previewLucus,maps:[preview,...currentRouteMembers]}}
       selectedRouteUid={preview.uid} hideRoutePicker/>:null}
     {notice?<p role={error?'alert':'status'} className={'scope-status'+(error?' scope-error':'')}>{notice}</p>:null}
   </section>;

@@ -44,7 +44,7 @@ function StatTreemapCell({x,y,width,height,depth,index,fill,name}){
   return <g><rect x={x} y={y} width={width} height={height} rx={2}
     fill={fill||pointColor(index||0)} stroke="var(--loc-panel)" strokeWidth={1.5}/>
     {width>=70&&height>=23?<text x={x+width/2} y={y+height/2}
-      textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}
+      textLucus="middle" dominantBaseline="central" fontSize={11} fontWeight={600}
       fill="var(--loc-text)" stroke="var(--loc-panel)" strokeWidth={2.5} paintOrder="stroke">
       {label.slice(0,Math.max(3,Math.floor(width/12)))}</text>:null}
     <title>{label}</title></g>;
@@ -103,7 +103,7 @@ export default function StatisticsMultiChart({
     ?foldEmptyTimeBuckets(time,timeFields,units):{rows:time,gaps:[]},[foldBlank,actual,time,timeFields,locale]);
   const margin={top:16,right:18,bottom:44,left:0};
   const axes=(<><CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
-    <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
+    <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textLucus="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
     {selectedPeriodKey?<ReferenceLine x={selectedPeriodKey} stroke={CHART_ACCENT}
       strokeWidth={2.5} strokeDasharray="5 3" label={{value:'已選時段',position:'insideTopRight',fill:TEXT,fontSize:10}}/>:null}
@@ -174,7 +174,7 @@ export default function StatisticsMultiChart({
   </ScatterChart>;
   else if(actual==='composed')chart=<ComposedChart data={composed} margin={margin}>
     <CartesianGrid stroke={GRID} strokeDasharray="3 3"/>
-    <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textAnchor="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
+    <XAxis dataKey="period" tick={{fill:TEXT,fontSize:11}} angle={-20} textLucus="end" height={64} interval="preserveStartEnd" stroke={GRID}/>
     <YAxis tick={{fill:TEXT,fontSize:11}} allowDecimals={false} stroke={GRID}/>
     <Tooltip content={<ThemedChartTooltip/>}/><Legend/>
     {composed.length>32?<Brush dataKey="period" height={24} travellerWidth={9} stroke={CHART_ACCENT}/>:null}

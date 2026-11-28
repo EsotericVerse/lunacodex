@@ -28,7 +28,7 @@ export function useSourceCategories(){
   });
 }
 
-// The LOC SiteAnchor hierarchy is fixed public taxonomy. This panel shows the
+// The LOC SiteLucus hierarchy is fixed public taxonomy. This panel shows the
 // same published JavaScript snapshot used by Culture, Statistics, Search and
 // Import; it has no live SQL controls that could diverge from the release copy.
 export function AdminSourceCategories(){

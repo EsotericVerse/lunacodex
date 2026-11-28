@@ -8,7 +8,7 @@ import {featureNavigationHref} from '../routing/feature-navigation';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {traceRouteHierarchy} from './trace/trace-route-hierarchy.mjs';
 import {
-  readTraceMapIndex,readCurrentTraceAnchors,traceMapIndexKey,traceMemberUids
+  readTraceMapIndex,readCurrentTraceLucus,traceMapIndexKey,traceMemberUids
 } from './trace/trace-data';
 
 // LOC is a lightweight cross-Scope route/trace PREVIEW, not a second
@@ -55,11 +55,11 @@ export default function LocTracePreview(){
   const points=useAsyncResource({
     queryKey:['loc-trace-selected-route-v1',selected?.source_scope||'',selected?.uid||'',memberIds.join(',')],
     enabled:Boolean(selected&&memberIds.length),
-    queryFn:()=>readCurrentTraceAnchors(selected.source_scope,memberIds),
+    queryFn:()=>readCurrentTraceLucus(selected.source_scope,memberIds),
     revalidateIfStale:false,revalidateOnFocus:false,revalidateOnReconnect:false
   });
   const spatial=useMemo(()=>selected?{
-    anchors:points.data||[],maps:[selected,...referencedRoutes]
+    lucus:points.data||[],maps:[selected,...referencedRoutes]
   }:null,[selected,points.data,referencedRoutes]);
   return <FeaturePage featureId="trace">
     <section className="loc-card scope-feature-card scope-feature-card-wide">
@@ -98,7 +98,7 @@ export default function LocTracePreview(){
         {String(points.error.message||points.error)}
       </p>:null}
       {selected?<TraceMap publicTrace routeOnly spatialData={spatial}
-        selectedRouteUid={selected.uid} hideRoutePicker showAnchorSearch={false}/>:null}
+        selectedRouteUid={selected.uid} hideRoutePicker showLucusSearch={false}/>:null}
     </section>
   </FeaturePage>;
 }

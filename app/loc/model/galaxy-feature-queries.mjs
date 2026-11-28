@@ -249,7 +249,7 @@ export async function executeGalaxyFeatureQuery(db,model){
       .sort((a,b)=>a.source.localeCompare(b.source))};
   }
   if(model.result==='articles'){
-    // Fixed GalaxyList and UID Anchor projection; article CONTENT is never
+    // Fixed GalaxyList and UID Lucus projection; article CONTENT is never
     // returned by list readers. Include a separate COUNT statement only when
     // explicitly requested by an existing Culture/Statistics list.
     const total=model.includeTotal

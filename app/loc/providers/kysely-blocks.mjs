@@ -71,7 +71,7 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
   const pageOf=row=>loc?row.type:row.page_name;
   const outside=new Set(existing.filter(row=>pageOf(row)!==type)
     .map(row=>String(row.uid).trim()));
-  if(rows.some(row=>outside.has(row.uid)))reject('Block UID belongs to another page or Anchor type');
+  if(rows.some(row=>outside.has(row.uid)))reject('Block UID belongs to another page or Lucus type');
   const removed=existing.filter(row=>pageOf(row)===type&&!seen.has(String(row.uid).trim()))
     .map(row=>String(row.uid).trim());
   if(rows.length){
@@ -84,7 +84,7 @@ export async function saveBlocksKysely(db,args,{engine='postgres',namespace='sil
       // Both portable engines lock the modeled UID set once, then use a
       // set-based CASE UPDATE and multi-row INSERT in this existing transaction.
       // The locked projection also verifies that an existing UID still belongs
-      // to this page/Anchor type before any update is applied.
+      // to this page/Lucus type before any update is applied.
       const req={schema:'silver',table:tableName,operation:'upsert',
         values:payload,onConflict:['uid'],columns:['*'],returning:false};
       const guardFilter={column:loc?'type':'page_name',value:type};

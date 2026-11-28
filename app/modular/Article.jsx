@@ -13,8 +13,6 @@ import {UI_COPY} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
 import UiText,{useUiText} from '../i18n/UiText';
 import {isInteractiveContentTarget} from '../loc/content/content-policy.js';
-import {mediaAnchorHref} from './routing/feature-navigation';
-import {scopeHref} from './routing/scope-registry';
 
 
 // The existing BlockNote read-only canvas is needed only once a rich-text
@@ -72,21 +70,10 @@ export default function Article({uid,title,articleHref='',detailReading=false,re
       {key:'cancel',disabled:editBusy,onClick:onCancel,label:UI_COPY.common.cancel}
     ]} status={editError} statusClassName="scope-error" statusRole="alert"/>:null;
   const titleEditor=editingReady?<input className="scope-article-edit-title" aria-label={UI_COPY.common.title} value={editorDraft.title||''} onChange={event=>onDraftChange(current=>({...current,title:event.target.value}))}/>:null;
-  // The same saved media relationship links externally in view mode, but opens
-  // the existing scoped MediaAnchor attribute editor while an article is edited.
-  const mediaEditHref=id=>managerMode
-    ?(mediaScopeId==='loc'?'':scopeHref(mediaScopeId,'search/manage')+'?media='+encodeURIComponent(id))
-    :mediaAnchorHref(mediaScopeId,id);
-  const mediaEditLinks=editingReady&&mediaScopeId?links
-    .filter(link=>String(link?.id||'').startsWith('media:'))
-    .map(link=>({id:'edit:'+link.id,label:link.label||t('uiExtra.searchUI.mediaAttributes'),href:mediaEditHref(String(link.id).slice(6))}))
-    .filter(link=>link.href):[];
-  const visibleLinks=mediaEditLinks.length?links.filter(link=>!String(link?.id||'').startsWith('media:')):links;
-  const visibleRelations=mediaEditLinks.length?[...relationLinks,...mediaEditLinks]:relationLinks;
   // Use the existing list row date without fetching its article body.
   const displayDate=String(date||articleDate||articleCreateTime||'').slice(0,10);
   return <WorkSummaryCard title={title} titleHref={articleHref} titleEditor={titleEditor} kicker={styleTag?styleTagKicker:null} source={source} scopeId={scopeId} date={editingReady?'':displayDate} actions={editorActions}
-    body={editingReady||documentBody||styleTag?'':body} hidden={hidden} relationLinks={visibleRelations} detailReading={detailReading} relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace} relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate} articleCreateTime={articleCreateTime} tracePlace={tracePlace} traceHref={traceHref} locationName={locationName} links={visibleLinks}
+    body={editingReady||documentBody||styleTag?'':body} hidden={hidden} relationLinks={relationLinks} detailReading={detailReading} relatedMedia={relatedMedia} relatedTime={relatedTime} relatedSpace={relatedSpace} relatedStatistics={relatedStatistics} articleScopeId={articleScopeId} articleDate={articleDate} articleCreateTime={articleCreateTime} tracePlace={tracePlace} traceHref={traceHref} locationName={locationName} links={links}
     destinations={destinations} className={['loc-shared-work-card',styleTag?'scope-article-style-tag-hit':'',detailReading?'scope-article-detail':''].filter(Boolean).join(' ')} onClickCapture={onClickCapture}>
     {styleTag&&!editingReady&&styleIntroText?<div className="scope-style-tag-search-intro">{styleIntroText}</div>:null}
     {documentBody&&!editingReady?<DeferredArticleBody html={body}/>:null}

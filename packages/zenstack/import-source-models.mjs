@@ -96,7 +96,7 @@ const SOURCE_IMPORT_RECORD_PATHS=Object.freeze({
 });
 
 // Declarative, source-owned one-level relationships for exports containing
-// multiple flat collections. These are NOT new Galaxy/Anchor tables or a CMS
+// multiple flat collections. These are NOT new Galaxy/Lucus tables or a CMS
 // converter: the importer performs one exact-ID join and retains source data.
 const SOURCE_IMPORT_RELATIONS=Object.freeze({
   WordPress:Object.freeze([

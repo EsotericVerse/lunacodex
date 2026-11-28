@@ -1,4 +1,4 @@
-// Exact UID-selected Anchor navigation only; never autocomplete identifiers.
+// Exact UID-selected Lucus navigation only; never autocomplete identifiers.
 // All SQL is fixed-purpose, Kysely-built and bounded. No user-supplied SQL,
 // imported schema copying, Article body scans or duplicate search tables.
 import {readItemKeywordProjection} from './item-count-analysis.mjs';
@@ -17,7 +17,7 @@ const attrs=row=>{
   const raw=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr;
   return raw&&typeof raw==='object'&&!Array.isArray(raw)?raw:{};
 };
-// Class/Group/Item attr.uid points to child Anchor UIDs, never Galaxy article UIDs.
+// Class/Group/Item attr.uid points to child Lucus UIDs, never Galaxy article UIDs.
 const kids=row=>Array.isArray(attrs(row).uid)?attrs(row).uid.filter(uid=>UID.test(String(uid))):[];
 const sourceTable=(s,engine='postgres',namespace='silver')=>
   portableRelation(scopeTableName(s,'galaxy'),engine,namespace);
@@ -29,7 +29,7 @@ function err(message,status=400){throw Object.assign(new Error(message),{httpSta
 export function createLucusArticlePageBuffer({offset=0,limit=20,sortDirection='desc'}={}){
   if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||
     !['asc','desc'].includes(sortDirection))
-    throw new TypeError('Invalid Anchor article page buffer');
+    throw new TypeError('Invalid Lucus article page buffer');
   const capacity=offset+limit+1;
   const heap=[];
   const compare=(a,b)=>{
@@ -77,8 +77,8 @@ export function createLucusArticlePageBuffer({offset=0,limit=20,sortDirection='d
 
 
 // Exact navigation retains keyword publication checks.
-export async function accessibleKeywordAnchors(db,scope,owner=false,{engine='postgres',namespace='silver'}={}){
-  let q=db.selectFrom(anchorTable(scope,engine,namespace))
+export async function accessibleKeywordLucus(db,scope,owner=false,{engine='postgres',namespace='silver'}={}){
+  let q=db.selectFrom(lucusTable(scope,engine,namespace))
     .select(['uid','type','attr']).where('type','in',['class','group','item']);
   if(!owner)q=q.where('invisible','=',false);
   const rows=await q.execute();
@@ -120,13 +120,13 @@ export async function queryLucusArticles(db,{scopeId,uid,type,owner=false,
     (startDate&&!/^\d{4}-\d{2}-\d{2}$/.test(startDate))||
     (endDate&&!/^\d{4}-\d{2}-\d{2}$/.test(endDate))||
     !['','galaxy','lyrics_work','text_work'].includes(contentType)||
-    String(sourceFilter).length>150)err('Invalid Anchor navigation request');
-  const scope=scopeId,lucus=await db.selectFrom(anchorTable(scope,engine,namespace))
+    String(sourceFilter).length>150)err('Invalid Lucus navigation request');
+  const scope=scopeId,lucus=await db.selectFrom(lucusTable(scope,engine,namespace))
     .select(['uid','type','title','attr','invisible'])
     .where('uid','=',uid).where('type','=',type).executeTakeFirst();
-  if(!lucus||(!owner&&lucus.invisible))err('Anchor is unavailable',404);
+  if(!lucus||(!owner&&lucus.invisible))err('Lucus is unavailable',404);
   if(['item','pattern'].includes(type)){
-    const visible=await accessibleKeywordAnchors(db,scope,owner,{engine,namespace});
+    const visible=await accessibleKeywordLucus(db,scope,owner,{engine,namespace});
     const allowed=type==='item'?visible.items:visible.patterns;
     if(!allowed.has(uid))err('Keyword Class is not published',403);
   }
@@ -143,13 +143,13 @@ export async function queryLucusArticles(db,{scopeId,uid,type,owner=false,
   // Item/Pattern navigation evaluates authored Item rules on demand.
   // The only article UIDs held here are transient page-local candidates.
   if(type==='item'||type==='pattern'){
-    const visible=await accessibleKeywordAnchors(db,scope,owner,{engine,namespace});
-    const itemRows=await db.selectFrom(anchorTable(scope,engine,namespace))
+    const visible=await accessibleKeywordLucus(db,scope,owner,{engine,namespace});
+    const itemRows=await db.selectFrom(lucusTable(scope,engine,namespace))
       .select(['uid','title','attr']).where('type','=','item')
       .where('uid','in',[...visible.items]).execute();
-    const groups=await db.selectFrom(anchorTable(scope,engine,namespace))
+    const groups=await db.selectFrom(lucusTable(scope,engine,namespace))
       .select(['uid','title','attr']).where('type','=','group').execute();
-    const patternRows=visible.patterns.size?await db.selectFrom(anchorTable(scope,engine,namespace))
+    const patternRows=visible.patterns.size?await db.selectFrom(lucusTable(scope,engine,namespace))
       .select(['uid','type','title','num']).where('type','=','pattern')
       .where('uid','in',[...visible.patterns]).execute():[];
     const patternByUid=new Map(patternRows.map(pattern=>[pattern.uid,{

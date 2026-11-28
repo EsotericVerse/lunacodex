@@ -7,7 +7,7 @@ const keyOf=row=>String(row?.period||row?.era_id||row?.uid||row?.id||'').trim();
 // Today is a query/selection reference, NEVER a Time lucus or a trace end.
 // Ranges may be disconnected, overlapping or singleton points.
 export function structurePeriodPreference(periods=[],items=[],referenceDay=''){
-  const lastAnchor=(Array.isArray(items)?items:[])
+  const lastLucus=(Array.isArray(items)?items:[])
     .filter(row=>row?.entry_type==='lucus'&&toDay(row.start_date))
     .sort((a,b)=>String(a.start_date).localeCompare(String(b.start_date))).at(-1)||null;
   const day=toDay(referenceDay)||new Date().toISOString().slice(0,10);
@@ -27,5 +27,5 @@ export function structurePeriodPreference(periods=[],items=[],referenceDay=''){
       }
     }
   }
-  return {lastAnchor,preferredKey:closest?keyOf(closest):'all'};
+  return {lastLucus,preferredKey:closest?keyOf(closest):'all'};
 }

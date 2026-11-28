@@ -2,7 +2,7 @@
 import {useCallback,useRef,useState} from 'react';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {TRACE_SCOPES,readTraceData,traceKey} from '../../modular/features/trace/trace-data';
-import SpaceAnchorTree from './SpaceAnchorTree';
+import SpaceLucusTree from './SpaceLucusTree';
 import TraceManagementPanel from './TraceManagement';
 import RouteManager from './RouteManager';
 
@@ -27,7 +27,7 @@ export default function UnifiedSpatialManagement({scopeId,initialType='point',in
     <div className="loc-progressive-river-frame"><span>空間資料與地圖</span><div className="loc-progressive-river-axis" aria-hidden="true"/></div>
   </section>;
   const spatial=query.data,route=selected.type==='path'||selected.type==='trace';
-  return <SpaceAnchorTree spatial={spatial} scopeId={scopeId}
+  return <SpaceLucusTree spatial={spatial} scopeId={scopeId}
     value={selected.uid?selected.type+':'+selected.uid:''} onSelect={pick}
     onCreate={type=>pick(type)} className="loc-unified-spatial-manager">
     {route?<RouteManager key={scopeId+':'+selected.type+':'+selected.uid+':'+selected.serial}
@@ -37,5 +37,5 @@ export default function UnifiedSpatialManagement({scopeId,initialType='point',in
       key={scopeId+':point:'+selected.uid+':'+selected.serial}
       scopeId={scopeId} mode="lucus" embedded selectedUid={selected.uid}
       spatialData={spatial} reloadSpatial={()=>query.mutate()} onRegisterLeave={registerLeave}/>}
-  </SpaceAnchorTree>;
+  </SpaceLucusTree>;
 }

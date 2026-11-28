@@ -111,7 +111,7 @@ test('tail checkpoint survives finalization failure and retries without reclassi
   assert.equal(reads,fetched,'retrying finalization must not SELECT Galaxy again');
 });
 
-test('Pattern Anchor UIDs count occurrences during the same article pass, shared once',()=>{
+test('Pattern Lucus UIDs count occurrences during the same article pass, shared once',()=>{
   const linked=[
     {uid:'PATT0001',title:'月光'},
     {uid:'PATT0002',title:'光'},

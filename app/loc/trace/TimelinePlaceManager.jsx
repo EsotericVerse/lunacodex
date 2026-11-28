@@ -4,7 +4,7 @@ import {readTimelineArticlePage} from '../actions/trace/direct-query.mjs';
 import FlowProgress from '../../modular/FlowProgress';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {dbAuthClient} from '../db/db-client.mjs';
-import {readAllTraceAnchors} from '../../modular/features/trace/trace-data';
+import {readAllTraceLucus} from '../../modular/features/trace/trace-data';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {revalidateServerMetadata} from '../scope/scope-data';
 import {EDIT_OPERATION_TTL_MS,assertEditorSession} from '../auth/edit-session-ttl.mjs';
@@ -46,7 +46,7 @@ export default function TimelinePlaceManager({scopeId}){
     workerRef.current?.abort();
     if(analyzeTimerRef.current!==null)clearTimeout(analyzeTimerRef.current);
   },[]);
-  function parseInWorker(file,anchors,startDate,endDate){
+  function parseInWorker(file,lucus,startDate,endDate){
     if(typeof Worker==='undefined')throw Error('此瀏覽器不支援背景解析 JSON');
     return new Promise((resolve,reject)=>{
       const worker=new Worker(new URL('./timeline-analysis.worker.mjs',import.meta.url),{type:'module'});
@@ -66,7 +66,7 @@ export default function TimelinePlaceManager({scopeId}){
       };
       worker.onerror=event=>finish(null,Error(event?.message||'JSON 背景處理器載入失敗'));
       worker.onmessageerror=()=>finish(null,Error('JSON 背景處理器回傳資料失敗'));
-      try{worker.postMessage({file,anchors,startDate,endDate});}catch(error){finish(null,error);}
+      try{worker.postMessage({file,lucus,startDate,endDate});}catch(error){finish(null,error);}
     });
   }
   const cache=useResourceCache();
@@ -75,12 +75,12 @@ export default function TimelinePlaceManager({scopeId}){
     try{window.sessionStorage.removeItem('loc-timeline-review:'+scopeId);}catch{}
   },[scopeId]);
   const enabled=['lo3rwang','lrunes'].includes(scopeId);
-  const anchorQuery=useAsyncResource(['timeline-place-anchors-owner',scopeId],()=>{
-    return readAllTraceAnchors(scopeId,{includeHidden:true});
+  const lucusQuery=useAsyncResource(['timeline-place-lucus-owner',scopeId],()=>{
+    return readAllTraceLucus(scopeId,{includeHidden:true});
   },{enabled,revalidateOnFocus:false,revalidateOnReconnect:false});
-  const eligible=useMemo(()=>(anchorQuery.data||[]).filter(row=>
-    row.trace_type==='space_anchor'&&Array.isArray(row.address)&&row.address.length===2
-    &&row.address.every(v=>v!==null&&v!==undefined&&Number.isFinite(Number(v)))),[anchorQuery.data]);
+  const eligible=useMemo(()=>(lucusQuery.data||[]).filter(row=>
+    row.trace_type==='space_lucus'&&Array.isArray(row.address)&&row.address.length===2
+    &&row.address.every(v=>v!==null&&v!==undefined&&Number.isFinite(Number(v)))),[lucusQuery.data]);
   function releaseReview(){
     // A different time window invalidates the prior Timeline match graph.
     // Retain the selected File so the user can explicitly re-run the analysis.
@@ -96,7 +96,7 @@ export default function TimelinePlaceManager({scopeId}){
     if(fileRef.current)fileRef.current.value='';
   }
   async function analyze(){
-    if(!enabled||!selectedFile||analyzing||writing||anchorQuery.isPending)return;
+    if(!enabled||!selectedFile||analyzing||writing||lucusQuery.isPending)return;
     const from=Date.parse(rangeStart+'T00:00:00.000Z');
     const through=Date.parse(rangeEnd+'T00:00:00.000Z');
     const yearLater=new Date(from);
@@ -127,7 +127,7 @@ export default function TimelinePlaceManager({scopeId}){
       const windows=matched.windows;
       if(!windows.length){
         setAnalysis({ready:[],disputes:[],unchanged:[],visitCount,
-          empty:matched.withoutAnchor,ambiguous:0,articleCount:0});
+          empty:matched.withoutLucus,ambiguous:0,articleCount:0});
         setNotice('沒有任何 Timeline 造訪點落在既有空間定錨點 500 公尺內；不更新文章。');
         return;
       }
@@ -135,7 +135,7 @@ export default function TimelinePlaceManager({scopeId}){
       const nextDate=new Date(Date.parse(rangeEnd+'T00:00:00.000Z')+86400000).toISOString().slice(0,10);
       const articleMatches=[];
       let matchedArticles=0;
-      const visitMetrics=[{label:'已匹配造訪區間',value:windows.length},{label:'無對應定錨區間',value:matched.withoutAnchor},{label:'有歧義造訪區間',value:matched.ambiguousWindows}];
+      const visitMetrics=[{label:'已匹配造訪區間',value:windows.length},{label:'無對應定錨區間',value:matched.withoutLucus},{label:'有歧義造訪區間',value:matched.ambiguousWindows}];
       setProgress({done:visitCount,total:visitCount,message:'造訪地點匹配完成，正在比對文章日期…',metrics:visitMetrics,phase:'visits',complete:true});
       const windowsByDay=new Map();
       for(const window of windows){
@@ -179,7 +179,7 @@ export default function TimelinePlaceManager({scopeId}){
       }
       if(run!==runRef.current)return;
       const classified=accumulateTimelineArticles(articleMatches);
-      setAnalysis({...classified,visitCount,empty:matched.withoutAnchor,
+      setAnalysis({...classified,visitCount,empty:matched.withoutLucus,
         ambiguous:matched.ambiguousWindows,articleCount:classified.ready.length+
         classified.disputes.length+classified.unchanged.length});
       setNotice('已完成地點預覽。依既有空間定錨點集中審查；有歧義的地點才需要額外確認。');
@@ -297,9 +297,9 @@ export default function TimelinePlaceManager({scopeId}){
       </label>
       <p className="scope-status">可比對空間定錨點：{eligible.length.toLocaleString()}；只辨識造訪地點，移動路線不直接視為文章的確定位置。</p>
     </div>
-    {anchorQuery.error?<p role="alert" className="scope-status scope-error">讀取定錨點失敗：{friendlyError(anchorQuery.error)}</p>:null}
+    {lucusQuery.error?<p role="alert" className="scope-status scope-error">讀取定錨點失敗：{friendlyError(lucusQuery.error)}</p>:null}
     <div className="scope-stat-controls">
-      <button type="button" className="loc-button" disabled={!selectedFile||!rangeStart||!rangeEnd||analyzing||writing||anchorQuery.isPending||Boolean(anchorQuery.error)}
+      <button type="button" className="loc-button" disabled={!selectedFile||!rangeStart||!rangeEnd||analyzing||writing||lucusQuery.isPending||Boolean(lucusQuery.error)}
         onClick={analyze}>{analyzing?'比對中…':'分析 JSON 並預覽'}</button>
       <button type="button" className="loc-button" disabled={writing} onClick={reset}>清除本次分析／重新選檔</button>
       {analyzing?<button type="button" className="loc-button" onClick={()=>{

@@ -1,9 +1,9 @@
 // One Scope may analyze many Keyword Classes. The active Class chooses the
 // default view only; completed results are independently keyed by Class UID.
-// Physical Class Anchor UIDs are eight characters. Four-character IDs are
+// Physical Class Lucus UIDs are eight characters. Four-character IDs are
 // accepted here ONLY for reading historical keyword_meta receipt keys; do not
 // allocate four-character nodes, recreate an old Class table or restore its
-// prior write path. Authorization and analysis require native Anchor UIDs.
+// prior write path. Authorization and analysis require native Lucus UIDs.
 const UID=/^[0-9A-Za-z]{4}(?:[0-9A-Za-z]{4})?$/;
 export function keywordClassState(config={},classUid=''){
   if(!UID.test(classUid))return null;

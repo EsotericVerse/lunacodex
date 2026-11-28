@@ -28,7 +28,7 @@ const uniqueByUid=rows=>{
 // Public Scope Culture follows the same unclassified-date rule as the edit
 // river. Classification depends on ALL era/period windows, never expansion.
 // A date outside every actual interval must not be assigned to an era envelope.
-export function unassignedPublicDateAnchors(dates,eraWindows){
+export function unassignedPublicDateLucus(dates,eraWindows){
   const windows=list(eraWindows).filter(range=>
     validDate(range?.start)&&validDate(range?.end)&&range.start<=range.end);
   return list(dates).filter(lucus=>{
@@ -59,16 +59,16 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     .sort(chronological);
   const events=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='period'))
     .map(row=>[text(row.scope_id)+':'+text(row.uid),row]));
-  const anchors=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='lucus'))
+  const lucus=new Map(uniqueByUid(source.filter(row=>row?.entry_type==='lucus'))
     .map(row=>[text(row.scope_id)+':'+text(row.uid),row]));
   const orderedPeriodIds=(trace,scope)=>
-    [...new Set(list(trace.anchor_ids).map(text).filter(Boolean))]
+    [...new Set(list(trace.lucus_ids).map(text).filter(Boolean))]
       .sort((a,b)=>chronological(
         events.get(scope+':'+a)||{scope_id:scope,uid:a},
         events.get(scope+':'+b)||{scope_id:scope,uid:b}));
   const expanded=new Set(list(expandedEraIds).map(text));
   const items=[],groups=[];
-  const datedAnchors=[...anchors.values()]
+  const datedLucus=[...lucus.values()]
     .filter(lucus=>validDate(lucus.start_date))
     .sort((a,b)=>text(a.start_date).localeCompare(text(b.start_date)));
   const assigned=new Set();
@@ -117,7 +117,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
         const event=events.get(scope+':'+eventId);
         // Determine membership without rendering the collapsed child nodes.
         // One real Date can belong to multiple saved Periods and Eras.
-        const eventPoints=event?datedAnchors.filter(lucus=>withinTrace(lucus,event)):[];
+        const eventPoints=event?datedLucus.filter(lucus=>withinTrace(lucus,event)):[];
         for(const point of eventPoints)assignedToPeriod.add(text(point.scope_id)+':'+text(point.uid));
         if(!isExpanded)continue;
         const periodGroup=groupId+':period:'+eventId;
@@ -158,7 +158,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
     // Only dates without any actual linked Era -> Period membership belong
     // at the very end. Keep their records available, but do not render the
     // entire unclassified list until the visitor opens it.
-    const unassigned=datedAnchors.filter(lucus=>
+    const unassigned=datedLucus.filter(lucus=>
       !assignedToPeriod.has(text(lucus.scope_id)+':'+text(lucus.uid)));
     // The last root is ALWAYS "未定義定錨", even when it currently has no
     // orphan dates. It stays collapsed until explicitly opened. Keep Scope
@@ -209,8 +209,8 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
         display_label:range?.point?'●':'',
         ...(range?.invalid?{class_name:'scope-time-trace-broken'}:{})});
     }
-    const traceAnchors=datedAnchors.filter(lucus=>withinTrace(lucus,trace));
-    for(const lucus of traceAnchors)assigned.add(scope+':'+text(lucus.uid));
+    const traceLucus=datedLucus.filter(lucus=>withinTrace(lucus,trace));
+    for(const lucus of traceLucus)assigned.add(scope+':'+text(lucus.uid));
     if(!isExpanded)continue;
     const seenEvents=new Set();
     for(const [position,eventId] of eventIds.entries()){
@@ -238,37 +238,37 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
           display_label:event.title||eventId,title:event.title||eventId,
           description:event.summary||event.description||'',
           era_uid:id,period_uid:eventId,
-          invalid_anchor_links:range.missing_anchor_ids||[],
+          invalid_lucus_links:range.missing_lucus_ids||[],
           group_order:traceIndex*10000+position+2,
           ...(range.invalid?{class_name:'scope-time-trace-broken'}:{})});
-        const references=editorOnly?[]:[range.start_anchor_id,range.end_anchor_id]
+        const references=editorOnly?[]:[range.start_lucus_id,range.end_lucus_id]
           .filter(Boolean).map(text);
-        const seenAnchors=new Set();
-        for(const anchorId of references){
-          if(seenAnchors.has(anchorId))continue;
-          seenAnchors.add(anchorId);
-          const lucus=anchors.get(scope+':'+anchorId);
+        const seenLucus=new Set();
+        for(const lucusId of references){
+          if(seenLucus.has(lucusId))continue;
+          seenLucus.add(lucusId);
+          const lucus=lucus.get(scope+':'+lucusId);
           const date=text(lucus?.start_date).slice(0,10);
           if(!validDate(date))continue;
-          items.push({id:eventGroup+':'+segment+':'+anchorId,
+          items.push({id:eventGroup+':'+segment+':'+lucusId,
             uid:lucus.uid,scope_id:scope,entry_type:'lucus',
             group_key:eventGroup,group_label:event.title,
-            start_date:date,display_label:lucus.title||anchorId,
-            title:lucus.title||anchorId,
+            start_date:date,display_label:lucus.title||lucusId,
+            title:lucus.title||lucusId,
             description:lucus.summary||lucus.description||'',
             era_uid:id,period_uid:eventId,
             group_order:traceIndex*10000+position+2});
         }
       }
     }
-    const anchorGroup='trace-anchors:'+scope+':'+id;
-    if(traceAnchors.length)groups.push({id:anchorGroup,label:'定錨點',
+    const lucusGroup='trace-lucus:'+scope+':'+id;
+    if(traceLucus.length)groups.push({id:lucusGroup,label:'定錨點',
       order:traceIndex*10000+9000,className:'scope-time-trace-child'});
-    for(const lucus of traceAnchors){
-      const anchorId=text(lucus.uid),title=text(lucus.title)||anchorId;
-      items.push({id:groupId+':lucus:'+anchorId,
-        uid:anchorId,scope_id:scope,entry_type:'lucus',
-        group_key:anchorGroup,group_label:'定錨點',
+    for(const lucus of traceLucus){
+      const lucusId=text(lucus.uid),title=text(lucus.title)||lucusId;
+      items.push({id:groupId+':lucus:'+lucusId,
+        uid:lucusId,scope_id:scope,entry_type:'lucus',
+        group_key:lucusGroup,group_label:'定錨點',
         group_order:traceIndex*10000+9000,
         start_date:text(lucus.start_date).slice(0,10),
         display_label:'●',title,
@@ -276,7 +276,7 @@ export function buildEraRiver(source=[],expandedEraIds=[],{editorOnly=false,scop
         description:lucus.summary||lucus.description||''});
     }
   }
-  const unassigned=datedAnchors.filter(lucus=>
+  const unassigned=datedLucus.filter(lucus=>
     !assigned.has(text(lucus.scope_id)+':'+text(lucus.uid)));
   const scopes=[...new Set([text(scopeId),...source.map(row=>text(row?.scope_id)).filter(Boolean),
     ...unassigned.map(lucus=>text(lucus.scope_id))].filter(Boolean))];

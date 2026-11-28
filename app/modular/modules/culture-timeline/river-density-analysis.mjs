@@ -1,10 +1,10 @@
 import {detectCountChangepoints} from '../../../loc/model/karaul-count-changepoints.mjs';
 
 const DAY_MS=86400000;
-const ANCHOR_COVER_DAYS=3;
+const LUCUS_COVER_DAYS=3;
 const SUGGESTION_MIN_GAP_DAYS=7;
 const SUGGESTION_MIN_SEGMENT_SHARE=0.03;
-const MIN_ANCHOR_SUGGESTION_ITEMS=20;
+const MIN_LUCUS_SUGGESTION_ITEMS=20;
 
 function dayKey(value){
   const key=String(value||'').slice(0,10);
@@ -61,7 +61,7 @@ function structuralEmptyRuns(rows,changepoints){
   return runs;
 }
 
-export function analyzeRiverDensity(rows=[],anchorDates=[]){
+export function analyzeRiverDensity(rows=[],lucusDates=[]){
   const density=fillRiverDensity(rows);
   if(density.length<3)return {density,changepoints:[],hiddenDates:[],suggestions:[]};
 
@@ -92,7 +92,7 @@ export function analyzeRiverDensity(rows=[],anchorDates=[]){
   }
 
   const totalCount=values.reduce((sum,value)=>sum+value,0);
-  if(totalCount<MIN_ANCHOR_SUGGESTION_ITEMS){
+  if(totalCount<MIN_LUCUS_SUGGESTION_ITEMS){
     return {density,changepoints,hiddenDates:[],suggestions:[],suggestionEligible:false,totalCount};
   }
   const boundaries=[0,...changepoints,density.length];
@@ -114,9 +114,9 @@ export function analyzeRiverDensity(rows=[],anchorDates=[]){
     end:segment.endIndex<density.length?density[segment.endIndex].date:dayFromMs(dayMs(density.at(-1).date)+DAY_MS)
   }));
 
-  const existing=(anchorDates||[]).map(dayMs).filter(Number.isFinite).sort((a,b)=>a-b);
+  const existing=(lucusDates||[]).map(dayMs).filter(Number.isFinite).sort((a,b)=>a-b);
   const suggestions=new Map();
-  const coveredByAnchor=key=>{
+  const coveredByLucus=key=>{
     const value=dayMs(key);
     if(!Number.isFinite(value))return false;
     // Sorted lucus days allow a two-neighbor check instead of linear scanning
@@ -127,13 +127,13 @@ export function analyzeRiverDensity(rows=[],anchorDates=[]){
       if(existing[mid]<value)low=mid+1;
       else high=mid;
     }
-    const radius=ANCHOR_COVER_DAYS*DAY_MS;
+    const radius=LUCUS_COVER_DAYS*DAY_MS;
     return low<existing.length&&Math.abs(existing[low]-value)<=radius
       ||low>0&&Math.abs(existing[low-1]-value)<=radius;
   };
   const addSuggestion=(date,reason)=>{
     const key=dayKey(date);
-    if(!key||coveredByAnchor(key))return;
+    if(!key||coveredByLucus(key))return;
     const current=suggestions.get(key);
     if(!current||reason==='gap-edge')suggestions.set(key,{date:key,reason});
   };

@@ -55,8 +55,8 @@ function buildGraph(items=[],className='',classId='',expandedGroup='',expandedIt
   return {nodes,edges,meta,rootId};
 }
 
-// Reuse the keyword network canvas for LOC's four-level source Anchor tree.
-// Rows contain physical Anchor UIDs, with attr.uid listing child UIDs.
+// Reuse the keyword network canvas for LOC's four-level source Lucus tree.
+// Rows contain physical Lucus UIDs, with attr.uid listing child UIDs.
 function buildSourceGraph(sourceNodes=[],selectedRoot=''){
   const byUid=new Map(sourceNodes.map(row=>[row.uid,row]));
   const nodes=[],edges=[],meta=new Map();

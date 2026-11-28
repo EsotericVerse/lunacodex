@@ -7,7 +7,7 @@ const scopeIds=Object.freeze([...new Set((PUBLISHED_SITE_BOOTSTRAP.registry||[])
   .filter(id=>/^[a-z][a-z0-9]{0,14}$/.test(id)))].sort());
 
 // Deliberately select only public page labels and copy. Never serialize the
-// Loc model, authorization fields, runtime settings, or SiteAnchor records.
+// Loc model, authorization fields, runtime settings, or SiteLucus records.
 export async function readPublicHomePageCopySql(db,{engine='postgres',
   namespace='silver'}={}){
   if(!scopeIds.length)return [];

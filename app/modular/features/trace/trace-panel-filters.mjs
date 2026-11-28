@@ -1,7 +1,7 @@
 import {calendarYearWindow} from '../../../loc/preferences/default-year-window.mjs';
 
 // Shared "favorite-frame" filters for a selected Trace place. These filters
-// never change stored anchors, visit timestamps, or the current route.
+// never change stored lucus, visit timestamps, or the current route.
 const dateISO=date=>date.toISOString().slice(0,10);
 export const TRACE_PANEL_MODES=Object.freeze(['articles','timeline','statistics']);
 export const TRACE_TIME_WINDOWS=Object.freeze(['year','3m','12m','all','custom']);

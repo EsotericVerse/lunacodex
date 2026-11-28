@@ -28,10 +28,10 @@ export function exactNameCharacters(value){
   return [...String(value||'').normalize('NFKC').toLowerCase().replace(/臺/g,'台')
     .replace(/[\p{P}\p{S}\p{Z}\s\u200b]/gu,'')].sort().join('');
 }
-export function reviewReorderedCoordinateNames(anchors=[]){
+export function reviewReorderedCoordinateNames(lucus=[]){
   const byKey=new Map();
-  for(const lucus of anchors){
-    if(lucus?.trace_type!=='space_anchor')continue;
+  for(const lucus of lucus){
+    if(lucus?.trace_type!=='space_lucus')continue;
     const position=spaceCoordinates(lucus);
     const characters=exactNameCharacters(lucus.title);
     if(!position||characters.length<2)continue;
@@ -75,10 +75,10 @@ export function uncertainPlaceName(a,b){
   for(const token of ta)if(tb.has(token))shared++;
   return shared>=2&&shared/Math.max(ta.size,tb.size)>=0.38;
 }
-export function reviewPlaceNameGroups(anchors=[]){
+export function reviewPlaceNameGroups(lucus=[]){
   const byKey=new Map();
-  for(const lucus of anchors){
-    if(lucus?.trace_type!=='space_anchor')continue;
+  for(const lucus of lucus){
+    if(lucus?.trace_type!=='space_lucus')continue;
     const coordinates=spaceCoordinates(lucus);
     const characters=exactNameCharacters(lucus.title);
     if(!coordinates||!characters)continue;

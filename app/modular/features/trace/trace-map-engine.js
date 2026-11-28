@@ -1,7 +1,7 @@
 import {spaceCoordinates} from './space-graph.mjs';
 import {territoryColorExpression} from '../../visual-palette.mjs';
 // First-party React Trace loads MapLibre from the project's pinned npm package.
-// Public sample anchors are isolated from Galaxy. Deliberate place-search terms
+// Public sample lucus are isolated from Galaxy. Deliberate place-search terms
 // go only to the chosen geocoding service; map tiles do not receive article bodies
 // or device geolocation. Route demonstrations use sample coordinates only.
 import {Map,Marker,Popup,NavigationControl,LngLatBounds,setWorkerUrl} from 'maplibre-gl';
@@ -14,8 +14,8 @@ const STYLE='https://tiles.openfreemap.org/styles/liberty';
 export const TRACE_ORIGIN=Object.freeze({name:'板橋車站',lng:121.4638,lat:25.0143});
 
 // Fixed, public example locations: these are NOT the user's Galaxy records.
-// Geographic coordinates are approximate station-area anchors, not store doors.
-export const EXAMPLE_ANCHORS=Object.freeze([
+// Geographic coordinates are approximate station-area lucus, not store doors.
+export const EXAMPLE_LUCUS=Object.freeze([
   {id:'banqiao',name:'板橋車站',lng:121.4638,lat:25.0143,height:125},
   {id:'fuzhong',name:'府中站',lng:121.4592,lat:25.0085,height:165},
   {id:'jiangzicui',name:'江子翠站',lng:121.4724,lat:25.0300,height:100}
@@ -42,8 +42,8 @@ function ringAround({lng,lat},meters){
   return ring;
 }
 
-function pillarGeojson(anchors){
-  return {type:'FeatureCollection',features:anchors.map(place=>({
+function pillarGeojson(lucus){
+  return {type:'FeatureCollection',features:lucus.map(place=>({
     type:'Feature',
     id:place.id,
     properties:{name:place.name,height:place.height},
@@ -93,13 +93,13 @@ function buildStemElement(days){
   });
   return wrap;
 }
-function isValidSavedAnchor(lucus){
-  if(lucus?.trace_type!=='space_anchor')return false;
+function isValidSavedLucus(lucus){
+  if(lucus?.trace_type!=='space_lucus')return false;
   return Boolean(spaceCoordinates(lucus));
 }
-function existingAnchorPoints(anchors){
-  return {type:'FeatureCollection',features:(Array.isArray(anchors)?anchors:[])
-    .filter(isValidSavedAnchor)
+function existingLucusPoints(lucus){
+  return {type:'FeatureCollection',features:(Array.isArray(lucus)?lucus:[])
+    .filter(isValidSavedLucus)
     .map((a,i)=>({type:'Feature',id:i,properties:{title:String(a.title||''),address:String(a.postal_address||''),
         uid:String(a.uid||''),source_scope:String(a.source_scope||''),
         territoryTotal:Number(a.territory_total||0),territorySource:String(a.territory_source||'')},
@@ -115,7 +115,7 @@ function routeGeometry(coordinates){
   }]};
 }
 
-export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onAnchorSelect=null,anchors=[],showAnchorPopup=true,onGaugeVisibilityChange=()=>{},territoryMode=false,reduceMotion=false}={}){
+export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLocationPick=null,onLucusSelect=null,lucus=[],showLucusPopup=true,onGaugeVisibilityChange=()=>{},territoryMode=false,reduceMotion=false}={}){
   if(!container)throw new Error('找不到地圖容器。');
   const controller=new AbortController();
   let removed=false;
@@ -147,15 +147,15 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   let gaugeDetailVisible=false;
   let pickedMarker=null;
   let pickedPosition=null;
-  let savedAnchors=anchors;
+  let savedLucus=lucus;
   let stemsVisible=false;
   let selectedSavedRoute=null;
   let selectedSavedGraph=null;
   let lastGraphFocusKey='';
-  function setAnchors(next){
-    savedAnchors=Array.isArray(next)?next:[];
+  function setLucus(next){
+    savedLucus=Array.isArray(next)?next:[];
     if(!loaded)return;
-    map.getSource('loc-trace-saved-anchors')?.setData(existingAnchorPoints(savedAnchors));
+    map.getSource('loc-trace-saved-lucus')?.setData(existingLucusPoints(savedLucus));
     refreshSavedRoute();
     refreshTimelineStems();
     refreshAnnualGauges();
@@ -170,11 +170,11 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     timelineMarkers.forEach(marker=>marker.remove());
     timelineMarkers=[];
     if(!loaded||!timelineRows.length||!stemsVisible)return;
-    const validAnchors=savedAnchors.filter(isValidSavedAnchor);
-    const allowedTitles=new Set(validAnchors.map(a=>String(a.title||'').trim()).filter(Boolean));
+    const validLucus=savedLucus.filter(isValidSavedLucus);
+    const allowedTitles=new Set(validLucus.map(a=>String(a.title||'').trim()).filter(Boolean));
     if(!allowedTitles.size)return;
     const byTitle=placeDayStems(timelineRows,allowedTitles);
-    for(const lucus of validAnchors){
+    for(const lucus of validLucus){
       const title=String(lucus.title||'').trim();
       const days=byTitle.get(title);
       if(!days?.length)continue;
@@ -192,7 +192,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     ]));
     // One small HUD per saved point, not per article. At zoomed-out scales,
     // the original MapLibre pin layer remains the lightweight overview.
-    for(const point of savedAnchors.filter(isValidSavedAnchor).slice(0,80)){
+    for(const point of savedLucus.filter(isValidSavedLucus).slice(0,80)){
       const row=byKey.get(String(point.source_scope||'')+':'+String(point.uid||''));
       if(!row||!Number.isFinite(Number(row.percent)))continue;
       const percent=Math.max(0,Math.min(100,Math.round(Number(row.percent))));
@@ -223,10 +223,10 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     refreshTimelineStems();
   }
   function savedRoutePoints(route=selectedSavedRoute){
-    if(!Array.isArray(route?.anchor_list))return [];
-    const byId=new globalThis.Map(savedAnchors.filter(isValidSavedAnchor).map(row=>[String(row.uid),row]));
+    if(!Array.isArray(route?.lucus_list))return [];
+    const byId=new globalThis.Map(savedLucus.filter(isValidSavedLucus).map(row=>[String(row.uid),row]));
     const ids=route.trace_type==='trace'
-      ?[...new Set(route.anchor_list.flat(Infinity))]:route.anchor_list;
+      ?[...new Set(route.lucus_list.flat(Infinity))]:route.lucus_list;
     return ids.map(uid=>byId.get(String(uid))||null);
   }
   function savedRouteData(route=selectedSavedRoute){
@@ -343,7 +343,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   const moveCamera=options=>reduceMotion?map.jumpTo(options):map.flyTo(options);
   map.addControl(new NavigationControl({showCompass:true,showZoom:true}),'top-right');
   const status=message=>{if(!removed)onStatus(message);};
-  // Spatial anchors are explicit user selections, never inferred from device
+  // Spatial lucus are explicit user selections, never inferred from device
   // location or demo coordinates. Only the management editor enables picking.
   function pickLocation(lng,lat,name=''){
     if(removed||!canPickLocation||!Number.isFinite(lng)||!Number.isFinite(lat))return;
@@ -364,7 +364,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
   }
   function focus(id){
     if(removed)return;
-    const place=EXAMPLE_ANCHORS.find(item=>item.id===id);
+    const place=EXAMPLE_LUCUS.find(item=>item.id===id);
     if(!place)return;
     moveCamera({center:[place.lng,place.lat],zoom:15.1,pitch:65,bearing:-23,essential:true});
     onSelect(place.id);
@@ -382,33 +382,33 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     else centerIfFar(lng,lat);
     if(canPickLocation)pickLocation(lng,lat,name);
     else {pickedPosition={lng,lat};}
-    if(!canPickLocation&&showAnchorPopup)new Popup({closeButton:true,offset:20}).setLngLat([lng,lat]).setText(name||'搜尋位置').addTo(map);
+    if(!canPickLocation&&showLucusPopup)new Popup({closeButton:true,offset:20}).setLngLat([lng,lat]).setText(name||'搜尋位置').addTo(map);
   }
   function overview(){
     if(removed||!loaded)return;
-    // "All anchors" means the saved markers currently displayed by Trace,
+    // "All lucus" means the saved markers currently displayed by Trace,
     // not the three Banqiao demonstration stations.
-    const visibleAnchors=(Array.isArray(savedAnchors)?savedAnchors:[])
-      .filter(isValidSavedAnchor)
+    const visibleLucus=(Array.isArray(savedLucus)?savedLucus:[])
+      .filter(isValidSavedLucus)
       .map(lucus=>({lng:Number(lucus.longitude),lat:Number(lucus.latitude)}));
-    if(visibleAnchors.length===1){
-      moveCamera({center:[visibleAnchors[0].lng,visibleAnchors[0].lat],zoom:12.5,
+    if(visibleLucus.length===1){
+      moveCamera({center:[visibleLucus[0].lng,visibleLucus[0].lat],zoom:12.5,
         pitch:45,bearing:0,essential:true});
       return;
     }
-    if(!visibleAnchors.length){
+    if(!visibleLucus.length){
       if(!canPickLocation){
         moveCamera({center:[120.98,23.73],zoom:6.5,pitch:0,bearing:0,essential:true});
         return;
       }
     }
-    const points=visibleAnchors.length?visibleAnchors:EXAMPLE_ANCHORS;
+    const points=visibleLucus.length?visibleLucus:EXAMPLE_LUCUS;
     const bounds=new LngLatBounds();
     points.forEach(place=>bounds.extend([place.lng,place.lat]));
     // Map padding scales with its actual dimensions, including after resizing.
     map.fitBounds(bounds,{padding:Math.max(30,Math.min(80,Math.round(map.getContainer().clientWidth*.045))),
-      pitch:visibleAnchors.length?45:59,bearing:visibleAnchors.length?0:-23,
-      maxZoom:visibleAnchors.length?14:13.7,duration:reduceMotion?0:500});
+      pitch:visibleLucus.length?45:59,bearing:visibleLucus.length?0:-23,
+      maxZoom:visibleLucus.length?14:13.7,duration:reduceMotion?0:500});
   }
 
   map.once('load',()=>{
@@ -420,16 +420,16 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     refreshAnnualGauges();
     if(canPickLocation){
       // The Banqiao mock stations belong to the lucus editor only.
-      map.addSource('loc-trace-extrusions',{type:'geojson',data:pillarGeojson(EXAMPLE_ANCHORS)});
+      map.addSource('loc-trace-extrusions',{type:'geojson',data:pillarGeojson(EXAMPLE_LUCUS)});
       map.addLayer({
-        id:'loc-trace-3d-anchors',type:'fill-extrusion',source:'loc-trace-extrusions',
+        id:'loc-trace-3d-lucus',type:'fill-extrusion',source:'loc-trace-extrusions',
         paint:{'fill-extrusion-color':'#b9a6f6','fill-extrusion-opacity':0.8,
           'fill-extrusion-height':['get','height'],'fill-extrusion-base':0}
       });
     }
-    map.addSource('loc-trace-saved-anchors',{type:'geojson',data:existingAnchorPoints(savedAnchors)});
+    map.addSource('loc-trace-saved-lucus',{type:'geojson',data:existingLucusPoints(savedLucus)});
     if(territoryMode)map.addLayer({id:'loc-trace-territory-halo',type:'circle',
-      source:'loc-trace-saved-anchors',paint:{
+      source:'loc-trace-saved-lucus',paint:{
         'circle-radius':['step',['get','territoryTotal'],15,3,22,10,32,30,43,100,55],
         'circle-color':densityColorExpression(),
         'circle-opacity':['interpolate',['linear'],['get','territoryTotal'],0,.16,3,.25,10,.34,30,.43,100,.52],
@@ -437,7 +437,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
         'circle-stroke-width':1.5,'circle-stroke-color':'#263542','circle-stroke-opacity':.55,
         'circle-pitch-alignment':'viewport','circle-pitch-scale':'viewport'
       }});
-    map.addLayer({id:'loc-trace-saved-point-layer',type:'circle',source:'loc-trace-saved-anchors',
+    map.addLayer({id:'loc-trace-saved-point-layer',type:'circle',source:'loc-trace-saved-lucus',
       paint:territoryMode?{
         'circle-radius':['step',['get','territoryTotal'],8,3,12,10,17,30,23,100,29],
         'circle-color':densityColorExpression(),
@@ -446,37 +446,37 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
         'circle-pitch-alignment':'viewport','circle-pitch-scale':'viewport'
       }:{'circle-radius':6,'circle-color':'#6ce4ce','circle-opacity':0.95,
         'circle-stroke-width':1.5,'circle-stroke-color':'#153739'}});
-    map.addLayer({id:'loc-trace-saved-point-labels',type:'symbol',source:'loc-trace-saved-anchors',
+    map.addLayer({id:'loc-trace-saved-point-labels',type:'symbol',source:'loc-trace-saved-lucus',
       minzoom:12,layout:{'text-field':territoryMode
         ?['concat',['get','title'],' · ',['to-string',['get','territoryTotal']],' 篇']
         :['get','title'],
         'text-size':12,'text-offset':[0,1.2],'text-lucus':'top',
         'text-allow-overlap':false},paint:{'text-color':'#ebfff8','text-halo-color':'#122d39','text-halo-width':1.5}});
-    if(typeof onAnchorSelect==='function'){
-      const chooseAnchor=event=>{
+    if(typeof onLucusSelect==='function'){
+      const chooseLucus=event=>{
         const props=event.features?.[0]?.properties;
         if(!props?.uid)return;
         // Pass the complete saved row: its original description contains
         // reviewed aliases required by the inline article list. GeoJSON
         // presentation properties alone omit that contextual information.
-        const lucus=savedAnchors.find(row=>String(row.uid)===String(props.uid)
+        const lucus=savedLucus.find(row=>String(row.uid)===String(props.uid)
           &&String(row.source_scope||'')===String(props.source_scope||''));
         if(lucus){
-          if(showAnchorPopup)centerIfFar(...spaceCoordinates(lucus));
-          onAnchorSelect(lucus);
-          if(showAnchorPopup)new Popup({closeButton:true,offset:18})
+          if(showLucusPopup)centerIfFar(...spaceCoordinates(lucus));
+          onLucusSelect(lucus);
+          if(showLucusPopup)new Popup({closeButton:true,offset:18})
             .setLngLat(spaceCoordinates(lucus))
             .setText([lucus.title,lucus.postal_address].filter(Boolean).join(' · '))
             .addTo(map);
         }
       };
       for(const layer of ['loc-trace-saved-point-layer','loc-trace-saved-point-labels']){
-        map.on('click',layer,chooseAnchor);
+        map.on('click',layer,chooseLucus);
         map.on('mouseenter',layer,()=>{map.getCanvas().style.cursor='pointer';});
         map.on('mouseleave',layer,()=>{map.getCanvas().style.cursor='';});
       }
     }
-    // Saved routes connect user-selected anchors in their recorded sequence.
+    // Saved routes connect user-selected lucus in their recorded sequence.
     // A straight connection is not presented as an actual historical road.
     map.addSource('loc-trace-user-routes',{type:'geojson',data:savedRouteData()});
     map.addLayer({id:'loc-trace-user-route-lines',type:'line',source:'loc-trace-user-routes',
@@ -501,14 +501,14 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     });
     // Saved route markers render over the source lucus dots; make either
     // visible geometry selectable and keep the full original lucus data.
-    if(typeof onAnchorSelect==='function'){
+    if(typeof onLucusSelect==='function'){
       const clickSavedStop=event=>{
         const props=event.features?.[0]?.properties;
-        const lucus=savedAnchors.find(row=>String(row.uid)===String(props?.uid||'')
+        const lucus=savedLucus.find(row=>String(row.uid)===String(props?.uid||'')
           &&String(row.source_scope||'')===String(props?.source_scope||''));
         if(!lucus)return;
-        if(showAnchorPopup)centerIfFar(...spaceCoordinates(lucus));
-        onAnchorSelect(lucus);
+        if(showLucusPopup)centerIfFar(...spaceCoordinates(lucus));
+        onLucusSelect(lucus);
       };
       for(const layer of ['loc-trace-user-route-stops','loc-trace-user-route-order']){
         map.on('click',layer,clickSavedStop);
@@ -522,7 +522,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
       layout:{'line-cap':'round','line-join':'round'},
       paint:{'line-color':'#f7ba66','line-width':5,'line-opacity':0.95}
     });
-    if(canPickLocation)markers=EXAMPLE_ANCHORS.map(place=>{
+    if(canPickLocation)markers=EXAMPLE_LUCUS.map(place=>{
       const button=document.createElement('button');
       button.type='button';
       button.className='loc-trace-lucus-marker';
@@ -571,7 +571,7 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     try{
       // The public OSRM demo is used only after an explicit route click. It
       // receives the three public example coordinates, never user locations.
-      const coords=EXAMPLE_ANCHORS.map(p=>p.lng+','+p.lat).join(';');
+      const coords=EXAMPLE_LUCUS.map(p=>p.lng+','+p.lat).join(';');
       const response=await fetch('https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson',{
         signal:controller.signal
       });
@@ -609,6 +609,6 @@ export function createTraceMap(container,{onStatus=()=>{},onSelect=()=>{},onLoca
     pickedMarker=null;
     map.remove();
   }
-  return {focus,focusCoordinates,centerIfFar,goOrigin,setAnchors,setPlaceTimelines,setAnnualGauges,setStemsVisible,setSavedRoute,setSavedGraph,overview,showRoadRoute,
+  return {focus,focusCoordinates,centerIfFar,goOrigin,setLucus,setPlaceTimelines,setAnnualGauges,setStemsVisible,setSavedRoute,setSavedGraph,overview,showRoadRoute,
     resize:()=>{if(!removed)map.resize();},destroy};
 }

@@ -1,5 +1,5 @@
 // Google Timeline is transient private evidence. Do not persist coordinates,
-// activities or timeline source data to Galaxy, time anchors, or local storage.
+// activities or timeline source data to Galaxy, time lucus, or local storage.
 export const TIMELINE_RADIUS_METERS=500;
 const asTime=value=>{
   const n=typeof value==='number'?value:typeof value==='string'&&/^\d{10,13}$/.test(value)?Number(value):NaN;
@@ -101,8 +101,8 @@ function timelineSpatialCandidates(locations,radius){
     return nearby;
   };
 }
-export function matchTimelineWindows(windows,anchors,radius=TIMELINE_RADIUS_METERS){
-  const locations=(anchors||[]).filter(row=>row.trace_type==='space_anchor')
+export function matchTimelineWindows(windows,lucus,radius=TIMELINE_RADIUS_METERS){
+  const locations=(lucus||[]).filter(row=>row.trace_type==='space_lucus')
     .map(row=>{
       const a=Array.isArray(row.address)?row.address:null;
       const lng=Number(a?.[0]),lat=Number(a?.[1]);
@@ -122,7 +122,7 @@ export function matchTimelineWindows(windows,anchors,radius=TIMELINE_RADIUS_METE
       uid,title,meters:Math.round(distance)})),
       disputed:candidates.length>1||window.uncertain});
   }
-  return {windows:selected,withoutAnchor:omitted,ambiguousWindows:ambiguous};
+  return {windows:selected,withoutLucus:omitted,ambiguousWindows:ambiguous};
 }
 export function accumulateTimelineArticles(matches){
   const byUid=new Map();
@@ -131,10 +131,10 @@ export function accumulateTimelineArticles(matches){
     if(!uid||!window)continue;
     let entry=byUid.get(uid);
     if(!entry){entry={uid,title:String(hit.title||''),createtime:hit.createtime,
-      existingPlaceId:String(hit.place_id||'').trim(),candidates:new Map(),coordinates:new Set(),commonAnchors:null,disputed:false};byUid.set(uid,entry);}
-    const windowAnchors=new Set((window.candidates||[]).map(candidate=>candidate.uid));
-    entry.commonAnchors=entry.commonAnchors===null?windowAnchors:
-      new Set([...entry.commonAnchors].filter(uid=>windowAnchors.has(uid)));
+      existingPlaceId:String(hit.place_id||'').trim(),candidates:new Map(),coordinates:new Set(),commonLucus:null,disputed:false};byUid.set(uid,entry);}
+    const windowLucus=new Set((window.candidates||[]).map(candidate=>candidate.uid));
+    entry.commonLucus=entry.commonLucus===null?windowLucus:
+      new Set([...entry.commonLucus].filter(uid=>windowLucus.has(uid)));
     for(const candidate of window.candidates)entry.candidates.set(candidate.uid,candidate);
     if(Number.isFinite(window.lat)&&Number.isFinite(window.lng))
       entry.coordinates.add(String(window.lat)+','+String(window.lng));
@@ -142,17 +142,17 @@ export function accumulateTimelineArticles(matches){
   }
   const ready=[],disputes=[],unchanged=[];
   for(const item of byUid.values()){
-    if(item.existingPlaceId)continue; // Already anchored; never review twice.
+    if(item.existingPlaceId)continue; // Already lucused; never review twice.
     const candidates=[...item.candidates.values()].sort((a,b)=>a.meters-b.meters);
     const unique=candidates.length===1&&!item.disputed;
     const coordinates=[...item.coordinates].sort();
     // A GPS reading is evidence, not a location identity. The closest
     // existing lucus is only a review bucket, never an automatic assignment.
-    const common=candidates.filter(candidate=>item.commonAnchors?.has(candidate.uid));
-    const reviewAnchor=item.existingPlaceId&&common.some(c=>c.uid===item.existingPlaceId)
+    const common=candidates.filter(candidate=>item.commonLucus?.has(candidate.uid));
+    const reviewLucus=item.existingPlaceId&&common.some(c=>c.uid===item.existingPlaceId)
       ?item.existingPlaceId:common[0]?.uid;
     const article={...item,candidates,coordinates,
-      groupKey:reviewAnchor?'lucus:'+reviewAnchor:'article:'+item.uid};
+      groupKey:reviewLucus?'lucus:'+reviewLucus:'article:'+item.uid};
     if(unique&&(!item.existingPlaceId||item.existingPlaceId===candidates[0].uid))
       ready.push({...article,placeId:candidates[0].uid});
     else disputes.push({...article,reason:coordinates.length>1?'文章跨多組座標，必須逐篇確認':
@@ -174,20 +174,20 @@ export function groupTimelineMissingPlaces(analysis){
     groups.get(key).rows.push(row);
   }
   return [...groups.values()].map(group=>{
-    const anchorId=group.key.startsWith('lucus:')?group.key.slice('lucus:'.length):'';
+    const lucusId=group.key.startsWith('lucus:')?group.key.slice('lucus:'.length):'';
     // Always present the matching lucus as a group-level selection.
     // Ambiguous rows remain visibly disputed and can be changed individually.
-    const unanimous=Boolean(anchorId)&&group.rows.every(row=>
-      row.candidates.length===1&&!row.disputed&&row.candidates[0].uid===anchorId&&
-      (!row.existingPlaceId||row.existingPlaceId===anchorId));
+    const unanimous=Boolean(lucusId)&&group.rows.every(row=>
+      row.candidates.length===1&&!row.disputed&&row.candidates[0].uid===lucusId&&
+      (!row.existingPlaceId||row.existingPlaceId===lucusId));
     const candidateSet=new Map();
     for(const row of group.rows)for(const candidate of row.candidates||[]){
       const previous=candidateSet.get(candidate.uid);
       if(!previous||candidate.meters<previous.meters)candidateSet.set(candidate.uid,candidate);
     }
-    const available=[...candidateSet.values()].sort((a,b)=>a.uid===anchorId?-1:b.uid===anchorId?1:a.meters-b.meters);
-    return {...group,candidates:available,defaultPlaceId:unanimous?anchorId:'',
-      suggestedPlaceId:anchorId,disputed:!unanimous};
+    const available=[...candidateSet.values()].sort((a,b)=>a.uid===lucusId?-1:b.uid===lucusId?1:a.meters-b.meters);
+    return {...group,candidates:available,defaultPlaceId:unanimous?lucusId:'',
+      suggestedPlaceId:lucusId,disputed:!unanimous};
   }).sort((a,b)=>b.rows.length-a.rows.length||a.key.localeCompare(b.key));
 }
 

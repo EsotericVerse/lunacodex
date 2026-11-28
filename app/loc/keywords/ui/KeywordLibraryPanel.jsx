@@ -139,7 +139,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
     try{
       // Fixed Keyword Workspace transaction replaces the retired generic
       // authenticated SELECT. Each request is a bounded read of the physical
-      // Anchor/Scope configuration with its grant checked by the server.
+      // Lucus/Scope configuration with its grant checked by the server.
       const {keywordService}=await import('../service-client.mjs');
       const owned=[],seen=new Set();
       let cursor='',config=null;
@@ -189,7 +189,7 @@ export default function KeywordLibraryPanel({scopeId,account}){
   },[canEdit,table,configTable,scopeId]);
 
   useEffect(()=>{load();},[load]);
-  // The editor vocabulary is projected from the linked Pattern Anchor titles.
+  // The editor vocabulary is projected from the linked Pattern Lucus titles.
   useEffect(()=>{
     discoveryAbort.current?.abort();
     setDiscovery(null);

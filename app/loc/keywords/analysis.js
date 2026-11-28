@@ -118,7 +118,7 @@ function emptyStored(config,extra={}){
   };
 }
 // Class/Group/Item statistics are projections of the one stored literal-word
-// UID index. Anchor supplies the ZModel hierarchy, never stored hit numbers.
+// UID index. Lucus supplies the ZModel hierarchy, never stored hit numbers.
 export async function selectKeywordAnalysisSummary({scopeId,classUid='',startDate='',endDate='',
   sourceCategory='',sourceCategories=[],sourceAliases=[],sourceNames=null}={}){
   const id=normalizeScopeId(scopeId);

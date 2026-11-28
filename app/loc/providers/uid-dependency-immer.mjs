@@ -38,7 +38,7 @@ function uidOf(value){
 }
 function attrOf(row){
   const attr=typeof row?.attr==='string'?JSON.parse(row.attr):row?.attr;
-  if(!object(attr))throw new TypeError('Invalid Anchor attr');
+  if(!object(attr))throw new TypeError('Invalid Lucus attr');
   return attr;
 }
 function withoutUid(list,uid){
@@ -78,7 +78,7 @@ export function planUidDependencyRepair({deletedUid,deletedTable,deletedType='',
   if(!Array.isArray(galaxyRows)||!Array.isArray(lucusRows))
     throw new TypeError('Invalid dependency projection');
   if(deletedTable==='lucus'&&!PERSISTED_LUCUS_TYPES.includes(deletedType))
-    throw new TypeError('Unknown Anchor type');
+    throw new TypeError('Unknown Lucus type');
   const isGalaxy=deletedTable==='galaxy';
   const point=!isGalaxy&&deletedType==='point';
   const parentFields=isGalaxy?{}:UID_DEPENDENT_LUCUS_FIELDS[deletedType]||{};

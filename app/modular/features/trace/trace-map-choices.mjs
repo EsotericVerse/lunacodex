@@ -25,7 +25,7 @@ export function publicTraceMapChoices(rows=[],scopeId='loc'){
     }
     if(!routeIds.size&&!pairs.length)return [];
     return [{uid:'LOC_UNION',trace_type:'trace',source_scope:source,
-      title:'痕跡圖聯集',description:'',anchor_list:[...new Set(pairs.flat())],route_list:{routes:[...routeIds],segments:pairs},
+      title:'痕跡圖聯集',description:'',lucus_list:[...new Set(pairs.flat())],route_list:{routes:[...routeIds],segments:pairs},
       read_only:true}];
   });
   // The legacy LOC union remains available only as an explicit selection.
@@ -60,7 +60,7 @@ export function locReferencedPointGroups(rows=[],maxPerScope=50){
     // Route and trace references are the only source of candidates.
     // Do not invent references from standalone point rows.
     for(const record of records){
-      const refs=record.anchor_list||[];
+      const refs=record.lucus_list||[];
       for(const value of refs.flat(Infinity))add(value);
       if(record.trace_type==='trace'){
         for(const pair of record.route_list?.segments||[]){
@@ -68,7 +68,7 @@ export function locReferencedPointGroups(rows=[],maxPerScope=50){
         }
         for(const pathId of record.route_list?.routes||[]){
           const path=paths.get(uid(pathId));
-          for(const value of (path?.anchor_list||[]).flat(Infinity))add(value);
+          for(const value of (path?.lucus_list||[]).flat(Infinity))add(value);
         }
       }
     }

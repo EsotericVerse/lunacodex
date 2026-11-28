@@ -1,7 +1,7 @@
 // Virtual global identity for independent LOC data sources.
 // Not a database column, connection secret, migration, or authorization grant.
 // DB IDs are stable, non-secret registry identifiers, NOT connection strings.
-// A physical Anchor/Galaxy UID is unique only inside (databaseId,scopeId).
+// A physical Lucus/Galaxy UID is unique only inside (databaseId,scopeId).
 const DATABASE_ID=/^[a-z][a-z0-9_-]{0,63}$/;
 const SCOPE_ID=/^[a-z][a-z0-9]{0,14}$/;
 const UID=/^[A-Za-z0-9]{8}$/;
@@ -31,12 +31,12 @@ export function locGlobalRowRef(row,context){
 }
 
 
-/** Qualify local Anchor relationship records without changing physical UIDs.
+/** Qualify local Lucus relationship records without changing physical UIDs.
  * Different databases with the same uid remain distinct. This is indexing
  * metadata, NOT an authorization decision or a database synchronization job.
  */
 export function qualifyLOCLucus(links,{databaseId,scopeId}={}){
-  if(!Array.isArray(links))throw new Error('Invalid LOC Anchor link collection');
+  if(!Array.isArray(links))throw new Error('Invalid LOC Lucus link collection');
   return links.map(link=>{
     if(!link||typeof link!=='object'||
        !['culture','trace','statics','search'].includes(link.family)||
@@ -44,7 +44,7 @@ export function qualifyLOCLucus(links,{databaseId,scopeId}={}){
        typeof link.toType!=='string'||!link.toType||
        !['uid','period','path','point'].includes(link.attrKey)||
        typeof link.resolved!=='boolean')
-      throw new Error('Invalid LOC Anchor link');
+      throw new Error('Invalid LOC Lucus link');
     return Object.freeze({
       ...link,
       from:locGlobalUid({databaseId,scopeId,uid:link.fromUid}),

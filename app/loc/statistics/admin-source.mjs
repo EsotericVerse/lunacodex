@@ -13,7 +13,7 @@ function bucket(d,unit){
 export function administrativeSourceTrend(raw=[],taxonomy={},{startDate='',endDate='',unit='day',sourceCategory='',sourceNames=null}={}){
   const start=day(startDate),end=day(endDate);
   const selectedSource=String(sourceCategory||'').trim();
-  // A Domain selector includes the From leaves linked by Anchor attr.uid.
+  // A Domain selector includes the From leaves linked by Lucus attr.uid.
   // No extra SQL/COUNT query is required for an expanded Source selection.
   const selectedCodes=new Set([selectedSource,...(taxonomy.tree||[])
     .filter(row=>Array.isArray(row.path)&&row.path.includes(selectedSource))

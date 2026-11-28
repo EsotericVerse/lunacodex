@@ -6,8 +6,8 @@ import {resolveTimeTrace} from '../app/loc/culture/time-lucus-ranges.mjs';
 import {traceRouteHierarchy} from '../app/modular/features/trace/trace-route-hierarchy.mjs';
 
 {
-const era=(uid,title,anchor_ids,attr={})=>({uid,title,type:'era',anchor_ids,attr});
-const period=(uid,title,anchor_ids,attr={})=>({uid,title,type:'period',anchor_ids,attr});
+const era=(uid,title,lucus_ids,attr={})=>({uid,title,type:'era',lucus_ids,attr});
+const period=(uid,title,lucus_ids,attr={})=>({uid,title,type:'period',lucus_ids,attr});
 const date=(uid,address)=>({uid,type:'lucus',title:address,address});
 
 test('Era rows sort oldest-to-newest by their linked Period/Date, not input order',()=>{
@@ -40,11 +40,11 @@ const dates=[
 const byDate=new Map(dates.map(row=>[row.uid,{...row,attr:{date:row.start_date}}]));
 const periodRanges=resolveTimeSegments(['DATE0001','DATE0002'],byDate);
 const period={uid:'PERI0001',scope_id:scope,type:'period',entry_type:'period',
-  title:'第一時期',anchor_ids:['DATE0001','DATE0002'],ranges:periodRanges,
+  title:'第一時期',lucus_ids:['DATE0001','DATE0002'],ranges:periodRanges,
   start_date:periodRanges[0].start_date,end_date:periodRanges[0].end_date};
 const eraRanges=resolveTimeTrace(['PERI0001'],new Map([['PERI0001',period]])).ranges;
 const era={uid:'ERA00001',scope_id:scope,type:'era',entry_type:'era',
-  title:'第一時代',anchor_ids:['PERI0001'],ranges:eraRanges,
+  title:'第一時代',lucus_ids:['PERI0001'],ranges:eraRanges,
   start_date:eraRanges[0].start_date,end_date:eraRanges[0].end_date};
 
 const rect=(left,top,width,height)=>({left,top,width,height,right:left+width,bottom:top+height});

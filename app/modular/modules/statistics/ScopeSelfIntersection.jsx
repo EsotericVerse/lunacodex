@@ -97,7 +97,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     availableKinds.includes(laneKinds[index])?laneKinds[index]:
     index===0?'source':'keyword');
   const keywordModeActive=keywordTabAvailable&&shownKinds.includes('keyword');
-  const timeAnchors=useAsyncResource({
+  const timeLucus=useAsyncResource({
     queryKey:['scope-intersection-time-lucus',scope?.id],
     enabled:valid&&shownKinds.includes('time'),
     queryFn:async({signal})=>{
@@ -107,7 +107,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     },
     revalidateOnFocus:false,revalidateOnReconnect:false
   });
-  const spaceAnchors=useAsyncResource({
+  const spaceLucus=useAsyncResource({
     queryKey:['scope-intersection-space-lucus',scope?.id],
     enabled:valid&&shownKinds.includes('space'),
     queryFn:async({signal})=>{
@@ -154,10 +154,10 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     .filter(item=>item.class_enable!==false&&String(item.group_uid||''))
     .map(item=>[String(item.uid),String(item.group_uid)])),
   [keywordCatalog.data]);
-  const timeMetrics=useMemo(()=>timeIntersectionMetrics(timeAnchors.data||[]),
-    [timeAnchors.data]);
-  const spaceMetrics=useMemo(()=>spaceIntersectionMetrics(spaceAnchors.data||[]),
-    [spaceAnchors.data]);
+  const timeMetrics=useMemo(()=>timeIntersectionMetrics(timeLucus.data||[]),
+    [timeLucus.data]);
+  const spaceMetrics=useMemo(()=>spaceIntersectionMetrics(spaceLucus.data||[]),
+    [spaceLucus.data]);
   // Keep the single Source-tree engine. Universe is a grouping heading;
   // From contributes to rollups but is not shown or selectable in comparisons.
   const sourceMetrics=useMemo(()=>sourceModel.metrics.filter(item=>
@@ -283,14 +283,14 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   return <section className="scope-stat-section scope-self-intersection" aria-label={t('uiExtra.statisticsView.selfIntersectionTitle')}>
     <h3><UiText id="uiExtra.statisticsView.selfIntersectionTitle"/></h3>
       {query.isPending||keywords.isPending?<p className="scope-status">{l.readingSources}</p>:null}
-      {shownKinds.includes('time')&&timeAnchors.isPending
+      {shownKinds.includes('time')&&timeLucus.isPending
         ?<p className="scope-status" role="status">正在讀取時代／時期…</p>:null}
-      {shownKinds.includes('space')&&(spaceAnchors.isPending||territory.isPending)
+      {shownKinds.includes('space')&&(spaceLucus.isPending||territory.isPending)
         ?<p className="scope-status" role="status">正在讀取痕跡／路徑…</p>:null}
       {query.error||catalog.error?<p className="scope-status scope-error">{String(query.error?.message||catalog.error?.message||l.readFailed)}</p>:null}
       {keywords.error?<p className="scope-status scope-error">關鍵詞分佈載入失敗：{String(keywords.error?.message||keywords.error)}</p>:null}
-      {timeAnchors.error?<p className="scope-status scope-error">時代／時期讀取失敗：{String(timeAnchors.error?.message||timeAnchors.error)}</p>:null}
-      {spaceAnchors.error||territory.error?<p className="scope-status scope-error">痕跡／路徑讀取失敗：{String(spaceAnchors.error?.message||territory.error?.message||'')}</p>:null}
+      {timeLucus.error?<p className="scope-status scope-error">時代／時期讀取失敗：{String(timeLucus.error?.message||timeLucus.error)}</p>:null}
+      {spaceLucus.error||territory.error?<p className="scope-status scope-error">痕跡／路徑讀取失敗：{String(spaceLucus.error?.message||territory.error?.message||'')}</p>:null}
       {!query.isPending&&!catalog.isPending&&!query.error&&!catalog.error?<div className="scope-self-intersection-content">
         <div className="scope-stat-controls">
           <label><span><FieldText text="比較組數"/></span>

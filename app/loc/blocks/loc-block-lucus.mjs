@@ -6,9 +6,9 @@ import {PERSISTED_LUCUS_TYPES,lucusUidListCount} from '../../../packages/zenstac
 // The editor/reader Block Model is a projection, not a new SQL entity.
 // LOC presentation Blocks are a typed projection of silver.loc_lucus.
 // Only LOC uses this mapping; other Scope _blocks tables remain independent.
-// Anchor: uid / type / title / description / invisible / attr / createtime / num.
+// Lucus: uid / type / title / description / invisible / attr / createtime / num.
 // Blocks: uid / page_name / block_title / block_text / false / metadata / now / block_order.
-// Physical Anchor envelope: uid/type/title/description/invisible/attr/createtime/num.
+// Physical Lucus envelope: uid/type/title/description/invisible/attr/createtime/num.
 // LOC projection: page_name->type, block_title->title, block_text->description,
 // block_order->attr.order; num counts child UIDs in attr.uidlist.
 // block_entity->attr.uidlist, block_eyebrow->attr.eyebrow,
@@ -18,7 +18,7 @@ export const LOC_BLOCK_LUCUS_FIELDS=Object.freeze([
   'uid','type','title','description','invisible','attr','num'
 ]);
 const PAGE=/^[A-Za-z][A-Za-z0-9_-]{0,60}$/;
-// All five ZModel Anchor families share loc_lucus with presentation Blocks.
+// All five ZModel Lucus families share loc_lucus with presentation Blocks.
 // None of their persisted discriminators may be used as a Block page name.
 const LOC_RESERVED_TYPES=new Set(PERSISTED_LUCUS_TYPES);
 export function isLocBlockPage(value){
@@ -51,7 +51,7 @@ export function locBlockToLucus(row){
 }
 export function locLucusToBlock(row){
   if(!isLocBlockPage(row?.type))
-    throw new TypeError('Semantic Anchor types cannot be read as LOC Blocks');
+    throw new TypeError('Semantic Lucus types cannot be read as LOC Blocks');
   const attr=attrOf(row);
   return {
     uid:String(row.uid??'').trim(),page_name:String(row.type??''),

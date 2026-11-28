@@ -117,7 +117,7 @@ export function createConfiguredAdapter({
     const result=await operation('managed-action',
       String(args?.p_scope_id||''),{name,args});
     // After a trusted successful mutation, expire only its physical ZModel
-    // Anchor/Blocks relation. Galaxy and management reads never use this cache.
+    // Lucus/Blocks relation. Galaxy and management reads never use this cache.
     const scope=String(args?.p_scope_id||'').trim().toLowerCase();
     if(/^[a-z][a-z0-9]{0,14}$/.test(scope)){
       if(name==='save_blocks'||name==='move_scope_block')
@@ -149,8 +149,8 @@ export function createConfiguredAdapter({
   };
   const managedWrite=async payload=>{
     const result=await operation('managed-write','',{payload});
-    // This is the common successful write boundary for ZModel Anchor/Blocks,
-    // including keyword Anchor insert/update/delete and ordinary block writes.
+    // This is the common successful write boundary for ZModel Lucus/Blocks,
+    // including keyword Lucus insert/update/delete and ordinary block writes.
     // Operation() already invalidated derived public numbers, without a SELECT.
     invalidateScopedReadCache(payload?.p_table);
     return {data:result?.data,error:null};
@@ -162,7 +162,7 @@ export function createConfiguredAdapter({
     if(!/^[a-z][a-z0-9]{0,14}$/.test(String(scopeid||'')))
       throw Error('Invalid LOC import Scope');
     const result=await operation('short-import',scopeid,{batch});
-    // The import endpoint can also materialize Time/Place Anchor rows.
+    // The import endpoint can also materialize Time/Place Lucus rows.
     invalidateScopedReadCache('silver.'+scopeTableName(scopeid,'lucus'));
     return result;
   };

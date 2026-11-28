@@ -367,7 +367,7 @@ test('PostgreSQL cursor streams 50000 rows in bounded 256-row driver batches',as
   await db.destroy();
 });
 
-test('Anchor article cursor keeps only the requested top page while scanning large matches',()=>{
+test('Lucus article cursor keeps only the requested top page while scanning large matches',()=>{
   const page=createLucusArticlePageBuffer({offset:2,limit:2,sortDirection:'asc'});
   for(let index=999;index>=0;index--){
     page.add({
@@ -503,7 +503,7 @@ test('anonymous reads cannot expose raw Scope configuration rows',()=>{
   }
 });
 
-test('public SQL policy restricts Galaxy and Anchor to published rows and denies writes',()=>{
+test('public SQL policy restricts Galaxy and Lucus to published rows and denies writes',()=>{
   for(const table of ['lo3rwang_galaxy','lo3rwang_lucus']){
     assert.deepEqual(assertCrossEnginePublicRead(read('silver',table)),{publicOnly:true});
   }

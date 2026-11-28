@@ -3,7 +3,7 @@
 import {useMemo} from 'react';
 import {sourceIntersectionOutline} from '../../../loc/statistics/source-tree-measures.mjs';
 
-// Choose any level of the ONE LOC SiteAnchor hierarchy. Parent selection
+// Choose any level of the ONE LOC SiteLucus hierarchy. Parent selection
 // includes its real From descendants, while the individual From (site) stays
 // selectable. A one-child parent is never flattened into a child label.
 export default function SourceTreePicker({

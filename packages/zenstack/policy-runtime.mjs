@@ -33,9 +33,9 @@ export function fixedPolicyWriteModel(target,body,role,claims){
 const readers=new WeakMap();
 
 /** Only the designated publicly readable fixed LOC control and presentation
- * relations, including the LOC-wide source Anchor.
+ * relations, including the LOC-wide source Lucus.
  * The same fixed policy applies to independent PostgreSQL Kysely connections.
- * Dynamic Galaxy, Anchor and other models continue through the existing
+ * Dynamic Galaxy, Lucus and other models continue through the existing
  * signed Kysely transaction boundary; non-PostgreSQL dialects use LOC ACL.
  */
 export function fixedPolicyReadModel(target,body){

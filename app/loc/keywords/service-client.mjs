@@ -6,7 +6,7 @@ import {editorTransactionLease,assertEditorTransactionLease,
   isEditorTransactionCancelled} from '../db/editor-transaction-lifecycle.mjs';
 import {queryKeywordClasses,queryKeywordStatistics,queryKeywordCatalog,
   queryKeywordDaily,queryKeywordWorkspace,queryKeywordAnalysisCompletion,
-  queryKeywordSuggestions,queryKeywordAnchorArticles}
+  queryKeywordSuggestions,queryKeywordLucusArticles}
   from '../actions/keywords/queries.mjs';
 import {runKeywordAnalysisBatch,resetKeywordClass,saveKeywordItemAction,
   deleteKeywordItemAction,setKeywordClassShareAction}
@@ -28,7 +28,7 @@ export class KeywordAnalysisUnconfirmedError extends Error {
 }
 
 const OPERATIONS=new Set(['analyze','analyzeStatus','reset','classes','catalog',
-  'summary','stats','suggest','anchorSearch','saveItem','deleteItem',
+  'summary','stats','suggest','lucusSearch','saveItem','deleteItem',
   'setClassShare','workspace']);
 const READS={
   analyzeStatus:queryKeywordAnalysisCompletion,
@@ -37,7 +37,7 @@ const READS={
   summary:queryKeywordDaily,
   stats:queryKeywordStatistics,
   suggest:queryKeywordSuggestions,
-  anchorSearch:queryKeywordAnchorArticles,
+  lucusSearch:queryKeywordLucusArticles,
   workspace:queryKeywordWorkspace
 };
 const WRITES={

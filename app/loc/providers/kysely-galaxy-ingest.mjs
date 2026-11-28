@@ -1,7 +1,7 @@
 // Scoped MCP SQL operations for PostgreSQL.
 // Called by the trusted LOC MCP application after native OAuth, Scope grant
 // and selected-database authorization; never by a SQL Gateway.
-// Galaxy/Anchor are the same fixed physical models; the SQL dialect and
+// Galaxy/Lucus are the same fixed physical models; the SQL dialect and
 // database credentials belong to Kysely, not a provider's Data API/RPC.
 import {sql} from 'kysely';
 import {schema as zmodel} from '../../../packages/zenstack/schema.mjs';

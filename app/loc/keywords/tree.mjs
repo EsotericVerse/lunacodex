@@ -3,10 +3,10 @@ import {indexZModelLucusHierarchy} from '../../../packages/zenstack/lucus-hierar
 // Typed/composite models define node payloads; lucus-hierarchy.mjs validates
 // UID edges; this module adapts them for editor/catalog consumers.
 // Pattern is a terminal vocabulary node (attr={}, num=occurrences).
-// Item.attr.uid links Pattern Anchor UIDs; Pattern.title carries each literal.
+// Item.attr.uid links Pattern Lucus UIDs; Pattern.title carries each literal.
 // No full-text index or Pattern-to-Galaxy article UID postings are persisted.
 // Parent lists contain child UIDs, not names. No class_id, group_id, item_no.
-// Only the canonical eight-character Anchor UID exists in the current ZModel.
+// Only the canonical eight-character Lucus UID exists in the current ZModel.
 const UID=/^[0-9A-Za-z]{8}$/;
 const ARTICLE_UID=/^[0-9A-Za-z]{8}$/;
 const TYPES=new Set(['category','class','group','item']);
@@ -17,7 +17,7 @@ const array=value=>{
 };
 // COMPATIBILITY-ONLY reader for old uid_lists payloads (array, articles, hits).
 // It does NOT define a new physical JSONB column or an authoritative hit index.
-// New code uses authored Item rules and Anchor UID links; do not restore
+// New code uses authored Item rules and Lucus UID links; do not restore
 // Item/Group article-list storage merely because this decoder still exists.
 export function keywordUidListData(type,value){
   const raw=typeof value==='string'?(()=>{try{return JSON.parse(value)}catch{return value}})():value;
@@ -35,7 +35,7 @@ export function keywordUidListData(type,value){
   throw new Error('Invalid structured Keywords uid_lists for '+type);
 }
 const cleanUid=value=>{
-  if(typeof value!=='string'||!UID.test(value))throw new Error('KeywordAnchor UID must be eight case-sensitive Base62 characters');
+  if(typeof value!=='string'||!UID.test(value))throw new Error('KeywordLucus UID must be eight case-sensitive Base62 characters');
   return value;
 };
 export function normalizeKeywordTreeRow(row){
@@ -73,24 +73,24 @@ export function normalizeKeywordTreeRow(row){
       ?Number(row.uid_lists.total):type==='item'
         ?uid_lists.reduce((sum,hit)=>sum+hit.times,0):uid_lists.length;
   // Preserve Class-specific scan rules for the editor and import/copy path.
-  // The virtual hierarchy still uses only child Anchor IDs for all parent UIDs.
+  // The virtual hierarchy still uses only child Lucus IDs for all parent UIDs.
   return {uid,type,name,desc,lists:[...lists],uid_lists:[...uid_lists],
     attr:row?.attr&&typeof row.attr==='object'&&!Array.isArray(row.attr)
       ?{...row.attr}:{},total};
 }
 // Shared UID-linked tree used by Keywords and source classification.
-// Physical Source Anchor: attr.uid stores child Anchor UIDs, not site names.
-export function indexAnchorTree(rows=[],{normalize,rootType}){
+// Physical Source Lucus: attr.uid stores child Lucus UIDs, not site names.
+export function indexLucusTree(rows=[],{normalize,rootType}){
   const index=new Map(),parent=new Map();
   for(const raw of rows){
     const row=normalize(raw);
-    if(index.has(row.uid))throw new Error('Duplicate Anchor UID: '+row.uid);
+    if(index.has(row.uid))throw new Error('Duplicate Lucus UID: '+row.uid);
     index.set(row.uid,row);
   }
   // All current Keyword/Source hierarchies use the one typed ZModel graph.
   // Legacy four-character trees no longer have a runtime fallback.
   const family=rootType==='category'?'keyword':rootType==='universe'?'source':null;
-  if(!family)throw new Error('Unknown ZModel Anchor hierarchy');
+  if(!family)throw new Error('Unknown ZModel Lucus hierarchy');
   const canonical=[...index.values()].map(row=>({
     uid:row.uid,type:row.type,title:row.name,
     // Item.attr.uid is the only Item -> Pattern edge. Literal titles are
@@ -107,7 +107,7 @@ export function indexAnchorTree(rows=[],{normalize,rootType}){
   return {index,parent,roots:graph.roots.map(uid=>index.get(uid)).filter(Boolean),graph};
 }
 export function indexKeywordTree(rows=[]){
-  return indexAnchorTree(rows,{normalize:normalizeKeywordTreeRow,rootType:'category'});
+  return indexLucusTree(rows,{normalize:normalizeKeywordTreeRow,rootType:'category'});
 }
 export function descendantsOfKeyword(rows,uid,{type}={}){
   const tree=indexKeywordTree(rows),start=tree.index.get(cleanUid(uid));

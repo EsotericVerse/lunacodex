@@ -110,8 +110,7 @@ function applyOrFilters(query,groups,dialect='postgres'){
 const PRIVATE_SITES=['messenger','chatgpt','claude','gemini','msn','whatsapp',
   'telegram','discord','line','wechat','teams','copilot','grok','perplexity','meta ai','meta-ai',
   'mcp','github'];
-const PUBLIC_ANCHOR_TYPES=[...LUCUS_TYPE_GROUPS.time,...LUCUS_TYPE_GROUPS.space,
-  ...LUCUS_TYPE_GROUPS.media];
+const PUBLIC_LUCUS_TYPES=[...LUCUS_TYPE_GROUPS.time,...LUCUS_TYPE_GROUPS.space];
 function databaseTable(req,dialect,namespace,modelName=''){
   // ZenStack PolicyPlugin maps a fixed logical model to the physical table.
   if(modelName)return modelName;
@@ -134,7 +133,7 @@ function publishedOnly(query,table,enabled,columns=['*']){
   }
   if(scopeKind==='lucus')
     return query.where('invisible','=',false)
-      .where('type','in',PUBLIC_ANCHOR_TYPES);
+      .where('type','in',PUBLIC_LUCUS_TYPES);
   throw new Error('Unpublished external relation');
 }
 export function buildKyselySelectQuery(trx,input,{dialect='postgres',namespace,publicOnly=false,modelName=''}={}){
@@ -512,5 +511,5 @@ export async function executeKyselyQuery(trx,input,{
 }
 
 // SQL operations have no stored-procedure dispatch. All calls now use
-// Kysely query, Anchor, Analytics or vetted management action executors.
+// Kysely query, Lucus, Analytics or vetted management action executors.
 export function isKyselyClientError(error){return error instanceof Error&&['Invalid','Unsupported','Unfiltered','Write','Update','Unexpected','RPC','Schema','Too many','Malformed','Filters','OR filters','SQL theme','Missing'].some(prefix=>error.message.startsWith(prefix))}

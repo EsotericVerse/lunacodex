@@ -1,12 +1,12 @@
-export const SPACE_ANCHOR='space_anchor';
+export const SPACE_LUCUS='space_lucus';
 export const SPACE_PERIOD='path';
 export const SPACE_ROAD=SPACE_PERIOD; // Historical JS alias only; no space_road database writes.
 export const SPACE_TRACE='trace';
 export const BASE62_FOUR=/^[A-Za-z0-9]{4}$/; // Legacy diagnostic/export only.
-export const BASE62_UID=/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/; // Current anchors use eight characters.
+export const BASE62_UID=/^(?:[A-Za-z0-9]{4}|[A-Za-z0-9]{8})$/; // Current lucus use eight characters.
 export function spaceType(row){
   const type=String(row?.type||row?.trace_type||'');
-  return type==='lucus'?SPACE_ANCHOR:type==='map'||type==='space_road'?SPACE_PERIOD:type;
+  return type==='lucus'?SPACE_LUCUS:type==='map'||type==='space_road'?SPACE_PERIOD:type;
 }
 export const spaceId=row=>String(row?.id??row?.uid??'').trim();
 export const spaceScope=row=>String(row?.source_scope??row?.scope_id??'').trim();
@@ -17,7 +17,7 @@ export function spaceCoordinates(row){
   const [lng,lat]=point.map(Number);
   return Number.isFinite(lng)&&Number.isFinite(lat)&&Math.abs(lng)<=180&&Math.abs(lat)<=90?[lng,lat]:null;
 }
-export function spaceMembers(record){return Array.isArray(record?.anchor_list)?record.anchor_list:[];}
+export function spaceMembers(record){return Array.isArray(record?.lucus_list)?record.lucus_list:[];}
 export function spaceRouteIds(selection,records=[]){
   const owner=spaceScope(selection);
   const routes=new Map((records||[]).filter(row=>(!owner||spaceScope(row)===owner)
@@ -33,7 +33,7 @@ export function resolveSpaceGraph(selection,records=[],{scopeId}={}){
   const points=new Map(),lines=[],routes=[],missing=new Set();
   const addPoint=uid=>{
     const row=byId.get(uid);
-    if(!row||spaceType(row)!==SPACE_ANCHOR){missing.add(uid);return false;}
+    if(!row||spaceType(row)!==SPACE_LUCUS){missing.add(uid);return false;}
     if(!points.has(uid))points.set(uid,{id:uid,title:String(row.title||row.label||''),
       coordinates:spaceCoordinates(row),record:row});
     return true;
@@ -44,7 +44,7 @@ export function resolveSpaceGraph(selection,records=[],{scopeId}={}){
   };
   if(Array.isArray(selection)){
     selection.filter(uid=>BASE62_UID.test(String(uid))).forEach(addPoint);
-  }else if(spaceType(selection)===SPACE_ANCHOR){
+  }else if(spaceType(selection)===SPACE_LUCUS){
     addPoint(spaceId(selection));
   }else if(spaceType(selection)===SPACE_ROAD){
     const nodes=spaceRouteIds(selection);

@@ -34,7 +34,7 @@
       "loading": "Loading statistics…",
       "noChart": "No chart data available for this period.",
       "loadingMediaTags": "Loading media tag combinations…",
-      "loadingKeywordAttrs": "Loading anchored keyword attributes…",
+      "loadingKeywordAttrs": "Loading lucused keyword attributes…",
       "refreshing": "Refreshing statistics…",
       "refresh": "Refresh live statistics"
     },

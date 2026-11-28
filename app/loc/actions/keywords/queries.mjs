@@ -162,10 +162,10 @@ export async function queryKeywordSuggestions(args={}){
     suggestKeywordPatterns(db,[scope],text,{ownerScopes:new Set([scope])}));
 }
 
-export async function queryKeywordAnchorArticles(args={}){
+export async function queryKeywordLucusArticles(args={}){
   const allowed=['scopeId','uid','type','offset','limit','sortDirection',
     'startDate','endDate','contentType','sourceFilter'];
-  if(!exact(args,allowed))throw Error('Invalid Anchor navigation request');
+  if(!exact(args,allowed))throw Error('Invalid Lucus navigation request');
   const offset=args.offset??0,limit=args.limit??20;
   const startDate=String(args.startDate||''),endDate=String(args.endDate||'');
   const sourceFilter=String(args.sourceFilter||'');
@@ -178,7 +178,7 @@ export async function queryKeywordAnchorArticles(args={}){
     startDate&&!DAY.test(startDate)||endDate&&!DAY.test(endDate)||
     startDate&&endDate&&startDate>endDate||sourceFilter.length>150||
     !['','galaxy','lyrics_work','text_work'].includes(contentType))
-    throw Error('Invalid Anchor navigation request');
+    throw Error('Invalid Lucus navigation request');
   return withKeywordScope(args.scopeId,{},({db,scope,owner,port})=>
     queryLucusArticles(db,{scopeId:scope,uid:String(args.uid||''),
       type:String(args.type||''),owner,offset,

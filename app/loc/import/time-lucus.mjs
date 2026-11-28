@@ -77,7 +77,7 @@ export function importCheckinDates(records=[]){
 export function createImportDateIndex(){
   const existingDays=new Map(),conflictingDays=new Map();
   const accept=row=>{
-    if(row?.type!=='date')throw Error('Date Anchor 索引型別不符');
+    if(row?.type!=='date')throw Error('Date Lucus 索引型別不符');
     const day=String(row.attr?.date||'').slice(0,10);
     if(!/^\d{4}-\d{2}-\d{2}$/.test(day))return;
     if(conflictingDays.has(day)){
@@ -93,8 +93,8 @@ export function createImportDateIndex(){
   return {accept,existingDays,conflictingDays};
 }
 
-export async function prepareImportTimeAnchors(records,{
-  scopeId,timeTable,relation,pageSize=MAX_ROWS,onProgress,anchorSnapshot=null,
+export async function prepareImportTimeLucus(records,{
+  scopeId,timeTable,relation,pageSize=MAX_ROWS,onProgress,lucusSnapshot=null,
 }={}){
   const entries=importCheckinDayEntries(records);
   const entryByDate=new Map(entries.map(item=>[item.date,item]));
@@ -109,16 +109,16 @@ export async function prepareImportTimeAnchors(records,{
       !logical.startsWith('silver.'+scopeId+'_'))
     throw Error('日期定錨尚未解析正確的 Scope Time 資料表');
   const table=logical;
-  if(anchorSnapshot&&
-      (anchorSnapshot.scopeId!==scopeId||anchorSnapshot.table!==table||
-       typeof anchorSnapshot.time?.accept!=='function'))
+  if(lucusSnapshot&&
+      (lucusSnapshot.scopeId!==scopeId||lucusSnapshot.table!==table||
+       typeof lucusSnapshot.time?.accept!=='function'))
     throw Error('日期定錨共用索引 Scope 不符');
-  if(!anchorSnapshot)
+  if(!lucusSnapshot)
     throw Error('日期定錨讀取必須先取得匯入專用授權快照');
-  const index=anchorSnapshot.time;
+  const index=lucusSnapshot.time;
   const {existingDays,conflictingDays}=index;
-  // Existing Anchor PK constraints and the 23505 retry below protect against
-  // improbable secure Base62 UID collisions without preloading all Anchor UIDs.
+  // Existing Lucus PK constraints and the 23505 retry below protect against
+  // improbable secure Base62 UID collisions without preloading all Lucus UIDs.
   const occupied=new Set();
   const dates=[...entryByDate.keys()].sort();
   const missing=dates.filter(day=>!existingDays.has(day)&&!conflictingDays.has(day));

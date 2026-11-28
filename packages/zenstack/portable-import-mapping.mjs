@@ -15,7 +15,7 @@ const SCOPE=/^[a-z][a-z0-9]{0,14}$/;
 // site_id is the original source platform's post/media identifier, scoped
 // by Galaxy.site for deduplication; it must NEVER be replaced by a source
 // taxonomy node UID from silver.loc_lucus. Galaxy.uid is separate LOC identity.
-// Galaxy.media_link is a list of media URLs, not a list of Source Anchor IDs;
+// Galaxy.media_link is a list of media URLs, not a list of Source Lucus IDs;
 // Galaxy.url is the article's own permalink.
 const LOOKUP_FIELDS=Object.freeze(['uid','content','site_id','site']);
 const CORE_FIELDS=Object.freeze(['uid','title','content','site','site_id',

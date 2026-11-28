@@ -1,5 +1,5 @@
 // Galaxy.site stores an actual From-platform label, never its MCP Domain.
-// SiteAnchor hierarchy remains defined only by published Anchor UID edges.
+// SiteLucus hierarchy remains defined only by published Lucus UID edges.
 export const CAPTURE_FROM_SITES=Object.freeze(['web','Github','ChatGPT','Claude','Gemini']);
 export const CAPTURE_LOOKUP_SITES=Object.freeze([...CAPTURE_FROM_SITES,'mcp']);
 const matches=(host,domain)=>host===domain||host.endsWith('.'+domain);

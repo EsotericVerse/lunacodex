@@ -25,11 +25,11 @@ export default function CulturePlaceRiver({scopeId,startDate='',endDate=''}){
         onChange={event=>setSelectedPlace(event.target.value)}>
         <option value="">最常出現的 12 個地點</option>
         {model.places.map(place=><option key={place.name} value={place.name}>
-          {place.name}（{place.count}）{place.anchored?'· 已定錨':''}
+          {place.name}（{place.count}）{place.lucused?'· 已定錨':''}
         </option>)}
       </select></label>
       <p className="scope-status">{model.total.toLocaleString('zh-TW')} 篇有地點的公開作品，
-        {model.places.length} 個不同地點；其中已建立 {model.anchorsCount} 個空間定錨點。</p>
+        {model.places.length} 個不同地點；其中已建立 {model.lucusCount} 個空間定錨點。</p>
     </div>
     {!ready?<p className="scope-status">尚未選擇有效時間範圍。</p>:null}
     {result.isPending?<p className="scope-status" role="status">正在讀取地點快取…</p>:null}

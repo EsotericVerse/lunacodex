@@ -523,8 +523,8 @@
 .scope-culture-inline-heading h4,.scope-culture-inline-heading .scope-status{margin:0}
 .scope-culture-quick-form{display:grid;gap:.65rem;min-width:0}
 .scope-culture-quick-primary{display:grid;grid-template-columns:minmax(12rem,1.8fr) repeat(2,minmax(9rem,1fr));gap:.65rem}
-.scope-culture-quick-anchors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}
-.scope-culture-quick-primary label,.scope-culture-quick-anchors label,.scope-culture-quick-notes,.scope-culture-quick-extra-fields label{display:grid;gap:.28rem;min-width:0}
+.scope-culture-quick-lucus{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}
+.scope-culture-quick-primary label,.scope-culture-quick-lucus label,.scope-culture-quick-notes,.scope-culture-quick-extra-fields label{display:grid;gap:.28rem;min-width:0}
 .scope-culture-quick-form label>span{font-size:.84rem;color:var(--loc-muted)}
 .scope-culture-quick-form :is(input,select,textarea){max-width:100%;min-width:0}
 .scope-culture-quick-notes textarea{min-height:4.5rem;max-height:16rem;resize:vertical}
@@ -533,7 +533,7 @@
 .scope-culture-quick-actions{display:flex;flex-wrap:wrap;gap:.5rem}
 .scope-culture-quick-actions .loc-button{min-height:2.5rem}
 @media(max-width:920px){.scope-culture-quick-primary{grid-template-columns:repeat(2,minmax(0,1fr))}.scope-culture-quick-name{grid-column:1/-1}}
-@media(max-width:540px){.scope-culture-quick-primary,.scope-culture-quick-anchors{grid-template-columns:minmax(0,1fr)}.scope-culture-quick-name{grid-column:auto}.scope-culture-inline-editor{padding:.65rem}}
+@media(max-width:540px){.scope-culture-quick-primary,.scope-culture-quick-lucus{grid-template-columns:minmax(0,1fr)}.scope-culture-quick-name{grid-column:auto}.scope-culture-inline-editor{padding:.65rem}}
 .scope-culture-quick-lucus-connect{grid-column:1/-1;display:grid;gap:.5rem;padding-top:.5rem;border-top:1px solid var(--loc-line)}
 .scope-culture-quick-lucus-connect h5{margin:0;font-size:.88rem;color:var(--loc-muted)}
 .scope-culture-quick-lucus-connect-list{display:grid;gap:.4rem}
@@ -1228,7 +1228,7 @@
 .loc-next-main:has(.loc-trace-panel){min-width:0;max-width:100%;overflow-x:clip}
 .loc-trace-panel,.loc-trace-map-manager,.loc-trace-map-shell{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
 .loc-trace-map-shell>.loc-trace-map-frame{max-width:100%!important}
-/* Trace / spatial anchoring demonstration (the legacy trace Hero is
+/* Trace / spatial lucusing demonstration (the legacy trace Hero is
    unchanged). The map is not a 3D terrain; only the lucus symbols extrude. */
 .loc-trace-panel{
   min-width:0;
@@ -2111,7 +2111,7 @@
 }
 
 
-/* Anchor Inter-Net: small, bounded branches which never preload the whole graph. */
+/* Lucus Inter-Net: small, bounded branches which never preload the whole graph. */
 .loc-inter-net__lucus-detail{margin:.65rem 0 .35rem;padding:.45rem .65rem;
   background:var(--loc-surface-soft);border-radius:var(--loc-radius-sm)}
 .loc-inter-net__lucus-detail>small{display:block;color:var(--loc-muted);margin-bottom:.35rem}

@@ -13,7 +13,7 @@ import {editorSessionStatus,clearEditorSession,touchEditorSession} from '../loc/
 const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
 const validDay=value=>/^\d{4}-\d{2}-\d{2}$/.test(String(value||''));
 
-async function findDateAnchor(scope,date){
+async function findDateLucus(scope,date){
   const rows=await readAllLucusFeature({
     scope,family:'time',types:['date'],editor:true
   });
@@ -22,7 +22,7 @@ async function findDateAnchor(scope,date){
   return {existing:projected.find(row=>row.address===date)||null,all:projected};
 }
 
-export default function ArticleTimeAnchorAction({
+export default function ArticleTimeLucusAction({
   scopeId='',date='',articleCreateTime='',onCreated=null,suggestions=[],label='新增時間定錨'
 }){
   const account=useAccount({enabled:false});
@@ -76,7 +76,7 @@ export default function ArticleTimeAnchorAction({
       }
       const target=await selectManagedScope(scopeId);
       if(!target?.time)throw new Error('無法取得此 Scope 的時間資料表。');
-      const timeRecords=await findDateAnchor(scopeId,date);
+      const timeRecords=await findDateLucus(scopeId,date);
       const existing=timeRecords.existing;
       if(existing){
         onCreated?.(existing);
@@ -89,7 +89,7 @@ export default function ArticleTimeAnchorAction({
       setAnnualSuggestions(provided);
       setOpen(true);
       // Only check other anniversaries after the user explicitly opens
-      // CREATE. Never preload all Time anchors on article detail read.
+      // CREATE. Never preload all Time lucus on article detail read.
       // Suggestions are ephemeral; writes happen only on Submit.
       if(!provided.length)try{
         const suggested=anniversarySuggestionsForDate(date,timeRecords.all,{
@@ -126,7 +126,7 @@ export default function ArticleTimeAnchorAction({
         if(!touchEditorSession(window.sessionStorage))
           throw new Error('無法重新建立編輯 Session。');
       }
-      const existing=(await findDateAnchor(scopeId,date)).existing;
+      const existing=(await findDateLucus(scopeId,date)).existing;
       if(existing){
         onCreated?.(existing);
         setNotice('此日期已有時間定錨，已沿用原有紀錄。');

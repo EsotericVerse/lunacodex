@@ -43,7 +43,7 @@ export function buildKeywordSearchPatterns(scopeId,items=[],matchedUids=[]){
 
 
 // Compose Item statistics from the existing word index: no Galaxy text read,
-// no Anchor total writes, and no mutation of a word's update_time.
+// no Lucus total writes, and no mutation of a word's update_time.
 // Item hit_count is the SUM of its distinct literal-word hit counts;
 // document_count is the UNION of article UIDs, not that sum.
 export function keywordPatternItemMetrics(items=[],storedPatterns=[],{articleUids=null}={}){

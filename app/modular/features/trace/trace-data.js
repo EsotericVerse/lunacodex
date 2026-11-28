@@ -1,7 +1,7 @@
 'use client';
 
 import {dbAuthClient,transactionWrites} from '../../../loc/db/db-client.mjs';
-import {findAnchorWriteMatches,organizeAnchorCandidates} from './trace-organizer.mjs';
+import {findLucusWriteMatches,organizeLucusCandidates} from './trace-organizer.mjs';
 import {allocateLucusUid} from '../../../loc/model/uid.js';
 import {LUCUS_TYPE_GROUPS} from '../../../../packages/zenstack/lucus-hierarchy.mjs';
 import {scopeTableName} from '../../../../packages/zenstack/scope-table-names.mjs';
@@ -27,12 +27,12 @@ export const readPublishedTraceSourceScopes=groupTraceSources;
 export const traceKey=(scopeId,{includeHidden=false}={})=>['scope-trace',scopeId,...(includeHidden?['manager']:[])];
 export const traceMapIndexKey=(scopeId,{nativeOnly=false,includeHidden=false}={})=>['trace-map-index',scopeId,...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
 export const traceCurrentKey=(scopeId,route,{nativeOnly=false,includeHidden=false}={})=>
-  ['trace-current',scopeId,route.uid,JSON.stringify([route.anchor_list||[],route.route_list||{}]),...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
-export const traceAllAnchorsKey=(scopeId,{nativeOnly=false,includeHidden=false}={})=>
-  ['trace-all-anchors',scopeId,...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
+  ['trace-current',scopeId,route.uid,JSON.stringify([route.lucus_list||[],route.route_list||{}]),...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
+export const traceAllLucusKey=(scopeId,{nativeOnly=false,includeHidden=false}={})=>
+  ['trace-all-lucus',scopeId,...(nativeOnly?['native']:[]),...(includeHidden?['manager']:[])];
 const VALID_ID=/^[A-Za-z0-9]{8}$/;
 const TRACE_TYPES=LUCUS_TYPE_GROUPS.space;
-const ANCHOR_COLUMNS='uid,type,title,description,invisible,attr';
+const LUCUS_COLUMNS='uid,type,title,description,invisible,attr';
 import {readLucusFeature,readAllLucusFeature} from '../../../loc/model/feature-query-client.mjs';
 import {queryTracePlaceNames} from '../../../loc/actions/trace/queries.mjs';
 import {readTracePoint,readTraceRouteUids} from '../../../loc/actions/trace/direct-query.mjs';
@@ -44,11 +44,11 @@ const pointAttr=({address,longitude,latitude})=>{
   if(postalText(address))attr.location=postalText(address);
   return attr;
 };
-// Present the typed LocationAnchor row to the existing map widgets. Only the
+// Present the typed LocationLucus row to the existing map widgets. Only the
 // presentation keys keep their former names; storage never reads _trace.
 const projectUnified=(row,id)=>{
   const attr=row.attr||{};
-  const type=row.type==='point'?'space_anchor':row.type;
+  const type=row.type==='point'?'space_lucus':row.type;
   const longitude=attr.longitude,latitude=attr.latitude;
   const coordinates=longitude!=null&&latitude!=null&&
     Number.isFinite(Number(longitude))&&Number.isFinite(Number(latitude))
@@ -62,7 +62,7 @@ const projectUnified=(row,id)=>{
     },[]):[];
   const address=typeof attr.location==='string'?attr.location:'';
   return readRow({...row,type,trace_type:type,
-    address:coordinates,anchor_list:row.type==='point'?[]:point,
+    address:coordinates,lucus_list:row.type==='point'?[]:point,
     route_list:{routes:path,segments,postal_address:address}},id);
 };
 const normalizedInvisible=value=>{if(typeof value==='boolean')return value;if(value===0||value===1)return Boolean(value);throw Error('隱藏設定必須是 0 或 1');};
@@ -95,7 +95,7 @@ export const traceRouteData=row=>{
     return {routes:Array.isArray(value.routes)?value.routes:[],segments:Array.isArray(value.segments)?value.segments:[],
       postal_address:String(value.postal_address||'')};
   return {routes:Array.isArray(value)?value:[],
-    segments:Array.isArray(row?.anchor_list?.[0])?row.anchor_list:[],postal_address:''};
+    segments:Array.isArray(row?.lucus_list?.[0])?row.lucus_list:[],postal_address:''};
 };
 export const validCoordinates=(longitude,latitude)=>
   (longitude==null||String(longitude).trim()==='')&&(latitude==null||String(latitude).trim()==='')
@@ -114,11 +114,11 @@ function readRow(row,scope){
   const coordinates=Array.isArray(row?.address)&&row.address.length===2?row.address:null;
   return {...row,description:noteValue(description),postal_address:relations.postal_address||String(description?.address||''),
     longitude:coordinates?.[0]??null,latitude:coordinates?.[1]??null,
-    source_scope:row.scope_id||scope,anchor_list:Array.isArray(row.anchor_list)?row.anchor_list.flat(Infinity):[],route_list:relations};
+    source_scope:row.scope_id||scope,lucus_list:Array.isArray(row.lucus_list)?row.lucus_list.flat(Infinity):[],route_list:relations};
 }
 async function readPages(id,{filter=null,types=null,limit=null,includeHidden=false}={}){
   if(id==='loc')return [];
-  const selectedTypes=types|| (filter?[filter==='space_anchor'?'point':filter]:TRACE_TYPES);
+  const selectedTypes=types|| (filter?[filter==='space_lucus'?'point':filter]:TRACE_TYPES);
   const rows=await readAllLucusFeature({
     scope:id,family:'space',types:selectedTypes,editor:includeHidden
   });
@@ -128,22 +128,22 @@ async function readPages(id,{filter=null,types=null,limit=null,includeHidden=fal
 }
 export async function readTraceData(scopeId,{includeHidden=false}={}){
   const id=idScope(scopeId),rows=await readPages(id,{includeHidden});
-  return {anchors:rows.filter(row=>row.trace_type==='space_anchor'),
+  return {lucus:rows.filter(row=>row.trace_type==='space_lucus'),
     maps:rows.filter(row=>row.trace_type==='path'||row.trace_type==='trace')};
 }
 export async function readTraceMapIndex(scopeId,{nativeOnly=false,includeHidden=false}={}){
   const id=idScope(scopeId);
   if(id==='loc')return mapBounded(await groupTraceSources(),
     source=>readTraceMapIndex(source,{includeHidden})).then(groups=>groups.flat());
-  return readPages(id,{columns:'uid,trace_type,title,description,anchor_list,route_list,invisible',types:['path','trace'],nativeOnly,includeHidden})
+  return readPages(id,{columns:'uid,trace_type,title,description,lucus_list,route_list,invisible',types:['path','trace'],nativeOnly,includeHidden})
     .then(rows=>rows.filter(row=>row.trace_type==='path'||row.trace_type==='trace'));
 }
-export const traceMemberUids=record=>[...new Set((record?.anchor_list||[])
+export const traceMemberUids=record=>[...new Set((record?.lucus_list||[])
   .flat(Infinity).map(uid=>String(uid||'').trim()).filter(uid=>VALID_ID.test(uid)))];
-export async function readCurrentTraceAnchors(scopeId,anchorUids=[],{includeHidden=false}={}){
+export async function readCurrentTraceLucus(scopeId,lucusUids=[],{includeHidden=false}={}){
   const id=idScope(scopeId);
   if(id==='loc')return [];
-  const ids=[...new Set((anchorUids||[]).flat(Infinity)
+  const ids=[...new Set((lucusUids||[]).flat(Infinity)
     .map(uid=>String(uid||'').trim()).filter(uid=>VALID_ID.test(uid)))];
   if(!ids.length)return [];
   if(ids.length>800)throw Error('地點數量超過上限');
@@ -156,17 +156,17 @@ export async function readCurrentTraceAnchors(scopeId,anchorUids=[],{includeHidd
   const byId=new Map(rows.map(row=>[row.uid,row]));
   return ids.map(uid=>byId.get(uid)).filter(Boolean);
 }
-export async function readAllTraceAnchors(scopeId,{nativeOnly=false,includeHidden=false}={}){
+export async function readAllTraceLucus(scopeId,{nativeOnly=false,includeHidden=false}={}){
   const id=idScope(scopeId);
   if(id==='loc'){
     // No LOC materialized Trace table: keep source Scope ownership and RLS intact.
     const sources=await mapBounded(await groupTraceSources(),source=>
-      readPages(source,{filter:'space_anchor',includeHidden}));
+      readPages(source,{filter:'space_lucus',includeHidden}));
     return sources.flat();
   }
-  return readPages(id,{filter:'space_anchor',nativeOnly,includeHidden});
+  return readPages(id,{filter:'space_lucus',nativeOnly,includeHidden});
 }
-export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
+export async function readTraceLucusSuggestions(scopeId,term,limit=8){
   const id=idScope(scopeId),q=textValue(term).slice(0,100);
   if(id==='loc'||!q)return [];
   const data=checked(await queryTracePlaceNames({
@@ -180,36 +180,36 @@ export async function readTraceAnchorSuggestions(scopeId,term,limit=8){
   const byUid=new Map(allowed.map(row=>[row.uid,row]));
   return ids.map(uid=>byUid.get(uid)).filter(Boolean).map(row=>projectUnified(row,id));
 }
-export async function readTracePopularAnchors(scopeId){
+export async function readTracePopularLucus(scopeId){
   const id=idScope(scopeId);
   if(id==='loc'){
     const members=await groupTraceSources();
     for(const member of members){
-      const result=await readPages(member,{filter:'space_anchor',limit:10});
+      const result=await readPages(member,{filter:'space_lucus',limit:10});
       if(result.length)return result;
     }
     return [];
   }
-  return readPages(id,{filter:'space_anchor',limit:10});
+  return readPages(id,{filter:'space_lucus',limit:10});
 }
 // Cross-Scope reference suggestions remain disabled while LOC union is absent.
 export async function readTraceAddressReferences(_scopeId,_term,_limit=8){
   return [];
 }
-export async function inspectTraceAnchorBeforeWrite({scopeId,lucus,excludeUid=''}){
-  const id=idScope(scopeId),anchors=await readAllTraceAnchors(id,{nativeOnly:id==='loc'});
-  const matches=findAnchorWriteMatches({...lucus,trace_type:'space_anchor',source_scope:id},
-    anchors.filter(row=>row.uid!==excludeUid));
+export async function inspectTraceLucusBeforeWrite({scopeId,lucus,excludeUid=''}){
+  const id=idScope(scopeId),existingLucus=await readAllTraceLucus(id,{nativeOnly:id==='loc'});
+  const matches=findLucusWriteMatches({...lucus,trace_type:'space_lucus',source_scope:id},
+    existingLucus.filter(row=>row.uid!==excludeUid));
   return {reuse:null,matches}; // Never merge spatial identities without explicit approval.
 }
-export async function addTraceAnchor({scopeId,title,description='',address='',longitude,latitude,invisible=false}){
+export async function addTraceLucus({scopeId,title,description='',address='',longitude,latitude,invisible=false}){
   const id=writableScope(scopeId);
   const row={uid:allocateLucusUid(),type:'point',title:nonempty(title,'地點標題'),
     description:descriptionText(description),invisible:normalizedInvisible(invisible),
     attr:pointAttr({address,longitude,latitude})};
   return checked(await physicalPoint(id).insert(row).select('uid').single(),'新增空間定錨點');
 }
-export async function updateTraceAnchor({scopeId,uid,title,description='',address='',longitude,latitude,invisible=false}){
+export async function updateTraceLucus({scopeId,uid,title,description='',address='',longitude,latitude,invisible=false}){
   const id=writableScope(scopeId),selected=textValue(uid);
   if(!VALID_ID.test(selected))throw Error('地點 UID 必須是八碼');
   const before=await readTracePoint(id,selected);
@@ -242,7 +242,7 @@ function traceUidChanges(scope,ids,values){
     };
   });
 }
-export async function renameTraceAnchorTitles({scopeId,uids,title}){
+export async function renameTraceLucusTitles({scopeId,uids,title}){
   const id=writableScope(scopeId);
   const ids=[...new Set((uids||[]).map(textValue))];
   if(!ids.length||ids.length>10000||ids.some(uid=>!VALID_ID.test(uid)))
@@ -250,10 +250,10 @@ export async function renameTraceAnchorTitles({scopeId,uids,title}){
   await transactionWrites(traceUidChanges(id,ids,{title:nonempty(title,'地點標題')}));
   return ids.length;
 }
-export async function addTraceAnchorsBatch({scopeId,places=[]}){
+export async function addTraceLucusBatch({scopeId,places=[]}){
   const id=writableScope(scopeId);
   if(!Array.isArray(places)||places.length>2000)throw Error('大量匯入範圍無效');
-  const existing=await readAllTraceAnchors(id),seen=new Set(existing
+  const existing=await readAllTraceLucus(id),seen=new Set(existing
     .map(item=>item.title.trim().toLocaleLowerCase()+'|'+JSON.stringify(item.address)));
   const inserts=[];let skipped=0;
   for(const place of places){
@@ -281,16 +281,16 @@ export async function addTraceAnchorsBatch({scopeId,places=[]}){
   // A successful SQL COMMIT cannot be reclassified as a failed import
   // because the subsequent UI-only duplicate review did not load.
   let review=[],auditError='';
-  try{review=organizeAnchorCandidates(await readAllTraceAnchors(id));}
+  try{review=organizeLucusCandidates(await readAllTraceLucus(id));}
   catch{auditError='地點已提交，但後續整理清單讀取失敗；請重新整理，勿重複匯入。';}
   return {count,skipped,consolidated:0,duplicatesInBatch:skipped,reviewCount:review.length,
     reviewPreview:review.slice(0,8),auditError};
 }
-function validatedConnections({scopeId,type,anchorUids=[],anchors=[],hasRoutes=false}){
-  const id=idScope(scopeId),list=Array.isArray(anchorUids)?anchorUids:[];
+function validatedConnections({scopeId,type,lucusUids=[],lucus=[],hasRoutes=false}){
+  const id=idScope(scopeId),list=Array.isArray(lucusUids)?lucusUids:[];
   if(!['path','trace'].includes(type))throw Error('無效的連線類型');
   const ids=list.flat(Infinity);
-  const known=new Set((anchors||[]).filter(row=>row.source_scope===id).map(row=>row.uid));
+  const known=new Set((lucus||[]).filter(row=>row.source_scope===id).map(row=>row.uid));
   if(ids.some(uid=>!VALID_ID.test(String(uid))||!known.has(uid)))throw Error('連線含不存在或跨 Scope 的地點');
   if(type==='path'){
     if(list.length<2||list.length>80||list.some(Array.isArray)||new Set(list).size!==list.length)
@@ -315,25 +315,25 @@ async function validatedRouteList(scopeId,type,routeUids=[]){
   return ids;
 }
 const validUid=value=>VALID_ID.test(textValue(value));
-export async function addTraceMap({scopeId,title,description='',type='path',anchorUids=[],anchors=[],routeUids=[],invisible=false}){
+export async function addTraceMap({scopeId,title,description='',type='path',lucusUids=[],lucus=[],routeUids=[],invisible=false}){
   const id=writableScope(scopeId),route_list=await validatedRouteList(id,type,routeUids);
-  const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
+  const lucus_list=validatedConnections({scopeId:id,type,lucusUids,lucus,hasRoutes:route_list.length>0});
   return checked(await dbAuthClient.schema('silver').from(physicalLucus(id)).insert({
     uid:allocateLucusUid(),type,title:nonempty(title,'名稱'),
     description:descriptionText(description),invisible:normalizedInvisible(invisible),
-    attr:type==='path'?{point:anchor_list}:{point:anchor_list.flat(),path:route_list}
+    attr:type==='path'?{point:lucus_list}:{point:lucus_list.flat(),path:route_list}
   }).select('uid').single(),'儲存路線或痕跡圖');
 }
-export async function updateTraceMap({scopeId,uid,title,description='',type='path',anchorUids=[],anchors=[],routeUids=[],invisible=false}){
+export async function updateTraceMap({scopeId,uid,title,description='',type='path',lucusUids=[],lucus=[],routeUids=[],invisible=false}){
   const id=writableScope(scopeId),key=textValue(uid);
   if(!validUid(key))throw Error('無效 UID');
   const route_list=await validatedRouteList(id,type,routeUids);
-  const anchor_list=validatedConnections({scopeId:id,type,anchorUids,anchors,hasRoutes:route_list.length>0});
+  const lucus_list=validatedConnections({scopeId:id,type,lucusUids,lucus,hasRoutes:route_list.length>0});
   const current=type==='point'?await readTracePoint(id,key):
     (await readLucusFeature({scope:id,family:'space',types:[type],uids:[key],limit:1},
       {editor:true})).rows[0]||null;
   if(!current)throw Error('指定的路線／痕跡圖不存在');
-  const attr={...(current.attr||{}),point:type==='trace'?anchor_list.flat():anchor_list};
+  const attr={...(current.attr||{}),point:type==='trace'?lucus_list.flat():lucus_list};
   if(type==='trace')attr.path=route_list;
   return checked(await dbAuthClient.schema('silver').from(physicalLucus(id))
     .update({title:nonempty(title,'名稱'),description:descriptionText(description),
@@ -376,7 +376,7 @@ export async function deleteTraceMap({scopeId,uid,type='path'}){
  * in the primary point's attr.location, and delete source points atomically.
  * No client-side multi-step deletion or fallback to obsolete _trace.
  */
-export async function mergeTraceAnchorPoints({scopeId,keepUid,removeUids=[]}){
+export async function mergeTraceLucusPoints({scopeId,keepUid,removeUids=[]}){
   const id=writableScope(scopeId),primary=textValue(keepUid);
   const sources=[...new Set(removeUids.map(textValue).filter(Boolean))];
   if(!/^[A-Za-z0-9]{8}$/.test(primary)||sources.length<1||sources.length>100||

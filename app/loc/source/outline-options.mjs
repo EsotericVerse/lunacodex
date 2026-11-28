@@ -14,7 +14,7 @@ export function sourceOutlineOptions(taxonomy){
     root:node.root,
     type:node.type,
     label:node.title,
-    // Show its real ZModel tier even when the parent Anchor is absent.
+    // Show its real ZModel tier even when the parent Lucus is absent.
     level:Number.isInteger(node.level)?node.level:Math.max(0,(node.path||[]).length-1),
     orphanType:node.orphanType||null,
     path:node.path||[]

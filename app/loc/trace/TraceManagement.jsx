@@ -7,13 +7,13 @@ import {useEditDockForm} from '../../modular/edit-dock';
 import {useAsyncResource,useResourceCache} from '../../../packages/zenstack/client-queries';
 import {revalidateServerMetadata} from '../scope/scope-data';
 import {
-  TRACE_SCOPES,traceKey,traceAllAnchorsKey,
+  TRACE_SCOPES,traceKey,traceAllLucusKey,
   readTraceData,saveTracePage
 } from '../../modular/features/trace/trace-data';
 import {reviewReorderedCoordinateNames} from '../../modular/features/trace/trace-place-names.mjs';
 import {selectPointMergeSources} from './point-merge-selection.mjs';
 import {
-  filterTraceAnchorsByText,addTraceAnchorSelection,removeTraceAnchorSelection
+  filterTraceLucusByText,addTraceLucusSelection,removeTraceLucusSelection
 } from './bulk-lucus-filter.mjs';
 import {readPlaceSummary} from './place-summary-client';
 
@@ -29,21 +29,21 @@ const LazyTraceMap=lazy(()=>import('../../modular/features/trace/TraceMap'));
 const TraceMapLoading=()=> <p className="scope-status">正在載入地圖…</p>;
 function TraceMap(props){return <Suspense fallback={<TraceMapLoading/>}><LazyTraceMap {...props}/></Suspense>;}
 
-function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRegisterLeave=null}){
+function LucusEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRegisterLeave=null}){
   const cache=useResourceCache();
   // Day-level place rows for the "文化河道" stems drawn on the map's own
-  // saved anchors (TraceMap filters to titles it already shows).
+  // saved lucus (TraceMap filters to titles it already shows).
   const placeSummary=useAsyncResource(['trace-place-summary',scopeId],
     ()=>readPlaceSummary(scopeId,{}),{revalidateOnFocus:false,revalidateOnReconnect:false});
-  const ownAnchors=useMemo(()=>(spatial.anchors||[]).filter(row=>row.source_scope===scopeId),
-    [spatial.anchors,scopeId]);
+  const ownLucus=useMemo(()=>(spatial.lucus||[]).filter(row=>row.source_scope===scopeId),
+    [spatial.lucus,scopeId]);
   // Reuse the already authorized Point/Path/Trace rows; no suggestion query.
   const suggestionRows=useMemo(()=>[
-    ...ownAnchors.map(row=>({...row,type:'point'})),
+    ...ownLucus.map(row=>({...row,type:'point'})),
     ...(spatial.maps||[]).filter(row=>row.source_scope===scopeId)
       .map(row=>({...row,type:row.trace_type}))
-  ],[ownAnchors,spatial.maps,scopeId]);
-  const initialRow=ownAnchors.find(row=>row.uid===selectedUid);
+  ],[ownLucus,spatial.maps,scopeId]);
+  const initialRow=ownLucus.find(row=>row.uid===selectedUid);
   const [editingUid,setEditingUid]=useState(initialRow?.uid||'');
   const [invisible,setInvisible]=useState(Boolean(initialRow?.invisible));
   const [bulkUids,setBulkUids]=useState([]);
@@ -63,17 +63,17 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const [isError,setIsError]=useState(false);
-  const options=useMemo(()=>ownAnchors.map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[ownAnchors]);
-  const renameGroups=useMemo(()=>reviewReorderedCoordinateNames(ownAnchors),[ownAnchors]);
-  const filteredBulkAnchors=useMemo(()=>filterTraceAnchorsByText(ownAnchors,bulkFilter),
-    [ownAnchors,bulkFilter]);
+  const options=useMemo(()=>ownLucus.map(row=>({value:row.uid,label:row.title+(row.postal_address?' · '+row.postal_address:'')})),[ownLucus]);
+  const renameGroups=useMemo(()=>reviewReorderedCoordinateNames(ownLucus),[ownLucus]);
+  const filteredBulkLucus=useMemo(()=>filterTraceLucusByText(ownLucus,bulkFilter),
+    [ownLucus,bulkFilter]);
   const selectedBulkUids=useMemo(()=>new Set(bulkUids),[bulkUids]);
   // The upper selected point is the keeper; every lower checked point is a source.
   // Never allow selecting or deleting the keeper.
-  const mergeUids=useMemo(()=>selectPointMergeSources(ownAnchors,editingUid,bulkUids,{
+  const mergeUids=useMemo(()=>selectPointMergeSources(ownLucus,editingUid,bulkUids,{
     visibilityPending:Boolean(pendingVisibility)
-  }),[editingUid,bulkUids,ownAnchors,pendingVisibility]);
-  const editingRow=useMemo(()=>ownAnchors.find(row=>row.uid===editingUid),[ownAnchors,editingUid]);
+  }),[editingUid,bulkUids,ownLucus,pendingVisibility]);
+  const editingRow=useMemo(()=>ownLucus.find(row=>row.uid===editingUid),[ownLucus,editingUid]);
   const formDirty=editingUid?Boolean(editingRow&&(
     title!==String(editingRow.title||'')||
     description!==String(editingRow.description||'')||
@@ -92,7 +92,7 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
   const pickExisting=uid=>{
     if(busy||bulkBusy)return false;
     if(uid===editingUid)return true;
-    const row=ownAnchors.find(item=>item.uid===uid);
+    const row=ownLucus.find(item=>item.uid===uid);
     if(uid&&!row)return false;
     if(dirty&&!window.confirm('目前有尚未儲存的地點修改或批次操作，確定放棄並切換？'))
       return false;
@@ -164,9 +164,9 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
       let refreshFailed=false;
       try{
         const refreshed=await reload();
-        if(!Array.isArray(refreshed?.anchors))refreshFailed=true;
+        if(!Array.isArray(refreshed?.lucus))refreshFailed=true;
         else if(editingUid||savedUid){
-          const current=refreshed.anchors.find(row=>row.uid===(editingUid||savedUid));
+          const current=refreshed.lucus.find(row=>row.uid===(editingUid||savedUid));
           if(current){
             setEditingUid(current.uid);
             setTitle(current.title||'');
@@ -180,7 +180,7 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
       }catch{refreshFailed=true;}
       try{await revalidateServerMetadata();}catch{refreshFailed=true;}
       await Promise.allSettled([
-        cache.invalidate({queryKey:traceAllAnchorsKey(scopeId)}),
+        cache.invalidate({queryKey:traceAllLucusKey(scopeId)}),
         cache.invalidate({queryKey:['trace-map-index',scopeId]}),
         cache.invalidate({queryKey:['trace-current',scopeId]})
       ]);
@@ -267,17 +267,17 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
         {pendingVisibility?'目前已選擇大量可見性操作，本次儲存不會合併地點。':''}
       </p>:<p className="scope-status">要合併地點，先在上方選擇主要地點，再勾選下方來源。</p>}
       <p className="scope-status" role="status">
-        符合 {filteredBulkAnchors.length} 筆／全部 {ownAnchors.length} 筆；已勾選 {bulkUids.length} 筆。切換文字篩選不會取消先前的勾選。
+        符合 {filteredBulkLucus.length} 筆／全部 {ownLucus.length} 筆；已勾選 {bulkUids.length} 筆。切換文字篩選不會取消先前的勾選。
       </p>
       <div className="scope-stat-controls">
         <button type="button" className="loc-button"
-          disabled={busy||bulkBusy||!bulkFilter.trim()||!filteredBulkAnchors.length}
-          onClick={()=>setBulkUids(ids=>addTraceAnchorSelection(ids,filteredBulkAnchors.filter(row=>row.uid!==editingUid)))}>勾選全部符合結果</button>
+          disabled={busy||bulkBusy||!bulkFilter.trim()||!filteredBulkLucus.length}
+          onClick={()=>setBulkUids(ids=>addTraceLucusSelection(ids,filteredBulkLucus.filter(row=>row.uid!==editingUid)))}>勾選全部符合結果</button>
         <button type="button" className="loc-button"
-          disabled={busy||bulkBusy||!bulkFilter.trim()||!filteredBulkAnchors.length}
-          onClick={()=>setBulkUids(ids=>removeTraceAnchorSelection(ids,filteredBulkAnchors))}>取消符合結果勾選</button>
+          disabled={busy||bulkBusy||!bulkFilter.trim()||!filteredBulkLucus.length}
+          onClick={()=>setBulkUids(ids=>removeTraceLucusSelection(ids,filteredBulkLucus))}>取消符合結果勾選</button>
         <button type="button" className="loc-button" disabled={busy||bulkBusy}
-          onClick={()=>setBulkUids(ownAnchors.filter(row=>row.uid!==editingUid).map(row=>row.uid))}>全選所有定錨點（不限篩選）</button>
+          onClick={()=>setBulkUids(ownLucus.filter(row=>row.uid!==editingUid).map(row=>row.uid))}>全選所有定錨點（不限篩選）</button>
         <button type="button" className="loc-button" disabled={busy||bulkBusy}
           onClick={()=>{setBulkUids([]);setPendingVisibility(null);}}>清除全部勾選</button>
         <button type="button" className="loc-button" disabled={busy||bulkBusy||!bulkUids.length}
@@ -286,12 +286,12 @@ function AnchorEditor({scopeId,spatial,reload,selectedUid='',embedded=false,onRe
           onClick={()=>bulkApply(false)}>大量公開</button>
       </div>
       <div style={{maxHeight:'16rem',overflow:'auto'}}>
-        {filteredBulkAnchors.map(row=><label key={row.uid} style={{display:'block'}}>
+        {filteredBulkLucus.map(row=><label key={row.uid} style={{display:'block'}}>
           <input type="checkbox" disabled={busy||bulkBusy||row.uid===editingUid} checked={row.uid!==editingUid&&selectedBulkUids.has(row.uid)}
             onChange={e=>setBulkUids(ids=>e.target.checked?[...ids.filter(uid=>uid!==row.uid),row.uid]:ids.filter(uid=>uid!==row.uid))}/>
           {row.title} · {row.uid}{row.uid===editingUid?'（主要地點，不可合併）':''}
         </label>)}
-        {!filteredBulkAnchors.length?<p className="scope-status">沒有符合文字的定錨點。</p>:null}
+        {!filteredBulkLucus.length?<p className="scope-status">沒有符合文字的定錨點。</p>:null}
       </div>
       {pendingVisibility?<p className="scope-status">待儲存：{pendingVisibility.uids.length} 個地點將設定為{pendingVisibility.invisible?'隱藏':'公開'}。</p>:null}
     </details>
@@ -345,5 +345,5 @@ export default function TraceManagementPanel({scopeId,mode='lucus',routeMode='al
   const reload=reloadSpatial||(()=>query.mutate());
   return mode==='cleanup'
     ?<TraceOrganizer key={scopeId+'-cleanup'} scopeId={scopeId} spatial={spatial} reload={reload}/>
-    :<AnchorEditor key={scopeId+'-lucus-'+(embedded?selectedUid:'')} scopeId={scopeId} spatial={spatial} reload={reload} selectedUid={selectedUid} embedded={embedded} onRegisterLeave={onRegisterLeave}/>;
+    :<LucusEditor key={scopeId+'-lucus-'+(embedded?selectedUid:'')} scopeId={scopeId} spatial={spatial} reload={reload} selectedUid={selectedUid} embedded={embedded} onRegisterLeave={onRegisterLeave}/>;
 }

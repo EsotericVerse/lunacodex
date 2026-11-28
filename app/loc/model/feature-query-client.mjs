@@ -1,8 +1,8 @@
 import {queryGalaxyRecords} from '../actions/galaxy/queries.mjs';
 import {queryLucusFeature} from '../actions/lucus/queries.mjs';
 import {queryPublicSearchPatternIndex} from '../actions/search/patterns.mjs';
-import {MAX_ROWS,TIME_ANCHOR_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
-// Named fixed record/Anchor projections. All variable values are validated
+import {MAX_ROWS,TIME_LUCUS_MAX_PAGE_ROWS,createTextAdaptiveRows} from '../query/query-batch-size.mjs';
+// Named fixed record/Lucus projections. All variable values are validated
 // by the server against published Scope and ZModel model families.
 async function readFixedOperation(operation,params,{signal=null,editor=false}={}){
   const body={kind:'query',operation,...params,mode:editor?'editor':'public'};
@@ -23,19 +23,19 @@ export const readPublicSearchPatternIndex=scopeIds=>
 export async function readAllLucusFeature({scope,family,types,startDate,endDate,
   signal=null,editor=false}={}){
   const rows=[],seen=new Set();let cursor;
-  const batch=createTextAdaptiveRows({initial:MAX_ROWS,maximum:TIME_ANCHOR_MAX_PAGE_ROWS});
+  const batch=createTextAdaptiveRows({initial:MAX_ROWS,maximum:TIME_LUCUS_MAX_PAGE_ROWS});
   for(;;){
     const data=await readLucusFeature({scope,family,types,startDate,endDate,
       cursor,limit:batch.size},
       {signal,editor});
     for(const row of data.rows||[]){
       const uid=String(row.uid||'');
-      if(!uid||seen.has(uid))throw Error('Duplicate Anchor UID');
+      if(!uid||seen.has(uid))throw Error('Duplicate Lucus UID');
       seen.add(uid);rows.push(row);
     }
     if(!data.nextCursor)return rows;
     batch.observe(data.rows.length,data.rows.reduce((n,row)=>n+JSON.stringify(row).length,0));
-    if(data.nextCursor===cursor||!data.rows?.length)throw Error('Invalid Anchor continuation');
+    if(data.nextCursor===cursor||!data.rows?.length)throw Error('Invalid Lucus continuation');
     cursor=data.nextCursor;
   }
 }

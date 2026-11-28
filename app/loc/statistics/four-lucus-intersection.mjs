@@ -2,7 +2,7 @@
 // Time: Era/Period; Space: Trace/Path; Keyword: Group/Item (stored summaries);
 // Source: Galaxy/Domain from silver.loc_lucus. From (site), Date and Point
 // remain internal leaves and cannot be selected as comparison metrics.
-// No new MediaAnchor statistics: Suno/Spotify/Youtube belong to SiteAnchor.
+// No new Galaxy 媒體作品 statistics: Suno/Spotify/Youtube belong to SiteLucus.
 import {resolveTimeSegments,resolveTimeTrace,timeDateWindows}
   from '../culture/time-lucus-ranges.mjs';
 import {sourceStatisticsTree} from './source-tree-measures.mjs';
@@ -37,15 +37,15 @@ const metric=(kind,row,extra={})=>({
   kind,uid:String(row.uid),name:String(row.title||row.uid),...extra
 });
 
-export function timeIntersectionMetrics(anchors=[]){
-  const all=(Array.isArray(anchors)?anchors:[]).filter(row=>UID.test(String(row?.uid)));
+export function timeIntersectionMetrics(lucus=[]){
+  const all=(Array.isArray(lucus)?lucus:[]).filter(row=>UID.test(String(row?.uid)));
   const dates=new Map(all.filter(row=>row.type==='date').map(row=>[String(row.uid),row]));
   const periods=all.filter(row=>row.type==='period').map(row=>{
     const data=attr(row);
     const ranges=resolveTimeSegments(refIds(data.uid),dates);
     let windows=timeDateWindows(ranges);
     // Some older persisted Period rows have the original explicit dates but
-    // not two live DateAnchor endpoints. This is a saved date interval, not a
+    // not two live DateLucus endpoints. This is a saved date interval, not a
     // fabricated current-day or open-ended range.
     if(!windows.length&&Array.isArray(data.date)){
       const start=cleanDay(data.date[0]),end=cleanDay(data.date[1])||start;
@@ -54,7 +54,7 @@ export function timeIntersectionMetrics(anchors=[]){
     return {...metric('period',row,{windows}),ranges};
   });
   // Era combines the actual Period windows, including older periods with
-  // saved explicit date boundaries rather than surviving DateAnchor endpoints.
+  // saved explicit date boundaries rather than surviving DateLucus endpoints.
   const byPeriod=new Map(periods.map(row=>[row.uid,{
     type:'period',ranges:row.windows.map(w=>({
       start_date:w.startDate,end_date:w.endDate,point:w.startDate===w.endDate,
@@ -75,8 +75,8 @@ export function timeIntersectionMetrics(anchors=[]){
   return [...eras,...periods];
 }
 
-export function spaceIntersectionMetrics(anchors=[]){
-  const all=(Array.isArray(anchors)?anchors:[]).filter(row=>UID.test(String(row?.uid)));
+export function spaceIntersectionMetrics(lucus=[]){
+  const all=(Array.isArray(lucus)?lucus:[]).filter(row=>UID.test(String(row?.uid)));
   const visiblePoints=new Set(all.filter(row=>row.type==='point').map(row=>String(row.uid)));
   const paths=all.filter(row=>row.type==='path').map(row=>{
     const points=refIds(attr(row).point).filter(uid=>visiblePoints.has(uid));

@@ -223,7 +223,7 @@ export async function queryImportPointUidRows(args={}){
   });
 }
 
-export async function queryImportAnchorArticlesPage(args={}){
+export async function queryImportLucusArticlesPage(args={}){
   const scope=importScope(args),limit=pageLimit(args.p_limit);
   const after=args.p_after_uid??null;
   if(after!==null&&!UID.test(String(after)))throw Error('Invalid import UID cursor');

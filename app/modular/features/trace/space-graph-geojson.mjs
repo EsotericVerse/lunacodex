@@ -22,7 +22,7 @@ export function spaceGraphGeojson(selection,records=[],options={}){
     for(const point of graph.points){
       if(!point.coordinates)continue;
       features.push({type:'Feature',
-        properties:{kind:'space_anchor',order:0,uid:point.id,
+        properties:{kind:'space_lucus',order:0,uid:point.id,
           title:point.title,source_scope:spaceScope(point.record)},
         geometry:{type:'Point',coordinates:point.coordinates}});
     }

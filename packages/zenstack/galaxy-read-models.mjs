@@ -1,4 +1,4 @@
-// Model-of-Models: GalaxyAttr/UidRelation/UidAnchor are reusable typed bricks;
+// Model-of-Models: GalaxyAttr/UidRelation/UidLucus are reusable typed bricks;
 // GalaxyList/UidRead compose them without separate database rows.
 // Composable Galaxy ZModel value types over ONE physical <scope>_galaxy row.
 // The semantic shape is nested; the SQL transport remains a portable, flat,
@@ -10,7 +10,7 @@ const required=type=>Object.freeze({type});
 // rather than copying eight flags or UID relation/lucus fields into every view.
 export const GALAXY_READ_MODEL_FIELDS=Object.freeze({
   // GalaxyAttr is eight flat physical flags: statics,culture,search,trace,list,keyword,extract,others.
-// true = included for that feature; false = excluded; not the Anchor.invisible flag.
+// true = included for that feature; false = excluded; not the Lucus.invisible flag.
   GalaxyAttr:Object.freeze({
     statics:optional('Boolean'),culture:optional('Boolean'),search:optional('Boolean'),
     trace:optional('Boolean'),list:optional('Boolean'),keyword:optional('Boolean'),
@@ -81,7 +81,7 @@ export const galaxyReadColumnsFor=(...names)=>[
 // Explicit opt-in for consumers that need the real *nested* semantic object.
 // No copying or fetching of additional rows: caller provides an already
 // authorized flat Galaxy row from the existing query. Missing fields stay
-// missing; values are not fabricated from null or from foreign Anchors.
+// missing; values are not fabricated from null or from foreign Lucus.
 export function composeGalaxyRead(name,row={}){
   if(!row||typeof row!=='object'||Array.isArray(row))
     throw new TypeError('Galaxy read row must be an object');
