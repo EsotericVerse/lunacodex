@@ -32,7 +32,9 @@ export async function loadStatisticsPageInitialData(scopeValue,{
   });
   const runQuery=query||((value)=>import('../actions/statics/queries.mjs')
     .then(module=>module.queryStaticsContent(value)));
-  const result=await runQuery(params.toString());
+  let result;
+  try{result=await runQuery(params.toString());}
+  catch{return null;}
   const data=result?.data;
   if(!data||!Array.isArray(data.rows)||
     scopeId==='loc'&&!Array.isArray(data.scopes))
