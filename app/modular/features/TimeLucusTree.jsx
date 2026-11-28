@@ -1,6 +1,6 @@
 'use client';
 
-import {useMemo} from 'react';
+import {useMemo,useState} from 'react';
 import {timeRecordHierarchy} from '../../loc/culture/time-record-hierarchy-options.mjs';
 
 const uid=row=>String(row?.uid||'');
@@ -12,6 +12,18 @@ export default function TimeLucusTree({
   rows=[],value='',disabled=false,onSelect,onCreate,children=null
 }){
   const hierarchy=useMemo(()=>timeRecordHierarchy(rows),[rows]);
+  const [search,setSearch]=useState('');
+  const needle=search.normalize('NFKC').toLocaleLowerCase('zh-Hant').trim();
+  const filterOptions=(items,selected='')=>{
+    if(!needle)return items;
+    const filtered=items.filter(item=>String(item.searchText||item.label||'')
+      .normalize('NFKC').toLocaleLowerCase('zh-Hant').includes(needle));
+    if(selected&&!filtered.some(item=>item.id===selected)){
+      const current=items.find(item=>item.id===selected);
+      if(current)filtered.unshift(current);
+    }
+    return filtered;
+  };
   const selectedRow=rows.find(row=>uid(row)===String(value||''))||null;
   const selectedType=selectedRow?.type==='date'?'lucus':selectedRow?.type||'';
   const findEraForPeriod=periodUid=>hierarchy.eras.find(group=>
@@ -75,9 +87,17 @@ export default function TimeLucusTree({
   ];
   const selectedPrimary=selectedEra?uid(selectedEra.row):
     unclassifiedSelected?'__unclassified__':(!selectedRow?uid(hierarchy.eras[0]?.row):'');
+  const filteredPrimary=filterOptions(primaryItems,selectedPrimary);
+  const filteredSecondary=filterOptions(secondaryItems,selectedSecondary);
+  const filteredDetails=filterOptions(detailItems,selectedType==='lucus'?uid(selectedRow):'');
     const create=type=>()=>onCreate?.(type);
   return <section className="loc-lucus-select-workspace loc-time-lucus-tree"
     aria-label="時間定錨階層管理">
+    <label className="loc-lucus-select-workspace__search">
+      <span>搜尋時代、期間與時間定錨點</span>
+      <input type="search" className="scope-search-input" value={search}
+        onChange={event=>setSearch(event.target.value)} placeholder="輸入名稱或日期"/>
+    </label>
     <div className="loc-lucus-select-workspace__levels">
       <section className="loc-lucus-select-workspace__field">
         <header><h3>時代</h3><span>{hierarchy.eras.length}</span></header>
@@ -91,7 +111,7 @@ export default function TimeLucusTree({
               }else if(id!=='__none__')onSelect?.(id);
             }}>
             <option value="__none__">選擇時代</option>
-            {primaryItems.map(item=>
+            {filteredPrimary.map(item=>
               <option key={item.id} value={item.id}>{item.label} · {item.meta}</option>)}
           </select>
         </label>
@@ -114,7 +134,7 @@ export default function TimeLucusTree({
             }}>
             <option value="__none__">選擇期間</option>
             {activeEra?<option value="__era__">整個時代</option>:null}
-            {secondaryItems.map(item=>
+            {filteredSecondary.map(item=>
               <option key={item.id} value={item.id}>{item.label} · {item.meta}</option>)}
           </select>
         </label>
@@ -128,7 +148,7 @@ export default function TimeLucusTree({
             disabled={disabled||!detailItems.length}
             onChange={event=>{if(event.target.value!=='__none__')onSelect?.(event.target.value);}}>
             <option value="__none__">選擇時間定錨點</option>
-            {detailItems.map(item=><option key={item.id} value={item.id}>
+            {filteredDetails.map(item=><option key={item.id} value={item.id}>
               {item.meta?item.meta+'｜':''}{item.label}
             </option>)}
           </select>
