@@ -148,7 +148,7 @@ export default function ThemeEditor(){
         </fieldset>
       </div>
       <section className="scope-inline-card admin-theme-local-preview" aria-label="主題完整預覽" data-theme-id={themeId}
-        style={{...draft.tokens,background:'var(--loc-bg)',color:'var(--loc-text)',borderColor:'var(--loc-line)'}}>
+        style={{...draft.tokens,backgroundColor:'var(--loc-bg)',color:'var(--loc-text)',borderColor:'var(--loc-line)'}}>
         <header className="admin-theme-preview-heading">
           <div><strong style={{color:'var(--loc-heading)'}}>主題完整預覽：{draft.label||themeId}</strong>
             <p style={{color:'var(--loc-muted)'}}>預覽五個視覺維度及功能元件；草稿尚未套用到網站。</p></div>
