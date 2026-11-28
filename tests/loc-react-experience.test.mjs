@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {fileURLToPath} from 'node:url';
 import {buildTraceTerritoryRouteModel} from '../app/modular/features/trace/trace-territory-overlay.mjs';
 
 const root=new URL('../',import.meta.url);
