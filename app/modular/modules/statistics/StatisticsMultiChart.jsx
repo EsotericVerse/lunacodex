@@ -183,7 +183,7 @@ export default function StatisticsMultiChart({
     (intent==='legacy'&&actual==='bar'&&legacyBarLayout==='vertical'&&categories.length>0);
   const highlightTop=Number(intentConfig?.highlightTop||0);
   const rankingStart=Math.max(0,Math.trunc(Number(rankingOffset)||0));
-  const chartHeight=isDistribution&&barLayout==='vertical'
+  const chartHeight=actual==='bar'&&isDistribution&&barLayout==='vertical'
     ?Math.max(height,Math.min(24,distributionData.length)*34+80):height;
   const [selectedDatum,setSelectedDatum]=useState(null);
   const datumDataKey=[intent,actual,records.length,records[0]?.uid??records[0]?.id??'',
