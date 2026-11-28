@@ -14,6 +14,7 @@ import SourceTreePicker from './SourceTreePicker';
 import {INTERSECTION_FAMILIES,timeIntersectionMetrics,spaceIntersectionMetrics,
   fourDimensionDailyCounts} from '../../../loc/statistics/four-lucus-intersection.mjs';
 import {comparisonMetricGroups,selectedComparisonMetricGroup,firstAvailableGroupMetric} from './statistics-compare-options.mjs';
+import {availableStatisticIntents,STATISTIC_INTENTS} from './statistics-time-zoom.mjs';
 
 const DAY_MS=86400000;
 // Only second/third hierarchy levels are selectable in each comparison lane.
@@ -25,7 +26,7 @@ export const DIMENSIONS=Object.freeze([
   {kind:'trace',label:'痕跡'},{kind:'path',label:'路徑'},
   {kind:'keyword_group',label:'關鍵詞 Group'},
   {kind:'keyword_item',label:'關鍵詞 Item'},
-  {kind:'source_tree',label:'來源 Galaxy／Domain'}
+  {kind:'source_tree',label:'來源 Universe／Galaxy／Domain／From'}
 ]);
 const dimensionForKind=kind=>kind==='source_tree'?'source':
   INTERSECTION_FAMILIES.find(row=>row.types.includes(kind))?.value||'source';
@@ -63,6 +64,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const [selectedPeriodKey,setSelectedPeriodKey]=useState('');
   const [chartIntent,setChartIntent]=useState('trend');
   const [selectedCategoryKey,setSelectedCategoryKey]=useState('');
+  const [compareMetricKey,setCompareMetricKey]=useState('works');
   useEffect(()=>{
     setSelectedPeriodKey('');setSelectedCategoryKey('');setChartIntent('trend');
   },[scope?.id,range?.startDate,range?.endDate]);
@@ -150,7 +152,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       if(!result.class_uid)return [];
       const {catalog}=keywordClassCatalog(result.rows,result.class_uid);
       return catalog.map(item=>({
-        uid:item.uid,group_uid:item.group_uid,class_group:item.class_group
+        uid:item.uid,group_uid:item.group_uid,class_group:item.class_group,
+        patternCount:Array.isArray(item.keywords)?item.keywords.length:0
       }));
     }
   });
@@ -158,15 +161,16 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
     .filter(item=>item.class_enable!==false&&String(item.group_uid||''))
     .map(item=>[String(item.uid),String(item.group_uid)])),
   [keywordCatalog.data]);
+  const keywordItemPatternCount=useMemo(()=>new Map((keywordCatalog.data||[])
+    .map(item=>[String(item.uid),Math.max(0,Number(item.patternCount)||0)])),
+  [keywordCatalog.data]);
   const timeMetrics=useMemo(()=>timeIntersectionMetrics(timeLucus.data||[]),
     [timeLucus.data]);
   const spaceMetrics=useMemo(()=>spaceIntersectionMetrics(spaceLucus.data||[]),
     [spaceLucus.data]);
-  // Keep the single Source-tree engine. Universe is a grouping heading;
-  // From contributes to rollups but is not shown or selectable in comparisons.
-  const sourceMetrics=useMemo(()=>sourceModel.metrics.filter(item=>
-    item.kind==='source_tree'&&['galaxy','domain'].includes(item.type)),
-  [sourceModel]);
+  // Keep the one SiteLucus tree intact: Universe, Galaxy, Domain and From
+  // are all real levels. Each level is a selectable numeric projection.
+  const sourceMetrics=useMemo(()=>sourceModel.metrics,[sourceModel]);
   const hierarchyMetrics=useMemo(()=>[...timeMetrics,...spaceMetrics,...sourceMetrics],
     [timeMetrics,spaceMetrics,sourceMetrics]);
   const hierarchyCounts=useMemo(()=>fourDimensionDailyCounts({
@@ -183,18 +187,24 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       .filter(row=>Number(row.document_count||0)>0)
       .map(row=>({
         id:metricId('keyword_group',row.group_uid),kind:'keyword_group',
-        uid:String(row.group_uid),name:String(row.group||row.group_uid),
-        total:Number(row.document_count)||0
+        uid:String(row.group_uid),parentUid:String(analysis?.keywordMeta?.class_uid||''),
+        name:String(row.group||row.group_uid),total:Number(row.document_count)||0,
+        childCount:(keywordCatalog.data||[]).filter(item=>
+          String(item.group_uid)===String(row.group_uid)).length
       }));
     const items=(analysis?.runeTotals||[])
       .filter(row=>Number(row.document_count||0)>0)
       .map(row=>({
         id:metricId('keyword_item',row.uid),kind:'keyword_item',
-        group_uid:keywordItemGroup.get(String(row.uid))||'',
-        name:String(row.label||row.uid),total:Number(row.document_count)||0
+        uid:String(row.uid),group_uid:keywordItemGroup.get(String(row.uid))||'',
+        parentUid:keywordItemGroup.get(String(row.uid))||'',
+        name:String(row.label||row.uid),total:Number(row.document_count)||0,
+        patternCount:keywordItemPatternCount.get(String(row.uid))||0,
+        childCount:keywordItemPatternCount.get(String(row.uid))||0
       }));
     return [...hierarchy,...groups,...items];
-  },[hierarchyMetrics,hierarchyCounts,keywords.data,keywordItemGroup]);
+  },[hierarchyMetrics,hierarchyCounts,keywords.data,keywordItemGroup,
+    keywordItemPatternCount,keywordCatalog.data]);
   const candidatesForLane=index=>categoryList.filter(item=>
     dimensionForKind(item.kind)===shownKinds[index]&&item.total>0)
     .sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name));
@@ -272,8 +282,9 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
       chart,
       days:[...activeDays.values()].filter(day=>categories.every(category=>day.has(category.id))).length,
       totals:categories.map(category=>({
-        name:category.name,
-        value:chart.reduce((n,bucket)=>n+Number(bucket[category.id]||0),0)
+        id:category.id,name:category.name,
+        value:chart.reduce((n,bucket)=>n+Number(bucket[category.id]||0),0),
+        activePeriods:chart.filter(bucket=>Number(bucket[category.id]||0)>0).length
       }))
     };
   },[hierarchyCounts,categories.map(c=>c.id).join(String.fromCharCode(0)),
@@ -281,14 +292,86 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const series=categories.map(c=>({key:c.id,label:c.name}));
   const categoryKey=categories.map(category=>category.id).join('|');
   useEffect(()=>setSelectedCategoryKey(''),[categoryKey]);
-  const distribution=calculated.totals.map((item,index)=>({
-    key:categories[index]?.id||String(index),name:item.name,value:item.value
+  const totalsById=new Map(calculated.totals.map(item=>[item.id,item]));
+  const rangeDays=Math.max(0,Math.floor((Date.parse(end+'T00:00:00Z')-
+    Date.parse(start+'T00:00:00Z'))/DAY_MS)+1);
+  const chartMetricRows=categories.map(category=>{
+    const total=totalsById.get(category.id)?.value||0;
+    const activePeriods=totalsById.get(category.id)?.activePeriods||0;
+    return {
+      ...category,uid:category.uid||category.id,title:category.name,label:category.name,
+      works:total,activePeriods,
+      durationDays:category.durationDays,
+      dateAnchorCount:category.dateAnchorCount,
+      pointCount:category.pointCount,
+      pathCount:category.pathCount,
+      childCount:category.childCount,
+      descendantCount:category.descendantCount,
+      fromCount:category.fromCount,
+      patternCount:category.patternCount
+    };
+  }).filter(row=>row.works>0);
+  const metricDefinitions=[
+    {key:'works',label:'作品數',unit:'篇'},
+    {key:'activePeriods',label:'活躍區間數',unit:'個'},
+    {key:'durationDays',label:'時間跨度',unit:'日'},
+    {key:'dateAnchorCount',label:'日期定錨數',unit:'個'},
+    {key:'pointCount',label:'Point 數',unit:'個'},
+    {key:'pathCount',label:'Path 數',unit:'條'},
+    {key:'childCount',label:'直接子節點數',unit:'個'},
+    {key:'descendantCount',label:'下層節點數',unit:'個'},
+    {key:'fromCount',label:'From 來源數',unit:'個'},
+    {key:'patternCount',label:'Pattern 數',unit:'個'}
+  ];
+  const metricOptions=metricDefinitions.filter(metric=>
+    chartMetricRows.length>=2&&chartMetricRows.every(row=>
+      row[metric.key]!==null&&row[metric.key]!==undefined&&
+      Number.isFinite(Number(row[metric.key]))));
+  const effectiveMetricKey=metricOptions.some(metric=>metric.key===compareMetricKey)
+    ?compareMetricKey:'works';
+  const distribution=chartMetricRows.map(row=>({
+    key:row.id,name:row.name,value:Number(row[effectiveMetricKey])||0
   })).filter(item=>item.value>0);
+  const values=chartMetricRows.map(row=>({
+    uid:row.uid,label:row.name,value:Number(row[effectiveMetricKey])||0,
+    metric:effectiveMetricKey
+  })).filter(row=>Number.isFinite(row.value));
+  const recordFields=metricOptions.map(metric=>metric);
+  const selectedSeries=selectedCategoryKey
+    ?series.filter(field=>field.key===selectedCategoryKey):series;
+  const selectedCategory=categories.find(category=>category.id===selectedCategoryKey)||null;
+  const exclusive=(()=>{
+    if(categories.length<2)return false;
+    const first=categories[0];
+    if(!categories.every(row=>row.kind===first.kind&&
+      String(row.parentUid||'')===String(first.parentUid||'')))return false;
+    if(first.kind==='keyword_group'||first.kind==='source_tree')return true;
+    if(first.kind==='period'||first.kind==='era'){
+      const windows=categories.map(row=>row.windows||[]);
+      for(let i=0;i<windows.length;i++)for(let j=i+1;j<windows.length;j++)
+        for(const a of windows[i])for(const b of windows[j])
+          if(a.startDate<=b.endDate&&b.startDate<=a.endDate)return false;
+      return true;
+    }
+    if(first.kind==='path'||first.kind==='trace'){
+      const seen=new Set();
+      for(const row of categories)for(const point of row.points||[]){
+        if(seen.has(point))return false;
+        seen.add(point);
+      }
+      return true;
+    }
+    return false;
+  })();
+  const chartIntentOptions=availableStatisticIntents({
+    rows:calculated.chart,series,distribution,
+    records:chartMetricRows,recordFields,values,
+    mutuallyExclusive:exclusive,seriesExclusive:exclusive,
+    attainmentValue:calculated.days,targetValue:rangeDays
+  });
+  const effectiveChartIntent=chartIntentOptions.includes(chartIntent)?chartIntent:'trend';
   const visibleSeries=selectedCategoryKey
     ?series.filter(field=>field.key===selectedCategoryKey):series;
-  const chartIntentOptions=distribution.length?['trend','compare']:['trend'];
-  const effectiveChartIntent=chartIntentOptions.includes(chartIntent)?chartIntent:'trend';
-  const selectedCategory=categories.find(category=>category.id===selectedCategoryKey)||null;
   const enough=maximumLanes>=2&&categories.length===lanes;
   const selectedPoint=calculated.chart.find(row=>row.period===selectedPeriodKey)||null;
   const selectedPointCategories=selectedCategory?[selectedCategory]:categories;
@@ -376,8 +459,8 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
               <div className="scope-self-intersection-category-groups">
                 {kind==='source'?<SourceTreePicker
                   metrics={sourceModel.metrics} value={chosenId} takenIds={takenByOther}
-                  selectableTypes={['galaxy','domain']} onChange={selectMetric}
-                  label={l.comparisonItem+' '+(index+1)+' 來源 Galaxy／Domain'}/>:null}
+                  onChange={selectMetric}
+                  label={l.comparisonItem+' '+(index+1)+' 來源 Universe／Galaxy／Domain／From'}/>:null}
                 {kind!=='source'?<label className="scope-self-stat-picker"><span>上層分類</span>
                   <select className="scope-select" aria-label={l.comparisonItem+' '+(index+1)+' 上層分類'}
                     value={currentGroup?.key||''}
