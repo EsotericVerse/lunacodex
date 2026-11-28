@@ -153,7 +153,7 @@ export default function LocGroupCultureReader(){
     // queries finish. The two datasets are committed atomically below.
     try{
       const [timeResult,densityResult]=await Promise.all([
-        queryLocCultureTimeRiver({mode:'range',scope:next.scope_id,ranges:windows}),
+        queryLocCultureTimeRiver({mode:'range',ranges:windows}),
         queryLocCultureDensity({ranges:windows})
       ]);
       if(!mounted.current||request!==sequence.current)return;
