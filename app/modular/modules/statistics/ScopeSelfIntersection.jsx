@@ -12,7 +12,8 @@ import StatisticsDetails from './StatisticsDetails';
 import {sourceStatisticsTree} from '../../../loc/statistics/source-tree-measures.mjs';
 import SourceTreePicker from './SourceTreePicker';
 import {INTERSECTION_FAMILIES,timeIntersectionMetrics,spaceIntersectionMetrics,
-  fourDimensionDailyCounts} from '../../../loc/statistics/four-lucus-intersection.mjs';
+  fourDimensionDailyCounts,areLucusMetricsMutuallyExclusive}
+  from '../../../loc/statistics/four-lucus-intersection.mjs';
 import {comparisonMetricGroups,selectedComparisonMetricGroup,firstAvailableGroupMetric} from './statistics-compare-options.mjs';
 import {availableStatisticIntents,STATISTIC_INTENTS} from './statistics-time-zoom.mjs';
 
@@ -341,29 +342,7 @@ export default function ScopeSelfIntersection({scope,range,classUid='',zoomLevel
   const selectedSeries=selectedCategoryKey
     ?series.filter(field=>field.key===selectedCategoryKey):series;
   const selectedCategory=categories.find(category=>category.id===selectedCategoryKey)||null;
-  const exclusive=(()=>{
-    if(categories.length<2)return false;
-    const first=categories[0];
-    if(!categories.every(row=>row.kind===first.kind&&
-      String(row.parentUid||'')===String(first.parentUid||'')))return false;
-    if(first.kind==='keyword_group'||first.kind==='source_tree')return true;
-    if(first.kind==='period'||first.kind==='era'){
-      const windows=categories.map(row=>row.windows||[]);
-      for(let i=0;i<windows.length;i++)for(let j=i+1;j<windows.length;j++)
-        for(const a of windows[i])for(const b of windows[j])
-          if(a.startDate<=b.endDate&&b.startDate<=a.endDate)return false;
-      return true;
-    }
-    if(first.kind==='path'||first.kind==='trace'){
-      const seen=new Set();
-      for(const row of categories)for(const point of row.points||[]){
-        if(seen.has(point))return false;
-        seen.add(point);
-      }
-      return true;
-    }
-    return false;
-  })();
+  const exclusive=areLucusMetricsMutuallyExclusive(categories);
   const chartIntentOptions=availableStatisticIntents({
     rows:calculated.chart,series,distribution,
     records:chartMetricRows,recordFields,values,
