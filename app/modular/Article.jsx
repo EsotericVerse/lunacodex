@@ -2,9 +2,12 @@
 
 import {WorkSummaryCard} from './ui';
 import {useEffect,useRef,useState} from 'react';
+import {motion,useReducedMotion} from 'motion/react';
 import dynamic from 'next/dynamic';
 // A plain-text article does not need an editor chunk; edit and rich view mount on demand.
-const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{loading:()=>null});
+const BlockNoteEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor'),{
+  loading:()=> <p className="scope-status" role="status">正在載入文章內容…</p>
+});
 const ObjectEditor=dynamic(()=>import('../loc/editor/BlockNoteEditor').then(mod=>mod.ObjectEditor),{loading:()=>null});
 import {UI_COPY} from '../i18n/ui-copy';
 import {useUiSection} from '../i18n/ui-locale';
@@ -19,6 +22,7 @@ import {scopeHref} from './routing/scope-registry';
 // including editor setup and HTML parsing, until a reader scrolls near them.
 function DeferredArticleBody({html}){
   const [visible,setVisible]=useState(false);
+  const reduceMotion=useReducedMotion();
   const container=useRef(null);
   useEffect(()=>{
     const node=container.current;
@@ -39,7 +43,12 @@ function DeferredArticleBody({html}){
   return <div ref={container} className="scope-article-block-display"
     role="region" aria-label={UI_COPY.common.body}
     style={!visible?{minHeight:'3rem'}:undefined}>
-    {visible?<BlockNoteEditor editable={false} initialContent={html}/>:null}
+    {visible?<motion.div
+      initial={reduceMotion?false:{opacity:0,y:4}}
+      animate={{opacity:1,y:0}}
+      transition={reduceMotion?{duration:0}:{duration:.18,ease:'easeOut'}}>
+      <BlockNoteEditor editable={false} initialContent={html}/>
+    </motion.div>:null}
   </div>;
 }
 
