@@ -1,6 +1,6 @@
 'use client';
 
-import {cloneElement,useMemo,useState} from 'react';
+import {cloneElement,useEffect,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
@@ -186,6 +186,7 @@ export default function StatisticsMultiChart({
   const chartHeight=isDistribution&&barLayout==='vertical'
     ?Math.max(height,Math.min(24,distributionData.length)*34+80):height;
   const [selectedDatum,setSelectedDatum]=useState(null);
+  useEffect(()=>setSelectedDatum(null),[actual,records,values,scatterAxisKeys.x,scatterAxisKeys.y]);
   const emitDatum=(datum)=>{
     if(!datum)return;
     if(['record','bin','attainment','stage','other-categories'].includes(datum.kind))
