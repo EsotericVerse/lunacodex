@@ -96,7 +96,7 @@ function ArchiveTools(){
     </article>
     <article className="author-editorial-block">
       <h3>搜尋 · Search</h3>
-      <p>從累積的文字、作品與多媒體描述中找回原文、標題、來源與相關紀錄；搜尋負責找到資料，不替資料生成新的語意。</p>
+      <p>從累積的文章與作品中找回原文、標題、來源與相關紀錄；搜尋負責找到資料，不替資料生成新的語意。</p>
       <p><ScopeLink href="/lo3rwang/search/">開始搜尋 →</ScopeLink></p>
     </article>
   </div>;
