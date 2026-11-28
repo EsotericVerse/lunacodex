@@ -4,7 +4,7 @@ import {cloneElement,useMemo,useState} from 'react';
 import {motion,useReducedMotion} from 'motion/react';
 import {useAsyncResource} from '../../../../packages/zenstack/client-queries';
 import {UI_COPY} from '../../../i18n/ui-copy';
-import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,compositionTrendRows,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
+import {RUNE_RANKING_PAGE_SIZE,availableStatisticChartTypes,nonemptySeries,normalizeDistribution,movingAverage,scatterPair,recordScatterPair,compositionPercentages,compositionTrendRows,resolveStatisticIntent,radarPeriodComparison,activePeriodCoverage,number,color as baseColor,pointColor as basePointColor} from './statistics-time-zoom.mjs';
 import {themedDataColor} from '../../visual-palette.mjs';
 export {STAT_VISUAL_TYPES,availableStatisticChartTypes} from './statistics-time-zoom.mjs';
 import {useUiLocale,useUiSection} from '../../../i18n/ui-locale';
@@ -165,13 +165,12 @@ export default function StatisticsMultiChart({
   const distributionData=useMemo(()=>colored.map((item,index)=>({
     ...item,__index:index
   })),[colored]);
-  const compositionFields=useMemo(()=>{
-    const total=colored.reduce((sum,item)=>sum+item.value,0);
-    return colored.map((item,index)=>({
-      ...item,dataKey:'__composition_'+index,
-      percent:total>0?item.value/total*100:0
-    }));
-  },[colored]);
+  const compositionFields=useMemo(()=>compositionPercentages(colored).map((item,index)=>{
+    const source=colored.find(row=>String(row.key)===String(item.key));
+    return {
+      ...item,fill:source?.fill||color(index),dataKey:'__composition_'+index
+    };
+  }),[colored]);
   const compositionRow=useMemo(()=>Object.fromEntries([
     ['period','全部'],...compositionFields.map(item=>[item.dataKey,item.percent])
   ]),[compositionFields]);
@@ -218,6 +217,13 @@ export default function StatisticsMultiChart({
   const barClick=(index)=>{
     const item=distributionData[index];
     categoryClick(item);
+  };
+  const handleCompositionCategory=field=>{
+    if(field.aggregated){
+      emitDatum({intent,kind:'other-categories',items:field.items||[]});
+      return;
+    }
+    categoryClick(field);
   };
   const handleCompositionSegment=(field,event,index)=>{
     const row=event?.payload||display[index]||{};
@@ -291,9 +297,9 @@ export default function StatisticsMultiChart({
     <Tooltip content={<ThemedChartTooltip suffix="%"/>}/>
     <Legend wrapperStyle={{fontSize:11}}/>
     {compositionFields.map((item,index)=><Bar key={item.key} {...animation}
-      dataKey={item.dataKey} name={item.name} stackId="composition" fill={color(index)}
-      onClick={()=>categoryClick(item)}>
-      <Cell fill={color(index)}/>
+      dataKey={item.dataKey} name={item.name} stackId="composition" fill={item.fill}
+      onClick={()=>handleCompositionCategory(item)}>
+      <Cell fill={item.fill}/>
     </Bar>)}
   </BarChart>;
   else if(actual==='compositionTrend')chart=<BarChart data={compositionTrend.rows} margin={margin}>
