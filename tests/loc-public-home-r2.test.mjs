@@ -4,7 +4,7 @@ import {PUBLISHED_SITE_BOOTSTRAP} from '../app/modular/published-site-bootstrap.
 import {SCOPE_ROUTE_INDEX} from '../app/modular/routing/scope-route-index.js';
 import {
   PUBLIC_HOME_PAGE_COPY_KEY,PUBLIC_LOC_HOME_BLOCKS_KEY,
-  PUBLIC_LOC_HOME_BLOCKS_PREFIX,moveLegacyLocHomeBlockObjects,
+  PUBLIC_LOC_HOME_BLOCKS_PREFIX,
   publicHomeKeysForWrite,publicScopeBlocksKey,readPublicHomeObject,
   validPublicHomeBlockRows,validPublicHomePageCopy,
   writePublicHomeObject,invalidatePublicHomeObjects
@@ -54,58 +54,6 @@ test('R2 object paths keep public blocks separate from SiteLucus taxonomy',()=>{
   for(const type of ['universe','galaxy','domain','from'])
     assert.equal(publicScopeBlocksKey('loc',type),null);
   assert.equal(publicScopeBlocksKey('admin','index'),null);
-});
-
-test('legacy LOC R2 block objects move to Lucus keys and are verified before deletion',async()=>{
-  const bucket=fakeBucket();
-  const oldKey='loc/public-home/v1/loc-anchor-blocks/scope_culture.json';
-  const newKey=PUBLIC_LOC_HOME_BLOCKS_PREFIX+'scope_culture.json';
-  const body=JSON.stringify([{uid:'Abc12345',page_name:'scope_culture',block_order:1}]);
-  bucket.values.set(oldKey,body);
-  const moved=await moveLegacyLocHomeBlockObjects(bucket);
-  assert.deepEqual(moved,[{from:oldKey,to:newKey,alreadyPresent:false}]);
-  assert.equal(bucket.values.has(oldKey),false);
-  assert.equal(bucket.values.get(newKey),body);
-});
-
-test('legacy R2 move refuses to overwrite a different Lucus object',async()=>{
-  const bucket=fakeBucket();
-  bucket.values.set('loc/public-home/v1/loc-anchor-blocks/home.json','old');
-  bucket.values.set(PUBLIC_LOC_HOME_BLOCKS_PREFIX+'home.json','new');
-  await assert.rejects(moveLegacyLocHomeBlockObjects(bucket),/different content/);
-  assert.equal(bucket.values.get('loc/public-home/v1/loc-anchor-blocks/home.json'),'old');
-  assert.equal(bucket.values.get(PUBLIC_LOC_HOME_BLOCKS_PREFIX+'home.json'),'new');
-});
-
-test('legacy R2 move uses a create-only write and preserves concurrent destination content',async()=>{
-  const bucket=fakeBucket();
-  const oldKey='loc/public-home/v1/loc-anchor-blocks/home.json';
-  const newKey=PUBLIC_LOC_HOME_BLOCKS_PREFIX+'home.json';
-  bucket.values.set(oldKey,'source');
-  const put=bucket.put.bind(bucket);
-  bucket.put=async(key,body,options)=>{
-    if(key===newKey)bucket.values.set(newKey,'concurrent writer');
-    return put(key,body,options);
-  };
-  await assert.rejects(moveLegacyLocHomeBlockObjects(bucket),/destination conflicts/);
-  assert.equal(bucket.values.get(oldKey),'source');
-  assert.equal(bucket.values.get(newKey),'concurrent writer');
-});
-
-test('legacy R2 move can finish when a concurrent writer already stored the same object',async()=>{
-  const bucket=fakeBucket();
-  const oldKey='loc/public-home/v1/loc-anchor-blocks/home.json';
-  const newKey=PUBLIC_LOC_HOME_BLOCKS_PREFIX+'home.json';
-  bucket.values.set(oldKey,'same content');
-  const put=bucket.put.bind(bucket);
-  bucket.put=async(key,body,options)=>{
-    if(key===newKey)bucket.values.set(newKey,'same content');
-    return put(key,body,options);
-  };
-  const moved=await moveLegacyLocHomeBlockObjects(bucket);
-  assert.deepEqual(moved,[{from:oldKey,to:newKey,alreadyPresent:false}]);
-  assert.equal(bucket.values.has(oldKey),false);
-  assert.equal(bucket.values.get(newKey),'same content');
 });
 
 test('release JS keeps routing and SiteLucus but contains no mutable homepage copy',()=>{
