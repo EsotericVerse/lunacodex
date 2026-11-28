@@ -1,5 +1,5 @@
-// CI smoke test: visit the real Next.js *development* homepage and capture
-// React's key warnings through Chromium DevTools. No Playwright/npm package added.
+// Optional local browser smoke test: visit the real Next.js *development* homepage
+// and capture React's key warnings through Chromium DevTools. No Playwright/npm package added.
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
 import {existsSync,mkdtempSync,readFileSync,rmSync} from 'node:fs';
@@ -109,8 +109,8 @@ try{
   await within(()=>notes.some(text=>text.includes(probe)),5000,'browser console observer');
   await call('Page.navigate',{url});
 
-  // Public Blocks now come from SQL. CI has no production DB credential:
-  // check the hydrated shell and a completed live read OR its explicit error.
+  // Public Blocks now come from SQL. The smoke test needs no production DB
+  // credential: check the hydrated shell and a completed live read OR its explicit error.
   // Never treat the initial empty placeholder as proof of a successful read.
   const homepageState=async()=>{
     const result=await call('Runtime.evaluate',{
