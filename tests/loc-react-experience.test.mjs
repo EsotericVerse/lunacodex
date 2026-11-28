@@ -133,4 +133,20 @@ test('Keyword and Space management use React section navigation without duplicat
   assert.doesNotMatch(keyword,/ManagementNetworkNav/);
   assert.match(space,/ManagementSectionNav/);
   assert.doesNotMatch(space,/ManagementNetworkNav/);
+  assert.match(space,/space-management-options\.mjs/);
+  assert.doesNotMatch(space,/from ['"]\.\.\/trace\/PlaceManagement['"]/);
+  const place=await source('app/loc/trace/PlaceManagement.jsx');
+  assert.match(place,/dynamic\(\(\)=>import\('\.\/TimelinePlaceManager'\)/);
+  assert.match(place,/from '\.\/space-management-options\.mjs'/);
+});
+
+test('Time management Era river uses the same Theme-aware Era color bands as Culture',async()=>{
+  const culture=await source('app/modular/features/Culture.jsx');
+  const timeline=await source('app/modular/modules/culture-timeline/CultureTimeline.jsx');
+  const palette=await source('app/modular/modules/culture-timeline/era-visuals.mjs');
+  assert.match(culture,/compactHierarchy\s+paintEraBackground/);
+  assert.match(timeline,/paintEraBackground=false/);
+  assert.match(timeline,/compactHierarchy&&!paintEraBackground/);
+  assert.match(timeline,/paintCultureRows\(rows,cultureEraVisuals\(source\)\)/);
+  assert.match(palette,/scope-era-background/);
 });

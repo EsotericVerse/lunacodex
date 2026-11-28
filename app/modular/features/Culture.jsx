@@ -1360,6 +1360,7 @@ export default function Culture(){
               focus={EMPTY_RIVER_FOCUS}
               mode='trace'
               compactHierarchy
+              paintEraBackground
               unfoldCurtain={false}
               onFirstPaint={()=>setTimeRiverFirstPaint(true)}
               onGroupToggle={toggleEditorEra}

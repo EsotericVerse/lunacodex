@@ -7,18 +7,16 @@ import {useEditDock} from '../../modular/edit-dock';
 import {ManagementSectionTransition} from '../../modular/ManagementSectionNav';
 import {useAsyncResource} from '../../../packages/zenstack/client-queries';
 import {TRACE_SCOPES,readTraceData,traceKey} from '../../modular/features/trace/trace-data';
-import TimelinePlaceManager from './TimelinePlaceManager';
+import {PLACE_OPTIONS} from './space-management-options.mjs';
+
+const TimelinePlaceManager=dynamic(()=>import('./TimelinePlaceManager'),{loading:PanelLoading});
 
 const TraceManagement=dynamic(()=>import('./TraceManagement'),{loading:PanelLoading});
 const PlaceBatchFill=dynamic(()=>import('./PlaceBatchFill'),{loading:PanelLoading});
 
 // Only the management navigation is consolidated. The two organization
 // operations retain their independent forms, actions, and write contracts.
-export const PLACE_OPTIONS=Object.freeze([
-  {value:'lucus',label:'空間定錨',description:'痕跡、路徑、空間定錨點階層列表'},
-  {value:'organize',label:'地點整理',description:'名稱整理與快速補打卡'},
-  {value:'timeline',label:'地點對照',description:'Google Timeline 行蹤比對及文章定錨'}
-]);
+export {PLACE_OPTIONS};
 
 export default function PlaceManagement({scopeId,section='organize',initialOperation='names'}){
   const dock=useEditDock();
