@@ -129,6 +129,14 @@ test('management route table preserves the Group and Scope destinations',()=>{
     .every(route=>!route.includes('?section=')));
 });
 
+test('Group members route remains the existing Group people and works management page',async()=>{
+  const page=await source('app/manage/page.jsx');
+  assert.match(page,/title:'群組管理｜LOC 月典'/);
+  assert.match(page,/description:'管理 LOC 群組、人員與作品分類。'/);
+  assert.match(page,/path:'\/manage\/'/);
+  assert.match(page,/forcedView="sourceManage"/);
+});
+
 test('Scope management route uses the active Scope context',()=>{
   const calls=[];
   const href=managementRouteHref('scope','spatial','lo3rwang',{
