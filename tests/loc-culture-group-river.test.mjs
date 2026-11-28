@@ -36,7 +36,7 @@ test('one selected Era renders only its own Period and in-window Date anchors',(
   assert.equal(river.era.title,'早期時代');
   assert.ok(river.groups.some(group=>group.label==='早期期間'));
   assert.deepEqual(river.items.filter(row=>row.entry_type==='lucus')
-    .map(row=>row.start_date),['2001-01-01','2002-12-31']);
+    .map(row=>row.start_date).sort(),['2001-01-01','2001-06-01','2002-12-31']);
   assert.equal(river.items.some(row=>row.title==='近期時代'),false);
   assert.ok(river.items.some(row=>row.scope_id==='beta'&&row.start_date==='2001-06-01'));
   assert.ok(river.groups.some(group=>group.label==='beta · 時間定錨'));
