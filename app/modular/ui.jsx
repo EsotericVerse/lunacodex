@@ -14,6 +14,7 @@ import {DEFAULT_LIST_BATCH_SIZE,LIST_LOAD_COOLDOWN_MS} from '../loc/db/db-contra
 import {useScopeRuntime} from './use-scope-runtime';
 import {hero_block,selectLiveScopeBlocks} from '../loc/scope/scope-data';
 import {heroImageUrlForPage} from '../loc/blocks/hero-image.mjs';
+import {LOC_MOTION} from './motion-tokens.mjs';
 
 import {HomeBlock} from '../loc/blocks/home-block-model';
 import ScopeLink from './ScopeLink';
@@ -118,7 +119,7 @@ export function FeaturePage({featureId,children,titleOverride=null,subtitle=null
       const original={opacity:element.style.opacity,transform:element.style.transform};
       const restore=()=>Object.assign(element.style,original);
       const control=animate(element,{opacity:[.65,1],...direction},
-        {duration:.28,delay:index*.045,ease:'easeOut',onComplete:restore});
+        {duration:LOC_MOTION.standard,delay:index*.045,ease:'easeOut',onComplete:restore});
       return ()=>{control.stop();restore();};
     });
     return ()=>controls.forEach(stop=>stop());
