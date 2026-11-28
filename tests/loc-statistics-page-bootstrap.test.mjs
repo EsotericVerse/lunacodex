@@ -48,3 +48,11 @@ test('invalid or non-public Scope IDs never call the Statistics Server Action',a
   assert.equal(await loadStatisticsPageInitialData('../loc',{query}),null);
   assert.equal(calls,0);
 });
+
+test('failed RSC prefetch falls back to the existing client Server Action path',async()=>{
+  const result=await loadStatisticsPageInitialData('lrunes',{
+    now:new Date('2026-11-28T04:00:00.000Z'),
+    query:async()=>{throw new Error('database temporarily unavailable');}
+  });
+  assert.equal(result,null);
+});
