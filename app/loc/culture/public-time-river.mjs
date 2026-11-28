@@ -67,16 +67,17 @@ export function buildPublicTimeLucusRiver(rows=[],{
     const ownDates=inlineDates(era).filter(value=>value>=start&&value<=end);
     const allDays=[...periodModels.flatMap(item=>[item.start,item.end]),...ownDates].sort();
     return {row:era,periodModels,ownDates,start:allDays[0]||'',end:allDays.at(-1)||''};
-  }).filter(item=>item.start&&item.end)
-    .sort((a,b)=>a.start.localeCompare(b.start)||text(a.row.uid).localeCompare(text(b.row.uid)));
+  }).sort((a,b)=>(a.start||'9999-12-31').localeCompare(b.start||'9999-12-31')||
+    text(a.row.uid).localeCompare(text(b.row.uid)));
 
   const groups=[],items=[],assignedDates=new Set();
   for(const [eraOrder,model] of eras.entries()){
     const era=model.row,eraUid=text(era.uid),eraGroup='era:'+eraUid;
     const eraLabel=text(era.title)||'時代';
-    const expanded=list(expandedEras).includes(eraUid);
+    const hasChildren=Boolean(model.periodModels.length||model.ownDates.length);
+    const expanded=hasChildren&&list(expandedEras).includes(eraUid);
     groups.push({id:eraGroup,label:eraLabel,order:eraOrder,
-      collapsible:true,expanded,className:'scope-time-trace-parent'});
+      collapsible:hasChildren,expanded,className:'scope-time-trace-parent'});
 
     for(const [index,range] of mergeRanges(model.periodModels.map(item=>({
       start:item.start,end:item.end
@@ -121,14 +122,14 @@ export function buildPublicTimeLucusRiver(rows=[],{
 
   const unassigned=dates.filter(row=>!assignedDates.has(text(row.uid))&&
     !eras.some(model=>model.ownDates.includes(row.date)));
-  if(unassigned.length){
+  if(eras.length||dates.length){
     const group='time-undefined';
-    groups.push({id:group,label:'未歸屬定錨點',order:groups.length,
+    groups.push({id:group,label:'未定義',order:groups.length,
       className:'scope-time-anchor-parent'});
     for(const row of unassigned){
       items.push({id:group+':'+text(row.uid),entry_type:'lucus',
         uid:text(row.uid),title:text(row.title)||row.date,display_label:'●',
-        start_date:row.date,group_key:group,group_label:'未歸屬定錨點',
+        start_date:row.date,group_key:group,group_label:'未定義',
         class_name:'scope-time-original-lucus'});
     }
   }
