@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import {explainPeltChange,rankInsightPeriods,totalPeriodStats} from './statistics-insights.mjs';
 import StatisticsChartFrame from './StatisticsChartFrame';
+import StatisticsMultiChart from './StatisticsMultiChart';
 import {visualColor} from '../../visual-palette.mjs';
 
 const amount=value=>Number(value||0).toLocaleString('zh-TW',{
@@ -165,6 +166,11 @@ export default function StatisticsInsightsPanel({
     period:row.period,value:Number(row.total)||0,
     start_date:row.start_date,end_date:row.end_date,sourceRow:row
   })),[rows]);
+  const distributionValues=useMemo(()=>rows.filter(row=>!row.partial).map(row=>({
+    uid:row.period,label:row.period,period:row.period,
+    start_date:row.start_date,end_date:row.end_date,
+    value:Number(row.total)||0
+  })),[rows]);
   const trendMark=rows.length>=6
     ?<Line type="linear" dataKey="value" name="作品數" stroke={visualColor(0)}
       strokeWidth={3} dot={rows.length<=32} cursor={onPeriodClick?'pointer':undefined}
@@ -236,41 +242,45 @@ export default function StatisticsInsightsPanel({
       <StatisticsChartFrame level={zoomLevel} onChange={onZoomLevelChange}
         range={range} idPrefix={idPrefix}>
     {rows.length?<div className="statistics-dashboard__trend-plot"
-      role="group" aria-label={intent==='compare'?'作品數量比較圖':'總數、平均、中位數與變化點趨勢圖'}>
-      <ResponsiveContainer width="100%" height="100%">
-        {intent==='compare'?comparisonChart:
-          <TrendChart data={trendRows}
-            onClick={onPeriodClick?handlePeriodClick:undefined}
-            margin={{top:18,right:24,bottom:20,left:0}}>
-            <CartesianGrid stroke="var(--loc-line)" strokeDasharray="3 3"/>
-            <XAxis dataKey="period" stroke="var(--loc-line)"
-              tick={{fill:'var(--loc-text)',fontSize:11}}
-              angle={rows.length>=6?-20:0} height={rows.length>=6?64:36} minTickGap={24}/>
-            <YAxis stroke="var(--loc-line)" allowDecimals={false}
-              tick={{fill:'var(--loc-text)',fontSize:11}}/>
-            {selectedPeriodKey?<ReferenceLine x={selectedPeriodKey} stroke={visualColor(6)}
-              strokeWidth={2.5} strokeDasharray="5 3"/>:null}
-            <Tooltip contentStyle={{background:'var(--loc-panel)',color:'var(--loc-text)',
-              border:'1px solid var(--loc-line)',borderRadius:8}}/>
-            <ReferenceLine y={stats.mean} stroke={visualColor(1)} strokeWidth={1.5}
-              strokeDasharray="6 4" label={{value:'平均',position:'insideTopRight',
-                fill:'var(--loc-text)',fontSize:10}}/>
-            {Math.abs(stats.mean-stats.median)>.001?<ReferenceLine y={stats.median}
-              stroke={visualColor(3)} strokeWidth={1.5} strokeDasharray="2 5"
-              label={{value:'中位',position:'insideBottomRight',
-                fill:'var(--loc-text)',fontSize:10}}/>:null}
-            {insight.detected&&insight.boundary?<ReferenceLine
-              x={insight.boundary} stroke={visualColor(6)} strokeWidth={2}
-              strokeDasharray="3 4"/>:null}
-            {trendMark}
-            {stats.maximum?<ReferenceDot x={stats.maximum.period} y={stats.maximum.value}
-              r={6} fill={visualColor(2)} stroke="var(--loc-panel)"
-              label={{value:'最高',position:'top',fill:'var(--loc-text)',fontSize:11}}/>:null}
-            {stats.minimum?<ReferenceDot x={stats.minimum.period} y={stats.minimum.value}
-              r={6} fill={visualColor(4)} stroke="var(--loc-panel)"
-              label={{value:'最低',position:'bottom',fill:'var(--loc-text)',fontSize:11}}/>:null}
-          </TrendChart>}
-      </ResponsiveContainer>
+      role="group" aria-label={intent==='compare'?'作品數量比較圖':
+        intent==='distribution'?'作品數量分布直方圖':'總數、平均、中位數與變化點趨勢圖'}>
+      {intent==='distribution'
+        ?<StatisticsMultiChart intent="distribution" values={distributionValues}
+          height={340} onPeriodClick={onPeriodClick}/>
+        :<ResponsiveContainer width="100%" height="100%">
+          {intent==='compare'?comparisonChart:
+            <TrendChart data={trendRows}
+              onClick={onPeriodClick?handlePeriodClick:undefined}
+              margin={{top:18,right:24,bottom:20,left:0}}>
+              <CartesianGrid stroke="var(--loc-line)" strokeDasharray="3 3"/>
+              <XAxis dataKey="period" stroke="var(--loc-line)"
+                tick={{fill:'var(--loc-text)',fontSize:11}}
+                angle={rows.length>=6?-20:0} height={rows.length>=6?64:36} minTickGap={24}/>
+              <YAxis stroke="var(--loc-line)" allowDecimals={false}
+                tick={{fill:'var(--loc-text)',fontSize:11}}/>
+              {selectedPeriodKey?<ReferenceLine x={selectedPeriodKey} stroke={visualColor(6)}
+                strokeWidth={2.5} strokeDasharray="5 3"/>:null}
+              <Tooltip contentStyle={{background:'var(--loc-panel)',color:'var(--loc-text)',
+                border:'1px solid var(--loc-line)',borderRadius:8}}/>
+              <ReferenceLine y={stats.mean} stroke={visualColor(1)} strokeWidth={1.5}
+                strokeDasharray="6 4" label={{value:'平均',position:'insideTopRight',
+                  fill:'var(--loc-text)',fontSize:10}}/>
+              {Math.abs(stats.mean-stats.median)>.001?<ReferenceLine y={stats.median}
+                stroke={visualColor(3)} strokeWidth={1.5} strokeDasharray="2 5"
+                label={{value:'中位',position:'insideBottomRight',
+                  fill:'var(--loc-text)',fontSize:10}}/>:null}
+              {insight.detected&&insight.boundary?<ReferenceLine
+                x={insight.boundary} stroke={visualColor(6)} strokeWidth={2}
+                strokeDasharray="3 4"/>:null}
+              {trendMark}
+              {stats.maximum?<ReferenceDot x={stats.maximum.period} y={stats.maximum.value}
+                r={6} fill={visualColor(2)} stroke="var(--loc-panel)"
+                label={{value:'最高',position:'top',fill:'var(--loc-text)',fontSize:11}}/>:null}
+              {stats.minimum?<ReferenceDot x={stats.minimum.period} y={stats.minimum.value}
+                r={6} fill={visualColor(4)} stroke="var(--loc-panel)"
+                label={{value:'最低',position:'bottom',fill:'var(--loc-text)',fontSize:11}}/>:null}
+            </TrendChart>}
+        </ResponsiveContainer>}
     </div>:<p className="scope-status">所選時期沒有可分析的作品總數。</p>}
       </StatisticsChartFrame>
     </section>
