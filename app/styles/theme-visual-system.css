@@ -224,7 +224,7 @@ body.loc-app-shell{
 /* One material language for real functional frames across home, features,
    management, settings and editors. Existing special border colors/widths
    remain intact; the inset edge supplies the Theme's material weight. */
-:is(
+body.loc-app-shell :is(
   .loc-card,.loc-panel,.loc-link-card,.loc-home>.loc-hero,.loc-hero .hero-note,
   .scope-card,.scope-inline-card,.scope-feature-card,.scope-stat-section,
   .scope-ranking-chart,.scope-hero,.loc-shared-work-card,.loc-trace-panel,
@@ -236,7 +236,7 @@ body.loc-app-shell{
   background-color:var(--loc-material-surface);
   box-shadow:var(--loc-material-shadow),inset 0 0 0 var(--loc-material-edge) var(--loc-material-edge-color);
 }
-:is(
+body.loc-app-shell :is(
   .loc-card,.loc-panel,.loc-link-card,.scope-card,.scope-inline-card,
   .scope-feature-card,.scope-stat-section,.scope-ranking-chart,
   .loc-shared-work-card,.loc-trace-panel,.admin-workspace,
@@ -246,7 +246,7 @@ body.loc-app-shell{
 }
 
 /* Text bubbles are a first-class part of each Theme, not generic mini-cards. */
-.loc-bubble:not(.loc-home-block__media):not(.loc-home-block__media-bubble){
+body.loc-app-shell .loc-bubble:not(.loc-home-block__media):not(.loc-home-block__media-bubble){
   border:var(--loc-theme-bubble-border-width) var(--loc-theme-bubble-border-style) var(--loc-theme-bubble-edge);
   border-radius:var(--loc-theme-bubble-radius);
   background-color:var(--loc-theme-bubble-surface);
@@ -291,7 +291,7 @@ body.loc-app-shell{font-family:var(--loc-font-family);}
 }
 
 /* Controls use the same Theme identity while retaining native hit targets. */
-:is(
+body.loc-app-shell :is(
   .loc-button,.loc-control,.loc-settings-select,.scope-select,.scope-search-input,
   .scope-tabs button,.scope-pagination-button,.scope-culture-source-button,
   .scope-search-popular-toggle,.management-section-nav__item,
