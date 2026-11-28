@@ -70,7 +70,7 @@ export default function LocMemberIntersection({
   }),[JSON.stringify(adjusted),datasets,startDate,endDate,unit]);
   const distribution=calculated.totals.map((item,index)=>({
     key:calculated.series[index]?.key||String(index),name:item.name,value:item.value
-  }));
+  })).filter(item=>item.value>0);
   const seriesKey=calculated.series.map(field=>field.key+':'+field.label).join('|');
   useEffect(()=>{
     setSelectedPeriodKey('');setSelectedSeriesKey('');setChartIntent('trend');
@@ -127,7 +127,7 @@ export default function LocMemberIntersection({
             if(event.target.value==='compare')setSelectedSeriesKey('');
           }}>
             <option value="trend">看趨勢</option>
-            <option value="compare">比大小</option>
+            {distribution.length?<option value="compare">比大小</option>:null}
           </select>
         </label>
         {selectedSeriesKey?<button type="button" className="loc-button loc-button--small"
