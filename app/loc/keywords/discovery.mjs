@@ -1,18 +1,33 @@
 import {content_filter,keywordScanText} from './content-filter.mjs';
+import {keywordDiscoveryText} from './discovery-text-filter.mjs';
 import {compileKeywordLiteralMatcher} from './literal-matcher.mjs';
 
-// Discovery only observes literal text. It never ranks a word by presumed
-// meaning, language, length, frequency threshold or publication period.
-// Structural markup is removed by the shared scan projection.
+// The shared content projection remains unchanged for Item rule parsing.
+// Only the suggestion scanner applies punctuation and stop-word filtering.
 export const readableKeywordContent=content_filter;
-const HAN=/^\p{Script=Han}+$/u;
-const VISIBLE=/[\p{L}\p{N}\p{P}\p{S}]/u;
+const HAN=/^\\p{Script=Han}+$/u;
 const normalize=value=>String(value??'').normalize('NFKC').trim().toLocaleLowerCase();
 
+const DISCOVERY_STOP_WORDS=new Set([
+  // Pronouns and references
+  '我','你','他','她','它','您','咱','我們','你們','他們','她們','它們',
+  '自己','大家','各位','本人','對方','別人','有人','人們','這','那','這個','那個',
+  '這些','那些','其','其中','此','彼','某','各','每',
+  // Function words and common grammatical tokens
+  '的','了','著','過','是','有','在','和','與','或','及','而','但','並','也','都',
+  '很','更','最','太','才','就','又','還','已','仍','曾','將','把','被','讓','給',
+  '對','於','從','到','向','往','為','以','之','所','則','而且','以及','或者',
+  '如果','因為','所以','因此','但是','不過','同時','另外',
+  // Editorial and article scaffolding
+  '作者','本文','原文','文章','內容','標題','本篇','這篇','該篇','來源','出處',
+  '來自','來自於','例如','等等','如下','上述','其他','目前','現在','相關',
+  '進行','使用','可以','需要','可能','如何','什麼','怎麼','為什麼','就是',
+  '不是','沒有','一個','一些','很多','非常'
+]);
+
 function admissibleNormalized(value){
-  // The existing Pattern title is at most 256 characters. This is a storage
-  // contract, not a statistical cutoff; punctuation is valid literal text.
-  return value.length>0&&value.length<=256&&VISIBLE.test(value);
+  const length=Array.from(value).length;
+  return length>=2&&length<=4&&HAN.test(value)&&!DISCOVERY_STOP_WORDS.has(value);
 }
 
 export function existingKeywordSet(rows=[]){
@@ -61,7 +76,7 @@ export function createNewKeywordDiscovery(rows=[]){
     let record=totals.get(key);
     if(!record){
       const sample=body.slice(Math.max(0,position-28),
-        Math.min(body.length,position+length+32)).replace(/\s+/gu,' ').trim();
+        Math.min(body.length,position+length+32)).replace(/\\s+/gu,' ').trim();
       record={word:key,documents:0,occurrences:0,sample};
       totals.set(key,record);
     }
@@ -74,44 +89,50 @@ export function createNewKeywordDiscovery(rows=[]){
   function consume(batch=[]){
     for(const row of batch){
       read++;
-      const body=keywordScanText(row);
-      if(!body.trim())continue;
+      const body=keywordDiscoveryText(row);
+      if(!body)continue;
       withContent++;
       const seen=new Set();
-      let prev=null,prev2=null;
+      let previous=null;
       for(const piece of segmenter.segment(body)){
         const token=String(piece.segment||'').trim();
         if(!token)continue;
         const isHan=HAN.test(token);
-        // A question mark, other punctuation or symbol is valid literal
-        // evidence, even when Intl.Segmenter reports isWordLike=false.
-        if(piece.isWordLike||VISIBLE.test(token)){
+        if(!isHan||DISCOVERY_STOP_WORDS.has(token)){
+          previous=null;
+          continue;
+        }
+        const chars=Array.from(token);
+        if(chars.length>=2&&chars.length<=4)
           add(token,seen,body,piece.index,token.length);
-          if(prev&&prev.end===piece.index&&prev.han&&isHan){
-            const pair=prev.token+token;
-            add(pair,seen,body,prev.start,pair.length);
-            if(prev2&&prev2.han&&prev2.end===prev.start){
-              const triple=prev2.token+pair;
-              add(triple,seen,body,prev2.start,triple.length);
+        else if(chars.length>4){
+          // A long Segmenter token may contain several independently useful
+          // 2–4 character terms. Never emit the full long token.
+          for(let size=2;size<=4;size++){
+            for(let start=0;start+size<=chars.length;start++){
+              const candidate=chars.slice(start,start+size).join('');
+              add(candidate,seen,body,piece.index+start,candidate.length);
             }
           }
-          prev2=prev;
-          prev={token,start:piece.index,
-            end:piece.index+piece.segment.length,han:isHan};
-        }else{
-          prev=null;prev2=null;
         }
+        if(previous&&previous.end===piece.index){
+          const combined=previous.token+token;
+          const length=Array.from(combined).length;
+          if(length>=2&&length<=4)
+            add(combined,seen,body,previous.start,combined.length);
+        }
+        previous={token,start:piece.index,end:piece.index+piece.segment.length};
       }
     }
     return {read,withContent,limited:false,candidateCount:totals.size,existingCount:existing.size};
   }
   function finish(){
-    // Counts are observed facts, not preference weights. All candidates are
-    // returned; the UI paginates without dropping long-tail or rare terms.
+    // Counts are observed facts, not preference weights. All admissible
+    // candidates are returned; the UI paginates without dropping rare terms.
     const candidates=[...totals.values()]
       .sort((a,b)=>b.documents-a.documents||
         b.occurrences-a.occurrences||a.word.localeCompare(b.word))
-      .map(term=>({...term,language:HAN.test(term.word)?'zh':'other'}));
+      .map(term=>({...term,language:'zh'}));
     return {read,withContent,limited:false,existingCount:existing.size,
       candidates};
   }
