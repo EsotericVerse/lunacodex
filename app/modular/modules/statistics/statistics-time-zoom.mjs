@@ -332,14 +332,21 @@ export function resolveStatisticIntent({
   const categories=normalizeDistribution(distribution,time,fields);
   const unavailable={intent,available:false,type:'',reason:'資料不足或不符合此分析意圖'};
   if(intent==='compare'){
-    if(categories.length)return {
-      intent,available:true,type:'bar',dataMode:'distribution',
-      barLayout:categories.length>6?'vertical':'horizontal',sort:'desc'
-    };
-    return time.length&&(fields.length||(totalKey&&time.some(row=>finiteMetric(row?.[totalKey])!==null)))?{
-      intent,available:true,type:'bar',dataMode:'time-comparison',
-      barLayout:time.length>6?'vertical':'horizontal',sort:'desc'
-    }:unavailable;
+    if(categories.length){
+      const many=categories.length>6;
+      return {
+        intent,available:true,type:'bar',dataMode:'distribution',
+        barLayout:many?'vertical':'horizontal',...(many?{sort:'desc'}:{})
+      };
+    }
+    if(time.length&&(fields.length||(totalKey&&time.some(row=>finiteMetric(row?.[totalKey])!==null)))){
+      const many=time.length>6;
+      return {
+        intent,available:true,type:'bar',dataMode:'time-comparison',
+        barLayout:many?'vertical':'horizontal',...(many?{sort:'desc'}:{})
+      };
+    }
+    return unavailable;
   }
   if(intent==='trend')return time.length&&(fields.length||(totalKey&&time.some(row=>finiteMetric(row?.[totalKey])!==null)))?{
     intent,available:true,type:time.length>=6?'line':'bar',dataMode:'time'
